@@ -174,6 +174,14 @@ def validate_dispatch_result(
 ) -> None:
     route = require_route(route)
     envelope = value.get("provider_envelope")
+    if isinstance(envelope, Mapping) and "planner_recovery" in envelope:
+        from ..planner_recovery import validate_chain
+
+        actual = validate_chain(value, route)
+        original = deepcopy(dict(value))
+        original["provider_envelope"].pop("planner_recovery")
+        validate_dispatch_result(original, actual)
+        return
     dispatch = (
         envelope.get("native_planner_dispatch")
         if isinstance(envelope, Mapping)

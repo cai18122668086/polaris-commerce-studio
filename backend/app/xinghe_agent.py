@@ -434,6 +434,7 @@ class XingheAgentError(RuntimeError):
         self.retryable = retryable
         self.json_pointer = json_pointer
         self.validation_errors = tuple(dict(error) for error in validation_errors)
+        self.planner_response: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -605,6 +606,13 @@ class PlannerCallResult:
     supplemental_results: tuple[PlannerCallResult, ...] = ()
     external_request: bool = True
     audit_raw_content: str | None = None
+
+    def __post_init__(self) -> None:
+        # Durable native stores deserialize nested recovery receipts from JSON.
+        object.__setattr__(self, "supplemental_results", tuple(
+            PlannerCallResult(**dict(value)) if isinstance(value, Mapping) else value
+            for value in self.supplemental_results
+        ))
 
 
 @dataclass(frozen=True)
@@ -2174,8 +2182,24 @@ class UrllibOpenAITransport:
         try:
             with cls._open(request, timeout_seconds) as response:
                 status = int(response.status)
-                raw = response.read()
                 response_headers = getattr(response, "headers", {})
+                content_type = response_headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                if content_type == "text/event-stream":
+                    from .planner_streaming import PlannerStreamError, read_chat_stream
+
+                    try:
+                        streamed = read_chat_stream(response, timeout_seconds)
+                    except PlannerStreamError as exc:
+                        failure = XingheAgentError(exc.code, str(exc), retryable=True)
+                        failure.planner_response = exc.envelope
+                        raise failure from exc
+                    header_id = response_headers.get("x-request-id") or response_headers.get("request-id")
+                    if header_id and not _safe_request_id(streamed):
+                        from .provider_diagnostics import safe_text
+
+                        streamed["_transport_request_id"] = safe_text(str(header_id), 255)
+                    return status, streamed
+                raw = response.read()
         except HTTPError as exc:
             status = int(exc.code)
             raw = exc.read()
@@ -2256,6 +2280,12 @@ class TengliOpenAICompatibleGateway:
         image_failover_base_url: str | None = None,
         image_failover_model: str | None = None,
         rotation_order: str = "primary,failover",
+        planner_streaming_enabled: bool = False,
+        planner_recovery_enabled: bool = False,
+        planner_transient_retries: int = 1,
+        planner_retry_backoff_seconds: float = 2,
+        planner_primary_timeout_seconds: float = 300,
+        planner_receipt_root: Path | None = None,
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
         if (
@@ -2287,6 +2317,12 @@ class TengliOpenAICompatibleGateway:
         self.review_price_micros = review_price_micros
         self.timeout_seconds = timeout_seconds
         self.planner_timeout_seconds = planner_timeout_seconds
+        self.planner_streaming_enabled = planner_streaming_enabled
+        self.planner_recovery_enabled = planner_recovery_enabled
+        self.planner_transient_retries = min(1, max(0, planner_transient_retries))
+        self.planner_retry_backoff_seconds = planner_retry_backoff_seconds
+        self.planner_primary_timeout_seconds = planner_primary_timeout_seconds
+        self.planner_receipt_root = planner_receipt_root
         self.diagnostic_content_sample = diagnostic_content_sample
         self.transport = transport or UrllibOpenAITransport()
         self.external_network_request_count = 0
@@ -2399,6 +2435,13 @@ class TengliOpenAICompatibleGateway:
         )
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
+        if self.planner_recovery_enabled:
+            from .planner_recovery import recover
+
+            return await recover(self, request)
+        return await self._plan_single(request)
+
+    async def _plan_single(self, request: PlannerRequest) -> PlannerCallResult:
         if request.planning_profile not in NATIVE_PLANNER_PROFILES:
             return await self._plan_transport(request)
         started = time.perf_counter()
@@ -2509,6 +2552,8 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
+        if self.planner_streaming_enabled:
+            payload.update(stream=True, stream_options={"include_usage": True})
         if request.planning_profile in {"replica_fast_suite", "aurora_native_fast_identity"}:
             payload["max_completion_tokens"] = 16000
         if request.planning_profile in {"replica_native_contract", "replica_exact_compact"}:
@@ -2824,11 +2869,19 @@ class TengliOpenAICompatibleGateway:
                 usage_completeness=envelope_diagnostics["usage_completeness"],
             )
         except XingheAgentError as exc:
+            if isinstance(getattr(exc, "planner_response", None), Mapping):
+                response = exc.planner_response
             envelope_diagnostics = (
                 _planner_envelope_diagnostics(response)
                 if response is not None
                 else _unavailable_planner_envelope_diagnostics()
             )
+            if response is not None and isinstance(response.get("error"), Mapping):
+                safe_error = safe_native_provider_error(response, [
+                    route.planner_api_key for route in self._ordered_routes()
+                ])
+                if safe_error:
+                    envelope_diagnostics["provider_envelope"]["planner_stream_error"] = safe_error
             raw_content = _planner_raw_content(response)
             rejected_content_bytes = (
                 raw_content.encode("utf-8") if isinstance(raw_content, str) else None
@@ -3533,6 +3586,12 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         image_failover_base_url=settings.tengli_base_url,
         image_failover_model=settings.tengli_image_model,
         rotation_order=settings.provider_rotation_order,
+        planner_streaming_enabled=settings.planner_streaming_enabled,
+        planner_recovery_enabled=settings.planner_recovery_enabled,
+        planner_transient_retries=settings.planner_transient_retries,
+        planner_retry_backoff_seconds=settings.planner_retry_backoff_seconds,
+        planner_primary_timeout_seconds=settings.planner_primary_timeout_seconds,
+        planner_receipt_root=settings.aurora_work_root / "planner-transport",
     )
     from .image_capacity import limit_gateway
 
@@ -3654,7 +3713,8 @@ class XinghePlanningCoordinator:
                     error_message=(f"Planner provider failed ({type(exc).__name__})."),
                 )
             result = replace(
-                _with_planner_observability(result), supplemental_results=intake_calls
+                _with_planner_observability(result),
+                supplemental_results=(*result.supplemental_results, *intake_calls),
             )
             results.append(result)
             if result.error_code is not None:
@@ -4215,9 +4275,7 @@ class XinghePlanningCoordinator:
                 progress=10,
             )
             job.api_request_count = sum(
-                call.external_request
-                and bool(call.provider_request_id)
-                and not str(call.provider_request_id).startswith("mock_")
+                _planner_transport_count(call)
                 for call in calls
             )
             costs = [call.actual_cost_micros for call in calls if call.external_request]
@@ -5472,8 +5530,7 @@ class XinghePlanningCoordinator:
             sum(known_costs) if results and len(known_costs) == len(results) else None
         )
         job.api_request_count = sum(
-            isinstance(result.provider_request_id, str)
-            and not result.provider_request_id.startswith("mock_")
+            _planner_transport_count(result)
             for result in results
         )
         job.usage_completeness = (
@@ -8685,7 +8742,10 @@ def planner_accounting(
         if isinstance(cost, int) and not isinstance(cost, bool) and cost >= 0:
             known_cost += 1
             total_cost += cost
-        real_calls += int(value.get("provider_request_id_presence") == "present")
+        attempts = value.get("transport_attempts")
+        real_calls += attempts if type(attempts) is int and attempts in (0, 1) else int(
+            value.get("provider_request_id_presence") == "present"
+        )
     return requests, reported, known_cost, total_cost, real_calls
 
 
@@ -8848,11 +8908,24 @@ def _planner_call_results(
     return tuple(calls)
 
 
+def _planner_transport_count(result: PlannerCallResult) -> int:
+    if not result.external_request:
+        return 0
+    attempt = (result.provider_envelope or {}).get("planner_attempt")
+    if isinstance(attempt, Mapping) and attempt.get("transport_attempts") == 1:
+        return 1
+    return int(isinstance(result.provider_request_id, str)
+               and not result.provider_request_id.startswith("mock_"))
+
+
 def _planner_usage_record(result: PlannerCallResult) -> dict[str, Any]:
     dispatch = planner_dispatch_record(result.provider_envelope)
     receipt = (result.provider_envelope or {}).get("native_planner_receipt")
     intake_receipt = (result.provider_envelope or {}).get("native_intake_receipt")
     return {
+        **({"transport_attempts": _planner_transport_count(result),
+            "planner_attempt": (result.provider_envelope or {})["planner_attempt"]}
+           if "planner_attempt" in (result.provider_envelope or {}) else {}),
         **({"phase": result.phase} if result.phase else {}),
         **({"native_planner_dispatch": dispatch} if dispatch else {}),
         **(
@@ -11144,6 +11217,14 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.authoring_stage:
         return authoring.prompt(request)
     prompt = _planner_prompt_body(request)
+    if request.planning_profile in {"detail_pack", "crossborder_detail"}:
+        prompt += (
+            "\nWIRE FIELD CONTRACT: plan.design_strength_lock.rhythm_map is an array "
+            f"of exactly {request.page_count} non-empty STRING values, ordered like "
+            "plan.screens. Each entry is plain authored text, never an object, number "
+            "or nested array. Include one entry for every screen. This supplements "
+            "the full creative protocol; all its other fields remain required."
+        )
     if request.planning_profile in {
         "aurora_domestic_detail", "aurora_domestic_campaign_completion",
         "aurora_domestic_plan_repair", "aurora_domestic_modules_completion",
@@ -12062,6 +12143,8 @@ def _planner_envelope_diagnostics(
             "choice0_kind": _safe_json_kind(choice0),
             "message_kind": _safe_json_kind(message),
             "content_kind": _safe_json_kind(content),
+            **({"planner_stream": payload["_planner_stream"]}
+               if isinstance(payload.get("_planner_stream"), Mapping) else {}),
         },
         "request_id_presence": (
             "present" if _safe_request_id(payload) is not None else "absent"
@@ -12149,6 +12232,13 @@ def _planner_structure_profile(payload: object) -> dict[str, Any]:
         ),
     )
     if isinstance(plan, Mapping):
+        design = plan.get("design_strength_lock")
+        rhythm = design.get("rhythm_map", _MISSING_JSON_VALUE) if isinstance(design, Mapping) else _MISSING_JSON_VALUE
+        profile["rhythm_map"] = _json_shape_summary(rhythm)
+        if isinstance(rhythm, list):
+            profile["rhythm_map"]["empty_string_count"] = sum(
+                isinstance(item, str) and not item.strip() for item in rhythm
+            )
         screens = plan.get("screens", _MISSING_JSON_VALUE)
         profile["screens"] = _json_shape_summary(screens)
         if isinstance(screens, list):

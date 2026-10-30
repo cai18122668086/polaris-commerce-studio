@@ -349,16 +349,19 @@ async def analyse(
     )
     if not current():
         return
+    from .planner_recovery import summary, total_cost
+
     values["_fast_analysis_receipt"] = {
         "attempt_id": values["analysis_attempt_id"],
         "usage": result.normalized_usage,
-        "actual_cost_micros": result.actual_cost_micros,
+        "actual_cost_micros": total_cost(result),
+        "planner_recovery": summary(result),
         "provider_request_id": result.provider_request_id,
         "elapsed_seconds": result.api_latency_seconds,
         "error_code": result.error_code,
         "raw": result.payload,
     }
-    values["analysis_cost_micros"] = result.actual_cost_micros
+    values["analysis_cost_micros"] = total_cost(result)
     save("analysing", values)
     if result.error_code:
         raise ApiError(

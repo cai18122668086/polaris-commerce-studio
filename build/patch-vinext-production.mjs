@@ -21,8 +21,9 @@ export async function patchVinextProduction(vinextRoot = defaultVinextRoot) {
     [
       {
         before: 'const isHashed = relativePath.startsWith("assets/");',
+        alternatives: ['const isHashed = relativePath.startsWith("assets/") || relativePath.startsWith("_polaris-static/");'],
         after:
-          'const isHashed = relativePath.startsWith("assets/") || relativePath.startsWith("_polaris-static/");',
+          'const isHashed = relativePath.startsWith("assets/") || relativePath.startsWith("_polaris-static/") || relativePath.startsWith("images/display/");',
       },
       {
         before: 'const pathname = "/" + relativePath;',
@@ -49,13 +50,14 @@ async function patchFile(filePath, replacements) {
   let source = await readFile(filePath, "utf8");
   let changed = false;
 
-  for (const { before, after } of replacements) {
+  for (const { before, after, alternatives = [] } of replacements) {
     if (source.includes(after)) continue;
+    const original = [before, ...alternatives].find(value => source.includes(value));
     assert.ok(
-      source.includes(before),
+      original,
       `Expected vinext source was not found in ${path.relative(root, filePath)}.`,
     );
-    source = source.replace(before, after);
+    source = source.replace(original, after);
     changed = true;
   }
 

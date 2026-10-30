@@ -1,0 +1,23 @@
+Polaris sister audit refresh — 2026-10-30
+
+Read-only sister snapshot: 3f595bffb98475181494d1bbe7813869bb2f4ca2.
+New branch fix/audit-priorities-20261030 is already merged into sister main.
+No pushes, PRs, comments or settings writes were made to the sister repository.
+
+Ported: versioned explicit processing receipts and withdrawal; small-screen navigation;
+201 WebP display derivatives for 67 SHA-256-identical public originals; pinned dependency security fixes.
+Polaris email/SuperTokens authentication, branding, original assets, provider recovery,
+credit prices and historical purchase snapshots remain in place.
+Latest own main replica-modes fixes (c66e3367, PR 145) are included.
+
+Processing acceptance gates new uploads and creation in external authentication mode.
+Old task/result reads, cancellation, existing-result recovery, payments and support remain accessible.
+Acceptance records both displayed choices. Withdrawal blocks new processing; ongoing jobs need
+explicit cancellation or privacy support, as the UI explains. No acceptance is backfilled.
+Migration 20261030_0034 adds only processing_consents after existing schema 0033.
+
+Production helper: deploy/sister-audit-20261030/release.py.
+Build from the exact committed /opt/polaris/releases/<revision> directory.
+Preserve live runtime configuration and resource limits; retain all rollback image IDs.
+Prepare a fresh private database backup and isolated restore/migration rehearsal before activation.
+Activate only when user work is idle; verify all eight application roles and public routes.

@@ -6,6 +6,7 @@ import { useCreditAccount } from "@/features/billing/api/credits";
 import { TopNavigation } from "./top-navigation";
 import { ToolSidebar } from "./tool-sidebar";
 import { TaskDrawer } from "./task-drawer";
+import { ProcessingConsentNotice } from "./auth/processing-consent";
 import { AnnouncementPrompt } from "./announcement-prompt";
 import { usePathname } from "next/navigation";
 import { getFeatureById, getFeatureByRoute } from "@/lib/feature-registry";
@@ -58,6 +59,7 @@ export function AppShell({
             .filter(Boolean)
             .join(" ")}
         >
+          {(pathname === "/assets" || pathname === "/inspiration") && <ProcessingConsentNotice />}
           {children}
         </main>
       </div>

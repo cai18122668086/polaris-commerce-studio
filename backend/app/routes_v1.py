@@ -37,6 +37,7 @@ from .aurora_execution_modes import is_parallel_aurora_mode, is_v20_aurora_mode
 from .auth import (
     Principal,
     WorkspaceDependency,
+    WorkspaceProcessingWriteDependency,
     WorkspaceWriteDependency,
     get_principal,
 )
@@ -846,7 +847,7 @@ def get_workspace(
 )
 async def upload_asset(
     request: Request,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     file: Annotated[UploadFile, File()],
     origin_kind: Annotated[AssetOriginKind, Form()] = AssetOriginKind.UPLOAD,
     media_kind: Annotated[AssetMediaKind, Form()] = AssetMediaKind.IMAGE,
@@ -936,7 +937,7 @@ async def upload_asset(
 async def materialize_model_pose_asset(
     payload: ModelPoseAssetRequest,
     request: Request,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> AssetResponse:
     """Materialize only a private catalog original resolved by slug and hash."""
@@ -1415,7 +1416,7 @@ def create_job(
     payload: JobCreate,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -1949,7 +1950,7 @@ async def download_job_deliverables(
 def update_draft_job(
     job_id: str,
     payload: DraftJobUpdate,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> JobDetailResponse:
     job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
@@ -2008,7 +2009,7 @@ def submit_job(
     job_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -2160,7 +2161,7 @@ def retry_job(
     payload: RetryRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -2316,7 +2317,7 @@ def clone_job(
     job_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -2420,7 +2421,7 @@ def clone_job(
 def update_plan(
     job_id: str,
     payload: PlanUpdateRequest,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> PlanResponse:
     job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
@@ -2600,7 +2601,7 @@ def continue_detail_brand(
     payload: DetailAutomaticBrandRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -2734,7 +2735,7 @@ def resolve_detail_intake(
     payload: DetailIntakeResolutionRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -3015,7 +3016,7 @@ def confirm_plan(
     payload: PlanConfirmRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -3638,7 +3639,7 @@ def create_domestic_campaign_review(
     payload: DomesticCampaignReviewRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -3719,7 +3720,7 @@ def quote_domestic_detail_local_revision(
     job_id: str,
     payload: DomesticDetailLocalRevisionQuoteRequest,
     request: Request,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> DomesticDetailLocalRevisionQuote:
     from .domestic_detail.revision_authorization import build_revision_quote
@@ -3770,7 +3771,7 @@ def create_domestic_detail_local_revision(
     payload: DomesticDetailLocalRevisionCreateRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -3853,7 +3854,7 @@ def recover_automatic_detail_delivery(
     payload: DomesticDetailAutomaticDeliveryRecoveryRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:
@@ -3930,7 +3931,7 @@ def recover_automatic_detail_delivery(
 def prepare_domestic_detail_final_review(
     job_id: str,
     request: Request,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     payload: DomesticCampaignReviewSelection | None = None,
 ) -> DomesticDetailFinalReviewResponse:
@@ -3985,7 +3986,7 @@ def finalize_domestic_main_image(
     job_id: str,
     payload: FinalizeJobRequest,
     request: Request,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
     idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobDetailResponse:

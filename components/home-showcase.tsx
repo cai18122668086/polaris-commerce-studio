@@ -1,5 +1,7 @@
 "use client";
 
+import { DisplayImage } from "./display-image";
+
 import Link from "next/link";
 import { ArrowDown, ArrowRight, ArrowUpRight, Check, MoveUpRight, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -68,16 +70,16 @@ export function HomeHero() {
           <span className="commerce-collage__spark" aria-hidden="true">✳</span>
           <Link href="/style-replica" className="commerce-photo commerce-photo--fashion">
             <div className="commerce-photo__bar"><span /><span /><span /><small>LOOKBOOK / 01</small></div>
-            <img src="/images/cases/olay-20261030/replica-07.png" alt="OLAY 身体乳复刻任务中的人物场景成图" width={1055} height={1491} fetchPriority="high" />
+            <DisplayImage src="/images/cases/olay-20261030/replica-07.png" alt="OLAY 身体乳复刻任务中的人物场景成图" width={1055} height={1491} fetchPriority="high" sizes="(max-width: 640px) 48vw, 320px" />
             <span className="commerce-photo__caption">从实拍，到品牌视觉 <ArrowUpRight size={18} /></span>
           </Link>
           <Link href="/workspace/product-image/change-background" className="commerce-photo commerce-photo--product">
-            <img src="/images/cases/platform-v3/background-result.png" alt="耳机更换背景任务的真实成图" width={768} height={1024} />
+            <DisplayImage src="/images/cases/platform-v3/background-result.png" sizes="(max-width: 640px) 42vw, 300px" alt="耳机更换背景任务的真实成图" width={768} height={1024} />
             <span className="commerce-photo__caption">给商品一个新场景 <MoveUpRight size={17} /></span>
           </Link>
           <Link href="/create?goal=main" className="commerce-photo commerce-photo--commerce">
             <span className="commerce-photo__tag">PRODUCT VISUAL</span>
-            <img src="/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png" alt="猫粮国内主图任务的成图" width={1254} height={1254} />
+            <DisplayImage src="/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png" sizes="(max-width: 640px) 48vw, 320px" alt="猫粮国内主图任务的成图" width={1254} height={1254} />
             <span className="commerce-photo__caption">商品主图，一眼心动 <ArrowUpRight size={16} /></span>
           </Link>
           <span className="commerce-collage__sticker"><Sparkles size={15} /> 好创意，即刻成图</span>
@@ -174,8 +176,8 @@ export function HomeProductShowcase() {
         <div className="commerce-showcase__panel" role="tabpanel" id="commerce-showcase-panel" aria-labelledby={`showcase-tab-${tool.id}`}>
           <div className="commerce-comparison">
             <div className="commerce-comparison__images" key={tool.id}>
-              <img className="commerce-comparison__after" src={visual.primary.desktop.src} alt={`${tool.label}创作效果`} width={1374} height={1145} loading="lazy" />
-              <img className="commerce-comparison__before" src={visual.input.desktop.src} style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }} alt={`${tool.label}商品原图`} width={1374} height={1145} loading="lazy" />
+              <DisplayImage sizes="(max-width: 640px) 90vw, 640px" className="commerce-comparison__after" src={visual.primary.desktop.src} alt={`${tool.label}创作效果`} width={1374} height={1145} loading="lazy" />
+              <DisplayImage sizes="(max-width: 640px) 90vw, 640px" className="commerce-comparison__before" src={visual.input.desktop.src} style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }} alt={`${tool.label}商品原图`} width={1374} height={1145} loading="lazy" />
               <span className="commerce-comparison__label commerce-comparison__label--before">商品原图</span><span className="commerce-comparison__label commerce-comparison__label--after"><Sparkles size={12} /> 创作效果</span>
               <div className="commerce-comparison__divider" style={{ left: `${split}%` }} aria-hidden="true"><span>‹ ›</span></div>
               <input type="range" min={0} max={100} value={split} onChange={(event) => setSplit(Number(event.target.value))} aria-label="拖动查看原图与效果图" aria-valuetext={`原图显示 ${split}%，效果图显示 ${100 - split}%`} />
@@ -187,11 +189,11 @@ export function HomeProductShowcase() {
       </section>
       <section className={`commerce-gallery${galleryPaused ? " is-paused" : ""}`} aria-labelledby="commerce-gallery-title">
         <div className="commerce-gallery__head"><div><span className="commerce-eyebrow">MORE THAN ONE GREAT SHOT</span><h2 id="commerce-gallery-title">每个品类，都有自己的高光。</h2></div><button type="button" onClick={() => setGalleryPaused(!galleryPaused)} aria-pressed={galleryPaused}>{galleryPaused ? "播放案例墙" : "暂停案例墙"}</button></div>
-        <div className="commerce-gallery__window"><div className="commerce-gallery__track">{[0, 1].map((copy) => <div className="commerce-gallery__set" key={copy} aria-hidden={copy === 1 || undefined}>{GALLERY_IMAGES.map(([src, label], index) => <Link href="/inspiration" tabIndex={copy === 1 ? -1 : undefined} className={`commerce-gallery__image commerce-gallery__image--${index % 3}`} key={src}><img src={src} alt={copy ? "" : `${label}创作效果`} loading="lazy" width={380} height={430} /><span>{label}<ArrowUpRight size={16} /></span></Link>)}</div>)}</div></div>
+        <div className="commerce-gallery__window"><div className="commerce-gallery__track">{[0, 1].map((copy) => <div className="commerce-gallery__set" key={copy} aria-hidden={copy === 1 || undefined}>{GALLERY_IMAGES.map(([src, label], index) => <Link href="/inspiration" tabIndex={copy === 1 ? -1 : undefined} className={`commerce-gallery__image commerce-gallery__image--${index % 3}`} key={src}><DisplayImage src={src} alt={copy ? "" : `${label}创作效果`} loading="lazy" width={380} height={430} /><span>{label}<ArrowUpRight size={16} /></span></Link>)}</div>)}</div></div>
         <Link className="commerce-text-link" href="/inspiration">去灵感专区看看 <ArrowRight size={16} /></Link>
       </section>
       <section className="commerce-value">
-        <div className="commerce-value__art" aria-label="商品从单张主图到详情套图的创作效果"><div className="commerce-value__sheet"><span>01 / MAIN VISUAL</span><img src="/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png" alt="猫粮搜索主图成图" width={1374} height={1145} loading="lazy" /></div><div className="commerce-value__sheet"><span>02 / PRODUCT DETAILS</span><img src="/images/cases/history-20261030/asset_6f416209332b45b285e07c3f91a6124b.png" alt="猫粮详情页成图" width={1374} height={1145} loading="lazy" /></div><span className="commerce-value__seal"><Sparkles size={19} /> 从好图<br />到好生意</span></div>
+        <div className="commerce-value__art" aria-label="商品从单张主图到详情套图的创作效果"><div className="commerce-value__sheet"><span>01 / MAIN VISUAL</span><DisplayImage src="/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png" alt="猫粮搜索主图成图" width={1374} height={1145} loading="lazy" /></div><div className="commerce-value__sheet"><span>02 / PRODUCT DETAILS</span><DisplayImage src="/images/cases/history-20261030/asset_6f416209332b45b285e07c3f91a6124b.png" alt="猫粮详情页成图" width={1374} height={1145} loading="lazy" /></div><span className="commerce-value__seal"><Sparkles size={19} /> 从好图<br />到好生意</span></div>
         <div className="commerce-value__copy"><span className="commerce-eyebrow">CREATE MORE. MAKE IT YOURS.</span><h2>少一点反复，<br />多一点生意的可能。</h2><p>把精力留给选品、运营和品牌。让极光商绘，陪你把每一次上新的视觉做好。</p><ul><li><Check size={16} /><span><strong>让上新更从容</strong>主图、详情与场景素材，在同一处开始创作。</span></li><li><Check size={16} /><span><strong>让灵感多走一步</strong>从参考构图到商品细节，快速尝试不同表达。</span></li><li><Check size={16} /><span><strong>让每一份素材更有价值</strong>同一件商品，探索适合不同展示场景的视觉。</span></li></ul><Link className="commerce-text-link" href="/create?goal=detail">开始制作商品详情图 <ArrowRight size={17} /></Link></div>
       </section>
     </div>
@@ -217,7 +219,7 @@ export function HomeCreativeVoices() {
           {CREATIVE_ROLES.map((review) => <article key={review.role}>
             <div className="commerce-reviews__stars"><Sparkles size={14} /> 创作场景示意</div>
             <h3>{review.title}</h3><p className="commerce-reviews__text">{review.text}</p>
-            <div className="commerce-reviews__person"><img src={`/images/use-case-avatars/${review.avatar}.webp`} alt="" width={42} height={42} loading="lazy" /><div><strong>{review.role}</strong><small>{review.tag}</small></div></div>
+            <div className="commerce-reviews__person"><DisplayImage src={`/images/use-case-avatars/${review.avatar}.webp`} alt="" width={42} height={42} loading="lazy" /><div><strong>{review.role}</strong><small>{review.tag}</small></div></div>
           </article>)}
         </div>)}
       </div></div>

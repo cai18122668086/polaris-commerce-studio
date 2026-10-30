@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { isEmailVerified, sessionExists, signOut } from "@/features/auth/api/auth";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
@@ -13,6 +13,7 @@ import { AUTH_ROUTES, isPublicRoute, routeRequiresWorkspace } from "@/lib/auth/r
 import { onAuthUnauthorised } from "@/lib/auth/session-events";
 import { withAuthTimeout } from "@/lib/auth/request-timeout";
 import { AuthStatus } from "./auth-status";
+import { ProcessingConsentGate } from "./processing-consent";
 import { AuthDiagnosticDetails } from "./auth-diagnostic-details";
 import { beginAuthDiagnostics, createAuthDiagnostic, finishAuthDiagnostics, observeAuthCheck, reportAuthDiagnostic } from "@/lib/auth/diagnostics";
 import { authFailureCanRetry, type AuthDiagnostic, type AuthPhase } from "@/lib/auth/diagnostic-payload";
@@ -21,6 +22,7 @@ type BoundaryResult = { state: "authenticated" } | { state: "error"; diagnostic:
 
 export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const search = useSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [result, setResult] = useState<BoundaryResult>();
@@ -98,7 +100,8 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
     <Link className="auth-button auth-button--secondary" href={AUTH_ROUTES.login}>返回登录</Link>
     <AuthDiagnosticDetails diagnostic={result.diagnostic} />
   </AuthStatus>;
-  return routeRequiresWorkspace(pathname) ? <WorkspaceGate>{children}</WorkspaceGate> : <>{children}</>;
+  const creationRoute = (pathname.startsWith("/workspace/") || pathname === "/style-replica") && !search.has("jobId") && !search.has("sessionId");
+  return routeRequiresWorkspace(pathname) ? <WorkspaceGate>{creationRoute ? <ProcessingConsentGate>{children}</ProcessingConsentGate> : children}</WorkspaceGate> : <>{children}</>;
 }
 
 function WorkspaceGate({ children }: { children: React.ReactNode }) {

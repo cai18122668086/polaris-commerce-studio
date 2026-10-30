@@ -49,6 +49,7 @@ from .errors import ApiError
 from .inspiration_routes import router as inspiration_router
 from .legacy_detail_proxy import LegacyDetailProxy
 from .models import WorkspaceLimitRecord
+from .processing_consent_routes import router as processing_consent_router
 from .replica import router as replica_router
 from .routes_v1 import router as v1_router
 from .schemas_v1 import HealthResponse
@@ -515,6 +516,7 @@ def create_app(
 
     application.include_router(v1_router)
     application.include_router(credit_router)
+    application.include_router(processing_consent_router)
     application.include_router(creation_summary_router)
     application.include_router(support_router)
     application.include_router(credit_payment_router)

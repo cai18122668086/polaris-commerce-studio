@@ -27,7 +27,11 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from .auth import WorkspaceContext, WorkspaceDependency, WorkspaceWriteDependency
+from .auth import (
+    WorkspaceContext,
+    WorkspaceDependency,
+    WorkspaceProcessingWriteDependency,
+)
 from .database import get_session
 from .domain import AssetMediaKind, AssetOriginKind
 from .errors import ApiError
@@ -457,7 +461,7 @@ async def create_product(
     payload: ProductRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> dict:
     platform, item_id, canonical = await asyncio.to_thread(
@@ -782,7 +786,7 @@ async def import_images(
     document_id: str,
     payload: ImportRequest,
     request: Request,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> list[dict]:
     row = _get(session, workspace.workspace_id, document_id, "product")
@@ -1221,7 +1225,7 @@ def analyse(
     payload: AnalysisRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> dict:
     if not request.app.state.settings.reference_remix_provider_enabled:
@@ -1270,7 +1274,7 @@ def retry_analysis(
     document_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> dict:
     row = _get(session, workspace.workspace_id, document_id, "session")
@@ -1353,7 +1357,7 @@ def revise_analysis(
     document_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> dict:
     """Explicitly adopt corrected rules while retaining verifiable earlier work."""
@@ -1449,7 +1453,7 @@ def confirm(
     payload: ConfirmRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> dict:
     from .routes_v1 import create_job
@@ -1711,7 +1715,7 @@ def retry_image(
     payload: ImageRetryRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    workspace: WorkspaceWriteDependency,
+    workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> dict:
     from .domain import RetryScope

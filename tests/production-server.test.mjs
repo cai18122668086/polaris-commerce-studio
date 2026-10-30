@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createServer } from "node:net";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -70,6 +71,19 @@ test("production server serves every compiled module and stylesheet", async () =
     const businessRoute = await fetch(`http://${host}:${port}/assets`);
     assert.equal(businessRoute.status, 200);
     assert.match(businessRoute.headers.get("content-type") ?? "", /^text\/html\b/i);
+
+    const displayImages = JSON.parse(await readFile(path.join(root, "lib/display-images.json"), "utf8"));
+    const [originalPath, display] = Object.entries(displayImages)[0];
+    const variant = display.variants.at(-1);
+    const preview = await fetch(`http://${host}:${port}${variant.src}`);
+    assert.equal(preview.status, 200);
+    assert.match(preview.headers.get("content-type") ?? "", /^image\/webp/i);
+    assert.match(preview.headers.get("cache-control") ?? "", /immutable/);
+    assert.equal((await preview.arrayBuffer()).byteLength, variant.bytes);
+    const original = await fetch(`http://${host}:${port}${originalPath}`);
+    assert.equal(original.status, 200);
+    assert.doesNotMatch(original.headers.get("cache-control") ?? "", /immutable/);
+    assert.equal(createHash("sha256").update(Buffer.from(await original.arrayBuffer())).digest("hex"), display.originalSha256);
 
     await assertBrowserAuthContract(`http://${host}:${port}`);
   } finally {

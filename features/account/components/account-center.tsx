@@ -956,6 +956,8 @@ function Membership({
   );
 }
 
+const purchaseStatus = (status: string) => ({ paid: "已支付", pending: "待付款", partially_refunded: "部分退款", refunded: "已退款", closed: "已关闭" } as Record<string, string>)[status] ?? "状态待核对";
+
 function safeCreationReturn() {
   if (typeof window === "undefined") return "/#start";
   const value = new URLSearchParams(window.location.search).get("returnTo") ?? "";
@@ -1028,7 +1030,7 @@ function OrderDialog({
             <div>
               <span>支付状态</span>
               <Status
-                status={order.data.status === "paid" ? "已支付" : "待付款"}
+                status={purchaseStatus(order.data.status)}
               />
             </div>
             {order.data.paid_at && (
@@ -1039,13 +1041,13 @@ function OrderDialog({
             )}
           </div>
           {order.data.status === "paid" && <section className="payment-success" aria-live="polite"><h3>{order.data.product_kind === "membership" ? "会员购买已确认" : "积分充值已到账"}</h3><p>{order.data.package_name}</p>{wallet.data && <p>当前可用 {fmt(wallet.data.available_credits)} 积分</p>}{member.data?.plan_name && <p>当前会员：{member.data.plan_name} · 有效至 {date(member.data.ends_at)}</p>}{member.data?.next_plan_name && <p>{member.data.next_plan_name}将于 {date(member.data.next_plan_starts_at)} 生效</p>}<Link className="account-button" href={safeCreationReturn()}>返回创作，继续操作</Link><Link className="account-button" href="/account#membership" onClick={onClose}>查看会员与权益</Link></section>}
-          {order.data.status !== "pending" ? (
+          {order.data.status === "paid" ? (
             <p className="checkout-note" role="status">
               {order.data.product_kind === "membership"
                 ? "付款已确认。会员与积分按购买周期生效，可在账户概览核对。"
                 : "付款已确认，积分已到账。"}
             </p>
-          ) : (
+          ) : order.data.status === "pending" ? (
             <>
               <p className="checkout-note">
                 付款后余额与订单会自动更新。如已扣款，请点击“我已付款，核对到账”，无需重复支付。
@@ -1071,7 +1073,8 @@ function OrderDialog({
                 </a>
               )}
             </>
-          )}
+          ) : null}
+          {order.data.status !== "pending" && order.data.status !== "paid" && <p className="checkout-note" role="status">订单当前为{purchaseStatus(order.data.status)}。请在积分明细中核对变动，如有疑问可联系工作人员。</p>}
           <div className="modal-actions">
             <Link className="button primary" href="/">返回首页，开始创作<ArrowRight size={16} /></Link>
             <Button onClick={onClose}>关闭</Button>
@@ -1156,7 +1159,7 @@ function Orders({
                       <td className="number">¥{money(order.amount_fen)}</td>
                       <td>
                         <Status
-                          status={order.status === "paid" ? "已支付" : "待付款"}
+                          status={purchaseStatus(order.status)}
                         />
                       </td>
                       <td className="table-date">{date(order.created_at)}</td>

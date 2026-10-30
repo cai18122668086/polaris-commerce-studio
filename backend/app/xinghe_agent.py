@@ -2876,6 +2876,12 @@ class TengliOpenAICompatibleGateway:
                 if response is not None
                 else _unavailable_planner_envelope_diagnostics()
             )
+            if response is not None and isinstance(response.get("error"), Mapping):
+                safe_error = safe_native_provider_error(response, [
+                    route.planner_api_key for route in self._ordered_routes()
+                ])
+                if safe_error:
+                    envelope_diagnostics["provider_envelope"]["planner_stream_error"] = safe_error
             raw_content = _planner_raw_content(response)
             rejected_content_bytes = (
                 raw_content.encode("utf-8") if isinstance(raw_content, str) else None

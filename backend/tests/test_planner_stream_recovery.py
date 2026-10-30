@@ -146,6 +146,7 @@ def test_stream_error_event_does_not_return_a_partial_plan():
     with pytest.raises(PlannerStreamError, match="did not finish") as caught:
         read_chat_stream(BytesIO(raw), 20)
     assert caught.value.code == "PLANNER_STREAM_ERROR"
+    assert caught.value.envelope["error"]["message"] == "synthetic"
 
 
 def test_urllib_transport_reads_sse_instead_of_parsing_the_whole_wire_as_json(

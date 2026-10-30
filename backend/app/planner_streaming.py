@@ -65,6 +65,9 @@ def read_chat_stream(response: Any, timeout_seconds: float) -> dict[str, Any]:
         if not isinstance(value, dict):
             fail("PLANNER_STREAM_INVALID")
         if value.get("error"):
+            from .provider_diagnostics import error_summary
+
+            envelope["error"] = error_summary(value)
             fail("PLANNER_STREAM_ERROR")
         chunks += 1
         for key in ("id", "model"):

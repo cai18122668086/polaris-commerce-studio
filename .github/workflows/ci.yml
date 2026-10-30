@@ -54,6 +54,26 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python -m pip install playwright==1.62.0
+      - name: Verify mobile layouts and processing consent in Chromium
+        env:
+          POLARIS_BROWSER_OUTPUT: ${{ runner.temp }}/polaris-browser-audit
+        run: |
+          mkdir -p "$POLARIS_BROWSER_OUTPUT"
+          npm run start -- --hostname 127.0.0.1 --port 4318 > "$POLARIS_BROWSER_OUTPUT/frontend.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:4318/ > /dev/null; then break; fi
+            sleep 1
+          done
+          python tools/ci_browser_audit.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-audit
+          path: ${{ runner.temp }}/polaris-browser-audit
 
   backend:
     name: Backend shard ${{ matrix.shard }}

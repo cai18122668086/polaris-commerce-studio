@@ -268,8 +268,8 @@ export function StyleReplicaWorkspace() {
       choices = references.filter(item => selectedReferences.includes(item.id)).map((item, index) => ({ asset_id: item.id, title: `参考图 ${index + 1}`, aspect_ratio: "follow-reference" }));
     }
     if (!products.length) throw new Error("请上传自己的产品图。");
-    setInstructions([]); setJobStatuses({});
-    const result = await replicaRequest<ReplicaDocument>(workspaceId, "/sessions", { request_id: analysisRequestId || crypto.randomUUID(), product_asset_ids: products.map(item => item.id), references: choices, replication_method: replicationMethod, replica_speed: replicaSpeed, auto_start_after_plan: true, platform_code: platform === "auto" ? product?.targetPlatform ?? product?.platform ?? "tmall" : platform, language, facts });
+    setInstructions([]); setJobStatuses({}); setReplicaSpeed("fast");
+    const result = await replicaRequest<ReplicaDocument>(workspaceId, "/sessions", { request_id: analysisRequestId || crypto.randomUUID(), product_asset_ids: products.map(item => item.id), references: choices, replication_method: replicationMethod, replica_speed: "fast", auto_start_after_plan: true, platform_code: platform === "auto" ? product?.targetPlatform ?? product?.platform ?? "tmall" : platform, language, facts });
     if (isCurrent()) setSessionDoc(result);
   });
   const confirm = () => workspaceId && sessionDoc && perform("提交生成", async isCurrent => { try { const value = await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/confirm`, { plan_hash: sessionDoc.payload.plan_hash, instructions: sessionDoc.payload.confirmed_instructions ?? instructions }); if (isCurrent()) setSessionDoc(value); } catch (caught) { const value = await replicaRequest<ReplicaDocument>(workspaceId, `/documents/${sessionDoc.id}`); if (isCurrent()) setSessionDoc(value); throw caught; } });

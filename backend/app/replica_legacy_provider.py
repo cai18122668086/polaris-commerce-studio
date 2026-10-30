@@ -314,4 +314,3 @@ async def _execute_pages(
         },
     )
     return [r["artwork"] for r in state["modules"]]
-

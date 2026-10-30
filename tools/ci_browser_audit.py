@@ -61,7 +61,7 @@ with sync_playwright() as p:
     page.on('pageerror',lambda error:errors.append(str(error)))
     def visit(path,expected):
         page.goto(BASE+path,wait_until='domcontentloaded',timeout=30000)
-        page.get_by_text(expected,exact=False).first.wait_for(timeout=25000)
+        page.wait_for_function('expected=>document.body?.innerText.includes(expected)',arg=expected,timeout=25000)
         page.wait_for_timeout(300)
     try:
         for width in [320,360,390,768,960,1280,1440]:
@@ -98,7 +98,7 @@ with sync_playwright() as p:
         page.get_by_role('button',name='确认撤回',exact=True).click()
         page.get_by_role('button',name='确认并继续',exact=True).wait_for()
         assert not accepted
-        for path,expected in [('/jobs','任务'),('/account#membership','专业版'),('/account#help','任务与售后帮助'),('/assets','图片处理与授权')]:
+        for path,expected in [('/jobs','任务中心'),('/account#membership','专业版'),('/account#help','任务与售后帮助'),('/assets','图片处理与授权')]:
             visit(path,expected)
         visit('/workspace/detail-pack','请分别确认以下处理事项')
         assert page.get_by_text('生成版本',exact=False).count()==0

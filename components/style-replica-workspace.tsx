@@ -310,7 +310,6 @@ export function StyleReplicaWorkspace() {
         <button className={styles.feeLink} onClick={() => setModal("fees")}>用量说明 <ChevronRight size={12} /></button>
         <fieldset className={styles.inputFields} disabled={working || !!sessionDoc}>
         <div className={styles.methodChoice} role="radiogroup" aria-label="复刻方式">{([["exact", "一比一模仿", "风格最像，存在侵权风险"], ["style", "风格复刻", "提取风格机制，原创重构商品画面"]] as const).map(([value, title, note]) => <label key={value} className={replicationMethod === value ? styles.methodSelected : ""}><input type="radio" name="replication-method" value={value} checked={replicationMethod === value} disabled={working} onChange={() => selectReplicationMethod(value)} /><span><strong>{title}</strong><small>{note}</small></span></label>)}</div>
-        <div className={styles.fieldHeading}><strong>生成版本</strong></div>
         <div className={styles.fieldHeading}><strong><ImagePlus size={15} /><em>*</em>上传你的产品图</strong><small>{products.length}/6</small></div>
         <p className={styles.hint}>上传必要角度，清晰展示商品外观；产品图决定最终商品身份。</p>
         {uploadBox("product", products, 6)}

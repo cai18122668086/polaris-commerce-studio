@@ -490,6 +490,18 @@
             "title": "References",
             "type": "array"
           },
+          "replica_mode_version": {
+            "anyOf": [
+              {
+                "const": "replica-modes-v2",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replica Mode Version"
+          },
           "replica_speed": {
             "default": "standard",
             "enum": [

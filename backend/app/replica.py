@@ -93,11 +93,19 @@ class AnalysisRequest(BaseModel):
     facts: str = Field(default="", max_length=20000)
     replication_method: Literal["exact", "style"] | None = None
     replica_speed: Literal["standard", "fast"] = "standard"
+    replica_mode_version: Literal["replica-modes-v2"] | None = None
     auto_start_after_plan: bool = False
     credit_budget: int | None = Field(default=None, ge=0, le=1000000)
 
     @model_validator(mode="after")
     def validate_roles(self) -> AnalysisRequest:
+        if self.replica_mode_version is not None:
+            if self.replication_method is None:
+                raise ValueError("请选择风格模仿或一比一复刻。")
+            # Current clients select a mode; its workflow and tariff are server-owned.
+            self.replica_speed = (
+                "fast" if self.replication_method == "style" else "standard"
+            )
         if self.replica_speed == "fast" and self.replication_method is None:
             raise ValueError("快速复刻需要选择一比一模仿或风格复刻。")
         if (
@@ -320,6 +328,8 @@ def _analysis_input_hash(payload: dict[str, Any], protocol: str | None = None) -
         values["_exact_model_protocol"] = protocol
     if payload.get("replica_speed") == "fast":
         values["replica_speed"] = "fast"
+    if payload.get("replica_mode_version"):
+        values["replica_mode_version"] = payload["replica_mode_version"]
     return _hash(values)
 
 
@@ -434,7 +444,10 @@ def product_platforms(workspace: WorkspaceDependency) -> list[dict[str, str]]:
     return [
         {"code": code, "label": label}
         for code, label in (
-            ("taobao", "淘宝"), ("tmall", "天猫"), ("1688", "1688"), ("jd", "京东")
+            ("taobao", "淘宝"),
+            ("tmall", "天猫"),
+            ("1688", "1688"),
+            ("jd", "京东"),
         )
     ]
 
@@ -1214,6 +1227,9 @@ def analyse(
     if not request.app.state.settings.reference_remix_provider_enabled:
         raise ApiError(503, "REPLICA_DISABLED", "复刻生成服务暂未开放，请稍后再试。")
     values = payload.model_dump(mode="json")
+    if payload.replica_mode_version is None:
+        # Preserve the identities and protocols used by pre-v2 clients.
+        values.pop("replica_mode_version")
     if payload.credit_budget is None:
         values.pop("credit_budget", None)
     if payload.replica_speed == "standard":
@@ -1648,7 +1664,7 @@ def _confirm_native(
             "type": "reference_remix",
             "intent": "submit",
             "display_name": "一键复刻 · "
-            + ("一比一模仿" if method == "exact" else "风格复刻"),
+            + ("一比一复刻" if method == "exact" else "风格模仿"),
             "input": {
                 "product_asset_ids": values["product_asset_ids"],
                 "reference_asset_ids": list(
@@ -1730,7 +1746,11 @@ def retry_image(
     retried = retry_job(
         job_id=job_id,
         payload=RetryRequest(
-            scope=(RetryScope.MISSING if delivered is not None else RetryScope.FULL)
+            # Fast suites have independent items. Reused successful screens must
+            # stay outside the new reservation even when provider receipts cache them.
+            scope=RetryScope.MISSING
+            if values.get("replica_speed") == "fast"
+            else (RetryScope.MISSING if delivered is not None else RetryScope.FULL)
             if native
             else RetryScope.FAILED
         ),

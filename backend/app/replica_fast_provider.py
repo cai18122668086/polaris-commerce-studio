@@ -28,6 +28,7 @@ from .replica_fast import (
     crop_source,
     image_prompt,
     selected,
+    skill_for,
     source_binding,
 )
 from .services import get_ready_assets
@@ -101,7 +102,9 @@ class FastReplicaProvider:
                 or settings.get("replica_plan_hash") != row.payload.get("plan_hash")
                 or settings.get("reference_skill") != plan.get("skill_id")
                 or settings.get("replication_method") != plan.get("replication_method")
-                or SKILLS.get(plan.get("replication_method")) != plan.get("skill_id")
+                or plan.get("replica_mode_version")
+                != row.payload.get("replica_mode_version")
+                or skill_for(plan) != plan.get("skill_id")
                 or settings.get("image_count") != len(plan.get("units", []))
             ):
                 raise ApiError(
@@ -238,10 +241,7 @@ class FastReplicaProvider:
             fmt = image.format
         if (
             fmt not in {"PNG", "JPEG", "WEBP"}
-            or not (
-                min(w, h) >= 1024
-                or (min(w, h) >= 768 and w * h >= 1_500_000)
-            )
+            or not (min(w, h) >= 1024 or (min(w, h) >= 768 and w * h >= 1_500_000))
             or abs((w / h) / (canvas[0] / canvas[1]) - 1) > 0.01
         ):
             raise ApiError(

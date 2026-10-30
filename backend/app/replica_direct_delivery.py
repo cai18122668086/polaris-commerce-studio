@@ -415,13 +415,8 @@ async def execute(provider: Any, run: Any, request: Any) -> list[str]:
         await provider._save(run, request.job_id)
         await publish_output(provider, run, request, index, image)
 
-    parallel = callable(getattr(run, "image_prompt_for_module", None))
-    limit = (
-        len(state["modules"]) - 1 if parallel
-        else getattr(run, "delivery_ordinal", len(state["modules"]) - 1)
-    )
-    indices = list(range(min(limit + 1, len(state["modules"]))))
-    if parallel:
+    indices = list(range(len(state["modules"])))
+    if callable(getattr(run, "image_prompt_for_module", None)):
         await parallel_images(provider, indices, generate)
     else:
         # Frozen protocols read module_index while compiling their prompt.
@@ -430,8 +425,6 @@ async def execute(provider: Any, run: Any, request: Any) -> list[str]:
             await generate(index)
     validate_direct_state(run)
     state = run.state()
-    if any(record["status"] != "GENERATED" for record in state["modules"]):
-        return [record["artwork"] for record in state["modules"][: limit + 1]]
     state.update(state="DELIVERED", module_index=len(state["modules"]))
     write_json(run.root / "direct-session.json", state)
     write_json(

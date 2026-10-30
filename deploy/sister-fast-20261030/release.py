@@ -105,6 +105,20 @@ def build_base(role, live, root):
     current = inspect(role)
     assert (current["Id"], current["Image"]) == (live["Id"], live["Image"])
     tag = "polaris/suite-fast-flat-" + role + ":" + live["Image"][7:19]
+    existing = subprocess.run(["docker", "image", "inspect", tag], capture_output=True)
+    if existing.returncode == 0:
+        cached = json.loads(existing.stdout)[0]
+        for path in Path("/etc/polaris").glob("suite-fast-20261030-*/flattened-" + role + ".json"):
+            proof = json.loads(path.read_text())
+            if (
+                proof["observed_image"] == live["Image"]
+                and proof["flattened_image"] == cached["Id"]
+                and proof["observed_container"] == current["Id"]
+                and len(cached["RootFS"]["Layers"]) == 1
+            ):
+                helpers.private(root / ("flattened-" + role + ".json"), proof)
+                print(json.dumps({"reused_verified_base": role}), flush=True)
+                return tag
     exporter = subprocess.Popen(["docker", "export", current["Id"]], stdout=subprocess.PIPE)
     try:
         flattened = out(["docker", "import", "-", tag], stdin=exporter.stdout).decode().strip()

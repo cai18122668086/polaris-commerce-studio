@@ -8,8 +8,10 @@ import pytest
 
 from app.provider import ProviderOutcome
 from app.provider_diagnostics import error_summary, retained_metrics
+from app.replica_legacy_provider import (
+    LegacyPageDeliveryProvider as NativeReplicaProvider,
+)
 from app.replica_native import NativeReplicaRun, digest, read_json, write_json
-from app.replica_native_provider import NativeReplicaProvider
 from tests.test_replica_execution_resume import interrupted_run
 from tests.test_replica_nonimage_fallback import dispatch
 

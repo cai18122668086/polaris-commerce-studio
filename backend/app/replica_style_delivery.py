@@ -17,6 +17,7 @@ from PIL import Image, UnidentifiedImageError
 
 from .models import JobRecord, ReplicaDocumentRecord, utc_now
 from .provider import ProviderOutcome, ProviderRequest, ProviderResult
+from .replica_legacy_provider import LegacyPageDeliveryProvider
 from .replica_native import (
     NativeReplicaRun,
     ReplicaNativeError,
@@ -25,7 +26,6 @@ from .replica_native import (
     write_json,
 )
 from .replica_native_provider import (
-    NativeReplicaProvider,
     ReplicaCanvasMismatch,
     ReplicaImageOutcomeUnknown,
 )
@@ -500,7 +500,7 @@ async def deliver(
     return [f["path"] for f in files]
 
 
-class ReplicaDeliveryProvider(NativeReplicaProvider):
+class ReplicaDeliveryProvider(LegacyPageDeliveryProvider):
     """Keep exact's released implementation and binding completely unchanged."""
 
     def _load(self, request: ProviderRequest) -> tuple[dict[str, Any], str, int]:

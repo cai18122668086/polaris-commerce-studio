@@ -275,18 +275,23 @@ class NativeReplicaProvider:
             else:
                 await run.restore(snapshot)
             initial_calls = len(run.usage)
+            page_local = run.method == "exact" and not callable(
+                getattr(run, "image_prompt_for_module", None)
+            )
             delivery = execution.get("delivery", [])
-            if not delivery:
+            if len(delivery) <= ordinal:
                 from .replica_streaming import starts_group
 
-                if not starts_group(self, request, ordinal):
+                if not page_local and not starts_group(self, request, ordinal):
                     raise ReplicaNativeError("前序复刻尚未通过完整验收。")
                 if run.method == "exact":
-                    run.delivery_ordinal = ordinal
+                    run.delivery_ordinal = ordinal  # type: ignore[attr-defined]
                     delivery = await replica_direct_delivery.execute(self, run, request)
                 else:
                     delivery = await self._style(run, request)
-                if len(delivery) != len(values["plans"]):
+                if len(delivery) != len(values["plans"]) and not (
+                    page_local and len(delivery) > ordinal
+                ):
                     raise ReplicaNativeError("验收图片数量与确认方案不一致。")
                 await self._save(run, request.job_id, delivery=delivery)
             path = run.path(delivery[ordinal])

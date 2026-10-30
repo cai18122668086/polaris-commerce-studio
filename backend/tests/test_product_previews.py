@@ -96,4 +96,3 @@ def test_preview_enforces_the_existing_image_pixel_limit(client, monkeypatch):
         f"/api/v1/workspaces/ws_test/replica/products/{document_id}/images/imageUrls/0"
     )
     assert response.status_code == 502
-

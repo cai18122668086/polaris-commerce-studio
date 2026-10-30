@@ -1460,11 +1460,11 @@ class NativeReplicaRun:
 
     async def snapshot(self) -> dict[str, Any]:
         files = {}
-        for path in sorted(self.root.rglob("*")):
-            if not path.is_file() or "__pycache__" in path.parts:
-                continue
+        # Capture one coherent filesystem view before the first storage await.
+        entries = [(p, p.read_bytes()) for p in sorted(self.root.rglob("*"))
+                   if p.is_file() and "__pycache__" not in p.parts]
+        for path, data in entries:
             relative = path.relative_to(self.root).as_posix()
-            data = path.read_bytes()
             sha = digest(data)
             old = self.snapshot_files.get(relative, {})
             if old.get("sha256") == sha:
@@ -1472,7 +1472,7 @@ class NativeReplicaRun:
             elif path.suffix in {".json", ".txt"}:
                 files[relative] = {"sha256": sha, "text": data.decode("utf-8")}
             else:
-                with Image.open(path) as image:
+                with Image.open(BytesIO(data)) as image:
                     w, h = image.size
                     content_type = Image.MIME.get(image.format or "", "image/png")
                     suffix = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}[

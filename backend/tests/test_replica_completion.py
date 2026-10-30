@@ -13,7 +13,7 @@ import pytest
 from PIL import Image
 from sqlalchemy import select
 
-from app.models import JobRecord, ReplicaDocumentRecord
+from app.models import AssetRecord, JobAssetRecord, JobRecord, ReplicaDocumentRecord
 from app.replica_analysis_recovery import document_file
 from app.replica_completion import PLAN, STATE, prepare
 from app.replica_exact_compact import CompactExactReplicaRun
@@ -26,6 +26,36 @@ from app.replica_native import (
 from app.task_runner import MockTaskRunner
 from tests.test_api import dispatch_pending
 from tests.test_replica_compact import SyntheticGateway, setup_run
+
+
+def test_original_v8_checkpoint_keeps_its_protocol_and_plan(tmp_path):
+    from app.replica_direct_delivery import V8_BINDING
+    from app.replica_exact_compact import protocol_binding, run_class
+
+    current, gateway, payload, records = setup_run(tmp_path)
+    legacy_type = run_class("exact", V8_BINDING)
+    legacy = legacy_type(
+        "exact",
+        current.document_id,
+        current.workspace_id,
+        gateway,
+        current.storage,
+        root=current.root,
+    )
+    asyncio.run(legacy.prepare(payload, records))
+    snapshot = asyncio.run(legacy.snapshot())
+    assert snapshot["model_protocol"] == V8_BINDING
+    assert protocol_binding()["version"] == "exact-compact-v10"
+    restored = legacy_type(
+        "exact",
+        current.document_id,
+        current.workspace_id,
+        gateway,
+        current.storage,
+        root=current.root,
+    )
+    asyncio.run(restored.restore(snapshot))
+    assert restored.state()["plan_sha256"] == legacy.state()["plan_sha256"]
 
 
 @pytest.mark.parametrize("unknown", [False, True])
@@ -101,7 +131,7 @@ def test_style_unsafe_crops_generate_from_products_without_false_review(
         values["native_executions"] = {"job_style": {"snapshot": saved[-1]}}
         repeated = asyncio.run(execute(provider, req, values, run.document_id, 0))
         assert repeated.outcome == "outcome_unknown"
-        assert len(calls) == 1
+        assert len(calls) == 1  # The immediate failure stops still-waiting screens.
         return
     assert response.outcome == "succeeded", response.raw_usage
     assert len(calls) == 2
@@ -184,6 +214,42 @@ def test_http_bounded_failure_creates_one_job_and_delivers_without_extra_click(
     settings.replica_exact_compact_workspaces = ("ws_test",)
     gateway = SyntheticGateway()
     gateway.reject_always = True
+    original_edit = gateway.edit
+    image_started = 0
+    observed_streaming = []
+
+    async def out_of_order_edit(request):
+        nonlocal image_started
+        image_started += 1
+        if image_started == 1:
+            # Hold the first screen until the second is a real downloadable
+            # output while the job remains active, not a progress placeholder.
+            for _ in range(500):
+                with client.app.state.session_factory() as db:
+                    link = db.scalar(
+                        select(JobAssetRecord).where(
+                            JobAssetRecord.direction == "output",
+                            JobAssetRecord.ordinal == 1,
+                        )
+                    )
+                    if link is not None:
+                        asset = db.get(AssetRecord, link.asset_id)
+                        data = await client.app.state.storage.read_bytes(
+                            asset.object_key
+                        )
+                        assert (
+                            data
+                            and db.get(JobRecord, link.job_id).status == "processing"
+                        )
+                        observed_streaming.append(link.ordinal)
+                        break
+                await asyncio.sleep(0.01)
+            assert observed_streaming, (
+                "second screen was held until all images finished"
+            )
+        return await original_edit(request)
+
+    gateway.edit = out_of_order_edit
     client.app.state.replica_gateway = gateway
     client.app.state.task_runner = MockTaskRunner(
         client.app.state.session_factory,
@@ -245,6 +311,19 @@ def test_http_bounded_failure_creates_one_job_and_delivers_without_extra_click(
     job = client.get("/api/v1/workspaces/ws_test/jobs/" + jid).json()
     assert job["status"] == "completed", job
     assert job["succeeded_item_count"] == 2 and len(gateway.image_requests) == 2
+    assert observed_streaming == [1]
+    outputs = [a for a in job["assets"] if a["direction"] == "output"]
+    assert sorted(a["ordinal"] for a in outputs) == [0, 1]
+    with client.app.state.session_factory() as db:
+        # Settlement reuses streamed assets; it does not create duplicates.
+        assert (
+            len(
+                db.scalars(
+                    select(AssetRecord).where(AssetRecord.origin_kind == "generated")
+                ).all()
+            )
+            == 2
+        )
     assert len(gateway.requests) == before
     assert client.get(route + "/documents/" + did).json()["status"] == "completed"
     with client.app.state.session_factory() as db:

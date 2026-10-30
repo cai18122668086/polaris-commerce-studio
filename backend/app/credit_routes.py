@@ -153,14 +153,25 @@ def quote(
     workspace: WorkspaceDependency,
     session: SessionDependency,
 ) -> dict:
-    from .routes_v1 import _new_job_from_payload
+    from .domain import JobType
+    from .routes_v1 import _new_job_from_payload, _validate_inspiration_case_job
+    from .services import estimate_job
 
+    inspiration_case = _validate_inspiration_case_job(session, payload)
     job, _ = _new_job_from_payload(
         workspace.workspace_id,
         payload,
         detail_medium_price_micros=request.app.state.settings.xinghe_medium_price_micros,
         detail_high_price_micros=request.app.state.settings.xinghe_high_price_micros,
     )
+    if inspiration_case is not None:
+        job.configuration["inspiration_case_id"] = inspiration_case.id
+        _, _, job.estimated_credits = estimate_job(
+            JobType(job.type),
+            job.expected_item_count,
+            job.configuration,
+            workspace_id=workspace.workspace_id,
+        )
     if credit_enforcement_enabled(workspace.workspace_id):
         from .credit_memberships import refresh
 

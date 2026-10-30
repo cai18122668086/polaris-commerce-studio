@@ -46,6 +46,20 @@ V7_BINDING = {
     ),
 }
 
+V8_BINDING = {
+    "version": "exact-compact-v8",
+    "content_sha256": (
+        "1f0b69dd19bd9319532ba9951cfea68319d71826c791c43a4b22707060d0ab84"
+    ),
+}
+
+V9_BINDING = {
+    "version": "exact-compact-v9",
+    "content_sha256": (
+        "1fbfffe8378e55d2e529479a468030c30e24cd0dcb4e23ca9de4e81be62469f1"
+    ),
+}
+
 
 def validate_source(
     previous: dict[str, Any], approved: dict[str, Any], prefix: str
@@ -53,8 +67,17 @@ def validate_source(
     from .replica_exact_compact import protocol_binding, run_class
     from .replica_execution_resume import V3_BINDING
 
-    allowed = (None, V3_BINDING, V4_BINDING, V5_BINDING, V6_BINDING,
-               V7_BINDING, protocol_binding())
+    allowed = (
+        None,
+        V3_BINDING,
+        V4_BINDING,
+        V5_BINDING,
+        V6_BINDING,
+        V7_BINDING,
+        V8_BINDING,
+        V9_BINDING,
+        protocol_binding(),
+    )
     for snapshot in (previous, approved):
         binding = snapshot.get("model_protocol")
         if binding is not None and binding not in allowed:
@@ -131,7 +154,7 @@ def retry_source(
         parent = session.get(JobRecord, parent_id)
         if (
             not parent
-            or parent.status not in {"failed", "partial"}
+            or parent.status not in {"failed", "partial", "cancelled"}
             or job.workspace_id != request.workspace_id
             or parent.workspace_id != request.workspace_id
             or parent.configuration.get("replica_session_id")
@@ -143,6 +166,10 @@ def retry_source(
         document_id = job.configuration["replica_session_id"]
     source = values.get("native_executions", {}).get(parent_id, {}).get("snapshot")
     if not source:
+        if parent.status == "cancelled":
+            # Dispatch is preceded by a durable execution checkpoint. No
+            # checkpoint means this cancelled job never issued an image call.
+            return None
         raise ReplicaNativeError("原任务缺少持久生图检查点，不能重复生成代替恢复。")
     validate_source(
         source,
@@ -342,13 +369,27 @@ def generation_request(run: Any, state: dict[str, Any], index: int) -> dict[str,
 async def execute(provider: Any, run: Any, request: Any) -> list[str]:
     activate(run)
     await run.checkpoint()
-    for index in range(len(run.state()["modules"])):
-        state = run.state()
+    from .replica_streaming import parallel_images, publish_output
+
+    state = run.state()
+
+    async def generate(index: int) -> None:
         state["module_index"] = index
         record, module = state["modules"][index], state["plan"]["modules"][index]
         if record["status"] == "GENERATED":
-            continue
+            await publish_output(
+                provider, run, request, index, run.path(record["artwork"])
+            )
+            return
         native = record.get("request")
+        if native is not None and (run.root / "invocations.json").exists():
+            prior = read_json(run.root / "invocations.json").get(native["token"], {})
+            if (
+                prior.get("state") == "rejected"
+                and prior.get("job_id") != request.job_id
+            ):
+                record.setdefault("previous_requests", []).append(record.pop("request"))
+                native = None
         if native is None:
             native = generation_request(run, state, index)
             record.update(
@@ -372,6 +413,16 @@ async def execute(provider: Any, run: Any, request: Any) -> list[str]:
         record["status"] = "GENERATED"
         write_json(run.root / "direct-session.json", state)
         await provider._save(run, request.job_id)
+        await publish_output(provider, run, request, index, image)
+
+    indices = list(range(len(state["modules"])))
+    if callable(getattr(run, "image_prompt_for_module", None)):
+        await parallel_images(provider, indices, generate)
+    else:
+        # Frozen protocols read module_index while compiling their prompt.
+        # Preserve their original sequential semantics on historical retries.
+        for index in indices:
+            await generate(index)
     validate_direct_state(run)
     state = run.state()
     state.update(state="DELIVERED", module_index=len(state["modules"]))

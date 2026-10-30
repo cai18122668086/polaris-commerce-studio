@@ -1119,6 +1119,7 @@ function OrderDialog({
             </>
           )}
           <div className="modal-actions">
+            <Link className="button primary" href="/">返回首页，开始创作<ArrowRight size={16} /></Link>
             <Button onClick={onClose}>关闭</Button>
           </div>
         </>
@@ -1657,7 +1658,7 @@ function AssetDialog({
 const faqs = [
   [
     "普通单图与规划创作怎样扣积分？",
-    "普通单图 5 积分/张；需要规划流程的详情图、主图、套图和一键复刻统一 15 积分/张。确认生成前会展示本次总消耗。例如，6 张套图共 90 积分，8 张套图共 120 积分。",
+    "灵感专区和普通单图 5 积分/张；其他需要规划流程的详情图、主图、套图和一键复刻统一 15 积分/张。确认生成前会展示本次总消耗。例如，6 张套图共 90 积分，8 张套图共 120 积分。",
   ],
   [
     "月卡积分与充值积分有什么区别？",

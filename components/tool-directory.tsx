@@ -19,6 +19,7 @@ import {
 } from "@/lib/home-feature-visuals";
 import { HOT_FEATURE_IDS } from "@/lib/feature-priorities";
 import { CreationStartHub } from "@/components/creation-start-hub";
+import { CommerceEntryGroups } from "@/components/commerce-entry-groups";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
@@ -33,7 +34,7 @@ const FEATURE_PRESENTATION_OVERRIDES: Record<
   },
 
   "detail-pack": {
-    description: "一键生成国内、国际全平台详情图",
+    description: "制作国内平台的商品详情图",
   },
 
 };
@@ -57,7 +58,7 @@ const searchableTools = FEATURE_REGISTRY.map((feature) => {
 });
 
 const featuredTools = [
-  "local-edit", "reference-remix", "amazon-visual-suite",
+  "local-edit", "reference-remix",
 ].flatMap(id => {
   const tool = searchableTools.find(item => item.id === id && item.featured);
   return tool ? [tool] : [];
@@ -65,8 +66,12 @@ const featuredTools = [
 
 const RELATED_SCENARIO_RECOMMENDATIONS = [
   {
-    pattern: /亚马逊|amazon|跨境|a\+/iu,
-    featureIds: ["amazon-visual-suite", "detail-pack", "white-background"],
+    pattern: /亚马逊|amazon|a\+/iu,
+    featureIds: ["amazon-visual-suite", "white-background"],
+  },
+  {
+    pattern: /跨境|海外|国际|shopify|shopee|tiktok|aliexpress/iu,
+    featureIds: ["crossborder-detail", "amazon-visual-suite", "white-background"],
   },
   {
     pattern: /主图|淘宝|天猫|京东|轮播/iu,
@@ -278,6 +283,7 @@ export function ToolDirectory() {
     <section className="focus-home">
       <HomeHero />
       <CreationStartHub />
+      <CommerceEntryGroups />
 
       <div className="focus-home__content">
         <div className="home-command home-command--primary" id="tools">
@@ -455,7 +461,7 @@ export function ToolDirectory() {
         </div>
 
         <header className="focus-home__section-head">
-          <h2>精修、模仿与跨境套图</h2>
+          <h2>精修与参考创作</h2>
           <p>主力工作台之外，这些工具也能帮你把图做好。</p>
         </header>
 

@@ -182,6 +182,21 @@
             "title": "A Plus Copy",
             "type": "string"
           },
+          "amazon_speed": {
+            "anyOf": [
+              {
+                "enum": [
+                  "standard",
+                  "fast"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amazon Speed"
+          },
           "auto_start_after_plan": {
             "default": true,
             "title": "Auto Start After Plan",
@@ -461,6 +476,15 @@
             "minItems": 1,
             "title": "References",
             "type": "array"
+          },
+          "replica_speed": {
+            "default": "standard",
+            "enum": [
+              "standard",
+              "fast"
+            ],
+            "title": "Replica Speed",
+            "type": "string"
           },
           "replication_method": {
             "anyOf": [
@@ -2255,6 +2279,14 @@
             "title": "Detail Skill",
             "type": "string"
           },
+          "detail_speed": {
+            "enum": [
+              "standard",
+              "fast"
+            ],
+            "title": "Detail Speed",
+            "type": "string"
+          },
           "language": {
             "default": "zh-CN",
             "maxLength": 16,
@@ -3617,6 +3649,15 @@
             "const": "zh-CN",
             "default": "zh-CN",
             "title": "Language",
+            "type": "string"
+          },
+          "main_image_speed": {
+            "description": "Optional fast workflow opt-in; omitted requests use standard.",
+            "enum": [
+              "standard",
+              "native_fast"
+            ],
+            "title": "Main Image Speed",
             "type": "string"
           },
           "offers": {
@@ -6348,7 +6389,9 @@
                   "aurora-remix-fast",
                   "reference-visual-reverse-remix",
                   "aurora-ecommerce-reference-remix",
-                  "all-category-style-benchmark-still"
+                  "all-category-style-benchmark-still",
+                  "aurora-ecommerce-reference-remix-fast",
+                  "all-category-style-benchmark-still-fast"
                 ],
                 "type": "string"
               },
@@ -17074,6 +17117,60 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/replica/product-platforms": {
+      "get": {
+        "operationId": "product_platforms_api_v1_workspaces__workspace_id__replica_product_platforms_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response Product Platforms Api V1 Workspaces  Workspace Id  Replica Product Platforms Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Product Platforms",
+        "tags": [
+          "one-click-replica"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/replica/products": {
       "post": {
         "operationId": "create_product_api_v1_workspaces__workspace_id__replica_products_post",
@@ -17128,6 +17225,79 @@
           }
         ],
         "summary": "Create Product",
+        "tags": [
+          "one-click-replica"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/replica/products/{document_id}/images/{image_group}/{image_index}": {
+      "get": {
+        "description": "Serve only this workspace's returned product images through the same origin.",
+        "operationId": "preview_product_image_api_v1_workspaces__workspace_id__replica_products__document_id__images__image_group___image_index__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "image_group",
+            "required": true,
+            "schema": {
+              "enum": [
+                "imageUrls",
+                "descImageUrls",
+                "skuImageUrls"
+              ],
+              "title": "Image Group",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "image_index",
+            "required": true,
+            "schema": {
+              "title": "Image Index",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Preview Product Image",
         "tags": [
           "one-click-replica"
         ]

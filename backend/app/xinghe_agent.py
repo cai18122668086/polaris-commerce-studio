@@ -34,7 +34,7 @@ from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import refined_detail
+from . import detail_fast, detail_fast_runtime, refined_detail
 from .aurora_detail_runtime import (
     AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
@@ -238,6 +238,10 @@ _AURORA_V20_MATERIAL_CHECKS = frozenset(
     }
 )
 PLANNER_DIAGNOSTICS_SCHEMA = "xinghe-planner-diagnostics"
+_BOUNDED_JSON_PLANNER_PROFILES = frozenset({
+    "replica_native_contract", "replica_exact_compact",
+    refined_detail.PROFILE, detail_fast.PROFILE, "amazon_visual_suite",
+})
 IMAGE_SIZE = "1024x1536"
 SUPPORTED_IMAGE_SIZES = frozenset(
     {
@@ -371,7 +375,7 @@ _AMAZON_PLANNER_PROTOCOL_FILES = (
     "references/generation-backend.md",
 )
 _COMPLETE_REFERENCE_PROTOCOL_SKILLS = frozenset(
-    {"xinghe-ecommerce-detail-domestic-3", "aurora-domestic-ecommerce-detail-page", refined_detail.SKILL_ID}
+    {"xinghe-ecommerce-detail-domestic-3", "aurora-domestic-ecommerce-detail-page", refined_detail.SKILL_ID, detail_fast.SKILL_ID}
 )
 _AURORA_DOMESTIC_DETAIL_SKILL_ID = "aurora-domestic-ecommerce-detail-page"
 _AURORA_PLANNER_PROTOCOL_FILES = (
@@ -395,11 +399,12 @@ _AURORA_PLANNER_PROTOCOL_FILES = (
     "references/commercial-aversion-control.md",
 )
 _DOMESTIC_DETAIL_SKILL_IDS = frozenset(
-    {"xinghe-ecommerce-detail-domestic-3", _AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID}
+    {"xinghe-ecommerce-detail-domestic-3", _AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID}
 )
 _PLANNER_PROTOCOL_FILES_BY_SKILL = {
     "xinghe-crossborder-detail-3": _CROSSBORDER_PLANNER_PROTOCOL_FILES,
     "xinghe-amazon-visual-suite": _AMAZON_PLANNER_PROTOCOL_FILES,
+    "xinghe-amazon-visual-suite-fast": ("SKILL.md", "references/fast-planning.md"),
 }
 _SUBJECT_SCALES = {
     "hero",
@@ -620,6 +625,7 @@ class ImageEditRequest:
     input_fidelity: str = "high"
     preserve_provider_artifact: bool = False
     single_dispatch: bool = False
+    reconcile_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -1307,8 +1313,8 @@ def compile_page_prompt(
 ) -> str:
     """Compile the template's fidelity and prompt-density contract."""
 
-    if skill_id == refined_detail.SKILL_ID:
-        return refined_detail.compile_prompt(
+    if detail_fast_runtime.independent_skill(skill_id):
+        return detail_fast_runtime.skill_contract(skill_id).compile_prompt(
             structured_plan=structured_plan, screen=screen, page_number=page_number,
             page_count=page_count, language=language, product_name=product_name,
             product_information=product_information, source_roles=source_roles, size=size,
@@ -1806,6 +1812,7 @@ def load_planner_system_prompt(
 ) -> str:
     """Load the pinned direct-Codex protocol after manifest verification."""
 
+    protocol_files: tuple[str, ...]
     sections: list[str] = [
         (
             "You are the production runtime for the pinned "
@@ -1815,7 +1822,9 @@ def load_planner_system_prompt(
         )
     ]
     try:
-        if skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
+        if skill_id == detail_fast.SKILL_ID:
+            protocol_files = detail_fast.PROTOCOL_FILES
+        elif skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
             protocol_files = _AURORA_PLANNER_PROTOCOL_FILES
         elif skill_id in _COMPLETE_REFERENCE_PROTOCOL_SKILLS:
             references_root = skill_root / "references"
@@ -1826,9 +1835,9 @@ def load_planner_system_prompt(
                     key=lambda candidate: candidate.name,
                 )
             )
-            protocol_files = ("SKILL.md", *reference_files)  # type: ignore[assignment]
+            protocol_files = ("SKILL.md", *reference_files)
         else:
-            protocol_files = _PLANNER_PROTOCOL_FILES_BY_SKILL.get(  # type: ignore[assignment]
+            protocol_files = _PLANNER_PROTOCOL_FILES_BY_SKILL.get(
                 skill_id,
                 _DEFAULT_PLANNER_PROTOCOL_FILES,
             )
@@ -1844,7 +1853,7 @@ def load_planner_system_prompt(
             "SKILL_PROTOCOL_LOAD_FAILED",
             f"Pinned planner protocol could not be loaded ({type(exc).__name__}).",
         ) from exc
-    if skill_id == refined_detail.SKILL_ID:
+    if detail_fast_runtime.independent_skill(skill_id):
         sections.append(
             "\nWEBSITE ADAPTER: You only author the full strategy as structured JSON. "
             "The website owns provider selection, credentials, durable storage and delivery. "
@@ -1965,6 +1974,20 @@ class FakeXingheGateway:
 
     async def edit(self, request: ImageEditRequest) -> ImageCallResult:
         started = time.perf_counter()
+        if request.reconcile_only:
+            # Polaris' synchronous provider has no accepted-task query protocol.
+            # A recovery request must never fall through to a paid POST.
+            return ImageCallResult(
+                outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                provider_request_id=None,
+                raw_usage={"network_requests": 0},
+                normalized_usage=normalize_usage(None),
+                api_latency_seconds=0,
+                actual_cost_micros=0,
+                estimated_cost_micros=0,
+                error_code="PROVIDER_OUTCOME_UNKNOWN",
+                error_message="原调用结果尚未核实，未发送新的生成请求。",
+            )
         async with self._activity_lock:
             self._active_images += 1
             self.max_active_images = max(
@@ -2486,10 +2509,14 @@ class TengliOpenAICompatibleGateway:
             ],
             "response_format": _planner_response_format(request),
         }
+        if request.planning_profile in {"replica_fast_suite", "aurora_native_fast_identity"}:
+            payload["max_completion_tokens"] = 16000
         if request.planning_profile in {"replica_native_contract", "replica_exact_compact"}:
             payload.update({"max_completion_tokens": 16000})
-        elif request.planning_profile == refined_detail.PROFILE:
+        elif request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}:
             payload.update({"max_completion_tokens": 24000})
+        elif request.planning_profile == "amazon_visual_suite_fast":
+            payload.update({"max_completion_tokens": 32768})
         elif request.planning_profile == "amazon_visual_suite":
             payload.update(
                 {
@@ -2526,11 +2553,59 @@ class TengliOpenAICompatibleGateway:
         response: Mapping[str, Any] | None = None
         try:
             routes = self._ordered_routes()
-            if request.planning_profile in NATIVE_PLANNER_PROFILES:
+            if request.planning_profile in NATIVE_PLANNER_PROFILES or request.planning_profile in {"replica_fast_suite", "aurora_native_fast_identity", detail_fast.PROFILE, "amazon_visual_suite_fast"}:
                 routes = routes[:1]
             last_route_index = len(routes) - 1
             for route_index, route in enumerate(routes):
                 route_payload = {**payload, "model": route.planner_model}
+                planner_key = request.idempotency_key
+                if (request.planning_profile == "aurora_native_fast_identity"
+                    and route.planner_model.casefold().startswith("deepseek")):
+                    route_payload["max_completion_tokens"] = 32768
+                    route_payload["response_format"] = {"type": "json_object"}
+                if (request.planning_profile in {"replica_fast_suite"}
+                    and route.planner_model.casefold().startswith("deepseek")):
+                    route_payload["max_completion_tokens"] = 32768
+                    route_payload["reasoning_effort"] = "low"
+                if (
+                    request.planning_profile
+                    in _BOUNDED_JSON_PLANNER_PROFILES | {"amazon_visual_suite_fast"}
+                    and route.planner_model.casefold().startswith("deepseek")
+                ):
+                    # This provider includes reasoning in the output allowance.
+                    # Keep the complete schema and thinking mode. Bound its
+                    # effort so vision tasks can reach a final JSON response.
+                    route_payload["max_completion_tokens"] = 32768
+                    route_payload["reasoning_effort"] = "low"
+                    # DeepSeek Chat Completions supports json_object, not the
+                    # OpenAI json_schema parameter. The COMPLETE schema remains
+                    # in the original user envelope and is validated locally.
+                    route_payload["response_format"] = {"type": "json_object"}
+                    route_payload["messages"] = deepcopy(payload["messages"])
+                    if request.planning_profile == "amazon_visual_suite":
+                        # This prompt previously relied on the transport schema.
+                        # json_object must still receive the ENTIRE contract;
+                        # local validation and all 21 rows remain unchanged.
+                        route_payload["messages"][1]["content"].append({
+                            "type": "text",
+                            "text": "response_schema=" + json.dumps(
+                                payload["response_format"]["json_schema"]["schema"],
+                                ensure_ascii=False, separators=(",", ":"),
+                            ),
+                        })
+                    route_payload["messages"][1]["content"].append({
+                        "type": "text",
+                        "text": (
+                            "JSON OUTPUT TRANSPORT: Return exactly one complete JSON object "
+                            "conforming to the ENTIRE response_schema in the original request. "
+                            "All original fields, screen counts, observations, enum values and "
+                            "audit dimensions remain mandatory. Close every JSON container, "
+                            "then stop immediately; do not emit whitespace padding, comments, "
+                            "markdown or another object. This does not change the Skill or "
+                            "the planning/audit contract."
+                        ),
+                    })
+                    planner_key += ":native-json-object-low-output-32768-v3"
                 try:
                     timeout_seconds = (
                         self.timeout_seconds
@@ -2558,7 +2633,7 @@ class TengliOpenAICompatibleGateway:
                         NativeUrllibOpenAITransport()
                         if (
                             request.planning_profile in NATIVE_PLANNER_PROFILES
-                            or request.planning_profile == refined_detail.PROFILE
+                            or request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}
                         )
                         and type(self.transport) is UrllibOpenAITransport
                         else self.transport
@@ -2566,7 +2641,7 @@ class TengliOpenAICompatibleGateway:
                     status, response = await transport.post_json(
                         url=urljoin(route.planner_base_url, "v1/chat/completions"),
                         headers=self._headers(
-                            request.idempotency_key, route.planner_api_key
+                            planner_key, route.planner_api_key
                         ),
                         payload=route_payload,
                         timeout_seconds=timeout_seconds,
@@ -2604,7 +2679,7 @@ class TengliOpenAICompatibleGateway:
                 native_error = {}
                 if (
                     request.planning_profile in NATIVE_PLANNER_PROFILES
-                    or request.planning_profile == refined_detail.PROFILE
+                    or request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}
                 ) and isinstance(response, Mapping):
                     native_error = safe_native_provider_error(
                         response, (route.planner_api_key, self._api_key, self._planner_api_key, self._image_api_key),
@@ -2632,7 +2707,63 @@ class TengliOpenAICompatibleGateway:
                     usage_completeness=envelope_diagnostics["usage_completeness"],
                 )
             envelope_diagnostics = _planner_envelope_diagnostics(response)  # type: ignore[arg-type]
-            text = _planner_message_text(response)  # type: ignore[arg-type]
+            if (
+                isinstance(response, Mapping)
+                and any(
+                    choice.get("finish_reason") == "length"
+                    for choice in response.get("choices", [])
+                    if isinstance(choice, Mapping)
+                )
+            ):
+                raw_usage = _raw_usage(response)
+                request_id = _safe_request_id(response)
+                try:
+                    truncated_text = _planner_message_text(response)
+                except XingheAgentError:
+                    # An empty final body is still a known length termination.
+                    truncated_text = ""
+                return PlannerCallResult(
+                    payload=None,
+                    provider_request_id=request_id,
+                    raw_usage=raw_usage,
+                    normalized_usage={
+                        **normalize_usage(raw_usage),
+                        "error_code": "PLANNER_OUTPUT_TRUNCATED",
+                        "finish_reason": "length",
+                        "output_token_limit": route_payload.get("max_completion_tokens"),
+                        "provider_request_id": request_id,
+                        "http_status": status,
+                        "response_format_type": route_payload["response_format"]["type"],
+                        "output_characters": len(truncated_text),
+                        "output_non_whitespace_characters": sum(
+                            not char.isspace() for char in truncated_text
+                        ),
+                        "trailing_whitespace_characters": (
+                            len(truncated_text) - len(truncated_text.rstrip())
+                        ),
+                    },
+                    api_latency_seconds=time.perf_counter() - started,
+                    actual_cost_micros=_usage_cost_micros(raw_usage),
+                    error_code="PLANNER_OUTPUT_TRUNCATED",
+                    error_message=(
+                        "Planning output reached its token limit before completion "
+                        "(finish_reason=length); incomplete JSON cannot authorize generation."
+                    ),
+                    http_status=status,
+                    provider_envelope=envelope_diagnostics["provider_envelope"],
+                    request_id_presence=envelope_diagnostics["request_id_presence"],
+                    usage_presence=envelope_diagnostics["usage_presence"],
+                    usage_completeness=envelope_diagnostics["usage_completeness"],
+                )
+            choices = response.get("choices", []) if isinstance(response, Mapping) else []
+            first_choice = choices[0] if isinstance(choices, list) and choices else {}
+            message = first_choice.get("message") if isinstance(first_choice, Mapping) else None
+            raw_content = message.get("content") if isinstance(message, Mapping) else None
+            native_empty = (
+                request.planning_profile in _BOUNDED_JSON_PLANNER_PROFILES
+                and isinstance(raw_content, str) and not raw_content.strip()
+            )
+            text = raw_content if native_empty and isinstance(raw_content, str) else _planner_message_text(response)  # type: ignore[arg-type]
             plan_payload, parse_trace = _planner_content_payload_with_trace(text)
             raw_usage = _raw_usage(response)  # type: ignore[arg-type]
             content_bytes = text.encode("utf-8")
@@ -2749,6 +2880,19 @@ class TengliOpenAICompatibleGateway:
             image_content_refusal,
             known_image_route_rejection,
         )
+
+        if request.reconcile_only:
+            return ImageCallResult(
+                outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                provider_request_id=None,
+                raw_usage={"network_requests": 0},
+                normalized_usage=normalize_usage(None),
+                api_latency_seconds=0,
+                actual_cost_micros=0,
+                estimated_cost_micros=0,
+                error_code="PROVIDER_OUTCOME_UNKNOWN",
+                error_message="原调用结果尚未核实，未发送新的生成请求。",
+            )
 
         attempts: list[dict[str, Any]] = []
         fields = [
@@ -3361,7 +3505,7 @@ class TengliOpenAICompatibleGateway:
 def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
     """Build the real adapter explicitly; callers control whether it is used."""
 
-    return TengliOpenAICompatibleGateway(
+    gateway = TengliOpenAICompatibleGateway(
         api_key=settings.tengli_api_key.get_secret_value(),
         base_url=settings.tengli_base_url,
         planner_api_key=settings.analysis_api_key.get_secret_value() or None,
@@ -3390,6 +3534,9 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         image_failover_model=settings.tengli_image_model,
         rotation_order=settings.provider_rotation_order,
     )
+    from .image_capacity import limit_gateway
+
+    return limit_gateway(gateway, settings.celery_broker_url, settings.image_global_concurrency)
 
 
 class XinghePlanningCoordinator:
@@ -3436,7 +3583,7 @@ class XinghePlanningCoordinator:
                         system_prompt
                         + (
                             ""
-                            if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID}
+                            if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID}
                             else _auto_identity_resolution_system_prompt(request)
                         )
                     ),
@@ -3520,7 +3667,12 @@ class XinghePlanningCoordinator:
                     error_path=result.error_path,
                 )
             try:
-                if request.planning_profile == "amazon_visual_suite":
+                if request.planning_profile == "amazon_visual_suite_fast":
+                    from .amazon_suite_fast import (
+                        validate_planner_payload as validate_fast_amazon,
+                    )
+                    validated.append(validate_fast_amazon(result.payload, sources=request.sources))
+                elif request.planning_profile == "amazon_visual_suite":
                     from .amazon_visual_suite_provider import (
                         validate_amazon_planner_payload,
                     )
@@ -3542,12 +3694,16 @@ class XinghePlanningCoordinator:
                                 "Aurora returned an unresolved identity-evidence board; "
                                 "the plan cannot enter image generation.",
                             )
-                    elif self.skill_id == refined_detail.SKILL_ID:
+                    elif detail_fast_runtime.independent_skill(self.skill_id):
                         if not isinstance(result.payload, Mapping):
                             raise XingheAgentError("REFINED_DETAIL_PLAN_INVALID", "The complete plan must be an object.")
                         structured = _bounded_protocol_mapping(result.payload, path="/")
-                        structured = refined_detail.normalize_strategy(structured)
-                        refined_detail.validate_strategy(structured, request.page_count)
+                        structured = detail_fast_runtime.skill_contract(self.skill_id).normalize_strategy(structured)
+                        detail_fast_runtime.skill_contract(self.skill_id).validate_strategy(structured, request.page_count)
+                        if self.skill_id == detail_fast.SKILL_ID:
+                            detail_fast.validate_source_selection(
+                                structured, tuple(source.source_role for source in request.sources)
+                            )
                         validated.append(structured)
                     else:
                         structured = validate_planner_payload(
@@ -4717,7 +4873,7 @@ class XinghePlanningCoordinator:
             from .new_detail_skill_provider import AdapterValidationError
 
             try:
-                configure = refined_detail.prompt_configuration if self.skill_id == refined_detail.SKILL_ID else domestic_detail_prompt_configuration
+                configure = detail_fast_runtime.skill_contract(self.skill_id).prompt_configuration if detail_fast_runtime.independent_skill(self.skill_id) else domestic_detail_prompt_configuration
                 detail_prompt_configuration = configure(settings)
             except AdapterValidationError as exc:
                 raise XingheAgentError(exc.code, str(exc)) from exc
@@ -4947,15 +5103,15 @@ class XinghePlanningCoordinator:
                     if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
                     else identity_directives,
                     intake_settings=dict(settings)
-                    if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID}
+                    if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID}
                     else None,
                     intake_resolution=configuration.get(
                         "domestic_detail_intake_resolution"
                     ),
                     domestic_protocol=domestic_protocol,
                     planning_profile=(
-                        refined_detail.PROFILE
-                        if self.skill_id == refined_detail.SKILL_ID
+                        detail_fast_runtime.skill_contract(self.skill_id).PROFILE
+                        if detail_fast_runtime.independent_skill(self.skill_id)
                         else
                         "crossborder_detail"
                         if self.skill_id == "xinghe-crossborder-detail-3"
@@ -4974,13 +5130,20 @@ class XinghePlanningCoordinator:
         input_configuration: Mapping[str, Any],
         settings: Mapping[str, Any],
     ) -> tuple[PlannerRequest, ...]:
+        from .amazon_suite_fast import POLICY_VERSION
+        from .amazon_suite_fast import selected as fast_selected
         from .amazon_visual_suite_provider import (
             AMAZON_EXPECTED_ITEM_COUNT,
             AMAZON_PLANNING_POLICY_VERSION,
             AMAZON_VISUAL_SUITE_SKILL_ID,
         )
+        if fast_selected(job.configuration):
+            AMAZON_PLANNING_POLICY_VERSION = POLICY_VERSION
 
-        if self.skill_id != AMAZON_VISUAL_SUITE_SKILL_ID:
+        from .amazon_suite_fast import SKILL_ID as FAST_SKILL_ID
+        from .amazon_suite_fast import selected as fast_selected
+        fast = fast_selected(job.configuration)
+        if self.skill_id != (FAST_SKILL_ID if fast else AMAZON_VISUAL_SUITE_SKILL_ID):
             raise XingheAgentError(
                 "AMAZON_PLANNER_UNAVAILABLE",
                 "The Amazon visual-suite planner is not registered.",
@@ -5105,7 +5268,7 @@ class XinghePlanningCoordinator:
                 platform_code=marketplace,
                 size="amazon-canonical-multi-size-v1",
                 idempotency_key=f"{job.id}:planner:amazon:{signature}",
-                planning_profile="amazon_visual_suite",
+                planning_profile="amazon_visual_suite_fast" if fast else "amazon_visual_suite",
             ),
         )
 
@@ -5805,11 +5968,22 @@ class XinghePlanningCoordinator:
                     ),
                 },
             }
-            if self.skill_id == refined_detail.SKILL_ID:
+            if detail_fast_runtime.independent_skill(self.skill_id):
+                if self.skill_id == detail_fast.SKILL_ID:
+                    payload["detail_fast"] = {
+                        "version": detail_fast.PIPELINE_VERSION,
+                        "skill_id": detail_fast.SKILL_ID,
+                        "skill_content_hash": SkillManifestRegistry.bundled().verify_source(
+                            self.skill_id, self.skill_root
+                        ),
+                        "validation_status": "STRUCTURALLY_VALIDATED",
+                        "review_status": "NOT_REVIEWED",
+                        "concurrency_limit": detail_fast.CONCURRENCY,
+                    }
                 payload["refined_approval"] = {
                     "version": "xinghe-detail-4-approval-v1",
-                    "document_markdown": refined_detail.approval_document(payload),
-                    "document_sha256": refined_detail.approval_hash(payload),
+                    "document_markdown": detail_fast_runtime.skill_contract(self.skill_id).approval_document(payload),
+                    "document_sha256": detail_fast_runtime.skill_contract(self.skill_id).approval_hash(payload),
                 }
             if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
                 job_settings = (
@@ -5900,12 +6074,16 @@ class XinghePlanningCoordinator:
         results: Sequence[PlannerCallResult],
         validated: Sequence[dict[str, Any]],
     ) -> JobStatus:
+        from .amazon_suite_fast import POLICY_VERSION
+        from .amazon_suite_fast import selected as fast_selected
         from .amazon_visual_suite_provider import (
             AMAZON_EXPECTED_ITEM_COUNT,
             AMAZON_ITEM_KEYS,
             AMAZON_PLAN_CONFIGURATION_KEY,
             AMAZON_PLANNING_POLICY_VERSION,
         )
+        if fast_selected(job.configuration):
+            AMAZON_PLANNING_POLICY_VERSION = POLICY_VERSION
 
         if len(requests) != 1 or len(validated) != 1:
             self._fail_planning_locked(
@@ -6075,6 +6253,11 @@ class XinghePlanningCoordinator:
                 "usage_missing_count": int(not results[0].normalized_usage["reported"]),
             },
         }
+        if fast_selected(job.configuration):
+            payload["controls"].update({"automatic_review_enabled": False, "automatic_redraw_enabled": False, "max_suite_review_rounds": 0})
+            payload["business_quality"].update({"status": "NOT_REVIEWED", "automatic_redraw_enabled": False})
+            payload["skill_id"] = self.skill_id
+            payload["skill_content_hash"] = SkillManifestRegistry.bundled().verify_source(self.skill_id, self.skill_root)
         plan.payload = payload
         plan.payload_hash = canonical_hash(payload)
         plan.validation_status = PlanValidationStatus.VALID.value
@@ -6129,8 +6312,8 @@ class XingheImageProvider:
         skill_id: str = "xinghe-ecommerce-detail",
         revision_settings: Settings | None = None,
     ) -> None:
-        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 32:
-            raise ValueError("Xinghe concurrency must be from 1 through 32.")
+        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 3000:
+            raise ValueError("Xinghe concurrency must be from 1 through 3000.")
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage
@@ -6261,7 +6444,7 @@ class XingheImageProvider:
                 else request.idempotency_key
             ),
             single_dispatch=pair_mode,
-            preserve_provider_artifact=self.skill_id == refined_detail.SKILL_ID,
+            preserve_provider_artifact=detail_fast_runtime.independent_skill(self.skill_id),
             size=(
                 native_size or str(configuration.get("pair_canvas_size"))
                 if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
@@ -8041,8 +8224,8 @@ def synchronize_confirmed_plan(
 
     if job.type != JobType.DETAIL_PACK.value:
         return
-    if refined_detail.is_refined(job.configuration):
-        refined_detail.validate_payload(plan.payload, job.expected_item_count)
+    if detail_fast_runtime.is_independent(job.configuration):
+        detail_fast_runtime.contract(job.configuration).validate_payload(plan.payload, job.expected_item_count)
     payload = dict(plan.payload)
     # A conflict-blocked Aurora packet is an internal intake artifact.  It is
     # never a valid rendering contract and must not be allowed to reach the
@@ -8113,7 +8296,7 @@ def synchronize_confirmed_plan(
         .order_by(JobItemRecord.ordinal)
         .with_for_update()
     ).all()
-    if refined_detail.is_refined(job.configuration) and job.retry_of_job_id:
+    if detail_fast_runtime.is_independent(job.configuration) and job.retry_of_job_id:
         source_plan = session.scalar(
             select(JobPlanRecord)
             .where(JobPlanRecord.job_id == job.retry_of_job_id)
@@ -8242,7 +8425,7 @@ def synchronize_confirmed_plan(
                 confirmed_prompt = str(existing.get("pair_prompt") or "")
         else:
             confirmed_prompt = compile_page_prompt(
-                skill_id=refined_detail.SKILL_ID if refined_detail.is_refined(job.configuration) else None,
+                skill_id=detail_fast_runtime.contract(job.configuration).SKILL_ID if detail_fast_runtime.is_independent(job.configuration) else None,
                 structured_plan=structured,
                 screen=prompt_page,
                 page_number=int(page["page"]),
@@ -8766,6 +8949,8 @@ def _fake_usage(
 
 
 def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == detail_fast.PROFILE:
+        return detail_fast.fake_strategy(_fake_plan(replace(request, planning_profile="detail_pack", domestic_protocol=False)), request)
     if request.planning_profile == refined_detail.PROFILE:
         from .refined_detail_mock import fake_strategy
 
@@ -9006,7 +9191,7 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 for name in check_names
             },
         }
-    if request.planning_profile == "aurora_identity":
+    if request.planning_profile in {"aurora_identity", "aurora_native_fast_identity"}:
         return {
             "request_id": request.job_id,
             "product_form": f"{request.product_name}的可见完整商品形态",
@@ -9034,6 +9219,9 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
                 "不得使用生成图片作为商品身份依据",
             ],
         }
+    if request.planning_profile == "amazon_visual_suite_fast":
+        from .amazon_suite_fast import fake_planner_payload
+        return fake_planner_payload(request)
     if request.planning_profile == "amazon_visual_suite":
         return _fake_amazon_plan(request)
     if request.planning_profile in {
@@ -10662,6 +10850,8 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "aurora_native_fast_identity":
+        return _planner_response_format(replace(request, planning_profile="aurora_identity"))
     if request.planning_profile == "replica_exact_compact":
         contract = json.loads(request.product_information[0])
         return {"type": "json_schema", "json_schema": {
@@ -10672,10 +10862,10 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
         from .remix_fast_contract import response_format as remix_fast_response_format
 
         return remix_fast_response_format(request.planning_profile)
-    if request.planning_profile == refined_detail.PROFILE:
+    if request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}:
         return {"type": "json_schema", "json_schema": {
             "name": "xinghe_detail_4_plan", "strict": False,
-            "schema": refined_detail.strategy_schema(request.page_count),
+            "schema": (detail_fast if request.planning_profile == detail_fast.PROFILE else refined_detail).strategy_schema(request.page_count),
         }}
     if request.authoring_stage == "direct":
         from .domestic_detail.direct import response_format
@@ -10935,6 +11125,9 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "schema": schema,
             },
         }
+    if request.planning_profile == "amazon_visual_suite_fast":
+        from .amazon_suite_fast import planner_json_schema
+        return {"type": "json_schema", "json_schema": {"name": "amazon_suite_fast_plan", "strict": True, "schema": planner_json_schema()}}
     if request.planning_profile != "amazon_visual_suite":
         return {"type": "json_object"}
     return {
@@ -10973,10 +11166,16 @@ def _planner_prompt(request: PlannerRequest) -> str:
                 "Do not adopt product_reference images as style reference patterns. "
                 "Their observed product features remain factual identity evidence."
             )
+    if request.planning_profile == "amazon_visual_suite_fast":
+        prompt += "\nresponse_schema=" + json.dumps(_planner_response_format(request)["json_schema"]["schema"], ensure_ascii=False)
     return prompt
 
 
 def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile == "aurora_native_fast_identity":
+        return _planner_prompt_body(replace(request, planning_profile="aurora_identity")) + "\nReturn the complete identity response_schema:\n" + json.dumps(_aurora_identity_json_schema(), ensure_ascii=False)
+    if request.planning_profile == "replica_fast_suite":
+        return "Plan the entire fast replica suite in ONE pass. Return only the supplied JSON contract.\n" + "\n".join(request.product_information)
     if request.planning_profile == "replica_exact_compact":
         return "Perform only this visual task. Server metadata is managed separately. Return the requested JSON.\n" + "\n".join(request.product_information)
     if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
@@ -10985,8 +11184,8 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
                 + "\n".join(request.product_information))
     if request.planning_profile == "replica_native_contract":
         return "Author the requested native Skill contract from actual attached pixels. JSON only.\n" + "\n".join(request.product_information)
-    if request.planning_profile == refined_detail.PROFILE:
-        return refined_detail.planner_prompt(request)
+    if request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}:
+        return (detail_fast if request.planning_profile == detail_fast.PROFILE else refined_detail).planner_prompt(request)
     if request.planning_profile == "aurora_detail_revision_scope":
         from .domestic_detail.revision_protocol import scope_prompt
 
@@ -11254,6 +11453,9 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "boundaries. Use only visible pixels for identity; ignore source "
             "backgrounds and do not add unverified product facts."
         )
+    if request.planning_profile == "amazon_visual_suite_fast":
+        from .amazon_suite_fast import planner_prompt
+        return planner_prompt(request)
     if request.planning_profile == "amazon_visual_suite":
         return _amazon_planner_prompt(request)
     if request.planning_profile == "aurora_domestic_modules_completion":

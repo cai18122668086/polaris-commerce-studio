@@ -123,6 +123,49 @@ async def segment_references(
         )
     run.context["reference_columns"] = columns
     write_json(run.root / "context.json", run.context)
+    # Intake has already observed these as complete commercial visuals. Internal
+    # headlines, offer bars and ingredient sections are layout, not new pages.
+    # Keep their full composition; long detail columns still use physical splits.
+    if observation["route"] in {
+        "SEARCH_COVER",
+        "PROMO_POSTER",
+        "BANNER",
+        "SOCIAL_COMMERCE_CARD",
+        "CAROUSEL_SET",
+        "MARKETING_VISUAL_SET",
+    } and all(c["height"] <= c["width"] * 2.5 for c in columns):
+        result = {
+            **{
+                k: observation[k]
+                for k in ("product_geometry", "product_crops", "route")
+            },
+            "units": [
+                {
+                    "reference_index": c["reference_index"],
+                    "column_index": c["column_index"],
+                    "screen_index": 0,
+                    "bbox": c["bbox"],
+                    "screen_boundary_reason": c["column_boundary_reason"],
+                }
+                for c in columns
+            ],
+        }
+        errors = segmentation_errors(
+            result,
+            [(p["width"], p["height"]) for p in data["product_dimensions"]],
+            [(r["width"], r["height"]) for r in data["reference_dimensions"]],
+        )
+        if errors:
+            raise CompactScreenBoundaryMismatch("; ".join(errors))
+        run.context["segmentation_diagnostics"] = {
+            "version": "intact-commercial-visuals-v1",
+            "coverage_valid": True,
+            "source": "validated_intake_columns",
+            "columns": [],
+        }
+        write_json(run.root / "context.json", run.context)
+        await run.checkpoint()
+        return result
     inputs = {"columns": columns, "reference_dimensions": data["reference_dimensions"]}
     split = await run._visual_stage(
         "identity-screen-split-0", inputs, paths=[Path(c["crop_path"]) for c in columns]

@@ -508,13 +508,24 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         .limit(1)
     )
     plan_payload = plan.payload if plan is not None else None
+    if (
+        plan is not None
+        and plan.schema_version == "aurora-main-image-native-fast-plan-v1"
+    ):
+        from .aurora_main_image_native_fast import public_payload
+
+        plan_payload = public_payload(plan.payload)
     if plan is not None and plan.schema_version == "aurora-main-image-plan-v2":
         from .aurora_main_image_planner import public_aurora_plan_payload
 
         plan_payload = public_aurora_plan_payload(plan.payload)
     return JobDetailResponse(
         **base,
-        configuration=job.configuration,
+        configuration={
+            key: value for key, value in job.configuration.items()
+            if key != "_detail_fast_invocations"
+            and not key.startswith("_main_image_fast")
+        },
         configuration_schema=job.configuration_schema,
         prompt_version=job.prompt_version,
         strategy_version=job.strategy_version,
@@ -1120,6 +1131,21 @@ def retry_item_ids(
     if blocker_ids and not has_retryable_non_blocker:
         _raise_amazon_review_retry_not_applicable(blocker_ids)
 
+    from .amazon_suite_fast import selected as fast_amazon_selected
+
+    if source.type == JobType.AMAZON_VISUAL_SUITE.value and fast_amazon_selected(
+        source.configuration
+    ):
+        # Fast retries retain successful originals and never bill a cached
+        # successful image a second time, even under FULL/SELECTED scope.
+        candidates = {item.id for item in items if item.status not in {
+            JobItemStatus.SUCCEEDED.value, JobItemStatus.REUSED.value
+        }}
+        if scope == RetryScope.FULL:
+            return [item.id for item in items if item.id in candidates]
+        if scope == RetryScope.SELECTED:
+            return [item_id for item_id in selected_item_ids if item_id in candidates]
+
     if scope == RetryScope.FULL:
         return [item.id for item in items if item.id not in blocker_ids]
     if scope == RetryScope.SELECTED:
@@ -1158,7 +1184,19 @@ def retry_item_ids(
     # six-page retry to the first two failed pages.  Aurora has no user-visible
     # skip state; cancellation is represented by CANCELLED, so every SKIPPED
     # Aurora page is safe to regenerate from the immutable plan.
-    if source.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+    if (
+        source.type == JobType.REFERENCE_REMIX.value
+        and source.configuration.get("replica_session_id")
+        and scope == RetryScope.MISSING
+    ):
+        selected.extend(
+            item.id
+            for item in items
+            if item.status == JobItemStatus.SKIPPED.value
+            and item.error_code == "REPLICA_NATIVE_DELIVERY_BLOCKED"
+            and item.id not in selected
+        )
+    elif source.type == JobType.DOMESTIC_MAIN_IMAGE.value:
         plan = session.scalar(
             select(JobPlanRecord)
             .where(JobPlanRecord.job_id == source.id)

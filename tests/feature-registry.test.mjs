@@ -11,13 +11,13 @@ import {
 } from "../lib/feature-registry.ts";
 
 test("feature registry exposes the complete first-phase tool catalog", () => {
-  assert.equal(FEATURE_REGISTRY.length, 16);
+  assert.equal(FEATURE_REGISTRY.length, 17);
   assert.deepEqual(
     FEATURE_GROUPS.map((group) => [group.category, group.features.length]),
     [
       ["quick_edit", 5],
       ["product_image", 7],
-      ["commerce_pack", 4],
+      ["commerce_pack", 5],
     ],
   );
   assert.equal(getFeatureById("local-edit")?.jobType, "local_edit");

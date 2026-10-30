@@ -69,6 +69,53 @@ def renderer(tmp_path, responses, *, method="exact"):
     return run, provider, render, calls
 
 
+def test_parallel_images_keep_separate_usage_and_invocation_ledgers(tmp_path):
+    run, provider, _, _ = renderer(tmp_path, [])
+    run.gateway.external_network_request_count = 0
+
+    async def edit(request):
+        run.gateway.external_network_request_count += 1
+        await asyncio.sleep(0.01)
+        response = result((64, 80))
+        response.raw_usage = {"network_requests": 1}
+        response.normalized_usage = {"reported": True}
+        response.actual_cost_micros = 7
+        response.estimated_cost_micros = 9
+        return response
+
+    run.gateway.edit = edit
+    request = SimpleNamespace(
+        workspace_id="ws_test",
+        job_id="job_parallel",
+        job_item_id="item_parallel",
+        attempt_id="attempt_parallel",
+    )
+
+    async def scenario():
+        await asyncio.gather(
+            *(
+                provider._render(
+                    run,
+                    request,
+                    {"token": f"token-{i}"},
+                    "Native prompt",
+                    [],
+                    [64, 80],
+                    f"M{i:03}",
+                )
+                for i in range(2)
+            )
+        )
+
+    asyncio.run(scenario())
+    assert [row["network_requests"] for row in run.usage] == [1, 1]
+    assert [row["actual_cost_micros"] for row in run.usage] == [7, 7]
+    assert all(row["reported"] for row in run.usage)
+    ledger = read_json(run.root / "invocations.json")
+    assert set(ledger) == {"token-0", "token-1"}
+    assert all(row["state"] == "returned" for row in ledger.values())
+
+
 @pytest.mark.parametrize("unknown_second", [False, True])
 def test_correct_ratio_preview_needs_native_resolution_correction(
     tmp_path, unknown_second

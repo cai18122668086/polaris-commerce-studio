@@ -26,17 +26,23 @@ from app.config import Settings
 from app.credit_payment_routes import _settle_verified_purchase, settle_paid_purchase
 from app.database import Base
 from app.errors import ApiError
+from app.execution import ExecutionCoordinator
 from app.models import (
+    AssetRecord,
     CreditGrantRecord,
     CreditLedgerEntryRecord,
     CreditMembershipRecord,
     CreditPurchaseRecord,
     CreditReservationRecord,
+    JobAssetRecord,
+    JobItemRecord,
     JobRecord,
     UserRecord,
     WorkspaceCreditAccountRecord,
     WorkspaceRecord,
+    utc_now,
 )
+from app.provider import FakeProvider
 from tests.test_credit_payments import SECRET, paid_fields
 from tests.test_customer_credit_billing import seed_job
 
@@ -342,6 +348,81 @@ def test_postgres_yearly_boundary_grants_once(postgres_credits):
                 select(func.count())
                 .select_from(CreditLedgerEntryRecord)
                 .where(CreditLedgerEntryRecord.entry_type == "expire")
+            )
+            == 1
+        )
+
+
+@pytest.mark.parametrize("terminal", ["cancelled", "failed"])
+def test_postgres_streamed_delivery_is_settled_once_after_stop(
+    postgres_credits, terminal
+):
+    factory, _ = postgres_credits
+    with factory() as session:
+        account = session.get(WorkspaceCreditAccountRecord, "ws_test")
+        account.balance_credits = 100
+        job, items = seed_job(
+            session,
+            kind="reference_remix",
+            count=2,
+            configuration={"replica_session_id": "replica-proof", "settings": {}},
+        )
+        services.reserve_image_credits(session, "ws_test", job)
+        links = list(
+            session.scalars(
+                select(JobAssetRecord)
+                .where(JobAssetRecord.job_id == job.id)
+                .order_by(JobAssetRecord.ordinal)
+            )
+        )
+        for link in links:
+            session.get(AssetRecord, link.asset_id).asset_metadata = {
+                "replica_incremental": True
+            }
+        session.get(AssetRecord, links[0].asset_id).deleted_at = utc_now()
+        links[1].is_deliverable = False
+        job.status = "processing"
+        if terminal == "failed":
+            for item in items:
+                item.status = "failed"
+                item.finished_at = utc_now()
+        job_id = job.id
+        session.commit()
+    barrier = Barrier(4)
+    coordinator = ExecutionCoordinator(factory, FakeProvider())
+
+    def settle():
+        barrier.wait(timeout=10)
+        result = (
+            coordinator.cancel(job_id)
+            if terminal == "cancelled"
+            else coordinator.finalize_job(job_id)
+        )
+        assert result.value == ("cancelled" if terminal == "cancelled" else "partial")
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(lambda _: settle(), range(4)))
+    with factory() as session:
+        account = session.get(WorkspaceCreditAccountRecord, "ws_test")
+        assert account.balance_credits == 85 and account.reserved_credits == 0
+        assert session.get(JobRecord, job_id).actual_credits == 15
+        assert (
+            session.scalar(
+                select(JobItemRecord.status).where(
+                    JobItemRecord.job_id == job_id,
+                    JobItemRecord.ordinal == 0,
+                )
+            )
+            == "succeeded"
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(CreditLedgerEntryRecord)
+                .where(
+                    CreditLedgerEntryRecord.job_id == job_id,
+                    CreditLedgerEntryRecord.entry_type == "settle",
+                )
             )
             == 1
         )

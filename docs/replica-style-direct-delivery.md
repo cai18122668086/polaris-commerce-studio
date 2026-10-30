@@ -159,3 +159,25 @@ session identifiers and draft storage, and creates a fresh request identifier.
 Late uploads, analysis responses and polling from the previous draft cannot
 restore its contents. “返回修改” retains materials; prior server sessions remain
 available from history.
+
+## Exact fidelity recovery, 2026-10-29
+
+The 16:11 automatic exact session exhausted physical screen reconciliation and
+entered the completion policy with seven empty proposals. Its completion prompt
+did not retain the detailed native visual contract. This path was introduced on
+2026-10-25; the 2026-10-29 collection-301 fallback was published after this job
+completed and did not change image generation.
+
+Current exact intake retains independently supplied, self-contained commercial
+visuals intact when their observed route and proportions agree; long detail
+columns retain the existing split/recount workflow. Automatic completion still
+requires no extra click or post-generation AI review. A complete existing plan
+uses the original native prompt compiler. If no complete plan exists, a strict
+pixel-bound reconstruction prompt preserves the reference composition, palette,
+carriers and text hierarchy instead of requesting a generic campaign image.
+
+The v10 executor binds fact and commercial adaptations by the actual module ID,
+not the shared progress cursor. Frozen v8 and v9 source hashes remain unchanged;
+historical exact runs retain sequential prompt compilation when their protocol
+does not support explicit module binding. Per-image publication and missing-only
+retry/accounting remain enabled.

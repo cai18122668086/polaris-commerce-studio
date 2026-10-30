@@ -69,6 +69,8 @@ def _units(run: NativeReplicaRun, payload: dict) -> list[dict[str, Any]]:
         plan = state.get("plan") or {}
         refs = {u["id"]: u for u in plan.get("reference_units", [])}
         if plan.get("modules"):
+            from .replica_direct_delivery import generation_request
+
             physical = (
                 getattr(run, "checkpoints", {})
                 .get("plan_cursor", {})
@@ -102,8 +104,9 @@ def _units(run: NativeReplicaRun, payload: dict) -> list[dict[str, Any]]:
                         m["output_canvas"]["height"],
                     ],
                     "proposal": deepcopy(m),
+                    "native_prompt": generation_request(run, state, index)["prompt"],
                 }
-                for m in plan["modules"]
+                for index, m in enumerate(plan["modules"])
             ]
     cursor = getattr(run, "journal", {}).get("cursor", {})
     observation = (
@@ -207,6 +210,8 @@ async def prepare(
         ],
         "product_paths": originals[: len(payload["product_asset_ids"])],
         "facts": payload["facts"],
+        "resolved_facts": deepcopy(run.context.get("resolved_facts", {})),
+        "product_evidence": deepcopy(run.context.get("product_evidence", {})),
         "language": payload["language"],
         "platform": payload["platform_code"],
         "units": units,
@@ -299,6 +304,68 @@ def validate(run: CompletionRun) -> dict[str, Any]:
 
 
 def prompt(plan: dict, unit: dict, index: int) -> str:
+    if plan["method"] == "exact":
+        native = unit.get("native_prompt")
+        header = (
+            "Create ONE complete Chinese ecommerce visual for the current token only."
+        )
+        instruction = (
+            native.replace(
+                header,
+                "Create ONE complete ecommerce visual for the current token only.",
+                1,
+            )
+            if native
+            else (
+                "Create ONE complete ecommerce visual for the current token only.\n"
+                "Reference image 1 is the binding composition blueprint; "
+                "product images define product identity.\n"
+                "Reconstruct this exact reference one-to-one: preserve its subject "
+                "bounds and scale, background palette, camera, lighting, negative "
+                "space, text locations and size tiers, carriers, dividers, decorative "
+                "edges, poses and interactions. Replace only the actual product and "
+                "unsupported product-specific copy inside the existing regions. "
+                "Do not turn the reference into a generic product hero, card grid "
+                "or a new campaign design. Do not recolor the background to match "
+                "the replacement packaging. Product inputs provide physical identity "
+                "only: do not import their advertising layout, background or props. "
+                "Keep each populated text branch with truthful replacement copy; "
+                "preserve its hierarchy and density without inventing claims.\n"
+            )
+        )
+        instruction += (
+            "\nPHYSICAL WORDMARK AND VIEW LOCK: Reproduce the actual printed brand "
+            "marks from the attached product pixels. OCR and resolved facts are "
+            "fallible transcriptions: they cannot rename the physical product or "
+            "replace its label with a familiar brand. Do not invent an English "
+            "transliteration or a new standalone brand. If no readable product "
+            "brand is available for a poster text slot, use a neutral supported "
+            "category description in that slot. Preserve the real package logo. "
+            "When the reference shows a front view, use the supplied product front "
+            "view; a back-label photo supplies evidence and must not replace that "
+            "front-facing composition. Never transfer unverified ingredients, "
+            "processes, certifications or awards from the benchmark. Retain their "
+            "carrier shape using supported replacement copy.\n"
+        )
+        return (
+            instruction
+            + "\n"
+            + json.dumps(
+                {
+                    "language": plan["language"],
+                    "platform": plan["platform"],
+                    "user_facts": plan["facts"],
+                    "resolved_facts": plan.get("resolved_facts", {}),
+                    "product_evidence": plan.get("product_evidence", {}),
+                    "current_screen": unit["proposal"],
+                    "canvas": unit["canvas"],
+                    "evidence_policy": "source_pixels_only"
+                    if not native
+                    else "native_plan",
+                },
+                ensure_ascii=False,
+            )
+        )
     return (
         "Generate the final ecommerce image using the available plan. This is screen "
         f"{index + 1} of {len(plan['units'])}; render only this screen. "
@@ -341,7 +408,7 @@ async def execute(
             if parent is not None:
                 if (
                     parent.workspace_id != request.workspace_id
-                    or parent.status not in {"failed", "partial"}
+                    or parent.status not in {"failed", "partial", "cancelled"}
                     or parent.configuration.get("replica_session_id") != document_id
                     or parent.configuration.get("settings", {}).get("replica_plan_hash")
                     != values["plan_hash"]
@@ -356,6 +423,8 @@ async def execute(
                     .get(parent.id, {})
                     .get("snapshot")
                 )
+                if not snapshot and parent.status == "cancelled":
+                    snapshot = values["native_snapshot"]
                 if (
                     not snapshot
                     or snapshot["files"].get(PLAN)
@@ -379,12 +448,15 @@ async def execute(
         restored = True
         plan = validate(run)
         state = run.state()
-        for i, (unit, module) in enumerate(
-            zip(plan["units"], state["modules"], strict=True)
-        ):
+        from .replica_streaming import parallel_images, publish_output, starts_group
+
+        group_starter = starts_group(provider, request, ordinal)
+
+        async def generate(i: int) -> None:
+            unit, module = plan["units"][i], state["modules"][i]
             state["module_index"] = i
             if module["status"] != "GENERATED":
-                if ordinal != 0:
+                if not group_starter:
                     raise ReplicaNativeError("整组生成尚未完成。")
                 ledger = (
                     read_json(run.root / "invocations.json")
@@ -435,6 +507,9 @@ async def execute(
                     unit["canvas"], image.size
                 ):
                     raise ReplicaNativeError("生成图片的字节或画幅不一致。")
+            await publish_output(provider, run, request, i, run.path(module["artwork"]))
+
+        await parallel_images(provider, list(range(len(state["modules"]))), generate)
         state.update(state="DELIVERED", module_index=len(state["modules"]))
         write_json(run.root / STATE, state)
         delivery = [m["artwork"] for m in state["modules"]]

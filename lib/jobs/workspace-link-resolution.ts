@@ -36,6 +36,10 @@ export function resolveJobWorkspaceHref(
     return `/style-replica?jobId=${encodeURIComponent(job.id)}`;
   }
   const fallback = `/jobs?jobId=${encodeURIComponent(job.id)}`;
+  const settings = job.configuration?.settings as Record<string, unknown> | undefined;
+  if (job.type === "detail_pack" && (settings?.market_region === "international" || job.display_name?.startsWith("跨境商品详情图"))) {
+    return `/workspace/crossborder-detail?jobId=${encodeURIComponent(job.id)}`;
+  }
   const feature = job.type === "product_image"
     ? features.find(
         (candidate) =>

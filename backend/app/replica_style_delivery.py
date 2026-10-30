@@ -17,6 +17,7 @@ from PIL import Image, UnidentifiedImageError
 
 from .models import JobRecord, ReplicaDocumentRecord, utc_now
 from .provider import ProviderOutcome, ProviderRequest, ProviderResult
+from .replica_legacy_provider import LegacyPageDeliveryProvider
 from .replica_native import (
     NativeReplicaRun,
     ReplicaNativeError,
@@ -25,12 +26,12 @@ from .replica_native import (
     write_json,
 )
 from .replica_native_provider import (
-    NativeReplicaProvider,
     ReplicaCanvasMismatch,
     ReplicaImageOutcomeUnknown,
 )
 from .replica_progress import native_progress
 from .replica_retry import RetryArtwork, _document
+from .replica_streaming import serialized_checkpoint
 
 POLICY = "style-approved-plan-direct-delivery-v1"
 STATE_FILE = "style-direct-session.json"
@@ -362,10 +363,16 @@ async def deliver(
     progress_state(state)
     await provider._save(run, request.job_id)
     detail = state["route"] == "DETAIL_PAGE"
+    from .replica_streaming import publish_output
+
     baseline_ratio = None
-    for index, (job, record) in enumerate(
-        zip(state["jobs"], state["targets"], strict=True)
-    ):
+    out = run.root / "style-exports"
+    out.mkdir(exist_ok=True)
+    exported = {}
+
+    async def generate(index: int) -> None:
+        nonlocal baseline_ratio
+        job, record = state["jobs"][index], state["targets"][index]
         state["module_index"] = sum(len(j["unit_ids"]) for j in state["jobs"][:index])
         if record["status"] != "GENERATED":
             existing = record.get("request")
@@ -446,36 +453,42 @@ async def deliver(
             baseline_ratio = (
                 record["size"][1] / len(job["unit_ids"]) / record["size"][0]
             )
-    # Native export responsibilities: equal-height pair crops; unchanged singles.
-    out = run.root / "style-exports"
-    out.mkdir(exist_ok=True)
-    files = []
-    for job, record in zip(state["jobs"], state["targets"], strict=True):
         master = run.path(record["artwork"])
-        for index, uid in enumerate(job["unit_ids"]):
+        for screen_index, uid in enumerate(job["unit_ids"]):
             target = out / (uid + ".png")
             if detail:
                 with Image.open(master) as image:
                     width, height = image.size
                     screen_h = height // len(job["unit_ids"])
                     image.crop(
-                        (0, index * screen_h, width, (index + 1) * screen_h)
+                        (
+                            0,
+                            screen_index * screen_h,
+                            width,
+                            (screen_index + 1) * screen_h,
+                        )
                     ).save(target)
             else:
                 shutil.copy2(master, target)
             with Image.open(target) as image:
                 image.load()
                 size = list(image.size)
-            files.append(
-                {
-                    "id": uid,
-                    "path": str(target),
-                    "sha256": digest(target.read_bytes()),
-                    "size": size,
-                    "review_status": "NOT_REVIEWED",
-                    "source_sha256": record["sha256"],
-                }
-            )
+            exported[uid] = {
+                "id": uid,
+                "path": str(target),
+                "sha256": digest(target.read_bytes()),
+                "size": size,
+                "review_status": "NOT_REVIEWED",
+                "source_sha256": record["sha256"],
+            }
+            ordinal = state["unit_ids"].index(uid)
+            await publish_output(provider, run, request, ordinal, target)
+
+    # Native style passports bind subsequent requests to previous artwork.
+    # Keep that dependency while publishing each single/pair immediately.
+    for index in range(len(state["jobs"])):
+        await generate(index)
+    files = [exported[uid] for uid in state["unit_ids"]]
     if [f["id"] for f in files] != state["unit_ids"]:
         raise StyleDeliveryInvalid("导出图片数量或顺序不完整。")
     state.update(state="DELIVERED", module_index=len(files), files=files)
@@ -487,7 +500,7 @@ async def deliver(
     return [f["path"] for f in files]
 
 
-class ReplicaDeliveryProvider(NativeReplicaProvider):
+class ReplicaDeliveryProvider(LegacyPageDeliveryProvider):
     """Keep exact's released implementation and binding completely unchanged."""
 
     def _load(self, request: ProviderRequest) -> tuple[dict[str, Any], str, int]:
@@ -506,7 +519,7 @@ class ReplicaDeliveryProvider(NativeReplicaProvider):
                     parent = session.get(JobRecord, parent_id)
                     if (
                         not parent
-                        or parent.status not in {"failed", "partial"}
+                        or parent.status not in {"failed", "partial", "cancelled"}
                         or parent.workspace_id != request.workspace_id
                         or parent.configuration.get("replica_session_id") != document_id
                         or parent.configuration.get("settings", {}).get(
@@ -524,7 +537,7 @@ class ReplicaDeliveryProvider(NativeReplicaProvider):
                         .get(parent_id, {})
                         .get("snapshot")
                     )
-                    if not source:
+                    if not source and parent.status != "cancelled":
                         raise ReplicaNativeError(
                             "原任务缺少持久检查点，不能重复生成代替恢复。"
                         )
@@ -559,6 +572,7 @@ class ReplicaDeliveryProvider(NativeReplicaProvider):
                 raise
             raise StyleDeliveryInvalid("生图返回的文件不可解码，已停止交付。") from exc
 
+    @serialized_checkpoint
     async def _save(
         self, run: NativeReplicaRun, job_id: str, *, delivery: list[str] | None = None
     ) -> None:

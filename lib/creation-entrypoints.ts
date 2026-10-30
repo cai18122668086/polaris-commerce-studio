@@ -15,15 +15,15 @@ export const PRIMARY_CREATION_ENTRIES = [
     image: "/images/homepage-features/native-v2-webp/03-remix-primary-desktop.webp", tag: "优先体验",
   },
   {
-    id: "domestic-main-image", label: "主图套图", href: route("domestic-main-image"),
+    id: "domestic-main-image", label: "主图套图", href: "/create?goal=main",
     question: "准备上新，先把第一眼做好？", description: "围绕商品卖点，制作搜索主图与连续轮播图。",
-    input: "商品原图 + 核心卖点", output: "1 张主图 + 5 张轮播图", action: "制作主图套图",
+    input: "商品原图 + 核心卖点", output: "按国内或跨境市场选择套图", action: "选择市场，制作主图",
     image: "/images/homepage-features/native-v2-webp/05-domestic-primary-desktop.webp", tag: "上新必备",
   },
   {
-    id: "detail-pack", label: "详情图套图", href: route("detail-pack"),
+    id: "detail-pack", label: "详情图套图", href: "/create?goal=detail",
     question: "想把卖点和细节一次讲清？", description: "把商品信息组织成完整、连贯的详情页视觉。",
-    input: "商品素材 + 商品信息", output: "整套商品详情图", action: "制作详情套图",
+    input: "商品素材 + 商品信息", output: "国内详情 / 跨境详情 / 亚马逊 A+", action: "选择市场，制作详情",
     image: "/images/homepage-features/native-v2-webp/04-detail-primary-desktop.webp", tag: "讲清卖点",
   },
   {
@@ -42,6 +42,7 @@ export const FEATURE_THUMBNAILS: Readonly<Record<string, string>> = {
   "local-edit": "/images/homepage-features/native-v2-webp/01-masked-primary-desktop.webp",
   "reference-remix": "/images/homepage-features/native-v2-webp/03-remix-primary-desktop.webp",
   "amazon-visual-suite": "/images/homepage-features/native-v2-webp/06-amazon-primary-desktop.webp",
+  "crossborder-detail": "/images/homepage-features/native-v2-webp/06-amazon-primary-desktop.webp",
   "change-background": "/images/homepage-features/native-v2-webp/02-background-primary-desktop.webp",
   "change-color": "/images/homepage-showcase/outdoor.webp",
   "change-scene": "/images/homepage-showcase/outdoor.webp",

@@ -91,7 +91,7 @@ export function TopNavigation({
   const errorCount =
     jobs.data?.items.filter((job) => ["failed", "partial", "awaiting_final_review"].includes(job.status)).length ?? 0;
   const taskStateClass = activeCount ? "is-active" : errorCount ? styles.taskNotice : "";
-  const taskLabel = activeCount ? "进行中" : "任务中心";
+  const taskLabel = "任务中心";
   const taskAriaLabel = activeCount
     ? `打开任务中心，${activeCount} 个进行中任务`
     : errorCount ? `打开任务中心，${errorCount} 项任务可查看详情` : "打开任务中心";
@@ -193,6 +193,19 @@ export function TopNavigation({
           pathname={pathname}
         />
         <div className="top-nav__actions">
+          <button
+            ref={taskTriggerRef}
+            className={`task-trigger ${taskStateClass}`}
+            onClick={onOpenTasks}
+            aria-label={taskAriaLabel}
+            aria-controls="task-drawer"
+            aria-expanded={taskOpen}
+            aria-haspopup="dialog"
+          >
+            <PanelRightOpen size={18} />
+            <span>{taskLabel}</span>
+            {activeCount || errorCount ? <i>{activeCount || errorCount}</i> : null}
+          </button>
           {compactAccountActions ? (
             <div className={styles.accountMenu} ref={accountMenuRef}>
               <button type="button" className="user-menu"
@@ -233,19 +246,7 @@ export function TopNavigation({
             <CircleHelp size={16} />
             <span>帮助</span>
           </Link>
-          <button
-            ref={taskTriggerRef}
-            className={`task-trigger ${taskStateClass}`}
-            onClick={onOpenTasks}
-            aria-label={taskAriaLabel}
-            aria-controls="task-drawer"
-            aria-expanded={taskOpen}
-            aria-haspopup="dialog"
-          >
-            <PanelRightOpen size={18} />
-            <span>{taskLabel}</span>
-            {activeCount || errorCount ? <i>{activeCount || errorCount}</i> : null}
-          </button>
+
           <Link
             href="/account"
             className="user-menu"

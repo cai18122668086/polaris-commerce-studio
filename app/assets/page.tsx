@@ -170,7 +170,7 @@ export default function AssetsPage() {
             <div className="selection-toolbar">
               <span><i><Check size={13} /></i>已选择 {selected.length} 项</span>
               <button disabled={!workspace || selected.length !== 1} title="选择 1 张图片进行局部修改" onClick={() => router.push(assetCreationHref("/workspace/local-edit", workspace!.id, selected))}><Paintbrush2 size={15} />带入一句话改图</button>
-              <button disabled={!workspace || selected.length > 8} title="选择 1–8 张商品图片" onClick={() => router.push(assetCreationHref("/workspace/detail-pack", workspace!.id, selected))}><Sparkles size={15} />创建商品详情图</button>
+              <button disabled={!workspace || selected.length > 8} title="选择 1–8 张商品图片，再选择国内或跨境市场" onClick={() => router.push(assetCreationHref("/create", workspace!.id, selected))}><Sparkles size={15} />选择市场，创建详情图</button>
               <button onClick={() => setSelected([])}>取消选择</button>
             </div>
           )}

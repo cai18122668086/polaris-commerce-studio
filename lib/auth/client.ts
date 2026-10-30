@@ -25,7 +25,14 @@ export function initializeAuthClient(): void {
     appInfo: { appName: config.appName, apiDomain: config.apiDomain, apiBasePath: config.apiBasePath },
     recipeList: [
       EmailPassword.init({ preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse }),
-      EmailVerification.init({ preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse }),
+      EmailVerification.init({
+        preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse,
+        override: { functions: original => ({
+          ...original,
+          getEmailVerificationTokenFromURL: input =>
+            input.userContext?.verificationCode ?? original.getEmailVerificationTokenFromURL(input),
+        }) },
+      }),
       Session.init({
         preAPIHook: boundedAuthRequest, postAPIHook: observeAuthResponse,
         override: {

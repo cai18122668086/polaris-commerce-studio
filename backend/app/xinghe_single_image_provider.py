@@ -401,8 +401,8 @@ class XingheSingleImageProvider:
     ) -> None:
         if not operation or not skill_id:
             raise ValueError("operation and skill_id are required.")
-        if isinstance(max_concurrency, bool) or not 1 <= max_concurrency <= 32:
-            raise ValueError("max_concurrency must be between 1 and 32.")
+        if isinstance(max_concurrency, bool) or not 1 <= max_concurrency <= 3000:
+            raise ValueError("max_concurrency must be between 1 and 3000.")
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage

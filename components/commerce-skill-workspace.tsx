@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ImageDropZone } from "@/components/image-drop-zone";
 import { ReplicaSelect } from "@/components/replica-select";
 import { JobProgressFeedback } from "@/components/job-progress-feedback";
+import { GenerationRecommendation } from "@/components/generation-recommendation";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
 import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
@@ -46,6 +47,7 @@ import type {
 import { getFeatureById } from "@/lib/feature-registry";
 import { IMAGE_UPLOAD_FORMAT_HINT, validateImageUpload } from "@/lib/image-upload";
 import { allowsJobAction } from "@/lib/jobs/actions";
+import { amazonSuiteSpeedConfiguration, amazonSuiteSpeedDraftKey, readAmazonSuiteSpeed, type AmazonSuiteSpeed } from "@/lib/amazon-suite-speed";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import amazonStyles from "./amazon-visual-suite-form.module.css";
 import styles from "./product-image-workspace.module.css";
@@ -409,6 +411,8 @@ export function CommerceSkillWorkspace({
   const [draftInstruction, setInstruction] = useState("");
   const [draftSellingPoints, setSellingPoints] = useState("");
   const [draftProductName, setProductName] = useState("");
+  const [draftAmazonSpeed, setAmazonSpeed] = useState<AmazonSuiteSpeed>("standard");
+  const hydratedAmazonSpeedWorkspace = useRef<string | undefined>(undefined);
   // Keep the full backend contract while the simplified Amazon form leaves legacy optional fields blank.
   const category = "";
   const targetBuyer = "";
@@ -443,7 +447,32 @@ export function CommerceSkillWorkspace({
   const instruction = jobId ? saved.text("instruction") : draftInstruction;
   const sellingPoints = jobId ? saved.lines(featureId === "amazon-visual-suite" ? "bullet_points" : "selling_points") : draftSellingPoints;
   const productName = jobId ? saved.text("product_name") : draftProductName;
+  const amazonSpeed = jobId ? readAmazonSuiteSpeed(saved.text("amazon_speed")) : draftAmazonSpeed;
   const productFacts = jobId ? [saved.lines("bullet_points"), saved.lines("product_facts")].filter(Boolean).join("\n") : draftProductFacts;
+
+  useEffect(() => {
+    if (featureId !== "amazon-visual-suite" || !workspace?.id || jobId || hydratedAmazonSpeedWorkspace.current === workspace.id) return;
+    hydratedAmazonSpeedWorkspace.current = workspace.id;
+    try {
+      // Restore this workspace's explicit draft choice; new workspaces start with standard.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAmazonSpeed(readAmazonSuiteSpeed(window.localStorage.getItem(amazonSuiteSpeedDraftKey(workspace.id))));
+    } catch {
+      // Storage may be disabled; the default version remains usable.
+    }
+  }, [featureId, workspace?.id, jobId]);
+
+  const selectAmazonSpeed = (speed: AmazonSuiteSpeed) => {
+    if (jobId) return;
+    setAmazonSpeed(speed);
+    if (workspace?.id) {
+      try {
+        window.localStorage.setItem(amazonSuiteSpeedDraftKey(workspace.id), speed);
+      } catch {
+        // An unavailable draft store must not block task submission.
+      }
+    }
+  };
 
   useEffect(() => {
     if (jobId || typeof window === "undefined") return;
@@ -506,7 +535,7 @@ export function CommerceSkillWorkspace({
   const selectedLanguageLabel = languageOptions.find((option) => option.value === language)?.label
     ?? "未选择语言";
   const selectedSizeLabel = isAmazon
-    ? "主图 2000 × 2000；副图 1200 × 1600；桌面 A+ 1464 × 600；移动 A+ 1600 × 1200"
+    ? `${amazonSpeed === "fast" ? "目标画幅：" : ""}主图 2000 × 2000；副图 1200 × 1600；桌面 A+ 1464 × 600；移动 A+ 1600 × 1200`
     : aspectRatio === "follow-reference"
       ? "跟随首张参考图画幅比例"
       : aspectRatios.find((ratio) => ratio.value === aspectRatio)?.note ?? "未选择";
@@ -723,6 +752,7 @@ export function CommerceSkillWorkspace({
       },
       configuration: {
         auto_start_after_plan: true,
+        ...amazonSuiteSpeedConfiguration(amazonSpeed),
         marketplace:
           amazonPlatforms.find((platform) => platform.value === platformCode)?.value ??
           amazonPlatforms[0].value,
@@ -914,6 +944,21 @@ export function CommerceSkillWorkspace({
 
               {isAmazon ? (
                 <div className={amazonStyles.amazonForm}>
+                  <fieldset className={amazonStyles.speedOptions} disabled={Boolean(jobId)}>
+                    <legend>生成版本</legend>
+                    <div className={amazonStyles.speedChoices}>
+                      {([
+                        ["fast", "快速版（约5分钟）"],
+                        ["standard", "精致版（约40分钟）"],
+                      ] as const).map(([value, title]) => (
+                        <label key={value} data-selected={amazonSpeed === value || undefined}>
+                          <input type="radio" name="amazon-suite-speed" value={value} checked={amazonSpeed === value} onChange={() => selectAmazonSpeed(value)} />
+                          <span><strong>{title}{value === "fast" && <GenerationRecommendation />}</strong></span>
+                        </label>
+                      ))}
+                    </div>
+                    <p>生成 21 张图片，覆盖主图、副图及桌面与移动 A+。</p>
+                  </fieldset>
                   <label className={amazonStyles.simpleField}>
                     <span>商品名称</span>
                     <input

@@ -19,8 +19,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import detail_fast, detail_fast_runtime, refined_detail
 from . import provider_quota_ledger as quota_ledger
-from . import refined_detail
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
     is_parallel_aurora_mode,
@@ -66,7 +66,7 @@ from .provider import (
     ProviderResult,
 )
 from .provider_quota_ledger import ProviderQuotaLedgerError, usage_request_count
-from .services import new_id, settle_credits, transition_job
+from .services import canonical_hash, new_id, settle_credits, transition_job
 from .skill_runtime import build_fake_skill_runtime_provider
 from .storage import ImageStorage, ValidatedImage
 
@@ -282,7 +282,8 @@ def _amazon_review_accounting(
         request_count=sum(call.network_requests for call in called),
         reported_count=reported_count,
         known_actual_cost_count=sum(
-            call.network_requests for call in called
+            call.network_requests
+            for call in called
             if call.actual_cost_micros is not None
         ),
         actual_cost_micros=sum(known_costs),
@@ -553,8 +554,8 @@ class ExecutionCoordinator:
             raise ValueError("lease_seconds must be positive")
         if heartbeat_seconds <= 0 or heartbeat_seconds >= lease_seconds:
             raise ValueError("heartbeat_seconds must be positive and less than lease")
-        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 32:
-            raise ValueError("max_concurrency must be from 1 through 32")
+        if type(max_concurrency) is not int or not 1 <= max_concurrency <= 3000:
+            raise ValueError("max_concurrency must be from 1 through 3000")
         if max_detail_retries < 0 or max_detail_retries > 2:
             raise ValueError("max_detail_retries must be from 0 through 2")
         if max_amazon_retries < 0 or max_amazon_retries > 2:
@@ -588,6 +589,10 @@ class ExecutionCoordinator:
 
     async def run(self, job_id: str) -> JobStatus | None:
         current = self.prepare(job_id)
+        if current == JobStatus.COMPLETED and self._is_domestic_main_image_job(job_id):
+            from .aurora_main_image_native_fast import finalize_delivery
+
+            await finalize_delivery(self.session_factory, self.artifact_storage, job_id)
         if current is None or current in TERMINAL_JOB_STATUSES:
             return current
         if current == JobStatus.AWAITING_FINAL_REVIEW:
@@ -595,10 +600,14 @@ class ExecutionCoordinator:
                 self._amazon_generation_outstanding(job_id)
             ):
                 with self.session_factory() as session:
-                    failed = session.scalar(select(JobItemRecord.id).where(
-                        JobItemRecord.job_id == job_id,
-                        JobItemRecord.status == JobItemStatus.FAILED.value,
-                    ).limit(1))
+                    failed = session.scalar(
+                        select(JobItemRecord.id)
+                        .where(
+                            JobItemRecord.job_id == job_id,
+                            JobItemRecord.status == JobItemStatus.FAILED.value,
+                        )
+                        .limit(1)
+                    )
                 if failed is not None:
                     return self._mark_amazon_quality_blocked(job_id)
             return await self._maybe_finalize_domestic_automatic_delivery(
@@ -647,6 +656,25 @@ class ExecutionCoordinator:
             else self.max_concurrency
         )
         is_amazon = self._is_amazon_job(job_id)
+        with self.session_factory() as session:
+            fast_job = session.get(JobRecord, job_id)
+            is_fast_replica = (
+                fast_job is not None and self._fast_replica_record(fast_job)
+            )
+            is_fast_main = (
+                fast_job is not None and self._fast_main_image_record(fast_job)
+            )
+        if is_fast_replica or is_fast_main or self._is_fast_amazon_job(job_id) or (
+            fast_job is not None and detail_fast_runtime.is_fast(fast_job.configuration)
+        ):
+            await self._run_fast_replica(job_id)
+            if is_fast_main:
+                from .aurora_main_image_native_fast import finalize_delivery
+
+                await finalize_delivery(
+                    self.session_factory, self.artifact_storage, job_id
+                )
+            return self.finalize_job(job_id)
         while True:
             leases: list[AttemptLease] = []
             for _ in range(claim_width):
@@ -687,15 +715,14 @@ class ExecutionCoordinator:
                         if self._amazon_review_needs_manual_review(job_id):
                             return self._mark_amazon_review_pending(job_id)
                         return self._mark_amazon_quality_blocked(job_id)
-                    if (
-                        enforce_delivery
-                        and action in {"in_progress", "incomplete", "not_applicable"}
-                    ):
+                    if enforce_delivery and action in {
+                        "in_progress",
+                        "incomplete",
+                        "not_applicable",
+                    }:
                         return self._mark_amazon_review_pending(job_id)
                 retry_delay = (
-                    self._seconds_until_aurora_retry(job_id)
-                    if is_v20_aurora
-                    else None
+                    self._seconds_until_aurora_retry(job_id) if is_v20_aurora else None
                 )
                 if retry_delay is not None:
                     await asyncio.sleep(retry_delay)
@@ -711,8 +738,8 @@ class ExecutionCoordinator:
 
             with self.session_factory() as session:
                 current_job = session.get(JobRecord, job_id)
-                refined_job = current_job is not None and refined_detail.is_refined(
-                    current_job.configuration
+                refined_job = current_job is not None and (
+                    detail_fast_runtime.is_independent(current_job.configuration)
                 )
             await asyncio.gather(
                 *(
@@ -728,10 +755,9 @@ class ExecutionCoordinator:
             if self._domestic_detail_batch_has_failure(job_id, leases):
                 self._skip_domestic_detail_pages_after_execution_failure(job_id)
                 break
-            if (
-                is_calibrated_parallel_aurora_mode(parallel_mode)
-                and self._domestic_batch_has_failure(job_id, leases)
-            ):
+            if is_calibrated_parallel_aurora_mode(
+                parallel_mode
+            ) and self._domestic_batch_has_failure(job_id, leases):
                 self._skip_calibrated_parallel_dependents(job_id, leases)
 
         if is_v20_aurora:
@@ -760,6 +786,43 @@ class ExecutionCoordinator:
         return await self._maybe_finalize_domestic_automatic_delivery(
             job_id, self.finalize_job(job_id)
         )
+
+    @staticmethod
+    def _fast_amazon_record(job: JobRecord) -> bool:
+        from .amazon_suite_fast import selected
+        return (job.type == JobType.AMAZON_VISUAL_SUITE.value
+                and selected(job.configuration))
+
+    def _is_fast_amazon_job(self, job_id: str) -> bool:
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id)
+            return job is not None and self._fast_amazon_record(job)
+
+    async def _run_fast_replica(self, job_id: str) -> None:
+        """Refill free slots immediately; database claims fence duplicate workers."""
+        from .replica_fast import CONCURRENCY
+
+        pending: set[asyncio.Task[bool]] = set()
+        try:
+            while True:
+                while len(pending) < min(self.max_concurrency, CONCURRENCY):
+                    lease = self.claim_next_item(job_id)
+                    if lease is None:
+                        break
+                    pending.add(asyncio.create_task(self.execute_lease(lease)))
+                if not pending:
+                    return
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in done:
+                    task.result()
+        finally:
+            # Do not orphan provider calls when a worker is interrupted.
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
 
     async def _maybe_finalize_domestic_automatic_delivery(
         self, job_id: str, current: JobStatus | None
@@ -799,9 +862,15 @@ class ExecutionCoordinator:
             with self.session_factory() as session:
                 job = session.get(JobRecord, job_id, with_for_update=True)
                 if job is not None and eligible(job):
-                    plan = session.scalar(select(JobPlanRecord).where(
-                        JobPlanRecord.job_id == job.id,
-                    ).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                    plan = session.scalar(
+                        select(JobPlanRecord)
+                        .where(
+                            JobPlanRecord.job_id == job.id,
+                        )
+                        .order_by(JobPlanRecord.revision.desc())
+                        .limit(1)
+                        .with_for_update()
+                    )
                     if plan is not None and complete_delivery(session, job, plan):
                         session.commit()
                         return JobStatus.COMPLETED
@@ -834,14 +903,19 @@ class ExecutionCoordinator:
                 JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
             ).update({"is_deliverable": False}, synchronize_session=False)
             if job.status == JobStatus.AWAITING_FINAL_REVIEW.value:
-                session.add(AuditEventRecord(
-                    workspace_id=job.workspace_id,
-                    action="job.review_state_recovered", resource_type="job",
-                    resource_id=job.id,
-                    details={"from": "awaiting_final_review",
-                             "to": "partial" if job.succeeded_item_count else "failed",
-                             "failed_item_count": job.failed_item_count},
-                ))
+                session.add(
+                    AuditEventRecord(
+                        workspace_id=job.workspace_id,
+                        action="job.review_state_recovered",
+                        resource_type="job",
+                        resource_id=job.id,
+                        details={
+                            "from": "awaiting_final_review",
+                            "to": "partial" if job.succeeded_item_count else "failed",
+                            "failed_item_count": job.failed_item_count,
+                        },
+                    )
+                )
             session.commit()
         result = self.finalize_job(job_id)
         if result in {JobStatus.PARTIAL, JobStatus.FAILED}:
@@ -894,14 +968,19 @@ class ExecutionCoordinator:
                 return None
             if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
                 return JobStatus(job.status)
-            if session.scalar(
-                select(JobItemRecord.id).where(
-                    JobItemRecord.job_id == job.id,
-                    JobItemRecord.status.in_(
-                        ("pending", "queued", "running", "retry_wait")
-                    ),
-                ).limit(1)
-            ) is not None:
+            if (
+                session.scalar(
+                    select(JobItemRecord.id)
+                    .where(
+                        JobItemRecord.job_id == job.id,
+                        JobItemRecord.status.in_(
+                            ("pending", "queued", "running", "retry_wait")
+                        ),
+                    )
+                    .limit(1)
+                )
+                is not None
+            ):
                 return JobStatus.PROCESSING
             transition_job(
                 job,
@@ -1093,7 +1172,7 @@ class ExecutionCoordinator:
             return (
                 isinstance(settings, Mapping)
                 and settings.get("market_region") == "domestic"
-                and not refined_detail.is_refined(job.configuration)
+                and not detail_fast_runtime.is_independent(job.configuration)
             )
 
     def _is_parallel_aurora_job(self, job_id: str) -> bool:
@@ -1242,9 +1321,7 @@ class ExecutionCoordinator:
                 item.status = JobItemStatus.SKIPPED.value
                 item.stage = "blocked_by_previous_pair"
                 item.error_code = "AURORA_DETAIL_SEQUENCE_HALTED"
-                item.error_message = (
-                    "因前置 pair 页面失败，后续详情页面未启动。"
-                )
+                item.error_message = "因前置 pair 页面失败，后续详情页面未启动。"
                 item.finished_at = now
                 item.next_attempt_at = None
                 item.state_version += 1
@@ -1413,9 +1490,15 @@ class ExecutionCoordinator:
             )
 
             if crossborder_eligible(job):
-                plan = session.scalar(select(JobPlanRecord).where(
-                    JobPlanRecord.job_id == job.id,
-                ).order_by(JobPlanRecord.revision.desc()).limit(1).with_for_update())
+                plan = session.scalar(
+                    select(JobPlanRecord)
+                    .where(
+                        JobPlanRecord.job_id == job.id,
+                    )
+                    .order_by(JobPlanRecord.revision.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
                 if plan is not None:
                     confirm_crossborder(session, job, plan)
                     session.commit()
@@ -1577,7 +1660,16 @@ class ExecutionCoordinator:
                     JobAttemptRecord.lease_expires_at > utc_now(),
                 )
             )
-            if int(active or 0) >= self.max_concurrency:
+            from .replica_fast import CONCURRENCY as fast_replica_concurrency
+
+            limit = (
+                min(self.max_concurrency, fast_replica_concurrency)
+                if self._fast_replica_record(job) or self._fast_amazon_record(job)
+                or detail_fast_runtime.is_fast(job.configuration)
+                else min(self.max_concurrency, 6) if self._fast_main_image_record(job)
+                else self.max_concurrency
+            )
+            if int(active or 0) >= limit:
                 return None
 
             item_query = select(JobItemRecord).where(
@@ -1608,20 +1700,26 @@ class ExecutionCoordinator:
                     else None
                 )
             if self._native_replica_record(job):
-                succeeded_pages = session.scalar(
-                    select(func.count())
-                    .select_from(JobItemRecord)
-                    .where(
-                        JobItemRecord.job_id == job.id,
-                        JobItemRecord.status.in_(SUCCESS_ITEM_STATUSES),
+                # A streamed retry can preserve any screen, not just a prefix.
+                # Keep one durable group attempt active and stop after failure;
+                # the ordered query below picks the first remaining item.
+                if (
+                    int(active or 0)
+                    or session.scalar(
+                        select(JobItemRecord.id)
+                        .where(
+                            JobItemRecord.job_id == job.id,
+                            JobItemRecord.status == JobItemStatus.FAILED.value,
+                        )
+                        .limit(1)
                     )
-                )
-                item_query = item_query.where(
-                    JobItemRecord.ordinal == int(succeeded_pages or 0)
-                )
+                    is not None
+                ):
+                    return None
             elif (
                 job.type == JobType.DOMESTIC_MAIN_IMAGE.value
                 and not self._job_uses_parallel_aurora(session, job.id)
+                and not self._fast_main_image_record(job)
             ):
                 # Aurora owns a strict page-by-page protocol. Outbox delivery is
                 # at-least-once, so a duplicate process_job invocation may enter
@@ -1714,7 +1812,8 @@ class ExecutionCoordinator:
                     item_query = item_query.where(
                         JobItemRecord.configuration["pair_id"].as_string() == next_pair
                     )
-            elif job.type == JobType.AMAZON_VISUAL_SUITE.value:
+            elif (job.type == JobType.AMAZON_VISUAL_SUITE.value
+                  and not self._fast_amazon_record(job)):
                 active_ordinal = session.scalar(
                     select(func.min(JobItemRecord.ordinal)).where(
                         JobItemRecord.job_id == job.id,
@@ -1824,7 +1923,26 @@ class ExecutionCoordinator:
             job.type == JobType.DETAIL_PACK.value
             and isinstance(settings, Mapping)
             and settings.get("market_region") == "domestic"
-            and not refined_detail.is_refined(job.configuration)
+            and not detail_fast_runtime.is_independent(job.configuration)
+        )
+
+    @staticmethod
+    def _fast_main_image_record(job: JobRecord) -> bool:
+        from .aurora_main_image_fast import selected
+
+        return job.type == JobType.DOMESTIC_MAIN_IMAGE.value and selected(
+            job.configuration
+        )
+
+    @staticmethod
+    def _fast_replica_record(job: JobRecord) -> bool:
+        return bool(
+            job.type == JobType.REFERENCE_REMIX.value
+            and job.configuration.get("settings", {}).get("reference_skill")
+            in {
+                "aurora-ecommerce-reference-remix-fast",
+                "all-category-style-benchmark-still-fast",
+            }
         )
 
     @staticmethod
@@ -2136,6 +2254,49 @@ class ExecutionCoordinator:
         artifact = result.artifact
         if artifact is None:
             return result
+        # Streaming replica outputs are already workspace-owned and durable.
+        # Reuse those exact bytes when the normal item/usage settlement runs.
+        with self.session_factory() as session:
+            job = session.get(JobRecord, lease.job_id)
+            published = (
+                session.scalar(
+                    select(AssetRecord)
+                    .join(JobAssetRecord, JobAssetRecord.asset_id == AssetRecord.id)
+                    .where(
+                        JobAssetRecord.job_id == lease.job_id,
+                        JobAssetRecord.job_item_id == lease.item_id,
+                        JobAssetRecord.direction == "output",
+                        AssetRecord.workspace_id == lease.workspace_id,
+                        AssetRecord.sha256 == artifact.sha256,
+                        AssetRecord.lifecycle_status == "ready",
+                        AssetRecord.deleted_at.is_(None),
+                    )
+                )
+                if job and job.configuration.get("replica_session_id")
+                else None
+            )
+            if (
+                published is not None
+                and published.width is not None
+                and published.height is not None
+            ):
+                return replace(
+                    result,
+                    artifact=None,
+                    persisted_artifact=PersistedProviderArtifact(
+                        filename=published.original_filename,
+                        content_type=published.content_type,
+                        byte_size=published.byte_size,
+                        width=published.width,
+                        height=published.height,
+                        sha256=published.sha256,
+                        storage_provider=published.storage_provider,
+                        storage_bucket=published.storage_bucket,
+                        object_key=published.object_key,
+                        object_version=published.object_version,
+                        etag=published.etag,
+                    ),
+                )
         if self.artifact_storage is None:
             return replace(
                 result,
@@ -2309,7 +2470,10 @@ class ExecutionCoordinator:
             ):
                 return False
 
-            expected_dimensions = _expected_delivery_dimensions(item, result)
+            expected_dimensions = (
+                None if self._fast_main_image_record(job)
+                else _expected_delivery_dimensions(item, result, job)
+            )
             if (
                 result.outcome == ProviderOutcome.SUCCEEDED
                 and result.persisted_artifact is not None
@@ -2331,6 +2495,25 @@ class ExecutionCoordinator:
                     retryable=False,
                 )
 
+            published_asset = None
+            if result.persisted_artifact is not None and job.configuration.get(
+                "replica_session_id"
+            ):
+                published_asset = session.scalar(
+                    select(AssetRecord)
+                    .join(
+                        JobAssetRecord,
+                        JobAssetRecord.asset_id == AssetRecord.id,
+                    )
+                    .where(
+                        JobAssetRecord.job_id == job.id,
+                        JobAssetRecord.job_item_id == item.id,
+                        JobAssetRecord.direction == "output",
+                        AssetRecord.workspace_id == job.workspace_id,
+                        AssetRecord.object_key == result.persisted_artifact.object_key,
+                        AssetRecord.sha256 == result.persisted_artifact.sha256,
+                    )
+                )
             if result.persisted_artifact is not None:
                 limits = session.get(
                     WorkspaceLimitRecord,
@@ -2347,7 +2530,12 @@ class ExecutionCoordinator:
                 )
                 if (
                     limits is None
-                    or int(used_bytes or 0) + result.persisted_artifact.byte_size
+                    or int(used_bytes or 0)
+                    + (
+                        0
+                        if published_asset is not None
+                        else result.persisted_artifact.byte_size
+                    )
                     > limits.storage_quota_bytes
                 ):
                     result = replace(
@@ -2400,7 +2588,8 @@ class ExecutionCoordinator:
                 )
                 should_retry = bool(result.retryable) and (
                     (
-                        job.type in {
+                        job.type
+                        in {
                             JobType.REFERENCE_REMIX.value,
                             JobType.MODEL_POSE_TRANSFER.value,
                             JobType.CREATIVE_IMAGE.value,
@@ -2540,43 +2729,51 @@ class ExecutionCoordinator:
                 and result.persisted_artifact is not None
             ):
                 stored = result.persisted_artifact
-                asset_id = new_id("asset")
+                asset_id = (
+                    published_asset.id
+                    if published_asset is not None
+                    else new_id("asset")
+                )
                 metrics_value = result.raw_usage.get("metrics")
                 result_metrics = (
                     dict(metrics_value) if isinstance(metrics_value, dict) else {}
                 )
-                canonical_dimensions = _expected_delivery_dimensions(item, result)
-                session.add(
-                    AssetRecord(
-                        id=asset_id,
-                        workspace_id=job.workspace_id,
-                        media_kind=AssetMediaKind.IMAGE.value,
-                        origin_kind=AssetOriginKind.GENERATED.value,
-                        lifecycle_status=AssetLifecycleStatus.READY.value,
-                        original_filename=stored.filename,
-                        content_type=stored.content_type,
-                        byte_size=stored.byte_size,
-                        width=stored.width,
-                        height=stored.height,
-                        sha256=stored.sha256,
-                        storage_provider=stored.storage_provider,
-                        storage_bucket=stored.storage_bucket,
-                        object_key=stored.object_key,
-                        object_version=stored.object_version,
-                        etag=stored.etag,
-                        asset_metadata={
-                            "workflow_version": (
-                                item.configuration.get("workflow_version")
-                            ),
-                            "resume_signature": (
-                                item.configuration.get("resume_signature")
-                            ),
-                            "actual_width": stored.width,
-                            "actual_height": stored.height,
-                            "provider_metrics": result_metrics,
-                        },
-                    )
+                canonical_dimensions = (
+                    None if self._fast_main_image_record(job)
+                    else _expected_delivery_dimensions(item, result, job)
                 )
+                if published_asset is None:
+                    session.add(
+                        AssetRecord(
+                            id=asset_id,
+                            workspace_id=job.workspace_id,
+                            media_kind=AssetMediaKind.IMAGE.value,
+                            origin_kind=AssetOriginKind.GENERATED.value,
+                            lifecycle_status=AssetLifecycleStatus.READY.value,
+                            original_filename=stored.filename,
+                            content_type=stored.content_type,
+                            byte_size=stored.byte_size,
+                            width=stored.width,
+                            height=stored.height,
+                            sha256=stored.sha256,
+                            storage_provider=stored.storage_provider,
+                            storage_bucket=stored.storage_bucket,
+                            object_key=stored.object_key,
+                            object_version=stored.object_version,
+                            etag=stored.etag,
+                            asset_metadata={
+                                "workflow_version": (
+                                    item.configuration.get("workflow_version")
+                                ),
+                                "resume_signature": (
+                                    item.configuration.get("resume_signature")
+                                ),
+                                "actual_width": stored.width,
+                                "actual_height": stored.height,
+                                "provider_metrics": result_metrics,
+                            },
+                        )
+                    )
                 output_role = _output_asset_role(job.type)
                 output_validation = {
                     "sha256": stored.sha256,
@@ -2811,6 +3008,53 @@ class ExecutionCoordinator:
             if nonterminal:
                 return current
 
+            if job.type == JobType.REFERENCE_REMIX.value and job.configuration.get(
+                "replica_session_id"
+            ):
+                # Wait until every item has stopped before promoting streamed
+                # outputs, so active attempt leases remain valid. Real durable
+                # deliveries stay successful for billing and retry reuse even
+                # when a sibling call failed or the group was cancelled.
+                delivered = (
+                    session.scalars(
+                        select(JobItemRecord)
+                        .join(
+                            JobAssetRecord,
+                            JobAssetRecord.job_item_id == JobItemRecord.id,
+                        )
+                        .join(AssetRecord, AssetRecord.id == JobAssetRecord.asset_id)
+                        .where(
+                            JobItemRecord.job_id == job.id,
+                            JobItemRecord.workspace_id == job.workspace_id,
+                            JobItemRecord.status.not_in(SUCCESS_ITEM_STATUSES),
+                            JobAssetRecord.job_id == job.id,
+                            JobAssetRecord.workspace_id == job.workspace_id,
+                            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                            JobAssetRecord.is_deliverable.is_(True),
+                            AssetRecord.workspace_id == job.workspace_id,
+                            AssetRecord.origin_kind == AssetOriginKind.GENERATED.value,
+                            AssetRecord.asset_metadata["replica_incremental"]
+                            .as_boolean()
+                            .is_(True),
+                        )
+                        .with_for_update(of=JobItemRecord)
+                    )
+                    .unique()
+                    .all()
+                )
+                for item in delivered:
+                    counts[item.status] -= 1
+                    counts[JobItemStatus.SUCCEEDED.value] = (
+                        counts.get(JobItemStatus.SUCCEEDED.value, 0) + 1
+                    )
+                    item.status = JobItemStatus.SUCCEEDED.value
+                    item.stage = "generated"
+                    item.result_source = "generated"
+                    item.error_code = item.error_message = item.error_details = None
+                    item.next_attempt_at = None
+                    item.finished_at = item.finished_at or utc_now()
+                    item.state_version += 1
+
             succeeded = sum(counts.get(value, 0) for value in SUCCESS_ITEM_STATUSES)
             failed = counts.get(JobItemStatus.FAILED.value, 0)
             cancelled = counts.get(JobItemStatus.CANCELLED.value, 0)
@@ -2847,7 +3091,7 @@ class ExecutionCoordinator:
             if job.type in {
                 JobType.DETAIL_PACK.value,
                 JobType.AMAZON_VISUAL_SUITE.value,
-            }:
+            } or self._fast_main_image_record(job):
                 from .xinghe_agent import planner_accounting
 
                 latest_plan = session.scalar(
@@ -2922,7 +3166,7 @@ class ExecutionCoordinator:
             elif succeeded == job.expected_item_count:
                 if (
                     job.type == JobType.DETAIL_PACK.value
-                    and not refined_detail.is_refined(job.configuration)
+                    and not detail_fast_runtime.is_independent(job.configuration)
                 ):
                     # Domestic Aurora and cross-border Skill detail pages both
                     # require an explicit human delivery decision after all
@@ -2939,11 +3183,14 @@ class ExecutionCoordinator:
                 target = JobStatus.FAILED
             if target in {JobStatus.FAILED, JobStatus.PARTIAL} and not job.error_code:
                 failure = session.scalar(
-                    select(JobItemRecord).where(
+                    select(JobItemRecord)
+                    .where(
                         JobItemRecord.job_id == job.id,
                         JobItemRecord.status == JobItemStatus.FAILED.value,
                         JobItemRecord.error_code.is_not(None),
-                    ).order_by(JobItemRecord.ordinal).limit(1)
+                    )
+                    .order_by(JobItemRecord.ordinal)
+                    .limit(1)
                 )
                 if failure is not None:
                     job.error_code = failure.error_code
@@ -2954,6 +3201,19 @@ class ExecutionCoordinator:
                 if target == JobStatus.AWAITING_FINAL_REVIEW
                 else target.value
             )
+            if self._fast_amazon_record(job) and latest_plan is not None:
+                payload = dict(latest_plan.payload)
+                payload["business_quality"] = {
+                    **payload.get("business_quality", {}),
+                    "status": "NOT_REVIEWED",
+                    "technical_delivery_status": (
+                        "complete" if succeeded == job.expected_item_count
+                        else "incomplete"
+                    ),
+                    "automatic_redraw_enabled": False,
+                }
+                latest_plan.payload = payload
+                latest_plan.payload_hash = canonical_hash(payload)
             transition_job(job, target, stage=terminal_stage, progress=100)
             from .replica_progress import reconcile_job_document
 
@@ -3037,14 +3297,40 @@ def _output_asset_role(job_type: str) -> str:
 def _expected_delivery_dimensions(
     item: JobItemRecord,
     result: ProviderResult,
+    job: JobRecord | None = None,
 ) -> tuple[int, int] | None:
-    """Resolve the immutable per-item output contract at the final DB boundary."""
+    """Resolve item dimensions and verify native-original delivery receipts."""
 
     configuration = item.configuration if isinstance(item.configuration, dict) else {}
+    from .amazon_suite_fast import POLICY_VERSION, native_canvas_valid
+    if configuration.get("workflow_version") == POLICY_VERSION:
+        from .amazon_visual_suite_provider import amazon_item_spec
+        artifact = result.persisted_artifact or result.artifact
+        if artifact is not None:
+            spec = amazon_item_spec(item.item_key)
+            if native_canvas_valid(artifact.width, artifact.height, spec):
+                return artifact.width, artifact.height
     size = configuration.get("size")
     if isinstance(size, str) and re.fullmatch(r"[1-9]\d*x[1-9]\d*", size):
         width_text, height_text = size.split("x", maxsplit=1)
-        return int(width_text), int(height_text)
+        expected = (int(width_text), int(height_text))
+        if (
+            job is not None
+            and job.type == JobType.DETAIL_PACK.value
+            and detail_fast_runtime.is_independent(job.configuration)
+            and result.persisted_artifact is not None
+        ):
+            artifact = result.persisted_artifact
+            metrics = result.raw_usage.get("metrics")
+            receipt = refined_detail.native_delivery_receipt(artifact, list(expected))
+            if (
+                receipt is not None
+                and isinstance(metrics, Mapping)
+                and metrics.get("locally_resampled") is False
+                and metrics.get("delivery_canvas") == receipt
+            ):
+                return artifact.width, artifact.height
+        return expected
     width = configuration.get("target_width")
     height = configuration.get("target_height")
     if (
@@ -3117,6 +3403,7 @@ def build_fake_coordinator(
         ReferenceRemixRouterProvider,
         ReferenceVisualReverseRemixProvider,
     )
+    from .replica_fast_provider import FastReplicaProvider
     from .replica_style_delivery import ReplicaDeliveryProvider
     from .xinghe_agent import (
         FakeXingheGateway,
@@ -3234,6 +3521,24 @@ def build_fake_coordinator(
             skill_id=REFINED_DETAIL_SKILL_ID,
         )
     )
+    from .detail_fast_gateway import DurableFastDetailGateway
+
+    fast_skill_root = default_skill_root(detail_fast.SKILL_ID)
+    fast_planner = XinghePlanningCoordinator(
+        session_factory, gateway, storage=storage, skill_root=fast_skill_root,
+        base_url_signature=base_url_signature, medium_price_micros=medium_price_micros,
+        high_price_micros=high_price_micros, budget_limit_micros=budget_limit_micros,
+        skill_id=detail_fast.SKILL_ID,
+    )
+    fast_gateway = DurableFastDetailGateway(
+        session_factory, gateway, storage, skill_id=detail_fast.SKILL_ID,
+        skill_content_hash=BundledSkillManifestValidator().validate(detail_fast.SKILL_ID),
+    )
+    fast_detail_provider = detail_fast.FastDetailProvider(XingheImageProvider(
+        session_factory, fast_gateway, storage=storage, skill_root=fast_skill_root,
+        max_concurrency=min(xinghe_concurrency, detail_fast.CONCURRENCY),
+        budget_limit_micros=budget_limit_micros, skill_id=detail_fast.SKILL_ID,
+    ))
     amazon_skill_root = default_skill_root(AMAZON_VISUAL_SUITE_SKILL_ID)
     amazon_planner = XinghePlanningCoordinator(
         session_factory,
@@ -3246,12 +3551,29 @@ def build_fake_coordinator(
         budget_limit_micros=budget_limit_micros,
         skill_id=AMAZON_VISUAL_SUITE_SKILL_ID,
     )
+    from .amazon_suite_fast import SKILL_ID as AMAZON_FAST_SKILL_ID
+    from .amazon_suite_fast_provider import (
+        AmazonFastPlannerRouter,
+        AmazonFastProvider,
+        AmazonFastProviderRouter,
+    )
+    amazon_fast_planner = XinghePlanningCoordinator(
+        session_factory, gateway, storage=storage,
+        skill_root=default_skill_root(AMAZON_FAST_SKILL_ID),
+        base_url_signature=base_url_signature,
+        medium_price_micros=medium_price_micros, high_price_micros=high_price_micros,
+        budget_limit_micros=budget_limit_micros, skill_id=AMAZON_FAST_SKILL_ID,
+    )
+    routed_amazon_planner = AmazonFastPlannerRouter(
+        session_factory, amazon_planner, amazon_fast_planner
+    )
     routed_planner = DetailMarketRoutingPlanner(
         session_factory,
         international_planner,
         domestic_planner,
-        amazon_planner,
+        routed_amazon_planner,
         refined=refined_planner,
+        fast=fast_planner,
     )
     default_provider = build_fake_skill_runtime_provider(
         session_factory,
@@ -3281,6 +3603,17 @@ def build_fake_coordinator(
         storage,
         work_root=aurora_work_root,
         execution_mode=aurora_execution_mode,
+    )
+    from .aurora_main_image_fast import (
+        MainImagePlannerRouter,
+        MainImageProviderRouter,
+    )
+    from .aurora_main_image_fast_provider import FastMainImageProvider
+    from .aurora_main_image_native_fast import NativeFastMainImagePlanner
+
+    aurora_provider = MainImageProviderRouter(
+        session_factory, aurora_provider,
+        FastMainImageProvider(session_factory, gateway, storage),
     )
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {
@@ -3349,16 +3682,31 @@ def build_fake_coordinator(
                     ),
                     manifest_validator=manifest_validator.validate,
                 ),
-                ReplicaDeliveryProvider(session_factory, gateway, storage),
+                ReplicaDeliveryProvider(
+                    session_factory,
+                    gateway,
+                    storage,
+                    max_concurrency=xinghe_concurrency,
+                ),
+                suite_fast=FastReplicaProvider(
+                    session_factory, gateway, storage
+                ) if reference_remix_provider_enabled else UnavailableProvider(),
                 fast=AuroraRemixFastAdapter(
                     RemixFastProvider(
-                        session_factory, gateway, storage=storage,
+                        session_factory,
+                        gateway,
+                        storage=storage,
                         operation=JobType.REFERENCE_REMIX.value,
                         skill_id="aurora-remix-fast",
                         manifest_validator=manifest_validator.validate,
-                        work_root=(aurora_work_root / "remix-fast"
-                                   if aurora_work_root else None),
-                    ) if reference_remix_provider_enabled else UnavailableProvider(),
+                        work_root=(
+                            aurora_work_root / "remix-fast"
+                            if aurora_work_root
+                            else None
+                        ),
+                    )
+                    if reference_remix_provider_enabled
+                    else UnavailableProvider(),
                     manifest_validator=manifest_validator.validate,
                 ),
             ),
@@ -3392,10 +3740,18 @@ def build_fake_coordinator(
                 else UnavailableProvider()
             ),
         }
+    new_routes[JobType.AMAZON_VISUAL_SUITE.value] = AmazonFastProviderRouter(
+        new_routes[JobType.AMAZON_VISUAL_SUITE.value],
+        AmazonFastProvider(session_factory, gateway, storage)
+        if xinghe_gateway is None or amazon_visual_suite_provider_enabled
+        else UnavailableProvider(),
+    )
     from .domestic_detail.campaign_provider import DomesticCampaignReviewProvider
 
     new_routes[JobType.DOMESTIC_DETAIL_REVIEW.value] = DomesticCampaignReviewProvider(
-        session_factory, gateway, storage,
+        session_factory,
+        gateway,
+        storage,
     )
     provider = RegisteredOperationRoutingProvider(
         default_provider,
@@ -3404,6 +3760,7 @@ def build_fake_coordinator(
         new_routes,
         domestic_detail_provider=domestic_detail_provider,
         refined_detail_provider=refined_detail_provider,
+        fast_detail_provider=fast_detail_provider,
     )
     amazon_suite_reviewer = None
     if storage is not None:
@@ -3422,12 +3779,18 @@ def build_fake_coordinator(
         session_factory,
         provider,
         detail_planner=routed_planner,
-        campaign_planner=AuroraMainImagePlanner(
+        campaign_planner=MainImagePlannerRouter(
             session_factory,
-            storage=storage,
-            gateway=gateway,
-            work_root=aurora_work_root,
-            execution_mode=aurora_execution_mode,
+            AuroraMainImagePlanner(
+                session_factory, storage=storage, gateway=gateway,
+                work_root=aurora_work_root, execution_mode=aurora_execution_mode,
+            ),
+            NativeFastMainImagePlanner(
+                session_factory, gateway, storage,
+                work_root=(
+                    aurora_work_root / "native-fast" if aurora_work_root else None
+                ),
+            ),
         ),
         max_concurrency=xinghe_concurrency,
         # Detail-pack behavior remains unchanged. Amazon follows its own Skill

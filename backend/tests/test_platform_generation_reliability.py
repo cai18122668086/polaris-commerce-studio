@@ -8,8 +8,10 @@ import pytest
 
 from app.provider import ProviderOutcome
 from app.provider_diagnostics import error_summary, retained_metrics
+from app.replica_legacy_provider import (
+    LegacyPageDeliveryProvider as NativeReplicaProvider,
+)
 from app.replica_native import NativeReplicaRun, digest, read_json, write_json
-from app.replica_native_provider import NativeReplicaProvider
 from tests.test_replica_execution_resume import interrupted_run
 from tests.test_replica_nonimage_fallback import dispatch
 
@@ -113,9 +115,30 @@ def test_legacy_exact_worker_delivers_without_audit_or_repeating_existing_image(
     provider._save = save
     result = asyncio.run(provider.execute(request))
     assert result.outcome == ProviderOutcome.SUCCEEDED, result.error_message
-    assert len(gateway.image_requests) == count + 1
+    # Delivery is page-local: the already generated first page is reused with
+    # zero new image calls. Only explicitly requesting the unfinished second
+    # page may purchase its image.
+    assert len(gateway.image_requests) == count
+    assert result.artifact.payload == original_image
     assert (legacy.run / "session.json").read_bytes() == original
     assert Path(existing).read_bytes() == original_image
     assert result.raw_usage["post_generation_review"] == "disabled"
     assert saved[-1].get("model_protocol") is None
     assert digest(original_image) in saved[-1]["files"]["direct-session.json"]["text"]
+
+    snapshot = saved[-1]
+    provider._load = lambda _: (
+        {
+            "replication_method": "exact",
+            "plans": [{}, {}],
+            "native_snapshot": snapshot,
+            "native_executions": {request.job_id: {"snapshot": snapshot}},
+        },
+        old.document_id,
+        1,
+    )
+    second = asyncio.run(provider.execute(request))
+    assert second.outcome == ProviderOutcome.SUCCEEDED, second.error_message
+    assert len(gateway.image_requests) == count + 1
+    assert (legacy.run / "session.json").read_bytes() == original
+    assert Path(existing).read_bytes() == original_image

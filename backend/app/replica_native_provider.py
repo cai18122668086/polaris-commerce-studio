@@ -61,7 +61,15 @@ class NativeReplicaProvider:
     model = "gpt-image-2"
     pricing_version = "replica-native-20260923"
 
-    def __init__(self, session_factory: Any, gateway: Any, storage: Any) -> None:
+    def __init__(
+        self,
+        session_factory: Any,
+        gateway: Any,
+        storage: Any,
+        *,
+        max_concurrency: int = 6,
+    ) -> None:
+        self.max_concurrency = max_concurrency
         self.session_factory, self.gateway, self.storage = (
             session_factory,
             gateway,
@@ -114,7 +122,7 @@ class NativeReplicaProvider:
             if (
                 parent is None
                 or parent.workspace_id != request.workspace_id
-                or parent.status not in {"failed", "partial"}
+                or parent.status not in {"failed", "partial", "cancelled"}
                 or parent.configuration.get("replica_session_id")
                 != job.configuration.get("replica_session_id")
                 or parent.configuration.get("settings", {}).get("replica_plan_hash")
@@ -221,7 +229,14 @@ class NativeReplicaProvider:
                     or (
                         direct_source
                         and snapshot["model_protocol"].get("version")
-                        not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8"}
+                        not in {
+                            "exact-compact-v5",
+                            "exact-compact-v6",
+                            "exact-compact-v7",
+                            "exact-compact-v8",
+                            "exact-compact-v9",
+                            "exact-compact-v10",
+                        }
                     )
                     else run_class(
                         values["replication_method"], snapshot["model_protocol"]
@@ -232,12 +247,26 @@ class NativeReplicaProvider:
 
                 run_type = delivery_run_type(run_type)
             run = run_type(
-                values["replication_method"], document_id, request.workspace_id,
-                self.gateway, self.storage, root=Path(snapshot["root"]),
+                values["replication_method"],
+                document_id,
+                request.workspace_id,
+                self.gateway,
+                self.storage,
+                root=Path(snapshot["root"]),
             )
-            if direct_source and snapshot.get("model_protocol") and snapshot.get("model_protocol", {}).get(
-                "version"
-            ) not in {"exact-compact-v5", "exact-compact-v6", "exact-compact-v7", "exact-compact-v8"}:
+            if (
+                direct_source
+                and snapshot.get("model_protocol")
+                and snapshot.get("model_protocol", {}).get("version")
+                not in {
+                    "exact-compact-v5",
+                    "exact-compact-v6",
+                    "exact-compact-v7",
+                    "exact-compact-v8",
+                    "exact-compact-v9",
+                    "exact-compact-v10",
+                }
+            ):
                 await replica_direct_delivery.restore_source(
                     run, snapshot, direct_source[1]
                 )
@@ -248,7 +277,9 @@ class NativeReplicaProvider:
             initial_calls = len(run.usage)
             delivery = execution.get("delivery", [])
             if not delivery:
-                if ordinal != 0:
+                from .replica_streaming import starts_group
+
+                if not starts_group(self, request, ordinal):
                     raise ReplicaNativeError("前序复刻尚未通过完整验收。")
                 if run.method == "exact":
                     delivery = await replica_direct_delivery.execute(self, run, request)
@@ -306,9 +337,14 @@ class NativeReplicaProvider:
             accounting = native_accounting(run.usage[initial_calls:] if run else [])
             from .provider_diagnostics import retained_metrics
 
-            diagnostics = next((retained_metrics(call) for call in reversed(
-                run.usage[initial_calls:] if run else []
-            ) if retained_metrics(call)), {})
+            diagnostics = next(
+                (
+                    retained_metrics(call)
+                    for call in reversed(run.usage[initial_calls:] if run else [])
+                    if retained_metrics(call)
+                ),
+                {},
+            )
             progress: dict[str, Any] = {}
             if run is not None and run.method == "exact":
                 with suppress(Exception):
@@ -365,8 +401,18 @@ class NativeReplicaProvider:
         ledger_path = run.root / "invocations.json"
         ledger = read_json(ledger_path) if ledger_path.exists() else {}
         token = native["token"]
+
+        def save_ledger() -> None:
+            current = read_json(ledger_path) if ledger_path.exists() else {}
+            current[token] = ledger[token]
+            write_json(ledger_path, current)
+            ledger.clear()
+            ledger.update(current)
+
         minimum_edge = min(canvas) if run.method == "exact" else 0
-        native_delivery = run.method == "exact" and getattr(run, "direct_execution", False)
+        native_delivery = run.method == "exact" and getattr(
+            run, "direct_execution", False
+        )
         resolution_input: Path | None = None
         resolution_recovery: dict[str, Any] | None = None
         prior = ledger.get(token)
@@ -386,21 +432,26 @@ class NativeReplicaProvider:
                     image.load()
                     actual = image.size
                     if not _canvas_matches(canvas, image.size, minimum_edge):
-                        if not native_delivery or not native_budget_matches(canvas, actual):
+                        if not native_delivery or not native_budget_matches(
+                            canvas, actual
+                        ):
                             raise ReplicaCanvasMismatch(canvas, actual)
                         if prior.get("state") == "canvas_rejected" and (
                             prior.get("target") != key
-                            or prior.get("native_prompt_sha256") != digest(prompt.encode("utf-8"))
+                            or prior.get("native_prompt_sha256")
+                            != digest(prompt.encode("utf-8"))
                             or prior.get("actual_size") != list(actual)
                         ):
-                            raise ReplicaNativeError("缓存图片与原生模块或画幅绑定不一致。")
+                            raise ReplicaNativeError(
+                                "缓存图片与原生模块或画幅绑定不一致。"
+                            )
                         receipt = delivery_receipt(canvas, actual, prior["sha256"])
                         if prior.get("delivery_canvas") not in (None, receipt):
                             raise ReplicaNativeError("原生画幅交付记录发生变化。")
                         if prior.get("delivery_canvas") != receipt:
                             # Retain canvas_rejected and its original strict verdict.
                             prior["delivery_canvas"] = receipt
-                            write_json(ledger_path, ledger)
+                            save_ledger()
                             await self._save(run, request.job_id)
                 return path
             if prior.get("state") == "canvas_rejected":
@@ -439,7 +490,7 @@ class NativeReplicaProvider:
                     "source_plan_sha256": retry_candidate.plan_sha256,
                     "network_requests": 0,
                 }
-                write_json(ledger_path, ledger)
+                save_ledger()
                 run.usage.append(
                     {
                         "kind": "image_reuse",
@@ -560,7 +611,12 @@ class NativeReplicaProvider:
                     f"short edge of at least {minimum_edge} pixels. Do not return "
                     "preview dimensions or a locally enlarged copy.\n" + dispatch_prompt
                 )
-        dispatch_prompt = run.image_prompt(dispatch_prompt)
+        module_prompt = getattr(run, "image_prompt_for_module", None)
+        dispatch_prompt = (
+            module_prompt(dispatch_prompt, key)
+            if callable(module_prompt)
+            else run.image_prompt(dispatch_prompt)
+        )
         bound_prompt = (
             dispatch_prompt
             + "\n\nIMAGE_BINDINGS="
@@ -625,7 +681,7 @@ class NativeReplicaProvider:
         }
         if resolution_recovery is not None:
             ledger[token]["resolution_recovery"] = resolution_recovery
-        write_json(ledger_path, ledger)
+        save_ledger()
         # The invocation fence is durable BEFORE the network call.
         await self._save(run, request.job_id)
         for format_attempt in range(
@@ -641,9 +697,8 @@ class NativeReplicaProvider:
                     "Use the bound format_canvas boundary; preserve the blueprint and product."
                 )
                 ledger[token]["state"] = "invoked"
-                write_json(ledger_path, ledger)
+                save_ledger()
                 await self._save(run, request.job_id)
-            before = getattr(self.gateway, "external_network_request_count", None)
             result = await self.gateway.edit(
                 ImageEditRequest(
                     workspace_id=request.workspace_id,
@@ -662,18 +717,20 @@ class NativeReplicaProvider:
                     single_dispatch=False,
                 )
             )
-            after = getattr(self.gateway, "external_network_request_count", None)
-            requests = (
-                max(1, after - before)
-                if type(before) is int and type(after) is int
-                else 1
-            )
+            # The gateway counter is shared by concurrently running images.
+            # Only this response's dispatch count belongs to this usage record.
+            count = (getattr(result, "raw_usage", None) or {}).get("network_requests")
+            requests = count if type(count) is int and count >= 1 else 1
             run.record_usage(result, "image", requests)
             from .provider_diagnostics import retained_metrics
 
-            run.usage[-1]["metrics"] = retained_metrics(getattr(result, "raw_usage", None))
+            run.usage[-1]["metrics"] = retained_metrics(
+                getattr(result, "raw_usage", None)
+            )
             run.usage[-1]["http_status"] = getattr(result, "http_status", None)
-            run.usage[-1]["provider_request_id"] = getattr(result, "provider_request_id", None)
+            run.usage[-1]["provider_request_id"] = getattr(
+                result, "provider_request_id", None
+            )
             run.usage[-1].update(
                 http_status=result.http_status,
                 error_code=result.error_code,
@@ -690,7 +747,7 @@ class NativeReplicaProvider:
                     "http_status": result.http_status,
                     "error_code": result.error_code,
                 }
-                write_json(ledger_path, ledger)
+                save_ledger()
                 await self._save(run, request.job_id)
                 raise ReplicaNativeError(
                     result.error_message or "生图未返回可核实产物。"
@@ -729,7 +786,7 @@ class NativeReplicaProvider:
                 ledger[token]["delivery_canvas"] = delivery_receipt(
                     canvas, actual, ledger[token]["sha256"]
                 )
-            write_json(ledger_path, ledger)
+            save_ledger()
             await self._save(run, request.job_id)
             if matches or native_admitted:
                 return path

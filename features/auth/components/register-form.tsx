@@ -1,20 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { VerifyEmailForm, type VerificationDelivery } from "./verify-email-form";
 
 import {
   authErrorMessage,
   fieldErrorsToMap,
   sendVerificationEmail,
   signUpWithEmailPassword,
+  isEmailVerified,
+  sessionExists,
 } from "@/features/auth/api/auth";
-import { verifyEmailHref, withReturnTo } from "@/lib/auth/return-to";
+import { withReturnTo } from "@/lib/auth/return-to";
 import { AUTH_ROUTES, LEGAL_ROUTES } from "@/lib/auth/routes";
 
 export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [registrationEmail, setRegistrationEmail] = useState<string>();
+  const [delivery, setDelivery] = useState<VerificationDelivery>();
+  const registrationAttempt = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    // A reload must resume verification rather than ask the user to register
+    // the same email twice. No email is sent until they request one.
+    void (async () => {
+      if (await sessionExists() && !(await isEmailVerified()) && !cancelled && !registrationAttempt.current) setRegistrationEmail("");
+    })().catch(() => { /* The normal form remains available if session recovery fails. */ });
+    return () => { cancelled = true; };
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -48,6 +63,7 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
     }
 
     setSubmitting(true);
+    registrationAttempt.current = true;
     try {
       const result = await signUpWithEmailPassword(email, password);
       if (result.status === "FIELD_ERROR") {
@@ -59,19 +75,31 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
         return;
       }
 
+      // Keep this step on the same page. Creating an unverified identity is
+      // not registration completion, and a mail error must remain visible.
+      queryClient.clear();
+      setDelivery({ status: "sending" });
+      setRegistrationEmail(email.trim());
+      setPassword("");
+      setConfirmation("");
       try {
-        await sendVerificationEmail();
-      } catch {
-        // The verification page offers a retry action when delivery fails.
+        const sent = await sendVerificationEmail();
+        setDelivery(sent.status === "EMAIL_ALREADY_VERIFIED_ERROR"
+          ? { status: "verified" }
+          : { status: "sent", retryAt: Date.now() + 60_000 });
+      } catch (caught) {
+        setDelivery({ status: "failed", message: authErrorMessage(caught, "验证码发送失败，请重新发送。") });
       }
-      router.replace(verifyEmailHref(returnTo));
-      router.refresh();
     } catch (caught) {
       setError(authErrorMessage(caught, "注册失败，请稍后重试。"));
     } finally {
       setSubmitting(false);
     }
   }
+
+  if (registrationEmail !== undefined) return <section aria-label="注册邮箱验证">
+    <VerifyEmailForm email={registrationEmail} returnTo={returnTo} delivery={delivery} registration />
+  </section>;
 
   return (
     <form className="auth-form" onSubmit={handleSubmit}>
@@ -161,7 +189,7 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
       </div>
       {error ? <p className="auth-form__error" role="alert">{error}</p> : null}
       <button className="auth-button auth-button--primary auth-button--full" disabled={submitting} type="submit">
-        {submitting ? "正在注册…" : "创建账号"}
+        {submitting ? "正在创建账号…" : "下一步：验证邮箱"}
       </button>
       <p className="auth-form__switch">
         已有账号？<Link href={withReturnTo(AUTH_ROUTES.login, returnTo)}>直接登录</Link>

@@ -2214,6 +2214,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/replica/product-platforms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Product Platforms */
+        get: operations["product_platforms_api_v1_workspaces__workspace_id__replica_product_platforms_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/replica/products": {
         parameters: {
             query?: never;
@@ -2225,6 +2242,26 @@ export interface paths {
         put?: never;
         /** Create Product */
         post: operations["create_product_api_v1_workspaces__workspace_id__replica_products_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/replica/products/{document_id}/images/{image_group}/{image_index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Product Image
+         * @description Serve only this workspace's returned product images through the same origin.
+         */
+        get: operations["preview_product_image_api_v1_workspaces__workspace_id__replica_products__document_id__images__image_group___image_index__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2482,6 +2519,8 @@ export interface components {
              * @default
              */
             a_plus_copy: string;
+            /** Amazon Speed */
+            amazon_speed?: ("standard" | "fast") | null;
             /**
              * Auto Start After Plan
              * @default true
@@ -2606,6 +2645,12 @@ export interface components {
             product_asset_ids: string[];
             /** References */
             references: components["schemas"]["ReferenceChoice"][];
+            /**
+             * Replica Speed
+             * @default standard
+             * @enum {string}
+             */
+            replica_speed: "standard" | "fast";
             /** Replication Method */
             replication_method?: ("exact" | "style") | null;
             /** Request Id */
@@ -3162,6 +3207,11 @@ export interface components {
              * @enum {string}
              */
             detail_skill?: "quick" | "refined";
+            /**
+             * Detail Speed
+             * @enum {string}
+             */
+            detail_speed?: "standard" | "fast";
             /**
              * Language
              * @default zh-CN
@@ -3757,6 +3807,12 @@ export interface components {
              * @constant
              */
             language: "zh-CN";
+            /**
+             * Main Image Speed
+             * @description Optional fast workflow opt-in; omitted requests use standard.
+             * @enum {string}
+             */
+            main_image_speed?: "standard" | "native_fast";
             /** Offers */
             offers?: string[];
             /** Product Attributes */
@@ -4759,7 +4815,7 @@ export interface components {
              */
             quality: "low" | "medium" | "high";
             /** Reference Skill */
-            reference_skill?: ("aurora-remix-fast" | "reference-visual-reverse-remix" | "aurora-ecommerce-reference-remix" | "all-category-style-benchmark-still") | null;
+            reference_skill?: ("aurora-remix-fast" | "reference-visual-reverse-remix" | "aurora-ecommerce-reference-remix" | "all-category-style-benchmark-still" | "aurora-ecommerce-reference-remix-fast" | "all-category-style-benchmark-still-fast") | null;
             /**
              * Reference Visual Analysis
              * @default
@@ -9964,6 +10020,39 @@ export interface operations {
             };
         };
     };
+    product_platforms_api_v1_workspaces__workspace_id__replica_product_platforms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_product_api_v1_workspaces__workspace_id__replica_products_post: {
         parameters: {
             query?: never;
@@ -9989,6 +10078,38 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_product_image_api_v1_workspaces__workspace_id__replica_products__document_id__images__image_group___image_index__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                image_group: "imageUrls" | "descImageUrls" | "skuImageUrls";
+                image_index: number;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

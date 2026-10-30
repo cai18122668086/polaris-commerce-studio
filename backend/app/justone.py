@@ -60,7 +60,12 @@ class MarketRedirects(HTTPRedirectHandler):
         self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
     ) -> Any:
         parsed = urlparse(newurl)
-        if parsed.scheme not in {"https", "http"} or not domain_matches(
+        if (
+            parsed.username
+            or parsed.password
+            or parsed.port not in {None, 80, 443}
+            or parsed.scheme not in {"https", "http"}
+        ) or not domain_matches(
             parsed.hostname or "",
             tuple(d for group in MARKET_HOSTS.values() for d in group),
         ):
@@ -72,8 +77,14 @@ class MarketRedirects(HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def parse_product_link(raw: str, platform_hint: str = "auto") -> tuple[str, str, str]:
-    raw = raw.strip()
+def parse_product_link(
+    raw: str, platform_hint: str = "auto", *, _depth: int = 0
+) -> tuple[str, str, str]:
+    if _depth > 4:
+        raise ApiError(
+            400, "INVALID_PRODUCT_LINK", "分享链接跳转过多，请使用完整商品链接。"
+        )
+    raw = html.unescape(raw.strip())
     if raw.isdigit():
         if platform_hint not in ENDPOINTS:
             raise ApiError(400, "PLATFORM_REQUIRED", "输入商品 ID 时，请选择来源平台。")
@@ -84,7 +95,7 @@ def parse_product_link(raw: str, platform_hint: str = "auto") -> tuple[str, str,
             raise ApiError(
                 400, "INVALID_PRODUCT_LINK", "请粘贴淘宝、天猫、1688 或京东的商品链接。"
             )
-        raw = match.group(0)
+        raw = match.group(0).rstrip("，。；！）)]}￥¥")
         try:
             parsed = urlparse(raw)
             port = parsed.port
@@ -109,6 +120,13 @@ def parse_product_link(raw: str, platform_hint: str = "auto") -> tuple[str, str,
                 400, "UNSUPPORTED_SOURCE", "暂不支持该商品链接，可切换为上传参考图。"
             )
         query = parse_qs(parsed.query)
+        for key in ("url", "target", "redirectUrl", "redirect_url", "tu"):
+            nested = query.get(key, [""])[0]
+            nested_host = (urlparse(nested).hostname or "").lower()
+            if nested.startswith(("https://", "http://")) and domain_matches(
+                nested_host, tuple(d for group in MARKET_HOSTS.values() for d in group)
+            ):
+                return parse_product_link(nested, platform_hint, _depth=_depth + 1)
         item_id = next(
             (
                 query[k][0]
@@ -118,7 +136,7 @@ def parse_product_link(raw: str, platform_hint: str = "auto") -> tuple[str, str,
             "",
         )
         if not item_id:
-            match = re.search(r"/(?:offer/|product/)?(\d{6,})\.html", parsed.path)
+            match = re.search(r"/(?:offer/|product/|i)?(\d{6,})\.html?", parsed.path)
             item_id = match.group(1) if match else ""
         if not item_id and (
             domain_matches(host, ("tb.cn", "3.cn")) or "short" in parsed.path
@@ -128,8 +146,27 @@ def parse_product_link(raw: str, platform_hint: str = "auto") -> tuple[str, str,
                     Request(raw, headers={"User-Agent": "Mozilla/5.0"}), timeout=15
                 ) as response:
                     final = response.geturl()
+                    body = response.read(256_000).decode("utf-8", errors="replace")
                 if final != raw:
-                    return parse_product_link(final, platform_hint)
+                    try:
+                        return parse_product_link(
+                            final, platform_hint, _depth=_depth + 1
+                        )
+                    except ApiError as error:
+                        if error.code != "PRODUCT_ID_MISSING":
+                            raise
+                # Mobile share landing pages often use a JS/meta redirect
+                # instead of HTTP Location. Parse links without executing JS.
+                page = html.unescape(body).replace("\\/", "/")
+                for candidate in re.findall(r"https?://[^\s<>\"']+", page):
+                    candidate_host = (urlparse(candidate).hostname or "").lower()
+                    if domain_matches(candidate_host, ("taobao.com", "tmall.com")):
+                        try:
+                            return parse_product_link(
+                                candidate, platform_hint, _depth=_depth + 1
+                            )
+                        except ApiError:
+                            continue
             except ApiError:
                 raise
             except Exception:
@@ -331,10 +368,13 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
     try:
         return _fetch_endpoint(token, platform, item_id, canonical, endpoint)
     except ApiError as error:
-        if platform not in {"taobao", "tmall"} or error.code != "PRODUCT_UNAVAILABLE":
+        if platform not in {"taobao", "tmall"} or error.code not in {
+            "PRODUCT_UNAVAILABLE",
+            "PRODUCT_PROVIDER_301",
+        }:
             raise
-    # V6 sometimes reports a live item as unavailable. Try the independently
-    # verified V3 once, never recursively or after transport/balance failures.
+    # V6 can fail collection (301) or report a live item as unavailable. Try
+    # V3 once, never recursively or after transport, quota, or balance failures.
     product = _fetch_endpoint(
         token, platform, item_id, canonical, TAOBAO_FALLBACK_ENDPOINT
     )

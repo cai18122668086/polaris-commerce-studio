@@ -23,7 +23,7 @@ export function ProcessingConsentFields({ hongKong, training, onHongKong, onTrai
 function useProcessingConsent({ refetchOnMount = true }: { refetchOnMount?: boolean } = {}) {
   const user = useCurrentAuthUser();
   const development = getAuthMode() === "development";
-  const query = useQuery({ queryKey: processingConsentKey(user.data?.id), queryFn: () => requestProcessingConsent(), enabled: !development && Boolean(user.data?.id), retry: false, refetchOnMount, staleTime: 0 });
+  const query = useQuery({ queryKey: processingConsentKey(user.data?.id), queryFn: () => requestProcessingConsent(), enabled: !development && Boolean(user.data?.id), retry: false, retryOnMount: false, refetchOnMount, staleTime: 0 });
   return { query, user, development };
 }
 

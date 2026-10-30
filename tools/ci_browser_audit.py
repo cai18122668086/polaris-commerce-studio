@@ -12,17 +12,19 @@ fixture = json.loads((REPO / "tests/fixtures/audit-browser.json").read_text(enco
 observations, errors, requests, cases = [], [], [], []
 accepted = True
 consent_error = False
+consent_failures = 0
 consent_writes = []
 notice = json.loads((REPO / 'backend/app/processing_notice.json').read_text(encoding="utf-8"))
 features = {key: {'availability': 'available', 'execution': 'provider', 'can_submit': True, 'can_deliver_images': True}
     for key in ['domestic_main_image', 'detail_pack', 'crossborder_detail', 'amazon_visual_suite', 'reference_remix', 'creative_image', 'product_image', 'local_edit', 'model_pose_transfer']}
 
 def api(route):
-    global accepted
+    global accepted, consent_failures
     path = urlparse(route.request.url).path
     payload = {'items': [], 'total': 0, 'next_cursor': None}
     if path == '/api/v1/me/processing-consent':
         if consent_error:
+            consent_failures += 1
             route.fulfill(status=503,content_type='application/json',body='{}'); return
         if route.request.method == 'POST':
             consent_writes.append(route.request.post_data_json); accepted = True
@@ -106,13 +108,14 @@ with sync_playwright() as p:
         assert page.get_by_role('button',name='确认并继续',exact=True).count()==0
         consent_error=True
         visit('/workspace/detail-pack','授权记录暂时无法读取')
+        assert consent_failures == 1, ('Consent errors must wait for manual retry', consent_failures)
         consent_error=False;accepted=True
         page.get_by_role('button',name='重新读取',exact=True).click()
         page.get_by_text('生成版本',exact=False).first.wait_for()
         assert not errors,errors
         print(json.dumps({'passed':True,'layouts':len(observations),'consent_accept_withdraw_retry':True,'old_results_payments_support_readable':True}))
     finally:
-        (ROOT/'browser-audit.json').write_text(json.dumps({'observations':observations,'errors':errors,'consent_writes':consent_writes},ensure_ascii=False,indent=2),encoding='utf-8')
+        (ROOT/'browser-audit.json').write_text(json.dumps({'observations':observations,'errors':errors,'consent_writes':consent_writes,'consent_failures':consent_failures},ensure_ascii=False,indent=2),encoding='utf-8')
         (ROOT/'browser-last-text.txt').write_text(page.locator('body').inner_text(timeout=3000) if page.locator('body').count() else page.url,encoding='utf-8')
         page.screenshot(path=str(ROOT/'browser-last.png'),full_page=True)
         browser.close()

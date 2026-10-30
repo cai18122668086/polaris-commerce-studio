@@ -16,6 +16,7 @@ from .errors import ApiError
 from .new_detail_skill_provider import BundledSkillManifestValidator
 from .new_image_skill_provider import TARGET_DIMENSIONS
 from .replica_exact_contracts import canonical_hash
+from .replica_modes import execution_method
 from .xinghe_agent import PlannerRequest, SourceImage, XingheGateway
 
 VERSION = "replica-fast-suite-v1"
@@ -24,6 +25,10 @@ SKILLS = {
     "style": "all-category-style-benchmark-still-fast",
 }
 CONCURRENCY = 20
+
+
+def skill_for(values: dict[str, Any]) -> str:
+    return SKILLS[execution_method(values)]
 
 
 def selected(values: dict[str, Any]) -> bool:
@@ -203,7 +208,12 @@ def compile_plan(
         "workspace_id": workspace_id,
         "replica_speed": "fast",
         "replication_method": values["replication_method"],
-        "skill_id": SKILLS[values["replication_method"]],
+        "skill_id": skill_for(values),
+        **(
+            {"replica_mode_version": values["replica_mode_version"]}
+            if values.get("replica_mode_version")
+            else {}
+        ),
         "skill_content_hash": content_hash,
         "source_bindings": source_binding(values, records),
         "language": values["language"],
@@ -224,7 +234,7 @@ def image_prompt(plan: dict[str, Any], unit: dict[str, Any]) -> str:
         "hierarchy, "
         "negative space and commercial function. Replace reference identity and copy "
         "with the user's product and facts."
-        if plan["replication_method"] == "exact"
+        if execution_method(plan) == "exact"
         else "Inherit reference typography weight, palette, material, lighting, "
         "density and persuasive rhythm. "
         "Build a new scene and composition for the user's product; never simply swap "
@@ -278,7 +288,7 @@ async def analyse(
     current: Any,
     save: Any,
 ) -> None:
-    skill_id = SKILLS[values["replication_method"]]
+    skill_id = skill_for(values)
     content_hash = BundledSkillManifestValidator().validate(skill_id)
     sources = []
     for binding in source_binding(values, records):
@@ -308,7 +318,7 @@ async def analyse(
     skill_root = default_skill_root(skill_id)
     chapters = (
         ["reference-deconstruction.md", "rendering-and-copy.md"]
-        if values["replication_method"] == "exact"
+        if execution_method(values) == "exact"
         else ["reference-analysis.md", "semantic-translation.md"]
     )
     system = (skill_root / "SKILL.md").read_text(encoding="utf-8")
@@ -333,7 +343,7 @@ async def analyse(
             product_information=(
                 json.dumps(
                     {
-                        "method": values["replication_method"],
+                        "method": execution_method(values),
                         "language": values["language"],
                         "platform": values["platform_code"],
                         "user_facts": values["facts"],
@@ -430,12 +440,13 @@ def confirm(
 
     values = dict(row.payload)
     plan = values.get("_fast_plan", {})
-    skill_id = SKILLS.get(str(values.get("replication_method")))
+    skill_id = skill_for(values) if values.get("replication_method") in SKILLS else None
     if (
         not skill_id
         or plan.get("version") != VERSION
         or plan.get("document_id") != document_id
         or plan.get("workspace_id") != workspace.workspace_id
+        or plan.get("replica_mode_version") != values.get("replica_mode_version")
         or plan.get("skill_id") != skill_id
         or canonical_hash(plan) != payload.plan_hash
         or values.get("plan_hash") != payload.plan_hash
@@ -457,11 +468,11 @@ def confirm(
             {
                 "type": "reference_remix",
                 "intent": "submit",
-                "display_name": "一键复刻 · 快速 · "
+                "display_name": "一键复刻 · "
                 + (
-                    "一比一模仿"
+                    "一比一复刻"
                     if plan["replication_method"] == "exact"
-                    else "风格复刻"
+                    else "风格模仿"
                 ),
                 "input": {
                     "product_asset_ids": plan["product_asset_ids"],

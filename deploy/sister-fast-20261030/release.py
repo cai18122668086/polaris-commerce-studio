@@ -102,9 +102,12 @@ def build(root, revision):
     for role in ROLES:
         dockerfile = "frontend" if role == "frontend" else "backend"
         tag = "polaris/suite-fast-" + role + ":" + revision[:12]
+        base_tag = "polaris/suite-fast-base-" + role + ":" + baseline[role][7:19]
+        subprocess.run(["docker", "tag", baseline[role], base_tag], check=True)
+        assert out(["docker", "image", "inspect", "--format", "{{.Id}}", base_tag]).decode().strip() == baseline[role]
         subprocess.run(["docker", "build", "-f",
             str(REPO / "deploy/sister-fast-20261030" / (dockerfile + ".Dockerfile")),
-            "--build-arg", "POLARIS_BASE_IMAGE=" + baseline[role],
+            "--pull=false", "--build-arg", "POLARIS_BASE_IMAGE=" + base_tag,
             "--build-arg", "POLARIS_REVISION=" + revision, "-t", tag, str(REPO)],
             check=True)
         images[role] = out(["docker", "image", "inspect", "--format", "{{.Id}}", tag]).decode().strip()

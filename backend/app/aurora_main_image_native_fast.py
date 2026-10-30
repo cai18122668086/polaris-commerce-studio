@@ -34,8 +34,14 @@ from .models import (
     utc_now,
 )
 from .new_detail_skill_provider import BundledSkillManifestValidator
+from .planner_recovery import summary, total_cost
 from .services import canonical_hash, get_ready_assets, new_id, transition_job
-from .xinghe_agent import PlannerRequest, _aurora_identity_json_schema
+from .xinghe_agent import (
+    PlannerRequest,
+    _aurora_identity_json_schema,
+    _planner_call_results,
+    _planner_usage_record,
+)
 
 VERSION = "aurora-main-image-native-fast-v1"
 SCHEMA_VERSION = "aurora-main-image-native-fast-plan-v1"
@@ -276,7 +282,8 @@ class NativeFastMainImagePlanner(AuroraMainImagePlanner):
             "provider_request_id": result.provider_request_id,
             "usage": result.normalized_usage,
             "elapsed_seconds": result.api_latency_seconds,
-            "actual_cost_micros": result.actual_cost_micros,
+            "actual_cost_micros": total_cost(result),
+            "planner_recovery": summary(result),
             "error_code": result.error_code,
         }
         with self.session_factory() as session:
@@ -388,15 +395,14 @@ class NativeFastMainImagePlanner(AuroraMainImagePlanner):
                             "reported": bool(
                                 (result.normalized_usage or {}).get("reported")
                             ),
+                            **_planner_usage_record(call),
                             "provider_request_id_presence": "present"
-                            if result.provider_request_id
-                            else "absent",
-                            "actual_cost_micros": result.actual_cost_micros,
-                            "provider_request_id": result.provider_request_id,
-                            "raw_usage": result.raw_usage,
-                            "normalized_usage": result.normalized_usage,
-                            "api_latency_seconds": result.api_latency_seconds,
+                            if call.provider_request_id else "absent",
+                            "provider_request_id": call.provider_request_id,
+                            "raw_usage": call.raw_usage,
+                            "normalized_usage": call.normalized_usage,
                         }
+                        for call in (_planner_call_results([result]) or (result,))
                     ]
                 },
             }

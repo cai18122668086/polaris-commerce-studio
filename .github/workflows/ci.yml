@@ -14,6 +14,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  planner-recovery:
+    name: Planner streaming and recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python -m pip install -e "./backend[dev]"
+      - name: Validate unified planner policy and existing native receipts
+        run: >-
+          python -m pytest -q --tb=short
+          backend/tests/test_planner_stream_recovery.py
+          backend/tests/test_detail_fast_planner_transport.py
+          backend/tests/test_domestic_detail_planner_dispatch.py
+          backend/tests/test_domestic_detail_planner_route_execution.py
+          backend/tests/test_domestic_detail_intake_receipts.py
+          backend/tests/test_aurora_main_image_native_fast_transport.py
+          backend/tests/test_aurora_main_image_native_fast_workflow.py
+          backend/tests/test_replica_fast.py
+          backend/tests/test_amazon_suite_fast_plan.py
+      - run: python -m unittest discover -s deploy/tests -v
+      - run: python deploy/preflight.py --mode source
+
   frontend:
     name: Frontend quality
     runs-on: ubuntu-latest

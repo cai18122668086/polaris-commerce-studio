@@ -176,6 +176,11 @@ class Settings(BaseSettings):
     # model instead of editing this default.
     analysis_model: str = "gpt-5.6-sol"
     analysis_timeout_seconds: float = Field(default=600, gt=0, le=1800)
+    planner_streaming_enabled: bool = False
+    planner_recovery_enabled: bool = False
+    planner_transient_retries: int = Field(default=1, ge=0, le=1)
+    planner_retry_backoff_seconds: float = Field(default=2, ge=0, le=10)
+    planner_primary_timeout_seconds: float = Field(default=300, ge=30, le=600)
     image_api_key: SecretStr = SecretStr("")
     image_base_url: str = "https://api.artflow.vip"
     image_model: str = "gpt-image-2.5-flare"

@@ -207,11 +207,11 @@ def build(root, revision, reuse_candidate=None):
         assert previous['revision'] == reuse_candidate
         assert previous['bases'] == baseline, "Candidate baseline differs from production"
         assert previous['files'] == hashes, "Backend changed; perform a full build"
-        stable = lambda name: name.startswith('build/') or name in {
+        stable = lambda name: name.startswith(('build/', 'public/', 'dist/client/')) or name in {
             'package.json', 'package-lock.json', 'backend/app/processing_notice.json'}
         assert {p: h for p, h in front_hashes.items() if stable(p)} == {
             p: h for p, h in previous['frontend_files'].items() if stable(p)
-        }, "Frontend dependencies or build runtime changed; perform a full build"
+        }, "Frontend dependencies, build runtime or public assets changed; perform a full build"
         verify_candidate_files(previous)
     images = {}
     for role in ROLES:

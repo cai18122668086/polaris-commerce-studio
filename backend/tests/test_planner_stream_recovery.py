@@ -374,3 +374,48 @@ def test_full_site_fast_plan_retains_failed_and_successful_usage_before_generati
     assert len(transport.calls) == 2
     dispatch_pending(client)
     assert len(transport.calls) == 2
+
+
+def test_original_native_intake_and_full_plan_accept_a_verified_backup_chain(
+    client, monkeypatch, tmp_path
+):
+    from tests.test_api import WORKSPACE_ID, dispatch_pending, upload_asset
+    from tests.test_domestic_detail_execution import _create_detail_job, _gateway
+
+    fake = _gateway(client)
+    original = fake.plan
+    transport = Transport()
+    routed = adapter(transport, tmp_path / "transport")
+
+    async def plan(req):
+        authored = await original(req)
+        transport.content = json.dumps(authored.payload, ensure_ascii=False)
+        return await routed.plan(req)
+
+    monkeypatch.setattr(fake, "plan", plan)
+    monkeypatch.setattr(fake, "native_planner_route", routed.native_planner_route)
+    source = upload_asset(client)
+    created = _create_detail_job(
+        client, source["id"], market_region="domestic", auto_start_after_plan=False
+    )
+    dispatch_pending(client)
+    current = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{created['id']}"
+    ).json()
+    assert current["status"] == "awaiting_confirmation", (
+        current["status"],
+        current.get("error_code"),
+        current.get("error_message"),
+    )
+    assert current["plan"]["validation_status"] == "valid"
+    usage = current["plan"]["payload"]["usage"]["planner"]
+    assert any(row["http_status"] == 502 for row in usage)
+    assert any(
+        row.get("native_planner_dispatch", {}).get("route") == "failover"
+        for row in usage
+    )
+    assert len(usage) == len(transport.calls)
+    assert fake.image_calls == []
+    before = len(transport.calls)
+    dispatch_pending(client)
+    assert len(transport.calls) == before

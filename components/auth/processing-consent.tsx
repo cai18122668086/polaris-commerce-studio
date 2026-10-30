@@ -20,17 +20,19 @@ export function ProcessingConsentFields({ hongKong, training, onHongKong, onTrai
   </fieldset>;
 }
 
-function useProcessingConsent() {
+function useProcessingConsent({ refetchOnMount = true }: { refetchOnMount?: boolean } = {}) {
   const user = useCurrentAuthUser();
   const development = getAuthMode() === "development";
-  const query = useQuery({ queryKey: processingConsentKey(user.data?.id), queryFn: () => requestProcessingConsent(), enabled: !development && Boolean(user.data?.id), retry: false, staleTime: 0 });
+  const query = useQuery({ queryKey: processingConsentKey(user.data?.id), queryFn: () => requestProcessingConsent(), enabled: !development && Boolean(user.data?.id), retry: false, refetchOnMount, staleTime: 0 });
   return { query, user, development };
 }
 
 export function ProcessingConsentPanel() {
   const headingId = useId();
   const client = useQueryClient();
-  const { query, user, development } = useProcessingConsent();
+  // A parent gate owns refresh; mounting its error panel must preserve the
+  // failed request until an explicit retry instead of restarting the gate.
+  const { query, user, development } = useProcessingConsent({ refetchOnMount: false });
   const [hongKong, setHongKong] = useState(false);
   const [training, setTraining] = useState(false);
   const [busy, setBusy] = useState(false);

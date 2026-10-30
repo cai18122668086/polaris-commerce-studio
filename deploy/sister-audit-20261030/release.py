@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 
@@ -189,19 +190,41 @@ def verify_frontend_image(image, hashes):
     assert int(checked) == len(hashes)
 
 
-def build(root, revision):
+def build(root, revision, reuse_candidate=None):
     assert REPO == Path("/opt/polaris/releases") / revision, "Use the exact release directory"
+    required_free = (2 if reuse_candidate else 7) * 1024 ** 3
+    assert shutil.disk_usage('/').free >= required_free, "Reclaim unused candidate cache before building"
     root.mkdir(mode=0o700, exist_ok=False)
     live = {role: healthy(role) for role in ROLES}
     baseline = {role: row["Image"] for role, row in live.items()}
     helpers.private(root / "build-baseline.private.json", live)
     hashes = source_hashes()
     front_hashes = frontend_hashes()
+    previous = None
+    if reuse_candidate:
+        previous_root = Path('/etc/polaris/audit-20261030-' + reuse_candidate[:12])
+        previous = json.loads((previous_root / 'manifest.json').read_text())
+        assert previous['revision'] == reuse_candidate
+        assert previous['bases'] == baseline, "Candidate baseline differs from production"
+        assert previous['files'] == hashes, "Backend changed; perform a full build"
+        stable = lambda name: name.startswith('build/') or name in {
+            'package.json', 'package-lock.json', 'backend/app/processing_notice.json'}
+        assert {p: h for p, h in front_hashes.items() if stable(p)} == {
+            p: h for p, h in previous['frontend_files'].items() if stable(p)
+        }, "Frontend dependencies or build runtime changed; perform a full build"
+        verify_candidate_files(previous)
     images = {}
     for role in ROLES:
+        if previous and role != 'frontend':
+            images[role] = previous['images'][role]
+            verify_image_files(images[role], hashes)
+            print(json.dumps({'reused_verified_backend': role, 'image': images[role]}), flush=True)
+            continue
         dockerfile = "frontend" if role == "frontend" else "backend"
         tag = "polaris/audit-" + role + ":" + revision[:12]
-        base_tag = build_base(role, live[role], root)
+        base_tag = previous['images']['frontend'] if previous else build_base(role, live[role], root)
+        if previous:
+            dockerfile = 'frontend-overlay'
         subprocess.run(["docker", "build", "-f",
             str(REPO / "deploy/sister-audit-20261030" / (dockerfile + ".Dockerfile")),
             "--pull=false", "--build-arg", "POLARIS_BASE_IMAGE=" + base_tag,
@@ -358,11 +381,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("phase", choices=("build", "prepare", "activate", "verify"))
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--reuse-candidate")
     args = parser.parse_args()
     assert re.fullmatch(r"[0-9a-f]{40}", args.revision)
+    assert args.reuse_candidate is None or re.fullmatch(r"[0-9a-f]{40}", args.reuse_candidate)
     root = Path("/etc/polaris/audit-20261030-" + args.revision[:12])
     if args.phase == "build":
-        build(root, args.revision)
+        build(root, args.revision, args.reuse_candidate)
     elif args.phase == "prepare":
         prepare(root)
     elif args.phase == "activate":

@@ -305,6 +305,25 @@ def membership_state(
             .limit(1)
         )
     )
+    upcoming = next((row for row in members if aware(row.starts_at) > now), None)
+    previous = (
+        session.scalar(
+            select(CreditMembershipRecord)
+            .where(
+                CreditMembershipRecord.workspace_id == workspace_id,
+                CreditMembershipRecord.ends_at <= now,
+                CreditMembershipRecord.cancelled_at.is_(None),
+            )
+            .order_by(CreditMembershipRecord.ends_at.desc())
+            .limit(1)
+        )
+        if current is None
+        else None
+    )
+    account = session.get(WorkspaceCreditAccountRecord, workspace_id)
+    legacy_balance = (
+        account.balance_credits if account and not account.lots_initialized else None
+    )
     lots = _lots(session, workspace_id)
     expiring = [
         lot
@@ -334,11 +353,17 @@ def membership_state(
         "monthly_credits": current.monthly_credits if current else 0,
         "starts_at": aware(current.starts_at).isoformat() if current else None,
         "ends_at": aware(current.ends_at).isoformat() if current else None,
-        "next_plan_name": members[1].plan_name
-        if current and len(members) > 1
-        else None,
-        "next_plan_starts_at": aware(members[1].starts_at).isoformat()
-        if current and len(members) > 1
+        "membership_status": "active"
+        if current
+        else "scheduled"
+        if upcoming
+        else "expired"
+        if previous
+        else "none",
+        "previous_plan_name": previous.plan_name if previous else None,
+        "next_plan_name": upcoming.plan_name if upcoming else None,
+        "next_plan_starts_at": aware(upcoming.starts_at).isoformat()
+        if upcoming
         else None,
         "next_grant_at": next_grant.isoformat() if next_grant else None,
         "next_expiry_at": next_expiry.isoformat() if next_expiry else None,
@@ -350,7 +375,9 @@ def membership_state(
         "member_credits": sum(
             lot.remaining for lot in lots if lot.kind == "membership"
         ),
-        "pack_credits": sum(lot.remaining for lot in lots if lot.kind != "membership"),
+        "pack_credits": legacy_balance
+        if legacy_balance is not None
+        else sum(lot.remaining for lot in lots if lot.kind != "membership"),
     }
 
 

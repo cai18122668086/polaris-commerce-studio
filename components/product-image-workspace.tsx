@@ -1,4 +1,8 @@
 "use client";
+import { CreationSettings, SettingField, QuantityControl, RatioControl } from "@/components/creation-settings";
+
+import { useDraftState } from "@/lib/hooks/use-creation-draft";
+import { ProductFactsGuidance } from "@/components/product-facts-guidance";
 
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 
@@ -15,7 +19,6 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { ImageDropZone } from "@/components/image-drop-zone";
@@ -37,7 +40,6 @@ import { errorMessage } from "@/lib/api/request";
 import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import type { ProductImageJobCreate } from "@/lib/api/types";
 import {
-  PRODUCT_IMAGE_FEATURES,
   getProductImageFeatureByPresetSlug
 } from "@/lib/feature-registry";
 import { selectJobResultAssets } from "@/lib/jobs/results";
@@ -48,6 +50,8 @@ import {
   useRuntimeStatus,
 } from "@/features/runtime/api/runtime";
 import styles from "./product-image-workspace.module.css";
+import { PRODUCT_IMAGE_INPUT_GUIDES, productImageInputIssue } from "@/lib/product-image-input-guide";
+import { ProductInputExamples } from "./product-input-examples";
 
 type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 
@@ -130,20 +134,19 @@ function UploadPanel({
 }
 
 export function ProductImageWorkspace({ preset }: { preset: string }) {
-  const router = useRouter();
   const feature = getProductImageFeatureByPresetSlug(preset);
   const [jobId, setJobId] = useWorkspaceJobId(feature?.route ?? `/workspace/product-image/${preset}`);
   const { workspace, isPending: workspacePending, error: workspaceError } = useWorkspace();
   const upload = useUploadAsset(workspace?.id);
-  const [draftProductAssetIds, setProductAssetIds] = useState<string[]>([]);
-  const [draftReferenceAssetIds, setReferenceAssetIds] = useState<string[]>([]);
+  const [draftProductAssetIds, setProductAssetIds] = useDraftState<string[]>(workspace?.id, feature?.id ?? "product-image", "draftProductAssetIds", []);
+  const [draftReferenceAssetIds, setReferenceAssetIds] = useDraftState<string[]>(workspace?.id, feature?.id ?? "product-image", "draftReferenceAssetIds", []);
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [referenceLibraryOpen, setReferenceLibraryOpen] = useState(false);
-  const [draftPlatformCode, setPlatformCode] = useState("tmall");
-  const [draftAspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
-  const [draftImageCount, setImageCount] = useState(1);
-  const [draftInstruction, setInstruction] = useState("");
-  const [draftTargetColor, setTargetColor] = useState("");
+  const [draftPlatformCode, setPlatformCode] = useDraftState(workspace?.id, feature?.id ?? "product-image", "draftPlatformCode", "tmall");
+  const [draftAspectRatio, setAspectRatio] = useDraftState<AspectRatio>(workspace?.id, feature?.id ?? "product-image", "draftAspectRatio", "1:1");
+  const [draftImageCount, setImageCount] = useDraftState(workspace?.id, feature?.id ?? "product-image", "draftImageCount", 1);
+  const [draftInstruction, setInstruction] = useDraftState(workspace?.id, feature?.id ?? "product-image", "draftInstruction", "");
+  const [draftTargetColor, setTargetColor] = useDraftState(workspace?.id, feature?.id ?? "product-image", "draftTargetColor", "");
   const [uiError, setUiError] = useState<string>();
   const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const runtime = useRuntimeStatus();
@@ -169,6 +172,9 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   }, [job.data]);
 
   if (!feature) return null;
+
+  const inputGuide = PRODUCT_IMAGE_INPUT_GUIDES[feature.taskPreset];
+  const inputIssue = productImageInputIssue(feature.taskPreset, productAssetIds.length, referenceAssetIds.length);
 
   const addUploadedAssets = async (files: File[], role: "product" | "reference") => {
     setUiError(undefined);
@@ -209,7 +215,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   const targetColorMissing = feature.taskPreset === "change_color" && !targetColor.trim();
   const canSubmit = Boolean(
     !jobId && workspace &&
-    productAssetIds.length &&
+    !inputIssue &&
     !targetColorMissing &&
     workflow.canSubmit &&
     !runtime.isPending &&
@@ -312,15 +318,15 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               <div className={styles.sectionHeading}>
                 <div>
                   <span>01</span>
-                  <div><h2>选择创作素材</h2><p>支持本地上传和当前工作区素材库。</p></div>
+                  <div><h2>选择创作素材</h2><p>{inputGuide.change}</p></div>
                 </div>
                 <strong>{productAssetIds.length + referenceAssetIds.length} 张已选</strong>
               </div>
 
               <div className={styles.uploadGrid}>
                 <UploadPanel
-                  title="商品图"
-                  description="上传清晰、主体完整的商品参考图，可提供多个角度。"
+                  title={inputGuide.product.title}
+                  description={inputGuide.product.description}
                   count={productAssetIds.length}
                   required
                   uploading={upload.isPending}
@@ -330,8 +336,9 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                   onOpenLibrary={() => setProductLibraryOpen(true)}
                 />
                 <UploadPanel
-                  title="参考图"
-                  description="可选场景、背景、模特或颜色参考，不会替代商品主体。"
+                  title={inputGuide.reference.title}
+                  description={inputGuide.reference.description}
+                  required={inputGuide.referenceRequired}
                   count={referenceAssetIds.length}
                   uploading={upload.isPending}
                   disabled={!workspace || Boolean(jobId)}
@@ -340,6 +347,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                   onOpenLibrary={() => setReferenceLibraryOpen(true)}
                 />
               </div>
+              {!jobId && <ProductInputExamples preset={feature.taskPreset} />}
               {jobId && <WorkspaceJobInputs workspaceId={workspace?.id} job={job.data} />}
             </section>
 
@@ -352,55 +360,11 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
                 <strong>{feature.shortTitle}</strong>
               </div>
 
-              <div className={styles.formGrid}>
-                <label>
-                  <span>创作功能</span>
-                  <ReplicaSelect label="创作功能" value={feature.presetSlug} onChange={value => router.push(`/workspace/product-image/${value}`)} disabled={Boolean(jobId)} options={PRODUCT_IMAGE_FEATURES.map(item => [item.presetSlug, item.title] as const)} />
-                </label>
-                <label>
-                  <span>目标平台</span>
-                  <ReplicaSelect label="目标平台" value={platformCode} onChange={setPlatformCode} disabled={Boolean(jobId)} options={platforms.map(platform => [platform.value, platform.label] as const)} />
-                </label>
-              </div>
-
-              <fieldset className={styles.optionGroup} disabled={Boolean(jobId)}>
-                <legend>画面比例</legend>
-                <div className={styles.ratioGrid}>
-                  {aspectRatios.map((ratio) => (
-                    <label key={ratio.value} data-selected={aspectRatio === ratio.value || undefined}>
-                      <input
-                        type="radio"
-                        name="aspect-ratio"
-                        value={ratio.value}
-                        checked={aspectRatio === ratio.value}
-                        onChange={() => setAspectRatio(ratio.value)}
-                      />
-                      <span className={styles.ratioPreview} aria-hidden="true"><i style={{ aspectRatio: ratio.value.replace(":", " / ") }} /></span>
-                      <strong>{ratio.label}</strong>
-                      <small>{ratio.note}</small>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              <fieldset className={styles.optionGroup} disabled={Boolean(jobId)}>
-                <legend>生成数量</legend>
-                <div className={styles.countOptions}>
-                  {[1, 2, 3, 4].map((count) => (
-                    <label key={count} data-selected={imageCount === count || undefined}>
-                      <input
-                        type="radio"
-                        name="image-count"
-                        value={count}
-                        checked={imageCount === count}
-                        onChange={() => setImageCount(count)}
-                      />
-                      <strong>{count}</strong><span>张</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
+              <CreationSettings summary={`${platforms.find(item => item.value === platformCode)?.label ?? "目标平台"} · ${aspectRatio} · ${imageCount} 张`}>
+                <SettingField label="目标平台" span="half"><ReplicaSelect label="目标平台" value={platformCode} onChange={setPlatformCode} disabled={Boolean(jobId)} options={platforms.map(platform => [platform.value, platform.label] as const)} /></SettingField>
+                <SettingField label="生成数量" span="half"><QuantityControl value={imageCount} onChange={setImageCount} allowedValues={[1, 2, 3, 4]} disabled={Boolean(jobId)} /></SettingField>
+                <SettingField label="画面比例" span="full"><RatioControl name="aspect-ratio" value={aspectRatio} onChange={value => setAspectRatio(value as typeof aspectRatio)} options={aspectRatios} disabled={Boolean(jobId)} /></SettingField>
+              </CreationSettings>
               {feature.taskPreset === "change_color" ? (
                 <label className={styles.colorField}>
                   <span><Palette size={16} />目标颜色 <i>必填</i></span>
@@ -416,7 +380,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               ) : null}
 
               <label className={styles.instructionField}>
-                <span>补充要求</span>
+                <span>详细描述你的要求</span><ProductFactsGuidance editing />
                 <textarea
                   value={instruction}
                   onChange={(event) => setInstruction(event.target.value)}
@@ -479,7 +443,7 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
             {job.data && ["completed", "partial"].includes(job.data.status) && resultAssets.length > 0 ? (
               <SkillReviewChecklist key={jobId}
                 items={[
-                  { key: "fidelity", label: "商品仍是同一 SKU，轮廓、结构、颜色、材质、包装、Logo 和关键细节没有跑偏。" },
+                  { key: "fidelity", label: inputGuide.reviewIdentity },
                   { key: "composition", label: "商品比例、透视和场景关系自然，背景或道具没有遮挡主体。" },
                   { key: "legibility", label: "缩略图和移动端首屏仍看得清商品，没有乱码、密集小字或低清伪影。" },
                   { key: "compliance", label: "没有虚假认证、销量、评价、功效、价格、徽章、水印或未授权额外元素。" },
@@ -499,8 +463,8 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
         {productLibraryOpen ? (
           <AssetLibraryDialog
             workspaceId={workspace?.id}
-            title="选择商品图"
-            description="从个人素材库中选择清晰、主体完整的商品图片。"
+            title={`选择${inputGuide.product.title}`}
+            description={inputGuide.product.description}
             selectedIds={productAssetIds}
             excludedIds={referenceAssetIds}
             onClose={() => setProductLibraryOpen(false)}
@@ -516,8 +480,8 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
         {referenceLibraryOpen ? (
           <AssetLibraryDialog
             workspaceId={workspace?.id}
-            title="选择参考图"
-            description="选择用于场景、背景、风格或光线参考的图片。"
+            title={`选择${inputGuide.reference.title}`}
+            description={inputGuide.reference.description}
             selectedIds={referenceAssetIds}
             excludedIds={productAssetIds}
             onClose={() => setReferenceLibraryOpen(false)}
@@ -544,8 +508,8 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               <p role="alert"><Info size={15} />{uiError ?? errorMessage(requestError ?? createJob.error)}</p>
             ) : !workflow.canSubmit ? (
               <p role="alert"><Info size={15} />{workflow.message}</p>
-            ) : !productAssetIds.length ? (
-              <p><Info size={15} />请至少选择 1 张商品图。</p>
+            ) : inputIssue ? (
+              <p><Info size={15} />{inputIssue}</p>
             ) : targetColorMissing ? (
               <p><Info size={15} />商品换色必须填写目标颜色。</p>
             ) : (

@@ -1,4 +1,7 @@
 "use client";
+import { QuantityControl } from "./creation-settings";
+import { ReplicaSelect } from "./replica-select";
+import { ProductFactsGuidance } from "./product-facts-guidance";
 
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 
@@ -14,7 +17,7 @@ import { jobNote } from "@/lib/jobs/presentation";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Copy, ImagePlus, Layers3, Loader2, Sparkles, X } from "lucide-react";
+import { ChevronRight, Copy, ImagePlus, Layers3, Loader2, Sparkles, X } from "lucide-react";
 import { getAssetAccessUrl, useAssetAccessUrl, useAssets, useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
@@ -156,9 +159,8 @@ export function InspirationGalleryDb() {
   const [repositoryPage, setRepositoryPage] = useState(1);
   const [repositorySelected, setRepositorySelected] = useState<string[]>([]);
   const [imageCount, setImageCount] = useState(1);
-  const [imageCountOpen, setImageCountOpen] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<InspirationAspectRatio>("自动");
-  const [aspectOpen, setAspectOpen] = useState(false);
+  const [caseImportFailed, setCaseImportFailed] = useState(false);
   const [materializingCaseId, setMaterializingCaseId] = useState<string | null>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const composerMutationLock = useRef(false);
@@ -276,9 +278,9 @@ export function InspirationGalleryDb() {
     setInstruction(item.prompt);
     const caseRatio = jobAspectRatio(item.ratio);
     setAspectRatio(caseRatio === "follow-reference" ? "自动" : caseRatio);
-    setAspectOpen(false);
     setComposeError(undefined);
     setMaterializingCaseId(item.id);
+    setCaseImportFailed(false);
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     try {
       // The API is the source of truth for case asset roles. Results are
@@ -306,6 +308,7 @@ export function InspirationGalleryDb() {
     } catch (reason) {
       setActiveCase(null);
       setComposerAssets([]);
+      setCaseImportFailed(true);
       setComposeError(reason instanceof Error ? reason.message : "案例素材准备失败，请稍后重试。");
     } finally {
       setMaterializingCaseId(null);
@@ -638,19 +641,13 @@ export function InspirationGalleryDb() {
               </button>
             </div>}
           </ImageDropZone>
-          <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="万能出图，写什么就出什么，大白话，具体讲清楚要求" />
-          <div className={styles.commandBar}>
-            <button type="button" onClick={openRepository} disabled={composerDisabled}><Layers3 size={15} /> 个人仓库</button>
-            <div className={styles.aspectControl}>
-              <button type="button" className={styles.aspectTrigger} aria-label="选择生成图片比例" aria-expanded={aspectOpen} disabled={Boolean(materializingCaseId)} onClick={() => setAspectOpen((open) => !open)}>▣ 比例: {aspectRatio} <ChevronDown size={13} /></button>
-              {aspectOpen && <div className={styles.aspectMenu} role="menu"><strong>生成比例</strong><div className={styles.aspectGrid}>{ASPECT_OPTIONS.map((option) => <button type="button" role="menuitem" key={option.value} className={aspectRatio === option.value ? styles.aspectSelected : ""} onClick={() => { setAspectRatio(option.value); setAspectOpen(false); }}>{option.label}</button>)}</div></div>}
-            </div>
-            <div className={styles.countControl}>
-              <button type="button" className={styles.countButton} aria-label="选择生成张数" aria-expanded={imageCountOpen} onClick={() => setImageCountOpen((open) => !open)}>{imageCount} 张 <ChevronDown size={13} /></button>
-              {imageCountOpen && <div className={styles.countMenu} role="menu" aria-label="生成张数">{IMAGE_COUNT_OPTIONS.map((count) => <button type="button" role="menuitem" key={count} className={imageCount === count ? styles.countSelected : ""} onClick={() => { setImageCount(count); setImageCountOpen(false); }}>{count} 张</button>)}</div>}
-            </div>
-            <CreditCostHint jobType={activeCase?.workflow_type === "reference_remix" ? "reference_remix" : "creative_image"} taskPreset="inspiration" count={imageCount} fallback={<small>正在读取积分价格…</small>} />
-          <button className={styles.commandSubmit} aria-label={activeCase ? activeCase.button_label : "开始创作"} onClick={launchRemix} disabled={composerDisabled || !launchWorkflow.canSubmit || (activeCase ? activeCase.workflow_type === "legacy_unclassified" || activeCase.workflow_type === "local_edit" || composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || (activeCase.workflow_type === "reference_remix" && composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id)) : !instruction.trim())} style={{ opacity: materializingCaseId || generating || activeCase || instruction.trim() ? 1 : .42 }}>{materializingCaseId ? <Loader2 className="spin" size={17} /> : generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
+          <textarea value={instruction} onChange={(event) => { setInstruction(event.target.value); setCaseImportFailed(false); }} placeholder="请详细填写真实商品卖点、资料与希望呈现的画面，可粘贴商品介绍。" /><ProductFactsGuidance />
+          <div className={styles.composerControls}>
+            <button type="button" className={styles.repositoryButton} onClick={openRepository} disabled={composerDisabled}><Layers3 size={15} /> 素材库</button>
+            <div className={styles.composerSetting}><span>比例</span><ReplicaSelect label="选择生成图片比例" size="compact" value={aspectRatio} onChange={value => setAspectRatio(value as InspirationAspectRatio)} disabled={Boolean(materializingCaseId)} options={ASPECT_OPTIONS.map(option => [option.value,option.label] as const)} /></div>
+            <div className={styles.composerSetting}><span>数量</span><QuantityControl label="生成张数" compact value={imageCount} onChange={setImageCount} allowedValues={IMAGE_COUNT_OPTIONS} disabled={composerDisabled} /></div>
+            <CreditCostHint jobType={activeCase?.workflow_type === "reference_remix" ? "reference_remix" : "creative_image"} count={imageCount} variant="inspiration" fallback={<small>灵感创作 · 5 积分/张</small>} />
+          <button className={styles.commandSubmit} aria-label={activeCase ? activeCase.button_label : "开始创作"} onClick={launchRemix} disabled={composerDisabled || caseImportFailed || !launchWorkflow.canSubmit || (activeCase ? activeCase.workflow_type === "legacy_unclassified" || activeCase.workflow_type === "local_edit" || composerAssets.every((asset) => asset.role !== "user_upload" || !asset.asset_id) || (activeCase.workflow_type === "reference_remix" && composerAssets.every((asset) => asset.role !== "reference" || !asset.asset_id)) : !instruction.trim())} style={{ opacity: materializingCaseId || generating || activeCase || instruction.trim() ? 1 : .42 }}>{materializingCaseId ? <Loader2 className="spin" size={17} /> : generating ? <Loader2 className="spin" size={17} /> : <ChevronRight size={18} />}</button>
           </div>
           {activeCase && activeCase.workflow_type === "legacy_unclassified" && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例正在配置中，暂不支持一键使用。</p>}
           {activeCase && activeCase.workflow_type === "reference_remix" && !composerAssets.some((asset) => asset.role === "reference") && <p style={{ margin: "8px 0 0", color: "#b45309", fontSize: 12 }}>该案例需要商品图 + 参考图；可替换或补充参考图后生成。</p>}

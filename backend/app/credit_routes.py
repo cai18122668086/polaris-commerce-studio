@@ -11,6 +11,7 @@ from .errors import ApiError
 from .models import (
     CreditLedgerEntryRecord,
     CreditPurchaseRecord,
+    CreditReservationRecord,
     JobRecord,
     WorkspaceCreditAccountRecord,
 )
@@ -24,6 +25,7 @@ class CreditPricingRule(BaseModel):
     job_type: str
     task_type: str | None
     credits_per_image: int
+    variant: str | None = None
 
 
 class CreditAccountResponse(BaseModel):
@@ -58,6 +60,38 @@ class CreditQuoteResponse(BaseModel):
     estimated_credits: int
     available_credits: int
     sufficient: bool
+
+
+class CreditJobSettlementResponse(BaseModel):
+    status: str
+    reserved_credits: int
+    settled_credits: int | None
+    released_credits: int | None
+
+
+@router.get("/jobs/{job_id}", response_model=CreditJobSettlementResponse)
+def job_settlement(
+    job_id: str, workspace: WorkspaceDependency, session: SessionDependency
+) -> dict:
+    reservation = session.scalar(
+        select(CreditReservationRecord).where(
+            CreditReservationRecord.workspace_id == workspace.workspace_id,
+            CreditReservationRecord.job_id == job_id,
+        )
+    )
+    if reservation is None:
+        raise ApiError(404, "CREDIT_RESERVATION_NOT_FOUND", "该任务暂无积分预留记录。")
+    final = reservation.status in {"settled", "released"}
+    return {
+        "status": reservation.status,
+        "reserved_credits": reservation.reserved_credits,
+        "settled_credits": reservation.settled_credits if final else None,
+        "released_credits": max(
+            0, reservation.reserved_credits - reservation.settled_credits
+        )
+        if final
+        else None,
+    }
 
 
 def _account(session: Any, workspace_id: str) -> WorkspaceCreditAccountRecord:
@@ -157,21 +191,22 @@ def quote(
     from .routes_v1 import _new_job_from_payload, _validate_inspiration_case_job
     from .services import estimate_job
 
-    inspiration_case = _validate_inspiration_case_job(session, payload)
+    inspiration = _validate_inspiration_case_job(session, payload)
     job, _ = _new_job_from_payload(
         workspace.workspace_id,
         payload,
         detail_medium_price_micros=request.app.state.settings.xinghe_medium_price_micros,
         detail_high_price_micros=request.app.state.settings.xinghe_high_price_micros,
     )
-    if inspiration_case is not None:
-        job.configuration["inspiration_case_id"] = inspiration_case.id
-        _, _, job.estimated_credits = estimate_job(
-            JobType(job.type),
-            job.expected_item_count,
-            job.configuration,
-            workspace_id=workspace.workspace_id,
-        )
+    if inspiration is not None:
+        job.configuration["inspiration_case_id"] = inspiration.id
+        job.configuration["inspiration_workflow"] = inspiration.workflow_type
+    _, _, job.estimated_credits = estimate_job(
+        JobType(job.type),
+        job.expected_item_count,
+        job.configuration,
+        workspace_id=workspace.workspace_id,
+    )
     if credit_enforcement_enabled(workspace.workspace_id):
         from .credit_memberships import refresh
 

@@ -49,7 +49,6 @@ export const PRIMARY_NAVIGATION_LINKS = [
   { label: "跨境电商", href: "/create?market=international" },
   { label: "灵感专区", href: "/inspiration" },
   { label: "素材中心", href: "/assets" },
-  { label: "生成记录", href: "/jobs" },
 ] as const;
 
 export const MOBILE_PRIMARY_NAVIGATION_LINKS = [

@@ -67,6 +67,9 @@ class CreditAdjustmentRecord(TimestampMixin, Base):
 class SupportCaseRecord(TimestampMixin, Base):
     __tablename__ = "customer_support_cases"
     __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "request_key", name="uq_customer_support_request"
+        ),
         CheckConstraint(
             "status IN ('open','in_progress','resolved')", name="ck_support_case_status"
         ),
@@ -84,6 +87,11 @@ class SupportCaseRecord(TimestampMixin, Base):
     actor_user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
+    # Historical staff records remain private; customer requests retain their creator.
+    created_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    request_key: Mapped[str | None] = mapped_column(String(128))
 
 
 class ManualRefundRecord(TimestampMixin, Base):

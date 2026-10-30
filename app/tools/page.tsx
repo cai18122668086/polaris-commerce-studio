@@ -9,6 +9,8 @@ import { FEATURE_CATEGORY_LABELS, FEATURE_REGISTRY, type FeatureCategory } from 
 import { FEATURE_THUMBNAILS, PRIMARY_CREATION_ENTRIES } from "@/lib/creation-entrypoints";
 import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import styles from "./tools.module.css";
+import { FeatureCaseArt } from "@/components/feature-case-art";
+import { getFeatureCaseArt } from "@/lib/feature-case-art";
 
 const categories: FeatureCategory[] = ["commerce_pack", "quick_edit", "product_image"];
 const spotlightEntries = [PRIMARY_CREATION_ENTRIES[0], PRIMARY_CREATION_ENTRIES[2]];
@@ -35,7 +37,7 @@ export default function ToolsPage() {
       <section className={styles.spotlights} aria-label="推荐创作功能">
         {spotlightEntries.map((entry, index) => <Link key={entry.id} href={entry.href} className={styles.spotlight} data-tone={index === 0 ? "lilac" : "lime"}>
           <div><span>{index === 0 ? "有参考，做同款" : "讲清每一个卖点"}</span><h2>{entry.label}</h2><p>{entry.description}</p><b>立即体验 <ArrowUpRight size={16} /></b></div>
-          <img src={entry.image} alt={entry.label + "视觉参考"} width={1374} height={1145} />
+          {getFeatureCaseArt(entry.id) ? <span className={styles.spotlightArt}><FeatureCaseArt featureId={entry.id} /></span> : <img src={entry.image} alt={entry.label + "视觉参考"} width={1374} height={1145} />}
         </Link>)}
       </section>
       <div className={styles.quickLinks}>
@@ -52,7 +54,7 @@ export default function ToolsPage() {
             const workflow = presentWorkflow(resolveRuntimeCapability(runtime.data, feature.runtimeCapability));
             return <Link key={feature.id} href={feature.route} className={styles.toolCard} aria-disabled={!workflow.canSubmit || undefined} tabIndex={workflow.canSubmit ? undefined : -1} title={workflow.canSubmit ? undefined : workflow.message} onClick={event => { if (!workflow.canSubmit) event.preventDefault(); }}>
               <div className={styles.cardTitle}><h3>{feature.title}</h3>{entry && <span>推荐</span>}</div>
-              <div className={styles.cardImage}><img src={FEATURE_THUMBNAILS[feature.id]} alt={feature.title + "创作方向"} loading="lazy" decoding="async" width={480} height={400} /><span><ArrowUpRight size={20} /></span></div>
+              <div className={styles.cardImage}>{getFeatureCaseArt(feature.id) ? <div className={styles.caseArt}><FeatureCaseArt featureId={feature.id} portrait /></div> : <img src={FEATURE_THUMBNAILS[feature.id]} alt={feature.title + "创作方向"} loading="lazy" decoding="async" width={480} height={400} />}<span><ArrowUpRight size={20} /></span></div>
               <p>{feature.description}</p><div className={styles.cardFooter}><span>{workflow.canSubmit ? "立即制作" : runtime.isPending ? "检查服务状态…" : "当前不可用"}</span><ArrowRight size={14} /></div>
             </Link>;
           })}

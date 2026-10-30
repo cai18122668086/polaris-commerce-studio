@@ -10,9 +10,14 @@ from .domain import JobItemStatus, JobType
 from .errors import ApiError
 from .models import CreditReservationRecord, JobAssetRecord, JobItemRecord, JobRecord
 
-PRICING_VERSION = "image-credits-5-15-v2"
-SUPPORTED_PRICING_VERSIONS = {"image-credits-5-15-v1", PRICING_VERSION}
+PRICING_VERSION = "image-credits-5-8-15-v2"
+SUPPORTED_PRICING_VERSIONS = {
+    PRICING_VERSION,
+    "image-credits-5-15-v1",
+    "image-credits-5-15-v2",
+}
 SINGLE_IMAGE_CREDITS = 5
+FAST_IMAGE_CREDITS = 8
 PLANNED_IMAGE_CREDITS = 15
 PRICING_KEY = "customer_credit_pricing"
 
@@ -35,6 +40,31 @@ def image_unit_credits(
         return SINGLE_IMAGE_CREDITS
     if kind == JobType.DOMESTIC_DETAIL_REVIEW:
         return 0  # Review/export/reconciliation produces no new customer image.
+    # This provenance is written only after the published case is validated.
+    # A user-supplied field inside settings must never activate this tariff.
+    if config.get("inspiration_case_id") and config.get("inspiration_workflow"):
+        return SINGLE_IMAGE_CREDITS
+    if (
+        (
+            kind == JobType.DOMESTIC_MAIN_IMAGE
+            and settings.get("main_image_speed") == "native_fast"
+        )
+        or (kind == JobType.DETAIL_PACK and settings.get("detail_speed") == "fast")
+        or (
+            kind == JobType.AMAZON_VISUAL_SUITE
+            and settings.get("amazon_speed") == "fast"
+        )
+        or (
+            kind == JobType.REFERENCE_REMIX
+            and settings.get("reference_skill")
+            in {
+                "aurora-ecommerce-reference-remix-fast",
+                "all-category-style-benchmark-still-fast",
+                "aurora-remix-fast",
+            }
+        )
+    ):
+        return FAST_IMAGE_CREDITS
     if kind in {JobType.LOCAL_EDIT, JobType.MODEL_POSE_TRANSFER}:
         return SINGLE_IMAGE_CREDITS
     if kind == JobType.PRODUCT_IMAGE:
@@ -168,4 +198,28 @@ def pricing_catalog() -> list[dict[str, Any]]:
                     "credits_per_image": image_unit_credits(kind.value),
                 }
             )
+    # Version-specific rules accompany the legacy default rules so older
+    # clients remain compatible while new clients can quote the chosen mode.
+    for kind in (
+        JobType.DOMESTIC_MAIN_IMAGE,
+        JobType.DETAIL_PACK,
+        JobType.AMAZON_VISUAL_SUITE,
+        JobType.REFERENCE_REMIX,
+    ):
+        items.append(
+            {
+                "job_type": kind.value,
+                "task_type": None,
+                "credits_per_image": FAST_IMAGE_CREDITS,
+                "variant": "fast",
+            }
+        )
+    items.append(
+        {
+            "job_type": "inspiration",
+            "task_type": None,
+            "credits_per_image": SINGLE_IMAGE_CREDITS,
+            "variant": "inspiration",
+        }
+    )
     return items

@@ -8,6 +8,7 @@ import "./commerce-surfaces.css";
 import "./commerce-workspaces.css";
 import "./commerce-forms.css";
 import "./commerce-readability.css";
+import "./showcase-cases.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();

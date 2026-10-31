@@ -64,7 +64,7 @@ class ImageCapacity:
         finally:
             heartbeat.cancel()
             try:
-                with suppress(asyncio.CancelledError):
+                with suppress(asyncio.CancelledError, RedisError):
                     await heartbeat
             finally:
                 # Cleanup must not discard an image already returned upstream.

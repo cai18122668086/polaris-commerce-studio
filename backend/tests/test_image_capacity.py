@@ -119,3 +119,38 @@ def test_redis_release_failure_preserves_returned_image_and_expiring_lease(monke
         assert gate.client.ttl(gate.key) > 0
 
     asyncio.run(scenario())
+
+
+def test_renewal_outage_does_not_discard_completed_image(monkeypatch):
+    from redis.exceptions import ConnectionError
+
+    from app.image_capacity import RENEW
+
+    original_sleep = asyncio.sleep
+
+    async def fast_heartbeat(seconds):
+        await original_sleep(0.005 if seconds == 30 else seconds)
+
+    monkeypatch.setattr("app.image_capacity.asyncio.sleep", fast_heartbeat)
+
+    async def scenario():
+        gate = ImageCapacity("redis://localhost", 1, key="backup-account")
+        gate.client = fakeredis.FakeRedis()
+        original_eval = gate.client.eval
+        renewed = False
+
+        def fail_renew(script, *args):
+            nonlocal renewed
+            if script == RENEW:
+                renewed = True
+                raise ConnectionError("Synthetic renewal outage")
+            return original_eval(script, *args)
+
+        monkeypatch.setattr(gate.client, "eval", fail_renew)
+        async with gate.slot():
+            await original_sleep(0.03)
+            image = "completed upstream image"
+        assert renewed and image == "completed upstream image"
+        assert gate.client.zcard(gate.key) == 0
+
+    asyncio.run(scenario())

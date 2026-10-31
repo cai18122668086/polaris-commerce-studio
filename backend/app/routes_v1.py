@@ -2212,7 +2212,12 @@ def retry_job(
     replan_main_image = require_recoverable_plan(
         session, source, allow_replanning=payload.scope == RetryScope.FAILED
     )
-    _require_known_fast_replica_outcome(session, source)
+    from .replica_failure_recovery import bind_retry, request_authority
+
+    replica_authority = request_authority(request, source)
+    _require_known_fast_replica_outcome(
+        session, source, authorized_retry=replica_authority is not None
+    )
     enforce_active_job_limit(session, workspace.workspace_id)
     selected = retry_item_ids(session, source, payload.scope, payload.item_ids)
     if not selected:
@@ -2236,6 +2241,8 @@ def retry_job(
     session.flush()
     _copy_job_relations_for_retry(session, source, retried, selected)
     session.flush()
+    if replica_authority is not None:
+        bind_retry(session, source, retried, replica_authority)
     if manual_refined_revision:
         plan = session.scalar(
             select(JobPlanRecord)
@@ -4810,7 +4817,11 @@ def _add_items_and_inputs(
         )
 
 
-def _require_known_fast_replica_outcome(session: Session, source: JobRecord) -> None:
+def _require_known_fast_replica_outcome(
+    session: Session, source: JobRecord, *, authorized_retry: bool = False
+) -> None:
+    if authorized_retry:
+        return
     if (
         source.type != JobType.REFERENCE_REMIX.value
         or (source.configuration.get("settings") or {}).get("reference_skill") not in {

@@ -1,6 +1,7 @@
 """Streamed results survive failure; continuation pays only for missing images."""
 
 import asyncio
+from copy import deepcopy
 from io import BytesIO
 from uuid import uuid4
 
@@ -8,7 +9,12 @@ import pytest
 from PIL import Image
 from sqlalchemy import select
 
-from app.models import JobAssetRecord, UsageEventRecord, WorkspaceCreditAccountRecord
+from app.models import (
+    JobAssetRecord,
+    ReplicaDocumentRecord,
+    UsageEventRecord,
+    WorkspaceCreditAccountRecord,
+)
 from app.provider import ProviderOutcome
 from app.replica_exact_compact import CompactExactReplicaRun
 from app.task_runner import MockTaskRunner
@@ -126,6 +132,12 @@ def test_partial_delivery_retries_missing_images_without_rebilling(
     first_asset = next(
         a["asset_id"] for a in parent["assets"] if a["direction"] == "output"
     )
+    with client.app.state.session_factory() as db:
+        parent_snapshot = deepcopy(
+            db.get(ReplicaDocumentRecord, did).payload["native_executions"][jid][
+                "snapshot"
+            ]
+        )
     assert calls == ["M001", "M002"]
     response = client.post(
         route + f"/sessions/{did}/jobs/{jid}/retry", json={"request_id": uuid4().hex}
@@ -144,7 +156,7 @@ def test_partial_delivery_retries_missing_images_without_rebilling(
                 select(UsageEventRecord).where(UsageEventRecord.job_id == child_id)
             )
         ]
-    assert child["status"] == ("partial" if stop == "unknown" else "completed"), {
+    assert child["status"] == "completed", {
         "error": child.get("error_message"),
         "calls": calls,
         "native_errors": native_errors,
@@ -153,7 +165,7 @@ def test_partial_delivery_retries_missing_images_without_rebilling(
             for i in child["items"]
         ],
     }
-    assert child["cost"]["actual_credits"] == (0 if stop == "unknown" else 15)
+    assert child["cost"]["actual_credits"] == 15
     assert (
         next(
             a["asset_id"]
@@ -162,12 +174,15 @@ def test_partial_delivery_retries_missing_images_without_rebilling(
         )
         == first_asset
     )
-    assert calls == (
-        ["M001", "M002"] if stop == "unknown" else ["M001", "M002", failed_key]
-    )
+    assert calls == (["M001", "M002", failed_key])
     with client.app.state.session_factory() as db:
+        record = db.get(ReplicaDocumentRecord, did)
+        assert record.payload["native_executions"][jid]["snapshot"] == parent_snapshot
+        if stop == "unknown":
+            assert (
+                "recovery-authority.json"
+                in record.payload["native_executions"][child_id]["snapshot"]["files"]
+            )
         account = db.get(WorkspaceCreditAccountRecord, "ws_test")
-        assert account.balance_credits == original_balance - (
-            15 if stop == "unknown" else 30
-        )
+        assert account.balance_credits == original_balance - (30)
         assert account.reserved_credits == 0

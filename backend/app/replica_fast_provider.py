@@ -22,6 +22,7 @@ from .models import (
 from .new_detail_skill_provider import BundledSkillManifestValidator
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
 from .replica_exact_contracts import canonical_hash
+from .replica_failure_recovery import allows_unconfirmed_retry
 from .replica_fast import (
     SKILLS,
     VERSION,
@@ -193,7 +194,10 @@ class FastReplicaProvider:
                         409, "FAST_REPLICA_SCOPE_INVALID", "已有图片归属无效。"
                     )
                 return old
-            if old and (
+            authorized_retry = old.get("state") in {
+                "unknown", "invoked"
+            } and allows_unconfirmed_retry(job, old.get("job_id"))
+            if old and not authorized_retry and (
                 old.get("state") != "rejected" or old.get("job_id") == request.job_id
             ):
                 raise ApiError(
@@ -201,13 +205,20 @@ class FastReplicaProvider:
                     "PROVIDER_OUTCOME_UNKNOWN",
                     "原生图结果尚未核实，已停止重复提交。",
                 )
+            history = dict(row.payload.get("_fast_invocation_history", {}))
+            if old:
+                history[unit["id"]] = [*history.get(unit["id"], []), old]
             receipts[unit["id"]] = {
                 "state": "invoked",
                 "job_id": request.job_id,
                 "attempt_id": request.attempt_id,
                 "plan_hash": canonical_hash(plan),
             }
-            row.payload = {**row.payload, "_fast_invocations": receipts}
+            row.payload = {
+                **row.payload,
+                "_fast_invocations": receipts,
+                "_fast_invocation_history": history,
+            }
             row.updated_at = utc_now()
             session.commit()
             return {}
@@ -267,10 +278,12 @@ class FastReplicaProvider:
         result = await self._execute(request)
         # The shared router defaults to its mock delegate when identity is absent.
         # Carry this branch's identity so real artifacts are stored and linked.
+        calls = (result.raw_usage.get("metrics") or {}).get("provider_attempts") or []
+        actual_model = calls[-1].get("model") if calls else None
         return replace(
             result,
             provider_name=self.name,
-            model_name=self.model,
+            model_name=actual_model or self.model,
             pricing_version=self.pricing_version,
         )
 
@@ -377,12 +390,14 @@ class FastReplicaProvider:
                 )
             )
             usage = {
+                **(result.raw_usage or {}),
                 **(result.normalized_usage or {}),
                 "network_requests": 1,
                 "review_status": "NOT_REVIEWED",
                 "replica_speed": "fast",
                 "planning_rounds": 1,
                 "metrics": {
+                    **((result.raw_usage or {}).get("metrics") or {}),
                     "api_latency_seconds": result.api_latency_seconds,
                     "skill_id": plan["skill_id"],
                     "skill_content_hash": plan["skill_content_hash"],
@@ -404,6 +419,8 @@ class FastReplicaProvider:
                         "provider_request_id": result.provider_request_id,
                         "usage": usage,
                         "actual_cost_micros": result.actual_cost_micros,
+                        "error_code": result.error_code,
+                        "http_status": result.http_status,
                     },
                 )
                 return ProviderResult(

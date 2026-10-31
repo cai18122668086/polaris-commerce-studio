@@ -19,6 +19,7 @@ import re
 import secrets
 import time
 from collections.abc import Mapping, Sequence
+from contextlib import AsyncExitStack
 from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -31,6 +32,7 @@ from urllib.request import Request, urlopen
 
 from botocore.exceptions import ClientError
 from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -136,6 +138,7 @@ from .domestic_detail.review_provenance import (
     pair_review_contract,
     review_runtime_hash,
 )
+from .image_capacity import ImageCapacity
 from .masked_repair import (
     MaskedEditCallResult,
     MaskedEditGatewayRequest,
@@ -2280,6 +2283,7 @@ class TengliOpenAICompatibleGateway:
         image_failover_api_key: str | None = None,
         image_failover_base_url: str | None = None,
         image_failover_model: str | None = None,
+        image_failover_queue: ImageCapacity | None = None,
         rotation_order: str = "primary,failover",
         planner_streaming_enabled: bool = False,
         planner_recovery_enabled: bool = False,
@@ -2369,6 +2373,7 @@ class TengliOpenAICompatibleGateway:
                     image_model=self.image_model,
                 )
         self._image_failover_route: _ProviderRoute | None = None
+        self._image_failover_queue = image_failover_queue
         if image_failover_api_key:
             image_url = image_failover_base_url or base_url
             parsed_image = urlparse(image_url)
@@ -2980,27 +2985,23 @@ class TengliOpenAICompatibleGateway:
                 route_fields = list(fields)
                 route_fields[0] = ("model", route.image_model)
                 try:
-                    self.external_network_request_count += 1
                     transport = (
                         NativeUrllibOpenAITransport()
                         if (request.single_dispatch or request.preserve_provider_artifact)
                         and type(self.transport) is UrllibOpenAITransport
                         else self.transport
                     )
-                    status, response = await transport.post_multipart(
-                        url=urljoin(route.image_base_url, "v1/images/edits"),
-                        headers=self._headers(
-                            request.idempotency_key, route.image_api_key
-                        ),
+                    status, response = await self._post_image(
+                        route, transport, request.idempotency_key,
                         fields=route_fields,
                         files=files,
-                        timeout_seconds=self.timeout_seconds,
                     )
                 except XingheAgentError as error:
                     attempts.append({
                         "route": route.name, "host": urlparse(route.image_base_url).hostname,
                         "model": route.image_model, "http_status": None,
                         "request_id": None, "error": {"code": error.code},
+                        **({"request_dispatched": False} if error.code == "IMAGE_ROUTE_QUEUE_UNAVAILABLE" else {}),
                     })
                     raise
                 attempts.append({
@@ -3079,16 +3080,16 @@ class TengliOpenAICompatibleGateway:
                 http_status=status,
             )
         except XingheAgentError as exc:
-            unknown = request.single_dispatch or exc.code in {
+            unknown = exc.code != "IMAGE_ROUTE_QUEUE_UNAVAILABLE" and (request.single_dispatch or exc.code in {
                 "PROVIDER_TRANSPORT_FAILED",
                 "PROVIDER_RESPONSE_INVALID",
-            }
+            })
             return ImageCallResult(
                 outcome=(
                     ProviderOutcome.OUTCOME_UNKNOWN if unknown else ProviderOutcome.FAILED
                 ),
                 provider_request_id=None,
-                raw_usage={"network_requests": len(attempts), "metrics": {
+                raw_usage={"network_requests": sum(a.get("request_dispatched", True) for a in attempts), "metrics": {
                     "provider_error": {"code": exc.code}, "provider_attempts": attempts,
                 }},
                 normalized_usage=normalize_usage(None),
@@ -3102,6 +3103,27 @@ class TengliOpenAICompatibleGateway:
                 error_code=exc.code,
                 error_message=str(exc),
                 retryable=exc.retryable and not unknown,
+            )
+
+    async def _post_image(
+        self, route: _ProviderRoute, transport: OpenAICompatibleTransport,
+        idempotency_key: str, *, fields: Sequence[tuple[str, str]],
+        files: Sequence[tuple[str, str, str, bytes]],
+    ) -> tuple[int, Mapping[str, Any]]:
+        async with AsyncExitStack() as stack:
+            if route.name == "image-failover" and self._image_failover_queue:
+                try:
+                    await stack.enter_async_context(self._image_failover_queue.slot())
+                except RedisError:
+                    raise XingheAgentError(
+                        "IMAGE_ROUTE_QUEUE_UNAVAILABLE", "图片通道排队暂不可用，请稍后重试。",
+                        retryable=True,
+                    ) from None
+            self.external_network_request_count += 1
+            return await transport.post_multipart(
+                url=urljoin(route.image_base_url, "v1/images/edits"),
+                headers=self._headers(idempotency_key, route.image_api_key),
+                fields=fields, files=files, timeout_seconds=self.timeout_seconds,
             )
 
     async def edit_masked(
@@ -3174,15 +3196,10 @@ class TengliOpenAICompatibleGateway:
                 route_fields = list(fields)
                 route_fields[0] = ("model", route.image_model)
                 try:
-                    self.external_network_request_count += 1
-                    status, response = await self.transport.post_multipart(
-                        url=urljoin(route.image_base_url, "v1/images/edits"),
-                        headers=self._headers(
-                            request.idempotency_key, route.image_api_key
-                        ),
+                    status, response = await self._post_image(
+                        route, self.transport, request.idempotency_key,
                         fields=route_fields,
                         files=files,
-                        timeout_seconds=self.timeout_seconds,
                     )
                 except XingheAgentError:
                     raise
@@ -3589,6 +3606,16 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         ),
         image_failover_base_url=settings.tengli_base_url,
         image_failover_model=settings.tengli_image_model,
+        image_failover_queue=(
+            ImageCapacity(
+                settings.celery_broker_url, settings.replica_image_failover_concurrency,
+                key="polaris:image-capacity:backup:"+hashlib.sha256(
+                    (settings.tengli_base_url.rstrip('/')+'\0'+settings.tengli_api_key.get_secret_value()).encode()
+                ).hexdigest(),
+            )
+            if settings.replica_image_failover_enabled and settings.task_runner == "tengli"
+            else None
+        ),
         rotation_order=settings.provider_rotation_order,
         planner_streaming_enabled=settings.planner_streaming_enabled,
         planner_recovery_enabled=settings.planner_recovery_enabled,

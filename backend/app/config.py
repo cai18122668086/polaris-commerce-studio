@@ -195,6 +195,7 @@ class Settings(BaseSettings):
     provider_rotation_order: str = "primary,failover"
     # Opt in only on the isolated one-click replica API/worker.
     replica_image_failover_enabled: bool = False
+    replica_image_failover_concurrency: int = Field(default=4, ge=1, le=20)
     tengli_smoke_budget_usd: float = Field(
         default=200,
         gt=0,

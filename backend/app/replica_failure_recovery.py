@@ -86,15 +86,20 @@ def bind_retry(
             "REPLICA_AUTOMATIC_RETRY_USED",
             "本套图片已自动补试一次，可手动重试未完成图片。",
         )
+    prior_route = (source.configuration.get("_replica_retry") or {}).get("image_route")
+    route = (
+        prior_route
+        if source.error_code == "IMAGE_RATE_LIMITED" and prior_route
+        else "primary"
+        if prior_route == "image-failover"
+        else "image-failover"
+    )
     grant = {
         **authority,
         "root_job_id": root,
         "plan_hash": values.get("plan_hash"),
         "issued_at": utc_now().isoformat(),
-        "image_route": "primary"
-        if (source.configuration.get("_replica_retry") or {}).get("image_route")
-        == "image-failover"
-        else "image-failover",
+        "image_route": route,
     }
     child.configuration = {**child.configuration, "_replica_retry": grant}
     jobs[jobs.index(source.id)] = child.id

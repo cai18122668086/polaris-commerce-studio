@@ -193,3 +193,47 @@ def test_retry_reservation_failure_preserves_parent_session_and_no_partial_child
             ).all()
             == []
         )
+
+
+def test_known_backup_rate_limit_manual_retry_keeps_same_route_and_reuses_output(
+    client,
+):
+    doc, runner, gateway, seen = setup(client)
+    original = gateway.edit
+    rejected = False
+
+    async def rate_limited(request):
+        nonlocal rejected
+        result = await original(request)
+        if request.image_route == "image-failover" and not rejected:
+            rejected = True
+            return replace(
+                result,
+                outcome=ProviderOutcome.FAILED,
+                artifact=None,
+                error_code="IMAGE_RATE_LIMITED",
+                http_status=429,
+            )
+        return result
+
+    gateway.edit = rate_limited
+    parent = doc["payload"]["job_ids"][0]
+    asyncio.run(runner.run(parent))
+    child = client.get(ROUTE + "/documents/" + doc["id"]).json()["payload"]["job_ids"][
+        0
+    ]
+    assert asyncio.run(runner.run(child)) == "partial"
+    response = client.post(
+        ROUTE + f"/sessions/{doc['id']}/jobs/{child}/retry",
+        json={"request_id": uuid4().hex},
+    )
+    assert response.status_code == 202, response.text
+    final = response.json()["payload"]["job_ids"][0]
+    with runner.session_factory() as db:
+        assert (
+            db.get(JobRecord, final).configuration["_replica_retry"]["image_route"]
+            == "image-failover"
+        )
+    assert asyncio.run(runner.run(final)) == "completed"
+    assert seen.count(("F001", "image-failover")) == 2
+    assert sum(k == "F002" for k, _ in seen) == 1

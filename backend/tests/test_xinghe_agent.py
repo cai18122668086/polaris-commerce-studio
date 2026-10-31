@@ -3341,3 +3341,39 @@ def test_authorized_new_retry_pins_backup_once_and_keeps_canvas_and_quality(size
     assert fields["prompt"] == "Frozen original prompt"
     assert (result.artifact.width, result.artifact.height) == tuple(map(int, size.split("x")))
     assert result.artifact.locally_resampled is False
+
+
+def test_backup_queue_outage_never_posts_and_does_not_block_primary(monkeypatch):
+    from dataclasses import replace
+
+    import fakeredis
+    from redis.exceptions import ConnectionError
+
+    from app.image_capacity import ImageCapacity
+
+    queue = ImageCapacity('redis://localhost', 4, key='backup-account')
+    queue.client = fakeredis.FakeRedis()
+    def unavailable(*args):
+        raise ConnectionError('Synthetic outage')
+    monkeypatch.setattr(queue.client, 'eval', unavailable)
+    transport = _RecordingTransport()
+    gateway = TengliOpenAICompatibleGateway(
+        api_key='primary-key', base_url='https://primary.example',
+        planner_model='planner', image_model='gpt-image-2.5-flare',
+        image_failover_api_key='backup-key', image_failover_base_url='https://backup.example',
+        image_failover_queue=queue, transport=transport,
+    )
+    request = ImageEditRequest(
+        workspace_id='ws', job_id='child', job_item_id='item', attempt_id='attempt',
+        page_number=1, group_key='replica', sources=(), prompt='Frozen original prompt',
+        quality='high', idempotency_key='child-image', size='1024x1024',
+        single_dispatch=True, preserve_provider_artifact=True, image_route='image-failover',
+    )
+    failed = asyncio.run(gateway.edit(request))
+    assert failed.outcome == ProviderOutcome.FAILED
+    assert failed.error_code == 'IMAGE_ROUTE_QUEUE_UNAVAILABLE'
+    assert failed.raw_usage['network_requests'] == gateway.external_network_request_count == 0
+    assert transport.multipart_calls == []
+    succeeded = asyncio.run(gateway.edit(replace(request, image_route='primary')))
+    assert succeeded.outcome == ProviderOutcome.SUCCEEDED
+    assert len(transport.multipart_calls) == gateway.external_network_request_count == 1

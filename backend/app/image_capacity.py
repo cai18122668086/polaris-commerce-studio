@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from redis import Redis
+from redis.exceptions import RedisError
 
 ACQUIRE = """
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
@@ -27,10 +28,12 @@ return 1
 
 
 class ImageCapacity:
-    def __init__(self, url: str, limit: int) -> None:
+    def __init__(
+        self, url: str, limit: int, *, key: str = "polaris:image-capacity:v1"
+    ) -> None:
         self.client = Redis.from_url(url, socket_connect_timeout=3, socket_timeout=3)
         self.limit = limit
-        self.key = "polaris:image-capacity:v1"
+        self.key = key
 
     @asynccontextmanager
     async def slot(self) -> AsyncIterator[None]:
@@ -61,10 +64,13 @@ class ImageCapacity:
         finally:
             heartbeat.cancel()
             try:
-                with suppress(asyncio.CancelledError):
+                with suppress(asyncio.CancelledError, RedisError):
                     await heartbeat
             finally:
-                await asyncio.to_thread(self.client.zrem, self.key, token)
+                # Cleanup must not discard an image already returned upstream.
+                # An unavailable Redis keeps the slot occupied until lease expiry.
+                with suppress(RedisError):
+                    await asyncio.to_thread(self.client.zrem, self.key, token)
 
 
 def limit_gateway(gateway: Any, url: str, limit: int) -> Any:

@@ -3404,7 +3404,10 @@ def build_fake_coordinator(
         ReferenceVisualReverseRemixProvider,
     )
     from .replica_fast_provider import FastReplicaProvider
-    from .replica_style_delivery import ReplicaDeliveryProvider
+    from .replica_recovery_provider import (
+        RecoverableReplicaProvider,
+        RecoveryImageGateway,
+    )
     from .xinghe_agent import (
         FakeXingheGateway,
         XingheGateway,
@@ -3682,14 +3685,16 @@ def build_fake_coordinator(
                     ),
                     manifest_validator=manifest_validator.validate,
                 ),
-                ReplicaDeliveryProvider(
+                RecoverableReplicaProvider(
                     session_factory,
                     gateway,
                     storage,
                     max_concurrency=xinghe_concurrency,
                 ),
                 suite_fast=FastReplicaProvider(
-                    session_factory, gateway, storage
+                    session_factory,
+                    RecoveryImageGateway(gateway, session_factory),
+                    storage,
                 ) if reference_remix_provider_enabled else UnavailableProvider(),
                 fast=AuroraRemixFastAdapter(
                     RemixFastProvider(

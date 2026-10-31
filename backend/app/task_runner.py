@@ -46,6 +46,8 @@ class MockTaskRunner:
         aurora_retry_backoff_max_seconds: float = 30,
         domestic_revision_settings: Settings | None = None,
     ) -> None:
+        self.recovery_settings = domestic_revision_settings
+        self.recovery_storage = storage
         self.coordinator: ExecutionCoordinator = build_fake_coordinator(
             session_factory,
             delay_seconds,
@@ -76,7 +78,16 @@ class MockTaskRunner:
         return self.coordinator.session_factory
 
     async def run(self, job_id: str) -> JobStatus | None:
-        return await self.coordinator.run(job_id)
+        result = await self.coordinator.run(job_id)
+        if self.recovery_settings is not None and result in {
+            JobStatus.PARTIAL, JobStatus.FAILED
+        }:
+            from .replica_failure_recovery import retry_once
+
+            await retry_once(
+                self, self.recovery_settings, self.recovery_storage, job_id
+            )
+        return result
 
     async def cancel(self, job_id: str) -> JobStatus | None:
         return self.coordinator.cancel(job_id)

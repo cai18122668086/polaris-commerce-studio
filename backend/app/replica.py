@@ -183,6 +183,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                 "_fast_plan",
                 "_fast_analysis_receipt",
                 "_fast_invocations",
+                "_fast_invocation_history",
             }
         },
         "created_at": row.created_at.isoformat(),
@@ -1719,6 +1720,7 @@ def retry_image(
     session: SessionDependency,
 ) -> dict:
     from .domain import RetryScope
+    from .replica_failure_recovery import VERSION as RECOVERY_VERSION
     from .routes_v1 import retry_job
     from .schemas_v1 import RetryRequest
 
@@ -1747,7 +1749,19 @@ def retry_image(
         )
         .limit(1)
     )
-    retried = retry_job(
+    request.state.replica_retry_authority = {
+        "version": RECOVERY_VERSION,
+        "document_id": document_id,
+        "source_job_id": job_id,
+        "workspace_id": workspace.workspace_id,
+        "request_id": payload.request_id,
+        "kind": (
+            "automatic"
+            if getattr(request.state, "replica_retry_kind", None) == "automatic"
+            else "manual"
+        ),
+    }
+    retry_job(
         job_id=job_id,
         payload=RetryRequest(
             # Fast suites have independent items. Reused successful screens must
@@ -1765,24 +1779,4 @@ def retry_image(
         idempotency_header="replica-retry-" + _hash([document_id, job_id]),
     )
     row = _get(session, workspace.workspace_id, document_id, "session")
-    jobs[jobs.index(job_id)] = retried.id
-    row.status = "generating"
-    row.payload = {
-        **{
-            key: value
-            for key, value in values.items()
-            if key
-            not in (
-                {"error", "error_code"}
-                if values.get("error_code") == "REPLICA_ANALYSIS_BUDGET_REACHED"
-                else {"execution_progress", "error", "error_code"}
-            )
-        },
-        "job_ids": list(jobs),
-        "retry_events": [
-            *attempts,
-            {"from": job_id, "to": retried.id, "request_id": payload.request_id},
-        ],
-    }
-    session.commit()
     return _wire(row)

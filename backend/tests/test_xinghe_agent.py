@@ -3313,3 +3313,31 @@ def test_replica_image_unknown_outcome_does_not_dispatch_to_backup() -> None:
     )))
     assert len(transport.multipart_calls) == 1
     assert result.outcome == ProviderOutcome.OUTCOME_UNKNOWN
+
+
+@pytest.mark.parametrize("size", ["1024x1536", "1536x1024", "1024x1366"])
+def test_authorized_new_retry_pins_backup_once_and_keeps_canvas_and_quality(size: str) -> None:
+    transport = _RecordingTransport()
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="primary-key", base_url="https://primary.example",
+        planner_model="planner", image_model="gpt-image-2.5-flare",
+        image_failover_api_key="backup-key", image_failover_base_url="https://backup.example",
+        image_failover_model="gpt-image-2", transport=transport,
+    )
+    result = asyncio.run(gateway.edit(ImageEditRequest(
+        workspace_id="ws", job_id="authorized-child", job_item_id="item", attempt_id="attempt",
+        page_number=1, group_key="replica", sources=(), prompt="Frozen original prompt",
+        quality="high", idempotency_key="new-authorized-child-image", size=size,
+        single_dispatch=True, preserve_provider_artifact=True, image_route="image-failover",
+    )))
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert len(transport.multipart_calls) == 1
+    call = transport.multipart_calls[0]
+    assert call["url"] == "https://backup.example/v1/images/edits"
+    assert call["headers"]["Authorization"] == "Bearer backup-key"
+    fields = dict(call["fields"])
+    assert fields["model"] == "gpt-image-2"
+    assert fields["quality"] == "high" and fields["size"] == size
+    assert fields["prompt"] == "Frozen original prompt"
+    assert (result.artifact.width, result.artifact.height) == tuple(map(int, size.split("x")))
+    assert result.artifact.locally_resampled is False

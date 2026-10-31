@@ -634,6 +634,7 @@ class ImageEditRequest:
     preserve_provider_artifact: bool = False
     single_dispatch: bool = False
     reconcile_only: bool = False
+    image_route: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2968,6 +2969,9 @@ class TengliOpenAICompatibleGateway:
         ]
         try:
             routes = self._image_routes()
+            if request.image_route:
+                preferred = tuple(route for route in routes if route.name == request.image_route)
+                routes = preferred or routes[:1]
             if request.single_dispatch:
                 routes = routes[:1]
             last_route_index = len(routes) - 1

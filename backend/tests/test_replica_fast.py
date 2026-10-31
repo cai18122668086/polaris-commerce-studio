@@ -264,7 +264,7 @@ def test_failed_screen_retry_does_not_replan_or_regenerate_successes(client):
     assert [r.group_key for r in gateway.images] == ["F001", "F002", "F002"]
 
 
-def test_unknown_image_outcome_blocks_resubmission(client):
+def test_unknown_outcome_needs_an_explicit_scoped_retry(client):
     gateway = Gateway(proposal(), failure="unknown")
     doc = create(client, gateway)
     job_id = confirm(client, doc)
@@ -273,8 +273,13 @@ def test_unknown_image_outcome_blocks_resubmission(client):
         ROUTE + f"/sessions/{doc['id']}/jobs/{job_id}/retry",
         json={"request_id": str(uuid4())},
     )
-    assert response.status_code == 409, response.text
+    assert response.status_code == 202, response.text
     assert len(gateway.images) == 1
+
+    child_id = response.json()["payload"]["job_ids"][0]
+    gateway.failure = None
+    assert execute(client, gateway, child_id) == "completed"
+    assert len(gateway.images) == 2
 
 
 def test_real_router_selects_fast_provider_without_extra_planning(client):

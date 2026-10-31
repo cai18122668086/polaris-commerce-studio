@@ -12,7 +12,14 @@ from fastapi import BackgroundTasks, Request
 from sqlalchemy import select
 
 from .errors import ApiError
-from .models import JobItemRecord, JobRecord, ReplicaDocumentRecord, UserRecord, utc_now
+from .models import (
+    JobAttemptRecord,
+    JobItemRecord,
+    JobRecord,
+    ReplicaDocumentRecord,
+    UserRecord,
+    utc_now,
+)
 from .replica_exact_contracts import canonical_hash
 
 VERSION = "replica-failure-recovery-v1"
@@ -59,9 +66,8 @@ def bind_retry(
             409, "REPLICA_RETRY_SCOPE_INVALID", "未找到当前工作区的复刻记录。"
         )
     values = dict(row.payload)
-    if (source.configuration.get("settings") or {}).get(
-        "replica_plan_hash"
-    ) != values.get("plan_hash"):
+    bound_hash = (source.configuration.get("settings") or {}).get("replica_plan_hash")
+    if bound_hash is not None and bound_hash != values.get("plan_hash"):
         raise ApiError(
             409, "REPLICA_RETRY_SCOPE_INVALID", "原方案已变化，请刷新复刻记录。"
         )
@@ -93,19 +99,11 @@ def bind_retry(
     child.configuration = {**child.configuration, "_replica_retry": grant}
     jobs[jobs.index(source.id)] = child.id
     row.status = "generating"
+    cleared = {"error", "error_code", "recovery_error", "recovery_error_code"}
+    if values.get("error_code") != "REPLICA_ANALYSIS_BUDGET_REACHED":
+        cleared.add("execution_progress")
     row.payload = {
-        **{
-            k: v
-            for k, v in values.items()
-            if k
-            not in {
-                "execution_progress",
-                "error",
-                "error_code",
-                "recovery_error",
-                "recovery_error_code",
-            }
-        },
+        **{k: v for k, v in values.items() if k not in cleared},
         "job_ids": jobs,
         "retry_events": [
             *events,
@@ -237,7 +235,25 @@ async def retry_once(
                 for i in missing
             ):
                 return None
-            if not any(i.error_code in TRANSIENT for i in missing):
+            transient = any(i.error_code in TRANSIENT for i in missing)
+            if not transient and all(
+                i.error_code == "REPLICA_NATIVE_DELIVERY_BLOCKED" for i in missing
+            ):
+                # Streaming may mark the starter item successful before its
+                # aggregate attempt reports an uncertain later image request.
+                transient = (
+                    session.scalar(
+                        select(JobAttemptRecord.id)
+                        .where(
+                            JobAttemptRecord.job_id == job_id,
+                            JobAttemptRecord.status == "outcome_unknown",
+                            JobAttemptRecord.error_code.in_(UNKNOWN),
+                        )
+                        .limit(1)
+                    )
+                    is not None
+                )
+            if not transient:
                 return None
             submission = values.get("_automatic_submission") or {}
             user = session.get(UserRecord, submission.get("actor_user_id"))

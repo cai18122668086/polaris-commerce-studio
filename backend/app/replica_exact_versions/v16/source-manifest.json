@@ -1,0 +1,218 @@
+{
+  "source_repository": "cai18122668086/haiyu-huipin",
+  "source_commit": "3f595bffb98475181494d1bbe7813869bb2f4ca2",
+  "protocol_version": "exact-compact-v16",
+  "protocol_sha256": "63df401796fde30686b4485af519a2f5ee0f3a3577cfd2225dfc352d2cd2c59c",
+  "files": {
+    "replica_exact_compact.py": {
+      "source_path": "backend/app/replica_exact_compact.py",
+      "git_blob_sha": "52d9917d9eb885d29940acc6ba9366e9de6a4c35",
+      "sha256": "db1cf0ef85a0d7a71c9dc2785f99cc9dcc982950f99369ac3367f0ca62157132"
+    },
+    "replica_exact_contracts.py": {
+      "source_path": "backend/app/replica_exact_contracts.py",
+      "git_blob_sha": "a987909363e788e480930a557cc936577c08cd23",
+      "sha256": "77c794519161e3e5b1acb2dae9d77cf083129a57ced0324a1298825567dca5c4"
+    },
+    "replica_exact_adaptation.py": {
+      "source_path": "backend/app/replica_exact_adaptation.py",
+      "git_blob_sha": "6fa83913efcbfa03704238969f5e15ec070ab868",
+      "sha256": "4bd4c3212a61a02586a14d6da5fc75c4a687b4be396b7ecd9307463e6815b68b"
+    },
+    "replica_exact_revision.py": {
+      "source_path": "backend/app/replica_exact_revision.py",
+      "git_blob_sha": "5691db2d8f36759c822c98be26d51a34713de341",
+      "sha256": "68227a6f176386321dcf711b3cfe50d5f8ce23fb8fede811a9b37428f0ecc390"
+    },
+    "replica_execution_resume.py": {
+      "source_path": "backend/app/replica_execution_resume.py",
+      "git_blob_sha": "daa93cb8bc352fe0adb0aff376779cba680d2ade",
+      "sha256": "df67cb227411abba503ee62c62b98a39751e574172a1dc9f5119d7d509836aad"
+    },
+    "replica_direct_delivery.py": {
+      "source_path": "backend/app/replica_direct_delivery.py",
+      "git_blob_sha": "7284137481cbf0698e788e4eabe988ba4e8c32ab",
+      "sha256": "2b78bed6c81e78714d7e8db12a3d8b6e3e0f30a78e85095e2ddf865a88b5d5a0"
+    },
+    "replica_screen_boundaries.py": {
+      "source_path": "backend/app/replica_screen_boundaries.py",
+      "git_blob_sha": "876004e9c2411edc4e47aed3221b29773ab77515",
+      "sha256": "cee0caa72b6755fae7ab53d48f254dfbd5fc812d08862def7b774ff82005138b"
+    },
+    "replica_layout.py": {
+      "source_path": "backend/app/replica_layout.py",
+      "git_blob_sha": "943dfe996760d47dc033a8cb41e67158509fbf86",
+      "sha256": "7f52afe72deedc69c78de6bf1afb501be761c2827f93d796e8ebb26a8018d718"
+    },
+    "replica_native.py": {
+      "source_path": "backend/app/replica_native.py",
+      "git_blob_sha": "f6ab4980a7383a19d4f95bab0aac2c3c462914e8",
+      "sha256": "471453b3322ef8fe22f4f14d73471a1ab18b5a551cb51af004833d9c3217ebae"
+    },
+    "replica_native_provider.py": {
+      "source_path": "backend/app/replica_native_provider.py",
+      "git_blob_sha": "c8f04058c36e27f8a82cbef904920eed477260e8",
+      "sha256": "8c3dd7bd72a7c993c78577e2b077d40a8d68fb874d4c69ae56a52b49396a6833"
+    },
+    "replica_canvas.py": {
+      "source_path": "backend/app/replica_canvas.py",
+      "git_blob_sha": "4a7c90eacdce81eff79be1aa57e7911ba02a640f",
+      "sha256": "29ebb10163422d32685b4569c4a579b2c580c359dec043de849c63aa81197f60"
+    },
+    "replica_platform_delivery.py": {
+      "source_path": "backend/app/replica_platform_delivery.py",
+      "git_blob_sha": "b90c0a702650febf41419e01d8079d53ceffab77",
+      "sha256": "d18927fc5ecd4aff7fd0897c26dd00878f8d00d05ff6131c22896400a2c2dffb"
+    },
+    "replica_boundary_geometry.py": {
+      "source_path": "backend/app/replica_boundary_geometry.py",
+      "git_blob_sha": "486d40b085aab272037232bf2449a1c67d107c36",
+      "sha256": "e0b35ea03b836a562c05e61b02096e82a8580d995c139980c0e6c19c3e00423e"
+    },
+    "replica_crop_integrity.py": {
+      "source_path": "backend/app/replica_crop_integrity.py",
+      "git_blob_sha": "4eddae04d347e368ed85690bb1eb11f367225575",
+      "sha256": "1d29519bc742297469d09f381915b0256a4b8cc947561a03ea6a06a58a70dab0"
+    },
+    "replica_plan_scope.py": {
+      "source_path": "backend/app/replica_plan_scope.py",
+      "git_blob_sha": "ff0e3a673eda5307355bce01c83872dacf56179b",
+      "sha256": "4e47a44b250e75ebbd4f4d133d5ae048639d7f6390c564da3dcae35eb268c629"
+    },
+    "replica_completion.py": {
+      "source_path": "backend/app/replica_completion.py",
+      "git_blob_sha": "fd45abdee49470fe9aa54e7cb55063eaea6a7fea",
+      "sha256": "4895b5556ab3bc9d91738f1d835a18febc2ed96c96f029866e358f8f0077e4f2"
+    },
+    "replica_native_plan.py": {
+      "source_path": "backend/app/replica_native_plan.py",
+      "git_blob_sha": "e7686c6dfc92bb4ccbdb4ac034390823d324fa07",
+      "sha256": "043fda57564ebef3cf91cd4670a1b44133859f9ca4dacb925138ff6c8af8e0d4"
+    },
+    "replica_execution_context.py": {
+      "source_path": "backend/app/replica_execution_context.py",
+      "git_blob_sha": "1dc50ef70b9681449adc2b495f9fac8945e968f7",
+      "sha256": "1fb4b9bf5d02cf9831110be0dcaf1b49b5ba4033e977bdd72f045adc19e16112"
+    },
+    "replica_image_recovery.py": {
+      "source_path": "backend/app/replica_image_recovery.py",
+      "git_blob_sha": "0b9a271658ef28861e5d4c441063c6a670170c25",
+      "sha256": "860cd7f209cae5f58d16090c96891b50d08f5c4ee2c9a0f095a98146338aa287"
+    },
+    "replica_column_evidence.py": {
+      "source_path": "backend/app/replica_column_evidence.py",
+      "git_blob_sha": "67e9ecde9e2f8243316497a705dcef899b5af67f",
+      "sha256": "f9711bfd0241cd59b9a8991b126c63a912391814f8cbe6d0556969d7f47b84a5"
+    },
+    "replica.py": {
+      "source_path": "backend/app/replica.py",
+      "git_blob_sha": "26872e4c0ea54f85bfe0c4c64f466029d5b49062",
+      "sha256": "9f8da1fe69b857ac5c086fea7a444a9bcc76615d197c66562df7074b0992cb26"
+    },
+    "replica_analysis_recovery.py": {
+      "source_path": "backend/app/replica_analysis_recovery.py",
+      "git_blob_sha": "10e35b4382834da27d2b6767b33b9b0599bd1110",
+      "sha256": "a41fa793d0a4a150e486bafd0baebab0363f71014ff2e7fe10dfc930a47f81be"
+    },
+    "replica_analysis_attempt.py": {
+      "source_path": "backend/app/replica_analysis_attempt.py",
+      "git_blob_sha": "6eb27f3336da57955ccc01cb4ccfe46b35edca82",
+      "sha256": "f933f36daba552a877cdbd1d53489483a48647ef1c2ad08154542e214e064aa2"
+    },
+    "replica_style_delivery.py": {
+      "source_path": "backend/app/replica_style_delivery.py",
+      "git_blob_sha": "30be39ae56fe76fc5db6c485968e3d44c61a93b8",
+      "sha256": "948fada459f03ad00844d6d77be636f9e188d01f6ef610bf544715e561fd92c7"
+    },
+    "replica_format_feedback.py": {
+      "source_path": "backend/app/replica_format_feedback.py",
+      "git_blob_sha": "a3eb09c7fef11932860e08c26503f8625663f477",
+      "sha256": "56a1e59610eb63ed3e9f1c7ff0eda13f3555699b60d6d20887d30753f17c242c"
+    },
+    "replica_failure.py": {
+      "source_path": "backend/app/replica_failure.py",
+      "git_blob_sha": "913b8fd7163aa6b5e52afdca89e729df30b83b3b",
+      "sha256": "775225a457ea51c9a158aad636e7f4e30aee2f18f618e55b7f4669d1217b7a35"
+    },
+    "replica_preserved_outputs.py": {
+      "source_path": "backend/app/replica_preserved_outputs.py",
+      "git_blob_sha": "0ed1dfc171dca90abf207c8a6b32fba2bab63abf",
+      "sha256": "6d0a4d09d0af6f60a57f6263101a17c4cf2156ebffff4fe529662eceb23cd453"
+    },
+    "replica_exact_prompts/common.md": {
+      "source_path": "backend/app/replica_exact_prompts/common.md",
+      "git_blob_sha": "5ddc03fbabb5e7d8312a42dbe6a0738a51d4d8ba",
+      "sha256": "b5cbbd998c78eaf9be22d61fc23643f2c3dcb7b3baa56b7c0d2dcf5b0f936988"
+    },
+    "replica_exact_prompts/crop_integrity.md": {
+      "source_path": "backend/app/replica_exact_prompts/crop_integrity.md",
+      "git_blob_sha": "abe70543f2e02945df5321fb78051c3ca61cd0b0",
+      "sha256": "c7a1c74483d38ec26ba483667f4bda885f0d4a9c65319cde92eb3da1f8408427"
+    },
+    "replica_exact_prompts/facts.md": {
+      "source_path": "backend/app/replica_exact_prompts/facts.md",
+      "git_blob_sha": "2300838bd29b25565692346d1bac8174c02f50d8",
+      "sha256": "ae7233f0e521fe93e36221a383aa75668f852ff8bb2c57352a47b22771e3713e"
+    },
+    "replica_exact_prompts/generation.md": {
+      "source_path": "backend/app/replica_exact_prompts/generation.md",
+      "git_blob_sha": "31ad46ee6859afa3588b601237dec46b1e374d8a",
+      "sha256": "ca71d1dabaee85c584354f7a4d7746f9d985ae100baa1590d31cda43a8728cb8"
+    },
+    "replica_exact_prompts/intake.md": {
+      "source_path": "backend/app/replica_exact_prompts/intake.md",
+      "git_blob_sha": "1fb8a4567861431d2e699c9a95f8f2a6742e05f0",
+      "sha256": "2d78bef4ddd573d471e37bab37ba594a62ab05837d049cafc7c8e28d0b0d36d4"
+    },
+    "replica_exact_prompts/layout.md": {
+      "source_path": "backend/app/replica_exact_prompts/layout.md",
+      "git_blob_sha": "3caf8fb145243cdcacd3248648dbd14e75d8aa55",
+      "sha256": "d8af8f2a92beee0c741190e383a70a5d0f31272aa6a67132ec0a61e25a68865a"
+    },
+    "replica_exact_prompts/plan.md": {
+      "source_path": "backend/app/replica_exact_prompts/plan.md",
+      "git_blob_sha": "cf62cd7676f1e7f7d914de0cd9a5a306eabb3015",
+      "sha256": "77f9861c7ed504c637b4073f178a05033ca1275f8d9db9efdabe243edd51cd70"
+    },
+    "replica_exact_prompts/product.md": {
+      "source_path": "backend/app/replica_exact_prompts/product.md",
+      "git_blob_sha": "e050dbd5f7a9d8b4f81c115c16cd91132a0e58de",
+      "sha256": "95f63c0b501ce63873624145f1cb4e58e1d7a43cbd680bf27e1c53cb6b9de1ba"
+    },
+    "replica_exact_prompts/repair.md": {
+      "source_path": "backend/app/replica_exact_prompts/repair.md",
+      "git_blob_sha": "ea547feb546aee75601018d5f9e6ef8f392b79ea",
+      "sha256": "f6058b9b3ec9fff9de672dec2b06b3869df95d3f60c7d508191433dc56c2a19b"
+    },
+    "replica_exact_prompts/review_artwork.md": {
+      "source_path": "backend/app/replica_exact_prompts/review_artwork.md",
+      "git_blob_sha": "8e383520dfee79689f29117ab75f4998a2f29202",
+      "sha256": "50b71fb3dce8ca8723b1fa68dc720ba7ccb39dd0ea2eb11c287748e6c7efcd10"
+    },
+    "replica_exact_prompts/review_plan.md": {
+      "source_path": "backend/app/replica_exact_prompts/review_plan.md",
+      "git_blob_sha": "e74eca94fb7ba8ca1fd90d69ee2df8942161b1f4",
+      "sha256": "dcdd0e5e846f14f93f7a944692efb02994a271d5485f39c248266d7c322d3a05"
+    },
+    "replica_exact_prompts/screen_inventory.md": {
+      "source_path": "backend/app/replica_exact_prompts/screen_inventory.md",
+      "git_blob_sha": "bd05c219e16ff8fc360c09641731074ffd58fb34",
+      "sha256": "47e029d0b681d299cf75c1de130f7a7417ae912c41f56d4f602472a7043a42ce"
+    },
+    "replica_exact_prompts/screen_split.md": {
+      "source_path": "backend/app/replica_exact_prompts/screen_split.md",
+      "git_blob_sha": "99e8fe075c4d9ef17faa1d656abf6b1c7f3f4c27",
+      "sha256": "27c7ddef99afb33013519ee9aee58683d8d284d98ec3fbc0f17a783a337723cf"
+    },
+    "replica_exact_prompts/visual_policy.md": {
+      "source_path": "backend/app/replica_exact_prompts/visual_policy.md",
+      "git_blob_sha": "ad28dcbfb8e5d0fcdde5bf5686944b17b680f10d",
+      "sha256": "d1413957fc9fbb72bf08e56535fb64d52e379b8ed1a7bec47ac4544057b21566"
+    },
+    "replica_automatic_recovery.py": {
+      "source_path": "backend/app/replica_automatic_recovery.py",
+      "git_blob_sha": "1f276c565bb27f324ed3c8773ce7c99618e4394d",
+      "sha256": "29ff4e85c9ebce0149f5b955e05d1e0cf2ebcc0ecc728cb13d842883b97048e3"
+    }
+  }
+}

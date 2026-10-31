@@ -45,6 +45,11 @@ class RecoverableReplicaProvider(ReplicaDeliveryProvider):
 
         try:
             values, document_id, ordinal = self._load(request)
+            from .replica_refined import applies, delivery_provider
+
+            if applies(values):
+                provider = delivery_provider(self)
+                return await provider.execute(request)
             if replica_completion.available(values.get("native_snapshot", {})):
                 return await replica_completion.execute(
                     self, request, values, document_id, ordinal

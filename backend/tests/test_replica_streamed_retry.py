@@ -118,17 +118,22 @@ def test_partial_delivery_retries_missing_images_without_rebilling(
             "references": [{"asset_id": ids[1]}],
             "facts": "Supported synthetic product",
             "auto_start_after_plan": True,
-            **(
-                {"replica_mode_version": "replica-modes-v2"}
-                if stop == "unknown"
-                else {}
-            ),
         },
     )
     assert response.status_code == 202, response.text
     did = response.json()["id"]
     doc = client.get(route + "/documents/" + did).json()
     jid = doc["payload"]["job_ids"][0]
+    if stop == "unknown":
+        # Recreate a v2 UI suite pinned before the refined v16 rollout. Its
+        # saved v10 protocol and old unknown invocation must remain recoverable.
+        with client.app.state.session_factory() as db:
+            record = db.get(ReplicaDocumentRecord, did)
+            record.payload = {
+                **record.payload,
+                "replica_mode_version": "replica-modes-v2",
+            }
+            db.commit()
     dispatch_pending(client)
     parent = client.get("/api/v1/workspaces/ws_test/jobs/" + jid).json()
     assert parent["status"] == ("cancelled" if stop == "cancelled" else "partial"), (

@@ -156,6 +156,10 @@ def _hash(value: Any) -> str:
 
 
 def _wire(row: ReplicaDocumentRecord) -> dict:
+    from .replica_refined import analysis_module, applies
+
+    if applies(row.payload):
+        return analysis_module()._wire(row)
     value: dict[str, Any] = {
         "id": row.id,
         "kind": row.kind,
@@ -507,6 +511,12 @@ def get_document(
     session: SessionDependency,
 ) -> dict:
     row = _get(session, workspace.workspace_id, document_id)
+    from .replica_refined import analysis_module, applies
+
+    if applies(row.payload):
+        return analysis_module().get_document(
+            document_id, request, background_tasks, workspace, session
+        )
     if reconcile_document(session, row):
         session.commit()
     if (
@@ -874,6 +884,14 @@ async def _analysis_heartbeat(
 
 
 async def _analyse(app: Any, document_id: str, attempt_id: str) -> None:
+    from .replica_refined import analysis_module, applies
+
+    with app.state.session_factory() as session:
+        row = session.get(ReplicaDocumentRecord, document_id)
+        refined = row is not None and applies(row.payload)
+    if refined:
+        await analysis_module()._analyse(app, document_id, attempt_id)
+        return
     slots = getattr(app.state, "replica_analysis_slots", None)
     if slots is None:
         slots = app.state.replica_analysis_slots = asyncio.Semaphore(
@@ -901,6 +919,11 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
     with app.state.session_factory() as session:
         row = session.get(ReplicaDocumentRecord, document_id)
         workspace_id, payload = row.workspace_id, dict(row.payload)
+    from .replica_refined import analysis_module, applies
+
+    if applies(payload):
+        await analysis_module()._analyse_document(app, document_id, attempt_id)
+        return
     plans = list(payload.get("plans", []))
     run = None
     try:
@@ -1244,6 +1267,10 @@ def analyse(
         from .replica_exact_compact import VERSION
 
         values["_exact_model_protocol"] = VERSION
+        if payload.replica_mode_version == "replica-modes-v2":
+            from .replica_refined import VERSION as refined_version
+
+            values["_exact_model_protocol"] = refined_version
     if payload.auto_start_after_plan:
         values["_automatic_submission"] = {
             "version": "replica-submission-v1",
@@ -1279,6 +1306,12 @@ def retry_analysis(
     session: SessionDependency,
 ) -> dict:
     row = _get(session, workspace.workspace_id, document_id, "session")
+    from .replica_refined import analysis_module, applies
+
+    if applies(row.payload):
+        return analysis_module().retry_analysis(
+            document_id, request, background_tasks, workspace, session
+        )
     if row.status == "analysing":
         return _wire(row)
     if row.status != "failed" or row.payload.get("job_ids"):
@@ -1365,6 +1398,12 @@ def revise_analysis(
     from .replica_exact_compact import VERSION
 
     row = _get(session, workspace.workspace_id, document_id, "session")
+    from .replica_refined import analysis_module, applies
+
+    if applies(row.payload):
+        return analysis_module().revise_analysis(
+            document_id, request, background_tasks, workspace, session
+        )
     if row.status == "analysing" and (
         row.payload.get("_analysis_revision")
         or row.payload.get("_exact_plan_revision")
@@ -1719,8 +1758,11 @@ def retry_image(
     workspace: WorkspaceProcessingWriteDependency,
     session: SessionDependency,
 ) -> dict:
+    from sqlalchemy import true
+
     from .domain import RetryScope
     from .replica_failure_recovery import VERSION as RECOVERY_VERSION
+    from .replica_refined import applies as is_refined
     from .routes_v1 import retry_job
     from .schemas_v1 import RetryRequest
 
@@ -1745,7 +1787,13 @@ def retry_image(
             JobItemRecord.status.in_(["succeeded", "reused"]),
             AssetRecord.workspace_id == workspace.workspace_id,
             AssetRecord.origin_kind == "generated",
-            AssetRecord.asset_metadata["replica_incremental"].as_boolean().is_(True),
+            # The refined provider commits one screen per item. Its successful
+            # outputs do not need the legacy group-streaming metadata marker.
+            true()
+            if is_refined(values)
+            else AssetRecord.asset_metadata["replica_incremental"]
+            .as_boolean()
+            .is_(True),
         )
         .limit(1)
     )

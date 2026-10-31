@@ -42,7 +42,7 @@ norecursedirs = ["skill_sources"]
 [tool.ruff]
 target-version = "py313"
 line-length = 88
-extend-exclude = ["skill_sources"]
+extend-exclude = ["skill_sources", "app/replica_exact_versions/v16"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -77,9 +77,13 @@ module = [
 ]
 ignore_errors = true
 
-# Byte-frozen v8 is retained for existing checkpoint hashes.
+# Frozen historical protocols and the byte-pinned sister bundle retain source identity.
 [[tool.mypy.overrides]]
-module = ["app.replica_exact_versions.v8.*", "app.replica_exact_versions.v9.*"]
+module = [
+  "app.replica_exact_versions.v8.*",
+  "app.replica_exact_versions.v9.*",
+  "app.replica_exact_versions.v16.*",
+]
 ignore_errors = true
 
 [tool.setuptools.packages.find]
@@ -87,4 +91,9 @@ where = ["."]
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["skill_manifests/*.json", "processing_notice.json"]
+app = [
+  "skill_manifests/*.json",
+  "processing_notice.json",
+  "replica_exact_versions/v16/source-manifest.json",
+  "replica_exact_versions/v16/replica_exact_prompts/*.md",
+]

@@ -1,0 +1,2 @@
+*.py -text
+replica_exact_prompts/*.md -text

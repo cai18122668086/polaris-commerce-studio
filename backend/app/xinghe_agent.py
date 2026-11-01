@@ -2442,9 +2442,9 @@ class TengliOpenAICompatibleGateway:
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
         if self.planner_recovery_enabled:
-            from .planner_recovery import recover
+            from .planner_recovery import object_root_request, recover
 
-            return await recover(self, request)
+            return await recover(self, object_root_request(self, request))
         return await self._plan_single(request)
 
     async def _plan_single(self, request: PlannerRequest) -> PlannerCallResult:
@@ -10958,9 +10958,14 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
         return _planner_response_format(replace(request, planning_profile="aurora_identity"))
     if request.planning_profile == "replica_exact_compact":
         contract = json.loads(request.product_information[0])
+        transport_schema = deepcopy(contract["response_schema"])
+        # Relays reject allOf at the response root. Keep the full contract in
+        # the visual prompt and the native local validator, including crop
+        # PASS/REVISE conditions; adapt only this transport declaration.
+        transport_schema.pop("allOf", None)
         return {"type": "json_schema", "json_schema": {
             "name": "replica_exact_compact", "strict": False,
-            "schema": contract["response_schema"],
+            "schema": transport_schema,
         }}
     if request.planning_profile in {"aurora_remix_fast_prepare", "aurora_remix_fast_review"}:
         from .remix_fast_contract import response_format as remix_fast_response_format

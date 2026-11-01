@@ -186,6 +186,50 @@ def _replayed(value: Mapping[str, Any]) -> PlannerCallResult:
     )
 
 
+def object_root_request(
+    gateway: TengliOpenAICompatibleGateway, request: PlannerRequest
+) -> PlannerRequest:
+    """Preserve a legacy schema rejection while binding its corrected transport."""
+    if request.planning_profile != "replica_exact_compact":
+        return request
+    try:
+        contract = json.loads(request.product_information[0])
+        constrained_root = "allOf" in contract["response_schema"]
+    except (ValueError, TypeError, KeyError, IndexError):
+        return request
+    if not constrained_root:
+        return request
+    corrected = replace(
+        request,
+        idempotency_key=request.idempotency_key + ":object-root-transport-v1",
+    )
+    routes = [_route(gateway, route) for route in gateway._ordered_routes()][:4]
+    journal = Journal(gateway.planner_receipt_root, request, routes)
+    if journal.path is None or not journal.path.exists():
+        return corrected
+    try:
+        saved = journal.enter()
+        calls = journal.state.get("calls", [])
+        if (
+            saved is not None
+            and saved.get("http_status") == 400
+            and saved.get("error_code") == "PLANNER_REQUEST_FAILED"
+            and len(calls) == 1
+            and calls[0].get("state") == "returned"
+            and calls[0].get("result", {}).get("http_status") == 400
+            and result_digest(calls[0]["result"]) == result_digest(saved)
+        ):
+            # A stable new key admits this format correction once, without
+            # rewriting the old receipt or reopening unknown/successful calls.
+            return corrected
+    except (OSError, ValueError, TypeError, KeyError):
+        # The normal recovery path retains its lock/corruption/unknown guards.
+        return request
+    finally:
+        journal.close()
+    return request
+
+
 async def recover(
     gateway: TengliOpenAICompatibleGateway, request: PlannerRequest
 ) -> PlannerCallResult:

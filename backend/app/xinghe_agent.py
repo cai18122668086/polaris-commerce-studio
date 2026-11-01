@@ -2442,9 +2442,9 @@ class TengliOpenAICompatibleGateway:
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
         if self.planner_recovery_enabled:
-            from .planner_recovery import recover
+            from .planner_recovery import object_root_request, recover
 
-            return await recover(self, request)
+            return await recover(self, object_root_request(self, request))
         return await self._plan_single(request)
 
     async def _plan_single(self, request: PlannerRequest) -> PlannerCallResult:

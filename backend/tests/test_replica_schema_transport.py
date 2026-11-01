@@ -136,3 +136,135 @@ def test_transport_adaptation_does_not_mutate_full_or_nested_schema():
         "response_schema"
     ]
     assert wire["properties"]["evidence"]["allOf"] == [{"minLength": 30}]
+
+
+def test_existing_schema_rejection_resumes_once_and_preserves_original_receipt(
+    client, monkeypatch, tmp_path
+):
+    from app import planner_recovery, xinghe_agent
+
+    from .test_replica_fast import ROUTE
+
+    calls = routed_crop_review(monkeypatch, tmp_path)
+    compatible = xinghe_agent._planner_response_format
+    corrected_request = planner_recovery.object_root_request
+
+    def old_format(request):
+        if request.planning_profile == "replica_exact_compact":
+            return {"type": "json_schema", "json_schema": {
+                "name": "replica_exact_compact", "strict": False,
+                "schema": json.loads(request.product_information[0])["response_schema"],
+            }}
+        return compatible(request)
+
+    monkeypatch.setattr(xinghe_agent, "_planner_response_format", old_format)
+    monkeypatch.setattr(planner_recovery, "object_root_request", lambda _, req: req)
+    failed, _, _ = refined_suite(client)
+    assert failed["status"] == "failed" and len(calls) == 1
+    receipts = {p: p.read_bytes() for p in (tmp_path / "transport").rglob("*.json")}
+    assert len(receipts) == 1
+    assert all(
+        json.loads(raw)["result"]["http_status"] == 400 for raw in receipts.values()
+    )
+    monkeypatch.setattr(xinghe_agent, "_planner_response_format", compatible)
+    monkeypatch.setattr(planner_recovery, "object_root_request", corrected_request)
+    response = client.post(ROUTE + f"/sessions/{failed['id']}/retry")
+    assert response.status_code == 202, response.text
+    recovered = client.get(ROUTE + "/documents/" + failed["id"]).json()
+    assert recovered["status"] == "generating", recovered["payload"].get("error")
+    assert len(calls) == 2
+    assert all(p.read_bytes() == raw for p, raw in receipts.items())
+    assert len(list((tmp_path / "transport").rglob("*.json"))) == 2
+
+
+def constrained_request():
+    from dataclasses import replace
+
+    from .test_planner_stream_recovery import request
+
+    return replace(
+        request(),
+        planning_profile="replica_exact_compact",
+        product_information=(json.dumps({"response_schema": {
+            "type": "object", "properties": {"accepted": {"type": "boolean"}},
+            "allOf": [{"properties": {"accepted": {"const": True}}}],
+        }}),),
+    )
+
+
+@pytest.mark.parametrize("outcome", ["success", "http_502", "stream_unknown"])
+def test_schema_adaptation_reuses_success_and_never_reopens_unknown_calls(
+    tmp_path, outcome
+):
+    import asyncio
+
+    from app.planner_recovery import recover
+
+    from .test_planner_stream_recovery import Transport, adapter
+
+    transport = Transport(
+        statuses=(502,) if outcome == "http_502" else (200,),
+        cut_first=outcome == "stream_unknown",
+    )
+    gateway = adapter(transport, tmp_path, keys="")
+    gateway.planner_transient_retries = 0
+    request = constrained_request()
+    first = asyncio.run(recover(gateway, request))  # A pre-adaptation receipt.
+    receipts = {p: p.read_bytes() for p in tmp_path.rglob("*.json")}
+    replayed = asyncio.run(gateway.plan(request))
+    assert replayed.payload == first.payload
+    assert replayed.error_code == first.error_code
+    assert not replayed.external_request and len(transport.calls) == 1
+    assert all(p.read_bytes() == raw for p, raw in receipts.items())
+
+
+def test_rejected_corrected_format_is_replayed_without_another_paid_request(tmp_path):
+    import asyncio
+
+    from .test_planner_stream_recovery import Transport, adapter
+
+    transport = Transport(statuses=(400,))
+    gateway = adapter(transport, tmp_path, keys="")
+    request = constrained_request()
+    first = asyncio.run(gateway.plan(request))
+    replayed = asyncio.run(gateway.plan(request))
+    assert first.http_status == replayed.http_status == 400
+    assert len(transport.calls) == 1 and not replayed.external_request
+
+
+@pytest.mark.parametrize("state", ["unfinished", "locked", "corrupt"])
+def test_schema_correction_cannot_bypass_incomplete_or_invalid_receipts(
+    tmp_path, state
+):
+    import asyncio
+
+    from app.planner_recovery import Journal, _route, recover
+
+    from .test_planner_stream_recovery import Transport, adapter
+
+    transport = Transport(statuses=(400,))
+    gateway = adapter(transport, tmp_path, keys="")
+    request = constrained_request()
+    routes = [_route(gateway, route) for route in gateway._ordered_routes()]
+    journal = Journal(tmp_path, request, routes)
+    if state == "corrupt":
+        asyncio.run(recover(gateway, request))
+        value = json.loads(journal.path.read_bytes())
+        value["result"]["error_message"] = "Changed original receipt"
+        journal.path.write_text(json.dumps(value), encoding="utf-8")
+    else:
+        journal.enter()
+        journal.begin(routes[0], 1)
+        if state == "unfinished":
+            journal.close()
+    before = len(transport.calls)
+    try:
+        result = asyncio.run(gateway.plan(request))
+    finally:
+        journal.close()
+    expected = (
+        "PLANNER_RECOVERY_IN_PROGRESS" if state == "locked"
+        else "PLANNER_RECOVERY_RECEIPT_INVALID"
+    )
+    assert result.error_code == expected and not result.external_request
+    assert len(transport.calls) == before

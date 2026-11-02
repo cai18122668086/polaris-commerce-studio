@@ -5,6 +5,7 @@ import { SettingField, ChoiceControl } from "@/components/creation-settings";
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { WorkspaceVisualPreview } from "./workspace-visual-preview";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Check, ChevronRight, CircleHelp, Download, ImagePlus, LoaderCircle, Plus, RotateCcw, Sparkles, Upload, X } from "lucide-react";
@@ -24,6 +25,7 @@ import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 import { useAssetHandoff } from "@/features/assets/hooks/use-asset-handoff";
 import { AssetLibraryDialog } from "./asset-library-picker";
 import { ProductFactsGuidance } from "./product-facts-guidance";
+import { assetHandoffKey } from "@/lib/assets/creation-handoff";
 import styles from "./style-replica-workspace.module.css";
 
 type AssetChoice = { id: string; name: string };
@@ -74,6 +76,17 @@ function ResultCard({ workspaceId, jobId, sessionId, outputIndex = 0, title, onP
 }
 
 export function StyleReplicaWorkspace() {
+  const search = useSearchParams();
+  const { workspace } = useWorkspace();
+  const sessionId = search.get("sessionId")?.trim() || undefined;
+  const jobId = sessionId ? undefined : search.get("jobId")?.trim() || undefined;
+  // Task links can change without leaving this page. Isolate each selection so
+  // its requests, form values and previews cannot outlive the selected task.
+  return <ReplicaWorkspace key={JSON.stringify([workspace?.id, sessionId, jobId, assetHandoffKey(search)])} requestedSessionId={sessionId} requestedJobId={jobId} />;
+}
+
+function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSessionId?: string; requestedJobId?: string }) {
+  const router = useRouter();
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.id;
   const upload = useUploadAsset(workspaceId);
@@ -89,6 +102,7 @@ export function StyleReplicaWorkspace() {
   const [url, setUrl] = useState("");
   const [productDoc, setProductDoc] = useState<ReplicaDocument>();
   const [sessionDoc, setSessionDoc] = useState<ReplicaDocument>();
+  const requestedSession = Boolean(requestedSessionId || requestedJobId);
   const [selected, setSelected] = useState<string[]>([]);
   const [hiddenSources, setHiddenSources] = useState<string[]>([]);
   const [imageTab, setImageTab] = useState<"imageUrls" | "descImageUrls" | "skuImageUrls">("imageUrls");
@@ -111,7 +125,7 @@ export function StyleReplicaWorkspace() {
   useBodyScrollLock(Boolean(modal || preview));
   const [jobStatuses, setJobStatuses] = useState<Record<string, string>>({});
   const [hydratedWorkspace, setHydratedWorkspace] = useState("");
-  const handoff = useAssetHandoff(workspaceId, 6, sessionDoc?.id);
+  const handoff = useAssetHandoff(workspaceId, 6, requestedSessionId ?? requestedJobId ?? sessionDoc?.id);
   const handoffApplied = useRef("");
   useEffect(() => {
     if (!handoff.data || hydratedWorkspace !== workspaceId || handoffApplied.current === handoff.key) return;
@@ -121,11 +135,12 @@ export function StyleReplicaWorkspace() {
   const draftWorkspace = useRef("");
   const selectedReferenceCount = references.filter(item => selectedReferences.includes(item.id)).length;
   const status = sessionDoc?.status;
+  const currentSessionId = sessionDoc?.id;
   const historicalMode = !!sessionDoc && sessionDoc.payload.replica_mode_version !== REPLICA_MODE_VERSION;
   const modeChoices = historicalMode ? REPLICA_MODE_CHOICES.map(option => option.value === replicationMethod ? { ...option, description: "历史任务 · 按原方案继续", price: replicaSpeed === "fast" ? 8 : 15, recommended: false } : option) : REPLICA_MODE_CHOICES;
   const planFailure = sessionDoc ? replicaPlanFailure(sessionDoc) : undefined;
   const segmentationFailure = sessionDoc ? replicaSegmentationFailure(sessionDoc) : undefined;
-  const working = busy !== "" || ["analysing"].includes(status ?? "") || productDoc?.status === "fetching";
+  const working = busy !== "" || (requestedSession && !sessionDoc) || ["analysing"].includes(status ?? "") || productDoc?.status === "fetching";
   const product = productDoc?.payload.product;
   useEffect(() => {
     if (!workspaceId) return;
@@ -141,9 +156,18 @@ export function StyleReplicaWorkspace() {
   };
   const activeImageTab = sourceImages(imageTab).length ? imageTab : (["imageUrls", "descImageUrls", "skuImageUrls"] as const).find(key => sourceImages(key).length) ?? imageTab;
   const hideSource = (src: string) => { setHiddenSources(current => current.includes(src) ? current : [...current, src]); setSelected(current => current.filter(value => value !== src)); };
+  const clearSavedSession = (overrides: Record<string, unknown> = {}) => {
+    if (!workspaceId) return;
+    try {
+      const key = `polaris-replica:${workspaceId}`;
+      const saved = JSON.parse(localStorage.getItem(key) ?? "{}");
+      localStorage.setItem(key, JSON.stringify({ ...saved, ...overrides, sessionId: undefined }));
+    } catch { /* Navigation remains available when draft storage is blocked. */ }
+  };
   const selectReplicationMethod = (value: "exact" | "style") => {
     if (working || actionLock.current || value === replicationMethod) return;
-    window.history.replaceState(null, "", "/style-replica");
+    clearSavedSession({ replicationMethod: value, replicaSpeed: replicaSpeedFor(value) });
+    router.replace("/style-replica", { scroll: false });
     setReplicationMethod(value); setReplicaSpeed(replicaSpeedFor(value)); setAnalysisRequestId(crypto.randomUUID());
     setSessionDoc(undefined); setInstructions([]); setJobStatuses({}); setError("");
     retryIntents.current = {};
@@ -168,6 +192,8 @@ export function StyleReplicaWorkspace() {
   const pendingId = pendingDoc?.id;
   const pendingKind = pendingDoc?.kind;
 
+  useEffect(() => () => { draftGeneration.current += 1; }, []);
+
   useEffect(() => {
     if (!workspaceId || draftWorkspace.current === workspaceId) return;
     let active = true;
@@ -176,12 +202,18 @@ export function StyleReplicaWorkspace() {
       if (!active || generation !== draftGeneration.current) return;
       draftWorkspace.current = workspaceId;
       setSessionDoc(undefined); setProductDoc(undefined); setSelected([]); setInstructions([]); setJobStatuses({});
+      if (requestedSession) { setHydratedWorkspace(workspaceId); return; }
       try { const saved = JSON.parse(localStorage.getItem(`polaris-replica:${workspaceId}`) ?? "{}"); setProducts(saved.products ?? []); setReferences(saved.references ?? []); setAnalysisRequestId(saved.analysisRequestId ?? crypto.randomUUID()); setUrl(saved.url ?? ""); setSourcePlatform(saved.sourcePlatform ?? "auto"); setImageTab(saved.imageTab ?? "imageUrls"); if (saved.productDocId) void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${saved.productDocId}`).then(value => { if (active && generation === draftGeneration.current) { setProductDoc(value); setSelected(saved.selected ?? []); } }).catch(() => {}); setMode(saved.mode ?? "link"); setReplicationMethod(replicaDraftMethod(saved)); setReplicaSpeed(replicaSpeedFor(replicaDraftMethod(saved))); setFacts(saved.facts ?? ""); setPlatform(saved.platform ?? "auto"); setLanguage(saved.language ?? "zh-CN"); setMainRatio(saved.mainRatio ?? "1:1"); setDetailRatio(saved.detailRatio ?? "3:4"); setRatio(saved.ratio ?? "follow-reference"); setSelectedReferences(saved.selectedReferences ?? (saved.references ?? []).map((item: AssetChoice) => item.id)); if (saved.sessionId && !new URLSearchParams(window.location.search).has("sessionId") && !new URLSearchParams(window.location.search).has("jobId") && !new URLSearchParams(window.location.search).has("assetId")) void replicaRequest<ReplicaDocument>(workspaceId, `/documents/${saved.sessionId}`).then(value => { if (active && generation === draftGeneration.current) { setSessionDoc(value); setReplicationMethod(value.payload.replication_method ?? DEFAULT_REPLICA_METHOD); setReplicaSpeed(value.payload.replica_speed === "fast" ? "fast" : "standard"); } }).catch(() => {}); } catch { /* A stale draft must not block the workspace. */ }
       setHydratedWorkspace(workspaceId);
     });
     return () => { active = false; };
-  }, [workspaceId]);
-  useEffect(() => { if (workspaceId && hydratedWorkspace === workspaceId) localStorage.setItem(`polaris-replica:${workspaceId}`, JSON.stringify({ replicaModeVersion: REPLICA_MODE_VERSION, products, references, mode, replicationMethod, replicaSpeed, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDocId: productDoc?.id, sessionId: sessionDoc?.id })); }, [workspaceId, hydratedWorkspace, products, references, mode, replicationMethod, replicaSpeed, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDoc?.id, sessionDoc?.id]);
+  }, [workspaceId, requestedSession]);
+  useEffect(() => {
+    if (!workspaceId || hydratedWorkspace !== workspaceId || (requestedSession && !currentSessionId)) return;
+    try {
+      localStorage.setItem(`polaris-replica:${workspaceId}`, JSON.stringify({ replicaModeVersion: REPLICA_MODE_VERSION, products, references, mode, replicationMethod, replicaSpeed, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDocId: productDoc?.id, sessionId: currentSessionId }));
+    } catch { /* Browser storage is optional; the task URL still restores progress. */ }
+  }, [workspaceId, hydratedWorkspace, requestedSession, products, references, mode, replicationMethod, replicaSpeed, facts, platform, language, mainRatio, detailRatio, ratio, selectedReferences, analysisRequestId, url, sourcePlatform, imageTab, selected, productDoc?.id, currentSessionId]);
   useEffect(() => {
     if (!workspaceId || !pendingId) return;
     const generation = draftGeneration.current;
@@ -207,9 +239,7 @@ export function StyleReplicaWorkspace() {
     const controller = new AbortController();
     const load = () => {
       const generation = draftGeneration.current;
-      const params = new URLSearchParams(window.location.search);
-      const id = params.get("sessionId"), jobId = params.get("jobId");
-      const path = id ? `/documents/${encodeURIComponent(id)}` : jobId ? `/jobs/${encodeURIComponent(jobId)}/session` : null;
+      const path = requestedSessionId ? `/documents/${encodeURIComponent(requestedSessionId)}` : requestedJobId ? `/jobs/${encodeURIComponent(requestedJobId)}/session` : null;
       if (path) void replicaRequest<ReplicaDocument>(workspaceId, path, undefined, controller.signal)
         .then(item => { if (!controller.signal.aborted && generation === draftGeneration.current && item.kind === "session") {
           setSessionDoc(item); setReplicationMethod(item.payload.replication_method ?? "exact"); setReplicaSpeed(item.payload.replica_speed === "fast" ? "fast" : "standard"); setInstructions(item.payload.confirmed_instructions ?? []);
@@ -217,14 +247,13 @@ export function StyleReplicaWorkspace() {
           const ids = [...new Set((item.payload.references ?? []).map(value => value.asset_id))];
           setReferences(ids.map((assetId, index) => ({id: assetId, name: `参考图 ${index + 1}`}))); setSelectedReferences(ids);
           setMode("image"); setFacts(item.payload.facts ?? ""); setPlatform(item.payload.platform_code ?? "auto"); setLanguage(item.payload.language ?? "zh-CN"); setProductDoc(undefined); setSelected([]);
-        } })
+        } else if (!controller.signal.aborted && generation === draftGeneration.current) throw new Error("该记录不是复刻任务，请从任务中心重新选择。"); })
         .catch(caught => { if (!controller.signal.aborted && generation === draftGeneration.current) setError(caught.message); });
     };
-    load(); window.addEventListener("popstate", load);
-    return () => { controller.abort(); window.removeEventListener("popstate", load); };
-  }, [workspaceId, hydratedWorkspace]);
-  const currentSessionId = sessionDoc?.id;
-  useEffect(() => { if (currentSessionId) window.history.replaceState(null, "", `/style-replica?sessionId=${encodeURIComponent(currentSessionId)}`); }, [currentSessionId]);
+    load();
+    return () => controller.abort();
+  }, [workspaceId, hydratedWorkspace, requestedSessionId, requestedJobId]);
+  useEffect(() => { if (currentSessionId && currentSessionId !== requestedSessionId) router.replace(`/style-replica?sessionId=${encodeURIComponent(currentSessionId)}`, { scroll: false }); }, [currentSessionId, requestedSessionId, router]);
 
   const perform = async (label: string, action: (isCurrent: () => boolean) => Promise<void>) => {
     if (actionLock.current) return;
@@ -292,11 +321,13 @@ export function StyleReplicaWorkspace() {
   const editSources = () => {
     draftGeneration.current += 1; actionLock.current = false; uploadBatchLock.current = false;
     setBusy(""); setProductDoc(current => current?.status === "fetching" ? undefined : current);
-    window.history.replaceState(null, "", "/style-replica"); setAnalysisRequestId(crypto.randomUUID());
+    clearSavedSession();
+    router.replace("/style-replica", { scroll: false }); setAnalysisRequestId(crypto.randomUUID());
     setSessionDoc(undefined); setReplicaSpeed(replicaSpeedFor(replicationMethod)); setInstructions([]); setError(""); setJobStatuses({}); retryIntents.current = {};
   };
   const reset = () => {
     editSources();
+    clearSavedSession({ products: [], references: [], productDocId: undefined, selected: [], selectedReferences: [], facts: "", url: "" });
     setProducts([]); setReferences([]); setSelectedReferences([]); setSelected([]);
     setProductDoc(undefined); setFacts(""); setUrl(""); setHiddenSources([]);
     setPreview(""); setModal(null);
@@ -349,7 +380,7 @@ export function StyleReplicaWorkspace() {
         {handoff.error && <p className={styles.error} role="alert">{handoff.error instanceof Error ? handoff.error.message : "素材带入失败，请重新选择。"}</p>}{error && <p className={styles.error} role="alert">{error}</p>}
         <div className={styles.sidebarFooter}>
           <div className={styles.priceRow}><span>{replicationMethod === "style" ? "风格模仿" : "一比一复刻"}<small>{replicaSpeed === "fast" ? 8 : 15} 积分 / 张</small></span><button type="button" onClick={() => setModal("fees")} aria-label="查看计费与拆屏预算说明"><CircleHelp size={14} /></button></div>
-          <button className={styles.startButton} disabled={!!sessionDoc || working || !workspaceId || !products.length || (mode === "image" ? !selectedReferenceCount : !selected.length)} onClick={() => void analyse()}>{working ? <><LoaderCircle className="spin" size={16} />{busy || (status === "analysing" ? "正在诊断" : "正在拉取商品")}</> : <><Sparkles size={16} />生成商品套图{(mode === "image" ? selectedReferenceCount : selected.length) > 0 && <small>预计 {(mode === "image" ? selectedReferenceCount : selected.length) * (replicaSpeed === "fast" ? 8 : 15)} 积分</small>}</>}</button>
+          <button className={styles.startButton} disabled={!!sessionDoc || working || !workspaceId || !products.length || (mode === "image" ? !selectedReferenceCount : !selected.length)} onClick={() => void analyse()}>{working ? <><LoaderCircle className="spin" size={16} />{busy || (requestedSession && !sessionDoc ? "正在加载任务" : status === "analysing" ? "正在诊断" : "正在拉取商品")}</> : <><Sparkles size={16} />生成商品套图{(mode === "image" ? selectedReferenceCount : selected.length) > 0 && <small>预计 {(mode === "image" ? selectedReferenceCount : selected.length) * (replicaSpeed === "fast" ? 8 : 15)} 积分</small>}</>}</button>
           <p className={styles.footerNote}>按成功图片结算 · 拆屏超出预算先确认</p>
         </div>
       </aside>
@@ -365,7 +396,8 @@ export function StyleReplicaWorkspace() {
         {status === "awaiting_confirmation" && !sessionDoc?.payload.auto_start_after_plan && <div className={styles.planPanel}><div className={styles.planIntro}><div><span className={styles.eyebrow}>你的专属复刻方案</span><h2>灵感已就位，确认后开始绘制</h2><p>你的产品图决定真实外观。确认拆屏与方案后开始生成；补充要求请返回修改并重新诊断。</p></div><button className={styles.textButton} onClick={editSources}><RotateCcw size={14} />返回修改</button></div><div className={styles.plans}>{plans.map((plan, index) => <article className={styles.planCard} key={index}><div className={styles.planReference}>{workspaceId && <AssetImage workspaceId={workspaceId} assetId={plan.reference.asset_id} onClick={setPreview} />}</div><div><span className={styles.eyebrow}>方案 {String(index + 1).padStart(2, "0")}</span><h3>{plan.reference.title}</h3><p>{analysisText(plan.analysis.commercial_intent) || "保留参考构图、光影与色调，用你的商品重新演绎。"}</p><details><summary>查看画面方案</summary><p>{plan.prompt}</p></details>{!native && <textarea rows={2} disabled={sessionDoc?.payload.confirmed_instructions !== undefined} value={sessionDoc?.payload.confirmed_instructions?.[index] ?? instructions[index] ?? ""} maxLength={4000} onChange={event => setInstructions(current => plans.map((_, position) => position === index ? event.target.value : current[position] ?? ""))} placeholder="补充本张图的要求（选填）" aria-label={`方案${index + 1}补充要求`} />}</div></article>)}</div><div className={styles.confirmBar}><div><strong>共 {quotedImageCount} 张独立图片</strong><CreditCostHint jobType="reference_remix" count={quotedImageCount} variant={replicaSpeed === "fast" ? "fast" : undefined} /><small>生成结果自动进入个人素材库与生成记录</small></div><button disabled={!!busy} className={styles.startButton} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}确认方案并生成</button></div></div>}
         {status === "awaiting_confirmation" && sessionDoc?.payload.auto_start_after_plan && <div className={styles.emptyState}><LoaderCircle className={sessionDoc.payload.automatic_submission_error ? "" : "spin"} size={28} /><h2>{sessionDoc.payload.automatic_submission_error ? "生成任务暂未提交成功" : "正在准备生成套图"}</h2><p>{sessionDoc.payload.automatic_submission_error || "图片方案校验完成后，将自动开始绘制。"}</p>{sessionDoc.payload.automatic_submission_error && <button disabled={!!busy} onClick={() => void confirm()}>重试提交生成</button>}</div>}
         {jobs.length > 0 && workspaceId && <div className={styles.results}><div className={styles.planIntro}><div><span className={styles.eyebrow}>生成结果</span><h2>{sessionDoc?.payload.submission_complete === false ? `还有 ${plans.length - jobs.length} 张待生成` : complete ? (jobs.every(id => jobStatuses[id] === "completed") ? "你的商品图已完成" : executionResume ? "处理已中断，可继续剩余步骤" : "部分图片未完成，可重试") : "灵感正在成为新画面"}</h2><p>{sessionDoc?.payload.recovery?.kind === "automatic" && !complete ? "正在自动补试未完成图片，已生成的图片会保留。" : "重试只处理未完成图片，已成功的图片会保留且不重复计费。"}</p></div><div>{retryableJobId && <button disabled={!!busy} className={styles.retrySuiteButton} onClick={() => void retryImage(retryableJobId)}><RotateCcw size={14} />{busy === "重新生成" ? "正在提交重试" : "重试未完成图片"}</button>}{sessionDoc?.payload.submission_complete === false && <button disabled={!!busy} className={styles.textButton} onClick={() => void confirm()}>继续提交剩余图片</button>}<button className={styles.textButton} onClick={reset}><Plus size={14} />新建复刻</button></div></div><div className={styles.resultGrid}>{(native ? plans.map((_, index) => ({ id: jobs[0], index })) : jobs.map((id, index) => ({ id, index }))).map(({id, index}) => <ResultCard key={`${id}-${index}`} workspaceId={workspaceId} jobId={id} sessionId={sessionDoc!.id} outputIndex={native ? index : 0} fastSuite={sessionDoc?.payload.replica_speed === "fast"} resumeWhole={executionResume} moduleProgress={native ? executionProgress?.modules[index] : undefined} title={plans[index]?.reference.title ?? `商品图 ${index + 1}`} onPreview={setPreview} onStatus={reportStatus} onRetry={id => void retryImage(id)} retrying={busy === "重新生成"} />)}</div></div>}
-        {!sessionDoc && (mode === "link" ? !product : !references.length) && <div className={styles.emptyState}><WorkspaceVisualPreview method={replicationMethod} /><h2>好构图，换成你的好商品</h2><p>上传产品图，添加商品链接或风格参考图<br />选好参考后，生成你的商品套图</p><div className={styles.emptySteps}><span>01 上传产品</span><ChevronRight size={13} /><span>02 选择参考</span><ChevronRight size={13} /><span>03 查看成图</span></div></div>}
+        {requestedSession && !sessionDoc && !error && <div className={styles.emptyState} role="status"><LoaderCircle className="spin" size={32} /><p>正在读取复刻任务…</p></div>}
+        {!requestedSession && !sessionDoc && (mode === "link" ? !product : !references.length) && <div className={styles.emptyState}><WorkspaceVisualPreview method={replicationMethod} /><h2>好构图，换成你的好商品</h2><p>上传产品图，添加商品链接或风格参考图<br />选好参考后，生成你的商品套图</p><div className={styles.emptySteps}><span>01 上传产品</span><ChevronRight size={13} /><span>02 选择参考</span><ChevronRight size={13} /><span>03 查看成图</span></div></div>}
       </section>
     </div>
     {modal && <div className={styles.overlay} onClick={() => setModal(null)}><section className={styles.modal} role="dialog" aria-modal="true" aria-label={modal === "fees" ? "用量说明" : "使用教程"} onClick={event => event.stopPropagation()}><button className={styles.closeModal} onClick={() => setModal(null)} aria-label="关闭"><X size={20} /></button>{modal === "fees" ? <><h2>用量说明</h2><p>商品拉取通过第三方数据服务完成；同一商品当天再次查询会复用已有结果。</p><p>风格模仿约 5 分钟，每张 8 积分；一比一复刻约 40 分钟，每张 15 积分，按成功生成图片结算；提交时预留，失败或未执行部分释放。重试仅处理未完成图片，已成功图片不重复计费。</p><Link href="/jobs">前往任务中心 <ChevronRight size={14} /></Link></> : <><h2>把参考风格，变成你的商品图</h2><ol><li>上传自己的产品图，让外观、材质与品牌清晰可见。</li><li>粘贴商品链接选图，或直接上传风格参考图。</li><li>选择目标平台与语言，可补充自己的真实卖点。</li><li>提交素材后自动分析、规划与生成。</li><li>查看成图，结果保存在素材库和生成记录中。</li></ol><p>参考图用于学习构图、光影和排版。商品参数、认证与售后承诺请以自己的真实信息为准。</p></>}</section></div>}

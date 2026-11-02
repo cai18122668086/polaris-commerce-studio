@@ -8,7 +8,7 @@ import { ProductFactsGuidance } from "@/components/product-facts-guidance";
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 import Link from "next/link";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, ArrowRight, Check, CheckCircle2, CircleDollarSign, Clock3,
@@ -44,6 +44,7 @@ import { detailSpeedSettings, savedDetailSpeed, type DetailSpeed } from "@/lib/d
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
+import { useWorkspaceJobId } from "@/lib/jobs/use-workspace-job-id";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import {
   marketplaceGroups,
@@ -128,8 +129,6 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const { workspace } = useWorkspace();
   const uploadBatchLock = useRef(false);
   const [uploadingSources, setUploadingSources] = useState(false);
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const draftTool = initialRegion === "domestic" ? "detail-pack" : "crossborder-detail";
   const [draftPageCount, setPageCount] = useDraftState(workspace?.id, draftTool, "draftPageCount", 8);
   const [draftDetailSpeed, setDetailSpeed] = useDraftState<DetailSpeed>(workspace?.id, draftTool, "draftDetailSpeed", "standard");
@@ -147,11 +146,8 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const [campaignChoice, setCampaignChoice] = useState<{ workspaceId?: string; sourceId: string; selection: CampaignSelection }>();
   const [sourceOverrides, setSourceOverrides] = useDraftState<UploadedSource[] | undefined>(workspace?.id, draftTool, "sources", undefined);
   const [uploadError, setUploadError] = useState<string>();
-  // Prefer the task-center URL when present; the local value covers jobs
-  // created or retried from this form. Deriving this value also handles SPA
-  // navigation between task links without an effect-driven state update.
-  const [localJobId, setLocalJobId] = useState<string>();
-  const jobId = searchParams.get("jobId") ?? localJobId ?? "";
+  const [selectedJobId, setJobId] = useWorkspaceJobId(initialRegion === "domestic" ? "/workspace/detail-pack" : "/workspace/crossborder-detail");
+  const jobId = selectedJobId ?? "";
   const handoff = useAssetHandoff(workspace?.id, 8, jobId);
   const sources = useMemo(() => sourceOverrides ?? handoff.data?.sources ?? [], [sourceOverrides, handoff.data]);
   const setSources = (next: UploadedSource[] | ((current: UploadedSource[]) => UploadedSource[])) =>
@@ -307,8 +303,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
         reference_asset_ids: marketRegion === "domestic" ? sources.filter(source => source.role === "style_reference").map(source => source.asset.id) : [] },
       configuration,
     });
-    setLocalJobId(created.id);
-    router.replace(`${marketRegion === "domestic" ? "/workspace/detail-pack" : "/workspace/crossborder-detail"}?jobId=${encodeURIComponent(created.id)}`);
+    setJobId(created.id);
   };
 
   const retry = async () => {
@@ -318,8 +313,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
       allowedActions: job.data.allowed_actions,
       scope: "failed",
     });
-    setLocalJobId(retried.id);
-    router.replace(`${marketRegion === "domestic" ? "/workspace/detail-pack" : "/workspace/crossborder-detail"}?jobId=${encodeURIComponent(retried.id)}`);
+    setJobId(retried.id);
   };
 
   const step = jobId ? job.data?.status === "awaiting_confirmation" || job.data?.status === "planning" ? 3 : 4 : !productSources.length ? 0 : !productName.trim() ? 1 : 2;

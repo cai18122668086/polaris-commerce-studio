@@ -9,6 +9,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import test from "node:test";
+import { assertTaskNavigation } from "./browser/task-navigation.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const host = "127.0.0.1";
@@ -104,6 +105,22 @@ async function reservePort() {
   return port;
 }
 
+test("task links restore the selected workspace without stale task state", async () => {
+  const port = await reservePort();
+  const child = spawn(process.execPath, [path.join(root, "node_modules/vinext/dist/cli.js"), "start", "--hostname", host, "--port", String(port)], {
+    cwd: root, env: { ...process.env, NODE_ENV: "production" }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+  });
+  let output = "";
+  child.stdout.on("data", chunk => { output += chunk; });
+  child.stderr.on("data", chunk => { output += chunk; });
+  try {
+    await waitForServer(`http://${host}:${port}/`, child, () => output);
+    await assertBrowserAuthContract(`http://${host}:${port}`, true);
+  } finally {
+    await stopProcessTree(child);
+  }
+});
+
 async function waitForServer(url, child, output) {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
@@ -164,7 +181,7 @@ function assertNamedInteractiveControls(html, route) {
   }
 }
 
-async function assertBrowserAuthContract(origin) {
+async function assertBrowserAuthContract(origin, taskNavigation = false) {
   const executable = findBrowserExecutable();
   assert.ok(
     executable,
@@ -225,6 +242,7 @@ async function assertBrowserAuthContract(origin) {
     assert.match(await accessibleName(cdp, "link", "免费注册"), /免费注册/);
     await assertAccessibleInteractiveNames(cdp, "/auth/login");
     await assertMobileTaskEntry(cdp, origin);
+    if (taskNavigation) await assertTaskNavigation({ cdp, origin, navigate, evaluate, waitForValue });
   } finally {
     cdp?.close();
     await stopProcessTree(browserProcess);
@@ -361,7 +379,8 @@ async function waitForValue(cdp, expression) {
     if (await evaluate(cdp, expression)) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error(`Browser condition did not become true: ${expression}`);
+  const state = await evaluate(cdp, `({url:location.href, body:document.body.innerText.slice(0, 2200), errors:window.__navigationErrors})`);
+  throw new Error(`Browser condition did not become true: ${expression}\n${JSON.stringify(state)}\n${JSON.stringify(cdp.errors)}`);
 }
 
 async function evaluate(cdp, expression) {
@@ -382,8 +401,10 @@ class CdpClient {
     this.nextId = 0;
     this.pending = new Map();
     this.listeners = new Map();
+    this.errors = [];
     socket.addEventListener("message", (event) => {
       const message = JSON.parse(event.data);
+      if (this.errors.length < 10 && (message.method === "Runtime.exceptionThrown" || (message.method === "Runtime.consoleAPICalled" && message.params.type === "error"))) this.errors.push(message.params.exceptionDetails?.text ?? message.params.args?.map(arg => arg.description ?? arg.value));
       if (message.id) {
         const pending = this.pending.get(message.id);
         if (!pending) return;

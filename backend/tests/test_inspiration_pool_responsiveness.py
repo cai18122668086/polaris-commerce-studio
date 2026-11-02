@@ -13,6 +13,11 @@ from sqlalchemy.orm import sessionmaker
 from app import main
 from tests.test_inspiration_thumbnails import published_picture
 
+# This is a setup watchdog, not an endpoint latency requirement. Shared CI
+# runners can pause a metadata worker; keep room below the real cache's 10s
+# deadline while retaining the independent 1s authentication assertion below.
+BURST_START_TIMEOUT_SECONDS = 8
+
 
 @pytest.mark.parametrize("variant", ["original", "thumbnail"])
 @pytest.mark.parametrize("request_count", [8, 48])
@@ -63,7 +68,28 @@ def test_inspiration_image_burst_releases_database_while_images_wait(
                                 client.get(url, params={"variant": variant})
                             )
                         )
-                        await asyncio.wait_for(image_waiting.get(), timeout=3)
+                        arrival = asyncio.create_task(image_waiting.get())
+                        try:
+                            done, _ = await asyncio.wait(
+                                (arrival, tasks[-1]),
+                                timeout=BURST_START_TIMEOUT_SECONDS,
+                                return_when=asyncio.FIRST_COMPLETED,
+                            )
+                            if arrival not in done:
+                                result = "request still pending"
+                                if tasks[-1].done():
+                                    response = tasks[-1].result()
+                                    result = (
+                                        f"HTTP {response.status_code}: "
+                                        f"{response.text[:300]}"
+                                    )
+                                pytest.fail(
+                                    f"Image request {len(tasks)}/{request_count} "
+                                    f"({variant}) did not reach its I/O wait: {result}"
+                                )
+                        finally:
+                            arrival.cancel()
+                            await asyncio.gather(arrival, return_exceptions=True)
                         # Connections must be available even before the image
                         # request finishes, so later DB queries cannot starve.
                         assert engine.pool.checkedout() == 0

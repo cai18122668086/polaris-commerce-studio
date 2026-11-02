@@ -1,0 +1,37 @@
+.dialog { width:min(1180px,calc(100vw - 48px));max-width:none;max-height:calc(100dvh - 48px);padding:0;border:1px solid #e5dfed;border-radius:18px;background:#fff;color:#29272e;box-shadow:0 24px 100px #1c102c38;overflow:auto; }
+.dialog::backdrop { background:#1c142768;backdrop-filter:blur(4px); }
+.content { min-width:0; }
+.header { display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:22px 24px;border-bottom:1px solid #eeeaf3; }
+.header h2 { margin:0;font-size:20px;font-weight:600; }
+.header p { margin:7px 0 0;font-size:12px;line-height:1.6;color:#81788b;overflow-wrap:anywhere; }
+.close { display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;padding:0;border:0;border-radius:9px;background:#f5f2f8;color:#74677e;cursor:pointer; }
+.body { display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr);gap:24px;padding:24px;align-items:start; }
+.canvas { min-width:0;overflow:hidden;border:1px solid #e8e2ee;border-radius:12px;background:#faf8fc; }
+.editor { display:flex;min-height:360px; }
+.editor :global(.card-toolbar) { flex-wrap:wrap;gap:8px;padding:12px; }
+.editor :global(.card-toolbar > strong) { max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px; }
+.editor :global(.toolbar-group--right) { margin-left:auto; }
+.editor :global(.image-editor) { min-height:300px;padding:14px; }
+.editor :global(.canvas-status) { font-size:11px; }
+.controls { display:flex;flex-direction:column;gap:15px;min-width:0; }
+.controls h3 { margin:0;font-size:15px;font-weight:600; }
+.hint { margin:6px 0 0;color:#82778d;font-size:12px;line-height:1.8;overflow-wrap:anywhere; }
+.form { display:flex;flex-direction:column;min-width:0;margin:0;padding:0;border:0; }
+.form label { margin:16px 0 8px;color:#5a4e65;font-size:12px; }
+.form textarea { width:100%;min-height:126px;padding:12px;resize:vertical;border:1px solid #e4dcec;border-radius:9px;background:#faf8fc;color:#40334c;font:inherit;font-size:13px;line-height:1.8; }
+.form textarea:disabled { color:#82758e; }
+.examples { display:flex;flex-wrap:wrap;gap:7px; }
+.examples button,.footer button,.loadState button { min-height:32px;padding:6px 10px;border:1px solid #e6dfed;border-radius:7px;background:#fff;color:#665573;font:inherit;font-size:12px;cursor:pointer; }
+.examples button:disabled { opacity:.55;cursor:default; }
+.count { margin-top:5px;text-align:right;font-size:11px;color:#9b8fa6; }
+.cost { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:15px;border-top:1px solid #eee8f4;font-size:12px;color:#6a5d76; }
+.primary { display:flex;align-items:center;justify-content:center;gap:7px;min-height:43px;padding:11px 15px;border:0;border-radius:9px;background:#242424;color:#fff;font:inherit;font-size:13px;cursor:pointer; }
+.primary:hover:not(:disabled) { background:#d8ff00;color:#242424; }
+.primary:disabled { background:#eeebf2;color:#aaa1b2;cursor:default; }
+.error { margin:0;padding:11px 12px;border-radius:8px;background:#fff3ef;color:#a3422f;font-size:12px;line-height:1.8;overflow-wrap:anywhere; }
+.taskLink { display:inline-flex;align-items:center;gap:5px;align-self:flex-start;color:#715187;font-size:12px; }
+.footer { display:flex;align-items:center;justify-content:space-between;gap:20px;padding:15px 24px;border-top:1px solid #eeeaf3;color:#8c8096;font-size:12px;line-height:1.7; }
+.footer button { flex-shrink:0; }
+.loadState { display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;min-height:360px;padding:24px;color:#91839c;font-size:13px;text-align:center; }
+@media(max-width:760px){.dialog{width:calc(100vw - 20px);max-height:calc(100dvh - 20px);border-radius:13px}.header{padding:17px 16px}.body{grid-template-columns:minmax(0,1fr);padding:16px;gap:18px}.footer{padding:13px 16px;gap:12px}.editor{min-height:280px}.editor :global(.image-editor){min-height:230px;padding:10px}.editor :global(.card-toolbar > strong){display:none}}
+@media(pointer:coarse){.close,.examples button,.footer button{min-height:44px;min-width:44px}.form textarea{font-size:16px}}

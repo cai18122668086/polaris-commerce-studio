@@ -12,10 +12,15 @@ const labels = { open: "待处理", in_progress: "跟进中", resolved: "已解�
 
 export function SupportCases({ workspaceId }: { workspaceId: string }) {
   const search = useSearchParams();
+  const requestedJobId = search.get("jobId")?.trim() ?? "";
+  return <SupportCaseForm key={JSON.stringify([workspaceId, requestedJobId])} workspaceId={workspaceId} initialJobId={requestedJobId} />;
+}
+
+function SupportCaseForm({ workspaceId, initialJobId }: { workspaceId: string; initialJobId: string }) {
   const client = useQueryClient();
   const intent = useRef<string | null>(null);
   const [issue, setIssue] = useDraftState(workspaceId, "support", "issue", "");
-  const [jobId, setJobId] = useState(search.get("jobId") ?? "");
+  const [jobId, setJobId] = useState(initialJobId);
   const list = useQuery({ queryKey: ["support-cases", workspaceId], queryFn: async ({ signal }) => unwrapApiResponse(await apiClient.GET(
     "/api/v1/workspaces/{workspace_id}/support-cases", { params: { path: { workspace_id: workspaceId } }, signal },
   )), refetchInterval: 15000 });

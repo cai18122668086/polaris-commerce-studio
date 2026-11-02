@@ -150,8 +150,8 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
     onClick={event => { if (event.target === event.currentTarget) close(); }}>
     <div className={styles.content}>
       <header className={styles.header}>
-        <div><h2 id="local-edit-dialog-title">局部修改</h2><p id="local-edit-dialog-description">一句话改图 · {source.title}</p></div>
-        <button type="button" className={styles.close} onClick={close} disabled={busy} aria-label="关闭局部修改"><X size={20} /></button>
+        <div><h2 id="local-edit-dialog-title">修改这张图</h2><p id="local-edit-dialog-description">一句话改图 · {source.title}</p></div>
+        <button type="button" className={styles.close} onClick={close} disabled={busy} aria-label="关闭改图窗口"><X size={20} /></button>
       </header>
       <div className={styles.body}>
         <section className={styles.canvas} aria-label={result ? "修改前后对比" : "圈选要修改的位置"}>

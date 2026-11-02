@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
 import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Globe2, Grid2X2, ImagePlus, Layers3, Lightbulb, PackageCheck, ShoppingBag, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { commerceEntriesFor, commerceEntryHref } from "@/lib/commerce-entrypoints";
@@ -16,7 +16,7 @@ const visualCopy = {
 };
 
 export default function CreatePage() {
-  const search = useSearchParams();
+  const search = useNavigationSearchParams();
   const marketValue = search.get("market");
   const market = marketValue === "domestic" || marketValue === "international" ? marketValue : undefined;
   const goal = search.get("goal");

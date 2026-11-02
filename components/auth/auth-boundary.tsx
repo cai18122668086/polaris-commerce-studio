@@ -2,7 +2,8 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
 import { useCallback, useEffect, useState } from "react";
 import { isEmailVerified, sessionExists, signOut } from "@/features/auth/api/auth";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
@@ -22,7 +23,7 @@ type BoundaryResult = { state: "authenticated" } | { state: "error"; diagnostic:
 
 export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const search = useSearchParams();
+  const search = useNavigationSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [result, setResult] = useState<BoundaryResult>();

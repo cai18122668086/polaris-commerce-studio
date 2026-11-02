@@ -11,6 +11,7 @@ import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobCount, jobNote, jobTitle } from "@/lib/jobs/presentation";
 import { errorMessage } from "@/lib/api/request";
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
+import { TaskWorkspaceLink } from "@/components/task-workspace-link";
 
 export default function DashboardPage() {
   const { workspace, error: workspaceError } = useWorkspace();
@@ -43,7 +44,7 @@ export default function DashboardPage() {
                 <article key={job.id}>
                   <div className="api-job-cover"><Sparkles size={20} /></div>
                   <div><div className="recent-job__title"><strong>{jobTitle(job)}</strong><StatusBadge status={job.status} /></div><p>{jobNote(job)}</p><span><Clock3 size={13} />{formatDate(job.created_at)}<i>·</i>{jobCount(job)}</span></div>
-                  <Link href={jobWorkspaceHref(job)} aria-label={`查看任务 ${jobTitle(job)}`}><ArrowRight size={16} /></Link>
+                  <TaskWorkspaceLink href={jobWorkspaceHref(job)} aria-label={`查看任务 ${jobTitle(job)}`}><ArrowRight size={16} /></TaskWorkspaceLink>
                 </article>
               ))}
             </div>

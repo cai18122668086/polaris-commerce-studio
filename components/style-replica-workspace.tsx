@@ -5,8 +5,8 @@ import { SettingField, ChoiceControl } from "@/components/creation-settings";
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
+import { useSearchParams } from "next/navigation";
+import { TaskWorkspaceLink, replaceTaskWorkspace } from "./task-workspace-link";
 import { WorkspaceVisualPreview } from "./workspace-visual-preview";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Check, ChevronRight, CircleHelp, Download, ImagePlus, LoaderCircle, Plus, RotateCcw, Sparkles, Upload, X } from "lucide-react";
@@ -71,13 +71,13 @@ function ResultCard({ workspaceId, jobId, sessionId, outputIndex = 0, title, onP
     <div className={styles.resultMedia}>{asset ? <AssetImage workspaceId={workspaceId} assetId={asset.asset_id} onClick={onPreview} /> : <div className={styles.generating}>{terminal ? <CircleHelp size={26} /> : <LoaderCircle className="spin" size={28} />}<span>{terminal ? "本张尚未生成" : moduleProgress ? moduleLabel : "正在绘制你的商品"}</span><small>{terminal ? (needsReconciliation ? "上次生成超时，可重试未完成的图片。" : resumeWhole ? "已保留当前进度，可继续处理剩余步骤。" : data?.error_message ?? data?.items.find(item => item.error_message)?.error_message) : `${data?.progress ?? 0}% · 可离开页面，稍后在记录中查看`}</small></div>}</div>
     {!!moduleProgress?.reasons.length && <details className={styles.auditReasons}><summary>查看本屏审图原因</summary><ul>{moduleProgress.reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul></details>}
     <div className={styles.resultMeta}><strong>{title}</strong><span>{asset ? "已出图" : data?.status === "completed" ? "已完成" : terminal ? "需重试" : "生成中"}</span></div>
-    <div className={styles.resultActions}>{asset && <button onClick={() => void download()}><Download size={14} />下载</button>}{terminal && !asset && <button disabled={retrying} onClick={() => onRetry(jobId)}><RotateCcw size={13} />{retrying ? "正在提交" : "重试未完成图片"}</button>}<Link href={`/style-replica?sessionId=${encodeURIComponent(sessionId)}`}>查看任务<ChevronRight size={13} /></Link></div>
+    <div className={styles.resultActions}>{asset && <button onClick={() => void download()}><Download size={14} />下载</button>}{terminal && !asset && <button disabled={retrying} onClick={() => onRetry(jobId)}><RotateCcw size={13} />{retrying ? "正在提交" : "重试未完成图片"}</button>}<TaskWorkspaceLink href={`/style-replica?sessionId=${encodeURIComponent(sessionId)}`}>查看任务<ChevronRight size={13} /></TaskWorkspaceLink></div>
     {error && <p className={styles.error}>{error}</p>}
   </article>;
 }
 
 export function StyleReplicaWorkspace() {
-  const search = useNavigationSearchParams();
+  const search = useSearchParams();
   const { workspace } = useWorkspace();
   const sessionId = search.get("sessionId")?.trim() || undefined;
   const jobId = sessionId ? undefined : search.get("jobId")?.trim() || undefined;
@@ -87,7 +87,6 @@ export function StyleReplicaWorkspace() {
 }
 
 function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSessionId?: string; requestedJobId?: string }) {
-  const router = useRouter();
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.id;
   const upload = useUploadAsset(workspaceId);
@@ -168,7 +167,7 @@ function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSes
   const selectReplicationMethod = (value: "exact" | "style") => {
     if (working || actionLock.current || value === replicationMethod) return;
     clearSavedSession({ replicationMethod: value, replicaSpeed: replicaSpeedFor(value) });
-    router.replace("/style-replica", { scroll: false });
+    replaceTaskWorkspace("/style-replica");
     setReplicationMethod(value); setReplicaSpeed(replicaSpeedFor(value)); setAnalysisRequestId(crypto.randomUUID());
     setSessionDoc(undefined); setInstructions([]); setJobStatuses({}); setError("");
     retryIntents.current = {};
@@ -254,7 +253,6 @@ function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSes
     load();
     return () => controller.abort();
   }, [workspaceId, hydratedWorkspace, requestedSessionId, requestedJobId]);
-  useEffect(() => { if (currentSessionId && currentSessionId !== requestedSessionId) router.replace(`/style-replica?sessionId=${encodeURIComponent(currentSessionId)}`, { scroll: false }); }, [currentSessionId, requestedSessionId, router]);
 
   const perform = async (label: string, action: (isCurrent: () => boolean) => Promise<void>) => {
     if (actionLock.current) return;
@@ -313,7 +311,14 @@ function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSes
     const speed = replicaSpeedFor(replicationMethod);
     setInstructions([]); setJobStatuses({}); setReplicaSpeed(speed);
     const result = await replicaRequest<ReplicaDocument>(workspaceId, "/sessions", { request_id: analysisRequestId || crypto.randomUUID(), product_asset_ids: products.map(item => item.id), references: choices, replication_method: replicationMethod, replica_mode_version: REPLICA_MODE_VERSION, replica_speed: speed, auto_start_after_plan: true, credit_budget: Math.max(1, choices.length) * replicaCreditsFor(replicationMethod), platform_code: platform === "auto" ? product?.targetPlatform ?? product?.platform ?? "tmall" : platform, language, facts });
-    if (isCurrent()) setSessionDoc(result);
+    if (isCurrent()) {
+      setSessionDoc(result);
+      // Record a newly created task without starting another route transition.
+      const current = new URL(window.location.href);
+      if (current.pathname === "/style-replica" && !current.searchParams.has("sessionId") && !current.searchParams.has("jobId")) {
+        window.history.replaceState(window.history.state, "", `/style-replica?sessionId=${encodeURIComponent(result.id)}`);
+      }
+    }
   });
   const confirm = () => workspaceId && sessionDoc && perform("提交生成", async isCurrent => { try { const value = await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/confirm`, { plan_hash: sessionDoc.payload.plan_hash, instructions: sessionDoc.payload.confirmed_instructions ?? instructions }); if (isCurrent()) setSessionDoc(value); } catch (caught) { const value = await replicaRequest<ReplicaDocument>(workspaceId, `/documents/${sessionDoc.id}`); if (isCurrent()) setSessionDoc(value); throw caught; } });
   const retryImage = (jobId: string) => workspaceId && sessionDoc && perform("重新生成", async isCurrent => { const requestId = retryIntents.current[jobId] ?? crypto.randomUUID(); retryIntents.current[jobId] = requestId; const value = await replicaRequest<ReplicaDocument>(workspaceId, `/sessions/${sessionDoc.id}/jobs/${jobId}/retry`, { request_id: requestId }); if (isCurrent()) setSessionDoc(value); });
@@ -323,7 +328,7 @@ function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSes
     draftGeneration.current += 1; actionLock.current = false; uploadBatchLock.current = false;
     setBusy(""); setProductDoc(current => current?.status === "fetching" ? undefined : current);
     clearSavedSession();
-    router.replace("/style-replica", { scroll: false }); setAnalysisRequestId(crypto.randomUUID());
+    replaceTaskWorkspace("/style-replica"); setAnalysisRequestId(crypto.randomUUID());
     setSessionDoc(undefined); setReplicaSpeed(replicaSpeedFor(replicationMethod)); setInstructions([]); setError(""); setJobStatuses({}); retryIntents.current = {};
   };
   const reset = () => {

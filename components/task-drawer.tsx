@@ -14,6 +14,7 @@ import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 import { StatusBadge } from "./status-badge";
 import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 import { errorMessage } from "@/lib/api/request";
+import { TaskWorkspaceLink } from "./task-workspace-link";
 
 const stageLabels: Record<string, string> = {
   draft: "草稿",
@@ -162,7 +163,7 @@ export function TaskDrawer({
             <article key={job.id} className="drawer-job drawer-job--api">
               <div className="drawer-job__body">
                 <div className="drawer-job__top"><StatusBadge status={job.status} /><small>{formatDate(job.created_at)}</small></div>
-                <Link href={jobWorkspaceHref(job)} onClick={onClose} className="drawer-job__link"><strong>{jobTitle(job)}</strong><p>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "Mock 流程已结束，没有生成真实图片。" : jobNote(job)}</p></Link>
+                <TaskWorkspaceLink href={jobWorkspaceHref(job)} onClick={onClose} className="drawer-job__link"><strong>{jobTitle(job)}</strong><p>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "Mock 流程已结束，没有生成真实图片。" : jobNote(job)}</p></TaskWorkspaceLink>
                 {["processing", "queued", "planning"].includes(job.status) && <div className="mini-progress"><i style={{ width: `${job.progress}%` }} /></div>}
                 <div className="drawer-job__meta">
                   <span>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "0 / 6 张图片" : jobCount(job)}</span><span>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "未生成图片" : presentJobStage(job.stage, job.status)}</span>

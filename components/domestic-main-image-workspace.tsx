@@ -9,8 +9,7 @@ import { CreditCostHint } from "@/features/billing/components/credit-account";
 
 import { AlertTriangle, ArrowRight, ImagePlus, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { useRouter } from "next/navigation";
-import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { DevelopmentProviderSettings } from "@/components/development-provider-settings";
 import { AppShell } from "@/components/app-shell";
@@ -133,7 +132,7 @@ function RestoredSource({ workspaceId, assetId, index }: { workspaceId?: string;
 
 export function DomesticMainImageWorkspace() {
   const router = useRouter();
-  const searchParams = useNavigationSearchParams();
+  const searchParams = useSearchParams();
   const requestedJobId = searchParams.get("jobId")?.trim() || undefined;
   const fileInput = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);

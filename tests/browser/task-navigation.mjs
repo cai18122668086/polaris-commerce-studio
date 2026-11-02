@@ -6,18 +6,18 @@ export async function assertTaskNavigation({ cdp, origin, navigate, evaluate, wa
   const legacy = "job_legacy_replica";
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `
-    window.__navigationWrites = [];
+    window.__navigationWrites = JSON.parse(sessionStorage.getItem("polaris-test-navigation-writes") ?? "[]");
     window.__navigationErrors = [];
     addEventListener('error', event => window.__navigationErrors.push(event.error?.stack ?? event.message));
     addEventListener('unhandledrejection', event => window.__navigationErrors.push(String(event.reason)));
-    window.__navigationMode = "replica";
-    window.__slowReplica = false;
+    window.__navigationMode = location.pathname.includes("detail") ? "detail" : "replica";
+    window.__slowReplica = sessionStorage.getItem("polaris-test-slow-replica") === "true";
     const beforeNavigationFixture = window.fetch.bind(window);
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === "string" ? input : input.url, location.href);
       if (!url.pathname.startsWith("/api/v1/")) return beforeNavigationFixture(input, init);
       const method = init?.method ?? input?.method ?? "GET";
-      if (method !== "GET") { window.__navigationWrites.push(url.pathname); return Response.json({ error: { message: "Navigation must remain read only" } }, { status: 405 }); }
+      if (method !== "GET") { window.__navigationWrites.push(url.pathname); sessionStorage.setItem("polaris-test-navigation-writes", JSON.stringify(window.__navigationWrites)); return Response.json({ error: { message: "Navigation must remain read only" } }, { status: 405 }); }
       const job = (id, type = "detail_pack", region = "domestic") => ({
         id, workspace_id: "ws-browser-test", type, display_name: id === "${legacy}" ? "一键复刻 · 旧任务" : id,
         created_at: "2026-11-02T01:00:00Z", updated_at: "2026-11-02T01:00:00Z", status: "failed", stage: "failed", progress: 0,
@@ -49,6 +49,7 @@ export async function assertTaskNavigation({ cdp, origin, navigate, evaluate, wa
 
   const facts = `document.querySelector('textarea[maxlength="20000"]')?.value`;
   const openTask = async href => {
+    await waitForValue(cdp, `!!document.querySelector('[aria-label^="打开任务中心"]')`);
     await evaluate(cdp, `document.querySelector('[aria-label^="打开任务中心"]').click()`);
     const link = `document.querySelector(${JSON.stringify(`#task-drawer a[href="${href}"]`)})`;
     await waitForValue(cdp, `!!${link}`);
@@ -66,7 +67,7 @@ export async function assertTaskNavigation({ cdp, origin, navigate, evaluate, wa
   await evaluate(cdp, "history.forward()");
   await waitForValue(cdp, `${facts} === "Task B facts"`);
 
-  await evaluate(cdp, "window.__slowReplica = true");
+  await evaluate(cdp, "window.__slowReplica = true; sessionStorage.setItem('polaris-test-slow-replica', 'true')");
   await openTask(`/style-replica?sessionId=${a}`);
   await waitForValue(cdp, `new URL(location.href).searchParams.get('sessionId') === '${a}'`);
   await openTask(`/style-replica?sessionId=${b}`);
@@ -81,7 +82,7 @@ export async function assertTaskNavigation({ cdp, origin, navigate, evaluate, wa
   assert.equal(await evaluate(cdp, `JSON.parse(localStorage.getItem('polaris-replica:ws-browser-test')).sessionId ?? null`), null);
   await openTask(`/style-replica?jobId=${legacy}`);
   await waitForValue(cdp, `${facts} === "Task B facts"`);
-  await waitForValue(cdp, `new URL(location.href).searchParams.get('sessionId') === '${b}'`);
+  assert.equal(await evaluate(cdp, "new URL(location.href).searchParams.get('jobId')"), legacy);
 
   // These workspaces share URL-controlled job selection, including Back to a
   // draft. Verify both domestic and cross-border links through the real drawer.

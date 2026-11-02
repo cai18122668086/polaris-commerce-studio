@@ -9,6 +9,7 @@ import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { formatDate, jobTitle } from "@/lib/jobs/presentation";
 import { getFeatureByRoute } from "@/lib/feature-registry";
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
+import { TaskWorkspaceLink } from "./task-workspace-link";
 
 export function ToolSidebar({
   open,
@@ -48,10 +49,10 @@ export function ToolSidebar({
               <p>最近创作</p>
               <div>
                 {recentJobs.map((job) => (
-                  <Link href={jobWorkspaceHref(job)} key={job.id} onClick={onClose}>
+                  <TaskWorkspaceLink href={jobWorkspaceHref(job)} key={job.id} onClick={onClose}>
                     <span>{jobTitle(job)}</span>
                     <small>{formatDate(job.created_at)}</small>
-                  </Link>
+                  </TaskWorkspaceLink>
                 ))}
               </div>
             </section>

@@ -1,12 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 
 export function useWorkspaceJobId(route: string) {
   const router = useRouter();
-  const requestedJobId = useNavigationSearchParams().get("jobId")?.trim() || undefined;
+  const requestedJobId = useSearchParams().get("jobId")?.trim() || undefined;
   const [local, setLocal] = useState<{ requestedJobId?: string; jobId?: string }>({ requestedJobId });
   // URL navigation takes precedence over a job created in an earlier view.
   // Reset synchronously so switching task links cannot show the previous task.

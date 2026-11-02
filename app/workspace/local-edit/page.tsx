@@ -5,7 +5,7 @@ import { ProductFactsGuidance } from "@/components/product-facts-guidance";
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
+import { useSearchParams } from "next/navigation";
 import { assetHandoffKey } from "@/lib/assets/creation-handoff";
 import { useAssetHandoff } from "@/features/assets/hooks/use-asset-handoff";
 import { AlertCircle, Check, CheckCircle2, ImagePlus, Images, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload } from "lucide-react";
@@ -34,7 +34,7 @@ import { selectJobResultAssets } from "@/lib/jobs/results";
 import workspaceStyles from "@/components/product-image-workspace.module.css";
 
 export default function LocalEditPage() {
-  const search = useNavigationSearchParams();
+  const search = useSearchParams();
   return <LocalEditWorkspace key={assetHandoffKey(search)} />;
 }
 

@@ -8,7 +8,7 @@ import { ProductFactsGuidance } from "@/components/product-facts-guidance";
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 import Link from "next/link";
 
-import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, ArrowRight, Check, CheckCircle2, CircleDollarSign, Clock3,
@@ -121,7 +121,7 @@ function SavedSource({ workspaceId, assetId, index }: { workspaceId?: string; as
 }
 
 export function DetailPackPage({ initialRegion = "domestic" }: { initialRegion?: MarketRegion }) {
-  const search = useNavigationSearchParams();
+  const search = useSearchParams();
   return <DetailPackWorkspace key={`${initialRegion}:${assetHandoffKey(search)}`} initialRegion={initialRegion} />;
 }
 

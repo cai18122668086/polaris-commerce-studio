@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
   Ban,
@@ -39,6 +38,7 @@ import { allowsJobAction } from "@/lib/jobs/actions";
 import { JobDetailPanel } from "@/features/jobs/components/job-detail-panel";
 import { JobRecordCover } from "@/features/jobs/components/job-record-cover";
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
+import { TaskWorkspaceLink, openTaskWorkspace } from "@/components/task-workspace-link";
 import { useCreationRecords } from "@/features/jobs/api/creation-records";
 
 const tabFilters: Record<string, JobStatus[] | undefined> = {
@@ -51,7 +51,7 @@ const tabFilters: Record<string, JobStatus[] | undefined> = {
 
 export default function JobsPage() {
   const router = useRouter();
-  const searchParams = useNavigationSearchParams();
+  const searchParams = useSearchParams();
   const requestedJobId = searchParams.get("jobId") ?? undefined;
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
@@ -71,7 +71,10 @@ export default function JobsPage() {
   const allJobs = jobsQuery.data?.items ?? [];
   const actionError = cancel.error ?? retry.error ?? confirmPlan.error;
   const activeJobId = requestedJobId;
-  const openJob = (id: string) => router.push(id.startsWith("rep_") ? `/style-replica?sessionId=${encodeURIComponent(id)}` : `/jobs?jobId=${encodeURIComponent(id)}`, { scroll: false });
+  const openJob = (id: string) => {
+    if (id.startsWith("rep_")) openTaskWorkspace(`/style-replica?sessionId=${encodeURIComponent(id)}`);
+    else router.push(`/jobs?jobId=${encodeURIComponent(id)}`, { scroll: false });
+  };
 
   const runCancel = (job: Job | JobDetail) => {
     if (
@@ -87,7 +90,7 @@ export default function JobsPage() {
     if (!allowsJobAction(job.allowed_actions, "retry")) return;
     const workspaceHref = jobWorkspaceHref(job);
     if (workspaceHref.startsWith("/style-replica?")) {
-      router.push(workspaceHref);
+      openTaskWorkspace(workspaceHref);
       return;
     }
     retry.mutate({
@@ -175,14 +178,14 @@ export default function JobsPage() {
                   <JobRecordCover workspaceId={workspace?.id ?? ""} job={job} />
                   <div className="record-main">
                     <div><StatusBadge status={job.status} /><small>{job.id}</small></div>
-                    <h3><Link href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}>{jobTitle(job)}</Link></h3><p>{jobNote(job)}</p>
+                    <h3><TaskWorkspaceLink href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}>{jobTitle(job)}</TaskWorkspaceLink></h3><p>{jobNote(job)}</p>
                     {["queued", "planning", "processing", "cancelling"].includes(job.status) && <div className="record-progress"><i style={{ width: `${job.progress}%` }} /><span>{job.progress}%</span></div>}
                   </div>
                   <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>{job.history_expires_at ? `保留至 ${formatDate(job.history_expires_at)}` : "实时更新"}</small></div>
                   <div className="record-actions">
                     {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试任务 ${jobTitle(job)}`} title="重试失败项" className="emphasis" onClick={(event) => { event.stopPropagation(); runRetry(job); }} disabled={retry.isPending}><RotateCcw size={16} /></button>}
                     {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} title="取消任务" onClick={(event) => { event.stopPropagation(); runCancel(job); }} disabled={cancel.isPending}><Ban size={16} /></button>}
-                    <Link aria-label={`打开对应工作台 ${jobTitle(job)}`} title="打开对应工作台" className="row-open" href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}><ArrowUpRight size={16} /></Link>
+                    <TaskWorkspaceLink aria-label={`打开对应工作台 ${jobTitle(job)}`} title="打开对应工作台" className="row-open" href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}><ArrowUpRight size={16} /></TaskWorkspaceLink>
                   </div>
                 </article>
               ))}

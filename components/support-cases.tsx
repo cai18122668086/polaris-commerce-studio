@@ -1,8 +1,8 @@
 "use client";
+import { TaskWorkspaceLink } from "@/components/task-workspace-link";
 
-import Link from "next/link";
 import { useRef, useState } from "react";
-import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse, errorMessage } from "@/lib/api/request";
@@ -11,7 +11,7 @@ import { useDraftState } from "@/lib/hooks/use-creation-draft";
 const labels = { open: "待处理", in_progress: "跟进中", resolved: "已解决" };
 
 export function SupportCases({ workspaceId }: { workspaceId: string }) {
-  const search = useNavigationSearchParams();
+  const search = useSearchParams();
   const requestedJobId = search.get("jobId")?.trim() ?? "";
   return <SupportCaseForm key={JSON.stringify([workspaceId, requestedJobId])} workspaceId={workspaceId} initialJobId={requestedJobId} />;
 }
@@ -39,6 +39,6 @@ function SupportCaseForm({ workspaceId, initialJobId }: { workspaceId: string; i
       <button className="primary-button" disabled={submit.isPending || issue.trim().length < 3}>{submit.isPending ? "正在提交…" : "提交帮助请求"}</button>
     </form>
     {submit.isError && <p role="alert">{errorMessage(submit.error)}</p>}{submit.isSuccess && <p role="status">问题已登记，可在下方查看处理状态。</p>}
-    {list.isError ? <button onClick={() => void list.refetch()}>记录加载失败，点击重试</button> : list.data?.map(item => <article key={item.id} className="support-case"><strong>{labels[item.status as keyof typeof labels] ?? item.status}</strong><p>{item.issue}</p>{item.job_id && <Link href={`/jobs?jobId=${encodeURIComponent(item.job_id)}`}>查看关联任务</Link>}{item.resolution && <p>处理结果：{item.resolution}</p>}<small>记录编号：{item.id}</small></article>)}
+    {list.isError ? <button onClick={() => void list.refetch()}>记录加载失败，点击重试</button> : list.data?.map(item => <article key={item.id} className="support-case"><strong>{labels[item.status as keyof typeof labels] ?? item.status}</strong><p>{item.issue}</p>{item.job_id && <TaskWorkspaceLink href={`/jobs?jobId=${encodeURIComponent(item.job_id)}`}>查看关联任务</TaskWorkspaceLink>}{item.resolution && <p>处理结果：{item.resolution}</p>}<small>记录编号：{item.id}</small></article>)}
   </section>;
 }

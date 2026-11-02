@@ -1,7 +1,6 @@
 "use client";
 
 import { FileWarning, LoaderCircle } from "lucide-react";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { JobAssetPreview } from "@/components/job-asset-preview";
 import { AppShell } from "@/components/app-shell";
@@ -10,6 +9,7 @@ import { errorMessage } from "@/lib/api/request";
 import type { JobDetail } from "@/lib/api/types";
 import { matchesWorkspaceJob } from "@/lib/jobs/workspace-restore";
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
+import { TaskWorkspaceLink } from "./task-workspace-link";
 
 export function WorkspaceJobGate({ jobId, job, error, onRetry, expectedType, expectedPreset, children }: {
   jobId?: string;
@@ -33,8 +33,8 @@ export function WorkspaceJobGate({ jobId, job, error, onRetry, expectedType, exp
           <p>{mismatch ? "请打开任务对应的工作台，或在任务详情中查看原始记录。" : requestError ? errorMessage(requestError) : "正在读取已保存的素材、参数与生成进度。"}</p>
           <p>任务编号：{jobId}</p></div>
         {Boolean(requestError) && <button className="secondary-button" onClick={() => workspace.error ? void workspace.refetch() : onRetry()}>重试加载</button>}
-        {mismatch && job && <Link className="secondary-button" href={jobWorkspaceHref(job)}>打开对应工作台</Link>}
-        <Link className="secondary-button" href={`/jobs?jobId=${encodeURIComponent(jobId)}`}>查看任务详情</Link>
+        {mismatch && job && <TaskWorkspaceLink className="secondary-button" href={jobWorkspaceHref(job)}>打开对应工作台</TaskWorkspaceLink>}
+        <TaskWorkspaceLink className="secondary-button" href={`/jobs?jobId=${encodeURIComponent(jobId)}`}>查看任务详情</TaskWorkspaceLink>
       </div>
     </div>
   </AppShell>;

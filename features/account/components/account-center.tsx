@@ -1,4 +1,5 @@
 "use client";
+import { TaskWorkspaceLink } from "@/components/task-workspace-link";
 import { SupportCases } from "@/components/support-cases";
 import { ProcessingConsentPanel } from "@/components/auth/processing-consent";
 import { AccountStatusMenu } from "@/components/account-status-menu";
@@ -658,7 +659,7 @@ function TaskRows({ jobs, workspaceId }: { jobs: Job[]; workspaceId: string }) {
   return (
     <div className="task-list">
       {jobs.map((job) => (
-        <Link className="task-row" href={recordHref(job)} key={job.id}>
+        <TaskWorkspaceLink className="task-row" href={recordHref(job)} key={job.id}>
           <JobRecordCover workspaceId={workspaceId} job={job} />
           <div className="task-name">
             <strong>{jobTitle(job)}</strong>
@@ -675,7 +676,7 @@ function TaskRows({ jobs, workspaceId }: { jobs: Job[]; workspaceId: string }) {
             }
           />
           <ChevronRight size={16} />
-        </Link>
+        </TaskWorkspaceLink>
       ))}
     </div>
   );
@@ -1343,13 +1344,13 @@ function Ledger({
                       <td className="table-date">{date(row.created_at)}</td>
                       <td>
                         {row.job_id ? (
-                          <Link
+                          <TaskWorkspaceLink
                             className="text-link"
                             href={recordHref({ id: row.job_id })}
                           >
                             查看任务
                             <ArrowUpRight size={13} />
-                          </Link>
+                          </TaskWorkspaceLink>
                         ) : (
                           "—"
                         )}
@@ -1425,7 +1426,7 @@ function Creations({ workspaceId }: { workspaceId: string }) {
       ) : items.length ? (
         <div className="creation-grid">
           {items.map((job) => (
-            <Link className="creation-card" key={job.id} href={recordHref(job)}>
+            <TaskWorkspaceLink className="creation-card" key={job.id} href={recordHref(job)}>
               <div className="creation-image">
                 <JobRecordCover workspaceId={workspaceId} job={job} />
                 <Status
@@ -1454,7 +1455,7 @@ function Creations({ workspaceId }: { workspaceId: string }) {
                   </span>
                 </div>
               </div>
-            </Link>
+            </TaskWorkspaceLink>
           ))}
         </div>
       ) : (

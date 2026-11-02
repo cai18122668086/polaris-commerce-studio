@@ -58,16 +58,29 @@ def test_masked_content_refusal_is_terminal_even_when_relay_uses_503():
 
     transport = RefusalTransport()
     gateway = TengliOpenAICompatibleGateway(
-        api_key="primary-fixture", base_url="https://primary.example",
-        planner_model="planner-fixture", image_model="image-fixture",
+        api_key="primary-fixture",
+        base_url="https://primary.example",
+        planner_model="planner-fixture",
+        image_model="image-fixture",
         image_failover_api_key="backup-fixture",
-        image_failover_base_url="https://backup.example", transport=transport,
+        image_failover_base_url="https://backup.example",
+        transport=transport,
     )
     data = _png(Image.new("RGBA", (4, 4), (30, 40, 50, 255)))
-    result = asyncio.run(gateway.edit_masked(MaskedEditGatewayRequest(
-        source_png=data, api_mask_png=data, mask_png=data, prompt="background edit",
-        quality="medium", width=4, height=4, idempotency_key="refusal-fixture",
-    )))
+    result = asyncio.run(
+        gateway.edit_masked(
+            MaskedEditGatewayRequest(
+                source_png=data,
+                api_mask_png=data,
+                mask_png=data,
+                prompt="background edit",
+                quality="medium",
+                width=4,
+                height=4,
+                idempotency_key="refusal-fixture",
+            )
+        )
+    )
     assert transport.calls == 1
     assert result.retryable is False
     assert result.error_code == "IMAGE_CONTENT_REJECTED"
@@ -97,9 +110,7 @@ class ProviderCompatibilityTransport(CapturingTransport):
             return 400, {"error": {"code": "invalid_mask"}}
         return 200, {
             "id": "request_dual_image",
-            "data": [
-                {"b64_json": base64.b64encode(self.result_png).decode("ascii")}
-            ],
+            "data": [{"b64_json": base64.b64encode(self.result_png).decode("ascii")}],
         }
 
 
@@ -122,9 +133,7 @@ class ExplicitMaskTransport(ProviderCompatibilityTransport):
             return 400, {"error": {"code": "invalid_mask"}}
         return 200, {
             "id": "request_explicit_mask",
-            "data": [
-                {"b64_json": base64.b64encode(self.result_png).decode("ascii")}
-            ],
+            "data": [{"b64_json": base64.b64encode(self.result_png).decode("ascii")}],
         }
 
 
@@ -226,6 +235,12 @@ def test_masked_edit_uses_explicit_source_and_mask_parts_when_supplied() -> None
     assert transport.headers["Idempotency-Key"] == "explicit-mask-idem"
 
 
+def _review_png(color: str) -> bytes:
+    out = BytesIO()
+    Image.new("RGB", (16, 16), color).save(out, format="PNG")
+    return out.getvalue()
+
+
 class VisualReviewTransport:
     def __init__(self) -> None:
         self.call: dict[str, Any] | None = None
@@ -245,7 +260,7 @@ class VisualReviewTransport:
                                 '"identity_inside_selection_preserved":true,'
                                 '"boundary_continuity":true,'
                                 '"artifacts_absent":true,'
-                                '"reason_codes":["passed"],'
+                                '"reason_codes":[],'
                                 '"summary":"The candidate passes review."}'
                             )
                         }
@@ -270,9 +285,9 @@ def test_tengli_visual_review_sends_three_ordered_images_once() -> None:
     result = asyncio.run(
         gateway.review_masked(
             MaskedVisualReviewRequest(
-                source_png=b"source",
-                authority_png=b"authority",
-                candidate_png=b"candidate",
+                source_png=_review_png("red"),
+                authority_png=_review_png("white"),
+                candidate_png=_review_png("blue"),
                 instruction="replace the selected label",
                 idempotency_key="visual-review-idem",
             )
@@ -280,7 +295,7 @@ def test_tengli_visual_review_sends_three_ordered_images_once() -> None:
     )
 
     assert result.visual_success is True
-    assert result.reason_codes == ("passed",)
+    assert result.reason_codes == ()
     assert transport.call is not None
     payload = transport.call["payload"]
     assert payload["model"] == "planner-test"
@@ -288,13 +303,19 @@ def test_tengli_visual_review_sends_three_ordered_images_once() -> None:
     assert transport.call["headers"]["Idempotency-Key"] == "visual-review-idem"
     content = payload["messages"][1]["content"]
     prompt = next(item["text"] for item in content if item["type"] == "text")
-    assert "only when the user did not explicitly request those exact changes" in prompt
-    assert "require all other identity evidence" in prompt
+    assert "Requested identity/text changes are allowed" in prompt
+    assert "Preserve unrelated" in prompt
     images = [item for item in content if item["type"] == "image_url"]
     assert len(images) == 3
-    assert images[0]["image_url"]["url"].endswith("c291cmNl")
-    assert images[1]["image_url"]["url"].endswith("YXV0aG9yaXR5")
-    assert images[2]["image_url"]["url"].endswith("Y2FuZGlkYXRl")
+    assert base64.b64decode(images[0]["image_url"]["url"].split(",")[1]) == _review_png(
+        "red"
+    )
+    assert base64.b64decode(images[1]["image_url"]["url"].split(",")[1]) == _review_png(
+        "white"
+    )
+    assert base64.b64decode(images[2]["image_url"]["url"].split(",")[1]) == _review_png(
+        "blue"
+    )
 
 
 class ConfigurableVisualReviewTransport:
@@ -334,9 +355,9 @@ def _visual_review_gateway(
 
 def _visual_review_request() -> MaskedVisualReviewRequest:
     return MaskedVisualReviewRequest(
-        source_png=b"source",
-        authority_png=b"authority",
-        candidate_png=b"candidate",
+        source_png=_review_png("red"),
+        authority_png=_review_png("white"),
+        candidate_png=_review_png("blue"),
         instruction="replace the selected label",
         idempotency_key="visual-review-idem",
     )
@@ -447,7 +468,11 @@ def test_tengli_visual_review_returns_valid_rejection_without_retry() -> None:
                             '"identity_inside_selection_preserved":true,'
                             '"boundary_continuity":true,'
                             '"artifacts_absent":true,'
-                            '"reason_codes":["instruction_not_satisfied"],'
+                            '"reason_codes":["target_not_satisfied"],'
+                            '"review_state":"reject","severity":"material",'
+                            '"observable_defect":"Original label is still present.",'
+                            '"corrective_action":"Replace the original label.",'
+                            '"defect_bbox":[1,1,10,10],'
                             '"summary":"The requested change is not visible."}'
                         )
                     }
@@ -466,4 +491,4 @@ def test_tengli_visual_review_returns_valid_rejection_without_retry() -> None:
     assert result.http_status == 200
     assert result.error_code is None
     assert result.retryable is False
-    assert result.reason_codes == ("instruction_not_satisfied",)
+    assert result.reason_codes == ("target_not_satisfied",)

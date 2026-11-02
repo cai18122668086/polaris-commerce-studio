@@ -782,6 +782,11 @@ class CancelRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class LocalEditReviewDecision(BaseModel):
+    action: Literal["accept", "review"]
+    expected_candidate_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class RetryRequest(BaseModel):
     scope: RetryScope = RetryScope.FAILED
     item_ids: list[str] = Field(default_factory=list, max_length=12)

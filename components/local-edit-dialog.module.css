@@ -35,3 +35,5 @@
 .loadState { display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;min-height:360px;padding:24px;color:#91839c;font-size:13px;text-align:center; }
 @media(max-width:760px){.dialog{width:calc(100vw - 20px);max-height:calc(100dvh - 20px);border-radius:13px}.header{padding:17px 16px}.body{grid-template-columns:minmax(0,1fr);padding:16px;gap:18px}.footer{padding:13px 16px;gap:12px}.editor{min-height:280px}.editor :global(.image-editor){min-height:230px;padding:10px}.editor :global(.card-toolbar > strong){display:none}}
 @media(pointer:coarse){.close,.examples button,.footer button{min-height:44px;min-width:44px}.form textarea{font-size:16px}}
+
+.reviewCanvas { grid-column:1 / -1;border:0;background:transparent;overflow:visible; }

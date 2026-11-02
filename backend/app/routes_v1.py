@@ -130,6 +130,7 @@ from .schemas_v1 import (
     JobDetailResponse,
     JobListResponse,
     LocalEditJobCreate,
+    LocalEditReviewDecision,
     ModelPoseAssetRequest,
     ModelPoseTransferJobCreate,
     PlanConfirmRequest,
@@ -1219,6 +1220,8 @@ def _asset_for_storage(
 ) -> AssetRecord:
     """Return loaded scalar metadata without holding a connection during I/O."""
     asset = get_workspace_asset(session, workspace_id, asset_id)
+    from .local_edit_billing import require_image_access
+    require_image_access(session, asset)
     session.expunge(asset)
     session.rollback()
     return asset
@@ -1923,6 +1926,8 @@ async def download_job_deliverables(
                     "DELIVERABLE_ARCHIVE_INVALID",
                     "套图中存在不可交付或命名冲突的文件，暂不能打包下载。",
                 )
+            from .local_edit_billing import require_image_access
+            await run_in_threadpool(require_image_access, session, asset)
             payload = await request.app.state.storage.read_bytes(asset.object_key)
             member_names.add(member_name)
             await run_in_threadpool(
@@ -2151,6 +2156,53 @@ def cancel_job(
 
 
 @router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review",
+    response_model=JobDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["jobs"],
+)
+def resolve_local_edit_review(
+    job_id: str,
+    payload: LocalEditReviewDecision,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    workspace: WorkspaceProcessingWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .local_edit_review import resolve
+
+    job = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review",
+        idempotency_key=require_idempotency_key(idempotency_header),
+        request_hash=canonical_hash({"job_id": job_id, **payload.model_dump()}),
+    )
+    if not replay:
+        asyncio.run(
+            resolve(
+                session,
+                job,
+                request.app.state.storage,
+                action=payload.action,
+                expected_sha256=payload.expected_candidate_sha256,
+                actor_id=workspace.principal.user_id,
+            )
+        )
+        complete_idempotency(
+            idem, resource_type="job", resource_id=job.id, response_status=202
+        )
+        session.commit()
+        if payload.action == "review":
+            _schedule_outbox(request, background_tasks)
+    return job_detail_response(session, job)
+
+
+@router.post(
     "/workspaces/{workspace_id}/jobs/{job_id}/retry",
     response_model=JobDetailResponse,
     status_code=status.HTTP_201_CREATED,
@@ -2179,11 +2231,20 @@ def retry_job(
         and source.status == JobStatus.COMPLETED.value
         and payload.scope == RetryScope.SELECTED
     )
-    if not manual_refined_revision and JobStatus(source.status) not in {
-        JobStatus.PARTIAL,
-        JobStatus.FAILED,
-        JobStatus.CANCELLED,
-    }:
+    local_review_regeneration = (
+        source.type == JobType.LOCAL_EDIT.value
+        and source.status == JobStatus.AWAITING_FINAL_REVIEW.value
+    )
+    if (
+        not manual_refined_revision
+        and not local_review_regeneration
+        and JobStatus(source.status)
+        not in {
+            JobStatus.PARTIAL,
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+        }
+    ):
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "JOB_NOT_RETRYABLE",
@@ -2218,6 +2279,10 @@ def retry_job(
     _require_known_fast_replica_outcome(
         session, source, authorized_retry=replica_authority is not None
     )
+    if local_review_regeneration:
+        transition_job(source, JobStatus.CANCELLING, stage="candidate_preserved")
+        transition_job(source, JobStatus.CANCELLED, stage="candidate_preserved")
+        release_credits(session, source)
     enforce_active_job_limit(session, workspace.workspace_id)
     selected = retry_item_ids(session, source, payload.scope, payload.item_ids)
     if not selected:
@@ -4982,6 +5047,25 @@ def _copy_job_for_retry(
             ):
                 minimum = len(selected) * high_price
                 maximum = len(selected) * high_price
+    copied_job_configuration = deepcopy(source.configuration)
+    if source.type == JobType.LOCAL_EDIT.value:
+        for key in tuple(copied_job_configuration):
+            if key.startswith("_local_edit_"):
+                copied_job_configuration.pop(key)
+        from .local_edit_review import candidate
+
+        prior = candidate(session, source)
+        copied_job_configuration["_local_edit_compare_versions"] = prior is not None
+        if prior is not None:
+            validation = prior[0].validation
+            defect, correction = (
+                validation.get("visual_review_observable_defect"),
+                validation.get("visual_review_corrective_action"),
+            )
+            if validation.get("review_state") == "reject" and defect and correction:
+                copied_job_configuration["_local_edit_retry_guidance"] = (
+                    f"{defect}；修正：{correction}"[:1000]
+                )
     return JobRecord(
         id=new_id("job"),
         workspace_id=source.workspace_id,
@@ -4989,7 +5073,7 @@ def _copy_job_for_retry(
         status=JobStatus.QUEUED.value,
         stage="queued",
         display_name=source.display_name,
-        configuration=source.configuration,
+        configuration=copied_job_configuration,
         configuration_schema=source.configuration_schema,
         prompt_version=source.prompt_version,
         strategy_version=source.strategy_version,

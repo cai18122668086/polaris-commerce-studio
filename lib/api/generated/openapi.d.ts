@@ -2094,6 +2094,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Local Edit Review */
+        post: operations["resolve_local_edit_review_api_v1_workspaces__workspace_id__jobs__job_id__local_edit_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-revision": {
         parameters: {
             query?: never;
@@ -4607,6 +4624,16 @@ export interface components {
              * @enum {string}
              */
             type: "local_edit";
+        };
+        /** LocalEditReviewDecision */
+        LocalEditReviewDecision: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "accept" | "review";
+            /** Expected Candidate Sha256 */
+            expected_candidate_sha256: string;
         };
         /** LoginJobCreateRequest */
         LoginJobCreateRequest: {
@@ -9940,6 +9967,44 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DetailIntakeResolutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_local_edit_review_api_v1_workspaces__workspace_id__jobs__job_id__local_edit_review_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalEditReviewDecision"];
             };
         };
         responses: {

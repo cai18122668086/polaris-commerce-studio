@@ -364,7 +364,12 @@ def allowed_actions(job: JobRecord) -> list[str]:
     }:
         actions.append("cancel")
     elif current == JobStatus.AWAITING_FINAL_REVIEW:
-        actions.extend(["finalize", "cancel"])
+        if job.type == JobType.LOCAL_EDIT.value:
+            actions.extend(["accept_local_edit", "retry", "cancel"])
+            if not job.configuration.get("_local_edit_manual_review_count"):
+                actions.append("review_local_edit")
+        else:
+            actions.extend(["finalize", "cancel"])
     if current == JobStatus.AWAITING_CONFIRMATION:
         if (
             job.type == JobType.DETAIL_PACK.value

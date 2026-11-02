@@ -114,8 +114,9 @@ def bind_image_reservation(
 def successful_image_credits(session: Session, job: JobRecord) -> int | None:
     """None means a historical reservation: preserve its original accounting.
 
-    A selected image recovered from its original call may become REUSED; it is
-    charged once on this reservation, whereas preserved sibling IDs are absent.
+    Local edits settle on the persisted locked generation, before review/selection.
+    Recovery of a paid generation reuses its receipt. Other workflows retain their
+    successful-output accounting; preserved sibling IDs are absent.
     """
     reservation = session.scalar(
         select(CreditReservationRecord).where(
@@ -136,6 +137,23 @@ def successful_image_credits(session: Session, job: JobRecord) -> int | None:
         return reservation.settled_credits
     unit = pricing["credits_per_image"]
     ids = pricing["item_ids"]
+    if job.type == JobType.LOCAL_EDIT.value:
+        generated = (
+            session.scalar(
+                select(func.count(func.distinct(JobAssetRecord.job_item_id))).where(
+                    JobAssetRecord.workspace_id == job.workspace_id,
+                    JobAssetRecord.job_id == job.id,
+                    JobAssetRecord.job_item_id.in_(ids),
+                    JobAssetRecord.role == "locked_candidate",
+                    JobAssetRecord.validation["strict_lock_success"]
+                    .as_boolean()
+                    .is_(True),
+                )
+            )
+            or 0
+        )
+        if generated:
+            return int(generated) * int(unit)
     succeeded = (
         session.scalar(
             select(func.count(func.distinct(JobItemRecord.id)))

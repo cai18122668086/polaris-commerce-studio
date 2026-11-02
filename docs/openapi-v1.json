@@ -5750,6 +5750,29 @@
         "title": "LocalEditJobCreate",
         "type": "object"
       },
+      "LocalEditReviewDecision": {
+        "properties": {
+          "action": {
+            "enum": [
+              "accept",
+              "review"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_candidate_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Candidate Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "expected_candidate_sha256"
+        ],
+        "title": "LocalEditReviewDecision",
+        "type": "object"
+      },
       "LoginJobCreateRequest": {
         "properties": {
           "account_id": {
@@ -16901,6 +16924,88 @@
           }
         ],
         "summary": "Resolve Detail Intake",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review": {
+      "post": {
+        "operationId": "resolve_local_edit_review_api_v1_workspaces__workspace_id__jobs__job_id__local_edit_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalEditReviewDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Resolve Local Edit Review",
         "tags": [
           "jobs"
         ]

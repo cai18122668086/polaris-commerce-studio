@@ -13,7 +13,6 @@ from sqlalchemy.orm import sessionmaker
 from app import main
 from tests.test_inspiration_thumbnails import published_picture
 
-
 # This is a setup watchdog, not an endpoint latency requirement. Shared CI
 # runners can pause a metadata worker; keep room below the real cache's 10s
 # deadline while retaining the independent 1s authentication assertion below.

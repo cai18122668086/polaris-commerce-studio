@@ -5,7 +5,8 @@ import { SettingField, ChoiceControl } from "@/components/creation-settings";
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
 import { WorkspaceVisualPreview } from "./workspace-visual-preview";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Check, ChevronRight, CircleHelp, Download, ImagePlus, LoaderCircle, Plus, RotateCcw, Sparkles, Upload, X } from "lucide-react";
@@ -76,7 +77,7 @@ function ResultCard({ workspaceId, jobId, sessionId, outputIndex = 0, title, onP
 }
 
 export function StyleReplicaWorkspace() {
-  const search = useSearchParams();
+  const search = useNavigationSearchParams();
   const { workspace } = useWorkspace();
   const sessionId = search.get("sessionId")?.trim() || undefined;
   const jobId = sessionId ? undefined : search.get("jobId")?.trim() || undefined;

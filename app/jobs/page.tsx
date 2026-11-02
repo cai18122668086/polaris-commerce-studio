@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
 import {
   ArrowUpRight,
   Ban,
@@ -50,7 +51,7 @@ const tabFilters: Record<string, JobStatus[] | undefined> = {
 
 export default function JobsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useNavigationSearchParams();
   const requestedJobId = searchParams.get("jobId") ?? undefined;
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");

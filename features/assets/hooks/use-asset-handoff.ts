@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
@@ -8,7 +8,7 @@ import { assetHandoffKey, readAssetHandoff } from "@/lib/assets/creation-handoff
 import { getAssetAccessUrl } from "@/features/assets/api/assets";
 
 export function useAssetHandoff(workspaceId: string | undefined, maxAssets: number, savedJobId?: string) {
-  const search = useSearchParams();
+  const search = useNavigationSearchParams();
   const key = assetHandoffKey(search);
   const requested = !savedJobId && Boolean(search.getAll("assetId").length);
   const query = useQuery({

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useNavigationSearchParams } from "@/lib/hooks/use-navigation-search-params";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse, errorMessage } from "@/lib/api/request";
@@ -11,7 +11,7 @@ import { useDraftState } from "@/lib/hooks/use-creation-draft";
 const labels = { open: "待处理", in_progress: "跟进中", resolved: "已解决" };
 
 export function SupportCases({ workspaceId }: { workspaceId: string }) {
-  const search = useSearchParams();
+  const search = useNavigationSearchParams();
   const requestedJobId = search.get("jobId")?.trim() ?? "";
   return <SupportCaseForm key={JSON.stringify([workspaceId, requestedJobId])} workspaceId={workspaceId} initialJobId={requestedJobId} />;
 }

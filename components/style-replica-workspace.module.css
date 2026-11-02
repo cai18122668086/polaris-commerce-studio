@@ -2,7 +2,7 @@
 
 .inputFields{border:0;margin:0;padding:0;min-width:0}.inputFields:disabled{opacity:.8}
 .resultActions { flex-wrap:wrap; }
-.resultActions .localEditButton { flex:0 0 100%;justify-content:center;width:100%;min-height:44px;padding:11px 12px;border-radius:8px;background:#242424;color:#fff;font-size:14px;font-weight:600; }
+.resultActions .localEditButton { flex:0 0 100%;justify-content:center;width:100%;min-height:44px;padding:11px 12px;border-radius:8px;background:#242424;color:#fff;font-size:14px;font-weight:600;white-space:nowrap; }
 .resultActions .localEditButton:hover { background:#d8ff00;color:#242424; }
 
 .stageHeader .newReplicaButton {

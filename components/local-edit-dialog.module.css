@@ -1,4 +1,4 @@
-.dialog { width:min(1180px,calc(100vw - 48px));max-width:none;max-height:calc(100dvh - 48px);padding:0;border:1px solid #e5dfed;border-radius:18px;background:#fff;color:#29272e;box-shadow:0 24px 100px #1c102c38;overflow:auto; }
+.dialog { width:min(1180px,calc(100vw - 48px));max-width:none;max-height:calc(100dvh - 48px);margin:auto;padding:0;border:1px solid #e5dfed;border-radius:18px;background:#fff;color:#29272e;box-shadow:0 24px 100px #1c102c38;overflow:auto; }
 .dialog::backdrop { background:#1c142768;backdrop-filter:blur(4px); }
 .content { min-width:0; }
 .header { display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:22px 24px;border-bottom:1px solid #eeeaf3; }

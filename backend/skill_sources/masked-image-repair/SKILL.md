@@ -70,7 +70,7 @@ Prefer the lowest-cost path that can meet the visual requirement and the pixel-l
 Keep model generation and deterministic post-processing as separate state machines.
 
 1. Save every model response immediately as an immutable raw artifact with a generation ID, hash, dimensions, prompt, and visual-review status.
-2. Review the raw artifact before compositing. Record `raw_visual_success` when the requested edit is visibly successful, even if the artifact is not pixel-locked.
+2. Record raw visual success independently of final delivery. Interactive agents inspect the raw before compositing. Website adapters may construct a diagnostic locked candidate first and inspect both immutable raw and locked candidate in one bounded review; the delivery verdict must apply to the exact locked pixels.
 3. Derive every locked candidate from the normalized source plus that immutable raw artifact. Never overwrite the raw artifact.
 4. Record mask, semantic-mask, feather, or compositing experiments as post-processing attempts, not as new model generations or user-facing revisions.
 5. Do not replace the active successful visual candidate with a failed locked candidate. Promote a candidate to the active strict result only after both visual review and pixel-lock verification pass.
@@ -149,3 +149,14 @@ Accept only when:
 8. No unintended border, shadow, collage, label, watermark, or whole-image redesign appears.
 
 Keep raw generation for diagnosis, but deliver only the strictly locked result by default. When strict delivery fails but the raw generation succeeds visually, preserve and disclose the raw candidate instead of claiming that no successful version exists.
+
+## Website review and version selection
+
+- Complete deterministic compositing and pixel-lock verification before reviewing the delivery candidate. Include labeled source/final crops in identical original coordinates and preserve full-image context.
+- Separate `accept`, `reject`, `needs_review`, and review-service errors. A rejection requires an observed material defect, its location within authority, and one targeted correction. Minor texture differences, hypothetical future seams, missing evidence, or contradictory verdicts require review rather than a definite generation failure.
+- Bind acceptance to the locked candidate hash. Do not modify its pixels after review. Assess `raw_visual_success` separately; a good raw and a bad composite are different outcomes.
+- Preserve raw and locked candidates on a quality rejection or unavailable review. A website may await a human decision on a strictly locked candidate; explicit adoption overrides visual preference only, never authority or pixel-lock checks.
+- Offer one bounded recheck of the same candidate without another image generation. Conflicting review opinions remain awaiting selection; do not retry until a pass appears.
+- A user-requested regeneration starts from the normalized original with one verified correction where available. Preserve earlier candidates and await explicit version selection, even when the new version passes its own review.
+- Reserve before generating. Settle each successfully persisted, strictly locked generation at the frozen image price before exposing its full image bytes. Version selection and same-image review do not control billing. Every explicit new generation has its own disclosed fee; declining selection does not refund a completed generation.
+- Rechecking or recovering an already paid raw generation must reuse its receipt and never charge again. Failed generation or failed strict compositing has no billable output; protect unpaid raw originals, thumbnails, signed content and downloads at the server boundary. Do not rely on a hidden download button, disabled right-click, or a client-only overlay.

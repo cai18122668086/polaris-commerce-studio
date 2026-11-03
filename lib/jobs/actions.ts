@@ -1,4 +1,6 @@
 export type JobAction =
+  | "accept_local_edit"
+  | "review_local_edit"
   | "cancel"
   | "retry"
   | "confirm_plan"

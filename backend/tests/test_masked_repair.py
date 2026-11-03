@@ -188,14 +188,14 @@ class OfflineMaskedGateway(FakeXingheGateway):
             )
         raw_size = self.raw_size or (request.width, request.height)
         raw_color = (
-            (220, 20, 40, 255)
-            if self.raw_alpha is None
-            else (0, 0, 0, self.raw_alpha)
+            (220, 20, 40, 255) if self.raw_alpha is None else (0, 0, 0, self.raw_alpha)
         )
         raw = _png(raw_size, raw_color)
         return MaskedEditCallResult(
             outcome=ProviderOutcome.SUCCEEDED,
-            provider_request_id="offline_success",
+            provider_request_id="offline_success"
+            if len(self.masked_calls) == 1
+            else f"offline_success_{len(self.masked_calls)}",
             raw_usage={"actual_cost_micros": 12_000} if self.report_actual_cost else {},
             normalized_usage=_usage()
             if self.report_actual_cost
@@ -396,6 +396,7 @@ def test_real_local_edit_locks_every_outside_pixel_and_records_raw(
         )
 
     delivered = asyncio.run(client.app.state.storage.read_bytes(output_key))
+    assert delivered == gateway.review_calls[0].candidate_png
     with Image.open(BytesIO(source_bytes)) as source_image:
         source_rgba = source_image.convert("RGBA")
     with Image.open(BytesIO(delivered)) as result_image:
@@ -464,7 +465,11 @@ def test_transparent_provider_raw_is_materialized_before_review_and_locked(
     )
     with Image.open(BytesIO(gateway.review_calls[0].candidate_png)) as candidate_image:
         candidate_rgba = candidate_image.convert("RGBA")
-    assert candidate_rgba.getpixel((0, 0)) == expected_candidate.getpixel((0, 0))
+    assert candidate_rgba.getpixel((0, 0)) == source_rgba.getpixel((0, 0))
+    with Image.open(BytesIO(gateway.review_calls[0].raw_candidate_png)) as raw_preview:
+        assert raw_preview.convert("RGBA").getpixel(
+            (0, 0)
+        ) == expected_candidate.getpixel((0, 0))
     assert candidate_rgba.getpixel((0, 0)) != (0, 0, 0, 255)
 
     delivered = asyncio.run(client.app.state.storage.read_bytes(output_key))
@@ -491,9 +496,7 @@ def test_visual_review_retries_once_without_regenerating_and_records_attempts(
     status_code, job = _create_job(client, source["id"], mask["id"])
     assert status_code == 202
     assert _dispatch(client) == 1
-    body = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert body["api_request_count"] == 3
 
     with client.app.state.session_factory() as session:
@@ -607,7 +610,7 @@ def test_visual_review_rejection_retains_raw_without_delivery_or_regeneration(
 
     assert _dispatch(client) == 1
     body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
-    assert body["status"] == "failed"
+    assert body["status"] == "awaiting_final_review"
     assert body["items"][0]["error_code"] == ("LOCAL_EDIT_VISUAL_REVIEW_REJECTED")
 
     with client.app.state.session_factory() as session:
@@ -714,81 +717,27 @@ def test_excessive_relay_drift_fails_before_visual_review_and_keeps_raw(
     assert len(gateway.review_calls) == 0
 
 
-def test_visual_review_unavailable_stops_before_strict_lock_and_keeps_raw(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    strict_called = False
-
-    def unexpected_strict(*args: object, **kwargs: object) -> object:
-        nonlocal strict_called
-        strict_called = True
-        raise AssertionError("strict lock must wait for a positive visual verdict")
-
-    monkeypatch.setattr(
-        masked_repair_module,
-        "_strict_composite",
-        unexpected_strict,
-    )
-    gateway = OfflineMaskedGateway(review_success=None)
+@pytest.mark.parametrize("verdict", [None, False])
+def test_review_failure_keeps_final_candidate_pending_without_redraw(client, verdict):
+    gateway = OfflineMaskedGateway(review_success=verdict)
     _install_runner(client, gateway)
-    source, mask, _ = _valid_inputs(client)
-    status_code, job = _create_job(client, source["id"], mask["id"])
-    assert status_code == 202
-
+    source, mask, source_bytes = _valid_inputs(client)
+    _, job = _create_job(client, source["id"], mask["id"])
     assert _dispatch(client) == 1
     body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
-    assert body["status"] == "failed"
-    assert body["items"][0]["error_code"] == "LOCAL_EDIT_VISUAL_REVIEW_UNAVAILABLE"
-    assert strict_called is False
+    assert body["status"] == "awaiting_final_review"
+    assert "accept_local_edit" in body["allowed_actions"]
+    locked = next(a for a in body["assets"] if a["role"] == "locked_candidate")
+    assert not locked["is_deliverable"]
     with client.app.state.session_factory() as session:
-        relations = session.scalars(
-            select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
-        ).all()
-        raw_relation = next(item for item in relations if item.role == "provider_raw")
-        assert raw_relation.validation["raw_visual_success"] is None
-        assert all(item.role != "local_edit_result" for item in relations)
-        usage = session.scalar(
-            select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
-        )
-        assert usage is not None
-        metrics = usage.raw_usage["metrics"]
-        assert metrics["raw_visual_success"] is None
-        assert metrics["strict_lock_success"] is None
-        assert metrics["delivery_status"] == "visual_review_unavailable"
+        asset = session.get(AssetRecord, locked["asset_id"])
+        candidate = asyncio.run(client.app.state.storage.read_bytes(asset.object_key))
+    assert gateway.review_calls[0].candidate_png == candidate
     assert len(gateway.masked_calls) == 1
     assert len(gateway.review_calls) == 1
 
 
-def test_visual_rejection_happens_before_strict_composite(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    strict_called = False
-
-    def unexpected_strict(*args: object, **kwargs: object) -> object:
-        nonlocal strict_called
-        strict_called = True
-        raise AssertionError("strict composite must not run before review acceptance")
-
-    monkeypatch.setattr(
-        masked_repair_module,
-        "_strict_composite",
-        unexpected_strict,
-    )
-    gateway = OfflineMaskedGateway(review_success=False)
-    _install_runner(client, gateway)
-    source, mask, _ = _valid_inputs(client)
-    status_code, job = _create_job(client, source["id"], mask["id"])
-    assert status_code == 202
-
-    assert _dispatch(client) == 1
-    body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
-    assert body["items"][0]["error_code"] == "LOCAL_EDIT_VISUAL_REVIEW_REJECTED"
-    assert strict_called is False
-
-
-def test_raw_visual_success_is_preserved_when_strict_mapping_fails(
+def test_strict_failure_retains_unreviewed_raw_and_blocks_delivery(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -815,19 +764,17 @@ def test_raw_visual_success_is_preserved_when_strict_mapping_fails(
             select(JobAssetRecord).where(JobAssetRecord.job_id == job["id"])
         ).all()
         raw_relation = next(item for item in relations if item.role == "provider_raw")
-        assert raw_relation.validation["raw_visual_success"] is True
+        assert raw_relation.validation["raw_visual_success"] is None
         assert all(item.role != "local_edit_result" for item in relations)
         usage = session.scalar(
             select(UsageEventRecord).where(UsageEventRecord.job_id == job["id"])
         )
         assert usage is not None
-        assert usage.raw_usage["metrics"]["raw_visual_success"] is True
+        assert usage.raw_usage["metrics"]["raw_visual_success"] is None
         assert usage.raw_usage["metrics"]["strict_lock_success"] is False
-        assert usage.raw_usage["metrics"]["delivery_status"] == (
-            "raw_visual_success_locked_failed"
-        )
+        assert usage.raw_usage["metrics"]["delivery_status"] == ("strict_lock_failed")
     assert len(gateway.masked_calls) == 1
-    assert len(gateway.review_calls) == 1
+    assert len(gateway.review_calls) == 0
 
 
 @pytest.mark.parametrize(
@@ -873,7 +820,6 @@ def test_empty_and_full_masks_fail_before_provider(
     assert gateway.masked_calls == []
 
 
-
 def test_encoding_damaged_instruction_fails_before_provider_calls(
     client: TestClient,
 ) -> None:
@@ -890,20 +836,14 @@ def test_encoding_damaged_instruction_fails_before_provider_calls(
         client,
         source["id"],
         mask["id"],
-        instruction=(
-            "???????????????;??????????POLARIS ????????????????"
-        ),
+        instruction=("???????????????;??????????POLARIS ????????????????"),
     )
     assert status_code == 202
     assert _dispatch(client) == 1
 
-    body = client.get(
-        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
-    ).json()
+    body = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
     assert body["status"] == "failed"
-    assert body["items"][0]["error_code"] == (
-        "LOCAL_EDIT_INSTRUCTION_ENCODING_INVALID"
-    )
+    assert body["items"][0]["error_code"] == ("LOCAL_EDIT_INSTRUCTION_ENCODING_INVALID")
     assert body["api_request_count"] == 0
     assert gateway.masked_calls == []
     assert gateway.review_calls == []
@@ -935,6 +875,7 @@ def test_encoding_damaged_instruction_fails_before_provider_calls(
         assert settlement.details["charged_cost_micros"] == 0
         assert settlement.details["actual_provider_request_count"] == 0
         assert release.details["released_request_count"] == 6
+
 
 def test_dimensions_kind_and_cross_workspace_are_rejected_at_api(
     client: TestClient,

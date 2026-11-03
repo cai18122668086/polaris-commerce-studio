@@ -153,7 +153,10 @@ function useJobMutation<TResult, TVariables>(
         registry.current!.keyFor(signature),
       );
     },
-    onSuccess: async (_, variables) => {
+    onSuccess: async (result, variables) => {
+      if (result && typeof result === "object" && "id" in result && "assets" in result && "allowed_actions" in result && typeof result.id === "string") {
+        queryClient.setQueryData(jobKeys.detail(workspaceId!, result.id), result);
+      }
       registry.current!.complete(signatureFor(variables));
       await queryClient.invalidateQueries({ queryKey: ["credits", workspaceId!] });
       await queryClient.invalidateQueries({ queryKey: ["credits-ledger", workspaceId!] });
@@ -270,6 +273,43 @@ export function useRetryJob(workspaceId: string | undefined) {
       return unwrapApiResponse(result);
     },
   );
+}
+
+export function useLocalEditDecision(workspaceId: string | undefined) {
+  return useJobMutation<JobDetail, AuthorizedJobAction & {
+    action: "accept" | "review"; candidateSha256: string;
+  }>(workspaceId, "local-edit-review", input => ({
+    jobId: input.jobId, action: input.action, candidateSha256: input.candidateSha256,
+  }), async (id, input, key) => {
+    assertJobAction(input.allowedActions, input.action === "accept" ? "accept_local_edit" : "review_local_edit");
+    return unwrapApiResponse(await apiClient.POST("/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review", {
+      params: { path: { workspace_id: id, job_id: input.jobId }, header: { "Idempotency-Key": key } },
+      body: { action: input.action, expected_candidate_sha256: input.candidateSha256 },
+    }));
+  });
+}
+
+export function useLocalEditHistory(workspaceId: string | undefined, job: JobDetail) {
+  return useQuery({
+    queryKey: ["local-edit-history", workspaceId, job.retry_of_job_id],
+    enabled: Boolean(workspaceId && job.retry_of_job_id),
+    queryFn: async ({ signal }) => {
+      const history: JobDetail[] = [];
+      const seen = new Set<string>([job.id]);
+      let parent = job.retry_of_job_id;
+      while (parent && history.length < 16 && !seen.has(parent)) {
+        seen.add(parent);
+        const previous = unwrapApiResponse(await apiClient.GET("/api/v1/workspaces/{workspace_id}/jobs/{job_id}", {
+          params: { path: { workspace_id: workspaceId!, job_id: parent } }, signal,
+        }));
+        if (previous.type !== "local_edit" || JSON.stringify(previous.configuration.input) !== JSON.stringify(job.configuration.input)
+          || JSON.stringify(previous.configuration.settings) !== JSON.stringify(job.configuration.settings)) break;
+        history.push(previous);
+        parent = previous.retry_of_job_id;
+      }
+      return history;
+    },
+  });
 }
 
 export function useResolveDetailIntake(workspaceId: string | undefined) {

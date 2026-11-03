@@ -10,8 +10,18 @@ from sqlalchemy import select
 
 import app.masked_repair as masked_module
 from app.execution import ExecutionCoordinator
-from app.masked_repair import MaskedEditGatewayRequest, MaskedVisualReviewCallResult
-from app.models import AssetRecord, JobAssetRecord, JobItemRecord, JobRecord
+from app.masked_repair import (
+    MaskedEditGatewayRequest,
+    MaskedRepairError,
+    MaskedVisualReviewCallResult,
+)
+from app.models import (
+    AssetRecord,
+    CreditLedgerEntryRecord,
+    JobAssetRecord,
+    JobItemRecord,
+    JobRecord,
+)
 from app.provider import FakeProvider, ProviderOutcome
 from app.xinghe_agent import (
     ImageEditRequest,
@@ -57,14 +67,27 @@ class ReviewOutageGateway(OfflineMaskedGateway):
 
 
 def _failed_edit(client, monkeypatch):
-    monkeypatch.setattr(masked_module, "_VISUAL_REVIEW_RETRY_DELAY_SECONDS", 0)
-    gateway = ReviewOutageGateway(4)
+    gateway = ReviewOutageGateway(0)
     _install_runner(client, gateway)
     source, mask, _ = _valid_inputs(client)
     _, job = _create_job(client, source["id"], mask["id"])
-    _dispatch(client)
+
+    def unavailable_composite(*args, **kwargs):
+        raise MaskedRepairError(
+            "LOCAL_EDIT_COMPOSITE_UNAVAILABLE", "controlled local failure"
+        )
+
+    # A visual-review outage now preserves a paid, locked candidate for recheck.
+    # Exercise raw recovery using a genuine failure before locked publication.
+    with monkeypatch.context() as patch:
+        patch.setattr(masked_module, "_strict_composite", unavailable_composite)
+        _dispatch(client)
     assert len(gateway.masked_calls) == 1
-    assert len(gateway.review_calls) == 4
+    assert len(gateway.review_calls) == 0
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}").json()
+    assert detail["status"] == "failed", detail
+    assert detail["cost"]["actual_credits"] == 0
+    assert not any(a["role"] == "locked_candidate" for a in detail["assets"])
     return gateway, job
 
 
@@ -111,7 +134,7 @@ def test_review_outage_resumes_same_candidate_and_preserves_outside_pixels(
                 assert before.getpixel((x, y)) == after.getpixel((x, y))
 
 
-def test_explicit_retry_of_review_failure_does_not_generate_another_image(
+def test_explicit_retry_of_prelock_failure_does_not_generate_another_image(
     client, monkeypatch
 ):
     gateway, job = _failed_edit(client, monkeypatch)
@@ -123,6 +146,51 @@ def test_explicit_retry_of_review_failure_does_not_generate_another_image(
     assert result["status"] == "completed", result
     assert len(gateway.masked_calls) == 1
     assert result["api_request_count"] == 1
+
+
+def test_review_outage_waits_for_same_image_recheck_without_another_charge(
+    client, monkeypatch
+):
+    monkeypatch.setattr(masked_module, "_VISUAL_REVIEW_RETRY_DELAY_SECONDS", 0)
+    gateway = ReviewOutageGateway(4)
+    _install_runner(client, gateway)
+    source, mask, _ = _valid_inputs(client)
+    _, job = _create_job(client, source["id"], mask["id"])
+    assert _dispatch(client) == 1
+    path = f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}"
+    pending = client.get(path).json()
+    assert pending["status"] == "awaiting_final_review", pending
+    assert pending["failed_item_count"] == 0
+    assert pending["cost"]["actual_credits"] == 5
+    locked = next(a for a in pending["assets"] if a["role"] == "locked_candidate")
+    response = client.post(
+        path + "/local-edit/review",
+        headers=idem(),
+        json={
+            "action": "review",
+            "expected_candidate_sha256": locked["validation"]["sha256"],
+        },
+    )
+    assert response.status_code == 202, response.text
+    assert _dispatch(client) == 1
+    completed = client.get(path).json()
+    assert completed["status"] == "completed", completed
+    assert completed["cost"]["actual_credits"] == 5
+    assert completed["api_request_count"] == pending["api_request_count"] + 1
+    assert len(gateway.masked_calls) == 1
+    assert len(gateway.review_calls) == 5
+    assert all(
+        r.candidate_png == gateway.review_calls[0].candidate_png
+        for r in gateway.review_calls
+    )
+    with client.app.state.session_factory() as session:
+        debits = session.scalars(
+            select(CreditLedgerEntryRecord).where(
+                CreditLedgerEntryRecord.job_id == job["id"],
+                CreditLedgerEntryRecord.entry_type == "settle",
+            )
+        ).all()
+        assert len(debits) == 1
 
 
 def test_damaged_saved_candidate_fails_without_generating_again(client, monkeypatch):

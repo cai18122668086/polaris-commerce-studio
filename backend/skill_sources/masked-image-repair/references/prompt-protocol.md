@@ -136,10 +136,12 @@ For a visual retry:
 
 ## Acceptance order
 
-1. Inspect and record the immutable raw generation's visual success.
+1. Inspect and record the immutable raw generation's visual success. Website adapters may inspect raw and a diagnostic locked candidate together, but must record their outcomes independently.
 2. Verify the locked candidate's outside-selection pixel equality (`0` changed pixels).
 3. Verify size, crop, composition, and perspective.
 4. Verify the requested edit survived compositing.
 5. Verify boundary texture and geometry.
 6. Verify exact text and absence of unintended content.
 7. Promote only a candidate that passes both visual and strict-lock gates.
+
+For websites, visual acceptance must bind the exact final locked candidate bytes, with same-coordinate source/final crops. Preserve ambiguous or rejected locked candidates for human preview and explicit selection; do not substitute a newly generated version during rechecking. A human visual choice cannot relax the outside-selection pixel invariant.

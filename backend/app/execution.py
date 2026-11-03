@@ -2799,6 +2799,10 @@ class ExecutionCoordinator:
                         "outside_changed_pixels"
                     ),
                     "raw_visual_success": result_metrics.get("raw_visual_success"),
+                    "reviewed_artifact_sha256": result_metrics.get(
+                        "reviewed_artifact_sha256"
+                    ),
+                    "review_state": result_metrics.get("review_state"),
                     "visual_review_summary": result_metrics.get(
                         "visual_review_summary"
                     ),
@@ -3161,8 +3165,13 @@ class ExecutionCoordinator:
                 )
             )
 
+            from .local_edit_review import requires_decision
+
+            local_review_pending = requires_decision(session, job)
             if current == JobStatus.CANCELLING:
                 target = JobStatus.CANCELLED
+            elif local_review_pending:
+                target = JobStatus.AWAITING_FINAL_REVIEW
             elif succeeded == job.expected_item_count:
                 if (
                     job.type == JobType.DETAIL_PACK.value
@@ -3181,7 +3190,9 @@ class ExecutionCoordinator:
                 target = JobStatus.CANCELLED
             else:
                 target = JobStatus.FAILED
-            if target in {JobStatus.FAILED, JobStatus.PARTIAL} and not job.error_code:
+            if (
+                target in {JobStatus.FAILED, JobStatus.PARTIAL} or local_review_pending
+            ) and not job.error_code:
                 failure = session.scalar(
                     select(JobItemRecord)
                     .where(
@@ -3196,8 +3207,12 @@ class ExecutionCoordinator:
                     job.error_code = failure.error_code
                     job.error_message = failure.error_message
                     job.error_details = dict(failure.error_details or {})
+            if local_review_pending and target == JobStatus.AWAITING_FINAL_REVIEW:
+                job.failed_item_count = 0
             terminal_stage = (
-                "awaiting_user_final_review"
+                "awaiting_local_edit_review"
+                if local_review_pending and target == JobStatus.AWAITING_FINAL_REVIEW
+                else "awaiting_user_final_review"
                 if target == JobStatus.AWAITING_FINAL_REVIEW
                 else target.value
             )

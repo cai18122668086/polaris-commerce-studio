@@ -1,4 +1,5 @@
 export type IdempotentOperation =
+  | "local-edit-review"
   | "upload"
   | "create-job"
   | "local-revision"

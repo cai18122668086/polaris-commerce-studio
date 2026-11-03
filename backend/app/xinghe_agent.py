@@ -3455,11 +3455,15 @@ class TengliOpenAICompatibleGateway:
                 "text": _masked_visual_review_prompt(request.instruction),
             }
         ]
-        for image_payload in (
+        from .masked_review_contract import review_images
+
+        for label, image_payload in review_images(
             request.source_png,
             request.authority_png,
             request.candidate_png,
+            request.raw_candidate_png,
         ):
+            content.append({"type": "text", "text": label})
             encoded = base64.b64encode(image_payload).decode("ascii")
             content.append(
                 {
@@ -3472,7 +3476,9 @@ class TengliOpenAICompatibleGateway:
             )
         route = self._visual_review_route(request.route_attempt)
         payload = {
-            "model": self.vision_model if route.name == "primary" else route.planner_model,
+            "model": self.vision_model
+            if route.name == "primary"
+            else route.planner_model,
             "messages": [
                 {
                     "role": "system",
@@ -3513,12 +3519,51 @@ class TengliOpenAICompatibleGateway:
                     error_message=(
                         f"Local-edit visual review failed with HTTP {status}."
                     ),
-                    retryable=(status == 429 or status >= 500 or (self._should_failover_status(status) and request.route_attempt < self.visual_review_route_count - 1)),
+                    retryable=(
+                        status == 429
+                        or status >= 500
+                        or (
+                            self._should_failover_status(status)
+                            and request.route_attempt
+                            < self.visual_review_route_count - 1
+                        )
+                    ),
                     http_status=status,
                 )
             review_payload = _planner_content_payload(_planner_message_text(response))
             review = _validate_masked_visual_review_payload(review_payload)
+            if review["review_state"] == "reject":
+                from io import BytesIO
+
+                from PIL import Image
+
+                bbox = review["defect_bbox"]
+                with Image.open(BytesIO(request.authority_png)) as authority:
+                    if (
+                        bbox is None
+                        or bbox[2] > authority.width
+                        or bbox[3] > authority.height
+                        or authority.convert("L").crop(bbox).getbbox() is None
+                    ):
+                        review["review_state"] = "needs_review"
+                        review["visual_success"] = None
             return MaskedVisualReviewCallResult(
+                review_state=review["review_state"],
+                evidence=dict(review),
+                raw_visual_success=review["raw_visual_success"],
+                components={
+                    key: review[key]
+                    for key in (
+                        "instruction_satisfied",
+                        "identity_inside_selection_preserved",
+                        "boundary_continuity",
+                        "artifacts_absent",
+                    )
+                },
+                defect_bbox=review["defect_bbox"],
+                error_code="LOCAL_EDIT_VISUAL_REVIEW_NEEDS_REVIEW"
+                if review["review_state"] == "needs_review"
+                else None,
                 visual_success=review["visual_success"],
                 provider_request_id=_safe_request_id(response),
                 raw_usage=raw_usage,
@@ -3565,7 +3610,7 @@ class TengliOpenAICompatibleGateway:
                     else "LOCAL_EDIT_VISUAL_REVIEW_INVALID"
                 ),
                 error_message=str(exc),
-                retryable=exc.retryable or exc.code in {"PLANNER_SCHEMA_INVALID", "PROVIDER_RESPONSE_INVALID"},
+                retryable=exc.retryable,
             )
 
     def _headers(self, idempotency_key: str, api_key: str) -> dict[str, str]:
@@ -10495,84 +10540,18 @@ def _validate_amazon_visual_review_payload(
 
 
 def _masked_visual_review_prompt(instruction: str) -> str:
-    return (
-        "Review exactly three ordered images: (1) source, (2) binary authority "
-        "mask where white pixels are editable and black pixels are locked, "
-        "(3) raw provider candidate. The server will later restore every "
-        "locked pixel exactly, so judge the requested change inside the white "
-        "selection. Treat changes to product identity, logos, labels, text, "
-        "patterns, or markings as failures only when the user did not explicitly "
-        "request those exact changes; require all other identity evidence inside "
-        "the selection to remain preserved. Also judge edge, lighting, and "
-        "texture continuity at the selection boundary and visible artifacts. "
-        f"User instruction: {instruction!r}. Return exactly one JSON object "
-        "with boolean fields visual_success, instruction_satisfied, "
-        "identity_inside_selection_preserved, boundary_continuity, and "
-        "artifacts_absent; a reason_codes array of concise stable strings; "
-        "and a concise summary string. When visual_success is false, also "
-        "include optional retry_guidance, observable_defect, and corrective_action "
-        "strings describing one visible defect and one targeted correction. "
-        "visual_success may be true only when "
-        "all four component booleans are true. Do not recommend or perform "
-        "regeneration."
-    )
+    from .masked_review_contract import review_prompt
+
+    return review_prompt(instruction)
 
 
 def _validate_masked_visual_review_payload(payload: object) -> dict[str, Any]:
-    root = _require_mapping(
-        payload,
-        "LOCAL_EDIT_VISUAL_REVIEW_INVALID",
-        path="/",
-    )
-    components: dict[str, bool] = {}
-    for key in (
-        "instruction_satisfied",
-        "identity_inside_selection_preserved",
-        "boundary_continuity",
-        "artifacts_absent",
-    ):
-        value = root.get(key)
-        if not isinstance(value, bool):
-            raise XingheAgentError(
-                "LOCAL_EDIT_VISUAL_REVIEW_INVALID",
-                f"Visual review field {key} must be boolean.",
-                json_pointer=_json_pointer(key),
-            )
-        components[key] = value
-    declared = root.get("visual_success")
-    if not isinstance(declared, bool):
-        raise XingheAgentError(
-            "LOCAL_EDIT_VISUAL_REVIEW_INVALID",
-            "Visual review verdict must be boolean.",
-            json_pointer=_json_pointer("visual_success"),
-        )
-    reason_values = root.get("reason_codes")
-    if not isinstance(reason_values, list) or any(
-        not isinstance(value, str) for value in reason_values
-    ):
-        raise XingheAgentError(
-            "LOCAL_EDIT_VISUAL_REVIEW_INVALID",
-            "Visual review reason codes must be a string array.",
-            json_pointer=_json_pointer("reason_codes"),
-        )
-    reason_codes = [value.strip()[:80] for value in reason_values if value.strip()][:12]
-    summary = _require_nonempty_string(
-        root.get("summary"),
-        "summary",
-        path=_json_pointer("summary"),
-    )[:500]
-    computed = all(components.values())
-    if declared != computed:
-        reason_codes.append("inconsistent_component_verdict")
-    return {
-        "visual_success": declared and computed,
-        "reason_codes": reason_codes,
-        "summary": summary,
-        "retry_guidance": _optional_review_string(root.get("retry_guidance")),
-        "observable_defect": _optional_review_string(root.get("observable_defect")),
-        "corrective_action": _optional_review_string(root.get("corrective_action")),
-        **components,
-    }
+    from .masked_review_contract import validate_review
+
+    try:
+        return validate_review(payload)
+    except ValueError as exc:
+        raise XingheAgentError("LOCAL_EDIT_VISUAL_REVIEW_INVALID", str(exc)) from exc
 
 
 def _optional_review_string(value: object) -> str | None:

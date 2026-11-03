@@ -54,7 +54,7 @@ from app.skill_runtime import (
 
 WORKSPACE_ID = "ws_test"
 XINGHE_HASH = "c438e479eb465742115549779acd3de7b6c83e45745b9b4184fef7da6f86e932"
-MASKED_HASH = "2578e9266e3d2ac3e7216ef4827939cc13bf66c5b7d58ae2ff9e249e4e7b7c3b"
+MASKED_HASH = "15ef1121656f6d92ea15cee720f4660d4c9de1c5682b0f36017b5a00cfd620cb"
 
 
 @dataclass

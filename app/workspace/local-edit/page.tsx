@@ -17,7 +17,7 @@ import { WorkspaceJobGate } from "@/components/workspace-job-gate";
 import { useWorkspaceJobId } from "@/lib/jobs/use-workspace-job-id";
 import { workspaceJobSnapshot } from "@/lib/jobs/workspace-restore";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
-import { BeforeAfterResult } from "@/components/before-after-result";
+import { LocalEditReview } from "@/components/local-edit-review";
 import { FormDisclosure } from "@/components/form-disclosure";
 import { JobResultImage } from "@/components/job-result-image";
 import { MaskEditor, normalizeRasterImage, type MaskEditorHandle } from "@/components/mask-editor";
@@ -155,9 +155,21 @@ function LocalEditWorkspace() {
 
   const requestError = handoff.error ?? restoredSource.error ?? sourceAccess.error ?? upload.error ?? createJob.error ?? retryJob.error ?? job.error;
   const busy = handoff.loading || upload.isPending || createJob.isPending || retryJob.isPending;
-  const canRetry = job.data && allowsJobAction(job.data.allowed_actions, "retry");
+  const hasLockedCandidate = job.data?.assets.some(asset => asset.role === "locked_candidate");
+  const canRetry = !hasLockedCandidate && job.data && allowsJobAction(job.data.allowed_actions, "retry");
 
-  const currentStep = jobId ? (resultAsset ? 3 : 2) : !sourceAsset ? 0 : !hasSelection ? 1 : 2;
+  const revise = () => {
+    if (sourceAsset) setSourceAsset(sourceAsset);
+    setSourceOverridden(true);
+    setPrompt(prompt);
+    setQuality(quality);
+    setExecutionPath(executionPath);
+    setJobId(undefined);
+    setHasSelection(false);
+    setEditorError(undefined);
+  };
+  const hasPreview = Boolean(resultAsset) || hasLockedCandidate;
+  const currentStep = jobId ? (hasPreview ? 3 : 2) : !sourceAsset ? 0 : !hasSelection ? 1 : 2;
   const nextAction = !sourceAsset ? "先上传一张商品原图" : !hasSelection ? "在左侧画布涂抹或框选需要修改的区域" : !prompt.trim() ? "写下希望如何修改选区，也可以使用下方示例" : workflow.mode === "mock" ? "已准备好，可保存任务并预览流程" : "已准备好，可以开始生成";
 
   return (
@@ -178,7 +190,7 @@ function LocalEditWorkspace() {
             })}
           </div>
 
-          <div className="local-edit-layout">
+          {!hasPreview && <div className="local-edit-layout">
             <section className="editor-card">
               {jobId ? <div className="job-asset-grid">
                 {restoredSourceId && <JobResultImage workspaceId={workspace?.id} assetId={restoredSourceId} alt="任务原始图片" label="任务原始图片" />}
@@ -242,9 +254,9 @@ function LocalEditWorkspace() {
               </FormDisclosure>
               <div className="cost-bar"><span>本次创作</span>{jobId ? <strong>已保存任务 · 输入参数已锁定</strong> : <CreditCostHint jobType="local_edit" count={1} fallback={<strong>{workflow.mode === "provider" ? "在线生成 · 按套餐计费" : workflow.mode === "mock" ? "任务保存 · 暂不生成图片" : "生成服务暂不可用"}</strong>} />}</div>
               {(requestError || editorError) && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{editorError ?? errorMessage(requestError ?? new Error("未知错误"))}</p></div></div>}
-              <JobProgressFeedback job={job.data} pending={createJob.isPending} error={job.error}
-                lastSyncedAt={job.dataUpdatedAt} refreshing={job.isFetching} onRefresh={jobId ? () => void job.refetch() : undefined} />
-              {rawCandidateAsset && (
+              {job.data?.status !== "awaiting_final_review" && <JobProgressFeedback job={job.data} pending={createJob.isPending} error={job.error}
+                lastSyncedAt={job.dataUpdatedAt} refreshing={job.isFetching} onRefresh={jobId ? () => void job.refetch() : undefined} />}
+              {rawCandidateAsset && !hasLockedCandidate && (
                 <div className={`generation-feedback ${rawReviewSuccess === true ? "success" : rawReviewSuccess === false ? "error" : "active"}`}>
                   <span>{rawReviewSuccess === true ? <CheckCircle2 size={16} /> : <ShieldCheck size={16} />}</span>
                   <div>
@@ -261,12 +273,12 @@ function LocalEditWorkspace() {
                 </button>
               )}
               {!jobId && <p className="local-edit-next-action" role="status">{busy ? "正在准备图片与选区，请稍候…" : !workflowAvailable ? "生成服务暂不可用，请稍后重试" : nextAction}</p>}
-              <p className="privacy-line"><ShieldCheck size={13} />只修改紫色选区，选区外保持原样。</p>
+              <p className="privacy-line"><ShieldCheck size={13} />成功出图即计费，采用和复核不另收费。</p>
             </aside>
-          </div>
+          </div>}
 
-          {resultAsset && sourceUrl && <section className="result-preview-card"><div className="planning-head"><div><span className="number-chip number-chip--violet">4</span><div><h2>生成结果</h2><p>拖动滑块对比原图与生成结果。</p></div></div></div><BeforeAfterResult workspaceId={workspace?.id} sourceUrl={sourceUrl} assetId={resultAsset.asset_id} /></section>}
-          {rawCandidateAsset && <section className="detail-form-card"><div className="form-section-head"><span className="number-chip number-chip--violet">R</span><div><h2>原始生成候选</h2><p>仅供视觉诊断，不是像素锁定后的可交付结果。</p></div></div><div className="job-results-grid"><JobResultImage workspaceId={workspace?.id} assetId={rawCandidateAsset.asset_id} alt="一句话改图原始候选" label="原始候选 · 不可交付" /></div></section>}
+          {job.data && sourceUrl && workspace && <section className="result-preview-card"><LocalEditReview workspaceId={workspace.id} job={job.data} sourceUrl={sourceUrl} onJobChange={setJobId} onRevise={revise} /></section>}
+
           {job.data?.status === "completed" && workflow.mode === "mock" && !resultAsset && <div className="api-state"><ImagePlus size={22} /><p>任务流程已完成，当前生成服务未返回图片结果。</p></div>}
         </div>
         {libraryOpen ? (

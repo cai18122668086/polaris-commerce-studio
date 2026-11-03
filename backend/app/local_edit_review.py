@@ -345,6 +345,9 @@ async def resolve(
         session.flush()
         if not completed_selection:
             settle_credits(session, job, int(job.estimated_credits or 0))
+        from .replica_image_edits import apply_accepted_edit
+
+        apply_accepted_edit(session, job, selected_output, actor_id)
     session.add(
         AuditEventRecord(
             workspace_id=job.workspace_id,

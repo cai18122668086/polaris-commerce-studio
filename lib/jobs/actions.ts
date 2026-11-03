@@ -1,4 +1,5 @@
 export type JobAction =
+  | "select_replica_image"
   | "accept_local_edit"
   | "review_local_edit"
   | "cancel"

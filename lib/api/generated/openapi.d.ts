@@ -2094,6 +2094,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/items/{item_id}/local-edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Replica Image History */
+        get: operations["replica_image_history_api_v1_workspaces__workspace_id__jobs__job_id__items__item_id__local_edits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/items/{item_id}/local-edits/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Select Replica Image History */
+        post: operations["select_replica_image_history_api_v1_workspaces__workspace_id__jobs__job_id__items__item_id__local_edits_selection_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review": {
         parameters: {
             query?: never;
@@ -4600,6 +4634,7 @@ export interface components {
         };
         /** LocalEditInput */
         LocalEditInput: {
+            replica_output?: components["schemas"]["ReplicaOutputBinding"] | null;
             /** Selection Mask Asset Id */
             selection_mask_asset_id: string;
             /** Source Asset Id */
@@ -5106,6 +5141,64 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ReplicaImageEditRecord */
+        ReplicaImageEditRecord: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Instruction */
+            instruction: string;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+            /** Job Id */
+            job_id: string;
+            /** Result Asset Id */
+            result_asset_id?: string | null;
+            /** Source Asset Id */
+            source_asset_id: string;
+            status: components["schemas"]["JobStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ReplicaImageHistoryResponse */
+        ReplicaImageHistoryResponse: {
+            /** Allowed Actions */
+            allowed_actions: string[];
+            /** Current Asset Id */
+            current_asset_id: string;
+            /** Current Local Edit Job Id */
+            current_local_edit_job_id?: string | null;
+            /** Job Id */
+            job_id: string;
+            /** Job Item Id */
+            job_item_id: string;
+            /** Original Asset Id */
+            original_asset_id: string;
+            /** Records */
+            records: components["schemas"]["ReplicaImageEditRecord"][];
+        };
+        /** ReplicaImageSelection */
+        ReplicaImageSelection: {
+            /** Expected Current Asset Id */
+            expected_current_asset_id: string;
+            /** Local Edit Job Id */
+            local_edit_job_id?: string | null;
+        };
+        /** ReplicaOutputBinding */
+        ReplicaOutputBinding: {
+            /** Job Id */
+            job_id: string;
+            /** Job Item Id */
+            job_item_id: string;
         };
         /** RetryRequest */
         RetryRequest: {
@@ -9985,6 +10078,78 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replica_image_history_api_v1_workspaces__workspace_id__jobs__job_id__items__item_id__local_edits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicaImageHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_replica_image_history_api_v1_workspaces__workspace_id__jobs__job_id__items__item_id__local_edits_selection_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplicaImageSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

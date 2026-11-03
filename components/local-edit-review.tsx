@@ -37,9 +37,10 @@ function preferred(job: JobDetail, choices: Candidate[]) {
     ? original : locked ?? original;
 }
 
-export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onContinueEditing, onRevise }: {
+export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onContinueEditing, onRevise, onAdopted }: {
   workspaceId: string; job: JobDetail; sourceUrl: string; onJobChange: (jobId: string) => void;
   onContinueEditing?: () => void; onRevise?: () => void;
+  onAdopted?: () => void;
 }) {
   const history = useLocalEditHistory(workspaceId, job);
   const decision = useLocalEditDecision(workspaceId);
@@ -104,6 +105,7 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
           allowOutsideSelectionChanges: action === "accept" && originalSelected,
         });
         onJobChange(next.id);
+        if (action === "accept") onAdopted?.();
       }
     } catch (caught) {
       setActionError(errorMessage(caught));

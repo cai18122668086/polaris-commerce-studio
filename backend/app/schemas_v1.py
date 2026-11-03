@@ -174,9 +174,15 @@ class AccessUrlResponse(BaseModel):
     original_url: str | None = None
 
 
+class ReplicaOutputBinding(BaseModel):
+    job_id: str = Field(min_length=1, max_length=40)
+    job_item_id: str = Field(min_length=1, max_length=40)
+
+
 class LocalEditInput(BaseModel):
     source_asset_id: str
     selection_mask_asset_id: str
+    replica_output: ReplicaOutputBinding | None = None
 
     @model_validator(mode="after")
     def distinct_assets(self) -> "LocalEditInput":
@@ -795,6 +801,32 @@ class LocalEditReviewDecision(BaseModel):
         ):
             raise ValueError("采用完整生成版需要明确同意保留选区外变化。")
         return self
+
+
+class ReplicaImageEditRecord(BaseModel):
+    job_id: str
+    source_asset_id: str
+    result_asset_id: str | None = None
+    status: JobStatus
+    instruction: str
+    created_at: datetime
+    updated_at: datetime
+    is_current: bool = False
+
+
+class ReplicaImageHistoryResponse(BaseModel):
+    job_id: str
+    job_item_id: str
+    original_asset_id: str
+    current_asset_id: str
+    current_local_edit_job_id: str | None = None
+    records: list[ReplicaImageEditRecord]
+    allowed_actions: list[str]
+
+
+class ReplicaImageSelection(BaseModel):
+    expected_current_asset_id: str = Field(min_length=1, max_length=40)
+    local_edit_job_id: str | None = Field(default=None, min_length=1, max_length=40)
 
 
 class RetryRequest(BaseModel):

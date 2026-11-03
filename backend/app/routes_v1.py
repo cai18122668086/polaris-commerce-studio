@@ -138,6 +138,8 @@ from .schemas_v1 import (
     PlanUpdateRequest,
     ProductImageJobCreate,
     ReferenceRemixJobCreate,
+    ReplicaImageHistoryResponse,
+    ReplicaImageSelection,
     RetryRequest,
     RuntimeCapabilities,
     RuntimeStatusResponse,
@@ -1440,6 +1442,8 @@ def create_job(
     key = require_idempotency_key(idempotency_header)
     inspiration_case = _validate_inspiration_case_job(session, payload)
     payload_data = payload.model_dump(mode="json")
+    if isinstance(payload, LocalEditJobCreate) and payload.input.replica_output is None:
+        payload_data["input"].pop("replica_output", None)
     request_hash = canonical_hash(payload_data)
     idem, replay = claim_idempotency(
         session,
@@ -1527,6 +1531,10 @@ def create_job(
     session.add(job)
     session.flush()
     _add_items_and_inputs(session, job, asset_roles)
+    if isinstance(payload, LocalEditJobCreate):
+        from .replica_image_edits import register_edit
+
+        register_edit(session, job)
     if payload.intent == "submit":
         _reserve_real_provider_job_if_enabled(
             session,
@@ -2155,6 +2163,68 @@ def cancel_job(
     return job_detail_response(session, job)
 
 
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/items/{item_id}/local-edits",
+    response_model=ReplicaImageHistoryResponse,
+    tags=["one-click-replica"],
+)
+def replica_image_history(
+    job_id: str,
+    item_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> dict:
+    from .replica_image_edits import frame, history
+
+    response = history(session, frame(session, workspace.workspace_id, job_id, item_id))
+    response["allowed_actions"] = (
+        [] if workspace.role == MembershipRole.VIEWER else ["select_replica_image"]
+    )
+    return response
+
+
+@router.post(
+    "/workspaces/{workspace_id}/jobs/{job_id}/items/{item_id}/local-edits/selection",
+    response_model=JobDetailResponse,
+    tags=["one-click-replica"],
+)
+def select_replica_image_history(
+    job_id: str,
+    item_id: str,
+    payload: ReplicaImageSelection,
+    workspace: WorkspaceWriteDependency,
+    session: SessionDependency,
+    idempotency_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JobDetailResponse:
+    from .replica_image_edits import frame, select_history
+
+    target = frame(session, workspace.workspace_id, job_id, item_id, lock=True)
+    idem, replay = claim_idempotency(
+        session,
+        workspace_id=workspace.workspace_id,
+        actor_user_id=workspace.principal.user_id,
+        method="POST",
+        route_template=(
+            "/api/v1/workspaces/{workspace_id}/jobs/{job_id}"
+            "/items/{item_id}/local-edits/selection"
+        ),
+        idempotency_key=require_idempotency_key(idempotency_header),
+        request_hash=canonical_hash(
+            {"job_id": job_id, "item_id": item_id, **payload.model_dump(mode="json")}
+        ),
+    )
+    if not replay:
+        select_history(
+            session, target, payload.local_edit_job_id,
+            payload.expected_current_asset_id, workspace.principal.user_id,
+        )
+        complete_idempotency(
+            idem, resource_type="job", resource_id=job_id, response_status=200
+        )
+        session.commit()
+    return job_detail_response(session, target.job)
+
+
 @router.post(
     "/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review",
     response_model=JobDetailResponse,
@@ -2346,6 +2416,10 @@ def retry_job(
     session.flush()
     _copy_job_relations_for_retry(session, source, retried, selected)
     session.flush()
+    if retried.type == JobType.LOCAL_EDIT.value:
+        from .replica_image_edits import register_edit
+
+        register_edit(session, retried)
     if replica_authority is not None:
         bind_retry(session, source, retried, replica_authority)
     if manual_refined_revision:

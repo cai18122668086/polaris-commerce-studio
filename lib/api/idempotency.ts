@@ -1,4 +1,5 @@
 export type IdempotentOperation =
+  | "replica-image-selection"
   | "local-edit-review"
   | "upload"
   | "create-job"

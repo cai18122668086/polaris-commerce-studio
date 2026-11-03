@@ -2223,6 +2223,13 @@ def retry_job(
 ) -> JobDetailResponse:
     key = require_idempotency_key(idempotency_header)
     source = get_workspace_job(session, workspace.workspace_id, job_id, for_update=True)
+    if (
+        payload.local_edit_instruction is not None
+        and source.type != JobType.LOCAL_EDIT.value
+    ):
+        raise ApiError(
+            422, "VALIDATION_ERROR", "只有局部改图可以在重新生成时修改要求。"
+        )
     if source.type == JobType.DOMESTIC_DETAIL_REVIEW.value:
         raise ApiError(
             409,
@@ -2262,7 +2269,15 @@ def retry_job(
         route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/retry",
         idempotency_key=key,
         request_hash=canonical_hash(
-            {"job_id": job_id, **payload.model_dump(mode="json")}
+            {
+                "job_id": job_id,
+                **payload.model_dump(
+                    mode="json",
+                    exclude={"local_edit_instruction"}
+                    if payload.local_edit_instruction is None
+                    else set(),
+                ),
+            }
         ),
     )
     if replay:
@@ -2273,6 +2288,20 @@ def retry_job(
             ),
         )
     from .aurora_main_image_fast import require_recoverable_plan
+
+    if (
+        payload.local_edit_instruction is not None
+        and payload.local_edit_instruction
+        != (source.configuration.get("settings") or {}).get("instruction")
+    ):
+        from .local_edit_review import candidate
+
+        if candidate(session, source) is None:
+            raise ApiError(
+                409,
+                "LOCAL_EDIT_RECOVERY_REQUIRED",
+                "请先恢复原任务，再修改要求生成新版本。",
+            )
 
     replan_main_image = require_recoverable_plan(
         session, source, allow_replanning=payload.scope == RetryScope.FAILED
@@ -2297,6 +2326,13 @@ def retry_job(
         )
     _validate_domestic_detail_retry(session, source, selected)
     retried = _copy_job_for_retry(session, source, payload.scope, selected)
+    if payload.local_edit_instruction is not None:
+        settings = dict(retried.configuration.get("settings") or {})
+        changed = settings.get("instruction") != payload.local_edit_instruction
+        settings["instruction"] = payload.local_edit_instruction
+        retried.configuration = {**retried.configuration, "settings": settings}
+        if changed:
+            retried.configuration.pop("_local_edit_retry_guidance", None)
     if replan_main_image:
         # 新规划只继承用户输入，不能携带会阻止规划的旧调用标记。
         retried.configuration = {

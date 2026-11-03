@@ -5111,6 +5111,8 @@ export interface components {
         RetryRequest: {
             /** Item Ids */
             item_ids?: string[];
+            /** Local Edit Instruction */
+            local_edit_instruction?: string | null;
             /** @default failed */
             scope: components["schemas"]["RetryScope"];
         };

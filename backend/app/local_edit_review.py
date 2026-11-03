@@ -24,6 +24,21 @@ from .storage import ImageStorage
 CandidateVariant = Literal["locked", "original"]
 
 
+def same_edit_canvas(left: JobRecord, right: JobRecord) -> bool:
+    # Explicit selection may restore an older wording on the same source/mask.
+    # Generation recovery still requires the complete settings to match.
+    def settings(job: JobRecord) -> dict[str, object]:
+        return {
+            k: v
+            for k, v in (job.configuration.get("settings") or {}).items()
+            if k != "instruction"
+        }
+
+    return left.configuration.get("input") == right.configuration.get(
+        "input"
+    ) and settings(left) == settings(right)
+
+
 def _outside_change_measurement(
     source: Image.Image, authority: Image.Image, output: Image.Image
 ) -> tuple[int, str]:
@@ -141,10 +156,7 @@ async def resolve(
                 or parent.type != "local_edit"
             ):
                 break
-            if any(
-                parent.configuration.get(k) != job.configuration.get(k)
-                for k in ("input", "settings")
-            ):
+            if not same_edit_canvas(parent, job):
                 break
             ancestor = parent
             found = candidate(session, ancestor, variant)

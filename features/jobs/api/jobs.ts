@@ -244,16 +244,18 @@ export function useCloneJob(workspaceId: string | undefined) {
 type RetryJobAction = AuthorizedJobAction & {
   scope?: RetryScope;
   itemIds?: string[];
+  localEditInstruction?: string;
 };
 
 export function useRetryJob(workspaceId: string | undefined) {
   return useJobMutation<JobDetail, RetryJobAction>(
     workspaceId,
     "retry-job",
-    ({ jobId, scope = "failed", itemIds = [] }) => ({
+    ({ jobId, scope = "failed", itemIds = [], localEditInstruction }) => ({
       jobId,
       scope,
       itemIds,
+      localEditInstruction,
     }),
     async (id, input, key) => {
       assertJobAction(input.allowedActions, "retry");
@@ -267,6 +269,7 @@ export function useRetryJob(workspaceId: string | undefined) {
           body: {
             scope: input.scope ?? "failed",
             item_ids: input.itemIds ?? [],
+            ...(input.localEditInstruction !== undefined ? { local_edit_instruction: input.localEditInstruction } : {}),
           },
         },
       );
@@ -298,8 +301,11 @@ export function useLocalEditDecision(workspaceId: string | undefined) {
 }
 
 export function useLocalEditHistory(workspaceId: string | undefined, job: JobDetail) {
+  const settingsKey = (value: JobDetail) => JSON.stringify(Object.fromEntries(
+    Object.entries((value.configuration.settings ?? {}) as Record<string, unknown>).filter(([key]) => key !== "instruction"),
+  ));
   return useQuery({
-    queryKey: ["local-edit-history", workspaceId, job.retry_of_job_id],
+    queryKey: ["local-edit-history", workspaceId, job.id, job.retry_of_job_id],
     enabled: Boolean(workspaceId && job.retry_of_job_id),
     queryFn: async ({ signal }) => {
       const history: JobDetail[] = [];
@@ -311,7 +317,7 @@ export function useLocalEditHistory(workspaceId: string | undefined, job: JobDet
           params: { path: { workspace_id: workspaceId!, job_id: parent } }, signal,
         }));
         if (previous.type !== "local_edit" || JSON.stringify(previous.configuration.input) !== JSON.stringify(job.configuration.input)
-          || JSON.stringify(previous.configuration.settings) !== JSON.stringify(job.configuration.settings)) break;
+          || settingsKey(previous) !== settingsKey(job)) break;
         history.push(previous);
         parent = previous.retry_of_job_id;
       }

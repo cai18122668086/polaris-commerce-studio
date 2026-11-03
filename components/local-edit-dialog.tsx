@@ -2,18 +2,16 @@
 
 import { TaskWorkspaceLink } from "./task-workspace-link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
+import { ArrowUpRight, LoaderCircle, Sparkles, X } from "lucide-react";
 import { useAsset, useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
-import { useCreateJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
+import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { errorMessage } from "@/lib/api/request";
 import type { LocalEditJobCreate } from "@/lib/api/types";
 import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
-import { allowsJobAction } from "@/lib/jobs/actions";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import { LocalEditReview } from "./local-edit-review";
-import { JobProgressFeedback } from "./job-progress-feedback";
 import { MaskEditor, type MaskEditorHandle } from "./mask-editor";
 import styles from "./local-edit-dialog.module.css";
 
@@ -49,12 +47,11 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
   const access = useAssetAccessUrl(workspaceId, source.assetId);
   const upload = useUploadAsset(workspaceId);
   const createJob = useCreateJob(workspaceId);
-  const retryJob = useRetryJob(workspaceId);
   const job = useJob(workspaceId, jobId);
   const runtime = useRuntimeStatus();
   const workflow = presentWorkflow(runtime.data?.capabilities.local_edit);
   const available = workflow.mode === "provider" || workflow.mode === "mock";
-  const busy = isSubmitting || upload.isPending || createJob.isPending || retryJob.isPending;
+  const busy = isSubmitting || upload.isPending || createJob.isPending;
   const sourceReady = asset.data?.media_kind === "image" && asset.data.lifecycle_status === "ready" && Boolean(access.data?.url);
   const locked = prepared || Boolean(jobId);
   const result = selectJobResultAssets(job.data)[0];
@@ -62,8 +59,7 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
   useEffect(() => {
     if (hasCandidate) dialog.current?.scrollTo({ top: 0 });
   }, [hasCandidate]);
-  const canRetry = !result && !hasCandidate && job.data && allowsJobAction(job.data.allowed_actions, "retry");
-  const loadError = asset.error ?? access.error;
+  const loadError = asset.error ?? access.error ?? job.error;
   const sourceUrl = access.data?.url;
 
   useBodyScrollLock(open);
@@ -120,30 +116,15 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
     }
   };
 
-  const retry = async () => {
-    if (submitting.current || !job.data || !canRetry) return;
-    submitting.current = true;
-    setIsSubmitting(true);
-    setError(undefined);
-    try {
-      const created = await retryJob.mutateAsync({ jobId: job.data.id, allowedActions: job.data.allowed_actions, scope: "failed" });
-      setJobId(created.id);
-    } catch (caught) {
-      setError(errorMessage(caught));
-    } finally {
-      submitting.current = false;
-      setIsSubmitting(false);
-    }
-  };
-
   const revise = () => {
+    const savedInstruction = (job.data?.configuration.settings as Record<string, unknown> | undefined)?.instruction;
+    if (typeof savedInstruction === "string") setInstruction(savedInstruction);
     setJobId(undefined);
     setHasSelection(false);
     setPrepared(false);
     setError(undefined);
     pendingSubmission.current = null;
     createJob.reset();
-    retryJob.reset();
   };
 
   const continueEditing = () => {
@@ -156,7 +137,6 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
     setError(undefined);
     pendingSubmission.current = null;
     createJob.reset();
-    retryJob.reset();
   };
 
   return <dialog ref={dialog} className={styles.dialog} aria-labelledby="local-edit-dialog-title" aria-describedby="local-edit-dialog-description"
@@ -168,36 +148,30 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
         <button type="button" className={styles.close} onClick={close} disabled={busy} aria-label="关闭改图窗口"><X size={20} /></button>
       </header>
       <div className={styles.body}>
-        <section className={`${styles.canvas} ${hasCandidate ? styles.reviewCanvas : ""}`} aria-label={hasCandidate ? "修改前后对比与版本确认" : "圈选要修改的位置"}>
-          {loadError ? <div className={styles.loadState} role="alert"><p>{errorMessage(loadError)}</p><button type="button" onClick={() => { void asset.refetch(); void access.refetch(); }}>重新加载图片</button></div>
+        <section className={`${styles.canvas} ${jobId ? styles.reviewCanvas : ""}`} aria-label={jobId ? "修改前后对比与版本确认" : "圈选要修改的位置"}>
+          {loadError ? <div className={styles.loadState} role="alert"><p>{errorMessage(loadError)}</p><button type="button" onClick={() => { void asset.refetch(); void access.refetch(); if (jobId) void job.refetch(); }}>重新加载</button></div>
             : !sourceReady ? <div className={styles.loadState}><LoaderCircle className="spin" size={24} /><p>{asset.data && asset.data.lifecycle_status !== "ready" ? "这张图片暂不可编辑，请重新选择已完成的图片。" : "正在加载原图…"}</p></div>
-              : job.data && sourceUrl ? <LocalEditReview workspaceId={workspaceId} job={job.data} sourceUrl={sourceUrl} onJobChange={setJobId} onContinueEditing={result ? continueEditing : undefined} onRevise={revise} />
+              : jobId ? job.data && sourceUrl ? <LocalEditReview workspaceId={workspaceId} job={job.data} sourceUrl={sourceUrl} onJobChange={setJobId} onContinueEditing={result ? continueEditing : undefined} onRevise={revise} /> : <div className={styles.loadState}><LoaderCircle className="spin" size={24} /><p>正在加载任务…</p></div>
                 : <div className={styles.editor} inert={locked ? true : undefined}><MaskEditor key={source.assetId} ref={editor} sourceUrl={sourceUrl} sourceName={source.title} onChange={onSelection} onError={onEditorError} /></div>}
         </section>
-        {!hasCandidate && <aside className={styles.controls}>
-          <div><h3>{result ? "修改结果已生成" : hasCandidate ? "修改版已保留" : "想怎么修改？"}</h3><p className={styles.hint}>{result ? "拖动滑块对比，也可以下载或继续修改。" : hasCandidate ? "请对比原图与候选，查看审图意见后选择采用、复核或重画。" : "先圈出要改的位置，再描述希望发生的变化。选区外保持原样。"}</p></div>
-          {!hasCandidate && <fieldset className={styles.form} disabled={locked || busy}>
+        {!jobId && <aside className={styles.controls}>
+          <div><h3>想怎么修改？</h3><p className={styles.hint}>圈选位置，描述修改。</p></div>
+          <fieldset className={styles.form} disabled={locked || busy}>
             <div className={styles.examples} aria-label="修改要求示例">{EXAMPLES.map(([label, text]) => <button key={label} type="button" onClick={() => setInstruction(text)}>{label}</button>)}</div>
             <label htmlFor="local-edit-dialog-instruction">修改要求</label>
             <textarea id="local-edit-dialog-instruction" value={instruction} onChange={event => setInstruction(event.target.value)} maxLength={500} rows={5} placeholder="例如：把选区里的标题改为“清爽保湿”，保持字体和位置。" />
             <span className={styles.count}>{instruction.length} / 500</span>
-          </fieldset>}
-          {hasCandidate && <p className={styles.hint}>修改要求：{instruction}</p>}
-          {!jobId && <div className={styles.cost}><span>本次修改</span><CreditCostHint jobType="local_edit" count={1} fallback={<span>与一句话改图同价</span>} /></div>}
-          <p className={styles.hint}>成功出图即计费，采用和复核不另收费。</p>
+          </fieldset>
+          <div className={styles.cost}><span>本次生成</span><CreditCostHint jobType="local_edit" count={1} fallback={<span>与一句话改图同价</span>} /></div>
           {error && <p className={styles.error} role="alert">{error}</p>}
-          {job.data?.status !== "awaiting_final_review" && <JobProgressFeedback job={job.data} pending={busy} error={job.error} refreshing={job.isFetching} lastSyncedAt={job.dataUpdatedAt} onRefresh={jobId ? () => void job.refetch() : undefined} />}
-          {result ? <button type="button" className={styles.primary} onClick={continueEditing}><Sparkles size={16} />继续修改这张图</button>
-            : canRetry ? <button type="button" className={styles.primary} disabled={busy} onClick={() => void retry()}>{busy ? <LoaderCircle className="spin" size={16} /> : <RotateCcw size={16} />}重试失败项目</button>
-              : !jobId && <button type="button" className={styles.primary} disabled={busy || !sourceReady || !available || (!prepared && (!hasSelection || !instruction.trim()))} onClick={() => void submit()} aria-busy={busy}>
+          <button type="button" className={styles.primary} disabled={busy || !sourceReady || !available || (!prepared && (!hasSelection || !instruction.trim()))} onClick={() => void submit()} aria-busy={busy}>
                 {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}{busy ? "正在提交" : prepared ? "重试提交" : workflow.mode === "mock" ? "保存修改任务" : "生成修改版"}
-              </button>}
+          </button>
           {!jobId && !available && <p className={styles.hint} role="status">{runtime.isPending ? "正在确认生成服务状态…" : "一句话改图服务暂不可用，请稍后重试。"}</p>}
           {!jobId && workflow.mode === "mock" && <p className={styles.hint}>当前支持保存任务，暂不生成图片。</p>}
-          {jobId && <TaskWorkspaceLink className={styles.taskLink} href={`/workspace/local-edit?jobId=${encodeURIComponent(jobId)}`}>查看完整修改记录<ArrowUpRight size={14} /></TaskWorkspaceLink>}
         </aside>}
       </div>
-      <footer className={styles.footer}>{hasCandidate && jobId && <TaskWorkspaceLink className={styles.taskLink} href={`/workspace/local-edit?jobId=${encodeURIComponent(jobId)}`}>完整记录<ArrowUpRight size={14} /></TaskWorkspaceLink>}<span>{jobId ? "任务已保存，关闭弹窗后可从任务中心继续查看。" : prepared ? "已保留本次修改内容，重试会继续提交同一次任务。" : "图片已自动带入，无需重新上传。"}</span><button type="button" onClick={close} disabled={busy}>关闭</button></footer>
+      <footer className={styles.footer}>{jobId ? <TaskWorkspaceLink className={styles.taskLink} href={`/workspace/local-edit?jobId=${encodeURIComponent(jobId)}`}>完整记录<ArrowUpRight size={14} /></TaskWorkspaceLink> : <span>成功出图即计费，采用不另收费。</span>}<button type="button" onClick={close} disabled={busy}>关闭</button></footer>
     </div>
   </dialog>;
 }

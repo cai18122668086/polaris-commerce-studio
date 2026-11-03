@@ -800,9 +800,16 @@ class LocalEditReviewDecision(BaseModel):
 class RetryRequest(BaseModel):
     scope: RetryScope = RetryScope.FAILED
     item_ids: list[str] = Field(default_factory=list, max_length=12)
+    local_edit_instruction: str | None = Field(
+        default=None, min_length=1, max_length=4000
+    )
 
     @model_validator(mode="after")
     def selected_requires_items(self) -> "RetryRequest":
+        if self.local_edit_instruction is not None:
+            self.local_edit_instruction = self.local_edit_instruction.strip()
+            if not self.local_edit_instruction:
+                raise ValueError("请填写修改要求。")
         if self.scope == RetryScope.SELECTED and not self.item_ids:
             raise ValueError("selected retry scope requires item_ids")
         if self.scope != RetryScope.SELECTED and self.item_ids:

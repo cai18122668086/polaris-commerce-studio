@@ -6962,6 +6962,19 @@
             "title": "Item Ids",
             "type": "array"
           },
+          "local_edit_instruction": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Edit Instruction"
+          },
           "scope": {
             "$ref": "#/components/schemas/RetryScope",
             "default": "failed"

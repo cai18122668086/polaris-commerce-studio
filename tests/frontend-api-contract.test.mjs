@@ -126,7 +126,7 @@ test("write actions use server allowed_actions as the only authority", async () 
   const jobsPage = await utf8("app/jobs/page.tsx");
   const drawer = await utf8("components/task-drawer.tsx");
   const detail = await utf8("components/detail-pack-workspace.tsx");
-  const local = await utf8("app/workspace/local-edit/page.tsx");
+  const local = await utf8("components/local-edit-review.tsx");
   const mutations = await utf8("features/jobs/api/jobs.ts");
 
   for (const source of [jobsPage, drawer, detail, local]) {
@@ -142,7 +142,7 @@ test("write actions use server allowed_actions as the only authority", async () 
 
 test("workflow pages submit the bounded inputs and failed-only retry scope", async () => {
   const detail = await utf8("components/detail-pack-workspace.tsx");
-  const local = await utf8("app/workspace/local-edit/page.tsx");
+  const local = await utf8("app/workspace/local-edit/page.tsx") + await utf8("components/local-edit-review.tsx");
 
   assert.match(local, /mediaKind: "mask"/);
   assert.match(
@@ -151,7 +151,7 @@ test("workflow pages submit the bounded inputs and failed-only retry scope", asy
   );
   assert.match(
     local,
-    /configuration: \{ instruction: prompt\.trim\(\), output_format: "png", quality: "balanced" \}/,
+    /configuration: \{ instruction: prompt\.trim\(\), output_format: "png", quality: "balanced", execution_path: "auto" \}/,
   );
   assert.match(
     detail,

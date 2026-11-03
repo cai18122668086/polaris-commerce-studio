@@ -37,6 +37,14 @@
 .disclosure p { margin:10px 0 4px;overflow-wrap:anywhere; }
 .disclosure small { display:block;margin-top:8px;color:#9b9fa8;font-size:11px; }
 .error { margin:0;color:#a3422f;font-size:12px;line-height:1.8; }
+.regeneration { display:flex;flex-direction:column;gap:10px;min-width:0; }
+.regeneration label { color:#626773;font-size:12px; }
+.regeneration textarea { display:block;box-sizing:border-box;width:100%;min-height:132px;max-height:300px;padding:12px;resize:vertical;border:1px solid #dedfe5;border-radius:9px;background:#fafafa;color:#242424;font:inherit;font-size:14px;line-height:1.7; }
+.regeneration textarea:focus { outline:2px solid #d8dfb3;outline-offset:2px; }
+.regenerationActions { display:flex;align-items:center;gap:10px; }
+.regenerationActions > button:first-child { min-height:44px;padding:10px 14px;flex-shrink:0;border:1px solid #e0e2e7;border-radius:9px;background:#fff;color:#626773;font:inherit;font-size:12px;cursor:pointer; }
+.regenerationActions .primary { flex:1;min-width:0;gap:5px;white-space:nowrap; }
+@media(pointer:coarse){.regeneration textarea{font-size:16px}}
 .loading { display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;min-height:280px;color:#8b8e97;font-size:13px; }
 .loadingText { display:flex;align-items:center;gap:6px;margin:0;color:#8b8e97;font-size:12px; }
 @media(max-width:760px){.panel{grid-template-columns:minmax(0,1fr);gap:20px}.decision{gap:16px;padding:0 2px}.heading h3{font-size:19px}.secondaryActions button{min-height:44px}.versions select{min-height:36px}.disclosure summary{min-height:44px;padding-top:9px}.disclosure{font-size:12px}}

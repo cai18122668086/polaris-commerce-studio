@@ -5,6 +5,7 @@ import { Check, ChevronDown, LoaderCircle, RotateCcw, ScanLine } from "lucide-re
 import { useCancelJob, useLocalEditDecision, useLocalEditHistory, useRetryJob } from "@/features/jobs/api/jobs";
 import type { JobDetail } from "@/lib/api/types";
 import { errorMessage } from "@/lib/api/request";
+import { allowsJobAction } from "@/lib/jobs/actions";
 import { BeforeAfterResult } from "./before-after-result";
 import styles from "./local-edit-review.module.css";
 
@@ -46,6 +47,8 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
   const cancel = useCancelJob(workspaceId);
   const [selectedAssetId, setSelectedAssetId] = useState<string>();
   const [actionError, setActionError] = useState<string>();
+  const [regeneration, setRegeneration] = useState<{ jobId: string; instruction: string }>();
+  const editing = regeneration?.jobId === job.id;
   const [retained, setRetained] = useState<{ forJobId: string; candidate: Candidate }>();
   const seenAssets = new Set<string>();
   const choices = [
@@ -71,18 +74,23 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
   const pending = job.status === "awaiting_final_review";
   const busy = decision.isPending || regenerate.isPending || cancel.isPending;
   const summary = originalSelected
-    ? "审图记录针对局部合成版。完整生成版请以当前预览为准，采用时会保留选区外变化。"
+    ? "审图意见针对局部合成版。"
     : image?.validation.visual_review_summary;
   const alreadyAdopted = image?.asset_id === activeOutput?.asset_id && Boolean(activeOutput);
 
-  const act = async (action: "accept" | "review" | "regenerate" | "cancel") => {
+  const act = async (action: "accept" | "review" | "regenerate" | "retry" | "cancel") => {
     if (busy) return;
+    if (action === "regenerate" && (!editing || !regeneration.instruction.trim())) return;
     setActionError(undefined);
     try {
-      if (action === "regenerate") {
+      if (action === "regenerate" || action === "retry") {
         if (image) setSelectedAssetId(image.asset_id);
-        const next = await regenerate.mutateAsync({ jobId: job.id, allowedActions: job.allowed_actions, scope: "failed" });
+        const next = await regenerate.mutateAsync({
+          jobId: job.id, allowedActions: job.allowed_actions, scope: "failed",
+          ...(action === "regenerate" ? { localEditInstruction: regeneration!.instruction.trim() } : {}),
+        });
         if (selected) setRetained({ forJobId: next.id, candidate: selected });
+        setRegeneration(undefined);
         onJobChange(next.id);
       } else if (action === "cancel") {
         const next = await cancel.mutateAsync({ jobId: job.id, allowedActions: job.allowed_actions });
@@ -111,7 +119,7 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
   const reusedPaidGeneration = job.configuration._local_edit_generation_already_paid === true;
   const selectedPaid = selected?.owner.cost.actual_credits;
   const canDownload = Boolean(alreadyAdopted || (typeof selectedPaid === "number" && selectedPaid > 0) || selected?.owner.configuration._local_edit_generation_already_paid === true);
-  const instruction = (job.configuration.settings as Record<string, unknown> | undefined)?.instruction;
+  const instruction = ((selected?.owner ?? job).configuration.settings as Record<string, unknown> | undefined)?.instruction;
   const canAdopt = (pending || completed) && job.allowed_actions.includes("accept_local_edit") && image && !alreadyAdopted;
 
   return <div className={styles.panel} aria-label="修改候选与版本选择">
@@ -136,30 +144,41 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
       </div>}
       {image ? <BeforeAfterResult key={image.asset_id} workspaceId={workspaceId} sourceUrl={sourceUrl} assetId={image.asset_id}
         downloadable={canDownload} preview={!alreadyAdopted} />
-        : (failed || abandoned) ? <img className={styles.sourcePreview} src={sourceUrl} alt="本次修改原图" /> : <div className={styles.loading}><LoaderCircle className="spin" size={24} /><span>正在生成修改版…</span></div>}
+        : (failed || abandoned || completed) ? <img className={styles.sourcePreview} src={sourceUrl} alt="本次修改原图" /> : <div className={styles.loading}><LoaderCircle className="spin" size={24} /><span>正在生成修改版…</span></div>}
       {history.error && <p role="alert" className={styles.error}>历史版本加载失败。<button type="button" onClick={() => void history.refetch()}>重新加载</button></p>}
     </div>
     <aside className={styles.decision}>
       <span className={`${styles.status} ${pending ? styles.waiting : ""}`}><i />{pending ? "待确认" : completed ? alreadyAdopted ? "已采用" : "可切换" : abandoned ? "已放弃" : failed ? "需调整" : "处理中"}</span>
-      <div className={styles.heading}><h3>{pending ? "这版符合你的预期吗？" : completed ? alreadyAdopted ? "修改已保存" : "切换当前使用结果" : abandoned ? "换个选区再试试" : failed ? "这次修改未完成" : image ? "正在检查修改效果" : "正在准备新版本"}</h3>
-        <p>{originalSelected ? "完整生成版会保留选区外变化，采用不再收费。" : pending ? "选区外保持原样，可切换完整生成版比较效果。" : completed ? "可以下载结果，或继续调整。" : abandoned ? (typeof charged === "number" && charged > 0 ? "图片已保留，已完成的生成费用已结算。" : "未完成生成，预留积分已释放。") : failed ? "可调整选区或要求，再生成一版。" : "旧版会保留，完成后再比较选择。"}</p>
+      <div className={styles.heading}><h3>{editing ? "调整后再生成" : pending ? "确认修改效果" : completed ? !image ? "任务已保存" : alreadyAdopted ? "修改已保存" : "切换使用结果" : abandoned ? "本次修改已放弃" : failed ? "这次修改未完成" : "正在生成修改版"}</h3>
+        {!editing && <p>{originalSelected ? "完整生成版会保留选区外变化。" : pending ? "局部合成版保留选区外原貌。" : completed ? image ? "可以下载，或继续修改。" : "当前任务没有图片结果。" : abandoned ? (typeof charged === "number" && charged > 0 ? "图片已保留，生成费用已结算。" : "预留积分已释放。") : failed ? job.error_message ?? "可重试，或调整选区和要求。" : "完成后即可比较选择。"}</p>}
       </div>
-      {(pending || canAdopt) && <div className={styles.actions}>
+      {editing && <form className={styles.regeneration} onSubmit={event => { event.preventDefault(); void act("regenerate"); }}>
+        <label htmlFor={`regeneration-${job.id}`}>修改要求</label>
+        <textarea id={`regeneration-${job.id}`} autoFocus rows={4} maxLength={4000} value={regeneration.instruction} disabled={busy}
+          onChange={event => setRegeneration({ jobId: job.id, instruction: event.target.value })} />
+        <div className={styles.regenerationActions}>
+          <button type="button" disabled={busy} onClick={() => setRegeneration(undefined)}>取消</button>
+          <button type="submit" className={styles.primary} disabled={busy || !regeneration.instruction.trim()}>
+            {regenerate.isPending ? <LoaderCircle className="spin" size={15} /> : <RotateCcw size={15} />}生成新版本{typeof credits === "number" && <small> · {credits} 积分</small>}
+          </button>
+        </div>
+      </form>}
+      {!editing && (pending || canAdopt) && <div className={styles.actions}>
         {canAdopt && <button className={styles.primary} type="button" disabled={busy} onClick={() => void act("accept")}><Check size={17} />{originalSelected ? "采用完整生成版" : "采用这版"}</button>}
         {pending && <div className={styles.secondaryActions}>
           {job.allowed_actions.includes("review_local_edit") && selectedLatest && !originalSelected && <button type="button" disabled={busy || !latest} onClick={() => void act("review")}><ScanLine size={15} />复核这版</button>}
-          {job.allowed_actions.includes("retry") && <button type="button" disabled={busy} onClick={() => void act("regenerate")}><RotateCcw size={15} />再生成一版{typeof credits === "number" && <small> · {credits} 积分</small>}</button>}
+          {allowsJobAction(job.allowed_actions, "retry") && <button type="button" disabled={busy} onClick={() => setRegeneration({ jobId: job.id, instruction: typeof instruction === "string" ? instruction : "" })}><RotateCcw size={15} />调整要求再生成</button>}
         </div>}
-        <div className={styles.price}><span>{reusedPaidGeneration ? "复用已付费版本" : "本次出图已结算"}</span><strong>{reusedPaidGeneration ? "未重复收费" : typeof charged === "number" ? `${charged} 积分` : "按生成计费"}</strong></div>
+        <div className={styles.price}><span>{reusedPaidGeneration ? "已付费版本" : "已结算"}</span><strong>{reusedPaidGeneration ? "未重复收费" : typeof charged === "number" ? `${charged} 积分` : "按生成计费"}</strong></div>
         {pending && job.allowed_actions.includes("cancel") && <button className={styles.abandon} type="button" disabled={busy} onClick={() => void act("cancel")}>放弃本次修改</button>}
       </div>}
       {completed && alreadyAdopted && onContinueEditing && <button className={styles.primary} type="button" onClick={onContinueEditing}>继续修改这张图</button>}
-      {(abandoned || failed) && onRevise && <button className={styles.primary} type="button" onClick={onRevise}>重新圈选或修改要求</button>}
+      {(abandoned || failed) && allowsJobAction(job.allowed_actions, "retry") && <button className={styles.primary} type="button" disabled={busy} onClick={() => void act("retry")}><RotateCcw size={15} />重试本次修改</button>}
+      {(abandoned || failed) && onRevise && <button className={styles.abandon} type="button" onClick={onRevise}>重新圈选</button>}
       {busy && <p className={styles.loadingText} role="status"><LoaderCircle className="spin" size={14} />正在处理…</p>}
-      {pending && <details className={styles.disclosure}><summary>查看审图意见<ChevronDown size={14} /></summary><p>{typeof summary === "string" ? summary : "审图暂未给出确定结论，可先查看预览再决定。"}</p>
-        <small>每次成功生成单独计费；采用或复核同一张图不重复收费。</small>
+      {pending && !editing && <details className={styles.disclosure}><summary>审图意见<ChevronDown size={14} /></summary><p>{typeof summary === "string" ? summary : "请以预览效果为准。"}</p>
       </details>}
-      {typeof instruction === "string" && <details className={styles.disclosure}><summary>本次修改要求<ChevronDown size={14} /></summary><p>{instruction}</p></details>}
+      {!editing && typeof instruction === "string" && <details className={styles.disclosure}><summary>修改要求<ChevronDown size={14} /></summary><p>{instruction}</p></details>}
       {actionError && <p className={styles.error} role="alert">{actionError}</p>}
     </aside>
   </div>;

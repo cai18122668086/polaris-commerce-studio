@@ -13,7 +13,7 @@ export function BeforeAfterResult({ workspaceId, sourceUrl, assetId, downloadabl
   downloadable?: boolean;
   preview?: boolean;
 }) {
-  const [position, setPosition] = useState(50);
+  const [position, setPosition] = useState(preview ? 0 : 50);
   const access = useAssetAccessUrl(workspaceId, assetId);
   if (access.isPending) return <div className={styles.resultState}><LoaderCircle className="spin" />正在获取生成结果…</div>;
   if (access.error || !access.data?.url) return <div className={`${styles.resultState} ${styles.resultStateError}`} role="alert">{errorMessage(access.error ?? new Error("结果访问地址不可用。"))}</div>;

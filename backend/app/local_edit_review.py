@@ -2,6 +2,7 @@
 
 import hashlib
 from io import BytesIO
+from typing import Literal
 
 from PIL import Image, ImageChops, ImageOps
 from sqlalchemy import select
@@ -20,9 +21,37 @@ from .models import (
 from .services import add_outbox_event, settle_credits, transition_job
 from .storage import ImageStorage
 
+CandidateVariant = Literal["locked", "original"]
+
+
+def _outside_change_measurement(
+    source: Image.Image, authority: Image.Image, output: Image.Image
+) -> tuple[int, str]:
+    """Compare only; never resize, composite or rewrite the chosen delivery bytes."""
+    basis = "source_canvas"
+    if output.size != source.size:
+        from .masked_repair import _build_provider_canvas
+
+        canvas = _build_provider_canvas(source, authority)
+        source = Image.open(BytesIO(canvas.source_png)).convert("RGBA")
+        api_mask = Image.open(BytesIO(canvas.api_mask_png)).convert("RGBA")
+        authority = ImageOps.invert(api_mask.getchannel("A"))
+        basis = "provider_input_canvas"
+        if source.size != output.size:
+            source = ImageOps.fit(source, output.size, Image.Resampling.LANCZOS)
+            authority = ImageOps.fit(authority, output.size, Image.Resampling.NEAREST)
+            basis = "provider_input_canvas_fitted_to_original"
+    diff = ImageChops.difference(source, output)
+    changed = ImageChops.lighter(
+        ImageChops.lighter(diff.getchannel("R"), diff.getchannel("G")),
+        ImageChops.lighter(diff.getchannel("B"), diff.getchannel("A")),
+    )
+    outside = ImageChops.multiply(changed, ImageOps.invert(authority))
+    return outside.width * outside.height - outside.histogram()[0], basis
+
 
 def candidate(
-    session: Session, job: JobRecord
+    session: Session, job: JobRecord, variant: CandidateVariant = "locked"
 ) -> tuple[JobAssetRecord, AssetRecord] | None:
     row = session.execute(
         select(JobAssetRecord, AssetRecord)
@@ -30,7 +59,8 @@ def candidate(
         .where(
             JobAssetRecord.workspace_id == job.workspace_id,
             JobAssetRecord.job_id == job.id,
-            JobAssetRecord.role == "locked_candidate",
+            JobAssetRecord.role
+            == ("provider_raw" if variant == "original" else "locked_candidate"),
             AssetRecord.workspace_id == job.workspace_id,
             AssetRecord.lifecycle_status == "ready",
             AssetRecord.deleted_at.is_(None),
@@ -38,7 +68,12 @@ def candidate(
         .order_by(JobAssetRecord.id.desc())
         .limit(1)
     ).first()
-    if row is None or row[0].validation.get("strict_lock_success") is not True:
+    if row is None:
+        return None
+    if variant == "original":
+        if (row[1].asset_metadata or {}).get("immutable_provider_raw") is not True:
+            return None
+    elif row[0].validation.get("strict_lock_success") is not True:
         return None
     return row[0], row[1]
 
@@ -67,12 +102,29 @@ async def resolve(
     action: str,
     expected_sha256: str,
     actor_id: str,
+    variant: CandidateVariant = "locked",
+    allow_outside_selection_changes: bool = False,
 ) -> None:
-    if job.type != "local_edit" or job.status != JobStatus.AWAITING_FINAL_REVIEW.value:
+    completed_selection = (
+        action == "accept"
+        and job.status == JobStatus.COMPLETED.value
+        and candidate(session, job) is not None
+    )
+    if job.type != "local_edit" or (
+        job.status != JobStatus.AWAITING_FINAL_REVIEW.value and not completed_selection
+    ):
         raise ApiError(
             409, "LOCAL_EDIT_NOT_AWAITING_REVIEW", "当前任务没有待确认的修改版。"
         )
-    found = candidate(session, job)
+    if variant == "original" and (
+        action != "accept" or not allow_outside_selection_changes
+    ):
+        raise ApiError(
+            409,
+            "LOCAL_EDIT_ORIGINAL_CHOICE_REQUIRED",
+            "采用完整生成版需要明确同意保留选区外变化。",
+        )
+    found = candidate(session, job, variant)
     if action == "accept":
         # A regenerated version waits for explicit selection. The currently
         # reserved edit can adopt a better ancestor without another image call.
@@ -95,7 +147,7 @@ async def resolve(
             ):
                 break
             ancestor = parent
-            found = candidate(session, ancestor)
+            found = candidate(session, ancestor, variant)
     if found is None or found[1].sha256 != expected_sha256:
         raise ApiError(
             409, "LOCAL_EDIT_CANDIDATE_CHANGED", "候选已变化，请刷新后查看。"
@@ -109,6 +161,7 @@ async def resolve(
     )
     if item is None or item.workspace_id != job.workspace_id:
         raise ApiError(409, "LOCAL_EDIT_CANDIDATE_MISSING", "候选缺少对应的任务条目。")
+    previous_asset_ids: list[str] = []
     if action == "review":
         if job.configuration.get("_local_edit_manual_review_count", 0) >= 1:
             raise ApiError(
@@ -137,8 +190,8 @@ async def resolve(
             suffix=f"local-review-{job.state_version}",
         )
     else:
-        # Recheck the bytes and exact authority at the promotion boundary. A raw
-        # image, changed object, or unbound upload can never be promoted here.
+        # Both variants must be immutable, paid and bound to these exact inputs.
+        # Only an explicit full-image choice can authorize changes outside the mask.
         inputs = job.configuration.get("input", {})
         source = session.get(AssetRecord, inputs.get("source_asset_id"))
         mask = session.get(AssetRecord, inputs.get("selection_mask_asset_id"))
@@ -181,23 +234,51 @@ async def resolve(
                 else ImageOps.grayscale(selection)
             )
             authority = basis.point(lambda v: 255 if v > 127 else 0)
-            if src.size != output.size or authority.size != src.size:
+            if output.size != (asset.width, asset.height):
+                raise ApiError(
+                    409, "LOCAL_EDIT_CANDIDATE_CHANGED", "候选尺寸与保存记录不一致。"
+                )
+            if authority.size != src.size or (
+                variant == "locked" and src.size != output.size
+            ):
                 raise ApiError(
                     409, "LOCAL_EDIT_PIXEL_LOCK_FAILED", "候选尺寸与原图不一致。"
                 )
-            diff = ImageChops.difference(src, output)
-            changed = ImageChops.lighter(
-                ImageChops.lighter(diff.getchannel("R"), diff.getchannel("G")),
-                ImageChops.lighter(diff.getchannel("B"), diff.getchannel("A")),
+            outside_changed, measurement_basis = _outside_change_measurement(
+                src, authority, output
             )
-            if ImageChops.multiply(changed, ImageOps.invert(authority)).getbbox():
+            if variant == "locked" and outside_changed:
                 raise ApiError(
                     409,
                     "LOCAL_EDIT_PIXEL_LOCK_FAILED",
                     "候选存在选区外变化，不能采用。",
                 )
-        session.add(
-            JobAssetRecord(
+        deliveries = session.scalars(
+            select(JobAssetRecord).where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.job_item_id == item.id,
+                JobAssetRecord.direction == "output",
+                JobAssetRecord.is_deliverable.is_(True),
+            )
+        ).all()
+        if any(row.asset_id == asset.id for row in deliveries):
+            raise ApiError(
+                409, "LOCAL_EDIT_ALREADY_ADOPTED", "这张图已经是当前采用结果。"
+            )
+        previous_asset_ids = [row.asset_id for row in deliveries]
+        for delivery in deliveries:
+            delivery.is_deliverable = False
+        selected_output = session.scalar(
+            select(JobAssetRecord).where(
+                JobAssetRecord.job_id == job.id,
+                JobAssetRecord.job_item_id == item.id,
+                JobAssetRecord.direction == "output",
+                JobAssetRecord.role == "local_edit_result",
+                JobAssetRecord.ordinal == 0,
+            )
+        )
+        if selected_output is None:
+            selected_output = JobAssetRecord(
                 workspace_id=job.workspace_id,
                 job_id=job.id,
                 job_item_id=item.id,
@@ -205,14 +286,30 @@ async def resolve(
                 direction="output",
                 role="local_edit_result",
                 ordinal=0,
-                is_deliverable=True,
-                validation={
-                    **relation.validation,
-                    "reviewed_artifact_sha256": asset.sha256,
-                    "user_accepted": True,
-                },
             )
-        )
+            session.add(selected_output)
+        selected_output.asset_id = asset.id
+        selected_output.is_deliverable = True
+        selected_output.validation = {
+            **relation.validation,
+            "sha256": asset.sha256,
+            "user_accepted": True,
+            "candidate_variant": variant,
+            "outside_selection_changes_authorized": variant == "original",
+            "strict_lock_success": variant == "locked",
+            "outside_changed_pixels": outside_changed,
+            "outside_change_measurement_basis": measurement_basis,
+            "delivery_status": "user_selected_original"
+            if variant == "original"
+            else "user_selected_locked",
+        }
+        if variant == "locked":
+            selected_output.validation = {
+                **selected_output.validation,
+                "reviewed_artifact_sha256": asset.sha256,
+            }
+        else:
+            selected_output.validation.pop("reviewed_artifact_sha256", None)
         item.status = JobItemStatus.SUCCEEDED.value
         item.stage = "generated"
         item.result_source = "generated"
@@ -221,9 +318,13 @@ async def resolve(
         item.state_version += 1
         job.succeeded_item_count, job.failed_item_count = 1, 0
         job.error_code = job.error_message = job.error_details = None
-        transition_job(job, JobStatus.COMPLETED, stage="completed", progress=100)
+        if completed_selection:
+            job.state_version += 1
+        else:
+            transition_job(job, JobStatus.COMPLETED, stage="completed", progress=100)
         session.flush()
-        settle_credits(session, job, int(job.estimated_credits or 0))
+        if not completed_selection:
+            settle_credits(session, job, int(job.estimated_credits or 0))
     session.add(
         AuditEventRecord(
             workspace_id=job.workspace_id,
@@ -235,6 +336,9 @@ async def resolve(
                 "candidate_sha256": expected_sha256,
                 "asset_id": asset.id,
                 "new_generation_requested": False,
+                "candidate_variant": variant,
+                "outside_selection_changes_authorized": variant == "original",
+                "previous_asset_ids": previous_asset_ids if action == "accept" else [],
             },
         )
     )

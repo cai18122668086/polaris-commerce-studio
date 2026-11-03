@@ -2180,7 +2180,9 @@ def resolve_local_edit_review(
         method="POST",
         route_template="/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review",
         idempotency_key=require_idempotency_key(idempotency_header),
-        request_hash=canonical_hash({"job_id": job_id, **payload.model_dump()}),
+        request_hash=canonical_hash(
+            {"job_id": job_id, **payload.model_dump(exclude_defaults=True)}
+        ),
     )
     if not replay:
         asyncio.run(
@@ -2191,6 +2193,8 @@ def resolve_local_edit_review(
                 action=payload.action,
                 expected_sha256=payload.expected_candidate_sha256,
                 actor_id=workspace.principal.user_id,
+                variant=payload.candidate_variant,
+                allow_outside_selection_changes=payload.allow_outside_selection_changes,
             )
         )
         complete_idempotency(

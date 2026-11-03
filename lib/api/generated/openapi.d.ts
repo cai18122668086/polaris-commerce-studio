@@ -4632,6 +4632,17 @@ export interface components {
              * @enum {string}
              */
             action: "accept" | "review";
+            /**
+             * Allow Outside Selection Changes
+             * @default false
+             */
+            allow_outside_selection_changes: boolean;
+            /**
+             * Candidate Variant
+             * @default locked
+             * @enum {string}
+             */
+            candidate_variant: "locked" | "original";
             /** Expected Candidate Sha256 */
             expected_candidate_sha256: string;
         };

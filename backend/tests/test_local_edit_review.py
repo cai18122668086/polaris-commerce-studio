@@ -46,13 +46,17 @@ def _get(client, job_id):
     return client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
 
 
-def _resolve(client, job, image, action, *, key=None):
+def _resolve(
+    client, job, image, action, *, key=None, variant="locked", allow_outside=False
+):
     return client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/local-edit/review",
         headers={"Idempotency-Key": key or str(uuid4())},
         json={
             "action": action,
             "expected_candidate_sha256": image["validation"]["sha256"],
+            "candidate_variant": variant,
+            "allow_outside_selection_changes": allow_outside,
         },
     )
 
@@ -91,6 +95,201 @@ def test_selection_does_not_charge_again_after_generation(client):
         ).all()
         assert len(entries) == 1
     assert len(gateway.masked_calls) == len(gateway.review_calls) == 1
+
+
+def test_original_adoption_preserves_exact_bytes_and_charges_no_more(client):
+    gateway, job, locked = _pending(client)
+    raw = next(a for a in job["assets"] if a["role"] == "provider_raw")
+    response = _resolve(
+        client, job, raw, "accept", variant="original", allow_outside=True
+    )
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["status"] == "completed"
+    delivered = next(a for a in body["assets"] if a["is_deliverable"])
+    assert delivered["asset_id"] == raw["asset_id"]
+    validation = delivered["validation"]
+    assert validation["sha256"] == raw["validation"]["sha256"]
+    assert validation["candidate_variant"] == "original"
+    assert validation["outside_selection_changes_authorized"] is True
+    assert validation["strict_lock_success"] is False
+    assert validation["outside_changed_pixels"] > 0
+    assert validation["outside_change_measurement_basis"] == "provider_input_canvas"
+    assert "reviewed_artifact_sha256" not in validation
+    assert any(a["asset_id"] == locked["asset_id"] for a in body["assets"])
+    access = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets/{raw['asset_id']}/access-url",
+        json={"disposition": "attachment", "variant": "original"},
+    )
+    assert access.status_code == 200, access.text
+    downloaded = client.get(access.json()["url"]).content
+    assert hashlib.sha256(downloaded).hexdigest() == raw["validation"]["sha256"]
+    with Image.open(BytesIO(downloaded)) as image:
+        # Full generation uses the provider's canvas, not a second resize/composite.
+        assert image.size == (
+            gateway.masked_calls[0].width,
+            gateway.masked_calls[0].height,
+        )
+        assert image.size != (8, 8)
+    assert body["cost"]["actual_credits"] == 5
+    assert len(gateway.masked_calls) == len(gateway.review_calls) == 1
+    with client.app.state.session_factory() as session:
+        entries = session.scalars(
+            select(CreditLedgerEntryRecord).where(
+                CreditLedgerEntryRecord.job_id == job["id"],
+                CreditLedgerEntryRecord.entry_type == "settle",
+            )
+        ).all()
+        assert len(entries) == 1
+        assert entries[0].delta_balance_credits == -5
+
+
+def test_original_requires_explicit_full_image_choice(client):
+    gateway, job, _ = _pending(client)
+    raw = next(a for a in job["assets"] if a["role"] == "provider_raw")
+    denied = _resolve(client, job, raw, "accept", variant="original")
+    assert denied.status_code == 422, denied.text
+    assert _get(client, job["id"])["status"] == "awaiting_final_review"
+    assert len(gateway.masked_calls) == 1
+
+
+def test_legacy_adoption_request_replays_with_explicit_default_variant(client):
+    _, job, locked = _pending(client)
+    key = str(uuid4())
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/local-edit/review",
+        headers={"Idempotency-Key": key},
+        json={
+            "action": "accept",
+            "expected_candidate_sha256": locked["validation"]["sha256"],
+        },
+    )
+    assert response.status_code == 202
+    assert _resolve(client, job, locked, "accept", key=key).status_code == 202
+
+
+def test_original_choice_cannot_use_locked_hash_or_bypass_payment(client):
+    _, job, locked = _pending(client)
+    denied = _resolve(
+        client, job, locked, "accept", variant="original", allow_outside=True
+    )
+    assert denied.status_code == 409
+    raw = next(a for a in job["assets"] if a["role"] == "provider_raw")
+    with client.app.state.session_factory() as session:
+        debit = session.scalar(
+            select(CreditLedgerEntryRecord).where(
+                CreditLedgerEntryRecord.job_id == job["id"],
+                CreditLedgerEntryRecord.entry_type == "settle",
+            )
+        )
+        debit.delta_balance_credits = 0
+        session.commit()
+    denied = _resolve(
+        client, job, raw, "accept", variant="original", allow_outside=True
+    )
+    assert denied.status_code == 409
+    assert denied.json()["error"]["code"] == "LOCAL_EDIT_IMAGE_NOT_SETTLED"
+
+
+def test_original_adoption_rejects_changed_bytes_or_input_binding(client):
+    gateway, job, _ = _pending(client)
+    raw = next(a for a in job["assets"] if a["role"] == "provider_raw")
+    with client.app.state.session_factory() as session:
+        asset = session.get(AssetRecord, raw["asset_id"])
+        key = asset.object_key
+    original_read = client.app.state.storage.read_bytes
+
+    async def changed(object_key):
+        return (
+            b"corrupted original"
+            if object_key == key
+            else await original_read(object_key)
+        )
+
+    client.app.state.storage.read_bytes = changed
+    denied = _resolve(
+        client, job, raw, "accept", variant="original", allow_outside=True
+    )
+    assert denied.status_code == 409
+    assert denied.json()["error"]["code"] == "LOCAL_EDIT_CANDIDATE_CHANGED"
+    client.app.state.storage.read_bytes = original_read
+    with client.app.state.session_factory() as session:
+        asset = session.get(AssetRecord, raw["asset_id"])
+        asset.asset_metadata = {**asset.asset_metadata, "mask_sha256": "0" * 64}
+        session.commit()
+    denied = _resolve(
+        client, job, raw, "accept", variant="original", allow_outside=True
+    )
+    assert denied.status_code == 409
+    assert denied.json()["error"]["code"] == "LOCAL_EDIT_INPUT_BINDING_INVALID"
+    assert len(gateway.masked_calls) == 1
+
+
+def test_switching_adopted_variant_keeps_both_candidates_and_single_bill(client):
+    gateway, job, locked = _pending(client)
+    raw = next(a for a in job["assets"] if a["role"] == "provider_raw")
+    assert _resolve(client, job, locked, "accept").status_code == 202
+    completed = _get(client, job["id"])
+    assert "accept_local_edit" in completed["allowed_actions"]
+    key = str(uuid4())
+    original = _resolve(
+        client, job, raw, "accept", key=key, variant="original", allow_outside=True
+    )
+    assert original.status_code == 202, original.text
+    assert (
+        _resolve(
+            client, job, raw, "accept", key=key, variant="original", allow_outside=True
+        ).status_code
+        == 202
+    )
+    restored = _resolve(client, job, locked, "accept")
+    assert restored.status_code == 202, restored.text
+    body = restored.json()
+    delivered = [a for a in body["assets"] if a["is_deliverable"]]
+    assert len(delivered) == 1 and delivered[0]["asset_id"] == locked["asset_id"]
+    assert delivered[0]["validation"]["strict_lock_success"] is True
+    assert {a["role"] for a in body["assets"]} >= {"provider_raw", "locked_candidate"}
+    assert body["cost"]["actual_credits"] == 5
+    with client.app.state.session_factory() as session:
+        entries = session.scalars(
+            select(CreditLedgerEntryRecord).where(
+                CreditLedgerEntryRecord.job_id == job["id"],
+                CreditLedgerEntryRecord.entry_type == "settle",
+            )
+        ).all()
+        assert len(entries) == 1
+    assert len(gateway.masked_calls) == len(gateway.review_calls) == 1
+
+
+def test_previous_generation_original_can_be_adopted_without_another_generation(client):
+    gateway, first, _ = _pending(client)
+    raw = next(a for a in first["assets"] if a["role"] == "provider_raw")
+    gateway.outcomes = ["success"]
+    gateway.raw_alpha = 128
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}/retry",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={"scope": "failed"},
+    )
+    assert response.status_code == 201
+    second = response.json()
+    assert _dispatch(client) == 1
+    adopted = _resolve(
+        client, second, raw, "accept", variant="original", allow_outside=True
+    )
+    assert adopted.status_code == 202, adopted.text
+    delivered = next(a for a in adopted.json()["assets"] if a["is_deliverable"])
+    assert delivered["asset_id"] == raw["asset_id"]
+    assert len(gateway.masked_calls) == 2
+    with client.app.state.session_factory() as session:
+        entries = session.scalars(
+            select(CreditLedgerEntryRecord).where(
+                CreditLedgerEntryRecord.job_id.in_([first["id"], second["id"]]),
+                CreditLedgerEntryRecord.entry_type == "settle",
+            )
+        ).all()
+        assert len(entries) == 2
+        assert sum(e.delta_balance_credits for e in entries) == -10
 
 
 def test_paid_full_image_is_accessible_before_selection(client):

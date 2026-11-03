@@ -323,8 +323,10 @@ def test_viewer_can_read_history_but_cannot_change_selection(client, replica_fra
         )
         session.commit()
     frame = replica_frame
-    path = (f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{frame['job_id']}"
-            f"/items/{frame['item_id']}/local-edits")
+    path = (
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{frame['job_id']}"
+        f"/items/{frame['item_id']}/local-edits"
+    )
     headers = {"X-User-Id": "usr_viewer"}
     read = client.get(path, headers=headers)
     assert read.status_code == 200, read.text
@@ -416,6 +418,50 @@ def test_reused_replica_output_keeps_original_and_previous_edit_history(
     )
     assert _history(client, retry_frame)["current_asset_id"] == frame["source"]
     assert _history(client, frame)["current_asset_id"] == image["asset_id"]
+    raw = next(row for row in first["assets"] if row["role"] == "provider_raw")
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{first['id']}/local-edit/review",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={
+            "action": "accept",
+            "expected_candidate_sha256": raw["validation"]["sha256"],
+            "candidate_variant": "original",
+            "allow_outside_selection_changes": True,
+            "replica_output": {
+                "job_id": retry_frame["job_id"],
+                "job_item_id": retry_frame["item_id"],
+            },
+        },
+    )
+    assert response.status_code == 202, response.text
+    assert _history(client, retry_frame)["current_asset_id"] == raw["asset_id"]
+    assert _history(client, frame)["current_asset_id"] == image["asset_id"]
+    original_record = _history(client, frame)["records"][0]
+    assert original_record["result_asset_id"] == image["asset_id"]
+    assert _select(client, frame, image["asset_id"], None).status_code == 200
+    assert _select(client, frame, frame["source"], first["id"]).status_code == 200
+    assert _history(client, frame)["current_asset_id"] == image["asset_id"]
+    assert len(frame["gateway"].masked_calls) == 2
+
+
+def test_override_cannot_retarget_an_unrelated_replica_frame(client, replica_frame):
+    frame = replica_frame
+    job, image = _pending_edit(client, frame)
+    response = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job['id']}/local-edit/review",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={
+            "action": "accept",
+            "expected_candidate_sha256": image["validation"]["sha256"],
+            "replica_output": {
+                "job_id": frame["job_id"],
+                "job_item_id": "item_replica_1",
+            },
+        },
+    )
+    assert response.status_code == 404, response.text
+    assert _get(client, job["id"])["status"] == "awaiting_final_review"
+    assert _history(client, frame)["current_asset_id"] == frame["source"]
 
 
 def test_preexisting_accepted_edit_can_be_synchronized_without_new_generation(

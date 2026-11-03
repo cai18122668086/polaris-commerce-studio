@@ -2265,6 +2265,11 @@ def resolve_local_edit_review(
                 actor_id=workspace.principal.user_id,
                 variant=payload.candidate_variant,
                 allow_outside_selection_changes=payload.allow_outside_selection_changes,
+                replica_output=(
+                    payload.replica_output.model_dump()
+                    if payload.replica_output
+                    else None
+                ),
             )
         )
         complete_idempotency(

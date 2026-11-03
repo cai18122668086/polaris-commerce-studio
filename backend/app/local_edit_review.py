@@ -119,6 +119,7 @@ async def resolve(
     actor_id: str,
     variant: CandidateVariant = "locked",
     allow_outside_selection_changes: bool = False,
+    replica_output: dict[str, str] | None = None,
 ) -> None:
     completed_selection = (
         action == "accept"
@@ -347,7 +348,7 @@ async def resolve(
             settle_credits(session, job, int(job.estimated_credits or 0))
         from .replica_image_edits import apply_accepted_edit
 
-        apply_accepted_edit(session, job, selected_output, actor_id)
+        apply_accepted_edit(session, job, selected_output, actor_id, replica_output)
     session.add(
         AuditEventRecord(
             workspace_id=job.workspace_id,

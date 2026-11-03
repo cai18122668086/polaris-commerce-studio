@@ -21,6 +21,7 @@ _ORIGINAL = "replica_original_asset_id"
 _ORIGINAL_RELATION = "replica_original_relation_id"
 _ORIGINAL_VALIDATION = "replica_original_validation"
 _CURRENT = "replica_current_edit_job_id"
+_SNAPSHOTS = "replica_edit_snapshots"
 
 
 @dataclass
@@ -157,8 +158,10 @@ def _infer_binding(session: Session, job: JobRecord) -> dict[str, str] | None:
             JobRecord.type == "reference_remix",
         )
     ).all()
-    candidates = set()
+    candidates: set[tuple[str, str]] = set()
     for parent_id, item_id in matches:
+        if not isinstance(item_id, str):
+            continue
         parent = session.get(JobRecord, parent_id)
         if parent and parent.configuration.get("replica_session_id"):
             candidates.add((parent_id, item_id))
@@ -208,6 +211,7 @@ def _apply(
     delivery: JobAssetRecord | None,
     local_job_id: str | None,
     actor_id: str | None,
+    validation_override: dict | None = None,
 ) -> None:
     from .local_edit_billing import require_image_access
 
@@ -228,8 +232,16 @@ def _apply(
         if key.startswith("replica_")
     }
     validation = (
-        delivery.validation if delivery else metadata.get(_ORIGINAL_VALIDATION, {})
+        validation_override
+        if validation_override is not None
+        else (
+            delivery.validation if delivery else metadata.get(_ORIGINAL_VALIDATION, {})
+        )
     )
+    if local_job_id is not None:
+        snapshots = dict(metadata.get(_SNAPSHOTS) or {})
+        snapshots[local_job_id] = {"asset_id": asset.id, "validation": dict(validation)}
+        metadata[_SNAPSHOTS] = snapshots
     selected.asset_id = asset.id
     selected.is_deliverable = True
     selected.validation = {
@@ -262,11 +274,16 @@ def _apply(
 
 
 def apply_accepted_edit(
-    session: Session, job: JobRecord, delivery: JobAssetRecord, actor_id: str | None
+    session: Session,
+    job: JobRecord,
+    delivery: JobAssetRecord,
+    actor_id: str | None,
+    replica_output: dict[str, str] | None = None,
 ) -> None:
     if delivery.validation.get("user_accepted") is not True:
         raise ApiError(409, "REPLICA_EDIT_NOT_ACCEPTED", "请先确认采用这次修改。")
-    binding = (job.configuration.get("input") or {}).get("replica_output")
+    original_binding = (job.configuration.get("input") or {}).get("replica_output")
+    binding = replica_output or original_binding
     if not binding:
         binding = _infer_binding(session, job)
         if not binding:
@@ -274,6 +291,15 @@ def apply_accepted_edit(
     target = frame(
         session, job.workspace_id, binding["job_id"], binding["job_item_id"], lock=True
     )
+    if (
+        replica_output
+        and replica_output != original_binding
+        and (
+            target.selected is None
+            or job.id not in (target.selected.validation.get(_JOBS) or [])
+        )
+    ):
+        raise ApiError(404, "REPLICA_EDIT_NOT_FOUND", "这次修改不属于当前图片。")
     selected = _ensure_selected(session, target)
     ids = list(selected.validation.get(_JOBS) or [])
     if job.id not in ids:
@@ -334,18 +360,31 @@ def history(session: Session, target: Frame) -> dict:
             result = next(
                 (row for row in relations if row.role == "locked_candidate"), None
             )
+        snapshot = (
+            (target.selected.validation.get(_SNAPSHOTS) or {}).get(job.id)
+            if target.selected
+            else None
+        )
+        result_asset_id = (
+            snapshot.get("asset_id")
+            if snapshot
+            else result.asset_id
+            if result
+            else None
+        )
         records.append(
             {
                 "job_id": job.id,
                 "source_asset_id": job.configuration["input"]["source_asset_id"],
-                "result_asset_id": result.asset_id if result else None,
+                "result_asset_id": result_asset_id,
                 "status": job.status,
                 "instruction": (job.configuration.get("settings") or {}).get(
                     "instruction", ""
                 ),
                 "created_at": job.created_at,
                 "updated_at": job.updated_at,
-                "is_current": current_job_id == job.id,
+                "is_current": current_job_id == job.id
+                and result_asset_id == target.current_asset_id,
             }
         )
     return {
@@ -393,6 +432,13 @@ def select_history(
         or job.status != "completed"
     ):
         raise ApiError(409, "REPLICA_EDIT_NOT_ACCEPTED", "请先打开这次修改并选择采用。")
+    snapshot = (selected.validation.get(_SNAPSHOTS) or {}).get(local_job_id)
+    if snapshot:
+        asset = session.get(AssetRecord, snapshot["asset_id"])
+        if asset is None:
+            raise ApiError(409, "REPLICA_EDIT_ASSET_UNAVAILABLE", "这版图片暂不可用。")
+        _apply(session, target, asset, None, job.id, actor_id, snapshot["validation"])
+        return
     delivery = session.scalar(
         select(JobAssetRecord).where(
             JobAssetRecord.workspace_id == job.workspace_id,

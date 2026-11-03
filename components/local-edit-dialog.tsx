@@ -157,7 +157,7 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
         <section className={`${styles.canvas} ${jobId ? styles.reviewCanvas : ""}`} aria-label={jobId ? "修改前后对比与版本确认" : "圈选要修改的位置"}>
           {loadError ? <div className={styles.loadState} role="alert"><p>{errorMessage(loadError)}</p><button type="button" onClick={() => { void asset.refetch(); void access.refetch(); if (jobId) void job.refetch(); }}>重新加载</button></div>
             : !sourceReady ? <div className={styles.loadState}><LoaderCircle className="spin" size={24} /><p>{asset.data && asset.data.lifecycle_status !== "ready" ? "这张图片暂不可编辑，请重新选择已完成的图片。" : "正在加载原图…"}</p></div>
-              : jobId ? job.data && sourceUrl ? <LocalEditReview workspaceId={workspaceId} job={job.data} sourceUrl={sourceUrl} onJobChange={setJobId} onContinueEditing={result ? continueEditing : undefined} onRevise={revise} onAdopted={onAdopted} /> : <div className={styles.loadState}><LoaderCircle className="spin" size={24} /><p>正在加载任务…</p></div>
+              : jobId ? job.data && sourceUrl ? <LocalEditReview workspaceId={workspaceId} job={job.data} sourceUrl={sourceUrl} onJobChange={setJobId} onContinueEditing={result ? continueEditing : undefined} onRevise={revise} onAdopted={onAdopted} replicaOutput={replicaOutput} /> : <div className={styles.loadState}><LoaderCircle className="spin" size={24} /><p>正在加载任务…</p></div>
                 : <div className={styles.editor} inert={locked ? true : undefined}><MaskEditor key={source.assetId} ref={editor} sourceUrl={sourceUrl} sourceName={source.title} onChange={onSelection} onError={onEditorError} /></div>}
         </section>
         {!jobId && <aside className={styles.controls}>

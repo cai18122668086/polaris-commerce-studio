@@ -283,10 +283,12 @@ export function useLocalEditDecision(workspaceId: string | undefined) {
     action: "accept" | "review"; candidateSha256: string;
     candidateVariant?: "locked" | "original";
     allowOutsideSelectionChanges?: boolean;
+    replicaOutput?: { job_id: string; job_item_id: string };
   }>(workspaceId, "local-edit-review", input => ({
     jobId: input.jobId, action: input.action, candidateSha256: input.candidateSha256,
     candidateVariant: input.candidateVariant ?? "locked",
     allowOutsideSelectionChanges: input.allowOutsideSelectionChanges ?? false,
+    replicaOutput: input.replicaOutput,
   }), async (id, input, key) => {
     assertJobAction(input.allowedActions, input.action === "accept" ? "accept_local_edit" : "review_local_edit");
     return unwrapApiResponse(await apiClient.POST("/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review", {
@@ -295,6 +297,7 @@ export function useLocalEditDecision(workspaceId: string | undefined) {
         action: input.action, expected_candidate_sha256: input.candidateSha256,
         candidate_variant: input.candidateVariant ?? "locked",
         allow_outside_selection_changes: input.allowOutsideSelectionChanges ?? false,
+        ...(input.replicaOutput ? { replica_output: input.replicaOutput } : {}),
       },
     }));
   });

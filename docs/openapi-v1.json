@@ -5788,6 +5788,16 @@
             "pattern": "^[0-9a-f]{64}$",
             "title": "Expected Candidate Sha256",
             "type": "string"
+          },
+          "replica_output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplicaOutputBinding"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

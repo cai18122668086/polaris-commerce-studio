@@ -793,6 +793,7 @@ class LocalEditReviewDecision(BaseModel):
     expected_candidate_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     candidate_variant: Literal["locked", "original"] = "locked"
     allow_outside_selection_changes: bool = False
+    replica_output: ReplicaOutputBinding | None = None
 
     @model_validator(mode="after")
     def original_requires_explicit_choice(self) -> "LocalEditReviewDecision":

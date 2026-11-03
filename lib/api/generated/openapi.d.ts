@@ -4680,6 +4680,7 @@ export interface components {
             candidate_variant: "locked" | "original";
             /** Expected Candidate Sha256 */
             expected_candidate_sha256: string;
+            replica_output?: components["schemas"]["ReplicaOutputBinding"] | null;
         };
         /** LoginJobCreateRequest */
         LoginJobCreateRequest: {

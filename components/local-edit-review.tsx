@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Check, ChevronDown, LoaderCircle, RotateCcw, ScanLine } from "lucide-react";
 import { useCancelJob, useLocalEditDecision, useLocalEditHistory, useRetryJob } from "@/features/jobs/api/jobs";
-import type { JobDetail } from "@/lib/api/types";
+import type { JobDetail, ReplicaOutputBinding } from "@/lib/api/types";
 import { errorMessage } from "@/lib/api/request";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { BeforeAfterResult } from "./before-after-result";
@@ -37,10 +37,11 @@ function preferred(job: JobDetail, choices: Candidate[]) {
     ? original : locked ?? original;
 }
 
-export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onContinueEditing, onRevise, onAdopted }: {
+export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onContinueEditing, onRevise, onAdopted, replicaOutput }: {
   workspaceId: string; job: JobDetail; sourceUrl: string; onJobChange: (jobId: string) => void;
   onContinueEditing?: () => void; onRevise?: () => void;
   onAdopted?: () => void;
+  replicaOutput?: ReplicaOutputBinding;
 }) {
   const history = useLocalEditHistory(workspaceId, job);
   const decision = useLocalEditDecision(workspaceId);
@@ -103,6 +104,7 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
           jobId: job.id, allowedActions: job.allowed_actions, action, candidateSha256: sha,
           candidateVariant: action === "review" ? "locked" : selected?.variant ?? "locked",
           allowOutsideSelectionChanges: action === "accept" && originalSelected,
+          replicaOutput: action === "accept" ? replicaOutput : undefined,
         });
         onJobChange(next.id);
         if (action === "accept") onAdopted?.();

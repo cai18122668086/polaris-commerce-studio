@@ -14,11 +14,16 @@ type Candidate = { owner: JobDetail; variant: Variant; asset: JobDetail["assets"
 function candidates(job: JobDetail): Candidate[] {
   const delivered = job.assets.find(asset => asset.is_deliverable && asset.direction === "output");
   const original = job.assets.find(asset => asset.role === "provider_raw");
-  const locked = job.assets.find(asset => asset.role === "locked_candidate")
+  const lockedCandidate = job.assets.find(asset => asset.role === "locked_candidate");
+  const locked = lockedCandidate
     ?? (delivered?.validation.candidate_variant !== "original" ? delivered : undefined);
+  const originalAvailable = original && (
+    lockedCandidate?.validation.strict_lock_success === true || delivered?.asset_id === original.asset_id
+    || (job.cost.actual_credits ?? 0) > 0 || job.configuration._local_edit_generation_already_paid === true
+  );
   return [
     ...(locked ? [{ owner: job, variant: "locked" as const, asset: locked }] : []),
-    ...(original ? [{ owner: job, variant: "original" as const, asset: original }] : []),
+    ...(originalAvailable ? [{ owner: job, variant: "original" as const, asset: original }] : []),
   ];
 }
 

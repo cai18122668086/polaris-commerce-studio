@@ -5679,6 +5679,16 @@
       },
       "LocalEditInput": {
         "properties": {
+          "replica_output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplicaOutputBinding"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "selection_mask_asset_id": {
             "title": "Selection Mask Asset Id",
             "type": "string"
@@ -5778,6 +5788,16 @@
             "pattern": "^[0-9a-f]{64}$",
             "title": "Expected Candidate Sha256",
             "type": "string"
+          },
+          "replica_output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplicaOutputBinding"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -6950,6 +6970,166 @@
           "generated"
         ],
         "title": "ReplicaCreationRecordResponse",
+        "type": "object"
+      },
+      "ReplicaImageEditRecord": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "instruction": {
+            "title": "Instruction",
+            "type": "string"
+          },
+          "is_current": {
+            "default": false,
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "result_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Asset Id"
+          },
+          "source_asset_id": {
+            "title": "Source Asset Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "source_asset_id",
+          "status",
+          "instruction",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReplicaImageEditRecord",
+        "type": "object"
+      },
+      "ReplicaImageHistoryResponse": {
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "current_asset_id": {
+            "title": "Current Asset Id",
+            "type": "string"
+          },
+          "current_local_edit_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Local Edit Job Id"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_item_id": {
+            "title": "Job Item Id",
+            "type": "string"
+          },
+          "original_asset_id": {
+            "title": "Original Asset Id",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ReplicaImageEditRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_id",
+          "job_item_id",
+          "original_asset_id",
+          "current_asset_id",
+          "records",
+          "allowed_actions"
+        ],
+        "title": "ReplicaImageHistoryResponse",
+        "type": "object"
+      },
+      "ReplicaImageSelection": {
+        "properties": {
+          "expected_current_asset_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Expected Current Asset Id",
+            "type": "string"
+          },
+          "local_edit_job_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Edit Job Id"
+          }
+        },
+        "required": [
+          "expected_current_asset_id"
+        ],
+        "title": "ReplicaImageSelection",
+        "type": "object"
+      },
+      "ReplicaOutputBinding": {
+        "properties": {
+          "job_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_item_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Job Item Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "job_item_id"
+        ],
+        "title": "ReplicaOutputBinding",
         "type": "object"
       },
       "RetryRequest": {
@@ -16953,6 +17133,162 @@
         "summary": "Resolve Detail Intake",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/items/{item_id}/local-edits": {
+      "get": {
+        "operationId": "replica_image_history_api_v1_workspaces__workspace_id__jobs__job_id__items__item_id__local_edits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplicaImageHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Replica Image History",
+        "tags": [
+          "one-click-replica"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/items/{item_id}/local-edits/selection": {
+      "post": {
+        "operationId": "select_replica_image_history_api_v1_workspaces__workspace_id__jobs__job_id__items__item_id__local_edits_selection_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplicaImageSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Select Replica Image History",
+        "tags": [
+          "one-click-replica"
         ]
       }
     },

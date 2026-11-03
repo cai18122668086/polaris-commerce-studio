@@ -8,7 +8,7 @@ import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
 import { CreditCostHint } from "@/features/billing/components/credit-account";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { errorMessage } from "@/lib/api/request";
-import type { LocalEditJobCreate } from "@/lib/api/types";
+import type { LocalEditJobCreate, ReplicaOutputBinding } from "@/lib/api/types";
 import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import { LocalEditReview } from "./local-edit-review";
@@ -24,11 +24,14 @@ const EXAMPLES = [
   ["去杂物", "移除选区内的杂物，用周围背景自然补齐，保持光线与纹理一致。"],
 ] as const;
 
-export function LocalEditDialog({ workspaceId, source: initialSource, open, onClose }: {
+export function LocalEditDialog({ workspaceId, source: initialSource, open, onClose, replicaOutput, initialJobId, onAdopted }: {
   workspaceId: string;
   source: SourceImage;
   open: boolean;
   onClose: () => void;
+  replicaOutput?: ReplicaOutputBinding;
+  initialJobId?: string;
+  onAdopted?: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const editor = useRef<MaskEditorHandle>(null);
@@ -42,12 +45,14 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
   const [prepared, setPrepared] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>();
-  const [jobId, setJobId] = useState<string>();
-  const asset = useAsset(workspaceId, source.assetId);
-  const access = useAssetAccessUrl(workspaceId, source.assetId);
+  const [jobId, setJobId] = useState<string | undefined>(initialJobId);
+  const job = useJob(workspaceId, jobId);
+  const savedSource = (job.data?.configuration.input as Record<string, unknown> | undefined)?.source_asset_id;
+  const sourceAssetId = jobId && typeof savedSource === "string" ? savedSource : source.assetId;
+  const asset = useAsset(workspaceId, sourceAssetId);
+  const access = useAssetAccessUrl(workspaceId, sourceAssetId);
   const upload = useUploadAsset(workspaceId);
   const createJob = useCreateJob(workspaceId);
-  const job = useJob(workspaceId, jobId);
   const runtime = useRuntimeStatus();
   const workflow = presentWorkflow(runtime.data?.capabilities.local_edit);
   const available = workflow.mode === "provider" || workflow.mode === "mock";
@@ -99,7 +104,8 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
         type: "local_edit",
         intent: "submit",
         display_name: `一句话改图 · ${source.title}`,
-        input: { source_asset_id: source.assetId, selection_mask_asset_id: pending.maskId },
+        input: { source_asset_id: source.assetId, selection_mask_asset_id: pending.maskId,
+          ...(replicaOutput ? { replica_output: replicaOutput } : {}) },
         configuration: { instruction: pending.instruction, output_format: "png", quality: "balanced", execution_path: "auto" },
       };
       const created = await createJob.mutateAsync(pending.request);
@@ -151,7 +157,7 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
         <section className={`${styles.canvas} ${jobId ? styles.reviewCanvas : ""}`} aria-label={jobId ? "修改前后对比与版本确认" : "圈选要修改的位置"}>
           {loadError ? <div className={styles.loadState} role="alert"><p>{errorMessage(loadError)}</p><button type="button" onClick={() => { void asset.refetch(); void access.refetch(); if (jobId) void job.refetch(); }}>重新加载</button></div>
             : !sourceReady ? <div className={styles.loadState}><LoaderCircle className="spin" size={24} /><p>{asset.data && asset.data.lifecycle_status !== "ready" ? "这张图片暂不可编辑，请重新选择已完成的图片。" : "正在加载原图…"}</p></div>
-              : jobId ? job.data && sourceUrl ? <LocalEditReview workspaceId={workspaceId} job={job.data} sourceUrl={sourceUrl} onJobChange={setJobId} onContinueEditing={result ? continueEditing : undefined} onRevise={revise} /> : <div className={styles.loadState}><LoaderCircle className="spin" size={24} /><p>正在加载任务…</p></div>
+              : jobId ? job.data && sourceUrl ? <LocalEditReview workspaceId={workspaceId} job={job.data} sourceUrl={sourceUrl} onJobChange={setJobId} onContinueEditing={result ? continueEditing : undefined} onRevise={revise} onAdopted={onAdopted} replicaOutput={replicaOutput} /> : <div className={styles.loadState}><LoaderCircle className="spin" size={24} /><p>正在加载任务…</p></div>
                 : <div className={styles.editor} inert={locked ? true : undefined}><MaskEditor key={source.assetId} ref={editor} sourceUrl={sourceUrl} sourceName={source.title} onChange={onSelection} onError={onEditorError} /></div>}
         </section>
         {!jobId && <aside className={styles.controls}>

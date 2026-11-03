@@ -4,6 +4,9 @@
 .resultActions { flex-wrap:wrap; }
 .resultActions .localEditButton { flex:0 0 100%;justify-content:center;width:100%;min-height:44px;padding:11px 12px;border-radius:8px;background:#242424;color:#fff;font-size:14px;font-weight:600;white-space:nowrap; }
 .resultActions .localEditButton:hover { background:#d8ff00;color:#242424; }
+.resultPreviewButton { position:relative;display:block;width:100%;height:100%;padding:0;border:0;background:transparent;cursor:zoom-in; }
+.resultPreviewButton:focus-visible { outline:2px solid #242424;outline-offset:-3px; }
+.editedBadge { position:absolute;top:9px;right:9px;padding:4px 7px;border-radius:5px;background:#242424d9;color:#fff;font-size:10px;line-height:1.5; }
 
 .stageHeader .newReplicaButton {
   min-height: 44px;

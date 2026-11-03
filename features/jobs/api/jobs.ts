@@ -283,10 +283,12 @@ export function useLocalEditDecision(workspaceId: string | undefined) {
     action: "accept" | "review"; candidateSha256: string;
     candidateVariant?: "locked" | "original";
     allowOutsideSelectionChanges?: boolean;
+    replicaOutput?: { job_id: string; job_item_id: string };
   }>(workspaceId, "local-edit-review", input => ({
     jobId: input.jobId, action: input.action, candidateSha256: input.candidateSha256,
     candidateVariant: input.candidateVariant ?? "locked",
     allowOutsideSelectionChanges: input.allowOutsideSelectionChanges ?? false,
+    replicaOutput: input.replicaOutput,
   }), async (id, input, key) => {
     assertJobAction(input.allowedActions, input.action === "accept" ? "accept_local_edit" : "review_local_edit");
     return unwrapApiResponse(await apiClient.POST("/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review", {
@@ -295,6 +297,7 @@ export function useLocalEditDecision(workspaceId: string | undefined) {
         action: input.action, expected_candidate_sha256: input.candidateSha256,
         candidate_variant: input.candidateVariant ?? "locked",
         allow_outside_selection_changes: input.allowOutsideSelectionChanges ?? false,
+        ...(input.replicaOutput ? { replica_output: input.replicaOutput } : {}),
       },
     }));
   });
@@ -324,6 +327,35 @@ export function useLocalEditHistory(workspaceId: string | undefined, job: JobDet
       return history;
     },
   });
+}
+
+export function useReplicaImageHistory(workspaceId: string, jobId: string, itemId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["replica-image-history", workspaceId, jobId, itemId], enabled,
+    queryFn: async ({ signal }) => unwrapApiResponse(await apiClient.GET(
+      "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/items/{item_id}/local-edits",
+      { params: { path: { workspace_id: workspaceId, job_id: jobId, item_id: itemId } }, signal },
+    )),
+  });
+}
+
+export function useSelectReplicaImage(workspaceId: string) {
+  const queryClient = useQueryClient();
+  const mutation = useJobMutation<JobDetail, {
+    jobId: string; itemId: string; expectedAssetId: string; localEditJobId: string | null;
+    allowedActions: string[];
+  }>(workspaceId, "replica-image-selection", ({jobId, itemId, expectedAssetId, localEditJobId}) => ({jobId, itemId, expectedAssetId, localEditJobId}), async (id, input, key) => {
+    assertJobAction(input.allowedActions, "select_replica_image");
+    const result = unwrapApiResponse(await apiClient.POST(
+      "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/items/{item_id}/local-edits/selection", {
+        params: { path: { workspace_id: id, job_id: input.jobId, item_id: input.itemId }, header: { "Idempotency-Key": key } },
+        body: { expected_current_asset_id: input.expectedAssetId, local_edit_job_id: input.localEditJobId },
+      },
+    ));
+    await queryClient.invalidateQueries({ queryKey: ["replica-image-history", id, input.jobId, input.itemId] });
+    return result;
+  });
+  return mutation;
 }
 
 export function useResolveDetailIntake(workspaceId: string | undefined) {

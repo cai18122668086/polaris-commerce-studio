@@ -56,8 +56,13 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
     seenAssets.add(choice.asset.asset_id);
     return true;
   });
+  const activeOutput = job.assets.find(asset => asset.is_deliverable && asset.direction === "output");
+  const savedChoice = activeOutput && (choices.find(choice => choice.asset.asset_id === activeOutput.asset_id) ?? {
+    owner: job, variant: activeOutput.validation.candidate_variant === "original" ? "original" as const : "locked" as const,
+    asset: activeOutput,
+  });
   const selected = choices.find(choice => choice.asset.asset_id === selectedAssetId)
-    ?? preferred(job, choices.filter(choice => choice.owner.id === job.id)) ?? choices[0];
+    ?? savedChoice ?? preferred(job, choices.filter(choice => choice.owner.id === job.id)) ?? choices[0];
   const image = selected?.asset;
   const originalSelected = selected?.variant === "original";
   const versions = [...new Map(choices.map(choice => [choice.owner.id, choice.owner])).values()];
@@ -68,7 +73,6 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
   const summary = originalSelected
     ? "审图记录针对局部合成版。完整生成版请以当前预览为准，采用时会保留选区外变化。"
     : image?.validation.visual_review_summary;
-  const activeOutput = job.assets.find(asset => asset.is_deliverable && asset.direction === "output");
   const alreadyAdopted = image?.asset_id === activeOutput?.asset_id && Boolean(activeOutput);
 
   const act = async (action: "accept" | "review" | "regenerate" | "cancel") => {

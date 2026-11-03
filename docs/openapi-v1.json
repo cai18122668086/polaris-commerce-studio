@@ -5760,6 +5760,20 @@
             "title": "Action",
             "type": "string"
           },
+          "allow_outside_selection_changes": {
+            "default": false,
+            "title": "Allow Outside Selection Changes",
+            "type": "boolean"
+          },
+          "candidate_variant": {
+            "default": "locked",
+            "enum": [
+              "locked",
+              "original"
+            ],
+            "title": "Candidate Variant",
+            "type": "string"
+          },
           "expected_candidate_sha256": {
             "pattern": "^[0-9a-f]{64}$",
             "title": "Expected Candidate Sha256",

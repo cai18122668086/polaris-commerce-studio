@@ -503,6 +503,17 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         ),
         generated_set_complete=generated_set_complete,
     ).model_dump()
+    if (
+        job.type == JobType.LOCAL_EDIT.value
+        and job.status == JobStatus.COMPLETED.value
+        and any(
+            a.role == "locked_candidate"
+            and a.validation.get("strict_lock_success") is True
+            for a in assets
+        )
+    ):
+        # Selecting another already-paid view does not create a new generation.
+        base["allowed_actions"].append("accept_local_edit")
     plan = session.scalar(
         select(JobPlanRecord)
         .where(

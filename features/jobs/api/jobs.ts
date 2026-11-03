@@ -278,13 +278,21 @@ export function useRetryJob(workspaceId: string | undefined) {
 export function useLocalEditDecision(workspaceId: string | undefined) {
   return useJobMutation<JobDetail, AuthorizedJobAction & {
     action: "accept" | "review"; candidateSha256: string;
+    candidateVariant?: "locked" | "original";
+    allowOutsideSelectionChanges?: boolean;
   }>(workspaceId, "local-edit-review", input => ({
     jobId: input.jobId, action: input.action, candidateSha256: input.candidateSha256,
+    candidateVariant: input.candidateVariant ?? "locked",
+    allowOutsideSelectionChanges: input.allowOutsideSelectionChanges ?? false,
   }), async (id, input, key) => {
     assertJobAction(input.allowedActions, input.action === "accept" ? "accept_local_edit" : "review_local_edit");
     return unwrapApiResponse(await apiClient.POST("/api/v1/workspaces/{workspace_id}/jobs/{job_id}/local-edit/review", {
       params: { path: { workspace_id: id, job_id: input.jobId }, header: { "Idempotency-Key": key } },
-      body: { action: input.action, expected_candidate_sha256: input.candidateSha256 },
+      body: {
+        action: input.action, expected_candidate_sha256: input.candidateSha256,
+        candidate_variant: input.candidateVariant ?? "locked",
+        allow_outside_selection_changes: input.allowOutsideSelectionChanges ?? false,
+      },
     }));
   });
 }

@@ -785,6 +785,16 @@ class CancelRequest(BaseModel):
 class LocalEditReviewDecision(BaseModel):
     action: Literal["accept", "review"]
     expected_candidate_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_variant: Literal["locked", "original"] = "locked"
+    allow_outside_selection_changes: bool = False
+
+    @model_validator(mode="after")
+    def original_requires_explicit_choice(self) -> "LocalEditReviewDecision":
+        if self.candidate_variant == "original" and (
+            self.action != "accept" or not self.allow_outside_selection_changes
+        ):
+            raise ValueError("采用完整生成版需要明确同意保留选区外变化。")
+        return self
 
 
 class RetryRequest(BaseModel):

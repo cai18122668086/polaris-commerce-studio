@@ -162,6 +162,7 @@ async def resolve(
     if item is None or item.workspace_id != job.workspace_id:
         raise ApiError(409, "LOCAL_EDIT_CANDIDATE_MISSING", "候选缺少对应的任务条目。")
     previous_asset_ids: list[str] = []
+    adoption_audit: dict[str, object] = {}
     if action == "review":
         if job.configuration.get("_local_edit_manual_review_count", 0) >= 1:
             raise ApiError(
@@ -253,6 +254,13 @@ async def resolve(
                     "LOCAL_EDIT_PIXEL_LOCK_FAILED",
                     "候选存在选区外变化，不能采用。",
                 )
+        adoption_audit = {
+            "source_sha256": source.sha256,
+            "mask_sha256": mask.sha256,
+            "outside_changed_pixels": outside_changed,
+            "outside_change_measurement_basis": measurement_basis,
+            "result_dimensions": [asset.width, asset.height],
+        }
         deliveries = session.scalars(
             select(JobAssetRecord).where(
                 JobAssetRecord.job_id == job.id,
@@ -328,6 +336,7 @@ async def resolve(
     session.add(
         AuditEventRecord(
             workspace_id=job.workspace_id,
+            actor_user_id=actor_id,
             action=f"masked_repair.user_{action}",
             resource_type="job",
             resource_id=job.id,
@@ -339,6 +348,7 @@ async def resolve(
                 "candidate_variant": variant,
                 "outside_selection_changes_authorized": variant == "original",
                 "previous_asset_ids": previous_asset_ids if action == "accept" else [],
+                **adoption_audit,
             },
         )
     )

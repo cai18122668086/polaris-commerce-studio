@@ -13,6 +13,7 @@ from app.masked_repair import MaskedRepairError
 from app.masked_review_contract import validate_review
 from app.models import (
     AssetRecord,
+    AuditEventRecord,
     CreditLedgerEntryRecord,
     CreditReservationRecord,
     JobAssetRecord,
@@ -142,6 +143,19 @@ def test_original_adoption_preserves_exact_bytes_and_charges_no_more(client):
         ).all()
         assert len(entries) == 1
         assert entries[0].delta_balance_credits == -5
+        audit = session.scalar(
+            select(AuditEventRecord).where(
+                AuditEventRecord.resource_id == job["id"],
+                AuditEventRecord.action == "masked_repair.user_accept",
+            )
+        )
+        assert audit.actor_user_id == "usr_test"
+        assert audit.details["candidate_variant"] == "original"
+        assert audit.details["outside_selection_changes_authorized"] is True
+        assert (
+            audit.details["outside_changed_pixels"]
+            == validation["outside_changed_pixels"]
+        )
 
 
 def test_original_requires_explicit_full_image_choice(client):

@@ -60,6 +60,13 @@ V9_BINDING = {
     ),
 }
 
+V10_BINDING = {
+    "version": "exact-compact-v10",
+    "content_sha256": (
+        "3d9a80bc65e6e5a9c552839a238f2b5c4197d87932b17aa1f9e61ee0b20a6ba8"
+    ),
+}
+
 
 def validate_source(
     previous: dict[str, Any], approved: dict[str, Any], prefix: str
@@ -76,6 +83,7 @@ def validate_source(
         V7_BINDING,
         V8_BINDING,
         V9_BINDING,
+        V10_BINDING,
         protocol_binding(),
     )
     for snapshot in (previous, approved):

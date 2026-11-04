@@ -90,6 +90,7 @@ class LegacyPageDeliveryProvider(NativeReplicaProvider):
                             "exact-compact-v8",
                             "exact-compact-v9",
                             "exact-compact-v10",
+                            "exact-compact-v11",
                         }
                     )
                     else run_class(
@@ -119,6 +120,7 @@ class LegacyPageDeliveryProvider(NativeReplicaProvider):
                     "exact-compact-v8",
                     "exact-compact-v9",
                     "exact-compact-v10",
+                    "exact-compact-v11",
                 }
             ):
                 await replica_direct_delivery.restore_source(

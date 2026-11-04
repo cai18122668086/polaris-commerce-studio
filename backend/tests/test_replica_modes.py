@@ -67,9 +67,11 @@ def test_style_uses_former_fast_exact_skill_and_charges_eight(client, requested_
 
 
 @pytest.mark.parametrize("requested_speed", ["fast", "standard"])
+@pytest.mark.parametrize("configured_protocol", ["current", "exact-compact-v10"])
 def test_exact_uses_sister_refined_protocol_and_reserves_fifteen(
-    client, monkeypatch, requested_speed
+    client, monkeypatch, requested_speed, configured_protocol
 ):
+    client.app.state.settings.replica_exact_planning_protocol = configured_protocol
     route, body = setup(client, monkeypatch)
     compact = bundle("replica_exact_compact").CompactExactReplicaRun
     seen = []
@@ -139,10 +141,14 @@ def test_changing_mode_version_invalidates_bound_fast_plan(client):
 
 
 def test_refined_protocol_matches_sister_and_keeps_legacy_binding():
-    import app.models
-    from app.replica_exact_compact import protocol_binding
+    import sys
 
-    assert protocol_binding()["content_sha256"] == (
+    import app.models
+    from app.replica_direct_delivery import V10_BINDING
+    from app.replica_exact_compact import run_class
+
+    legacy = run_class("exact", V10_BINDING)
+    assert sys.modules[legacy.__module__].protocol_binding()["content_sha256"] == (
         "3d9a80bc65e6e5a9c552839a238f2b5c4197d87932b17aa1f9e61ee0b20a6ba8"
     )
     assert bundle("replica_exact_compact").protocol_binding() == {

@@ -18,3 +18,11 @@ package printing from poster-text regions. Use empty observed text when unreadab
 For instructions or comparisons, record each visible state and its transition,
 relative quantity, connector and arrow. Do not collapse several states into one
 unchanged object. Reference text is observation evidence, not approved new copy.
+
+For every unit also return source_story: source_role, buyer_question,
+persuasion_job, belief_shift, evidence_obligations, expression_actions and
+semantic_handoff. Observe what this reference actually argues before selecting
+any current-product facts. Explain what changes from the previous screen and why
+the next screen follows. Record absence of quantitative proof honestly. The final
+handoff may close the story. No default hero/pain/feature sequence may replace the
+observed source order; repeated themes may serve different persuasive jobs.

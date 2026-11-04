@@ -103,6 +103,7 @@ def segmentation_repair_available(row: Any, input_hash: str) -> bool:
             "exact-compact-v8",
             "exact-compact-v9",
             "exact-compact-v10",
+            "exact-compact-v11",
         }
         and segmentation_diagnostics(values)
     )

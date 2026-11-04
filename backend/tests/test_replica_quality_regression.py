@@ -6,11 +6,14 @@ import sys
 from copy import deepcopy
 from types import SimpleNamespace
 
+import pytest
+
 from app.replica_completion import PLAN, prepare, prompt
 from app.replica_direct_delivery import V8_BINDING, V9_BINDING, execute
 from app.replica_exact_compact import run_class
 from app.replica_native import ReplicaSegmentationInvalid, read_json, write_json
 from app.replica_native_provider import NativeReplicaProvider
+from app.replica_story import StoryPlanningIncomplete
 from tests.test_replica_compact import SyntheticGateway, setup_run
 
 
@@ -59,23 +62,15 @@ def test_completion_retains_the_native_prompt_when_a_plan_exists(tmp_path):
     assert len(gateway.requests) == calls
 
 
-def test_early_completion_uses_strict_pixels_instead_of_generic_hero(tmp_path):
+def test_missing_story_plan_cannot_fall_back_to_source_only_generation(tmp_path):
     run, gateway, payload, records = setup_run(tmp_path)
     asyncio.run(run.prepare(payload, records))
     (run.root / "session.json").unlink()
     calls = len(gateway.requests)
-    asyncio.run(prepare(run, payload, records, ReplicaSegmentationInvalid()))
-    plan = read_json(run.root / PLAN)
-    compiled = prompt(plan, plan["units"][0], 0)
-    assert "binding composition blueprint" in compiled
-    assert "background palette" in compiled
-    assert "Do not recolor the background" in compiled
-    assert "text locations and size tiers" in compiled
-    assert "source_pixels_only" in compiled
-    assert "Do not invent an English" in compiled
-    assert "front view" in compiled and "OCR" in compiled
-    assert plan["resolved_facts"] == run.context["resolved_facts"]
-    assert len(gateway.requests) == calls  # No extra paid analysis or fake audit.
+    with pytest.raises(StoryPlanningIncomplete):
+        asyncio.run(prepare(run, payload, records, ReplicaSegmentationInvalid()))
+    assert not (run.root / PLAN).exists()
+    assert len(gateway.requests) == calls and not gateway.image_requests
 
 
 def test_concurrent_requests_keep_their_own_fact_adaptations(tmp_path):

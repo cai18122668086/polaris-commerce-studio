@@ -37,8 +37,32 @@ from .replica_native import (
     validate_module_constraints,
     write_json,
 )
+from .replica_story import (
+    StoryPlanningIncomplete,
+    bind_mapping,
+    entry_for,
+    mapping_repair_ids,
+    mapping_schema,
+    merge_story_review,
+    source_sequence,
+    source_story_schema,
+    validate_mapping,
+    validate_story_review,
+)
+from .replica_story import (
+    bind_plan as bind_story_plan,
+)
+from .replica_story import (
+    module_binding as story_module_binding,
+)
+from .replica_story import (
+    review_schema as story_review_schema,
+)
+from .replica_story import (
+    validate_proposal as validate_story_proposal,
+)
 
-VERSION = "exact-compact-v10"
+VERSION = "exact-compact-v11"
 PROMPTS = Path(__file__).with_name("replica_exact_prompts")
 OBSERVATIONS = (
     "subject_and_scale",
@@ -121,6 +145,8 @@ def protocol_binding() -> dict[str, str]:
         Path(__file__).with_name("replica_canvas.py"),
         Path(__file__).with_name("replica_platform_delivery.py"),
         Path(__file__).with_name("replica_streaming.py"),
+        Path(__file__).with_name("replica_story.py"),
+        Path(__file__).with_name("replica_completion.py"),
         *sorted(PROMPTS.glob("*.md")),
     ]
     for path in dependencies:
@@ -139,6 +165,8 @@ def phase_for(stage: str) -> str:
         ("exact-product-evidence", "product"),
         ("exact-fact-resolution", "facts"),
         ("exact-reference-layout", "layout"),
+        ("exact-story-mapping", "story_mapping"),
+        ("exact-story-review", "review_story"),
         ("exact-plan-audit", "review_plan"),
         ("exact-plan", "plan"),
         ("exact-pixel-audit", "review_artwork"),
@@ -278,12 +306,17 @@ def targets(data: dict[str, Any]) -> list[dict[str, Any]]:
         for row in data["prior_visual_audit"]["unit_audits"]
         if row["decision"] == "FAIL"
     }
+    failed.update(data.get("_story_changed_units", []))
     if not failed or not failed <= {u["id"] for u in units}:
         raise CompactResponseInvalid("Plan repair requires actual failed source units")
     return [u for u in units if u["id"] in failed]
 
 
 def response_schema(phase: str) -> dict[str, Any]:
+    if phase == "story_mapping":
+        return mapping_schema()
+    if phase == "review_story":
+        return story_review_schema()
     if phase == "facts":
         return fact_resolution_schema()
     index = {"type": "integer", "minimum": 0}
@@ -384,6 +417,7 @@ def response_schema(phase: str) -> dict[str, Any]:
                         {
                             "reference_unit_id": text(1, 40),
                             "reference_observation": observation(),
+                            "source_story": source_story_schema(),
                             "reference_product_present": {"type": "boolean"},
                             "layout_anchors": anchors,
                             "has_poster_text": {"type": "boolean"},
@@ -630,7 +664,11 @@ def materialize_plan(value: dict[str, Any], data: dict[str, Any]) -> dict[str, A
             continue
         proposed = replacements[uid]
         validate_copy_coverage(proposed)
-        if uid in old and proposed == plan_proposal(prior, uid):
+        if (
+            uid in old
+            and uid not in data.get("_story_changed_units", [])
+            and proposed == plan_proposal(prior, uid)
+        ):
             raise ValueError(
                 f"{uid}: a failed plan must actually change before another audit; "
                 "repair the proposal or bindings, never resample an unchanged FAIL"
@@ -710,6 +748,25 @@ class CompactExactReplicaRun(NativeReplicaRun):
     planning_revisions = 3
     requires_independent_pixel_review = False
     render_binding_version = 3
+
+    @property
+    def narrative_enabled(self) -> bool:
+        # Explicit v2 repair imports preserve their existing approved plans.
+        return self.binding["version"] == "exact-compact-v11" and not self.context.get(
+            "revision_lineage"
+        )
+
+    def report_stage_progress(self, stage: str) -> None:
+        if self.on_progress is not None and stage.startswith("exact-story-"):
+            review = stage.startswith("exact-story-review")
+            self.on_progress(
+                84 if review else 40,
+                "检查整套内容递进与事实依据"
+                if review
+                else "规划整套讲述逻辑与卖点分工",
+            )
+            return
+        super().report_stage_progress(stage)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -828,17 +885,122 @@ class CompactExactReplicaRun(NativeReplicaRun):
         module = next(
             m for m in self.state()["plan"]["modules"] if m["id"] == module_id
         )
+        ledger = self.context["resolved_facts"]
+        story = self.context.get("story_mapping")
+        story_prompt = ""
+        if story:
+            self._validate_story_mapping()
+            bound = story_module_binding(story, module["reference_unit_id"])
+            if module.get("story_binding") != bound:
+                raise CompactResponseInvalid(
+                    "The generated screen's story binding changed"
+                )
+            selected = set(bound["target_fact_ids"])
+            ledger = {
+                **ledger,
+                "facts": [
+                    f
+                    for f in ledger["facts"]
+                    if f["id"] in selected or f["kind"] == "physical_identity"
+                ],
+            }
+            story_prompt = "\nCURRENT_STORY=" + json.dumps(bound, ensure_ascii=False)
         return (
             prompt
             + "\n\n"
             + (PROMPTS / "generation.md").read_text(encoding="utf-8")
             + "\nRESOLVED_FACTS="
-            + json.dumps(self.context["resolved_facts"], ensure_ascii=False)
+            + json.dumps(ledger, ensure_ascii=False)
             + "\nFACT_ADAPTATIONS="
             + json.dumps(module["fact_adaptations"], ensure_ascii=False)
             + "\nCOMMERCIAL_ADAPTATION="
             + json.dumps(module.get("commercial_adaptation"), ensure_ascii=False)
+            + story_prompt
         )
+
+    def _validate_story_mapping(self) -> None:
+        mapping = self.context["story_mapping"]
+        units = self.context["story_source_units"]
+        try:
+            validate_mapping(
+                mapping,
+                units,
+                self.context["reference_layouts"],
+                self.context["resolved_facts"],
+            )
+        except ValueError as exc:
+            raise CompactResponseInvalid(str(exc)) from exc
+
+    async def _prepare_story(self, data: dict[str, Any]) -> list[str]:
+        if not self.narrative_enabled:
+            return []
+        units = data["physical_units"]
+        self.context["story_source_units"] = deepcopy(units)
+        previous = self.context.get("story_mapping")
+        review = self.context.get("story_review")
+        repair = mapping_repair_ids(review, [u["id"] for u in units]) if review else []
+        if previous and not repair:
+            self._validate_story_mapping()
+            return self.checkpoints.get("story_changed_units", [])
+        mapping = await self._visual_stage(
+            "exact-story-mapping",
+            {
+                "physical_units": units,
+                "previous_mapping": previous,
+                "repair_unit_ids": repair,
+                "prior_story_review": review,
+            },
+            paths=[],
+        )
+        self.context["story_mapping"] = mapping
+        self.context.pop("story_review", None)
+        changed = [
+            r["reference_unit_id"]
+            for r in mapping["entries"]
+            if previous and r != entry_for(previous, r["reference_unit_id"])
+        ]
+        self.checkpoints["story_changed_units"] = changed
+        await self.checkpoint()
+        self._validate_story_mapping()
+        return changed
+
+    async def _review_story_plan(self, plan: dict[str, Any]) -> dict[str, Any]:
+        self._validate_story_mapping()
+        for module in plan["modules"]:
+            if module.get("story_binding") != story_module_binding(
+                self.context["story_mapping"], module["reference_unit_id"]
+            ):
+                raise CompactResponseInvalid(
+                    "The written screen's story binding changed"
+                )
+        review = await self._visual_stage(
+            f"exact-story-review-{canonical_hash(plan['modules'])[:16]}", plan, paths=[]
+        )
+        self.context["story_review"] = deepcopy(review)
+        await self.checkpoint()
+        return review
+
+    async def ensure_story_delivery(self) -> None:
+        """Best-effort visual delivery cannot bypass the new content contract."""
+        if not self.narrative_enabled:
+            return
+        if (
+            not self.context.get("story_mapping")
+            or not (self.root / "session.json").exists()
+        ):
+            raise StoryPlanningIncomplete()
+        self._validate_story_mapping()
+        plan = self.state().get("plan")
+        if not plan or not plan.get("modules"):
+            raise StoryPlanningIncomplete()
+        review = await self._review_story_plan(plan)
+        if any(row["decision"] == "FAIL" for row in review["unit_checks"]):
+            from .replica_native import ReplicaPlanAuditRejected
+
+            audit = self.checkpoints.get("plan_cursor", {}).get("audit")
+            if audit and any(r["decision"] == "FAIL" for r in audit["unit_audits"]):
+                raise ReplicaPlanAuditRejected(audit)
+            raise StoryPlanningIncomplete()
 
     def state(self) -> dict[str, Any]:
         if getattr(self, "direct_execution", False):
@@ -935,6 +1097,46 @@ class CompactExactReplicaRun(NativeReplicaRun):
             }
         if phase == "layout":
             return {"physical_units": [model_unit(u) for u in data["physical_units"]]}
+        if phase == "story_mapping":
+            return clean(
+                {
+                    "source_sequence": source_sequence(
+                        data["physical_units"], self.context["reference_layouts"]
+                    ),
+                    "resolved_facts": self.context["resolved_facts"],
+                    "language": self.context["language"],
+                    "previous_mapping": data.get("previous_mapping"),
+                    "repair_unit_ids": data.get("repair_unit_ids", []),
+                    "prior_story_review": data.get("prior_story_review"),
+                }
+            )
+        if phase == "review_story":
+            return clean(
+                {
+                    "source_sequence": source_sequence(
+                        self.context["story_source_units"],
+                        self.context["reference_layouts"],
+                    ),
+                    "story_mapping": self.context["story_mapping"],
+                    "resolved_facts": self.context["resolved_facts"],
+                    "target_screens": [
+                        {
+                            k: m[k]
+                            for k in (
+                                "reference_unit_id",
+                                "page_duty",
+                                "buyer_conclusion",
+                                "copy_units",
+                                "commercial_adaptation",
+                                "fact_adaptations",
+                                "story_binding",
+                                "generation_brief",
+                            )
+                        }
+                        for m in data["modules"]
+                    ],
+                }
+            )
         if phase == "plan":
             units = data.get("_proposal_units") or targets(data)
             prior = data.get("previous_plan") or {}
@@ -950,6 +1152,16 @@ class CompactExactReplicaRun(NativeReplicaRun):
                         )
                     },
                     "resolved_facts": self.context["resolved_facts"],
+                    **(
+                        {
+                            "story_mapping": self.context["story_mapping"],
+                            "current_story": entry_for(
+                                self.context["story_mapping"], units[0]["id"]
+                            ),
+                        }
+                        if self.narrative_enabled
+                        else {}
+                    ),
                     "product_evidence": model_product_evidence(
                         data["product_evidence"]
                     ),
@@ -1014,6 +1226,16 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 {
                     "audit_subject": "written_plan_before_rendering",
                     "resolved_facts": self.context["resolved_facts"],
+                    **(
+                        {
+                            "story_assignments": [
+                                entry_for(self.context["story_mapping"], u["id"])
+                                for u in data["reference_units"]
+                            ]
+                        }
+                        if self.narrative_enabled
+                        else {}
+                    ),
                     "product_evidence": model_product_evidence(
                         data.get("product_evidence", [])
                     ),
@@ -1224,8 +1446,25 @@ class CompactExactReplicaRun(NativeReplicaRun):
                             f"Reference {row['reference_unit_id']} {key}[{i}]",
                         )
             validate_reference_layouts(value, hashes)
+        elif phase == "story_mapping":
+            value = bind_mapping(
+                value,
+                data["physical_units"],
+                self.context["reference_layouts"],
+                self.context["resolved_facts"],
+                data.get("previous_mapping"),
+                data.get("repair_unit_ids"),
+            )
+        elif phase == "review_story":
+            validate_story_review(
+                value, [m["reference_unit_id"] for m in data["modules"]]
+            )
         elif phase == "plan":
+            if self.narrative_enabled:
+                self._validate_story_mapping()
             for proposed in value["modules"]:
+                if self.narrative_enabled:
+                    validate_story_proposal(proposed, self.context["story_mapping"])
                 layout = data["reference_layouts"][proposed["reference_unit_id"]]
                 for i, anchor in enumerate(proposed["render_anchors"]):
                     anchor["bbox"] = rectangle_edges(
@@ -1247,8 +1486,12 @@ class CompactExactReplicaRun(NativeReplicaRun):
                     raise ValueError("Return only the requested screen proposal")
                 for proposed in value["modules"]:
                     prior = data.get("previous_plan")
-                    if prior and proposed == plan_proposal(
-                        prior, proposed["reference_unit_id"]
+                    if (
+                        prior
+                        and proposed["reference_unit_id"]
+                        not in data.get("_story_changed_units", [])
+                        and proposed
+                        == plan_proposal(prior, proposed["reference_unit_id"])
                     ):
                         raise ValueError(
                             "A failed plan must actually change before another audit"
@@ -1350,6 +1593,8 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 from .replica_native import ReplicaPlanAuditRejected
 
                 raise ReplicaPlanAuditRejected(cursor["audit"])
+            changed = await self._prepare_story(data)
+            data = {**data, "_story_changed_units": changed}
             if cursor["plan"]:
                 data = {
                     **data,
@@ -1381,6 +1626,9 @@ class CompactExactReplicaRun(NativeReplicaRun):
                 proposals.extend(result["modules"])
                 summaries[unit["id"]] = result["modules"][0]
             plan = materialize_plan({"modules": proposals}, data)
+            if self.narrative_enabled:
+                bind_story_plan(plan, self.context["story_mapping"])
+            self.checkpoints["story_changed_units"] = []
             cursor.update(plan=deepcopy(plan), phase="review")
             await self.checkpoint()
             return plan
@@ -1428,6 +1676,10 @@ class CompactExactReplicaRun(NativeReplicaRun):
                         **options,
                     )
                 audits.extend(result["unit_audits"])
+            if self.narrative_enabled:
+                story_review = await self._review_story_plan(data)
+                merge_story_review(audits, story_review)
+                self._progress("review_plan", data, {"unit_audits": audits})
             value = {"method": "AI_FRESH_REFERENCE_AUDIT", "unit_audits": audits}
             cursor = self.checkpoints.get("plan_cursor")
             if (
@@ -1667,6 +1919,7 @@ def run_class(method: str, protocol: Any = None) -> type[NativeReplicaRun]:
         "exact-compact-v7",
         "exact-compact-v8",
         "exact-compact-v9",
+        "exact-compact-v10",
     }:
         archive = version.rsplit("-", 1)[-1]
         name = f"app._replica_exact_compact_{archive}"

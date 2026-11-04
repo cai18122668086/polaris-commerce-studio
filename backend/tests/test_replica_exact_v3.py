@@ -176,8 +176,9 @@ def test_interruption_resumes_last_round_without_old_round_replay(
     restored.on_checkpoint = checkpoint
     asyncio.run(restored.prepare(payload, records))
     added = gateway.requests[before:]
-    assert len(added) == (2 if interrupt_at == "plan" else 1)
-    assert all("-r1-" in r.group_key and "R002" in r.group_key for r in added)
+    assert len(added) == (3 if interrupt_at == "plan" else 2)
+    local = [r for r in added if "exact-story-review" not in r.group_key]
+    assert all("-r1-" in r.group_key and "R002" in r.group_key for r in local)
     assert restored.state()["state"] == "READY"
     assert min(p["accepted"] for p in progress) >= 1
 

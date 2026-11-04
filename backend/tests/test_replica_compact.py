@@ -146,6 +146,27 @@ class SyntheticGateway:
                         "reference_observation": observed(
                             "Independent layout " + u["id"]
                         ),
+                        **(
+                            {
+                                "source_story": {
+                                    key: f"Synthetic {u['id']}: observed {key}"
+                                    for key in (
+                                        "source_role",
+                                        "buyer_question",
+                                        "persuasion_job",
+                                        "belief_shift",
+                                        "evidence_obligations",
+                                        "expression_actions",
+                                        "semantic_handoff",
+                                    )
+                                }
+                            }
+                            if "source_story"
+                            in envelope["response_schema"]["properties"]["units"][
+                                "items"
+                            ]["properties"]
+                            else {}
+                        ),
                         "reference_product_present": True,
                         "layout_anchors": [
                             {
@@ -176,13 +197,66 @@ class SyntheticGateway:
                     for u in data["physical_units"]
                 ]
             }
+        elif phase == "story_mapping":
+            sequence = data["source_sequence"]
+            value = {
+                "entries": [
+                    {
+                        "reference_unit_id": row["reference_unit_id"],
+                        "target_role": "Present supported synthetic product",
+                        "target_fact_ids": [
+                            f["id"]
+                            for f in data["resolved_facts"]["facts"]
+                            if f["disposition"] == "approved"
+                        ][:1],
+                        "translation": "Use supported synthetic facts",
+                        "information_gain": "Explain this observed source role",
+                        "relation_to_previous": "Follow the observed source order",
+                        "next_unit_id": sequence[i + 1]["reference_unit_id"]
+                        if i + 1 < len(sequence)
+                        else None,
+                        "handoff": "Continue the observed story or close it",
+                        "repetition_mode": "different_argument",
+                        "repetition_reason": "The fixture supplies this source role",
+                        "evidence_gap": "",
+                    }
+                    for i, row in enumerate(sequence)
+                ]
+            }
+            if data.get("previous_mapping"):
+                old = {
+                    r["reference_unit_id"]: r
+                    for r in data["previous_mapping"]["entries"]
+                }
+                for row in value["entries"]:
+                    if row["reference_unit_id"] not in data["repair_unit_ids"]:
+                        row.update(old[row["reference_unit_id"]])
+        elif phase == "review_story":
+            from app.replica_story import STORY_DIMENSIONS
+
+            value = {
+                "unit_checks": [
+                    {
+                        "reference_unit_id": m["reference_unit_id"],
+                        "comparisons": compared(
+                            STORY_DIMENSIONS, m["reference_unit_id"]
+                        ),
+                        "material_mismatches": [],
+                        "revise_mapping": False,
+                        "decision": "PASS",
+                    }
+                    for m in data["target_screens"]
+                ]
+            }
         elif phase == "plan":
             value = {
                 "modules": [
                     {
                         "reference_unit_id": u["id"],
                         "visual_contract": observed("Intended replacement " + u["id"]),
-                        "page_duty": "Present supported synthetic product",
+                        "page_duty": data.get("current_story", {}).get(
+                            "target_role", "Present supported synthetic product"
+                        ),
                         "buyer_conclusion": "Recognize the supported synthetic product",
                         "generation_brief": (
                             "Preserve the independent headline and rectangular "
@@ -302,8 +376,12 @@ class SyntheticGateway:
                     commercial_adaptation={
                         "mode": "preserve",
                         "source_role": "Recognize the product",
-                        "supported_role": "Recognize the actual product",
-                        "fact_ids": ["F001"],
+                        "supported_role": data.get("current_story", {}).get(
+                            "target_role", "Recognize the actual product"
+                        ),
+                        "fact_ids": data.get("current_story", {}).get(
+                            "target_fact_ids", ["F001"]
+                        ),
                         "reason": "Preserve the supported product recognition question",
                         "preserved_mechanism": "Same subject and text hierarchy",
                     },
@@ -377,11 +455,11 @@ def test_compact_preparation_uses_real_guard_and_server_owned_metadata(tmp_path)
     run.on_progress = lambda value, label: progress.append(value)
     result = asyncio.run(run.prepare(payload, records))
     assert len(result) == 2 and run.state()["state"] == "READY"
-    assert len(gateway.requests) == 10  # Includes one shared fact resolution.
-    assert progress == [12, 12, 12, 24, 30, 48, 48, 82, 82, 92]
+    assert len(gateway.requests) == 12  # Includes story allocation and text check.
+    assert progress == [12, 12, 12, 24, 30, 40, 48, 48, 82, 82, 84, 92]
     for request in gateway.requests:
         assert request.planning_profile == "replica_exact_compact"
-        assert len(request.system_prompt) < 4000
+        assert len(request.system_prompt) < 6000  # Includes explicit story obligations.
         assert "native_validators" not in request.system_prompt
         assert "harness.py" not in request.system_prompt
         assert "verified_skill" not in request.system_prompt
@@ -1111,7 +1189,7 @@ def test_normal_http_submission_worker_history_and_original_download(
     assert document["status"] == "generating", document
     assert len(document["payload"]["job_ids"]) == 1
     assert "_exact_model_protocol" not in document["payload"]
-    assert len(gateway.requests) == 10
+    assert len(gateway.requests) == 12
     for _ in range(2):
         client.get(route + "/documents/" + document["id"])
     with client.app.state.session_factory() as session:

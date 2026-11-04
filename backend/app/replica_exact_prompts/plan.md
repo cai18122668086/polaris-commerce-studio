@@ -20,9 +20,18 @@ colors and props HERE, not just by negating them in the brief. Keep composition;
 justify geometry changes from actual product shape or corrected pixel observation.
 Keep expression, gaze, interaction, decorative edges, tabs and connections.
 
+When current_story is supplied, use its target_role verbatim as page_duty and
+commercial_adaptation.supported_role. Use its assigned target_fact_ids for the
+commercial claim. The whole story_mapping has already allocated future screens:
+fulfil this screen's information_gain and handoff instead of choosing another
+convenient fact. A shared theme may recur when it performs a different argument
+or the actual source intentionally repeats it; never force one new fact per page.
+
 Return commercial_adaptation: mode preserve/truthful_substitution, source_role,
-supported_role, fact_ids, reason, preserved_mechanism. Unsupported efficacy proof
-may become supported composition proof using the same percent/bar/data carrier.
+supported_role, fact_ids, reason, preserved_mechanism. Match the assigned argument,
+not just the data-carrier shape. Composition percentages cannot prove efficacy.
+Keep the mapped factual scope; do not independently reassign a mechanism or
+result screen to another ingredient introduction. Explain missing support honestly.
 Assign every text region once to content_groups: region_ids, critical, purpose.
 Co-primary branches are critical and require rendered content.
 

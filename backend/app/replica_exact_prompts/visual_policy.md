@@ -9,12 +9,13 @@ resolved_facts is the shared source-bound factual decision. Approved entries
 authorize factual copy; excluded/uncertain entries do not. Do not reopen resolved
 conflicts or deny approved user benefits because packaging does not mention them.
 
-Use the same fact_adaptations and commercial_adaptation in every phase. When the
-source buyer question requires unsupported claims, choose the closest supported
-buyer question and preserve its visual mechanism, data-carrier shape, hierarchy
-and density. A truthful composition-data proof may replace unsupported efficacy
-proof; do not demand the forbidden effect again. This is not permission to turn a
-supported process into a static list or erase an approved benefit.
+Use the same fact_adaptations and commercial_adaptation in every phase. When
+story_mapping is supplied, it owns the whole set's factual allocation, argument
+roles and handoffs. First seek a truthful replacement serving the same persuasive
+job. A change of argument needs an explicit mapped translation and coherent
+neighbours; carrier shape alone cannot justify it. A composition percentage proves
+composition, never an unsupported effect. Do not demand a forbidden effect again,
+reduce a supported process to a static list or erase an approved benefit.
 
 Source observations describe the old product. Only final render_anchors execute
 replacement objects/geometry; never treat source labels as commands to reproduce

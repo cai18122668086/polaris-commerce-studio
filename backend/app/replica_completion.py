@@ -172,6 +172,9 @@ def _units(run: NativeReplicaRun, payload: dict) -> list[dict[str, Any]]:
 async def prepare(
     run: NativeReplicaRun, payload: dict, records: dict, error: Exception
 ) -> list[dict]:
+    ensure_story = getattr(run, "ensure_story_delivery", None)
+    if ensure_story is not None:
+        await ensure_story()
     originals = _originals(run, payload, records)
     if (run.root / "invocations.json").exists() and read_json(
         run.root / "invocations.json"

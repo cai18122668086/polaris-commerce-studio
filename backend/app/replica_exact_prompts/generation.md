@@ -12,6 +12,12 @@ Follow COMMERCIAL_ADAPTATION's supported role and the final render layout_anchor
 Source labels describe the benchmark only; do not restore its old product/props.
 Preserve expression, interaction, decorative edges and each populated core branch.
 
+When CURRENT_STORY is supplied, render this screen's approved copy and mapped
+argument only. Its assigned facts and information_gain determine the message;
+neighbouring topics are context, not extra headlines or objects. Physical package
+printing remains product identity and is not removed for repetition. Do not
+expand a familiar ingredient into a different benefit or unsupported mechanism.
+
 Render only the approved poster copy in the target language; preserve original
 physical wordmarks and complete printed numbers. Do not invent claims, reports,
 certificates or reference branding. Real ingredients may appear when supported.

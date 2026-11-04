@@ -245,6 +245,8 @@ class Settings(BaseSettings):
     # Kept for compatibility with existing deployment environments. Exact
     # sessions now use the current protocol in every workspace.
     replica_exact_compact_workspaces: tuple[str, ...] = ()
+    # A rollback changes only new sessions; existing snapshots keep their protocol.
+    replica_exact_planning_protocol: Literal["current", "exact-compact-v10"] = "current"
     xinghe_medium_price_micros: int = Field(default=45_000, ge=0)
     xinghe_high_price_micros: int = Field(default=90_000, ge=0)
     xinghe_skill_root: Path = Field(default_factory=default_xinghe_skill_root)

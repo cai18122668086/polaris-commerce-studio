@@ -58,6 +58,7 @@ from .replica_native import (
     native_accounting,
 )
 from .replica_progress import reconcile_document
+from .replica_story import StoryEvidenceMissing, StoryPlanningIncomplete
 from .replica_style_evidence import StyleEvidenceInvalid
 from .schemas_v1 import ReferenceRemixJobCreate
 from .services import get_ready_assets, lock_workspace_limits
@@ -235,6 +236,7 @@ def _wire(row: ReplicaDocumentRecord) -> dict:
                     "exact-compact-v8",
                     "exact-compact-v9",
                     "exact-compact-v10",
+                    "exact-compact-v11",
                 }
             )
         )
@@ -524,6 +526,8 @@ def get_document(
         and row.payload.get("auto_start_after_plan") is True
         and not row.payload.get("job_ids")
         and row.payload.get("_analysis_checkpoint")
+        and row.payload["_analysis_checkpoint"].get("model_protocol", {}).get("version")
+        != "exact-compact-v11"
         and row.payload.get("error_code")
         in {
             "REPLICA_PLAN_AUDIT_REJECTED",
@@ -1237,6 +1241,8 @@ async def _analyse_document(app: Any, document_id: str, attempt_id: str) -> None
                         ReplicaAnalysisUnavailable,
                         ReplicaPlanAuditRejected,
                         StyleEvidenceInvalid,
+                        StoryEvidenceMissing,
+                        StoryPlanningIncomplete,
                     ),
                 )
                 else "分析服务暂时不可用，请稍后再试。",
@@ -1266,7 +1272,10 @@ def analyse(
     if payload.replication_method == "exact" and payload.replica_speed != "fast":
         from .replica_exact_compact import VERSION
 
-        values["_exact_model_protocol"] = VERSION
+        configured = request.app.state.settings.replica_exact_planning_protocol
+        values["_exact_model_protocol"] = (
+            VERSION if configured == "current" else configured
+        )
         if payload.replica_mode_version == "replica-modes-v2":
             from .replica_refined import VERSION as refined_version
 

@@ -447,3 +447,11 @@ wrapt==1.17.3 \
 yarl==1.24.5 \
     --hash=sha256:d46b86567dd4e248c6c159fcbcdcce01e0a5c8a7cd2334a0fff759d0fa075b16
     # via aiohttp
+
+mutagen==1.47.0 \
+    --hash=sha256:edd96f50c5907a9539d8e5bba7245f62c9f520aef333d13392a79a4f70aca719
+    # via polaris-commerce-backend video studio
+
+imageio-ffmpeg==0.6.0 \
+    --hash=sha256:c7e46fcec401dd990405049d2e2f475e2b397779df2519b544b8aab515195282
+    # via polaris-commerce-backend video studio

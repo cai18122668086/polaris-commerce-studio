@@ -1,0 +1,59 @@
+.cloneDialog.cloneDialog.cloneDialog { width: min(480px, calc(100vw - 32px)); border-radius: 18px; border-color: #e9e5ed; }
+.cloneDialog > div { padding: 25px 28px 0; }
+.cloneDialog > div > header { margin-bottom: 8px; }
+.cloneDialog > div > header h2 { font-size: 19px; font-weight: 650; }
+.form { display: flex; flex-direction: column; gap: 22px; padding-top: 4px; }
+.form .intro { margin: 0 0 1px; color: #8b8592; font-size: 12px; line-height: 1.7; }
+.field { display: flex; flex-direction: column; gap: 9px; color: #45404c; font-size: 12px; font-weight: 500; }
+.field input { width: 100%; height: 44px; padding: 0 13px; border-radius: 9px; font-size: 13px; font-weight: 400; background: #fff; }
+.fieldHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 12px; font-weight: 500; color: #45404c; }
+.fieldHeading small { font-size: 11px; font-weight: 400; color: #9b94a3; }
+.uploadArea { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; min-height: 156px; padding: 20px; border: 1px dashed #ddd4e6; border-radius: 12px; background: #faf8fc; cursor: pointer; transition: background .18s, border-color .18s; }
+.uploadArea:hover { border-color: #a894bc; background: #f7f3fb; }
+.uploadArea:focus-within { outline: 3px solid #e7ddf0; outline-offset: 2px; }
+.uploadIcon { display: grid; place-items: center; color: #8c759f; width: 42px; height: 42px; border-radius: 12px; background: #efe9f6; }
+.uploadArea b { max-width: 100%; overflow-wrap: anywhere; color: #4a4055; font-size: 13px; font-weight: 500; }
+.uploadArea .uploadHint { color: #a099a8; font-size: 11px; line-height: 1.6; text-align: center; }
+.uploadArea input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.fileSelected { border-style: solid; background: #faf8fc; }
+.recording .fileHelp { margin-top: 9px; color: #a29aa9; font-size: 10px; line-height: 1.6; }
+.consent { display: flex; align-items: flex-start; gap: 8px; font-size: 11px; color: #8b8394; line-height: 1.8; cursor: pointer; }
+.consent input { width: 15px; height: 15px; padding: 0; flex-shrink: 0; margin: 3px 0 0; accent-color: #7f6897; }
+.footer { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin: 24px -28px 0; padding: 18px 28px; border-top: 1px solid #eeebf1; background: #fff; }
+.footer button { min-height: 39px; min-width: 80px; }
+.footer button:last-child { min-width: 118px; }
+.error { color: #a35e65; font-size: 12px; line-height: 1.7; margin: 12px 0 0; }
+.processing { padding: 9px 0 0; }
+.manager { min-width: 0; }
+.toolbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.toolbar p, .voice p { font-size: 12px; line-height: 1.7; color: #81738f; }
+.voices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.voice { min-width: 0; border: 1px solid #eee7f3; border-radius: 18px; background: #fff; padding: 20px; }
+.heading { display: flex; gap: 12px; align-items: center; color: #8d73aa; margin-bottom: 15px; }
+.heading b { color: #31283d; overflow-wrap: anywhere; }
+.heading p { margin: 5px 0 0; }
+.voice audio { width: 100%; height: 38px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.progressPanel { min-width: 0; padding: 28px 4px 20px; }
+.progressMark { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto 29px; background: #f3eff8; color: #9178a9; border-radius: 20px; }
+.progressPanel[data-state="done"] .progressMark { background: #f0f4dd; color: #75834f; }
+.progressPanel[data-state="stopped"] .progressMark { background: #f8f1eb; color: #aa8569; }
+.progressHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #45404c; }
+.cloneDialog .progressHeading h3, .progressHeading h3 { font-size: 13px; font-weight: 500; line-height: 1.6; }
+.progressHeading > span { flex-shrink: 0; color: #9a8da7; font-size: 11px; font-variant-numeric: tabular-nums; }
+.progressBar { display: block; width: 100%; height: 4px; margin: 13px 0 15px; border: 0; border-radius: 99px; overflow: hidden; appearance: none; background: #eee9f3; accent-color: #a08bb7; }
+.progressBar::-webkit-progress-bar { background: #eee9f3; border-radius: 99px; }
+.progressBar::-webkit-progress-value { background: #a08bb7; border-radius: 99px; transition: width .5s ease; }
+.progressBar::-moz-progress-bar { background: #a08bb7; border-radius: 99px; }
+.progressBar:indeterminate { background: linear-gradient(90deg, #eee9f3 20%, #a08bb7 45%, #eee9f3 70%); background-size: 220% 100%; animation: progressFlow 1.8s linear infinite; }
+.progressBar:indeterminate::-webkit-progress-bar { background: transparent; }
+.progressPanel > p { margin: 0; color: #a29aa9; font-size: 11px; line-height: 1.8; }
+.progressPanel[data-state="stopped"] > p { margin-top: 10px; }
+.progressCompact { padding: 12px 0 0; }
+.progressCompact .progressHeading h3 { font-size: 12px; }
+.progressCompact .progressBar { margin: 9px 0; }
+@keyframes progressFlow { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) { .uploadArea, .progressBar::-webkit-progress-value { transition: none; } .progressBar:indeterminate { animation: none; } }
+@media (max-width: 1050px) { .voices { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .voices { grid-template-columns: minmax(0, 1fr); } .toolbar { align-items: flex-start; } }
+@media (max-width: 500px) { .cloneDialog > div { padding: 21px 20px 0; } .footer { margin-inline: -20px; padding: 16px 20px; } .form { gap: 19px; } .uploadArea { min-height: 144px; padding-inline: 14px; } }

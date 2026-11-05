@@ -43,6 +43,11 @@ class CurrentUserResponse(BaseModel):
     email_verified: bool
 
 
+class VideoStudioAccessResponse(BaseModel):
+    allowed: Literal[True] = True
+    user_id: str
+
+
 class WorkspaceResponse(BaseModel):
     id: str
     name: str

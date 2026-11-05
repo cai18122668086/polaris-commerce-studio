@@ -3,7 +3,7 @@ import EmailPassword from "supertokens-web-js/recipe/emailpassword";
 import EmailVerification from "supertokens-web-js/recipe/emailverification";
 import Session from "supertokens-web-js/recipe/session";
 
-import { emitAuthUnauthorised } from "./session-events";
+import { emitAuthUnauthorised, emitAuthSessionChanged } from "./session-events";
 import { isLocalDevelopmentAuthEnabled } from "./local-dev";
 import { getAuthRuntimeConfig } from "./config";
 import { boundedAuthRequest } from "./request-timeout";
@@ -50,6 +50,7 @@ export function initializeAuthClient(): void {
         onHandleEvent(event) {
           if (event.action === "UNAUTHORISED") emitAuthUnauthorised("session");
           else if (event.action === "SIGN_OUT") emitAuthUnauthorised("sign-out");
+          else if (event.action === "SESSION_CREATED") emitAuthSessionChanged();
         },
       }),
     ],

@@ -1,6 +1,7 @@
 "use client";
 
 import { PrimaryNavigationLink } from "./primary-navigation-link";
+import { useVideoStudioAccess } from "@/features/video-studio/access";
 import styles from "./top-navigation.module.css";
 
 import Link from "next/link";
@@ -55,6 +56,7 @@ export function TopNavigation({
   taskTriggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const pathname = usePathname();
+  const videoStudioAllowed = useVideoStudioAccess();
   const isHome = pathname === "/";
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -150,6 +152,7 @@ export function TopNavigation({
               active={pathname === item.href || pathname.startsWith(`${item.href}/`)} />
           ))}
           {renderMegaMenu(ALL_TOOLS_MENU)}
+          {videoStudioAllowed && <a href="/video-studio" target="_blank" rel="noopener noreferrer" className={styles.videoEntry}>视频创作<span>NEW</span></a>}
         </nav>
         <button
           ref={mobileTriggerRef}
@@ -173,7 +176,7 @@ export function TopNavigation({
           menus={AI_NAVIGATION_MENUS}
           onClose={() => setOpenMenu(null)}
           panelRef={mobilePanelRef}
-          primaryLinks={MOBILE_PRIMARY_NAVIGATION_LINKS}
+          primaryLinks={videoStudioAllowed ? [...MOBILE_PRIMARY_NAVIGATION_LINKS, { label: "视频创作", href: "/video-studio" }] : MOBILE_PRIMARY_NAVIGATION_LINKS}
           pathname={pathname}
         />
         <div className="top-nav__actions">

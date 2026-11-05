@@ -1,0 +1,12 @@
+{
+  "reference_asset": "presenter-female-v1.png",
+  "identity": "Same fictional adult presenter created with built-in image generation",
+  "motion_template_version": "v2_stable",
+  "created_date": "2026-11-05",
+  "motion_model": "Minimax-H3-768p-913",
+  "canonical_seconds": 15,
+  "prompt_file": "presenter-female-v2-stable.motion-prompt.txt",
+  "extension_test": "Forward copies with 0.25-second dissolves, trimmed to 60 seconds before lipsync; the original 60-second narration was reused without a new TTS call",
+  "review": "First/middle/end identity checks passed. Chest-region frame variation is about 30% below v1, a motion proxy rather than a breathing-rate measurement. Moving sections of the returned 60-second lipsync match forward source order. Continuous perceptual quality still requires viewing.",
+  "scope": "Local gray deployment only; no production deployment. Longer audio has not been tested."
+}

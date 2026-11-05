@@ -18,6 +18,7 @@ COPY backend/catalog_assets ./catalog_assets
 COPY backend/skill_sources ./skill_sources
 COPY backend/source_manifests ./source_manifests
 COPY backend/migrations ./migrations
+COPY assets/video-studio/owned /assets/video-studio/owned
 COPY backend/scripts/assign_workspace_owner.py ./scripts/assign_workspace_owner.py
 
 RUN groupadd --system --gid 10001 polaris \

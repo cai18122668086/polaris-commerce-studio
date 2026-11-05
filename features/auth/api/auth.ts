@@ -5,6 +5,7 @@ import Session from "supertokens-web-js/recipe/session";
 import { initializeAuthClient } from "@/lib/auth/client";
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
 import type { AuthTraceContext } from "@/lib/auth/diagnostics";
+import { emitAuthUnauthorised } from "@/lib/auth/session-events";
 
 export type AuthFieldError = { id: string; error: string };
 const PASSWORD_ERROR_MESSAGES: Record<string, string> = {
@@ -26,6 +27,7 @@ export async function getSessionUserId() {
   return Session.getUserId();
 }
 export async function signOut() {
+  emitAuthUnauthorised("sign-out");
   if (isLocalDevelopmentAuthEnabled()) return;
   initialise();
   await Session.signOut();

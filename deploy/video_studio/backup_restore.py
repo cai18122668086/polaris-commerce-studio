@@ -78,7 +78,7 @@ with TestClient(app) as client:
   return response.json()['id']
  source=upload('source.png','image');mask=upload('mask.png','mask')
  response=client.post('/api/v1/workspaces/ws_video_restore/jobs',headers={'Idempotency-Key':str(uuid4())},json={'type':'local_edit','intent':'submit','display_name':'restore drill','input':{'source_asset_id':source,'selection_mask_asset_id':mask},'configuration':{'instruction':'Change color','quality':'balanced','output_format':'png'}})
- assert response.status_code==201,response.text
+ assert response.status_code==202,response.text
  job=response.json()['id'];asyncio.run(app.state.task_runner.run(job))
  result=client.get('/api/v1/workspaces/ws_video_restore/jobs/'+job).json();assert result['status']=='completed',result['status']
 print(json.dumps(dict(restored=True,objects=len(records),verified_db_assets=len(rows),schema_before=before,schema_after='20261105_0039',api_ready=True,mock_job_completed=True)))

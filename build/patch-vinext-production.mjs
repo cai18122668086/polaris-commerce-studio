@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { readFile, realpath, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -19,6 +19,10 @@ export async function patchVinextProduction(vinextRoot = defaultVinextRoot) {
   await patchFile(
     path.join(vinextRoot, "dist", "server", "static-file-cache.js"),
     [
+      {
+        before: "allFiles.set(relativePath, {",
+        after: 'allFiles.set(relativePath.split(path.sep).join("/"), {',
+      },
       {
         before: 'const isHashed = relativePath.startsWith("assets/");',
         alternatives: ['const isHashed = relativePath.startsWith("assets/") || relativePath.startsWith("_polaris-static/");'],
@@ -66,7 +70,7 @@ async function patchFile(filePath, replacements) {
 
 if (
   process.argv[1] &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
+  await realpath(path.resolve(process.argv[1])) === await realpath(fileURLToPath(import.meta.url))
 ) {
   await patchVinextProduction();
 }

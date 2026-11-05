@@ -143,6 +143,7 @@ from .schemas_v1 import (
     RetryRequest,
     RuntimeCapabilities,
     RuntimeStatusResponse,
+    VideoStudioAccessResponse,
     WorkspaceResponse,
 )
 from .services import (
@@ -181,6 +182,7 @@ from .storage import (
     build_content_disposition,
 )
 from .thumbnails import ThumbnailBusy
+from .video_studio_access import VideoStudioDependency
 
 router = APIRouter(prefix="/api/v1")
 SessionDependency = Annotated[Session, Depends(get_session)]
@@ -485,6 +487,17 @@ def current_user(principal: PrincipalDependency) -> CurrentUserResponse:
         status=principal.status,
         email_verified=principal.email_verified,
     )
+
+
+@router.get(
+    "/video-studio/access", response_model=VideoStudioAccessResponse, tags=["identity"]
+)
+def video_studio_access(
+    principal: VideoStudioDependency, response: Response
+) -> VideoStudioAccessResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Vary"] = "Cookie"
+    return VideoStudioAccessResponse(user_id=principal.user_id)
 
 
 def runtime_status_response(

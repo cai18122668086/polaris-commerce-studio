@@ -8,6 +8,8 @@ version = "1.1.0"
 description = "Phase 1.1 production foundation for Polaris Commerce Studio"
 requires-python = ">=3.12"
 dependencies = [
+  "mutagen>=1.47,<2",
+  "imageio-ffmpeg>=0.6,<1",
   "alembic>=1.16,<2",
   "boto3>=1.40,<2",
   "celery[redis]>=5.6,<6",
@@ -94,6 +96,7 @@ include = ["app*"]
 app = [
   "skill_manifests/*.json",
   "processing_notice.json",
+  "data/*.json",
   "replica_exact_versions/v16/source-manifest.json",
   "replica_exact_versions/v16/replica_exact_prompts/*.md",
 ]

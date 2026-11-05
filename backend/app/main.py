@@ -67,6 +67,11 @@ from .supertokens_auth import ExternalAuthBackend, SuperTokensAuthAdapter
 from .support_routes import router as support_router
 from .task_runner import build_task_runner, validate_task_runner_settings
 from .thumbnails import ThumbnailCache
+from .video_assistance import router as video_assistance_router
+from .video_editing_routes import router as video_editing_router
+from .video_generation import router as video_generation_router
+from .video_studio_routes import router as video_studio_router
+from .video_voice_cloning import router as video_voice_cloning_router
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +106,7 @@ def _metrics_text(application: FastAPI) -> str:
     for key, values in sorted(metrics["latency"].items()):
         method, route = key
         labels = (
-            f'method="{_prometheus_label(method)}",'
-            f'route="{_prometheus_label(route)}"'
+            f'method="{_prometheus_label(method)}",route="{_prometheus_label(route)}"'
         )
         cumulative = 0
         for bucket, count in zip(
@@ -115,12 +119,10 @@ def _metrics_text(application: FastAPI) -> str:
                 f'{labels},le="{boundary}"}} {cumulative}'
             )
         lines.append(
-            f"polaris_http_request_duration_seconds_sum{{{labels}}} "
-            f"{values['sum']:.6f}"
+            f"polaris_http_request_duration_seconds_sum{{{labels}}} {values['sum']:.6f}"
         )
         lines.append(
-            f"polaris_http_request_duration_seconds_count{{{labels}}} "
-            f"{values['count']}"
+            f"polaris_http_request_duration_seconds_count{{{labels}}} {values['count']}"
         )
     lines.extend(
         [
@@ -350,9 +352,8 @@ def create_app(
                 route_name = str(getattr(route, "path", request.url.path))
                 requests = application.state.request_metrics["requests"]
                 latency = application.state.request_metrics["latency"]
-                if (
-                    len(requests) < _METRICS_MAX_ROUTE_KEYS
-                    or any(key[0:2] == (request.method, route_name) for key in requests)
+                if len(requests) < _METRICS_MAX_ROUTE_KEYS or any(
+                    key[0:2] == (request.method, route_name) for key in requests
                 ):
                     status_code = response.status_code if response is not None else 500
                     request_key = (
@@ -377,6 +378,10 @@ def create_app(
                             values["buckets"][index] += 1
                             break
         response.headers["X-Request-Id"] = request_id
+        if request.url.path.startswith("/api/v1/video-studio/"):
+            # Includes denied/error responses: no shared/browser grant cache.
+            response.headers["Cache-Control"] = "private, no-store"
+            response.headers["Vary"] = "Cookie"
         if elapsed >= 2:
             logger.warning(
                 "slow_request method=%s path=%s status=%s seconds=%.3f",
@@ -515,6 +520,11 @@ def create_app(
         return {"status": "ok", "metrics": metrics}
 
     application.include_router(v1_router)
+    application.include_router(video_studio_router)
+    application.include_router(video_voice_cloning_router)
+    application.include_router(video_generation_router)
+    application.include_router(video_editing_router)
+    application.include_router(video_assistance_router)
     application.include_router(credit_router)
     application.include_router(processing_consent_router)
     application.include_router(creation_summary_router)

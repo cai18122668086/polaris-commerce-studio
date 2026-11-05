@@ -5703,23 +5703,14 @@ class XinghePlanningCoordinator:
             all_signature_groups = [
                 (
                     request.group_key,
-                    (
-                        tuple(
-                            (
-                                source.source_role,
-                                source.filename,
-                                source.sha256,
-                            )
-                            for source in request.sources
-                        )
+                    tuple(
+                        (source.source_role, source.filename, source.sha256)
                         if (
                             request.domestic_protocol
                             or request.planning_profile == "crossborder_detail"
                         )
-                        else tuple(
-                            (source.filename, source.sha256)
-                            for source in request.sources
-                        )
+                        else (source.filename, source.sha256)
+                        for source in request.sources
                     ),
                 )
                 for request in requests

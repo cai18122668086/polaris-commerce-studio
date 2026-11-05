@@ -1542,6 +1542,555 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Video Studio Access */
+        get: operations["video_studio_access_api_v1_video_studio_access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/editing-handoffs/{handoff_id}/assets/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Service Asset */
+        get: operations["service_asset_api_v1_video_studio_editing_handoffs__handoff_id__assets__kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/editing-handoffs/{handoff_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Service Event */
+        post: operations["service_event_api_v1_video_studio_editing_handoffs__handoff_id__events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/editing-handoffs/{handoff_id}/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Service Manifest */
+        get: operations["service_manifest_api_v1_video_studio_editing_handoffs__handoff_id__manifest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/assistance-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tasks */
+        get: operations["tasks_api_v1_video_studio_workspaces__workspace_id__assistance_tasks_get"];
+        put?: never;
+        /** Submit */
+        post: operations["submit_api_v1_video_studio_workspaces__workspace_id__assistance_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/assistance-tasks/{task_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume */
+        post: operations["resume_api_v1_video_studio_workspaces__workspace_id__assistance_tasks__task_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/audio-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Audio */
+        post: operations["upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/audio-files/{audio_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stored Audio */
+        get: operations["stored_audio_api_v1_video_studio_workspaces__workspace_id__audio_files__audio_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Avatars */
+        get: operations["avatars_api_v1_video_studio_workspaces__workspace_id__avatars_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatars/{avatar_id}/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Avatar Media */
+        get: operations["avatar_media_api_v1_video_studio_workspaces__workspace_id__avatars__avatar_id___kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Prices */
+        get: operations["prices_api_v1_video_studio_workspaces__workspace_id__generation_prices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Generation Tasks */
+        get: operations["generation_tasks_api_v1_video_studio_workspaces__workspace_id__generation_tasks_get"];
+        put?: never;
+        /** Submit Generation */
+        post: operations["submit_generation_api_v1_video_studio_workspaces__workspace_id__generation_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/approve-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Template */
+        post: operations["approve_template_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__approve_template_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/editing-handoffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Handoff */
+        post: operations["create_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/editing-handoffs/{handoff_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Handoff Status */
+        get: operations["handoff_status_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs__handoff_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/editing-handoffs/{handoff_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Handoff */
+        post: operations["revoke_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs__handoff_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Editing Handoff */
+        get: operations["editing_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__handoff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/reject-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Template */
+        post: operations["reject_template_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__reject_template_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Job */
+        post: operations["resume_job_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Result Media */
+        get: operations["result_media_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id___kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/imports/legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Legacy */
+        post: operations["import_legacy_api_v1_video_studio_workspaces__workspace_id__imports_legacy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projects */
+        get: operations["projects_api_v1_video_studio_workspaces__workspace_id__projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project */
+        get: operations["project_api_v1_video_studio_workspaces__workspace_id__projects__project_id__get"];
+        /** Save Project */
+        put: operations["save_project_api_v1_video_studio_workspaces__workspace_id__projects__project_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tasks */
+        get: operations["tasks_api_v1_video_studio_workspaces__workspace_id__tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Versions */
+        get: operations["versions_api_v1_video_studio_workspaces__workspace_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clone-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Clone Config */
+        get: operations["clone_config_api_v1_video_studio_workspaces__workspace_id__voice_clone_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Clones */
+        get: operations["list_clones_api_v1_video_studio_workspaces__workspace_id__voice_clones_get"];
+        put?: never;
+        /** Create Clone */
+        post: operations["create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clones/{voice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Clone Status */
+        get: operations["clone_status_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clones/{voice_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Clone Preview */
+        get: operations["clone_preview_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__preview_get"];
+        put?: never;
+        /** Prepare Preview */
+        post: operations["prepare_preview_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clones/{voice_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Clone */
+        post: operations["refresh_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/voices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Voices */
+        get: operations["voices_api_v1_video_studio_workspaces__workspace_id__voices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/voices/{voice_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Voice Preview */
+        get: operations["voice_preview_api_v1_video_studio_workspaces__workspace_id__voices__voice_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces": {
         parameters: {
             query?: never;
@@ -2947,6 +3496,120 @@ export interface components {
             /** Workspace Id */
             workspace_id: string;
         };
+        /** AssistanceRequest */
+        AssistanceRequest: {
+            /**
+             * Brief
+             * @default
+             */
+            brief: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "create" | "rewrite" | "extract";
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Reference Id */
+            reference_id?: string | null;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Style
+             * @default 产品介绍
+             * @enum {string}
+             */
+            style: "产品介绍" | "好物种草" | "知识分享" | "品牌故事";
+        };
+        /** AssistanceResponse */
+        AssistanceResponse: {
+            /** Can Resume */
+            can_resume: boolean;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Receipt */
+            receipt?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            };
+            /** Source Revision */
+            source_revision: number;
+            /** Stage */
+            stage: string;
+            /** Stage History */
+            stage_history?: {
+                [key: string]: unknown;
+            }[];
+            /** Status */
+            status: string;
+        };
+        /** AvatarResponse */
+        AvatarResponse: {
+            /** Cover Url */
+            cover_url: string;
+            /** Gender */
+            gender: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Preview Url */
+            preview_url?: string | null;
+            /** Ready */
+            ready: boolean;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "quanyu_public" | "self_owned";
+            /** Tag */
+            tag: string;
+        };
+        /** Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post */
+        Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post: {
+            /**
+             * Consent
+             * @constant
+             */
+            consent: "own-voice-2026-11-05";
+            /** File */
+            file: string;
+            /** Name */
+            name: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
         /** Body_upload_asset_api_v1_workspaces__workspace_id__assets_post */
         Body_upload_asset_api_v1_workspaces__workspace_id__assets_post: {
             /** File */
@@ -2955,6 +3618,11 @@ export interface components {
             media_kind: components["schemas"]["AssetMediaKind"];
             /** @default upload */
             origin_kind: components["schemas"]["AssetOriginKind"];
+        };
+        /** Body_upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post */
+        Body_upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post: {
+            /** File */
+            file: string;
         };
         /** CancelRequest */
         CancelRequest: {
@@ -2999,6 +3667,40 @@ export interface components {
              * @enum {string}
              */
             status: "open" | "in_progress" | "resolved";
+        };
+        /** CloneConfigResponse */
+        CloneConfigResponse: {
+            /** Available */
+            available: boolean;
+            /** Consent Version */
+            consent_version: string;
+            /** Max Bytes */
+            max_bytes: number;
+            /** Max Seconds */
+            max_seconds: number;
+            /** Min Seconds */
+            min_seconds: number;
+            /** Preview Text */
+            preview_text: string;
+        };
+        /** CloneResponse */
+        CloneResponse: {
+            /** Created At */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Preview Status */
+            preview_status: string;
+            /** Preview Url */
+            preview_url: string | null;
+            /** Sample Seconds */
+            sample_seconds: number | null;
+            /** Status */
+            status: string;
         };
         /** ConfirmRequest */
         ConfirmRequest: {
@@ -4066,6 +4768,29 @@ export interface components {
          * @enum {string}
          */
         EcommerceLoginState: "unknown" | "ready" | "needs_login";
+        /** EditingEvent */
+        EditingEvent: {
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Result Reference */
+            result_reference?: string | null;
+            /** Script Sha256 */
+            script_sha256?: string | null;
+            /** Sequence */
+            sequence: number;
+            /** Service Task Id */
+            service_task_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "aligning" | "editing" | "result_ready" | "failed";
+        };
         /** ErrorBody */
         ErrorBody: {
             /** Code */
@@ -4104,10 +4829,49 @@ export interface components {
             /** Final Review Sha256 */
             final_review_sha256?: string | null;
         };
+        /** GenerationRequest */
+        GenerationRequest: {
+            /** Audio Id */
+            audio_id?: string | null;
+            /** Avatar Id */
+            avatar_id: string;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "lipsync" | "h3_template";
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Prompt
+             * @default 以 @图1 为唯一人物、服装、背景和起始姿态参考，生成15秒真人感强、安定从容的口播数字人动作底片。竖屏腰部以上，双手完整可见，固定机位，曝光光线稳定，保留真实皮肤细节和人物一致性。身体直立放松，头部、躯干与胸肩位置稳定，肩线高度几乎固定，身体只有几乎不可察觉的缓慢微动。不耸肩、不挺胸、不深吸气、不急促喘气、不前后摇晃，不用胸肩带动手势。动作集中于前臂和手腕，每次仅一组低幅度手势，手肘靠近身体，动作之间有自然停顿。0至3秒保持参考图中性姿态；3至6秒右手在腰腹前小幅掌心向上解释，躯干不动；6至9秒右手缓慢回位并停顿；9至11秒左手做一次轻微补充手势并回位；11至15秒双手、头部、视线、肩线回到与开头一致的中性位置并安静保持，方便正向首尾衔接。表情平和，口周清晰放松，嘴唇闭合或轻微张开，不主动连续说话，不张嘴喘气，不大笑，便于后续音频驱动。手不遮脸，不点头晃头，不走动、不转身、不运镜、不切镜，无配音、无文字水印。
+             */
+            prompt: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HandoffRequest */
+        HandoffRequest: {
+            /**
+             * Expires In Seconds
+             * @default 3600
+             */
+            expires_in_seconds: number;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
         };
         /** HealthResponse */
         HealthResponse: {
@@ -5352,6 +6116,249 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VideoDraft */
+        VideoDraft: {
+            /** Audioassetid */
+            audioAssetId?: string | null;
+            /**
+             * Avatarid
+             * @default female-020
+             */
+            avatarId: string;
+            /**
+             * Drive
+             * @default text
+             * @enum {string}
+             */
+            drive: "text" | "audio";
+            /**
+             * Emotion
+             * @default 自然
+             * @enum {string}
+             */
+            emotion: "自然" | "愉快" | "温柔" | "专业" | "平静" | "悲伤" | "愤怒" | "害怕" | "厌恶" | "惊讶";
+            /**
+             * Language
+             * @default auto
+             */
+            language: string;
+            /**
+             * Name
+             * @default 未命名视频
+             */
+            name: string;
+            /**
+             * Quality
+             * @default 1080P
+             * @enum {string}
+             */
+            quality: "720P" | "1080P";
+            /**
+             * Speed
+             * @default 1
+             */
+            speed: number;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /**
+             * Voiceid
+             * @default
+             */
+            voiceId: string;
+        };
+        /** VideoLegacyCopy */
+        VideoLegacyCopy: {
+            /** Date */
+            date: string;
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        };
+        /** VideoLegacyImport */
+        VideoLegacyImport: {
+            /** Copies */
+            copies?: components["schemas"]["VideoLegacyCopy"][];
+            draft: components["schemas"]["VideoDraft"];
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Works */
+            works?: components["schemas"]["VideoLegacyWork"][];
+        };
+        /** VideoLegacyWork */
+        VideoLegacyWork: {
+            /** Date */
+            date: string;
+            draft: components["schemas"]["VideoDraft"];
+            /** Id */
+            id: string;
+        };
+        /** VideoMediaAssociation */
+        VideoMediaAssociation: {
+            /**
+             * Availability
+             * @default local_only
+             * @constant
+             */
+            availability: "local_only";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "audio" | "avatar_sample" | "voice_sample";
+            /** Mime Type */
+            mime_type: string;
+            /** Name */
+            name: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** VideoProjectContent */
+        VideoProjectContent: {
+            draft?: components["schemas"]["VideoDraft"];
+            /** Media */
+            media?: components["schemas"]["VideoMediaAssociation"][];
+            /**
+             * Product Facts
+             * @default
+             */
+            product_facts: string;
+            /** References */
+            references?: components["schemas"]["VideoReference"][];
+        };
+        /** VideoProjectResponse */
+        VideoProjectResponse: {
+            content: components["schemas"]["VideoProjectContent"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** VideoProjectWrite */
+        VideoProjectWrite: {
+            /**
+             * Action
+             * @default save
+             * @enum {string}
+             */
+            action: "save" | "library" | "demo";
+            content: components["schemas"]["VideoProjectContent"];
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** VideoReference */
+        VideoReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "url";
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /**
+             * Original Text
+             * @default
+             */
+            original_text: string;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+        };
+        /** VideoStudioAccessResponse */
+        VideoStudioAccessResponse: {
+            /**
+             * Allowed
+             * @default true
+             * @constant
+             */
+            allowed: true;
+            /** User Id */
+            user_id: string;
+        };
+        /** VideoTaskResponse */
+        VideoTaskResponse: {
+            /** Confirmed Version Id */
+            confirmed_version_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            snapshot: components["schemas"]["VideoProjectContent"];
+            /**
+             * Status
+             * @constant
+             */
+            status: "demo";
+        };
+        /** VideoVersionResponse */
+        VideoVersionResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "draft" | "library" | "confirmed";
+            /** Project Id */
+            project_id: string;
+            snapshot: components["schemas"]["VideoProjectContent"];
+        };
+        /** VideoWriteResponse */
+        VideoWriteResponse: {
+            project: components["schemas"]["VideoProjectResponse"];
+            task?: components["schemas"]["VideoTaskResponse"] | null;
+            version?: components["schemas"]["VideoVersionResponse"] | null;
         };
         /** WorkerAccountSessionRequest */
         WorkerAccountSessionRequest: {
@@ -8824,6 +9831,1244 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    video_studio_access_api_v1_video_studio_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoStudioAccessResponse"];
+                };
+            };
+        };
+    };
+    service_asset_api_v1_video_studio_editing_handoffs__handoff_id__assets__kind__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                handoff_id: string;
+                kind: "video" | "audio" | "script";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    service_event_api_v1_video_studio_editing_handoffs__handoff_id__events_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                handoff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingEvent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    service_manifest_api_v1_video_studio_editing_handoffs__handoff_id__manifest_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                handoff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tasks_api_v1_video_studio_workspaces__workspace_id__assistance_tasks_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistanceResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_api_v1_video_studio_workspaces__workspace_id__assistance_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_v1_video_studio_workspaces__workspace_id__assistance_tasks__task_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stored_audio_api_v1_video_studio_workspaces__workspace_id__audio_files__audio_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                audio_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    avatars_api_v1_video_studio_workspaces__workspace_id__avatars_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvatarResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    avatar_media_api_v1_video_studio_workspaces__workspace_id__avatars__avatar_id___kind__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                avatar_id: string;
+                kind: "cover" | "preview";
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prices_api_v1_video_studio_workspaces__workspace_id__generation_prices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generation_tasks_api_v1_video_studio_workspaces__workspace_id__generation_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_generation_api_v1_video_studio_workspaces__workspace_id__generation_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_template_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__approve_template_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handoff_status_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs__handoff_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                handoff_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs__handoff_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                handoff_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editing_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__handoff_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_template_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__reject_template_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_job_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    result_media_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id___kind__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                kind: "video" | "audio";
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_legacy_api_v1_video_studio_workspaces__workspace_id__imports_legacy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoLegacyImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoWriteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    projects_api_v1_video_studio_workspaces__workspace_id__projects_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_api_v1_video_studio_workspaces__workspace_id__projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_project_api_v1_video_studio_workspaces__workspace_id__projects__project_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoProjectWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoWriteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tasks_api_v1_video_studio_workspaces__workspace_id__tasks_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoTaskResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    versions_api_v1_video_studio_workspaces__workspace_id__versions_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                kind?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVersionResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clone_config_api_v1_video_studio_workspaces__workspace_id__voice_clone_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_clones_api_v1_video_studio_workspaces__workspace_id__voice_clones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clone_status_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                voice_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clone_preview_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                voice_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_preview_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                voice_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                voice_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    voices_api_v1_video_studio_workspaces__workspace_id__voices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    voice_preview_api_v1_video_studio_workspaces__workspace_id__voices__voice_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                voice_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

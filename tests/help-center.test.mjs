@@ -61,5 +61,6 @@ test("mobile primary navigation includes a direct help-center entry", async () =
 
   assert.match(registry, /MOBILE_PRIMARY_NAVIGATION_LINKS/);
   assert.match(registry, /\{ label: "帮助中心", href: "\/help" \}/);
-  assert.match(navigation, /primaryLinks=\{MOBILE_PRIMARY_NAVIGATION_LINKS\}/);
+  assert.match(navigation, /primaryLinks=\{videoStudioAllowed\s*\?\s*\[\.\.\.MOBILE_PRIMARY_NAVIGATION_LINKS,/);
+  assert.match(navigation, /:\s*MOBILE_PRIMARY_NAVIGATION_LINKS\}/);
 });

@@ -1,0 +1,333 @@
+"use client";
+
+import Link from "next/link";
+import { ApiError } from "@/lib/api/api-error";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowDownToLine, ArrowLeft, ArrowRight, AudioLines, BookOpenText, Check,
+  ChevronDown, CircleHelp, Clapperboard, ExternalLink, FileText,
+  FolderOpen, Play, Plus, Search, Send,
+  Settings2, Sparkles, Upload, UserRound, UsersRound, Video, Volume2,
+} from "lucide-react";
+import styles from "./video-studio.module.css";
+import { Brand, Dialog, Empty } from "./studio-primitives";
+import { VoiceBrowser, VoicePicker } from "./voice-picker";
+import { AvatarPicker } from "./avatar-picker";
+import { StudioIntro } from "./studio-intro";
+import { MyVoices, VoiceCloneDialog } from "./voice-cloning";
+import { useVoiceClones } from "@/features/video-studio/voice-clones";
+import { useVideoAssistance, assistanceMessage } from "@/features/video-studio/assistance";
+import { useProjectSession } from "@/features/video-studio/use-project-session";
+import { useVideoLibrary, type VideoAvatar, type GenerationJob } from "@/features/video-studio/library";
+import type { VideoDraft, VideoContent, VideoMedia } from "@/features/video-studio/projects";
+
+export type StudioScreen = "home" | "create" | "avatars" | "voices" | "library" | "works" | "editing";
+type Avatar = VideoAvatar;
+type Draft = VideoDraft;
+type SavedCopy = { id: string; title: string; text: string; date: string };
+type DemoWork = { id: string; draft: Draft; date: string; projectId: string; content: VideoContent };
+type Modal = "avatar" | "voice" | "rewrite" | "avatar-clone" | "voice-clone" | "generate" | "preview" | "help" | "history" | "avatar-preview" | "h3-template" | "real-preview" | "proofread" | null;
+
+const EMPTY_DRAFT: Draft = { name: "未命名视频", text: "", avatarId: "", voiceId: "", speed: 1, emotion: "自然", language: "auto", quality: "1080P", drive: "text" };
+const imageOf = (avatar: Avatar | undefined) => avatar?.cover_url || undefined;
+const EMPTY_AVATAR: Avatar = { id: "", name: "请选择数字人", tag: "", gender: "未知", source: "quanyu_public", cover_url: "", ready: false };
+const hrefOf = (screen: StudioScreen) => screen === "home" ? "/video-studio" : `/video-studio/${screen}`;
+const dateLabel = (date: string) => new Date(date).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+const uid = () => crypto.randomUUID();
+
+export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScreen; userId: string; workspaceId: string }) {
+  const router = useRouter();
+  const library = useVideoLibrary(workspaceId);
+  const clones = useVoiceClones(workspaceId);
+  const AVATARS = library.avatars;
+  const VOICES = library.voices;
+  const [templateAvatar, setTemplateAvatar] = useState<Avatar>();
+  const [avatarPreview, setAvatarPreview] = useState<Avatar>();
+  const [realPreview, setRealPreview] = useState<GenerationJob>();
+  const [submitting, setSubmitting] = useState(false);
+  const [generationError, setGenerationError] = useState("");
+  const generationRequest = useRef<Parameters<typeof library.submit>[0] | undefined>(undefined);
+  const pendingKey = `polaris-video-generation:${userId}:${workspaceId}`;
+  const restorePending = () => {
+    if (generationRequest.current) return;
+    try {
+      const raw = sessionStorage.getItem(pendingKey);
+      if (raw) {
+        const body = JSON.parse(raw) as Parameters<typeof library.submit>[0];
+        if (["lipsync", "h3_template"].includes(body.kind) && typeof body.request_id === "string" && typeof body.avatar_id === "string") generationRequest.current = body;
+      }
+    } catch { /* In-memory retry still works if storage is unavailable. */ }
+  };
+  const clearPending = () => { generationRequest.current = undefined; setGenerationError(""); try { sessionStorage.removeItem(pendingKey); } catch {} };
+  const persistPending = () => { try { sessionStorage.setItem(pendingKey, JSON.stringify(generationRequest.current)); } catch {} };
+  const submissionError = (error: unknown) => {
+    if (error instanceof ApiError && error.status && error.status >= 400 && error.status < 500) { clearPending(); notify(error.message); }
+    else setGenerationError("提交结果尚未确认，请查询原提交，避免重复计费。");
+  };
+  const [visibleAvatars, setVisibleAvatars] = useState(12);
+  const persisted = useProjectSession(userId, workspaceId);
+  const { session, content, projectId, status } = persisted;
+  const assistance = useVideoAssistance(userId, workspaceId, projectId);
+  const createJob = assistance.latest("create");
+  const rewriteJob = assistance.latest("rewrite");
+  const extractJob = assistance.latest("extract");
+  const assistantResult = createJob?.status === "completed" ? createJob.result.script || "" : "";
+  const appliedAssistance = useRef(new Set<string>());
+  const draft = content.draft;
+  const setDraft = (value: Draft | ((current: Draft) => Draft)) => session.edit({ ...session.state.content, draft: typeof value === "function" ? value(session.state.content.draft) : value });
+  const copies: SavedCopy[] = persisted.copies.map(v => ({ id: v.id, title: v.snapshot.draft.name === "未命名视频" ? v.snapshot.draft.text.slice(0, 18) : v.snapshot.draft.name, text: v.snapshot.draft.text, date: v.created_at }));
+  const works: DemoWork[] = persisted.tasks.map(t => ({ id: t.id, draft: t.snapshot.draft, date: t.created_at, projectId: t.project_id, content: t.snapshot }));
+  const loaded = status !== "loading";
+  const [modal, setModal] = useState<Modal>(null);
+  const [toast, setToast] = useState("");
+  const [search, setSearch] = useState("");
+  const [playingVoice, setPlayingVoice] = useState("");
+  const voicePlayer = useRef<HTMLAudioElement | null>(null);
+  const [gender, setGender] = useState("全部");
+  const [assetTab, setAssetTab] = useState("public");
+  const [selectedAvatar, setSelectedAvatar] = useState(EMPTY_DRAFT.avatarId);
+  const [selectedVoice, setSelectedVoice] = useState("");
+  const [rightTab, setRightTab] = useState("assistant");
+  const [assistantPrompt, setAssistantPrompt] = useState("");
+  const [assistantType, setAssistantType] = useState("产品介绍");
+  const [rewriteTab, setRewriteTab] = useState("text");
+  const [sourceText, setSourceText] = useState("");
+  const [sourceLink, setSourceLink] = useState("");
+  const [rewrittenDraft, setRewrittenDraft] = useState<{ projectId: string; text: string }>();
+  const rewrittenText = rewrittenDraft?.projectId === projectId ? rewrittenDraft.text : "";
+  const setRewrittenText = (text: string) => setRewrittenDraft({ projectId, text });
+  const [previewWork, setPreviewWork] = useState<DemoWork>();
+  const [audioSelection, setAudio] = useState<{ projectId: string; name: string; url: string }>();
+  const audio = audioSelection?.projectId === projectId ? audioSelection : undefined;
+  const audioUrl = useRef<string | undefined>(undefined);
+  const [cloneName, setCloneName] = useState("");
+  const [cloneFile, setCloneFile] = useState<File>();
+  const [cloneSaved, setCloneSaved] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const avatar = AVATARS.find(item => item.id === draft.avatarId) ?? EMPTY_AVATAR;
+  const voice = VOICES.find(item => item.id === draft.voiceId);
+  const rawReference = content.references.find(r => r.note.includes("语音转写")) || content.references.find(r => r.original_text);
+  const notify = useCallback((text: string) => setToast(text), []);
+  const updateDraft = (patch: Partial<Draft>) => setDraft(current => ({ ...current, ...patch }));
+  const applyVoice = (voiceId: string) => updateDraft({ voiceId, emotion: "自然", language: "auto" });
+  const previewVoice = (item: typeof VOICES[number]) => {
+    voicePlayer.current?.pause();
+    if (playingVoice === item.id) { setPlayingVoice(""); return; }
+    if (!item.preview_url) { setPlayingVoice(""); notify("此音色试听正在准备，稍后再试"); return; }
+    const player = new Audio(item.preview_url);
+    voicePlayer.current = player;
+    player.onended = () => setPlayingVoice("");
+    player.onerror = () => { setPlayingVoice(""); notify("试听暂不可用，请稍后重试"); };
+    setPlayingVoice(item.id);
+    void player.play().catch(() => { setPlayingVoice(""); notify("试听暂不可用，请稍后重试"); });
+  };
+
+  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(""), 3600); return () => clearTimeout(timer); }, [toast]);
+  useEffect(() => () => { if (audioUrl.current) URL.revokeObjectURL(audioUrl.current); window.speechSynthesis?.cancel(); }, []);
+  useEffect(() => () => { voicePlayer.current?.pause(); }, []);
+  useEffect(() => { voicePlayer.current?.pause(); void Promise.resolve().then(() => setPlayingVoice("")); }, [modal, screen]);
+
+  const attempt = (operation: () => Promise<unknown>) => { void operation().catch(error => notify(error instanceof Error ? error.message : "操作未完成，请重试")); };
+  const go = (next: StudioScreen) => attempt(async () => { await session.save(); router.push(hrefOf(next) + (session.state.revision ? `?project=${session.state.projectId}` : "")); });
+  const addReference = () => {
+    if (sourceLink.trim()) {
+      try {
+        const url = new URL(sourceLink.trim());
+        if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) throw new Error();
+      } catch { notify("请输入不含账号密码的完整 http 或 https 链接"); return false; }
+    }
+    const reference = { id: uid(), kind: sourceLink.trim() ? "url" as const : "text" as const, url: sourceLink.trim(), original_text: sourceText, note: "用户提供；尚未自动采集" };
+    session.edit({ ...session.state.content, references: [reference, ...session.state.content.references].slice(0, 50) });
+    return true;
+  };
+  const open = (next: Modal) => {
+    restorePending();
+    if (next === "generate" && generationRequest.current?.kind === "h3_template") { setTemplateAvatar(AVATARS.find(a => a.id === generationRequest.current?.avatar_id)); next = "h3-template"; }
+    setGenerationError(generationRequest.current ? "存在尚未确认的提交，本次只查询原提交。" : "");
+    setSearch(""); setGender("全部"); if (next !== "voice-clone") setAssetTab("public");
+    setSelectedAvatar(AVATARS.some(a => a.id === draft.avatarId) ? draft.avatarId : AVATARS[0]?.id || ""); setSelectedVoice(draft.voiceId);
+    if (next === "generate" && !generationRequest.current) setGenerationError("");
+    setCloneName(""); setCloneFile(undefined); setCloneSaved(false);
+    if (next === "rewrite") { const reference = content.references[0]; setSourceText(reference?.original_text || draft.text); setSourceLink(reference?.url || ""); setRewrittenText(rewriteJob?.status === "completed" ? rewriteJob.result.script || "" : ""); setRewriteTab("text"); }
+    setModal(next);
+  };
+  const selectAvatar = (item: Avatar) => { updateDraft({ avatarId: item.id }); go("create"); };
+  const filteredAvatars = AVATARS.filter(item => (assetTab === "own" ? item.source === "self_owned" : item.source === "quanyu_public") && (gender === "全部" || item.gender === gender) && `${item.name}${item.tag}`.includes(search));
+
+  const audition = (text = draft.text || "你好，欢迎来到极光商绘，让每一个好产品，都有自己的表达。") => {
+    if (!("speechSynthesis" in window)) { notify("当前浏览器不支持本地试听，请使用音频驱动体验"); return; }
+    if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
+    const utterance = new SpeechSynthesisUtterance(text.slice(0, 600));
+    utterance.lang = "zh-CN"; utterance.rate = draft.speed;
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => { setSpeaking(false); notify("浏览器试听暂不可用，确认生成仍使用所选正式音色"); };
+    setSpeaking(true); window.speechSynthesis.speak(utterance);
+    notify("正在使用浏览器声音检查文案；确认生成使用所选正式音色");
+  };
+  const saveCopy = () => {
+    if (!draft.text.trim()) return notify("请先输入文案");
+    if (copies.some(copy => copy.text === draft.text)) return notify("这段文案已经在文案库中");
+    attempt(async () => { await session.save("library"); notify("已存入文案库"); });
+  };
+  const generate = () => {
+    if (!AVATARS.some(a => a.id === draft.avatarId)) { notify("请选择真实数字人形象"); return open("avatar"); }
+    if (!avatar.ready) { setTemplateAvatar(avatar); return open("h3-template"); }
+    if (draft.drive === "text" && !draft.text.trim()) return notify("请输入视频文案");
+    if (draft.drive === "text" && !voice) return open("voice");
+    if (draft.drive === "text" && voice?.available === false) return notify("所选音色暂未启用，请选择可用音色");
+    if (draft.drive === "audio" && !draft.audioAssetId) return notify("请先上传一段音频");
+    open("generate");
+  };
+  const createRealVideo = () => attempt(async () => {
+    if (submitting) return;
+    restorePending();
+    if (generationRequest.current && generationRequest.current.kind !== "lipsync") { notify("请先查询上一条动作模板提交"); return; }
+    setSubmitting(true);
+    try {
+      await session.save();
+      generationRequest.current ??= { request_id: uid(), kind: "lipsync", avatar_id: avatar.id, project_id: session.state.projectId, expected_revision: session.state.revision, audio_id: draft.audioAssetId || undefined };
+      persistPending();
+      await library.submit(generationRequest.current);
+      clearPending();
+      setModal(null); setRightTab("works"); notify("任务已提交，可在作品中查看进度");
+    } catch (error) { submissionError(error); } finally { setSubmitting(false); }
+  });
+  const createTemplate = () => attempt(async () => {
+    if (!templateAvatar || submitting) return;
+    restorePending();
+    if (generationRequest.current && generationRequest.current.kind !== "h3_template") { notify("请先查询上一条视频提交"); return; }
+    setSubmitting(true);
+    try {
+      generationRequest.current ??= { request_id: uid(), kind: "h3_template", avatar_id: templateAvatar.id };
+      persistPending();
+      await library.submit(generationRequest.current);
+      clearPending(); setModal(null); notify("原创动作模板已提交，完成后请先预览确认入库");
+    } catch (error) { submissionError(error); } finally { setSubmitting(false); }
+  });
+  const generateCopy = () => attempt(async () => {
+    if (!assistantPrompt.trim()) return notify("先填写产品信息和创作要求");
+    const target = session.state.projectId;
+    await session.save();
+    if (session.state.projectId !== target) return;
+    await assistance.submit({ project_id: target, expected_revision: session.state.revision, kind: "create", brief: assistantPrompt, style: assistantType as "产品介绍" | "好物种草" | "知识分享" | "品牌故事" });
+    notify("文案任务已提交，完成后请确认再采用");
+  });
+  const runReference = (kind: "extract" | "rewrite") => attempt(async () => {
+    if (kind === "extract" && !sourceLink.trim()) return notify("请先粘贴视频链接");
+    if (kind === "rewrite" && !sourceText.trim()) return notify("请先提取或粘贴原始文案");
+    if (!addReference()) return;
+    const target = session.state.projectId;
+    await session.save();
+    if (session.state.projectId !== target) return;
+    await assistance.submit({ project_id: target, expected_revision: session.state.revision, kind, brief: "依据已确认产品事实，生成自然口播文案", style: "产品介绍", reference_id: session.state.content.references[0].id });
+    notify(kind === "extract" ? "语音提取任务已提交" : "改写任务已提交");
+  });
+  const adoptReference = (original = false) => {
+    const text = original ? sourceText : rewrittenText || sourceText;
+    if (!text.trim()) return notify("请先提取或粘贴文案");
+    if (text.length > 3000) return notify("原文超过3000字，请先明确选择要使用的片段；不会自动截断");
+    if (!addReference()) return;
+    updateDraft({ text }); setModal(null);
+    notify(original || !rewrittenText ? "原文已原样填入编辑器" : "改写稿已填入编辑器");
+  };
+  useEffect(() => {
+    const jobs = [rewriteJob, extractJob];
+    void Promise.resolve().then(() => {
+      for (const job of jobs) {
+        if (!job || job.status !== "completed" || session.state.projectId !== job.project_id || appliedAssistance.current.has(job.id)) continue;
+        appliedAssistance.current.add(job.id);
+        if (job.kind === "rewrite" && job.result.script) setRewrittenDraft({ projectId: job.project_id, text: job.result.script });
+        if (job.kind === "extract" && job.result.text && job.result.source_url) {
+          setSourceText(job.result.text);
+          const reference = { id: job.id, kind: "url" as const, url: job.result.source_url, original_text: job.result.text, note: "EveryInfra 语音转写；参考内容，需核对后改写" };
+          if (!session.state.content.references.some(r => r.id === job.id)) session.edit({ ...session.state.content, references: [reference, ...session.state.content.references].slice(0, 50) });
+        }
+      }
+    });
+  }, [rewriteJob, extractJob, session]);
+
+  const tabs = (items: { key: string; label: string }[], value: string, onChange: (key: string) => void) => <div className={styles.tabs}>{items.map(item => <button type="button" key={item.key} className={value === item.key ? styles.activeTab : ""} aria-pressed={value === item.key} onClick={() => onChange(item.key)}>{item.label}</button>)}</div>;
+  const filters = (placeholder: string) => <div className={styles.filterRow}><div className={styles.pills}>{["全部", "女", "男"].map(item => <button type="button" key={item} aria-pressed={gender === item} className={gender === item ? styles.activePill : ""} onClick={() => setGender(item)}>{item === "全部" ? item : `${item}性`}</button>)}</div><label className={styles.search}><Search size={15} /><input aria-label={placeholder} placeholder={placeholder} value={search} onChange={event => setSearch(event.target.value)} /></label></div>;
+  const avatarGrid = (inDialog = false) => <><div className={`${styles.avatarGrid} ${inDialog ? styles.modalGrid : ""}`}>{filteredAvatars.slice(0, visibleAvatars).map(item => <div key={item.id} className={`${styles.avatarCard} ${inDialog && selectedAvatar === item.id ? styles.selectedCard : ""}`}>
+    <button type="button" className={styles.avatarImage} aria-label={`预览${item.name}`} onClick={() => { setAvatarPreview(item); setModal("avatar-preview"); }}><img src={imageOf(item)} alt={`${item.name}数字人形象`} loading="lazy" /><span className={styles.avatarTag}>{item.tag}</span><span className={styles.cardHover}><Play size={15} fill="currentColor" />预览形象</span></button>
+    <div className={styles.avatarCaption}><strong>{item.name}</strong><span>{item.gender === "未知" ? item.tag : item.gender}</span><button type="button" className={styles.textButton} onClick={() => inDialog ? setSelectedAvatar(item.id) : selectAvatar(item)}>{inDialog ? (selectedAvatar === item.id ? "已选择" : "选择") : "使用"}</button>{item.source === "self_owned" && !item.ready && <button type="button" className={styles.textButton} onClick={() => { setTemplateAvatar(item); open("h3-template"); }}>生成动作模板</button>}</div>
+  </div>)}</div>{filteredAvatars.length > visibleAvatars && <button className={styles.outlineButton} onClick={() => setVisibleAvatars(n => n + 12)}>加载更多形象</button>}</>;
+  const voiceGrid = () => <VoiceBrowser voices={VOICES.filter(item => item.source !== "own")} selectedId={selectedVoice || draft.voiceId} playingId={playingVoice} onPreview={previewVoice} onSelect={item => { setSelectedVoice(item.id); applyVoice(item.id); go("create"); }} />;
+  const copyList = (compact = false) => copies.length ? <div className={`${styles.copyList} ${compact ? styles.compactList : ""}`}>{copies.filter(copy => `${copy.title}${copy.text}`.includes(compact ? "" : search)).map(copy => <article key={copy.id}><div><FileText size={17} /><b>{copy.title}</b><time>{dateLabel(copy.date)}</time></div><p>{copy.text}</p><button type="button" className={styles.textButton} onClick={() => { updateDraft({ text: copy.text, name: copy.title }); if (!compact) go("create"); notify("文案已填入编辑器"); }}>使用文案 <ArrowRight size={14} /></button></article>)}</div> : <Empty icon={<BookOpenText size={27} />} title="还没有保存的文案" description="把满意的文案存下来，下次创作直接使用。" action={!compact && <button className={styles.primaryButton} onClick={() => go("create")}>开始创作</button>} />;
+  const demoWorkList = (compact = false) => works.length ? <div className={`${styles.worksGrid} ${compact ? styles.compactWorks : ""}`}>{works.filter(work => work.draft.name.includes(compact ? "" : search)).map(work => {
+    const model = AVATARS.find(item => item.id === work.draft.avatarId) ?? EMPTY_AVATAR;
+    return <article className={styles.workCard} key={work.id}><button type="button" className={styles.workImage} onClick={() => { setPreviewWork(work); setModal("preview"); }}><img src={imageOf(model)} alt={model.name} /><span>本地演示</span><i><Play size={21} fill="currentColor" /></i></button><div><b>{work.draft.name}</b><time>{dateLabel(work.date)}</time><p>演示预览 · 尚未生成视频</p><button className={styles.textButton} onClick={() => attempt(async () => { await session.select(work.projectId); session.edit(work.content); await session.save(); go("create"); if (compact) setRightTab("assistant"); })}>继续编辑 <ArrowRight size={14} /></button></div></article>;
+  })}</div> : <Empty icon={<Clapperboard size={29} />} title="你的作品将在这里出现" description="选择形象，写下文案，开始制作第一个视频。" action={!compact && <button className={styles.primaryButton} onClick={() => go("create")}>创作视频 <Plus size={16} /></button>} />;
+
+  const stageLabels: Record<string, string> = { queued: "排队中", uploading_reference: "准备参考图", h3_submitting: "提交动作生成", h3_generating: "生成动作模板", downloading_template: "保存动作底片", uploading_template: "准备形象登记", model_submitting: "登记原创形象", tts_submitting: "合成声音", tts_generated: "声音已保存", uploading_tts_audio: "准备配音素材", audio_ready: "声音已就绪", downloading_audio: "保存音频", measuring_audio: "测量音频时长", downloading_source: "准备动作原片", measuring_source: "检查动作时长", preparing_forward_template: "铺满完整动作", uploading_forward_template: "保存完整动作", forward_model_submitting: "登记完整动作", template_duration_ready: "完整动作已就绪", uploading_audio: "上传音频", lipsync_submitting: "提交口型驱动", lipsync_generating: "生成口播视频", downloading_video: "保存视频", completed: "已完成", audio_measured: "音频时长已确认", source_measured: "动作时长已确认", provider_completed: "处理完成", reference_ready: "参考图已就绪", template_ready: "模板已就绪", forward_template_ready: "完整动作已保存", forward_template_uploaded: "完整动作已上传", resolving_source: "读取动作模板" };
+  const workList = (compact = false) => <><div className={styles.worksGrid}>{library.jobs.map(job => { const model = AVATARS.find(a => a.id === job.avatar_id) || EMPTY_AVATAR; return <article className={styles.workCard} key={job.id}><button type="button" className={styles.workImage} onClick={() => { setRealPreview(job); setModal("real-preview"); }}><img src={imageOf(model)} alt={model.name} /><span>{job.kind === "h3_template" ? "原创动作模板" : "口播视频"}</span><i><Play size={21} /></i></button><div><b>{job.snapshot?.draft.name || model.name}</b><time>{dateLabel(job.created_at)}</time><p>{job.status === "rejected" ? "模板验收未通过" : job.status === "awaiting_review" ? "待预览确认形象一致" : job.status === "unknown" ? "提交结果待核对，请勿重复生成" : job.status === "failed" ? "任务处理失败，已保留成功步骤" : job.status === "awaiting_resume" ? "可继续处理原任务" : stageLabels[job.stage] || "处理中"}</p>{(job.can_resume || job.status === "awaiting_resume") && <button className={styles.textButton} onClick={() => attempt(() => library.resume(job.id))}>继续处理</button>}{job.video_url && <a className={styles.textButton} href={job.video_url} download>下载视频</a>}{job.audio_url && <a className={styles.textButton} href={job.audio_url} download>下载音频</a>}{job.handoff_url && <a className={styles.textButton} href={job.handoff_url} download>导出剪辑材料</a>}</div></article>; })}</div>{works.length > 0 ? demoWorkList(compact) : !library.jobs.length && demoWorkList(compact)}<button className={styles.textButton} onClick={() => attempt(() => library.reload())}>刷新任务</button></>;
+
+  const assistant = <div className={styles.assistant}><div className={styles.assistantWelcome}><img src="/polaris-mark.svg" alt="" /><h2>文案原创</h2><p>一键帮你写原创文案</p></div>
+    {assistantResult ? <div className={styles.assistantAnswer}><span><Sparkles size={15} /> 待确认文案</span><p>{assistantResult}</p>{createJob?.result.warnings?.length ? <small>{createJob.result.warnings.join("；")}</small> : null}<button className={styles.textButton} onClick={() => { updateDraft({ text: assistantResult.slice(0, 3000) }); notify("已填入文案编辑区"); }}>使用这段文案 <ArrowRight size={14} /></button></div> : <div className={styles.promptSuggestions}>{["写一段产品介绍", "优化口播开场", "把卖点讲得更自然"].map(text => <button key={text} onClick={() => setAssistantPrompt(text)}>{text}<ArrowRight size={13} /></button>)}</div>}
+    <div className={styles.assistantComposer}><label className={styles.assistantSelect}><Sparkles size={14} /><select aria-label="文案类型" value={assistantType} onChange={event => setAssistantType(event.target.value)}><option>产品介绍</option><option>好物种草</option><option>知识分享</option><option>品牌故事</option></select><ChevronDown size={13} /></label><textarea aria-label="告诉文案助手你的需求" placeholder="告诉我产品信息，或描述你想创作的内容…" value={assistantPrompt} onChange={event => setAssistantPrompt(event.target.value)} maxLength={1500} /><div><span>{assistanceMessage(createJob) || "生成后请核对产品事实"}</span>{createJob?.can_resume && <button type="button" onClick={() => attempt(() => assistance.resume(createJob.id))}>继续处理</button>}<button type="button" aria-label="发送文案需求" disabled={assistance.busy("create")} onClick={generateCopy}><Send size={17} /></button></div></div>
+  </div>;
+
+  const editor = <main className={styles.editor}>
+    <section className={styles.editorMain} aria-label="视频编辑器"><header className={styles.editorHeader}><Link href={persisted.revision ? `/video-studio?project=${projectId}` : "/video-studio"} onClick={event => { event.preventDefault(); go("home"); }} className={styles.back} aria-label="返回视频空间"><ArrowLeft size={19} /></Link>{tabs([{ key: "text", label: "文本驱动" }, { key: "audio", label: "音频驱动" }], draft.drive, drive => updateDraft({ drive: drive as Draft["drive"] }))}<label className={styles.projectName}><span>视频名称</span><input aria-label="视频名称" value={draft.name} maxLength={80} onChange={event => updateDraft({ name: event.target.value })} /></label><select aria-label="切换视频项目" value={persisted.projects.some(p => p.id === projectId) ? projectId : ""} onChange={event => attempt(() => session.select(event.target.value))}><option value="" disabled>新项目</option>{persisted.projects.map(p => <option value={p.id} key={p.id}>{p.content.draft.name || "未命名视频"}</option>)}</select><button type="button" className={styles.textButton} onClick={() => attempt(() => session.newProject())}>新建</button><span role="status" aria-label="项目保存状态" className={styles.autosave}><Check size={12} />{!loaded ? "载入中" : status === "saved" ? "已保存" : status === "saving" ? "保存中" : status === "dirty" ? "待保存" : "未保存"}</span></header>
+      <div className={styles.editorBody}><div className={styles.portraitColumn}><div className={styles.portrait}><img src={imageOf(avatar)} alt={avatar.name} /><span className={styles.portraitBadge}>{avatar.name} · {avatar.tag}</span><span className={styles.portraitRatio}>9:16</span></div><button type="button" className={styles.selectAvatar} onClick={() => open("avatar")}><UsersRound size={17} />选择数字人<ChevronDown size={15} /></button><div className={styles.portraitNote}><Video size={13} /> 数字人口播视频</div></div>
+        <div className={styles.scriptColumn}>{draft.drive === "text" ? <><button type="button" className={styles.voiceSelector} onClick={() => open("voice")}><span className={styles.voiceSelectorIcon}><AudioLines size={23} /></span><span><b>{voice?.name ?? "请选择声音"}</b><small>{voice ? `${voice.gender === "未知" ? "" : `${voice.gender}声 · `}${voice.tag}` : "让你的数字人拥有专属声音"}</small></span><ChevronDown size={16} /></button><div className={styles.voiceParams}><label className={styles.speed}><span>语速 <b>{draft.speed.toFixed(1)}×</b></span><input aria-label="语速" type="range" min="0.5" max="1.5" step="0.1" value={draft.speed} onChange={event => updateDraft({ speed: Number(event.target.value) })} /></label><label><span>情绪</span><select aria-label="情绪" value={draft.emotion} disabled={!voice || (voice.emotions?.length ?? 1) < 2} onChange={event => updateDraft({ emotion: event.target.value as Draft["emotion"] })}>{(voice?.emotions?.includes(draft.emotion) ? voice.emotions : [draft.emotion, ...(voice?.emotions || []).filter(e => e !== draft.emotion)]).map(emotion => <option key={emotion}>{emotion}</option>)}</select></label><label><span>语言</span><select aria-label="语言" value={draft.language || "auto"} disabled={!voice || Object.keys(voice.languages || {}).length < 2} onChange={event => updateDraft({ language: event.target.value })}>{Object.entries(voice?.languages || { auto: "自动识别文案语言" }).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div>
+          <div className={styles.scriptBox}><div className={styles.scriptToolbar}><span>视频文案</span><button type="button" onClick={() => setModal("proofread")}>原文校对</button><button type="button" title="播放所选音色的固定短样片" onClick={() => voice ? previewVoice(voice) : open("voice")}><Volume2 size={15} />{playingVoice && playingVoice === voice?.id ? "停止试听" : "音色试听"}</button></div><textarea aria-label="视频文案" value={draft.text} placeholder={"请输入你希望数字人讲述的内容…\n\n也可以使用文案助手，或从视频链接提取文案。"} maxLength={3000} onChange={event => updateDraft({ text: event.target.value })} /><span className={styles.wordCount}>{draft.text.length} / 3000</span></div><div className={styles.copyActions}><button type="button" onClick={() => open("rewrite")}><FileText size={15} />文案二创</button><button type="button" onClick={() => setRightTab("assistant")}><Sparkles size={15} />AI 文案创作</button><button type="button" onClick={() => attempt(async () => { await session.loadHistory(); setModal("history"); })}>文案版本</button><button type="button" onClick={saveCopy}><FolderOpen size={15} />存入文案库</button></div></> : <div className={styles.audioDrive}><span className={styles.bigIcon}><AudioLines size={37} /></span><h2>上传音频，驱动数字人</h2><p>使用已经录制好的声音，让数字人替你讲述。</p><label className={styles.uploadButton}><Upload size={16} />选择音频<input type="file" accept="audio/*" onChange={event => {
+            const file = event.target.files?.[0]; if (!file) return;
+            if (!file.type.startsWith("audio/")) { notify("请选择音频文件"); return; }
+            if (file.size > 50 * 1024 * 1024) { notify("请选择 50 MB 以内的音频"); return; }
+            if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
+            const url = URL.createObjectURL(file); audioUrl.current = url; setAudio({ projectId, name: file.name, url }); updateDraft({ audioAssetId: null });
+            const uploadProjectId = projectId;
+            attempt(async () => { const uploaded = await library.uploadAudio(file); if (session.state.projectId === uploadProjectId) updateDraft({ audioAssetId: uploaded.id }); notify("音频已保存，可用于口型驱动"); });
+            session.edit({ ...session.state.content, media: [{ id: uid(), kind: "audio", name: file.name, mime_type: file.type, size_bytes: file.size, availability: "local_only" }, ...session.state.content.media.filter(m => m.kind !== "audio")] });
+          }} /></label>{draft.audioAssetId && !audio && <audio controls src={`/api/v1/video-studio/workspaces/${workspaceId}/audio-files/${draft.audioAssetId}`} />}{audio ? <div className={styles.audioFile}><b>{audio.name}</b><audio controls src={audio.url} /><small>上传完成后可跨设备继续使用</small></div> : <small>{draft.audioAssetId ? "音频已保存，可继续生成" : content.media.find(m => m.kind === "audio") ? `已关联 ${content.media.find(m => m.kind === "audio")?.name}，请重新选择原文件` : "支持 MP3、WAV、M4A · 最大 50 MB"}</small>}</div>}</div></div>
+      <footer className={styles.editorFooter}><label><Settings2 size={15} /><select aria-label="视频清晰度" value="source" disabled title="按所选动作模板的原始分辨率交付"><option value="source">模板原始清晰度</option></select></label><button type="button" className={styles.generateButton} onClick={generate}><Video size={18} />生成视频</button><span className={styles.editLater}><i />智能剪辑<small>即将上线</small></span></footer>
+    </section>
+    <aside className={styles.editorAside}><div className={styles.rightTabs}>{[{ key: "works", label: "作品" }, { key: "library", label: "文案库" }, { key: "assistant", label: "文案助手" }, { key: "editing", label: "智能剪辑" }].map(item => <button type="button" key={item.key} className={rightTab === item.key ? styles.activeRightTab : ""} onClick={() => setRightTab(item.key)}>{item.label}{item.key === "editing" && <span>后续</span>}</button>)}</div><div className={styles.rightContent}>{rightTab === "assistant" ? assistant : rightTab === "works" ? <div className={styles.workList}>{workList(true)}</div> : rightTab === "library" ? copyList(true) : <Empty icon={<Clapperboard size={29} />} title="智能剪辑，敬请期待" description="先完成数字人口播，后续在这里接入剪辑。" />}</div></aside>
+  </main>;
+
+  const cards = [
+    { title: "形象克隆", copy: "让数字分身，替你出镜", icon: <UsersRound />, className: styles.featureAvatar, action: () => go("avatars") },
+    { title: "声音克隆", copy: "复刻你的声音与表达", icon: <AudioLines />, className: styles.featureVoice, action: () => go("voices") },
+    { title: "智能剪辑", copy: "让口播视频更出彩", icon: <Clapperboard />, className: styles.featureEdit, action: () => go("editing"), later: true },
+    { title: "AI 创作中心", copy: "从一个想法，到一条视频", icon: <Sparkles />, className: styles.featureCreate, action: () => go("create") },
+  ];
+  const nav = [
+    { key: "create" as const, label: "创作视频", icon: <Video size={18} /> },
+    { key: "avatars" as const, label: "形象克隆", icon: <UserRound size={18} /> },
+    { key: "voices" as const, label: "声音克隆", icon: <AudioLines size={18} /> },
+    { key: "editing" as const, label: "智能剪辑", icon: <Clapperboard size={18} />, later: true },
+    { key: "works" as const, label: "我的作品", icon: <ArrowDownToLine size={18} /> },
+    { key: "library" as const, label: "文案库", icon: <BookOpenText size={18} /> },
+  ];
+  const homeContent = <><StudioIntro avatarCount={AVATARS.filter(a => a.ready).length} voiceCount={VOICES.length} onCreate={() => go("create")} /><div className={styles.featureCards}>{cards.map(card => <button key={card.title} type="button" className={`${styles.featureCard} ${card.className}`} onClick={card.action}><div><h2>{card.title}{card.later && <small>即将上线</small>}</h2><p>{card.copy}</p><span>立即体验 <ArrowRight size={14} /></span></div><i>{card.icon}</i></button>)}</div><div className={styles.sectionHeading}><div><h2>公共数字人</h2><span>选一个喜欢的形象，直接开始创作</span></div><span className={styles.subtleLabel}>公共数字人</span></div>{filters("搜索数字人")}{avatarGrid()}{!filteredAvatars.length && <Empty icon={<Search size={25} />} title="没有找到匹配的数字人" description="试试其他名字或筛选条件。" />}</>;
+  const assetContent = <><div className={styles.pageHeading}><div><h1>{screen === "avatars" ? "形象克隆" : "声音克隆"}</h1><p>{screen === "avatars" ? "管理你的数字分身，为每个故事选择合适的讲述者。" : "一个熟悉的声音，让表达更有温度。"}</p></div><button type="button" className={styles.primaryButton} onClick={() => open(screen === "avatars" ? "avatar-clone" : "voice-clone")}><Plus size={17} />{screen === "avatars" ? "克隆新形象" : "克隆新声音"}</button></div>{tabs([{ key: "own", label: screen === "avatars" ? "我的定制" : "我的声音" }, { key: "public", label: screen === "avatars" ? "公共模特" : "系统声音" }], assetTab, setAssetTab)}{assetTab === "own" && screen === "voices" ? <MyVoices clones={clones} onClone={() => open("voice-clone")} onApply={id => attempt(async () => { await library.reload(); applyVoice(id); await session.save(); router.push(hrefOf("create") + "?project=" + session.state.projectId); })} onReload={library.reload} onError={notify} /> : <>{screen === "avatars" && filters("搜索数字人")}{screen === "avatars" ? avatarGrid() : <><p className={styles.inlineNote}>选择适合视频风格的声音，点击试听预览</p>{voiceGrid()}</>}</>}</>;
+
+  const blocked = status === "loading" || Boolean(persisted.recovery) || (!projectId && Boolean(persisted.error));
+  const restoreVersion = (snapshot: VideoContent) => { session.edit(snapshot); setModal(null); notify("历史版本已恢复为当前草稿，原版本保留"); };
+  return <div className={styles.studio}>
+    {(persisted.error || persisted.recovery) && <div role="alert" className={styles.persistenceNotice}><span>{persisted.recovery ? "发现本机未保存内容，请选择恢复或使用服务端版本。" : persisted.error}</span>{persisted.recovery ? <><button onClick={() => session.restoreRecovery()}>恢复本机内容</button><button onClick={() => attempt(() => session.discardRecovery())}>使用服务端版本</button></> : status === "conflict" ? <><button onClick={() => attempt(() => session.saveAsNew())}>另存项目</button><button onClick={() => attempt(() => session.discardRecovery())}>重新载入服务端版本</button></> : <button onClick={() => attempt(() => !projectId ? session.initialize() : session.save())}>重试保存</button>}</div>}
+    {persisted.backupUnavailable && status !== "saved" && <div className={styles.persistenceNotice}>本机备份不可用，请等待保存成功后离开页面。</div>}
+    {library.error && <div role="alert" className={styles.persistenceNotice}>{library.error}<button onClick={() => attempt(() => library.reload())}>重试读取数字人库</button></div>}
+    {persisted.legacyAvailable && !blocked && <div className={styles.persistenceNotice}><span>发现此浏览器的旧演示记录</span><button onClick={() => attempt(() => session.importLegacy())}>导入本机旧记录</button></div>}
+    <fieldset disabled={blocked} className={styles.persistenceBody}>{screen === "create" ? editor : <><header className={styles.header}><Link href="/video-studio" aria-label="视频空间首页"><Brand /></Link><div className={styles.headerActions}><span className={styles.previewBadge}><i />灰度测试</span><Link href="/" className={styles.returnSite}>返回极光商绘<ExternalLink size={14} /></Link><button type="button" className={styles.accountAvatar} onClick={() => open("help")} aria-label="灰度说明">极</button></div></header><div className={styles.workspace}><aside className={styles.sidebar}><Link href="/video-studio" className={`${styles.sideHome} ${screen === "home" ? styles.activeNav : ""}`}><FolderOpen size={18} />创作空间</Link><span className={styles.navGroup}>数字人创作</span><nav aria-label="视频空间导航">{nav.map(item => <Link key={item.key} href={hrefOf(item.key) + (persisted.revision ? `?project=${projectId}` : "")} onClick={event => { event.preventDefault(); go(item.key); }} className={screen === item.key ? styles.activeNav : ""}>{item.icon}<span>{item.label}</span>{item.later && <small>即将上线</small>}</Link>)}</nav><div className={styles.sidebarBottom}><div className={styles.sidePromo}><Sparkles size={20} /><b>每个好产品，都值得被看见</b><span>用数字人，讲述你的品牌故事。</span><button type="button" onClick={() => go("create")}>开始创作 <ArrowRight size={14} /></button></div><button type="button" className={styles.helpButton} onClick={() => open("help")}><CircleHelp size={17} />使用帮助<ExternalLink size={13} /></button></div></aside><main className={styles.main}>{screen === "home" ? homeContent : screen === "avatars" || screen === "voices" ? assetContent : screen === "library" ? <><div className={styles.pageHeading}><div><h1>文案库</h1><p>收藏好的表达，让下一次创作更轻松。</p></div><button className={styles.primaryButton} onClick={() => go("create")}><Plus size={16} />新建文案</button></div><div className={styles.listHeading}><b>全部文案 <small>{copies.length}</small></b><label className={styles.search}><Search size={15} /><input aria-label="搜索文案" placeholder="搜索文案" value={search} onChange={event => setSearch(event.target.value)} /></label></div>{copyList()}</> : screen === "works" ? <><div className={styles.pageHeading}><div><h1>我的作品</h1><p>每一个好想法，都在这里留下作品。</p></div><button className={styles.primaryButton} onClick={() => go("create")}><Plus size={16} />创作视频</button></div><div className={styles.listHeading}><b>全部作品 <small>{works.length}</small></b><label className={styles.search}><Search size={15} /><input aria-label="搜索作品" placeholder="搜索作品" value={search} onChange={event => setSearch(event.target.value)} /></label></div>{workList()}</> : <><div className={styles.pageHeading}><div><h1>智能剪辑</h1><p>让讲述更生动，让创作更完整。</p></div></div><Empty icon={<Clapperboard size={34} />} title="智能剪辑，敬请期待" description="先完成文案、配音与数字人口播；剪辑会在后续接入。" action={<button className={styles.primaryButton} onClick={() => go("create")}>先去创作 <ArrowRight size={15} /></button>} /></>}</main></div></>}
+
+    </fieldset>
+    {modal === "avatar-preview" && avatarPreview && <Dialog title={avatarPreview.name} onClose={() => setModal(null)}>{avatarPreview.preview_url ? <video controls playsInline preload="metadata" src={avatarPreview.preview_url} style={{ width: "100%", maxHeight: "60vh" }} /> : <img src={imageOf(avatarPreview)} alt={avatarPreview.name} style={{ width: "100%", maxHeight: "60vh", objectFit: "contain" }} />}<p>{avatarPreview.source === "quanyu_public" ? "公共数字人，可直接用于口播生成" : avatarPreview.ready ? "极光原创数字人，动作模板已就绪" : "原创参考形象，生成动作模板后可用于口播"}</p><footer className={styles.dialogFooter}><button className={styles.primaryButton} onClick={() => { updateDraft({ avatarId: avatarPreview.id }); setModal(null); go("create"); }}>使用此形象</button></footer></Dialog>}
+    {modal === "h3-template" && templateAvatar && <Dialog title="生成原创动作模板" onClose={() => setModal(null)}><img src={imageOf(templateAvatar)} alt={templateAvatar.name} style={{ maxHeight: "45vh", width: "100%", objectFit: "contain" }} /><p>为「{templateAvatar.name}」生成15秒自然讲述动作，首尾回到中性姿态。生成后先预览确认人物一致，再登记到原创数字人库。</p><p>生成后可先预览效果，确认满意再加入我的数字人。</p>{generationError && <p role="alert">{generationError}</p>}<footer className={styles.dialogFooter}><button className={styles.outlineButton} onClick={() => setModal(null)}>取消</button><button className={styles.primaryButton} disabled={submitting} onClick={createTemplate}>{submitting ? "正在提交" : generationError ? "查询原提交" : "确认生成动作模板"}</button></footer></Dialog>}
+    {modal === "real-preview" && realPreview && <Dialog title={realPreview.kind === "h3_template" ? "原创动作模板" : "口播视频"} onClose={() => setModal(null)}>{realPreview.video_url ? <video controls playsInline src={realPreview.video_url} style={{ width: "100%", maxHeight: "65vh" }} /> : <p>{realPreview.status === "unknown" ? "提交结果尚未确认，请保留原任务，避免重复计费。" : "视频尚未完成，请在作品中查看进度。"}</p>}{realPreview.snapshot && <details><summary>本次确认稿与配音设置</summary><p className={styles.previewText}>{realPreview.snapshot.draft.text}</p><p>{realPreview.tts?.voice_name || realPreview.snapshot.draft.voiceId} · {realPreview.snapshot.draft.emotion} · {realPreview.snapshot.draft.speed}×</p></details>}{!!realPreview.stage_history?.length && <details><summary>处理耗时</summary><ul>{realPreview.stage_history.map((stage, index) => <li key={index}>{stageLabels[stage.stage] || stage.stage}：{stage.duration_seconds === null ? "处理中" : `${stage.duration_seconds.toFixed(1)} 秒`}</li>)}</ul></details>}{realPreview.error_code && <p>失败原因：{realPreview.error_code}</p>}{realPreview.handoff_url && <a className={styles.textButton} href={realPreview.handoff_url} download>导出剪辑材料（字幕待音文对齐）</a>}{realPreview.status === "awaiting_review" && <button className={styles.primaryButton} disabled={submitting} onClick={() => attempt(async () => { setSubmitting(true); try { await library.approveTemplate(realPreview.id); setModal(null); } catch (error) { submissionError(error); } finally { setSubmitting(false); } })}>确认人物一致，加入数字人库</button>}{realPreview.status === "awaiting_review" && <button className={styles.outlineButton} onClick={() => attempt(async () => { await library.rejectTemplate(realPreview.id); setModal(null); })}>人物不一致，不入库</button>}{realPreview.video_url && <a className={styles.primaryButton} href={realPreview.video_url} download>下载视频</a>}</Dialog>}
+    {modal === "proofread" && <Dialog title="原文校对" wide onClose={() => setModal(null)}><div className={styles.rewriteContent}><p className={styles.inlineNote}>请核对品牌、价格、规格和效果描述。保存修改会保留草稿版本；确认生成时会单独冻结配音稿。</p><label>原始参考文稿（保留原文）<textarea aria-label="校对原文" readOnly value={rawReference?.original_text || "暂无参考原文"} /></label><label>当前配音稿<textarea aria-label="校对配音稿" value={draft.text} maxLength={3000} onChange={event => updateDraft({ text: event.target.value })} /></label><p>{rawReference?.original_text === draft.text ? "当前稿与参考原文一致" : "当前稿与参考原文不同，确认生成前请核对修改内容"}</p></div><footer className={styles.dialogFooter}><button className={styles.primaryButton} onClick={() => attempt(async () => { await session.save(); setModal(null); notify("校对稿已保存，原始参考文稿保留"); })}>保存校对稿</button></footer></Dialog>}
+    {modal === "history" && <Dialog title="文案版本" onClose={() => setModal(null)}><div className={styles.copyList}>{persisted.history.length ? persisted.history.map(v => <article key={v.id}><div><b>{v.kind === "confirmed" ? "已确认版本" : "草稿版本"}</b><time>{dateLabel(v.created_at)}</time></div><p>{v.snapshot.draft.text || "空白草稿"}</p><button className={styles.textButton} onClick={() => restoreVersion(v.snapshot)}>恢复为当前草稿</button></article>) : <p>保存编辑后会保留文案版本。</p>}</div></Dialog>}
+    {screen === "create" && <div className={styles.editorBrand}><Brand small /><span>灰度测试 · 仅指定账号可用</span></div>}
+    {toast && <div className={styles.toast} role="status"><Check size={16} />{toast}</div>}
+    {modal === "avatar" && <AvatarPicker avatars={AVATARS} selectedId={selectedAvatar} loading={library.loading} error={library.error} onSelect={setSelectedAvatar} onApply={() => { if (AVATARS.some(item => item.id === selectedAvatar)) { updateDraft({ avatarId: selectedAvatar }); setModal(null); } }} onClose={() => setModal(null)} onReload={() => attempt(() => library.reload())} onClone={() => open("avatar-clone")} />}
+    {modal === "voice" && <VoicePicker voices={VOICES} selectedId={selectedVoice} playingId={playingVoice} onSelect={item => setSelectedVoice(item.id)} onPreview={previewVoice} onApply={() => { applyVoice(selectedVoice); setModal(null); }} onClose={() => setModal(null)} onClone={() => open("voice-clone")} />}
+    {modal === "rewrite" && <Dialog title="文案二创" wide onClose={() => setModal(null)}>{tabs([{ key: "text", label: "文案改写" }, { key: "link", label: "视频链接提取" }], rewriteTab, setRewriteTab)}{rewriteTab === "link" ? <div className={styles.rewriteContent}><label>参考视频链接<input type="url" maxLength={2048} placeholder="粘贴公开抖音视频链接" value={sourceLink} onChange={event => setSourceLink(event.target.value)} /></label><p className={styles.inlineNote}>提取公开抖音视频的语音文稿；请核对转写内容后再改写。</p><button className={styles.outlineButton} disabled={assistance.busy("extract")} onClick={() => runReference("extract")}>提取文案 <ArrowRight size={14} /></button><p role="status">{assistanceMessage(extractJob)}</p>{extractJob?.can_resume && <button onClick={() => attempt(() => assistance.resume(extractJob.id))}>继续查询原任务</button>}</div> : <div className={styles.rewriteContent}><label>产品事实<textarea aria-label="产品事实" value={content.product_facts} maxLength={6000} placeholder="填写你已确认的产品信息，避免沿用参考视频的价格或承诺" onChange={event => session.edit({ ...session.state.content, product_facts: event.target.value })} /></label><label>原始文案<textarea aria-label="原始文案" value={sourceText} onChange={event => setSourceText(event.target.value)} placeholder="粘贴需要改写的参考文案" maxLength={6000} /></label><button className={styles.outlineButton} disabled={assistance.busy("rewrite")} onClick={() => runReference("rewrite")}><Sparkles size={15} />生成改写文案</button><p role="status">{assistanceMessage(rewriteJob)}</p>{rewriteJob?.can_resume && <button onClick={() => attempt(() => assistance.resume(rewriteJob.id))}>继续处理</button>}{rewriteJob?.status === "completed" && rewriteJob.result.warnings?.length ? <small>{rewriteJob.result.warnings.join("；")}</small> : null}{rewrittenText && <label>改写结果<textarea aria-label="改写结果" value={rewrittenText} onChange={event => setRewrittenText(event.target.value)} maxLength={3000} /></label>}<p className={styles.inlineNote}>改写依据已保存产品事实，采用前请检查价格、规格和效果描述。</p></div>}<footer className={styles.dialogFooter}><button className={styles.outlineButton} onClick={() => setModal(null)}>取消</button>{rewrittenText.trim() && sourceText.trim() && rewriteTab === "text" && <button className={styles.outlineButton} onClick={() => adoptReference(true)}>使用原文</button>}<button className={styles.primaryButton} disabled={(!rewrittenText.trim() && !sourceText.trim()) || rewriteTab !== "text"} onClick={() => adoptReference()}>{rewrittenText.trim() ? "使用改写稿" : "使用原文"}</button></footer></Dialog>}
+    {modal === "voice-clone" && <VoiceCloneDialog clones={clones} onClose={() => { setModal(null); setAssetTab("own"); }} onCreated={() => { void library.reload(); setAssetTab("own"); }} />}
+    {modal === "avatar-clone" && <Dialog title={modal === "avatar-clone" ? "克隆新形象" : "克隆新声音"} onClose={() => setModal(null)}><div className={styles.cloneForm}>{cloneSaved ? <Empty icon={<Check size={29} />} title="已完成流程体验" description={`已选择「${cloneFile?.name}」。正式克隆待 API 接入，素材没有上传。`} action={<button className={styles.primaryButton} onClick={() => setModal(null)}>完成</button>} /> : <><label>{modal === "avatar-clone" ? "形象名称" : "声音名称"}<input value={cloneName} onChange={event => setCloneName(event.target.value)} maxLength={30} placeholder="给你的专属分身起个名字" /></label><label className={styles.cloneDrop}><Upload size={27} /><b>{cloneFile?.name ?? (modal === "avatar-clone" ? "点击上传形象视频" : "点击上传声音样本")}</b><span>{modal === "avatar-clone" ? "正面出镜、光线清晰，保持自然讲述" : "使用安静环境下的人声录音，避免背景音乐"}</span><small>仅本地选择文件 · 最大 100 MB</small><input type="file" accept={modal === "avatar-clone" ? "video/*" : "audio/*"} onChange={event => { const file = event.target.files?.[0]; if (!file) return; const mediaType = modal === "avatar-clone" ? "video/" : "audio/"; if (!file.type.startsWith(mediaType)) return notify("请选择符合要求的素材文件"); if (file.size > 100 * 1024 * 1024) return notify("请选择 100 MB 以内的素材"); setCloneFile(file); }} /></label><p className={styles.inlineNote}>此处演示素材填写流程；正式克隆、授权确认和任务处理将在 API 接入时完善。</p><button className={styles.primaryButton} disabled={!cloneName.trim() || !cloneFile} onClick={() => { if (cloneFile) session.edit({ ...session.state.content, media: [{ id: uid(), kind: (modal === "avatar-clone" ? "avatar_sample" : "voice_sample") as VideoMedia["kind"], name: cloneFile.name, mime_type: cloneFile.type, size_bytes: cloneFile.size, availability: "local_only" as const }, ...session.state.content.media].slice(0, 50) }); setCloneSaved(true); }}>体验克隆流程 <ArrowRight size={16} /></button></>}</div></Dialog>}
+    {modal === "generate" && <Dialog title="生成视频" onClose={() => setModal(null)}><div className={styles.generationReview}><img src={imageOf(avatar)} alt={avatar.name} /><div><h3>{draft.name || "未命名视频"}</h3><p>数字人：{avatar.name}</p><p>{draft.drive === "text" ? `声音：${voice?.name} · ${draft.speed.toFixed(1)}×` : `音频：${audio?.name}`}</p><p>情绪：{draft.emotion} · 语言：{voice?.languages?.[draft.language || "auto"] || "跟随音色"}</p><p>清晰度：以所选模板原片为准</p></div></div><details><summary>查看本次配音确认稿</summary><p className={styles.previewText}>{draft.drive === "text" ? draft.text : "本次使用上传音频"}</p></details><div className={styles.demoNotice}><Sparkles size={18} /><p>确认后使用所选形象和音频生成口播视频。生成后可在“我的作品”查看进度和结果。</p></div>{generationError && <p role="alert">{generationError}</p>}<footer className={styles.dialogFooter}><button className={styles.outlineButton} onClick={() => setModal(null)}>继续编辑</button><button className={styles.primaryButton} disabled={status === "saving" || submitting} onClick={createRealVideo}>{submitting ? "正在提交" : generationError ? "查询原提交" : "确认生成"} <ArrowRight size={15} /></button></footer></Dialog>}
+    {modal === "preview" && previewWork && <Dialog title={previewWork.draft.name || "演示预览"} onClose={() => { setModal(null); window.speechSynthesis?.cancel(); setSpeaking(false); }}><div className={styles.demoPreview}><img src={imageOf(AVATARS.find(item => item.id === previewWork.draft.avatarId) ?? AVATARS[0])} alt="演示形象" /><span>静态形象预览 · 非生成视频</span></div><p className={styles.previewText}>{previewWork.draft.drive === "audio" ? "音频驱动演示任务；音频只保留在原始会话中。" : previewWork.draft.text}</p><footer className={styles.dialogFooter}><button className={styles.outlineButton} onClick={() => attempt(async () => { await session.select(previewWork.projectId); session.edit(previewWork.content); setModal(null); go("create"); })}>继续编辑</button>{previewWork.draft.drive === "text" && <button className={styles.primaryButton} onClick={() => audition(previewWork.draft.text)}><Volume2 size={16} />{speaking ? "停止试听" : "试听文案"}</button>}</footer></Dialog>}
+    {modal === "help" && <Dialog title="欢迎来到视频空间" onClose={() => setModal(null)}><div className={styles.helpContent}><Brand /><p>选择数字人 → 输入或改写文案 → 选择声音 → 生成视频。</p><p>草稿、文案版本和任务保存到账号，已上传音频可跨设备继续使用。公开抖音语音提取、文案规划与改写、配音和口播生成已接入，采用文案前请核对产品事实，生成按实际服务计费。专属声音可通过本人录音创建；智能剪辑后续开放。</p><button className={styles.primaryButton} onClick={() => { setModal(null); go("create"); }}>开始体验 <ArrowRight size={16} /></button></div></Dialog>}
+  </div>;
+}

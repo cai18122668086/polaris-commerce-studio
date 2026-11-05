@@ -1144,6 +1144,247 @@
         "title": "AssetResponse",
         "type": "object"
       },
+      "AssistanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brief": {
+            "default": "",
+            "maxLength": 6000,
+            "title": "Brief",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "create",
+              "rewrite",
+              "extract"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "style": {
+            "default": "产品介绍",
+            "enum": [
+              "产品介绍",
+              "好物种草",
+              "知识分享",
+              "品牌故事"
+            ],
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "project_id",
+          "expected_revision",
+          "kind"
+        ],
+        "title": "AssistanceRequest",
+        "type": "object"
+      },
+      "AssistanceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "can_resume": {
+            "title": "Can Resume",
+            "type": "boolean"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "receipt": {
+            "additionalProperties": true,
+            "title": "Receipt",
+            "type": "object"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          },
+          "source_revision": {
+            "title": "Source Revision",
+            "type": "integer"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "stage_history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Stage History",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "request_id",
+          "project_id",
+          "kind",
+          "status",
+          "stage",
+          "error_code",
+          "source_revision",
+          "result",
+          "can_resume"
+        ],
+        "title": "AssistanceResponse",
+        "type": "object"
+      },
+      "AvatarResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_url": {
+            "title": "Cover Url",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "preview_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Url"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "quanyu_public",
+              "self_owned"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "tag": {
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source",
+          "gender",
+          "tag",
+          "cover_url",
+          "ready"
+        ],
+        "title": "AvatarResponse",
+        "type": "object"
+      },
+      "Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post": {
+        "properties": {
+          "consent": {
+            "const": "own-voice-2026-11-05",
+            "title": "Consent",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "request_id",
+          "name",
+          "consent"
+        ],
+        "title": "Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post",
+        "type": "object"
+      },
       "Body_upload_asset_api_v1_workspaces__workspace_id__assets_post": {
         "properties": {
           "file": {
@@ -1164,6 +1405,20 @@
           "file"
         ],
         "title": "Body_upload_asset_api_v1_workspaces__workspace_id__assets_post",
+        "type": "object"
+      },
+      "Body_upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post",
         "type": "object"
       },
       "CancelRequest": {
@@ -1290,6 +1545,113 @@
           "resolution"
         ],
         "title": "CaseUpdate",
+        "type": "object"
+      },
+      "CloneConfigResponse": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "consent_version": {
+            "title": "Consent Version",
+            "type": "string"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "max_seconds": {
+            "title": "Max Seconds",
+            "type": "integer"
+          },
+          "min_seconds": {
+            "title": "Min Seconds",
+            "type": "integer"
+          },
+          "preview_text": {
+            "title": "Preview Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "max_bytes",
+          "min_seconds",
+          "max_seconds",
+          "consent_version",
+          "preview_text"
+        ],
+        "title": "CloneConfigResponse",
+        "type": "object"
+      },
+      "CloneResponse": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "preview_status": {
+            "title": "Preview Status",
+            "type": "string"
+          },
+          "preview_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Url"
+          },
+          "sample_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Seconds"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "preview_status",
+          "preview_url",
+          "error_code",
+          "created_at",
+          "sample_seconds"
+        ],
+        "title": "CloneResponse",
         "type": "object"
       },
       "ConfirmRequest": {
@@ -4116,6 +4478,83 @@
         "title": "EcommerceLoginState",
         "type": "string"
       },
+      "EditingEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "result_reference": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Reference"
+          },
+          "script_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Sha256"
+          },
+          "sequence": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "service_task_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Service Task Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "aligning",
+              "editing",
+              "result_ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "sequence",
+          "status",
+          "service_task_id"
+        ],
+        "title": "EditingEvent",
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -4221,6 +4660,79 @@
         "title": "FinalizeJobRequest",
         "type": "object"
       },
+      "GenerationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "audio_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Id"
+          },
+          "avatar_id": {
+            "maxLength": 80,
+            "title": "Avatar Id",
+            "type": "string"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "kind": {
+            "enum": [
+              "lipsync",
+              "h3_template"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "prompt": {
+            "default": "以 @图1 为唯一人物、服装、背景和起始姿态参考，生成15秒真人感强、安定从容的口播数字人动作底片。竖屏腰部以上，双手完整可见，固定机位，曝光光线稳定，保留真实皮肤细节和人物一致性。身体直立放松，头部、躯干与胸肩位置稳定，肩线高度几乎固定，身体只有几乎不可察觉的缓慢微动。不耸肩、不挺胸、不深吸气、不急促喘气、不前后摇晃，不用胸肩带动手势。动作集中于前臂和手腕，每次仅一组低幅度手势，手肘靠近身体，动作之间有自然停顿。0至3秒保持参考图中性姿态；3至6秒右手在腰腹前小幅掌心向上解释，躯干不动；6至9秒右手缓慢回位并停顿；9至11秒左手做一次轻微补充手势并回位；11至15秒双手、头部、视线、肩线回到与开头一致的中性位置并安静保持，方便正向首尾衔接。表情平和，口周清晰放松，嘴唇闭合或轻微张开，不主动连续说话，不张嘴喘气，不大笑，便于后续音频驱动。手不遮脸，不点头晃头，不走动、不转身、不运镜、不切镜，无配音、无文字水印。",
+            "maxLength": 6000,
+            "minLength": 20,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "kind",
+          "avatar_id"
+        ],
+        "title": "GenerationRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4232,6 +4744,28 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HandoffRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_seconds": {
+            "default": 3600,
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "title": "HandoffRequest",
         "type": "object"
       },
       "HealthResponse": {
@@ -7616,6 +8150,521 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VideoDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "audioAssetId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audioassetid"
+          },
+          "avatarId": {
+            "default": "female-020",
+            "maxLength": 80,
+            "title": "Avatarid",
+            "type": "string"
+          },
+          "drive": {
+            "default": "text",
+            "enum": [
+              "text",
+              "audio"
+            ],
+            "title": "Drive",
+            "type": "string"
+          },
+          "emotion": {
+            "default": "自然",
+            "enum": [
+              "自然",
+              "愉快",
+              "温柔",
+              "专业",
+              "平静",
+              "悲伤",
+              "愤怒",
+              "害怕",
+              "厌恶",
+              "惊讶"
+            ],
+            "title": "Emotion",
+            "type": "string"
+          },
+          "language": {
+            "default": "auto",
+            "maxLength": 40,
+            "title": "Language",
+            "type": "string"
+          },
+          "name": {
+            "default": "未命名视频",
+            "maxLength": 80,
+            "title": "Name",
+            "type": "string"
+          },
+          "quality": {
+            "default": "1080P",
+            "enum": [
+              "720P",
+              "1080P"
+            ],
+            "title": "Quality",
+            "type": "string"
+          },
+          "speed": {
+            "default": 1,
+            "maximum": 1.5,
+            "minimum": 0.5,
+            "title": "Speed",
+            "type": "number"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Text",
+            "type": "string"
+          },
+          "voiceId": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Voiceid",
+            "type": "string"
+          }
+        },
+        "title": "VideoDraft",
+        "type": "object"
+      },
+      "VideoLegacyCopy": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "maxLength": 80,
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 100,
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 3000,
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 80,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "text",
+          "date"
+        ],
+        "title": "VideoLegacyCopy",
+        "type": "object"
+      },
+      "VideoLegacyImport": {
+        "additionalProperties": false,
+        "properties": {
+          "copies": {
+            "items": {
+              "$ref": "#/components/schemas/VideoLegacyCopy"
+            },
+            "maxItems": 50,
+            "title": "Copies",
+            "type": "array"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/VideoDraft"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "works": {
+            "items": {
+              "$ref": "#/components/schemas/VideoLegacyWork"
+            },
+            "maxItems": 30,
+            "title": "Works",
+            "type": "array"
+          }
+        },
+        "required": [
+          "request_id",
+          "draft"
+        ],
+        "title": "VideoLegacyImport",
+        "type": "object"
+      },
+      "VideoLegacyWork": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "maxLength": 80,
+            "title": "Date",
+            "type": "string"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/VideoDraft"
+          },
+          "id": {
+            "maxLength": 100,
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "draft",
+          "date"
+        ],
+        "title": "VideoLegacyWork",
+        "type": "object"
+      },
+      "VideoMediaAssociation": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "const": "local_only",
+            "default": "local_only",
+            "title": "Availability",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "audio",
+              "avatar_sample",
+              "voice_sample"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mime_type": {
+            "maxLength": 120,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "size_bytes": {
+            "maximum": 104857600.0,
+            "minimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "mime_type",
+          "size_bytes"
+        ],
+        "title": "VideoMediaAssociation",
+        "type": "object"
+      },
+      "VideoProjectContent": {
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/VideoDraft"
+          },
+          "media": {
+            "items": {
+              "$ref": "#/components/schemas/VideoMediaAssociation"
+            },
+            "maxItems": 50,
+            "title": "Media",
+            "type": "array"
+          },
+          "product_facts": {
+            "default": "",
+            "maxLength": 6000,
+            "title": "Product Facts",
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/VideoReference"
+            },
+            "maxItems": 50,
+            "title": "References",
+            "type": "array"
+          }
+        },
+        "title": "VideoProjectContent",
+        "type": "object"
+      },
+      "VideoProjectResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/VideoProjectContent"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "revision",
+          "content",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VideoProjectResponse",
+        "type": "object"
+      },
+      "VideoProjectWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "save",
+            "enum": [
+              "save",
+              "library",
+              "demo"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "content": {
+            "$ref": "#/components/schemas/VideoProjectContent"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision",
+          "content"
+        ],
+        "title": "VideoProjectWrite",
+        "type": "object"
+      },
+      "VideoReference": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "url"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Note",
+            "type": "string"
+          },
+          "original_text": {
+            "default": "",
+            "maxLength": 6000,
+            "title": "Original Text",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "maxLength": 2048,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "title": "VideoReference",
+        "type": "object"
+      },
+      "VideoStudioAccessResponse": {
+        "properties": {
+          "allowed": {
+            "const": true,
+            "default": true,
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "VideoStudioAccessResponse",
+        "type": "object"
+      },
+      "VideoTaskResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed_version_id": {
+            "title": "Confirmed Version Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/VideoProjectContent"
+          },
+          "status": {
+            "const": "demo",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "confirmed_version_id",
+          "status",
+          "snapshot",
+          "created_at"
+        ],
+        "title": "VideoTaskResponse",
+        "type": "object"
+      },
+      "VideoVersionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "draft",
+              "library",
+              "confirmed"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/VideoProjectContent"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "kind",
+          "snapshot",
+          "created_at"
+        ],
+        "title": "VideoVersionResponse",
+        "type": "object"
+      },
+      "VideoWriteResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/VideoProjectResponse"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoTaskResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoVersionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "title": "VideoWriteResponse",
         "type": "object"
       },
       "WorkerAccountSessionRequest": {
@@ -14517,6 +15566,2225 @@
         "summary": "Get Runtime Status",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/v1/video-studio/access": {
+      "get": {
+        "operationId": "video_studio_access_api_v1_video_studio_access_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoStudioAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Video Studio Access",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/video-studio/editing-handoffs/{handoff_id}/assets/{kind}": {
+      "get": {
+        "operationId": "service_asset_api_v1_video_studio_editing_handoffs__handoff_id__assets__kind__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handoff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Handoff Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "video",
+                "audio",
+                "script"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Service Asset",
+        "tags": [
+          "video-editing"
+        ]
+      }
+    },
+    "/api/v1/video-studio/editing-handoffs/{handoff_id}/events": {
+      "post": {
+        "operationId": "service_event_api_v1_video_studio_editing_handoffs__handoff_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handoff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Handoff Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingEvent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Service Event Api V1 Video Studio Editing Handoffs  Handoff Id  Events Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Service Event",
+        "tags": [
+          "video-editing"
+        ]
+      }
+    },
+    "/api/v1/video-studio/editing-handoffs/{handoff_id}/manifest": {
+      "get": {
+        "operationId": "service_manifest_api_v1_video_studio_editing_handoffs__handoff_id__manifest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handoff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Handoff Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Service Manifest Api V1 Video Studio Editing Handoffs  Handoff Id  Manifest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Service Manifest",
+        "tags": [
+          "video-editing"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/assistance-tasks": {
+      "get": {
+        "operationId": "tasks_api_v1_video_studio_workspaces__workspace_id__assistance_tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AssistanceResponse"
+                  },
+                  "title": "Response Tasks Api V1 Video Studio Workspaces  Workspace Id  Assistance Tasks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Tasks",
+        "tags": [
+          "video-assistance"
+        ]
+      },
+      "post": {
+        "operationId": "submit_api_v1_video_studio_workspaces__workspace_id__assistance_tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Submit",
+        "tags": [
+          "video-assistance"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/assistance-tasks/{task_id}/resume": {
+      "post": {
+        "operationId": "resume_api_v1_video_studio_workspaces__workspace_id__assistance_tasks__task_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Resume",
+        "tags": [
+          "video-assistance"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/audio-files": {
+      "post": {
+        "operationId": "upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_audio_api_v1_video_studio_workspaces__workspace_id__audio_files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Audio Api V1 Video Studio Workspaces  Workspace Id  Audio Files Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Upload Audio",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/audio-files/{audio_id}": {
+      "get": {
+        "operationId": "stored_audio_api_v1_video_studio_workspaces__workspace_id__audio_files__audio_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "audio_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Audio Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Stored Audio",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatars": {
+      "get": {
+        "operationId": "avatars_api_v1_video_studio_workspaces__workspace_id__avatars_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AvatarResponse"
+                  },
+                  "title": "Response Avatars Api V1 Video Studio Workspaces  Workspace Id  Avatars Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Avatars",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatars/{avatar_id}/{kind}": {
+      "get": {
+        "operationId": "avatar_media_api_v1_video_studio_workspaces__workspace_id__avatars__avatar_id___kind__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "avatar_id",
+            "required": true,
+            "schema": {
+              "title": "Avatar Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "cover",
+                "preview"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Avatar Media",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-prices": {
+      "get": {
+        "operationId": "prices_api_v1_video_studio_workspaces__workspace_id__generation_prices_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Prices Api V1 Video Studio Workspaces  Workspace Id  Generation Prices Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Prices",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks": {
+      "get": {
+        "operationId": "generation_tasks_api_v1_video_studio_workspaces__workspace_id__generation_tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Generation Tasks Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Generation Tasks",
+        "tags": [
+          "video-generation"
+        ]
+      },
+      "post": {
+        "operationId": "submit_generation_api_v1_video_studio_workspaces__workspace_id__generation_tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Submit Generation Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Submit Generation",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/approve-template": {
+      "post": {
+        "operationId": "approve_template_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__approve_template_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Approve Template Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks  Job Id  Approve Template Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Approve Template",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/editing-handoffs": {
+      "post": {
+        "operationId": "create_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Handoff Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks  Job Id  Editing Handoffs Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Handoff",
+        "tags": [
+          "video-editing"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/editing-handoffs/{handoff_id}": {
+      "get": {
+        "operationId": "handoff_status_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs__handoff_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "handoff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Handoff Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Handoff Status Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks  Job Id  Editing Handoffs  Handoff Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Handoff Status",
+        "tags": [
+          "video-editing"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/editing-handoffs/{handoff_id}/revoke": {
+      "post": {
+        "operationId": "revoke_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs__handoff_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "handoff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Handoff Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revoke Handoff Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks  Job Id  Editing Handoffs  Handoff Id  Revoke Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Revoke Handoff",
+        "tags": [
+          "video-editing"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/handoff": {
+      "get": {
+        "operationId": "editing_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__handoff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Editing Handoff",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/reject-template": {
+      "post": {
+        "operationId": "reject_template_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__reject_template_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reject Template Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks  Job Id  Reject Template Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Reject Template",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/resume": {
+      "post": {
+        "operationId": "resume_job_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Resume Job Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks  Job Id  Resume Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Resume Job",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/{kind}": {
+      "get": {
+        "operationId": "result_media_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id___kind__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "video",
+                "audio"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Result Media",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/imports/legacy": {
+      "post": {
+        "operationId": "import_legacy_api_v1_video_studio_workspaces__workspace_id__imports_legacy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoLegacyImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoWriteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Import Legacy",
+        "tags": [
+          "video-studio"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects": {
+      "get": {
+        "operationId": "projects_api_v1_video_studio_workspaces__workspace_id__projects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VideoProjectResponse"
+                  },
+                  "title": "Response Projects Api V1 Video Studio Workspaces  Workspace Id  Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Projects",
+        "tags": [
+          "video-studio"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}": {
+      "get": {
+        "operationId": "project_api_v1_video_studio_workspaces__workspace_id__projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Project",
+        "tags": [
+          "video-studio"
+        ]
+      },
+      "put": {
+        "operationId": "save_project_api_v1_video_studio_workspaces__workspace_id__projects__project_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoProjectWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoWriteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Save Project",
+        "tags": [
+          "video-studio"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/tasks": {
+      "get": {
+        "operationId": "tasks_api_v1_video_studio_workspaces__workspace_id__tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VideoTaskResponse"
+                  },
+                  "title": "Response Tasks Api V1 Video Studio Workspaces  Workspace Id  Tasks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Tasks",
+        "tags": [
+          "video-studio"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/versions": {
+      "get": {
+        "operationId": "versions_api_v1_video_studio_workspaces__workspace_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "library",
+              "pattern": "^(draft|library|confirmed)$",
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VideoVersionResponse"
+                  },
+                  "title": "Response Versions Api V1 Video Studio Workspaces  Workspace Id  Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Versions",
+        "tags": [
+          "video-studio"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clone-config": {
+      "get": {
+        "operationId": "clone_config_api_v1_video_studio_workspaces__workspace_id__voice_clone_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Clone Config",
+        "tags": [
+          "video-voice-cloning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clones": {
+      "get": {
+        "operationId": "list_clones_api_v1_video_studio_workspaces__workspace_id__voice_clones_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CloneResponse"
+                  },
+                  "title": "Response List Clones Api V1 Video Studio Workspaces  Workspace Id  Voice Clones Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Clones",
+        "tags": [
+          "video-voice-cloning"
+        ]
+      },
+      "post": {
+        "operationId": "create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Clone",
+        "tags": [
+          "video-voice-cloning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clones/{voice_id}": {
+      "get": {
+        "operationId": "clone_status_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Clone Status",
+        "tags": [
+          "video-voice-cloning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clones/{voice_id}/preview": {
+      "get": {
+        "operationId": "clone_preview_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Clone Preview",
+        "tags": [
+          "video-voice-cloning"
+        ]
+      },
+      "post": {
+        "operationId": "prepare_preview_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Prepare Preview",
+        "tags": [
+          "video-voice-cloning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-clones/{voice_id}/refresh": {
+      "post": {
+        "operationId": "refresh_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones__voice_id__refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Refresh Clone",
+        "tags": [
+          "video-voice-cloning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/voices": {
+      "get": {
+        "operationId": "voices_api_v1_video_studio_workspaces__workspace_id__voices_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Voices Api V1 Video Studio Workspaces  Workspace Id  Voices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Voices",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/voices/{voice_id}/preview": {
+      "get": {
+        "operationId": "voice_preview_api_v1_video_studio_workspaces__workspace_id__voices__voice_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Voice Preview",
+        "tags": [
+          "video-generation"
         ]
       }
     },

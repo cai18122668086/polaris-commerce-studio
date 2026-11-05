@@ -1,0 +1,10 @@
+{
+  "asset": "presenter-female-v1.png",
+  "source": "Built-in image generation tool (image_gen.imagegen)",
+  "created_date": "2026-11-04",
+  "identity": "Fictional adult presenter generated for the platform-owned avatar library",
+  "generation_brief": "Highly photorealistic fictional Chinese woman around 30, frontal waist-up presenter portrait, ivory blouse, plain gray studio background, soft steady lighting, realistic skin texture, neutral relaxed lips, both hands fully visible near abdomen, no text or watermark.",
+  "approved_motion_model": "Minimax-H3-768p-913",
+  "template_duration_seconds": 15,
+  "review_note": "Reference and first/middle/final frames compared locally. Identity, clothing and backdrop match; hands return near the initial pose. Facial expression differs across the seam, so perfect seamless looping is not claimed."
+}

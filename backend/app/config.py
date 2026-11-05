@@ -79,10 +79,39 @@ class Settings(BaseSettings):
 
     app_name: str = "Polaris Commerce Studio API"
     app_version: str = "1.1.0"
+    video_providers_enabled: bool = False
+    video_script_planning_enabled: bool = False
+    video_script_api_key: SecretStr = SecretStr("")
+    video_script_base_url: str = "https://api.tengliapi.xyz"
+    video_script_model: str = "gpt-5.6-sol"
+    video_extract_enabled: bool = False
+    video_extract_api_key: SecretStr = SecretStr("")
+    quanyu_api_key: SecretStr = SecretStr("")
+    video_tao_tts_enabled: bool = False
+    tao_api_key: SecretStr = SecretStr("")
+    video_tao_tts_model: Literal["speech-2.8-turbo", "speech-2.8-hd"] = (
+        "speech-2.8-turbo"
+    )
+    video_editing_handoff_secret: SecretStr = SecretStr("")
+    video_cosyvoice_enabled: bool = False
+    video_cosyvoice_api_key: SecretStr = SecretStr("")
+    video_cosyvoice_platform: Literal["qianwen", "bailian_beijing"] = "qianwen"
+    video_cosyvoice_workspace_id: str = ""
+    video_cosyvoice_model: Literal["cosyvoice-v3.5-flash"] = "cosyvoice-v3.5-flash"
 
-    legacy_detail_api_url: Literal[
-        "", "http://api:8000", "http://legacy-api:8000"
-    ] = ""
+    @field_validator("video_cosyvoice_workspace_id")
+    @classmethod
+    def valid_cosyvoice_workspace(cls, value: str) -> str:
+        if value and not re.fullmatch(r"[A-Za-z0-9-]{1,80}", value):
+            raise ValueError("Invalid CosyVoice workspace ID")
+        return value
+
+    wuye_api_key: SecretStr = SecretStr("")
+    video_media_dir: Path = (
+        Path(__file__).resolve().parents[1] / ".data" / "video-studio"
+    )
+
+    legacy_detail_api_url: Literal["", "http://api:8000", "http://legacy-api:8000"] = ""
     domestic_detail_native_creation_enabled: bool = True
     ecommerce_startup_recovery_enabled: bool = True
     # Metrics remain disabled unless an operator provisions a dedicated scrape
@@ -144,9 +173,7 @@ class Settings(BaseSettings):
         "sequential_v20",
         "parallel_v20",
         "parallel_v20_calibrated",
-    ] = (
-        "sequential_v20"
-    )
+    ] = "sequential_v20"
     aurora_max_transient_retries: int = Field(default=2, ge=0, le=2)
     aurora_retry_backoff_base_seconds: float = Field(default=2, ge=0, le=30)
     aurora_retry_backoff_max_seconds: float = Field(default=30, ge=0, le=300)
@@ -209,7 +236,9 @@ class Settings(BaseSettings):
     credit_epay_active_key_id: str = ""
     credit_epay_keys: dict[str, SecretStr] = Field(default_factory=dict)
     credit_epay_base_url: str = "https://pay.tengliapi.xyz"
-    credit_epay_notify_url: str = "https://www.tengliapi.xyz/api/v1/payments/epay/notify"
+    credit_epay_notify_url: str = (
+        "https://www.tengliapi.xyz/api/v1/payments/epay/notify"
+    )
     credit_epay_return_url: str = "https://www.tengliapi.xyz/account"
 
     @field_validator("workspace_credit_pilot_ids")
@@ -265,9 +294,7 @@ class Settings(BaseSettings):
     # enrolled workstation worker.  This prevents the API host (for example a
     # Hong Kong production VM) from ever opening a fallback browser session.
     ecommerce_login_require_worker: bool = False
-    ecommerce_login_session_timeout_seconds: int = Field(
-        default=600, ge=60, le=1800
-    )
+    ecommerce_login_session_timeout_seconds: int = Field(default=600, ge=60, le=1800)
     ecommerce_session_dir: Path = Field(default_factory=default_ecommerce_session_dir)
     ecommerce_1688_session_dir: Path = Field(
         default_factory=default_ecommerce_1688_session_dir
@@ -281,16 +308,12 @@ class Settings(BaseSettings):
     # Local browser workers use short-lived, scope-bound enrollment/session
     # tokens.  These values are deliberately bounded to keep credentials
     # useful only for a narrow handoff window.
-    ecommerce_worker_enrollment_ttl_seconds: int = Field(
-        default=600, ge=60, le=1800
-    )
+    ecommerce_worker_enrollment_ttl_seconds: int = Field(default=600, ge=60, le=1800)
     ecommerce_worker_token_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     ecommerce_worker_recovery_token_ttl_seconds: int = Field(
         default=2_592_000, ge=86_400, le=31_536_000
     )
-    ecommerce_worker_heartbeat_timeout_seconds: int = Field(
-        default=90, ge=30, le=600
-    )
+    ecommerce_worker_heartbeat_timeout_seconds: int = Field(default=90, ge=30, le=600)
     ecommerce_worker_task_lease_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     retention_enabled: bool = False
     retention_days: int = Field(default=30, ge=30, le=30)
@@ -365,8 +388,7 @@ class Settings(BaseSettings):
             )
         if self.task_dispatcher != "celery":
             raise RuntimeError(
-                "production ecommerce tasks must use the independent "
-                "worker"
+                "production ecommerce tasks must use the independent worker"
             )
         if self.auto_create_schema:
             raise RuntimeError("production must not auto-create the database schema")

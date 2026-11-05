@@ -1,4 +1,6 @@
 .taskNotice:global(.task-trigger) > i { color: #ddd5d0; background: rgb(255 255 255 / 12%); }
+.header .videoEntry { display: inline-flex; align-items: center; gap: 5px; color: #675a88; white-space: nowrap; }
+.videoEntry > span { font-size: 7px; line-height: 1.3; background: #eee7f7; border-radius: 3px; padding: 2px 3px; color: #9b80b9; }
 
 @media (min-width: 1200px) and (max-width: 1599px) {
   .header :global(.user-menu) > :global(.desktop-only) { display: none; }

@@ -1,0 +1,50 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { apiClient } from "@/lib/api/client";
+import { unwrapApiResponse } from "@/lib/api/request";
+import { withAuthTimeout } from "@/lib/auth/request-timeout";
+import type { VideoContent } from "./projects";
+
+export type VideoAvatar = { id: string; name: string; gender: string; tag: string; source: "quanyu_public" | "self_owned"; cover_url: string; preview_url?: string | null; ready: boolean };
+export type VideoVoice = { id: string; name: string; gender: string; tag: string; description: string; source?: "own" | "public"; available?: boolean; language?: string; preview_url?: string | null; emotions?: VideoContent["draft"]["emotion"][]; languages?: Record<string, string> };
+export type StageTiming = { stage: string; started_at: string; finished_at: string | null; duration_seconds: number | null; outcome?: string };
+export type GenerationJob = { id: string; kind: "lipsync" | "h3_template"; avatar_id: string; project_id: string | null; status: string; stage: string; can_resume?: boolean; error_code?: string | null; created_at: string; video_url?: string | null; audio_url?: string | null; snapshot?: VideoContent | null; handoff_url?: string | null; stage_history?: StageTiming[]; tts?: { voice_name?: string }; audio_duration_seconds?: number | null };
+const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
+
+export function useVideoLibrary(workspaceId: string) {
+  const [avatars, setAvatars] = useState<VideoAvatar[]>([]);
+  const [voices, setVoices] = useState<VideoVoice[]>([]);
+  const [jobs, setJobs] = useState<GenerationJob[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000), cache: "no-store" as const }), [workspaceId]);
+  const reload = useCallback(async () => {
+    try {
+      const [a, v, j] = await Promise.all([
+        apiClient.GET(`${root}/avatars`, options()), apiClient.GET(`${root}/voices`, options()), apiClient.GET(`${root}/generation-tasks`, options()),
+      ]);
+      setAvatars(unwrapApiResponse(a) as VideoAvatar[]); setVoices(unwrapApiResponse(v) as VideoVoice[]); setJobs(unwrapApiResponse(j) as GenerationJob[]); setError("");
+    } catch { setError("数字人库暂时无法读取，请重试。"); }
+    finally { setLoading(false); }
+  }, [options]);
+  useEffect(() => { let active = true; void Promise.resolve().then(() => { if (active) void reload(); }); return () => { active = false; }; }, [reload]);
+  useEffect(() => {
+    if (!jobs.some(j => ["queued", "running", "awaiting_resume"].includes(j.status))) return;
+    const timer = setInterval(() => { void apiClient.GET(`${root}/generation-tasks`, options()).then(result => { const next = unwrapApiResponse(result) as GenerationJob[]; setJobs(next); if (next.some(j => ["completed", "awaiting_review"].includes(j.status) && !jobs.some(old => old.id === j.id && old.status === j.status))) void reload(); }).catch(() => undefined); }, 5000);
+    return () => clearInterval(timer);
+  }, [jobs, options, reload]);
+  const submit = async (body: { request_id: string; kind: "lipsync" | "h3_template"; avatar_id: string; project_id?: string; expected_revision?: number; audio_id?: string }) => {
+    const result = unwrapApiResponse(await withAuthTimeout(apiClient.POST(`${root}/generation-tasks`, { ...options(), body: { ...body, prompt: "生成15秒固定机位真人口播模板，动作自然，首尾回到中性姿态，双手不遮脸，口周清晰。" } }), 15000)) as GenerationJob;
+    setJobs(current => [result, ...current.filter(j => j.id !== result.id)]);
+    return result;
+  };
+  const uploadAudio = async (file: File) => {
+    const result = await apiClient.POST(`${root}/audio-files`, { ...options(), body: { file } as never, bodySerializer: () => { const data = new FormData(); data.append("file", file); return data; } });
+    return unwrapApiResponse(result) as { id: string; name: string; duration: number };
+  };
+  const rejectTemplate = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/reject-template`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
+  const approveTemplate = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/approve-template`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
+  const resume = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/resume`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
+  return { avatars, voices, jobs, loading, error, reload, submit, uploadAudio, resume, approveTemplate, rejectTemplate };
+}

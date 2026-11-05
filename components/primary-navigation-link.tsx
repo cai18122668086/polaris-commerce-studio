@@ -11,6 +11,8 @@ export function PrimaryNavigationLink({ href, label, active, onClick, style, mob
   const replica = href === "/style-replica";
   const hot = replica || href === "/inspiration";
   return <Link href={href} onClick={onClick} style={style}
+    target={href === "/video-studio" ? "_blank" : undefined}
+    rel={href === "/video-studio" ? "noopener noreferrer" : undefined}
     className={`${styles.link}${active ? " active" : ""}`}
     aria-current={active ? "page" : undefined}
     aria-describedby={replica ? tooltipId : undefined}>

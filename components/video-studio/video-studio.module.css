@@ -486,3 +486,10 @@
   .studio .editor { padding-bottom: 94px; }
   .editorFooter { position: fixed; bottom: 0; left: 12px; right: 12px; z-index: 30; border: 1px solid #e1d9e8; border-radius: 11px 11px 0 0; box-shadow: 0 -5px 22px #38254916; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
+
+.workActions { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; padding-top:10px; border-top:1px solid #f1edf5; }
+
+.studio .compactGenerationWorks { grid-template-columns:1fr; gap:12px; }
+.compactGenerationWorks .workCard { display:grid; grid-template-columns:84px minmax(0,1fr); }
+.studio .compactGenerationWorks .workImage { height:100%; min-height:135px; aspect-ratio:auto; }
+.compactGenerationWorks .workCard > div { padding:12px; gap:5px; }

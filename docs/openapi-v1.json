@@ -1352,6 +1352,43 @@
         "title": "AvatarResponse",
         "type": "object"
       },
+      "Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post": {
+        "properties": {
+          "consent": {
+            "title": "Consent",
+            "type": "boolean"
+          },
+          "consent_version": {
+            "title": "Consent Version",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "name",
+          "consent",
+          "consent_version",
+          "file"
+        ],
+        "title": "Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post",
+        "type": "object"
+      },
       "Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post": {
         "properties": {
           "consent": {
@@ -16082,6 +16119,65 @@
         "summary": "Stored Audio",
         "tags": [
           "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-clones": {
+      "post": {
+        "operationId": "create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Avatar Api V1 Video Studio Workspaces  Workspace Id  Avatar Clones Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Avatar",
+        "tags": [
+          "video-avatars"
         ]
       }
     },

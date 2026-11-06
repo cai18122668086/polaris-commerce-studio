@@ -5,11 +5,12 @@ import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import { withAuthTimeout } from "@/lib/auth/request-timeout";
 import type { VideoContent } from "./projects";
+import { uploadWithProgress, type UploadProgress } from "@/lib/api/upload";
 
 export type VideoAvatar = { id: string; name: string; gender: string; tag: string; source: "quanyu_public" | "self_owned"; cover_url: string; preview_url?: string | null; ready: boolean };
 export type VideoVoice = { id: string; name: string; gender: string; tag: string; description: string; source?: "own" | "public"; available?: boolean; language?: string; preview_url?: string | null; emotions?: VideoContent["draft"]["emotion"][]; languages?: Record<string, string> };
 export type StageTiming = { stage: string; started_at: string; finished_at: string | null; duration_seconds: number | null; outcome?: string };
-export type GenerationJob = { id: string; kind: "lipsync" | "h3_template"; avatar_id: string; project_id: string | null; status: string; stage: string; can_resume?: boolean; error_code?: string | null; created_at: string; video_url?: string | null; audio_url?: string | null; snapshot?: VideoContent | null; handoff_url?: string | null; stage_history?: StageTiming[]; tts?: { voice_name?: string }; audio_duration_seconds?: number | null };
+export type GenerationJob = { id: string; request_id?: string; kind: "lipsync" | "h3_template"; avatar_id: string; project_id: string | null; status: string; stage: string; can_resume?: boolean; error_code?: string | null; created_at: string; video_url?: string | null; audio_url?: string | null; snapshot?: VideoContent | null; handoff_url?: string | null; stage_history?: StageTiming[]; tts?: { voice_name?: string }; audio_duration_seconds?: number | null };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
 export function useVideoLibrary(workspaceId: string) {
@@ -39,6 +40,13 @@ export function useVideoLibrary(workspaceId: string) {
     setJobs(current => [result, ...current.filter(j => j.id !== result.id)]);
     return result;
   };
+  const createAvatar = async (file: File, name: string, requestId: string, progress: (value: UploadProgress) => void) => {
+    const data = new FormData(); data.append("file", file); data.append("name", name); data.append("request_id", requestId); data.append("consent", "true"); data.append("consent_version", "avatar-v1");
+    const result = unwrapApiResponse(await apiClient.POST(`${root}/avatar-clones`, { ...options(), signal: AbortSignal.timeout(600000), body: {} as never, bodySerializer: () => data, fetch: uploadWithProgress(data, progress) })) as GenerationJob;
+    setJobs(current => [result, ...current.filter(job => job.id !== result.id)]);
+    await reload();
+    return result;
+  };
   const uploadAudio = async (file: File) => {
     const result = await apiClient.POST(`${root}/audio-files`, { ...options(), body: { file } as never, bodySerializer: () => { const data = new FormData(); data.append("file", file); return data; } });
     return unwrapApiResponse(result) as { id: string; name: string; duration: number };
@@ -46,5 +54,5 @@ export function useVideoLibrary(workspaceId: string) {
   const rejectTemplate = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/reject-template`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
   const approveTemplate = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/approve-template`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
   const resume = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/resume`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
-  return { avatars, voices, jobs, loading, error, reload, submit, uploadAudio, resume, approveTemplate, rejectTemplate };
+  return { avatars, voices, jobs, loading, error, reload, submit, createAvatar, uploadAudio, resume, approveTemplate, rejectTemplate };
 }

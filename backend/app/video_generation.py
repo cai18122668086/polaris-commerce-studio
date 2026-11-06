@@ -22,6 +22,7 @@ from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
 from .models import utc_now
+from .video_avatar_access import avatar_scope
 from .video_avatar_catalog import public_avatar_gender
 from .video_cosyvoice import CosyVoice
 from .video_generation_media import prepare_lipsync_media, set_stage
@@ -134,6 +135,7 @@ def job_response(row: VideoGenerationRecord) -> dict[str, Any]:
     )
     return {
         "id": row.id,
+        "request_id": row.request_id,
         "kind": row.kind,
         "avatar_id": row.avatar_id,
         "project_id": row.project_id,
@@ -195,45 +197,58 @@ def process_generation(
         set_stage(session, job, job.stage)
         try:
             if job.kind == "h3_template":
-                if not job.provider_task_id:
-                    if not job.details.get("reference_url"):
-                        set_stage(session, job, "uploading_reference")
-                        ref = provider.upload(
-                            OWNED_IMAGE, "image/png", "digital_human_model"
+                local = (
+                    Path(job.details["uploaded_video_path"])
+                    if job.details.get("uploaded_video_path")
+                    else settings.video_media_dir / "jobs" / job.id / "template.mp4"
+                )
+                if not job.details.get("uploaded_video_path"):
+                    if not job.provider_task_id:
+                        if not job.details.get("reference_url"):
+                            set_stage(session, job, "uploading_reference")
+                            ref = provider.upload(
+                                Path(
+                                    job.details.get("reference_path", str(OWNED_IMAGE))
+                                ),
+                                "image/png",
+                                "digital_human_model",
+                            )
+                            set_stage(
+                                session, job, "reference_ready", reference_url=ref
+                            )
+                        set_stage(session, job, "h3_submitting")
+                        data = provider.request(
+                            "wuye",
+                            "POST",
+                            "/v1/videos",
+                            json={
+                                "model": "Minimax-H3-768p-913",
+                                "prompt": job.details["prompt"],
+                                "duration": 15,
+                                "ratio": "9:16",
+                                "resolution": "768p",
+                                "referenceImages": [job.details["reference_url"]],
+                            },
                         )
-                        set_stage(session, job, "reference_ready", reference_url=ref)
-                    set_stage(session, job, "h3_submitting")
-                    data = provider.request(
-                        "wuye",
-                        "POST",
-                        "/v1/videos",
-                        json={
-                            "model": "Minimax-H3-768p-913",
-                            "prompt": job.details["prompt"],
-                            "duration": 15,
-                            "ratio": "9:16",
-                            "resolution": "768p",
-                            "referenceImages": [job.details["reference_url"]],
-                        },
-                    )
-                    if not data.get("id"):
-                        raise ApiError(
-                            502, "VIDEO_PROVIDER_OUTCOME_UNKNOWN", "生成结果未能确认。"
+                        if not data.get("id"):
+                            raise ApiError(
+                                502,
+                                "VIDEO_PROVIDER_OUTCOME_UNKNOWN",
+                                "生成结果未能确认。",
+                            )
+                        job.provider_task_id = data["id"]
+                        set_stage(session, job, "h3_generating")
+                    if not poll_until_complete(session, job, provider, "wuye"):
+                        return
+                    if not local.exists():
+                        set_stage(session, job, "downloading_template")
+                        provider.download(
+                            "https://www.wuyeai.cn/v1/videos/"
+                            + provider_task_id(job)
+                            + "/content",
+                            local,
+                            vendor="wuye",
                         )
-                    job.provider_task_id = data["id"]
-                    set_stage(session, job, "h3_generating")
-                if not poll_until_complete(session, job, provider, "wuye"):
-                    return
-                local = settings.video_media_dir / "jobs" / job.id / "template.mp4"
-                if not local.exists():
-                    set_stage(session, job, "downloading_template")
-                    provider.download(
-                        "https://www.wuyeai.cn/v1/videos/"
-                        + provider_task_id(job)
-                        + "/content",
-                        local,
-                        vendor="wuye",
-                    )
                 if not job.details.get("review_approved"):
                     set_stage(session, job, "awaiting_review", result_path=str(local))
                     job.status = "awaiting_review"
@@ -522,7 +537,7 @@ def avatars(
         session.commit()
     rows = session.scalars(
         select(VideoAvatarRecord)
-        .where(VideoAvatarRecord.active.is_(True))
+        .where(VideoAvatarRecord.active.is_(True), avatar_scope(workspace))
         .order_by(VideoAvatarRecord.source, VideoAvatarRecord.name)
     ).all()
     result = []
@@ -553,7 +568,11 @@ def avatars(
                 gender=public_avatar_gender(row.provider_model_id, row.name, row.gender)
                 if row.source == "quanyu_public"
                 else row.gender,
-                tag="公共数字人" if row.source == "quanyu_public" else "极光原创",
+                tag="公共数字人"
+                if row.source == "quanyu_public"
+                else "我的形象"
+                if row.id.startswith("own-avatar-")
+                else "极光原创",
                 cover_url=root + "/cover",
                 preview_url=root + "/preview" if row.video_url or owned else None,
                 ready=bool(row.provider_model_id or owned),
@@ -625,7 +644,11 @@ def avatar_media(
 ) -> FileResponse:
     import imageio_ffmpeg
 
-    row = session.get(VideoAvatarRecord, avatar_id)
+    row = session.scalar(
+        select(VideoAvatarRecord).where(
+            VideoAvatarRecord.id == avatar_id, avatar_scope(workspace)
+        )
+    )
     if not row or not row.active:
         raise ApiError(404, "VIDEO_AVATAR_NOT_FOUND", "未找到形象。")
     if kind == "cover" and row.cover_path:
@@ -765,7 +788,11 @@ def submit_generation(
         return job_response(old)
     if not request.app.state.settings.video_providers_enabled:
         raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
-    avatar = session.get(VideoAvatarRecord, body.avatar_id)
+    avatar = session.scalar(
+        select(VideoAvatarRecord).where(
+            VideoAvatarRecord.id == body.avatar_id, avatar_scope(workspace)
+        )
+    )
     if not avatar or not avatar.active:
         raise ApiError(404, "VIDEO_AVATAR_NOT_FOUND", "请先选择有效形象。")
     details: dict[str, Any] = {}
@@ -801,6 +828,7 @@ def submit_generation(
                 "已有动作模板任务，请先查看或验收原任务。",
             )
         details["prompt"] = body.prompt
+        details["reference_path"] = avatar.cover_path or str(OWNED_IMAGE)
         details["h3_model"] = "Minimax-H3-768p-913"
     else:
         project = session.scalar(

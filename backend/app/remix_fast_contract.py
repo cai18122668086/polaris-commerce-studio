@@ -4,6 +4,10 @@ from typing import Any
 
 PREPARE_PROFILE = "aurora_remix_fast_prepare"
 REVIEW_PROFILE = "aurora_remix_fast_review"
+# Primary planner and its one formatting repair each have at most five
+# transport attempts; image dispatch remains single-shot.
+MAX_PLANNER_REQUESTS_PER_IMAGE = 10
+MAX_REQUESTS_PER_IMAGE = MAX_PLANNER_REQUESTS_PER_IMAGE + 1
 CHECKS = ("aspect_ratio", "watermark", "source_leakage", "product_identity")
 REFERENCE_FIELDS = (
     "subject_and_scale",
@@ -57,22 +61,6 @@ def response_format(profile: str) -> dict[str, Any]:
                     "type": "array",
                     "maxItems": 30,
                     "items": {"type": "string", "maxLength": 300},
-                },
-                "critical_regions": {
-                    "type": "array",
-                    "minItems": 1,
-                    "maxItems": 3,
-                    "items": _object(
-                        {
-                            "box": {
-                                "type": "array",
-                                "minItems": 4,
-                                "maxItems": 4,
-                                "items": {"type": "number", "minimum": 0, "maximum": 1},
-                            },
-                            "feature": _text(),
-                        }
-                    ),
                 },
                 "product_present": {"type": "boolean"},
             }

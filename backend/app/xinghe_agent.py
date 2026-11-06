@@ -2814,8 +2814,13 @@ class TengliOpenAICompatibleGateway:
                 request.planning_profile in _BOUNDED_JSON_PLANNER_PROFILES
                 and isinstance(raw_content, str) and not raw_content.strip()
             )
-            text = raw_content if native_empty and isinstance(raw_content, str) else _planner_message_text(response)  # type: ignore[arg-type]
-            plan_payload, parse_trace = _planner_content_payload_with_trace(text)
+            if request.planning_profile == "aurora_remix_fast_prepare":
+                from .remix_fast_brief import planner_response
+
+                text, plan_payload, parse_trace = planner_response(response)  # type: ignore[arg-type]
+            else:
+                text = raw_content if native_empty and isinstance(raw_content, str) else _planner_message_text(response)  # type: ignore[arg-type]
+                plan_payload, parse_trace = _planner_content_payload_with_trace(text)
             raw_usage = _raw_usage(response)  # type: ignore[arg-type]
             content_bytes = text.encode("utf-8")
             content_sha256 = hashlib.sha256(content_bytes).hexdigest()

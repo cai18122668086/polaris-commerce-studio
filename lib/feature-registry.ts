@@ -394,7 +394,7 @@ export const FEATURE_REGISTRY = [
     featured: true,
     inputHint: "我的商品图 + 参考图",
     outputHint: "1–4 张独立结果",
-    guidance: "适合单张快速试版式；保留商品身份并进行四项快检，严格保真套图请使用一键复刻。",
+    guidance: "先规划商品与参考版式，再生成图片，完成后可直接查看与下载。",
   },
   {
     id: "one-click-replica",

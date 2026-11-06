@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createServer } from "node:net";
-import os from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import test from "node:test";
 import { assertTaskNavigation } from "./browser/task-navigation.mjs";
+import { launchChromium } from "./browser/chromium.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const host = "127.0.0.1";
@@ -182,37 +181,10 @@ function assertNamedInteractiveControls(html, route) {
 }
 
 async function assertBrowserAuthContract(origin, taskNavigation = false) {
-  const executable = findBrowserExecutable();
-  assert.ok(
-    executable,
-    "A Chromium browser is required for the production authentication regression",
-  );
-  const debugPort = await reservePort();
-  const profile = await mkdtemp(path.join(os.tmpdir(), "polaris-browser-"));
-  const browserProcess = spawn(
-    executable,
-    [
-      "--headless=new",
-      "--disable-background-networking",
-      "--disable-component-update",
-      "--disable-default-apps",
-      "--disable-extensions",
-      "--disable-features=OptimizationHints,OptimizationGuideModelDownloading",
-      "--disable-gpu",
-      "--no-default-browser-check",
-      "--no-first-run",
-      "--no-sandbox",
-      `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${profile}`,
-      "about:blank",
-    ],
-    { stdio: "ignore", windowsHide: true },
-  );
-
+  const browser = await launchChromium({ label: taskNavigation ? "task-navigation" : "auth" });
   let cdp;
   try {
-    const target = await waitForBrowserTarget(debugPort, browserProcess);
-    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    cdp = await CdpClient.connect(browser.target.webSocketDebuggerUrl);
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
     await cdp.send("Accessibility.enable");
@@ -245,13 +217,7 @@ async function assertBrowserAuthContract(origin, taskNavigation = false) {
     if (taskNavigation) await assertTaskNavigation({ cdp, origin, navigate, evaluate, waitForValue });
   } finally {
     cdp?.close();
-    await stopProcessTree(browserProcess);
-    await rm(profile, {
-      recursive: true,
-      force: true,
-      maxRetries: 8,
-      retryDelay: 125,
-    });
+    await browser.close();
   }
 }
 
@@ -285,52 +251,6 @@ async function assertMobileTaskEntry(cdp, origin) {
     assert.equal(entry.visible, true, width + "px should show the task label: " + JSON.stringify(entry));
     assert.equal(entry.inside, true, width + "px task label should fit the viewport");
   }
-}
-
-function findBrowserExecutable() {
-  const candidates =
-    process.platform === "win32"
-      ? [
-          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-          "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-          "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-          "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-        ]
-      : process.platform === "darwin"
-        ? [
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-          ]
-        : [
-            "/usr/bin/google-chrome",
-            "/usr/bin/google-chrome-stable",
-            "/usr/bin/chromium",
-            "/usr/bin/chromium-browser",
-          ];
-  return candidates.find(existsSync);
-}
-
-async function waitForBrowserTarget(port, browserProcess) {
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    if (browserProcess.exitCode !== null) {
-      throw new Error("Chromium exited before its debugging target was ready");
-    }
-    try {
-      const response = await fetch(`http://${host}:${port}/json/list`);
-      if (response.ok) {
-        const targets = await response.json();
-        const page = targets.find(
-          (target) => target.type === "page" && target.webSocketDebuggerUrl,
-        );
-        if (page) return page;
-      }
-    } catch {
-      // The debugging endpoint has not bound yet.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("Chromium debugging target did not become ready");
 }
 
 async function navigate(cdp, url) {

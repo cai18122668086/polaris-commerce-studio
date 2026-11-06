@@ -1679,6 +1679,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-clones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Avatar */
+        post: operations["create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/avatars": {
         parameters: {
             query?: never;
@@ -3592,6 +3609,22 @@ export interface components {
             source: "quanyu_public" | "self_owned";
             /** Tag */
             tag: string;
+        };
+        /** Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post */
+        Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post: {
+            /** Consent */
+            consent: boolean;
+            /** Consent Version */
+            consent_version: string;
+            /** File */
+            file: string;
+            /** Name */
+            name: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
         };
         /** Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post */
         Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post: {
@@ -10119,6 +10152,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

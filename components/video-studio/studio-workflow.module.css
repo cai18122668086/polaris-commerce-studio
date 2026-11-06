@@ -122,3 +122,7 @@
   .assistantInputArea { margin-top: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .spin, .noticeToast { animation: none; } }
+
+.submittingSpinner { animation:submit-spin 1.2s linear infinite; }
+@keyframes submit-spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .submittingSpinner { animation:none; } }

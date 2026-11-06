@@ -45,8 +45,6 @@ jobs:
     name: Frontend quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      POLARIS_BROWSER_OUTPUT: ${{ runner.temp }}/polaris-browser-audit
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -64,6 +62,7 @@ jobs:
       - name: Install the pinned Chromium before all browser tests
         run: |
           python -m playwright install --with-deps chromium
+          echo "POLARIS_BROWSER_OUTPUT=$RUNNER_TEMP/polaris-browser-audit" >> "$GITHUB_ENV"
           python - <<'PY'
           import os
           from playwright.sync_api import sync_playwright

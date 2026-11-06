@@ -110,6 +110,12 @@ class RemixFastProvider(XingheSingleImageProvider):
                     ),
                     "required_geometry_fields": GEOMETRY_FIELDS,
                     "required_reference_fields": REFERENCE_FIELDS,
+                    "field_layout": (
+                        "Every required_reference_field, including "
+                        "typography_structure, "
+                        "belongs inside reference_facts, never at the top level. "
+                        "Every required_geometry_field belongs inside geometry_lock."
+                    ),
                     "required_fields": [
                         "geometry_lock",
                         "identity_constraints",
@@ -462,6 +468,22 @@ def _inspect_artifact(artifact: ProviderArtifact) -> ProviderArtifact:
 def _validate_brief(value: object) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("Fast remix brief is missing")
+    # Some compatible planners return an otherwise complete brief with a named
+    # nested field at the top level. Relocate only an explicit, non-empty value;
+    # never infer missing facts or overwrite the authoritative nested value.
+    value = dict(value)
+    for field, keys in (
+        ("geometry_lock", GEOMETRY_FIELDS),
+        ("reference_facts", REFERENCE_FIELDS),
+    ):
+        nested = value.get(field)
+        if isinstance(nested, dict):
+            nested = dict(nested)
+            for key in keys:
+                if key not in nested and isinstance(value.get(key), str):
+                    nested[key] = value[key]
+                    value.pop(key)
+            value[field] = nested
     for field in ("geometry_lock", "reference_facts"):
         keys = GEOMETRY_FIELDS if field == "geometry_lock" else REFERENCE_FIELDS
         if not isinstance(value.get(field), dict) or any(

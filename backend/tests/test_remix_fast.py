@@ -538,3 +538,62 @@ def test_recover_retained_delivery_preserves_usage_and_bytes(client, tmp_path, d
         detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}").json()
         assert detail["status"] == "completed"
         assert any(a["is_deliverable"] for a in detail["assets"])
+
+
+@pytest.mark.parametrize(
+    "field,keys",
+    [("reference_facts", REFERENCE_FIELDS), ("geometry_lock", GEOMETRY_FIELDS)],
+)
+def test_fast_relocates_explicit_misplaced_planning_fields(field, keys):
+    from copy import deepcopy
+
+    from app.remix_fast_provider import _validate_brief
+
+    for key in keys:
+        observed = deepcopy(brief())
+        observed[key] = observed[field].pop(key)
+        original = deepcopy(observed)
+        fixed = _validate_brief(observed)
+        assert fixed[field][key] == original[key]
+        assert key not in fixed
+        assert observed == original
+
+
+def test_fast_does_not_invent_missing_or_override_nested_planning_facts():
+    from app.remix_fast_provider import _validate_brief
+
+    observed = brief()
+    observed["reference_facts"].pop("typography_structure")
+    with pytest.raises(ValueError):
+        _validate_brief(observed)
+    observed["typography_structure"] = []
+    with pytest.raises(ValueError):
+        _validate_brief(observed)
+    observed["reference_facts"]["typography_structure"] = "original nested fact"
+    observed["typography_structure"] = "conflicting top-level fact"
+    assert (
+        _validate_brief(observed)["reference_facts"]["typography_structure"]
+        == "original nested fact"
+    )
+
+
+def test_fast_observed_misplaced_typography_plan_still_generates_and_delivers(
+    harness, tmp_path
+):
+    provider, request = install(harness, tmp_path)
+    plan = harness.gateway.plan
+
+    async def misplaced(value):
+        result = await plan(value)
+        payload = result.payload
+        payload["typography_structure"] = payload["reference_facts"].pop(
+            "typography_structure"
+        )
+        return result
+
+    harness.gateway.plan = misplaced
+    result = asyncio.run(provider.execute(request))
+    assert result.outcome == ProviderOutcome.SUCCEEDED, result
+    assert result.artifact is not None
+    assert len(harness.gateway.plan_requests) == len(harness.gateway.requests) == 1
+    assert "post_generation_review" in result.raw_usage["metrics"]

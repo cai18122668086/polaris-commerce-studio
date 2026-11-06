@@ -69,7 +69,7 @@ export function MyVoices({ clones, onClone, onApply, onReload, onError }: { clon
   const run = async (id: string, task: () => Promise<unknown>) => { if (busyId) return; setBusyId(id); try { await task(); await onReload(); } catch (reason) { onError(reason instanceof Error ? reason.message : "操作未完成，请重试。"); } finally { setBusyId(""); } };
   return <div className={cloneStyles.manager}><div className={cloneStyles.toolbar}><p>专属声音仅在你的账号与当前工作区内可见。</p><button type="button" className={styles.textButton} disabled={!!busyId} onClick={() => { void run("reload", clones.reload); }}>刷新列表</button></div>{clones.error && <p role="alert">{clones.error}</p>}
     {!clones.voices.length ? <Empty icon={<Mic size={29} />} title="还没有你的专属声音" description="上传一段本人的清晰录音，创建你的视频配音声音。" action={<button type="button" className={styles.outlineButton} onClick={onClone}>克隆我的声音</button>} /> : <div className={cloneStyles.voices}>{clones.voices.map(voice => <article key={voice.id} className={cloneStyles.voice}>
-      <div className={cloneStyles.heading}><AudioLines size={25} /><div><b>{voice.name}</b><p>{statusLabel[voice.status] || voice.status}</p></div></div>
+      <div className={cloneStyles.heading}><AudioLines size={25} /><div><b>{voice.name}</b><p>{statusLabel[voice.status] || "状态待确认"}</p></div></div>
       {["queued", "submitting", "processing", "unknown", "failed"].includes(voice.status) && <VoiceProgress status={voice.status} compact />}
       {voice.preview_url && <audio controls preload="none" src={voice.preview_url} aria-label={`${voice.name}的缓存试听`} />}
       {voice.preview_status === "unknown" && <p role="status">试听结果暂未确认，请稍后查看或联系客服。</p>}{voice.preview_status === "submitting" && <VoiceProgress status="submitting" preview compact />}

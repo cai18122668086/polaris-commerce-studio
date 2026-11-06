@@ -2,6 +2,7 @@
 
 import { AlertCircle, ArrowDownToLine, ArrowRight, Copy, FilePenLine, LoaderCircle, Send, Sparkles } from "lucide-react";
 import { assistanceMessage, type AssistanceJob, type AssistanceKind } from "@/features/video-studio/assistance";
+import { Disclosure, TextDocument } from "./studio-content";
 import styles from "./studio-workflow.module.css";
 
 const tools = [
@@ -36,11 +37,11 @@ export function ScriptAssistant(props: {
       {props.mode === "extract" ? <label className={styles.assistantField}>参考视频链接<input type="url" aria-label="参考视频链接" value={props.sourceLink} onChange={event => props.onSourceLinkChange(event.target.value)} placeholder="粘贴公开抖音视频链接" maxLength={2048} /><small>当前支持公开抖音视频，提取后请核对转写内容。</small></label>
         : props.mode === "rewrite" ? <label className={styles.assistantField}><span>参考文案<button type="button" onClick={() => props.onModeChange("extract")}>从视频提取 <ArrowRight size={12} /></button></span><textarea aria-label="原始文案" rows={5} value={props.sourceText} onChange={event => props.onSourceTextChange(event.target.value)} maxLength={6000} placeholder="粘贴参考文案，也可以先从视频提取" /></label>
           : <div className={styles.assistantSuggestions}>{["写一段产品介绍", "写一个吸引人的口播开场", "把产品卖点讲得更自然"].map(text => <button type="button" key={text} onClick={() => props.onPromptChange(text)}>{text}<ArrowRight size={13} /></button>)}</div>}
-      {props.mode !== "extract" && <details className={styles.productFacts}><summary>产品资料 <small>{props.facts.trim() ? "已填写" : "补充真实卖点，让文案更准确"}</small></summary><label className={styles.assistantField}><textarea aria-label="产品事实" rows={4} maxLength={6000} value={props.facts} onChange={event => props.onFactsChange(event.target.value)} placeholder="品牌、规格、价格、已确认卖点…" /></label></details>}
+      {props.mode !== "extract" && <Disclosure title="产品资料" description="补充真实卖点与规格" meta={props.facts.trim() ? "已填写" : "选填"}><label className={styles.assistantField}><textarea aria-label="产品事实" rows={4} maxLength={6000} value={props.facts} onChange={event => props.onFactsChange(event.target.value)} placeholder="品牌、规格、价格、已确认卖点…" /></label></Disclosure>}
       {status && <div className={styles.assistantStatus} data-error={badStatus || undefined} role={badStatus ? "alert" : "status"}>{running ? <LoaderCircle size={16} className={styles.spin} /> : <AlertCircle size={16} />}<p>{status}</p>{props.job?.can_resume && <button type="button" onClick={props.onResume}>继续原任务</button>}</div>}
       {result.trim() && <section className={styles.assistantResult}><header><b>{props.mode === "extract" ? "提取原文" : "待确认文案"}</b><span>{result.length} 字</span><button type="button" aria-label="复制助手结果全文" onClick={() => props.onCopy(result)}><Copy size={14} /></button></header>
-        {props.mode === "create" ? <p className={styles.assistantResultText}>{result}</p> : <textarea aria-label={props.mode === "extract" ? "提取原文" : "改写结果"} value={result} onChange={event => props.mode === "extract" ? props.onSourceTextChange(event.target.value) : props.onResultChange(event.target.value)} rows={7} />}
-        {props.job?.result.warnings?.length ? <small>{props.job.result.warnings.join("；")}</small> : null}
+        {props.mode === "create" ? <TextDocument key={props.job?.id || "result"} text={result} title="文案预览" onCopy={props.onCopy} /> : <textarea aria-label={props.mode === "extract" ? "提取原文" : "改写结果"} value={result} onChange={event => props.mode === "extract" ? props.onSourceTextChange(event.target.value) : props.onResultChange(event.target.value)} rows={7} />}
+        {props.job?.result.warnings?.length ? <ul className={styles.resultWarnings}>{props.job.result.warnings.map((warning,index) => <li key={index}>{warning}</li>)}</ul> : null}
         <div className={styles.assistantResultActions}>{props.mode === "extract" && <button type="button" className={styles.secondaryButton} onClick={() => props.onModeChange("rewrite")}>继续二创</button>}<button type="button" className={styles.actionButton} onClick={props.mode === "extract" ? props.onUseOriginal : props.onUseResult}>填入编辑器 <ArrowRight size={14} /></button></div>
       </section>}
     </div>

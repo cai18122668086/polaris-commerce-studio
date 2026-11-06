@@ -493,3 +493,69 @@
 .compactGenerationWorks .workCard { display:grid; grid-template-columns:84px minmax(0,1fr); }
 .studio .compactGenerationWorks .workImage { height:100%; min-height:135px; aspect-ratio:auto; }
 .compactGenerationWorks .workCard > div { padding:12px; gap:5px; }
+
+/* Shared hierarchy for every studio screen, including native top-layer dialogs. */
+.studio { --ink:#302936; --muted:#81758a; --border:#e9e3ef; text-rendering:optimizeLegibility; }
+.studio .dialog { font:inherit; line-height:1.6; border-radius:16px; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#d5c9df transparent; }
+.dialogInner { min-width:0; }
+.dialogInner > header { position:sticky; top:0; z-index:4; min-height:44px; background:#fff; margin-bottom:18px; padding-bottom:12px; border-bottom:1px solid #f1ecf5; }
+.dialogInner > header h2 { font-size:17px; line-height:1.5; font-weight:650; overflow-wrap:anywhere; }
+.dialogInner > p { color:#82728f; font-size:12px; line-height:1.85; margin:12px 0; }
+.dialogFooter { position:sticky; bottom:0; z-index:3; flex-wrap:wrap; align-items:center; background:#fff; }
+.dialogInner > p[role=alert] { padding:12px; border:1px solid #efdcd8; border-radius:9px; color:#a05e54; background:#fff8f5; }
+.studio .primaryButton,.studio .outlineButton { border-radius:9px; min-height:40px; line-height:1.5; }
+.studio .iconButton { width:32px; height:32px; border-radius:8px; flex-shrink:0; }
+.studio .textButton { min-height:30px; font-size:12px; line-height:1.6; }
+.pageHeading { align-items:flex-start; }
+.pageHeading > div { min-width:0; }
+.pageHeading h1 { font-size:23px; letter-spacing:-.4px; }
+.pageHeading p,.welcomeRow p { font-size:12px; line-height:1.8; color:#86768f; max-width:54ch; }
+.featureCard p { font-size:12px; max-width:23ch; line-height:1.7; }
+.featureCard div > span { font-size:11px; }
+.listHeading { gap:14px; }
+.listHeading > b { flex-shrink:0; }
+.copyList article { min-width:0; padding:18px; border-radius:13px; display:flex; flex-direction:column; gap:14px; }
+.copyList article > div { flex-wrap:wrap; }
+.copyList article > div > b { flex:1; min-width:0; color:#4d4058; font-size:13px; }
+.copyList article > div > time { color:#8f819b; font-size:10px; }
+.copyList article > button { align-self:flex-start; margin-top:auto; }
+.worksGrid { align-items:start; }
+.workCard { min-width:0; border-radius:12px; }
+.workCard > div > b { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; font-size:13px; line-height:1.6; }
+.workActions { flex-wrap:wrap; }
+.workActions > button,.workActions > a { font-size:11px!important; }
+.templateReview { display:flex; align-items:center; gap:16px; padding:15px; background:#faf8fc; border:1px solid #eee7f4; border-radius:12px; margin:0 0 20px; }
+.templateReview > img { width:84px; height:120px; object-fit:contain; background:#eee7f3; border-radius:8px; }
+.templateReview > div { min-width:0; display:flex; flex-direction:column; gap:7px; }
+.templateReview h3 { font-size:14px; overflow-wrap:anywhere; }
+.templateReview span { color:#907d9f; font-size:12px; }
+.helpContent { gap:16px; }
+.helpSteps { display:grid; gap:12px; }
+.helpSteps > div { display:flex; gap:12px; align-items:center; padding:12px; border:1px solid #ece5f3; border-radius:11px; background:#faf8fc; }
+.helpSteps > div > span { width:30px; height:30px; border-radius:9px; display:grid; place-items:center; color:#8a68a4; background:#efe7f6; font-size:12px; }
+.helpSteps b { font-size:13px; color:#51415f; font-weight:600; }
+.helpSteps p { font-size:11px; line-height:1.7; color:#93809e; margin-top:3px; }
+.helpNotes { margin:0; padding-left:17px; display:grid; gap:9px; font-size:12px; color:#7d6c89; line-height:1.8; }
+.statusPage { display:grid; place-items:center; padding:28px; }
+.statusCard { width:min(460px,100%); display:flex; flex-direction:column; align-items:center; gap:16px; padding:38px 28px; border:1px solid var(--border); border-radius:18px; background:#fff; text-align:center; }
+.statusCard > svg { color:#9979b0; }
+.statusCard h1 { font-size:20px; }
+.statusCard p { font-size:13px; line-height:1.8; color:#8b7b97; max-width:30ch; }
+.statusCard button,.statusCard a { margin-top:8px; }
+.connectionNotice { display:flex; justify-content:center; align-items:center; gap:12px; padding:12px 20px; background:#f8f4fc; border-bottom:1px solid #e9e0f2; color:#806891; font-size:12px; line-height:1.7; flex-wrap:wrap; }
+@media(max-width:700px) {
+  .dialogInner { padding:20px 18px 0; }
+  .dialogInner > header { padding-bottom:10px; margin-bottom:16px; }
+  .dialogFooter { margin-inline:-18px; padding:15px 18px; gap:9px; }
+  .pageHeading { gap:12px; flex-wrap:wrap; }
+  .pageHeading h1 { font-size:21px; }
+  .pageHeading p,.featureCard p { font-size:11px; }
+  .featureCard div > span { font-size:10px; }
+  .sectionHeading span { font-size:11px; }
+  .listHeading { flex-wrap:wrap; }
+  .listHeading .search { flex:1; min-width:150px; }
+  .studio .copyActions button { min-height:38px; }
+  .studio .scriptToolbar button { min-height:30px; }
+  .statusCard { padding:30px 20px; }
+  .helpContent { padding-bottom:22px; }
+}

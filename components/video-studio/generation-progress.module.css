@@ -38,3 +38,4 @@
 @keyframes scan { to { top:100%; } }
 @media(max-width:480px) { .steps { gap:4px; } .steps li { font-size:10px; gap:4px; } .steps li > span { width:16px; height:16px; } .heading h3 { font-size:14px; } }
 @media(prefers-reduced-motion:reduce) { .panel *, .spinner, .scan { animation:none!important; transition:none!important; } }
+.panel[data-state=waiting] .core { box-shadow:none; }

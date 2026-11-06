@@ -169,3 +169,11 @@
 .voiceAvatarMale { background: #798da4; }
 .voiceAvatarFemale { background: #aa86ad; }
 .pickerResultMeta small, .avatarPickerCaption small { color: #75697f; }
+.pickerSelection { min-width:0; }
+.pickerSelection > b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.voiceRowText { min-width:0; }
+.voiceRowText b { line-height:1.6; }
+.voiceRowText > span { gap:5px; flex-wrap:wrap; }
+.pickerFooter { flex-wrap:wrap; row-gap:12px; }
+.pickerResultMeta { gap:12px; }
+@media(max-width:600px) { .voiceRowText small { font-size:11px; } .avatarPickerCaption small { font-size:10px; line-height:1.7; } .pickerResultMeta small { font-size:10px; } .pickerFooter .pickerSelection { flex:1 0 100%; } }

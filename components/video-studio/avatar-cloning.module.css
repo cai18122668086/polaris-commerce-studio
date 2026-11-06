@@ -28,3 +28,9 @@
 @keyframes spin { to { transform:rotate(360deg); } }
 @media(max-width:420px) { .tabs { gap:9px; } .tabs button { padding:12px; } .tabs button > small { font-size:9px; } .flow { font-size:10px; padding:10px 5px; } }
 @media(prefers-reduced-motion:reduce) { .spinner,.uploadProgress svg { animation:none; } }
+.flow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; list-style:none; padding:13px 10px; margin:0 0 18px!important; border:1px solid #eee8f4; background:#faf8fc; }
+.flow li { display:flex; align-items:center; justify-content:center; flex-direction:column; gap:7px; font-size:10px; color:#83708f; }
+.flow li > span { width:21px; height:21px; display:grid; place-items:center; border-radius:7px; background:#eee6f5; color:#8963a5; font-size:10px; }
+.help { font-size:11px; line-height:1.8; }
+.drop > span { color:#887493; }
+@media(max-width:420px) { .flow { gap:6px; padding:12px 7px; } .flow li { font-size:10px; } .tabs button > small { font-size:10px; line-height:1.7; } }

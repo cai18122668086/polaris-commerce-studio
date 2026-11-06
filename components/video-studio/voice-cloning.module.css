@@ -57,3 +57,12 @@
 @media (max-width: 1050px) { .voices { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .voices { grid-template-columns: minmax(0, 1fr); } .toolbar { align-items: flex-start; } }
 @media (max-width: 500px) { .cloneDialog > div { padding: 21px 20px 0; } .footer { margin-inline: -20px; padding: 16px 20px; } .form { gap: 19px; } .uploadArea { min-height: 144px; padding-inline: 14px; } }
+.manager { padding-top:20px; }
+.toolbar { flex-wrap:wrap; gap:10px; }
+.toolbar p { max-width:44ch; }
+.heading > div { min-width:0; }
+.voice { border-radius:13px; }
+.voice .actions button { min-height:36px; }
+.form .fileHelp,.uploadArea .uploadHint { color:#8b7d94; font-size:11px; line-height:1.8; }
+.consent { color:#86758f; }
+.footer { position:sticky; bottom:0; z-index:3; flex-wrap:wrap; }

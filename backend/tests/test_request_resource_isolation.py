@@ -35,6 +35,10 @@ from tests.test_api import (
 )
 from tests.test_ecommerce_workers import _queued_task, _register
 
+# Bounds deadlocks, not runner speed. Correctness is established by the closed
+# release gate, unfinished storage task and zero checked-out DB connections.
+DEADLOCK_TIMEOUT = 30
+
 
 @pytest.fixture
 def bounded_client(settings, monkeypatch):
@@ -116,13 +120,13 @@ def test_public_storage_bursts_keep_authentication_responsive(
             try:
                 for _ in range(count):
                     tasks.append(asyncio.create_task(client.get(url)))
-                    await asyncio.wait_for(entered.get(), 3)
+                    await asyncio.wait_for(entered.get(), DEADLOCK_TIMEOUT)
                     assert app.state.engine.pool.checkedout() == 0
                 ready, identity = await asyncio.wait_for(
                     asyncio.gather(
                         client.get("/health/ready"), client.get("/api/v1/me")
                     ),
-                    1,
+                    DEADLOCK_TIMEOUT,
                 )
                 assert ready.status_code == identity.status_code == 200
                 assert not any(task.done() for task in tasks)
@@ -158,7 +162,7 @@ def test_slow_public_database_lookup_does_not_block_event_loop(
     def slow_query(_conn, _cursor, statement, *_args):
         if f"FROM {table}" in statement:
             entered.set()
-            assert release.wait(3)
+            assert release.wait(DEADLOCK_TIMEOUT * 2)
 
     event.listen(app.state.engine, "before_cursor_execute", slow_query)
 
@@ -168,8 +172,10 @@ def test_slow_public_database_lookup_does_not_block_event_loop(
         ) as client:
             task = asyncio.create_task(client.get(url))
             try:
-                assert await asyncio.to_thread(entered.wait, 1)
-                ready = await asyncio.wait_for(client.get("/health/live"), 1)
+                assert await asyncio.to_thread(entered.wait, DEADLOCK_TIMEOUT)
+                ready = await asyncio.wait_for(
+                    client.get("/health/live"), DEADLOCK_TIMEOUT
+                )
                 assert ready.status_code == 200
                 assert not release.is_set()
             finally:
@@ -179,7 +185,9 @@ def test_slow_public_database_lookup_does_not_block_event_loop(
 
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
-            watchdog = executor.submit(lambda: release.wait(2) or release.set())
+            watchdog = executor.submit(
+                lambda: release.wait(DEADLOCK_TIMEOUT) or release.set()
+            )
             asyncio.run(scenario())
             watchdog.result()
     finally:
@@ -218,12 +226,14 @@ def test_admin_asset_signing_releases_database(bounded_client, monkeypatch):
                 client.get(f"/api/v1/admin/generation-jobs/{job_id}")
             )
             try:
-                await asyncio.wait_for(entered.wait(), 3)
+                await asyncio.wait_for(entered.wait(), DEADLOCK_TIMEOUT)
                 assert app.state.engine.pool.checkedout() == 0
                 # This is an ordering/resource-isolation test, not a one-second
                 # latency SLO on a shared CI runner. Keep signing blocked until
                 # readiness finishes; the deadline only bounds a real deadlock.
-                ready = await asyncio.wait_for(client.get("/health/ready"), 10)
+                ready = await asyncio.wait_for(
+                    client.get("/health/ready"), DEADLOCK_TIMEOUT
+                )
                 assert ready.status_code == 200
                 assert not release.is_set()
                 assert not task.done()
@@ -238,8 +248,9 @@ def test_admin_asset_signing_releases_database(bounded_client, monkeypatch):
 
 
 @pytest.mark.parametrize("lose_lease", [False, True])
+@pytest.mark.parametrize("storage_start_delay", [0, 3.1])
 def test_worker_result_waits_without_connections_and_preserves_fencing(
-    bounded_client, settings, monkeypatch, lose_lease
+    bounded_client, settings, monkeypatch, lose_lease, storage_start_delay
 ):
     app = bounded_client.app
     worker = _register(bounded_client)
@@ -290,6 +301,9 @@ def test_worker_result_waits_without_connections_and_preserves_fencing(
         save = app.state.storage.save_validated
 
         async def slow_save(prepared):
+            # Delayed scheduling beyond the old three-second guard must still
+            # preserve the same DB/lease ordering, without relaxing assertions.
+            await asyncio.sleep(storage_start_delay)
             entered.set()
             await release.wait()
             return await save(prepared)
@@ -300,10 +314,15 @@ def test_worker_result_waits_without_connections_and_preserves_fencing(
         ) as client:
             task = asyncio.create_task(client.post(url, headers=headers, json=body))
             try:
-                await asyncio.wait_for(entered.wait(), 3)
+                await asyncio.wait_for(entered.wait(), DEADLOCK_TIMEOUT)
                 assert engine.pool.checkedout() == 0
-                ready = await asyncio.wait_for(client.get("/health/ready"), 1)
+                ready = await asyncio.wait_for(
+                    client.get("/health/ready"), DEADLOCK_TIMEOUT
+                )
                 assert ready.status_code == 200
+                assert not release.is_set()
+                assert not task.done()
+                assert engine.pool.checkedout() == 0
                 if lose_lease:
                     with app.state.session_factory() as session:
                         lease = session.scalar(

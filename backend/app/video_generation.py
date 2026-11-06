@@ -22,6 +22,7 @@ from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
 from .models import utc_now
+from .video_avatar_catalog import public_avatar_gender
 from .video_cosyvoice import CosyVoice
 from .video_generation_media import prepare_lipsync_media, set_stage
 from .video_generation_models import (
@@ -549,7 +550,9 @@ def avatars(
                 id=row.id,
                 name=row.name,
                 source=cast(Literal["quanyu_public", "self_owned"], row.source),
-                gender=row.gender,
+                gender=public_avatar_gender(row.provider_model_id, row.name, row.gender)
+                if row.source == "quanyu_public"
+                else row.gender,
                 tag="公共数字人" if row.source == "quanyu_public" else "极光原创",
                 cover_url=root + "/cover",
                 preview_url=root + "/preview" if row.video_url or owned else None,

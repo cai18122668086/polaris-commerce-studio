@@ -1,4 +1,10 @@
 /* Shared selection surfaces: Bihuo layout, Polaris / Picco-inspired colour. */
+.voicePreviewButton { display: grid; place-items: center; flex: 0 0 42px; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; background: #8b76aa; color: #fff; }
+.voicePreviewButton svg { display: block; margin: 0; }
+.voicePreviewButton svg.lucide-play { transform: translateX(1px); }
+.voicePreviewButton:hover:not(:disabled), .voicePreviewButton[aria-pressed=true] { background: #5d4476; box-shadow: 0 0 0 4px #eee7f6; }
+.voicePreviewButton:disabled { opacity: .4; }
+.pickerLoadStatus { display: flex; align-items: center; justify-content: center; padding: 20px 5px 12px; min-height: 46px; color: #71657d; font-size: 11px; }
 .voiceDialog.voiceDialog, .avatarPickerDialog.avatarPickerDialog {
   width: min(920px, calc(100vw - 48px));
   max-height: calc(100dvh - 56px);
@@ -14,7 +20,7 @@
 .voiceDialog > div > header, .avatarPickerDialog > div > header { flex-shrink: 0; margin-bottom: 13px; }
 .voiceDialog > div > header h2, .avatarPickerDialog > div > header h2 { font-size: 19px; font-weight: 650; color: #25222b; }
 .pickerTabs { display: flex; gap: 8px; border-bottom: 1px solid #ece8f0; flex-shrink: 0; }
-.pickerTabs button { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 117px; position: relative; padding: 14px 17px; background: transparent; border: 0; color: #86808e; font-size: 13px; border-radius: 7px 7px 0 0; transition: background .18s, color .18s; }
+.pickerTabs button { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 117px; position: relative; padding: 14px 17px; background: transparent; border: 0; color: #6b6274; font-size: 13px; border-radius: 7px 7px 0 0; transition: background .18s, color .18s; }
 .pickerTabs button:hover { background: #f7f3fb; color: #34303c; }
 .pickerTabs button[aria-selected=true] { color: #302537; font-weight: 600; }
 .pickerTabs button::after { content: ""; position: absolute; bottom: -1px; left: 15px; right: 15px; height: 3px; background: #c8e83b; border-radius: 3px; transform: scaleX(0); transition: transform .22s cubic-bezier(.2,.8,.2,1); }
@@ -23,19 +29,19 @@
 .pickerSegments button { min-width: 41px; padding: 5px 11px; border: 0; border-radius: 6px; background: transparent; color: #77707f; font-size: 12px; transition: color .15s, background .15s, box-shadow .15s; }
 .pickerSegments button[aria-pressed=true] { color: #3e2f4c; background: white; box-shadow: 0 1px 5px #3b274b14; font-weight: 600; }
 .pickerSegments button:hover:not([aria-pressed=true]) { background: #eae3f1; color: #45364f; }
-.pickerSearch { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; height: 37px; padding: 0 12px; background: #f6f5f8; color: #9990a2; border: 1px solid transparent; border-radius: 8px; transition: border-color .18s, box-shadow .18s, background .18s; }
+.pickerSearch { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; height: 37px; padding: 0 12px; background: #f6f5f8; color: #6b6274; border: 1px solid transparent; border-radius: 8px; transition: border-color .18s, box-shadow .18s, background .18s; }
 .pickerSearch:focus-within { border-color: #b5a0cc; background: #fff; box-shadow: 0 0 0 3px #eee6f84d; }
 .pickerSearch input { width: 100%; min-width: 0; border: 0 !important; box-shadow: none !important; outline: none; padding: 0; background: transparent !important; font-size: 12px; color: #3d3545; }
-.pickerSearch button { display: grid; place-items: center; border: 0; border-radius: 50%; padding: 3px; color: #8a7f95; background: #eae5ef; }
+.pickerSearch button { display: grid; place-items: center; border: 0; border-radius: 50%; padding: 3px; color: #6b6274; background: #eae5ef; }
 .pickerResultMeta { flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 13px; min-height: 19px; font-size: 11px; color: #7d7387; }
 .pickerResultMeta > span { display: flex; align-items: center; gap: 7px; }
 .pickerResultMeta b { padding: 1px 6px; border-radius: 5px; background: #f1edf6; color: #746080; font-size: 10px; font-weight: 500; }
-.pickerResultMeta small { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #968d9e; }
+.pickerResultMeta small { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #6b6274; }
 .pickerFooter { display: flex; align-items: center; flex-shrink: 0; gap: 10px; margin: 0 -24px; padding: 17px 24px; border-top: 1px solid #eee9f2; background: linear-gradient(110deg, #fcfaff, #fff 70%); }
 .pickerFooter > button { min-width: 72px; padding: 9px 17px; font-size: 12px; border-radius: 8px; }
-.pickerSelection { display: flex; align-items: center; min-width: 0; flex: 1; gap: 8px; color: #8e8299; font-size: 11px; }
+.pickerSelection { display: flex; align-items: center; min-width: 0; flex: 1; gap: 8px; color: #6b6274; font-size: 11px; }
 .pickerSelection > b { color: #4c3b5a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 550; }
-.pickerSelection > small { font-size: 10px; color: #978b9f; white-space: nowrap; }
+.pickerSelection > small { font-size: 10px; color: #6b6274; white-space: nowrap; }
 .selectedPill { padding: 2px 6px; background: #ecf3d1; border-radius: 4px; color: #657135; font-size: 10px; white-space: nowrap; }
 
 /* Avatar catalogue: four columns, full frame foreground, soft contextual backdrop. */
@@ -52,27 +58,27 @@
 .avatarPickerPortrait { height: 100%; width: 100%; object-fit: contain; padding: 10px 12px; display: block; }
 .avatarPickerCaption { display: grid; gap: 4px; padding: 10px 10px 11px; min-width: 0; width: 100%; }
 .avatarPickerCaption b { font-size: 13px; font-weight: 550; color: #42364b; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-.avatarPickerCaption small { color: #9b8fa4; font-size: 10px; }
+.avatarPickerCaption small { color: #6b6274; font-size: 10px; }
 .avatarPickerCheck { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 21px; height: 21px; border-radius: 50%; background: #d8f379; color: #3d4523; box-shadow: 0 2px 8px #19230010; }
 .avatarPickerPreview { position: absolute; left: 50%; top: calc((100% - 59px) / 2); transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border: 1px solid #ffffffad; border-radius: 20px; background: #26212caa; backdrop-filter: blur(6px); color: #fff; font-size: 10px; opacity: 0; transition: opacity .18s, background .18s; }
 .avatarPickerCard:hover .avatarPickerPreview, .avatarPickerCard:focus-within .avatarPickerPreview { opacity: 1; }
 .avatarPickerPreview:hover { background: #25212d; }
 .pickerPagination { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 13px 0 15px; flex-shrink: 0; }
-.pickerPagination > span { margin-right: auto; color: #a093ab; font-size: 10px; }
-.pickerPagination button { display: grid; place-items: center; min-width: 27px; height: 27px; border: 0; background: transparent; border-radius: 6px; color: #8e8199; font-size: 11px; }
+.pickerPagination > span { margin-right: auto; color: #6b6274; font-size: 10px; }
+.pickerPagination button { display: grid; place-items: center; min-width: 27px; height: 27px; border: 0; background: transparent; border-radius: 6px; color: #6b6274; font-size: 11px; }
 .pickerPagination button:hover:not(:disabled) { background: #f1eaf8; color: #493358; }
 .pickerPagination button[aria-current=page] { color: #3c3148; background: #edf5cc; font-weight: 650; }
 .avatarSkeleton { aspect-ratio: 1; border-radius: 10px; background: linear-gradient(100deg, #f4f0f7 30%, #fcfaff 50%, #f4f0f7 70%); background-size: 250% 100%; animation: picker-shimmer 1.5s linear infinite; }
 .pickerPreviewDialog.pickerPreviewDialog { width: min(480px, calc(100vw - 32px)); }
 .pickerPreviewMedia { display: block; width: 100%; height: min(55dvh, 480px); object-fit: contain; background: #f3f0f6; border-radius: 9px; }
-.pickerPreviewNote { margin-top: 13px !important; font-size: 12px; color: #8b7a98; }
+.pickerPreviewNote { margin-top: 13px !important; font-size: 12px; color: #6b6274; }
 
 /* Voice catalogue: compact three-column rows and independent, generous play targets. */
 .voiceBrowser { min-width: 0; }
 .voiceBrowserDialog { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .voiceFilters { display: grid; grid-template-columns: auto minmax(180px,1fr) auto; align-items: center; gap: 18px; padding: 20px 0 18px; flex-shrink: 0; }
 .voiceGenderFilter { display: flex; align-items: center; gap: 10px; }
-.voiceGenderFilter > span, .voiceLanguageFilter > span { font-size: 11px; color: #8b8095; }
+.voiceGenderFilter > span, .voiceLanguageFilter > span { font-size: 11px; color: #6b6274; }
 .voiceSearchForm { display: flex; min-width: 0; gap: 8px; }
 .voiceSearchForm .pickerSearch { height: 35px; }
 .voiceSearchButton { background: #27232e; color: #fff; padding: 7px 13px; border: 1px solid #27232e; border-radius: 7px; font-size: 12px; transition: background .18s, color .18s; }
@@ -94,9 +100,9 @@
 .voiceRowText { display: grid; gap: 5px; min-width: 0; flex: 1; }
 .voiceRowText b { font-weight: 500; font-size: 13px; color: #594565; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .voiceRowText > span { display: flex; gap: 5px; flex-wrap: wrap; }
-.voiceRowText small { font-size: 9px; color: #91839c; padding: 1px 4px; border-radius: 3px; background: #f3f0f6; }
+.voiceRowText small { font-size: 9px; color: #6b6274; padding: 1px 4px; border-radius: 3px; background: #f3f0f6; }
 .voiceRowText .maleVoiceTag { color: #8c728e; background: #f0e6f3; }
-.voiceRowText .femaleVoiceTag { color: #7c884e; background: #f1f5d9; }
+.voiceRowText .femaleVoiceTag { color: #6b6274; background: #f1f5d9; }
 .voiceRowCheck { align-self: flex-start; display: grid; place-items: center; width: 17px; height: 17px; flex-shrink: 0; margin-left: -3px; border-radius: 50%; color: #54612f; }
 .voiceRowSelected .voiceRowCheck { background: #e1f2af; }
 .voicePreviewOverlay { display: grid; place-items: center; position: absolute; top: 16px; left: 14px; width: 33px; height: 33px; background: #2c233744; border: 1px solid #ffffffb0; border-radius: 50%; color: #fff; padding: 0; transition: background .18s, box-shadow .18s; }
@@ -152,3 +158,14 @@
   .avatarPickerGrid, .avatarSkeleton, .playingDot { animation: none; }
   .pickerTabs button, .pickerTabs button::after, .pickerSegments button, .pickerSearch, .avatarPickerCard, .avatarPickerPreview, .voiceRow, .voicePreviewOverlay, .voiceSearchButton { transition: none; }
 }
+
+/* Playback and selection occupy separate, aligned targets. */
+.voiceRow { display: flex; align-items: center; gap: 12px; padding: 12px; }
+.voiceRowSelect { width: auto; min-width: 0; flex: 1; min-height: 48px; padding: 0; }
+.voiceRowText b { color: #39303f; font-size: 13px; font-weight: 550; }
+.voiceRowText small { font-size: 10px; color: #6e617a; }
+.voiceRowCheck { align-self: center; }
+.voiceFilters { gap: 16px; }
+.voiceAvatarMale { background: #798da4; }
+.voiceAvatarFemale { background: #aa86ad; }
+.pickerResultMeta small, .avatarPickerCaption small { color: #75697f; }

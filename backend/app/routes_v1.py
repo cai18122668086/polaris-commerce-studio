@@ -4824,11 +4824,17 @@ def _reserve_real_provider_job_if_enabled(
             if runnable_item_count is not None
             else job.expected_item_count
         )
-        estimated_cost = (
-            image_cost * 2 + settings.tengli_planner_reserve_micros * 4 * fast_count
+        from .remix_fast_contract import (
+            MAX_PLANNER_REQUESTS_PER_IMAGE,
+            MAX_REQUESTS_PER_IMAGE,
         )
-        provider_requests = 6 * fast_count
-        group_count = 2 * fast_count
+
+        estimated_cost = (
+            image_cost + settings.tengli_planner_reserve_micros
+            * MAX_PLANNER_REQUESTS_PER_IMAGE * fast_count
+        )
+        provider_requests = MAX_REQUESTS_PER_IMAGE * fast_count
+        group_count = MAX_PLANNER_REQUESTS_PER_IMAGE * fast_count
     elif job.type == JobType.REFERENCE_REMIX.value and settings.task_runner == "tengli":
         # Reference remix now performs one bounded vision-analysis call before
         # the image edit so the Skill's composition skeleton reaches the image

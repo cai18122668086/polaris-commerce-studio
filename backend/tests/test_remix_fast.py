@@ -42,9 +42,6 @@ def brief():
         "buyer_conclusion": "看清商品真实细节",
         "generation_brief": "主体 x=0.2..0.8 y=0.15..0.9，顶部留白 0.1",
         "approved_visible_copy": ["轻量随行杯"],
-        "critical_regions": [
-            {"box": [0.2, 0.2, 0.8, 0.8], "feature": "产品接口和纹样方向"}
-        ],
         "product_present": True,
     }
 
@@ -363,11 +360,9 @@ def test_fast_live_observed_array_is_excluded_by_the_wire_contract():
     }
     errors = list(validator.iter_errors(observed))
     assert any(list(error.path) == ["identity_constraints"] for error in errors)
-    with pytest.raises(ValueError):
-        _validate_brief(observed)
-    observed["identity_constraints"] = "；".join(observed["identity_constraints"])
-    validator.validate(observed)
-    assert _validate_brief(observed) == observed
+    normalized = _validate_brief(observed)
+    assert normalized["identity_constraints"] == "保留透明方形瓶盖\n保留横向蝴蝶结"
+    validator.validate(normalized)
 
 
 def test_fast_planner_wire_contract_has_typed_stages_and_computed_canvas(

@@ -137,8 +137,10 @@ def prepare_forward(
         else:
             graph = (
                 f"[0:v]fps={fps},settb=AVTB,split=2[body][head];"
-                f"[body]trim=start={fade}:end={duration},setpts=PTS-STARTPTS[b];"
-                f"[head]trim=end={fade},setpts=PTS-STARTPTS[h];"
+                # FFmpeg 7 can lose the frame-rate metadata after trim/setpts.
+                # Restore a constant rate on both inputs required by xfade.
+                f"[body]trim=start={fade}:end={duration},setpts=PTS-STARTPTS,fps={fps}[b];"
+                f"[head]trim=end={fade},setpts=PTS-STARTPTS,fps={fps}[h];"
                 f"[b][h]xfade=transition=fade:duration={fade}:"
                 f"offset={duration - 2 * fade},format=yuv420p[out]"
             )

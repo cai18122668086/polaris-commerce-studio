@@ -6,7 +6,7 @@ import pytest
 
 from app.errors import ApiError
 from app.video_generation_models import VideoAvatarRecord
-from app.video_template_media import prepare_forward, video_info
+from app.video_template_media import prepare_forward, run_media, video_info
 from tests.test_video_generation import FakeVideoProviders, request_body
 
 pytest_plugins = ["tests.test_video_generation"]
@@ -154,6 +154,55 @@ def test_forward_upload_resume_reuses_tts_and_prepared_file(video_gen):
     assert path.stat().st_mtime_ns == stamp
     assert [p for _, p, _ in provider.posts].count("/api/tts/generate") == 1
     assert [p for _, p, _ in provider.posts].count("/api/digital_human/models") == 1
+
+
+def test_forward_preparation_resume_reuses_existing_tts(video_gen, monkeypatch):
+    from app import video_generation_media
+
+    client, _, provider, root, pid, _ = video_gen
+    provider.audio_seconds = 4
+    original = video_generation_media.prepare_forward
+
+    def failing(*args, **kwargs):
+        raise ApiError(422, "VIDEO_MEDIA_PROCESSING_FAILED", "fixture interrupted")
+
+    monkeypatch.setattr(video_generation_media, "prepare_forward", failing)
+    client.post(root + "/generation-tasks", json=request_body(pid))
+    job = client.get(root + "/generation-tasks").json()[0]
+    assert job["status"] == "failed" and job["stage"] == "preparing_forward_template"
+    assert job["can_resume"] is True
+    original_audio = job["audio_url"]
+    monkeypatch.setattr(video_generation_media, "prepare_forward", original)
+    client.post(root + f"/generation-tasks/{job['id']}/resume")
+    resumed = client.get(root + "/generation-tasks").json()[0]
+    assert resumed["status"] == "completed" and resumed["id"] == job["id"]
+    assert resumed["audio_url"] == original_audio
+    assert [p for _, p, _ in provider.posts].count("/api/tts/generate") == 1
+    assert [p for _, p, _ in provider.posts].count("/api/digital_human/submit") == 1
+
+
+def test_forward_25fps_template_covers_saved_narration_and_decodes(tmp_path):
+    source, target = tmp_path / "source.mp4", tmp_path / "forward.mp4"
+    run_media(
+        [
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=64x96:rate=25:duration=10.92",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-video_track_timescale",
+            "90000",
+            str(source),
+        ]
+    )
+    prepare_forward(source, target, 46.1715)
+    info = video_info(target)
+    assert info["fps"] == 25
+    assert info["duration"] + 0.005 >= 46.1715
+    run_media(["-xerror", "-i", str(target), "-map", "0:v:0", "-f", "null", "-"])
 
 
 def test_source_is_snapshotted_before_avatar_library_changes(video_gen, monkeypatch):

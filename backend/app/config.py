@@ -89,6 +89,8 @@ class Settings(BaseSettings):
     quanyu_api_key: SecretStr = SecretStr("")
     video_tao_tts_enabled: bool = False
     tao_api_key: SecretStr = SecretStr("")
+    video_hashsight_tts_enabled: bool = False
+    video_hashsight_api_key: SecretStr = SecretStr("")
     video_tao_tts_model: Literal["speech-2.8-turbo", "speech-2.8-hd"] = (
         "speech-2.8-turbo"
     )

@@ -69,25 +69,24 @@ def _validate_replacement(
             or (removal and effect in {None, "REMOVE"})
         ):
             _invalid("Local copy must preserve anchors or remove an exact subset")
-    elif path == "/module_spatial_structure_contract/zones":
-        if (
-            len(old) != len(new)
-            or any(
-                {
-                    k: v
-                    for k, v in a.items()
-                    if k not in {"geometry", "visual_weight_percent"}
-                }
-                != {
-                    k: v
-                    for k, v in b.items()
-                    if k not in {"geometry", "visual_weight_percent"}
-                }
-                for a, b in zip(old, new, strict=True)
-            )
-            or abs(sum(row["visual_weight_percent"] for row in new) - 100) > 0.01
-        ):
-            _invalid("Local geometry must preserve content and total weight 100")
+    elif path == "/module_spatial_structure_contract/zones" and (
+        len(old) != len(new)
+        or any(
+            {
+                k: v
+                for k, v in a.items()
+                if k not in {"geometry", "visual_weight_percent"}
+            }
+            != {
+                k: v
+                for k, v in b.items()
+                if k not in {"geometry", "visual_weight_percent"}
+            }
+            for a, b in zip(old, new, strict=True)
+        )
+        or abs(sum(row["visual_weight_percent"] for row in new) - 100) > 0.01
+    ):
+        _invalid("Local geometry must preserve content and total weight 100")
 
 
 def _kind_allows(path: str, kind: str) -> bool:

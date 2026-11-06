@@ -59,7 +59,7 @@ export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCre
       }} />
     </label>
     <p className={cloneStyles.help}>{kind === "image" ? "JPG、PNG、WebP · 最大 10 MB · 边长至少 256 像素" : "MP4、MOV、WebM · 2～120 秒 · 最大 50 MB"}</p>
-    <p className={cloneStyles.flow}>{kind === "image" ? "上传照片 → 生成动作 → 预览确认 → 加入我的形象" : "上传视频 → 检查素材 → 预览确认 → 加入我的形象"}</p>
+    <ol className={cloneStyles.flow} aria-label="形象创建流程">{[kind === "image" ? "上传照片" : "上传视频", kind === "image" ? "生成动作" : "检查素材", "预览确认", "加入形象库"].map((step,index) => <li key={step}><span>{index + 1}</span>{step}</li>)}</ol>
     <label className={cloneStyles.consent}><input type="checkbox" checked={consent} disabled={busy || attempted} onChange={event => setConsent(event.target.checked)} /><span>我拥有此形象的使用授权，同意处理该素材并创建专属数字人。</span></label>
     {busy && <div className={cloneStyles.uploadProgress} role="status"><span><LoaderCircle size={15} />{upload?.complete ? "正在检查素材" : "正在上传素材"}<small>{percent === undefined ? "" : `${percent}%`}</small></span><progress aria-label="素材上传进度" max={100} value={upload?.complete ? undefined : percent} /></div>}
     {error && <p className={cloneStyles.error} role="alert">{error}</p>}

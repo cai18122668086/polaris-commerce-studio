@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import { withAuthTimeout } from "@/lib/auth/request-timeout";
@@ -19,6 +19,8 @@ export function useVideoLibrary(workspaceId: string) {
   const [jobs, setJobs] = useState<GenerationJob[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const resumeRequests = useRef(new Set<string>());
+  const [resumingIds, setResumingIds] = useState<string[]>([]);
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000), cache: "no-store" as const }), [workspaceId]);
   const reload = useCallback(async () => {
     try {
@@ -53,6 +55,18 @@ export function useVideoLibrary(workspaceId: string) {
   };
   const rejectTemplate = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/reject-template`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
   const approveTemplate = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/approve-template`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
-  const resume = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/resume`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
-  return { avatars, voices, jobs, loading, error, reload, submit, createAvatar, uploadAudio, resume, approveTemplate, rejectTemplate };
+  const resume = async (id: string) => {
+    if (resumeRequests.current.has(id)) return;
+    resumeRequests.current.add(id);
+    setResumingIds([...resumeRequests.current]);
+    try {
+      const result = unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/resume`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })) as GenerationJob;
+      setJobs(current => current.map(job => job.id === id ? result : job));
+      await reload();
+    } finally {
+      resumeRequests.current.delete(id);
+      setResumingIds([...resumeRequests.current]);
+    }
+  };
+  return { avatars, voices, jobs, loading, error, resumingIds, reload, submit, createAvatar, uploadAudio, resume, approveTemplate, rejectTemplate };
 }

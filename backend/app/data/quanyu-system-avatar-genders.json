@@ -1,0 +1,375 @@
+{
+  "source": "https://quanyu.sowa.chat/api/digital_human/public-library",
+  "retrieved_at": "2026-11-06",
+  "matching": "exact presenter-name match; only unambiguous provider gender values",
+  "models": [
+    {
+      "model_id": 415,
+      "model_name": "乐然-休闲-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "0a759f336c8240e483cd05808801e840"
+      ]
+    },
+    {
+      "model_id": 414,
+      "model_name": "清怡-知性-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "8288d1054ba24001be40637b4695eeb5"
+      ]
+    },
+    {
+      "model_id": 260,
+      "model_name": "亦凡-室内-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "d3d5ba73e8dd411092cef0e7c3bf8777"
+      ]
+    },
+    {
+      "model_id": 256,
+      "model_name": "雅晶-休闲-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "d4a34457046b45bfa4a0429708f016b9"
+      ]
+    },
+    {
+      "model_id": 255,
+      "model_name": "尔东-休闲-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "2ca0c059e99d4047add538a3c3e01a36"
+      ]
+    },
+    {
+      "model_id": 230,
+      "model_name": "尹宜-专业-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "87acaaf0b8a445b6b1de0a7ef9455195"
+      ]
+    },
+    {
+      "model_id": 228,
+      "model_name": "范亚-专业-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "d402dac83201446884c0da64feb52489"
+      ]
+    },
+    {
+      "model_id": 224,
+      "model_name": "徐烬-休闲-whole_body",
+      "gender": "男",
+      "figure_ids": [
+        "a35c0a96445c493a8a71ffe698772a37"
+      ]
+    },
+    {
+      "model_id": 107,
+      "model_name": "茹绢-室内-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "c039035d9cdd4b91b5cba58af5fdd064"
+      ]
+    },
+    {
+      "model_id": 106,
+      "model_name": "萱萱-清纯-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "b74cb76b390047129796fd70475a43aa"
+      ]
+    },
+    {
+      "model_id": 105,
+      "model_name": "皎若-甜美-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "ca305e77595946adaca3ef12d8d24931"
+      ]
+    },
+    {
+      "model_id": 104,
+      "model_name": "温雁-商务-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "830e6cd8249f4b8b93c9785d9462e967"
+      ]
+    },
+    {
+      "model_id": 103,
+      "model_name": "陈茵-休闲-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "1caba4e5d4f94c02b6e92f22093e34c4"
+      ]
+    },
+    {
+      "model_id": 102,
+      "model_name": "培新-工人-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "edd1ad669bf749c793343a30cb39e420"
+      ]
+    },
+    {
+      "model_id": 101,
+      "model_name": "耀平-工人-whole_body",
+      "gender": "男",
+      "figure_ids": [
+        "ce6b90b2a2244989ae4e964ccd46af4c"
+      ]
+    },
+    {
+      "model_id": 100,
+      "model_name": "耀洋-工人-whole_body",
+      "gender": "男",
+      "figure_ids": [
+        "a4a7bb9c36f047a2b092ec54ea70ed58"
+      ]
+    },
+    {
+      "model_id": 99,
+      "model_name": "郑彦-休闲-whole_body",
+      "gender": "男",
+      "figure_ids": [
+        "69a29e1a78e64ea7ae85d4ec578333f5"
+      ]
+    },
+    {
+      "model_id": 98,
+      "model_name": "卢顺-室内-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "d24be78927b3469ea9add227e9ca1a44"
+      ]
+    },
+    {
+      "model_id": 97,
+      "model_name": "易明-休闲-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "bf18696c6baf4541801a3e03156e93b2"
+      ]
+    },
+    {
+      "model_id": 96,
+      "model_name": "周润-休闲-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "78a2ee2593dd43d78da2a5efc66c8c7b"
+      ]
+    },
+    {
+      "model_id": 95,
+      "model_name": "安豪-休闲-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "28b29f9e661a42f7a52b1338d265b92c"
+      ]
+    },
+    {
+      "model_id": 94,
+      "model_name": "玉琳-温婉-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "3359cdf555564f6c8cb8547d23460cb8"
+      ]
+    },
+    {
+      "model_id": 93,
+      "model_name": "杨宇-休闲-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "4a7dfcfce32c408fa8aa07a264b9b883"
+      ]
+    },
+    {
+      "model_id": 92,
+      "model_name": "索漠-美食-whole_body",
+      "gender": "男",
+      "figure_ids": [
+        "6ef988bc5e4b40b3be6c8aaaaff05314"
+      ]
+    },
+    {
+      "model_id": 91,
+      "model_name": "肖轩-休闲-sit_body",
+      "gender": "男",
+      "figure_ids": [
+        "bfec20363bf74668b1d264bc779cb9ca"
+      ]
+    },
+    {
+      "model_id": 89,
+      "model_name": "杨淼-甜美-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "bd4424878edb49feab545bb2a30ebf7f"
+      ]
+    },
+    {
+      "model_id": 72,
+      "model_name": "菁雅-休闲-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "a1a27b79ba274f59b5779c4649041378"
+      ]
+    },
+    {
+      "model_id": 71,
+      "model_name": "晓惠-车内-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "831b824c655c4aadb9dc3a10bc9588f4"
+      ]
+    },
+    {
+      "model_id": 70,
+      "model_name": "观云-国风-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "6de89c1e4d3741c78526bbf6719b7516"
+      ]
+    },
+    {
+      "model_id": 69,
+      "model_name": "晓沁-休闲-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "47fa539d74f3401facd52484beed3523"
+      ]
+    },
+    {
+      "model_id": 68,
+      "model_name": "戚戚-休闲-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "3fe2e00e074b4cefad7c7d0eba355088"
+      ]
+    },
+    {
+      "model_id": 67,
+      "model_name": "傅娅-车内-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "91f8fccff5d846268a6400ab5f6e1f13"
+      ]
+    },
+    {
+      "model_id": 66,
+      "model_name": "零子-优雅-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "011400f9d1aa4b86b760391824454bdd"
+      ]
+    },
+    {
+      "model_id": 65,
+      "model_name": "环欣-教育-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "5d07f72db84f4af69ee2147714a5d160"
+      ]
+    },
+    {
+      "model_id": 64,
+      "model_name": "茗慧-休闲-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "191a4f252ec94952ba9a8ed96d947a9c"
+      ]
+    },
+    {
+      "model_id": 63,
+      "model_name": "吴玫-休闲-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "0f3ff748e706443ba70b2987b43dbb69"
+      ]
+    },
+    {
+      "model_id": 62,
+      "model_name": "Angel-休闲-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "5897379349d84790955994f8d2516f9d"
+      ]
+    },
+    {
+      "model_id": 61,
+      "model_name": "淑娴-休闲-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "1f24392179284c839610aef81abac7b3"
+      ]
+    },
+    {
+      "model_id": 60,
+      "model_name": "辛迪-知性-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "1774b4961a7448f896cac3fdc424ee92"
+      ]
+    },
+    {
+      "model_id": 58,
+      "model_name": "笑茹-带货-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "0564928ca67149a6b8751b88651f12a8"
+      ]
+    },
+    {
+      "model_id": 56,
+      "model_name": "蕊婷-休闲-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "818b7c76b1494ec3aef405cd7516b852"
+      ]
+    },
+    {
+      "model_id": 55,
+      "model_name": "晓梨-休闲-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "a717b52927ce49b7b3cc7d1f492efcb9"
+      ]
+    },
+    {
+      "model_id": 54,
+      "model_name": "沈漫-运动-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "b8503be56ec542b193447c5280771e4d"
+      ]
+    },
+    {
+      "model_id": 53,
+      "model_name": "沈瑜-休闲-whole_body",
+      "gender": "女",
+      "figure_ids": [
+        "77a253fbb2b741cca1dfad7b4c8ddea5"
+      ]
+    },
+    {
+      "model_id": 52,
+      "model_name": "沈舒-休闲-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "7c0f83973b17408bab43868d338b8790"
+      ]
+    },
+    {
+      "model_id": 51,
+      "model_name": "沈慧-知性-sit_body",
+      "gender": "女",
+      "figure_ids": [
+        "690aced99f47411086408ce43e94a1bf"
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AudioLines, Check, Library, Mic, Pause, Play, Search, UserRound, X } from "lucide-react";
+import { Check, Library, Mic, Pause, Play, Search, UserRound, X } from "lucide-react";
 import type { VideoVoice } from "@/features/video-studio/library";
 import { Dialog, Empty, PickerFooter, PickerTabs } from "./studio-primitives";
 import baseStyles from "./video-studio.module.css";
@@ -36,8 +36,9 @@ export function VoiceBrowser({ voices, selectedId, playingId, onSelect, onPrevie
     <div className={styles.pickerResultMeta}><span>{search ? `“${search}”的搜索结果` : voices.some(voice => voice.source === "own") ? "我的声音" : "系统音色"}<b>{visible.length}</b></span><small aria-live="polite">{playing ? <><i className={styles.playingDot} />正在试听 · {playing.name}</> : "点击播放，试听固定短样片"}</small></div>
     <div className={styles.voiceResults} aria-label="音色列表">
       {visible.length ? <div className={styles.voiceRows}>{visible.map(voice => <article key={voice.id} data-playing={playingId === voice.id || undefined} className={`${styles.voiceRow} ${selectedId === voice.id ? styles.voiceRowSelected : ""}`}>
-        <button type="button" className={styles.voiceRowSelect} disabled={voice.available === false} aria-label={`选择${voice.name}`} aria-pressed={selectedId === voice.id} onClick={() => onSelect(voice)}><span className={`${styles.voiceAvatar} ${voice.gender === "男" ? styles.voiceAvatarMale : voice.gender === "女" ? styles.voiceAvatarFemale : ""}`}><AudioLines size={22} /></span><span className={styles.voiceRowText}><b title={voice.name}>{voice.name}</b><span>{voice.gender !== "未知" && <small className={voice.gender === "男" ? styles.maleVoiceTag : styles.femaleVoiceTag}>{voice.gender}</small>}<small>{voice.language || voice.tag}</small>{voice.available === false && <small>待启用</small>}</span></span><span className={styles.voiceRowCheck}>{selectedId === voice.id && <Check size={12} />}</span></button>
-        <button type="button" className={styles.voicePreviewOverlay} disabled={!voice.preview_url} aria-label={`${playingId === voice.id ? "停止试听" : "试听"}${voice.name}`} aria-pressed={playingId === voice.id} title={voice.preview_url ? "播放缓存样片，不重复合成" : "试听待准备"} onClick={() => onPreview(voice)}>{playingId === voice.id ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}</button>
+        <button type="button" className={`${styles.voicePreviewButton} ${voice.gender === "男" ? styles.voiceAvatarMale : voice.gender === "女" ? styles.voiceAvatarFemale : ""}`} disabled={!voice.preview_url} aria-label={`${playingId === voice.id ? "停止试听" : "试听"}${voice.name}`} aria-pressed={playingId === voice.id} title={voice.preview_url ? "播放缓存样片，不重复合成" : "试听待准备"} onClick={() => onPreview(voice)}>{playingId === voice.id ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}</button>
+        <button type="button" className={styles.voiceRowSelect} disabled={voice.available === false} aria-label={`选择${voice.name}`} aria-pressed={selectedId === voice.id} onClick={() => onSelect(voice)}><span className={styles.voiceRowText}><b title={voice.name}>{voice.name}</b><span>{voice.gender !== "未知" && <small className={voice.gender === "男" ? styles.maleVoiceTag : styles.femaleVoiceTag}>{voice.gender}</small>}<small>{voice.language || voice.tag}</small>{voice.available === false && <small>待启用</small>}</span></span><span className={styles.voiceRowCheck}>{selectedId === voice.id && <Check size={12} />}</span></button>
+
       </article>)}</div> : <Empty icon={<Search size={28} />} title="没有找到匹配声音" description="换一个关键词，或选择其他性别与语言。" action={<button type="button" className={styles.outlineButton} onClick={reset}>重置筛选</button>} />}
     </div>
   </div>;

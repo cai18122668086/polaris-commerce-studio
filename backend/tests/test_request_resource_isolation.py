@@ -220,8 +220,14 @@ def test_admin_asset_signing_releases_database(bounded_client, monkeypatch):
             try:
                 await asyncio.wait_for(entered.wait(), 3)
                 assert app.state.engine.pool.checkedout() == 0
-                ready = await asyncio.wait_for(client.get("/health/ready"), 1)
+                # This is an ordering/resource-isolation test, not a one-second
+                # latency SLO on a shared CI runner. Keep signing blocked until
+                # readiness finishes; the deadline only bounds a real deadlock.
+                ready = await asyncio.wait_for(client.get("/health/ready"), 10)
                 assert ready.status_code == 200
+                assert not release.is_set()
+                assert not task.done()
+                assert app.state.engine.pool.checkedout() == 0
             finally:
                 release.set()
                 response = await task

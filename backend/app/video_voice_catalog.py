@@ -78,8 +78,12 @@ VOICES = {voice_key(v["voice_id"]): v for v in CATALOG["voices"]}
 def tao_ready(settings: Settings) -> bool:
     return bool(
         settings.video_providers_enabled
-        and settings.video_tao_tts_enabled
-        and settings.tao_api_key.get_secret_value()
+        and (
+            settings.video_hashsight_tts_enabled
+            and settings.video_hashsight_api_key.get_secret_value()
+            or settings.video_tao_tts_enabled
+            and settings.tao_api_key.get_secret_value()
+        )
     )
 
 
@@ -148,6 +152,8 @@ def select_tao_voice(settings: Settings, draft: dict[str, Any]) -> dict[str, Any
         )
     emotion = draft.get("emotion", "自然")
     language = draft.get("language", "auto")
+    if language == "auto" and voice["language"] == "中文 (粤语)":
+        language = "Chinese,Yue"
     if emotion not in EMOTIONS or language not in LANGUAGES:
         from .errors import ApiError
 

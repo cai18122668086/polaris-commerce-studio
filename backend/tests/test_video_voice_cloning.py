@@ -224,8 +224,13 @@ def test_unknown_preview_never_resubmits(clone_env, mode):
     assert "do-not-leak" not in status.text
 
 
-def test_real_generation_uses_exact_owned_clone_and_frozen_settings(clone_env):
+@pytest.mark.parametrize("minimax_primary_enabled", [False, True])
+def test_real_generation_uses_exact_owned_clone_and_frozen_settings(
+    clone_env, minimax_primary_enabled
+):
     client, _, provider, root, pid, _, state = clone_env
+    client.app.state.settings.video_hashsight_tts_enabled = minimax_primary_enabled
+    client.app.state.settings.video_hashsight_api_key = SecretStr("primary-fixture")
     vid = create(clone_env).json()["id"]
     project = client.get(root + "/projects/" + pid).json()
     project["content"]["draft"].update(

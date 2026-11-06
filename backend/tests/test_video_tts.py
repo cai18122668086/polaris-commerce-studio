@@ -243,3 +243,71 @@ def test_preview_batch_reuses_completed_sample(tmp_path, monkeypatch):
     previews.prepare(settings, generate=True, keys=[KEY])
     assert len(calls) == 1
     assert preview_path(settings, KEY).is_file()
+
+
+@pytest.mark.parametrize("primary_fails", [False, True])
+def test_minimax_channels_reuse_saved_audio_after_upload_failure(
+    video_gen, monkeypatch, primary_fails
+):
+    client, _, provider, root, pid, _ = video_gen
+    revision = configure_tao(client, root, pid)
+    config = client.app.state.settings
+    config.video_hashsight_tts_enabled = True
+    config.video_hashsight_api_key = SecretStr("primary-fixture")
+    audio = io.BytesIO()
+    with wave.open(audio, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b"\0\0" * 16000)
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.host)
+        if request.url.host == "ai.hashsight.org":
+            if primary_fails:
+                return httpx.Response(504)
+            return httpx.Response(
+                200,
+                json={
+                    "base_resp": {"status_code": 0},
+                    "data": {"audio": audio.getvalue().hex()},
+                },
+            )
+        assert request.url.host == "newapi.qwqtao.one"
+        return httpx.Response(
+            200, headers={"content-type": "audio/mpeg"}, content=audio.getvalue()
+        )
+
+    def run(settings, selection, text, target, transport=None):
+        return synthesize(
+            settings, selection, text, target, httpx.MockTransport(handler)
+        )
+
+    monkeypatch.setattr("app.video_generation.synthesize", run)
+    upload = provider.upload
+    failed_once = False
+
+    def fail_upload(path, mime, purpose):
+        nonlocal failed_once
+        if not failed_once and purpose == "digital_human_audio":
+            failed_once = True
+            raise ApiError(502, "VIDEO_UPLOAD_FAILED", "fixture")
+        return upload(path, mime, purpose)
+
+    provider.upload = fail_upload
+    body = {**request_body(pid), "expected_revision": revision}
+    response = client.post(root + "/generation-tasks", json=body)
+    assert response.status_code == 200, response.text
+    job_id = response.json()["id"]
+    job = client.get(root + "/generation-tasks").json()[0]
+    assert job["stage"] == "uploading_tts_audio" and job["can_resume"]
+    expected_calls = ["ai.hashsight.org"]
+    if primary_fails:
+        expected_calls.append("newapi.qwqtao.one")
+    assert calls == expected_calls
+    assert client.post(root + f"/generation-tasks/{job_id}/resume").status_code == 200
+    assert client.post(root + "/generation-tasks", json=body).status_code == 200
+    job = client.get(root + "/generation-tasks").json()[0]
+    assert job["status"] == "completed" and job["audio_duration_seconds"] == 1
+    assert calls == expected_calls

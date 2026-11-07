@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     video_extract_enabled: bool = False
     video_extract_api_key: SecretStr = SecretStr("")
     quanyu_api_key: SecretStr = SecretStr("")
+    skyhuman_api_key: SecretStr = SecretStr("")
+    video_lipsync_failover_enabled: bool = False
+    video_skyhuman_auto_register: bool = False
+    # Exact prepared-model IDs only: never substitute an unrelated avatar.
+    video_skyhuman_avatar_map: dict[str, str] = Field(default_factory=dict)
+    video_lipsync_long_wait_seconds: float = Field(default=600, ge=30, le=1800)
+    video_lipsync_poll_window_seconds: float = Field(default=900, ge=30, le=3600)
+    video_lipsync_breaker_seconds: float = Field(default=1800, ge=0, le=86400)
     video_tao_tts_enabled: bool = False
     tao_api_key: SecretStr = SecretStr("")
     video_hashsight_tts_enabled: bool = False

@@ -1,4 +1,14 @@
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -54,6 +64,21 @@ class VideoGenerationRecord(TimestampMixin, Base):
     provider_task_id: Mapped[str | None] = mapped_column(String(160))
     details: Mapped[dict] = mapped_column(json_type(), default=dict)
     error_code: Mapped[str | None] = mapped_column(String(80))
+
+
+class VideoGenerationRunRecord(Base):
+    """Cross-process ownership and durable backoff, separate from business details."""
+
+    __tablename__ = "video_generation_runs"
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("video_generations.id", ondelete="CASCADE"), primary_key=True
+    )
+    owner_token: Mapped[str | None] = mapped_column(String(40))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class VideoAudioRecord(TimestampMixin, Base):

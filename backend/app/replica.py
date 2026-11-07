@@ -11,9 +11,7 @@ from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Any, Literal
-from urllib.parse import urlparse
-from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
-from urllib.request import Request as UrlRequest
+from urllib.request import HTTPRedirectHandler
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, UploadFile
@@ -506,7 +504,7 @@ async def create_product(
         "product",
         _hash(
             [
-                "justone-v2",
+                "commerce-images-v3",
                 platform,
                 item_id,
                 (datetime.now(UTC) + timedelta(hours=8)).date().isoformat(),
@@ -764,24 +762,9 @@ def _download(url: str, max_bytes: int) -> bytes:
 
     if is_aliexpress_image(url):
         return downloader.download(url, max_bytes)
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        host = (urlparse(url).hostname or "").lower()
-        if host.endswith(".aliexpress-media.com"):
-            headers["Referer"] = "https://www.aliexpress.com/"
-        elif host.endswith(".ecombdimg.com"):
-            headers["Referer"] = "https://haohuo.jinritemai.com/"
-        with build_opener(ProxyHandler({}), ImageRedirects()).open(
-            UrlRequest(url, headers=headers), timeout=30
-        ) as response:
-            payload = response.read(max_bytes + 1)
-    except Exception:
-        raise ApiError(
-            502, "IMAGE_DOWNLOAD_FAILED", "该图片暂时无法导入，请取消选择后重试。"
-        ) from None
-    if len(payload) > max_bytes:
-        raise ApiError(413, "IMAGE_TOO_LARGE", "图片过大，请选择其他参考图。")
-    return payload
+    from .marketplace_images import downloader as marketplace_downloader
+
+    return marketplace_downloader.download(url, max_bytes)
 
 
 @router.get(

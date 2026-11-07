@@ -9,7 +9,7 @@ from concurrent.futures import Future
 from io import BytesIO
 from threading import BoundedSemaphore, Lock
 from typing import Any
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
@@ -51,6 +51,25 @@ class ImageRedirects(HTTPRedirectHandler):
 
 
 class AliExpressImageDownloader:
+    request_timeout = 20
+    retry_transport_errors = False
+
+    @staticmethod
+    def accepts(url: str) -> bool:
+        return bool(image_url(url) and is_aliexpress_image(url))
+
+    @staticmethod
+    def request_url(url: str) -> str:
+        return url
+
+    @staticmethod
+    def headers(url: str) -> dict[str, str]:
+        return IMAGE_HEADERS
+
+    @staticmethod
+    def redirects() -> HTTPRedirectHandler:
+        return ImageRedirects()
+
     def __init__(self, *, max_cache_bytes: int = 64 * 1024 * 1024, ttl: int = 600):
         self._max_cache_bytes = max_cache_bytes
         self._ttl = ttl
@@ -67,7 +86,7 @@ class AliExpressImageDownloader:
         return payload
 
     def download(self, url: str, max_bytes: int) -> bytes:
-        if not image_url(url) or not is_aliexpress_image(url):
+        if not self.accepts(url):
             raise ApiError(400, "IMAGE_URL_REJECTED", "图片地址不受支持。")
         with self._lock:
             now = time.monotonic()
@@ -125,8 +144,9 @@ class AliExpressImageDownloader:
         # generated replacement URL, external proxy, or unbounded retry loop.
         for attempt in range(2):
             try:
-                with build_opener(ProxyHandler({}), ImageRedirects()).open(
-                    Request(url, headers=IMAGE_HEADERS), timeout=20
+                with build_opener(ProxyHandler({}), self.redirects()).open(
+                    Request(self.request_url(url), headers=self.headers(url)),
+                    timeout=self.request_timeout,
                 ) as response:
                     payload = self._bounded(response.read(max_bytes + 1), max_bytes)
                 with Image.open(BytesIO(payload)) as source:
@@ -156,6 +176,13 @@ class AliExpressImageDownloader:
                 ) from None
             except ApiError:
                 raise
+            except (URLError, TimeoutError):
+                if self.retry_transport_errors and attempt == 0:
+                    time.sleep(1)
+                    continue
+                raise ApiError(
+                    502, "IMAGE_DOWNLOAD_FAILED", "该图片连接超时，请稍后重新加载。"
+                ) from None
             except Exception:
                 raise ApiError(
                     502, "IMAGE_DOWNLOAD_FAILED", "该图片暂时无法读取，请稍后重新加载。"

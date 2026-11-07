@@ -228,11 +228,29 @@ def fetch_product(
     token: str, platform: str, item_id: str, canonical: str, *, everyinfra_key: str = ""
 ) -> dict:
     primary_error = None
+    if platform == "amazon" and token:
+        from .amazon_product import fetch_product as fetch_amazon
+
+        try:
+            return fetch_amazon(token, item_id, canonical)
+        except ApiError as error:
+            if not everyinfra_key:
+                raise
+            primary_error = error
     if platform in justone.ENDPOINTS and (
         platform != "aliexpress" or not everyinfra_key
     ):
         try:
-            return justone.fetch_product(token, platform, item_id, canonical)
+            product = justone.fetch_product(token, platform, item_id, canonical)
+            if (
+                platform == "1688"
+                and everyinfra_key
+                and not product.get("descImageUrls")
+            ):
+                from .everyinfra import supplement_product_images
+
+                supplement_product_images(everyinfra_key, product)
+            return product
         except ApiError as error:
             if not everyinfra_key:
                 raise

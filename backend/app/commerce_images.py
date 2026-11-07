@@ -1,6 +1,7 @@
 """Image hosts used by the supported marketplaces, shared by preview and import."""
 
 import html
+import re
 from urllib.parse import urlparse
 
 from .justone import domain_matches
@@ -28,6 +29,24 @@ IMAGE_HOSTS = (
     "xhscdn.com",
     "xiaohongshu.com",
 )
+
+
+def download_url(url: str) -> str:
+    """Ask XHS's existing image transform for WebP instead of unsupported HEIF.
+
+    Preserve object path, signing/other query parameters and the original URL
+    used for product authorization and import identity.
+    """
+    parsed = urlparse(url)
+    if domain_matches((parsed.hostname or "").lower(), ("xhscdn.com",)):
+        query = re.sub(
+            r"(imageView2/[^&]*?/format/)(?:heif|heic)(?=/|&|$)",
+            r"\g<1>webp",
+            parsed.query,
+            flags=re.IGNORECASE,
+        )
+        return parsed._replace(query=query).geturl()
+    return url
 
 
 def image_url(value: object) -> str | None:

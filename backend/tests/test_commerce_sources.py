@@ -167,7 +167,6 @@ def test_new_channel_uses_everyinfra_without_calling_primary(monkeypatch):
     )
     for source in [
         "aliexpress",
-        "amazon",
         "shopee",
         "temu",
         "dewu",

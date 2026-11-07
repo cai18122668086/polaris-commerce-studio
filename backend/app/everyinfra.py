@@ -110,8 +110,18 @@ def _images(value: object) -> list[str]:
     ]
 
 
-def normalize_product(wire: dict, platform: str, item_id: str, canonical: str) -> dict:
-    upstream, action, _, identity = PRODUCT_ROUTES[platform]
+def normalize_product(
+    wire: dict,
+    platform: str,
+    item_id: str,
+    canonical: str,
+    *,
+    action: str | None = None,
+) -> dict:
+    upstream, default_action, _, identity = PRODUCT_ROUTES[platform]
+    action = action or default_action
+    if action == "product_detail" and platform in {"walmart", "shopee", "etsy"}:
+        identity = "id"
     data = wire.get("results")
     if isinstance(data, list) and len(data) == 1:
         data = data[0]
@@ -155,7 +165,10 @@ def normalize_product(wire: dict, platform: str, item_id: str, canonical: str) -
             for k in ("description_images", "detail_image_urls", "description_html")
         ]
     )
-    sku = _images([data.get(k) for k in ("variants", "skus", "props_images")])
+    sku_fields: tuple[str, ...] = ("variants", "skus", "props_images")
+    if platform == "temu":
+        sku_fields += ("options",)
+    sku = _images([data.get(k) for k in sku_fields])
     if not main and not detail:
         raise ApiError(
             502,
@@ -201,5 +214,72 @@ def fetch_product(key: str, platform: str, item_id: str, canonical: str) -> dict
         if parameter == "urls"
         else canonical
     )
-    wire = _request(key, upstream, action, {parameter: value})
-    return normalize_product(wire, platform, item_id, canonical)
+    try:
+        wire = _request(key, upstream, action, {parameter: value})
+        product = normalize_product(wire, platform, item_id, canonical)
+    except ApiError as error:
+        # Walmart's profile can contain only text, while product_detail has the
+        # same listing's image. Do not replace identity or authentication errors.
+        if platform != "walmart" or error.code != "PRODUCT_IMAGES_MISSING":
+            raise
+        wire = _request(key, upstream, "product_detail", {"url": canonical})
+        return normalize_product(
+            wire, platform, item_id, canonical, action="product_detail"
+        )
+    supplement_product_images(key, product)
+    return product
+
+
+def supplement_product_images(key: str, product: dict) -> None:
+    """Fill verified missing groups once, retaining usable product data on failure."""
+    platform = product["platform"]
+    item_id = product["numIid"]
+    canonical = product["sourceUrl"]
+    if platform == "jd" and not product["descImageUrls"]:
+        action, params, group = (
+            "description_images",
+            {"item_id": item_id},
+            "descImageUrls",
+        )
+    elif platform == "shopee" and not product["skuImageUrls"]:
+        action, params, group = "product_detail", {"url": canonical}, "skuImageUrls"
+    elif platform == "1688" and not product["descImageUrls"]:
+        action, params, group = "product_detail", {"url": canonical}, "descImageUrls"
+    else:
+        return
+    upstream = PRODUCT_ROUTES[platform][0]
+    try:
+        wire = _request(key, upstream, action, params)
+        if platform == "jd":
+            rows = wire["results"]
+            if not isinstance(rows, list) or any(
+                not isinstance(row, Mapping)
+                or str(row.get("item_id", "")) != item_id
+                or row.get("platform", "jd") != "jd"
+                for row in rows
+            ):
+                raise ApiError(502, "PRODUCT_ID_MISMATCH", "详情图商品身份不一致。")
+            images = _images([row.get("image_url") for row in rows])
+        else:
+            images = normalize_product(
+                wire, platform, item_id, canonical, action=action
+            )[group]
+        product[group] = images
+        billing = wire.get("billing") or {}
+        cost = billing.get("charged_usd") if isinstance(billing, Mapping) else None
+        product.setdefault("imageSupplements", []).append(
+            {
+                "supplier": "everyinfra",
+                "capability": f"{upstream}.{action}",
+                "costUsd": cost,
+            }
+        )
+        if product.get("supplier") == "everyinfra":
+            prior = product.get("costUsd")
+            product["costUsd"] = (
+                prior + cost if prior is not None and cost is not None else None
+            )
+    except ApiError as error:
+        product.setdefault("imageFetchWarnings", []).append(
+            {"group": group, "code": error.code}
+        )

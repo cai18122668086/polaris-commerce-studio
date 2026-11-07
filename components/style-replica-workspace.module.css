@@ -76,6 +76,7 @@
 .sourceSelected>button { color:#202020; background:#d8ff00; border-color:#b7d100; }
 .sourceImageError { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:30px 10px;color:#697386;font-size:12px;text-align:center; }
 .sourceImageError button { border:1px solid #cbd3dd;border-radius:6px;background:white;padding:5px 10px;color:#34435a;font:inherit;cursor:pointer; }
+.sourceAvailability { margin:0 0 14px;color:#697386;font-size:12px;line-height:1.6; }
 @media(max-width:760px){.page{padding:0 13px 20px}.sidebar{position:static;height:auto;max-height:none;overflow:visible}.sidebar .inputFields{overflow:visible}.stage{min-height:490px}.stepper{height:68px}.emptyState h2{font-size:21px}.layout{gap:14px}}
 @media(max-width:640px){.stepper{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;height:auto;min-height:76px;padding-block:12px}.stepItem{flex-direction:column;min-width:0;gap:5px;text-align:center}.stepItem b{font-size:9px;font-weight:600;white-space:normal}.stepItem i{display:none}}
 

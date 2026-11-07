@@ -7035,7 +7035,17 @@
               "tmall",
               "1688",
               "jd",
-              "aliexpress"
+              "aliexpress",
+              "amazon",
+              "shopee",
+              "temu",
+              "ebay",
+              "etsy",
+              "walmart",
+              "douyin",
+              "xiaohongshu",
+              "xianyu",
+              "dewu"
             ],
             "title": "Platform",
             "type": "string"

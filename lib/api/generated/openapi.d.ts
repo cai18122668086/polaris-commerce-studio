@@ -5717,7 +5717,7 @@ export interface components {
              * @default auto
              * @enum {string}
              */
-            platform: "auto" | "taobao" | "tmall" | "1688" | "jd" | "aliexpress";
+            platform: "auto" | "taobao" | "tmall" | "1688" | "jd" | "aliexpress" | "amazon" | "shopee" | "temu" | "ebay" | "etsy" | "walmart" | "douyin" | "xiaohongshu" | "xianyu" | "dewu";
             /** Url */
             url: string;
         };

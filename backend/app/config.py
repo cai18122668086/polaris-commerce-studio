@@ -284,6 +284,8 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=40_000_000, ge=1)
     justone_api_token: SecretStr = SecretStr("")
+    everyinfra_api_key: SecretStr = SecretStr("")
+    everyinfra_product_sources_enabled: bool = False
     ecommerce_browser_fallback: bool = False
     # Server-side policy switch only; domestic adapters fail closed when true.
     # This does not configure a proxy or permit automatic direct fallback.

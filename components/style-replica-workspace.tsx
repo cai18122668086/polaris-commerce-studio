@@ -386,8 +386,10 @@ function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSes
         </section>
         <div className={styles.modeTabs} role="tablist" aria-label="参考来源"><button role="tab" aria-selected={mode === "link"} className={mode === "link" ? styles.activeTab : ""} onClick={() => setMode("link")}>商品链接</button><button role="tab" aria-selected={mode === "image"} className={mode === "image" ? styles.activeTab : ""} onClick={() => setMode("image")}>风格参考图</button></div>
         {mode === "link" ? <>
-          <label className={styles.field}><span><em>*</em>商品链接 / 商品 ID</span><div className={styles.linkInput}><input value={url} onChange={event => setUrl(event.target.value)} placeholder="粘贴商品链接或手淘分享文本" aria-label="商品链接" /><button disabled={working || !url.trim() || !workspaceId} onClick={() => void fetchProduct()}>{productDoc?.status === "fetching" ? <LoaderCircle className="spin" size={16} /> : "拉取商品"}</button></div></label>
+          <label className={styles.field}><span><em>*</em>商品链接 / 商品 ID</span><div className={styles.linkInput}><input value={url} onChange={event => setUrl(event.target.value)} placeholder={sourcePlatform === "auto" ? "粘贴商品链接，自动识别来源平台" : sourcePlatform === "shopee" ? "粘贴 Shopee 完整商品链接" : `粘贴${sourcePlatforms.find(item => item.code === sourcePlatform)?.label ?? ""}商品链接或商品 ID`} aria-label="商品链接" /><button disabled={working || !url.trim() || !workspaceId} onClick={() => void fetchProduct()}>{productDoc?.status === "fetching" ? <LoaderCircle className="spin" size={16} /> : "拉取商品"}</button></div></label>
           <label className={styles.field}><span>来源平台</span><ReplicaSelect label="来源平台" value={sourcePlatform} onChange={setSourcePlatform} disabled={working} options={[["auto", "从链接自动识别"], ...sourcePlatforms.map(item => [item.code, item.label] as const)]} /></label>
+          {sourcePlatform === "douyin" && <p className={styles.hint}>请填写抖音商城商品 ID，视频链接和推广 ID 无法拉取商品图片。</p>}
+          {sourcePlatform === "xiaohongshu" && <p className={styles.hint}>支持小红书商城商品链接或商品 ID；笔记和用户主页请改用上传参考图。</p>}
         </> : <>
           <div className={styles.fieldHeading}><strong><em>*</em>风格参考图</strong><small>{references.length}/20</small></div>{uploadBox("reference", references, 20)}
         </>}
@@ -397,7 +399,7 @@ function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSes
           <div className={styles.factsFootnote}><ProductFactsGuidance /><small>{facts.length.toLocaleString()} / 20,000</small></div>
         </section>
         <div className={styles.outputGroup}><div className={styles.fieldHeading}><strong>发布到哪里</strong><small>平台与图片文案语言</small></div><div className={styles.dualFields}>
-        <label className={styles.field}><span><em>*</em>目标平台</span><ReplicaSelect label="目标平台" value={platform} onChange={setPlatform} disabled={working || !!sessionDoc} options={[["auto", "智能匹配"], ["tmall", "天猫"], ["taobao", "淘宝"], ["jd", "京东"], ["pinduoduo", "拼多多"], ["douyin", "抖音"], ["1688", "1688"], ["amazon-us", "亚马逊"], ["temu", "TEMU"], ["shopee", "Shopee"], ["tiktok", "TikTok"]]} /></label>
+        <label className={styles.field}><span><em>*</em>目标平台</span><ReplicaSelect label="目标平台" value={platform} onChange={setPlatform} disabled={working || !!sessionDoc} options={[["auto", "智能匹配"], ["tmall", "天猫"], ["taobao", "淘宝"], ["jd", "京东"], ["pinduoduo", "拼多多"], ["douyin", "抖音"], ["1688", "1688"], ["amazon-us", "亚马逊"], ["aliexpress", "AliExpress（速卖通）"], ["temu", "TEMU"], ["shopee", "Shopee"], ["ebay", "eBay"], ["etsy", "Etsy"], ["walmart", "Walmart（沃尔玛）"], ["xiaohongshu", "小红书商城"], ["xianyu", "闲鱼"], ["dewu", "得物"], ["tiktok", "TikTok"]]} /></label>
         <label className={styles.field}><span><em>*</em>目标语言</span><ReplicaSelect label="目标语言" value={language} onChange={setLanguage} disabled={working || !!sessionDoc} options={[["zh-CN", "中文（简体）"], ["zh-TW", "中文（繁体）"], ["en-US", "英语"], ["ja-JP", "日语"], ["ko-KR", "韩语"], ["de-DE", "德语"], ["fr-FR", "法语"], ["es-ES", "西班牙语"], ["ar-SA", "阿拉伯语"], ["ru-RU", "俄语"]]} /></label>
         </div></div>
         </fieldset>

@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 from urllib.request import Request as UrlRequest
 from uuid import uuid4
@@ -32,10 +33,12 @@ from .auth import (
     WorkspaceDependency,
     WorkspaceProcessingWriteDependency,
 )
+from .commerce_images import image_url
+from .commerce_sources import SOURCE_LABELS, fetch_product, parse_product_link
 from .database import get_session
 from .domain import AssetMediaKind, AssetOriginKind
 from .errors import ApiError
-from .justone import aliexpress_site, fetch_product, image_url, parse_product_link
+from .justone import aliexpress_site
 from .models import (
     AssetRecord,
     JobAssetRecord,
@@ -73,7 +76,24 @@ logger = logging.getLogger(__name__)
 
 class ProductRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
-    platform: Literal["auto", "taobao", "tmall", "1688", "jd", "aliexpress"] = "auto"
+    platform: Literal[
+        "auto",
+        "taobao",
+        "tmall",
+        "1688",
+        "jd",
+        "aliexpress",
+        "amazon",
+        "shopee",
+        "temu",
+        "ebay",
+        "etsy",
+        "walmart",
+        "douyin",
+        "xiaohongshu",
+        "xianyu",
+        "dewu",
+    ] = "auto"
 
 
 class ImportRequest(BaseModel):
@@ -425,12 +445,18 @@ async def _fetch(app: Any, document_id: str) -> None:
         payload = dict(row.payload)
     try:
         token = app.state.settings.justone_api_token.get_secret_value()
+        backup_key = (
+            app.state.settings.everyinfra_api_key.get_secret_value()
+            if app.state.settings.everyinfra_product_sources_enabled
+            else ""
+        )
         product = await asyncio.to_thread(
             fetch_product,
             token,
             payload["platform"],
             payload["item_id"],
             payload["canonical_url"],
+            **({"everyinfra_key": backup_key} if backup_key else {}),
         )
         _save(app, document_id, "ready", {**payload, "product": product})
     except Exception as error:
@@ -449,16 +475,17 @@ async def _fetch(app: Any, document_id: str) -> None:
 
 
 @router.get("/product-platforms")
-def product_platforms(workspace: WorkspaceDependency) -> list[dict[str, str]]:
+def product_platforms(
+    request: Request, workspace: WorkspaceDependency
+) -> list[dict[str, str]]:
+    enabled = (
+        request.app.state.settings.everyinfra_product_sources_enabled
+        and request.app.state.settings.everyinfra_api_key.get_secret_value()
+    )
     return [
         {"code": code, "label": label}
-        for code, label in (
-            ("taobao", "淘宝"),
-            ("tmall", "天猫"),
-            ("1688", "1688"),
-            ("jd", "京东"),
-            ("aliexpress", "AliExpress（速卖通）"),
-        )
+        for code, label in SOURCE_LABELS.items()
+        if enabled or code in {"taobao", "tmall", "1688", "jd", "aliexpress"}
     ]
 
 
@@ -485,6 +512,11 @@ async def create_product(
                 (datetime.now(UTC) + timedelta(hours=8)).date().isoformat(),
                 # US and global responses are separate products in the cache.
                 *([aliexpress_site(canonical)] if platform == "aliexpress" else []),
+                *(
+                    [canonical]
+                    if platform not in {"taobao", "tmall", "1688", "jd", "aliexpress"}
+                    else []
+                ),
             ]
         ),
         {"platform": platform, "item_id": item_id, "canonical_url": canonical},
@@ -729,8 +761,14 @@ def _download(url: str, max_bytes: int) -> bytes:
     if not image_url(url):
         raise ApiError(400, "IMAGE_URL_REJECTED", "图片地址不受支持。")
     try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        host = (urlparse(url).hostname or "").lower()
+        if host.endswith(".aliexpress-media.com"):
+            headers["Referer"] = "https://www.aliexpress.com/"
+        elif host.endswith(".ecombdimg.com"):
+            headers["Referer"] = "https://haohuo.jinritemai.com/"
         with build_opener(ProxyHandler({}), ImageRedirects()).open(
-            UrlRequest(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=30
+            UrlRequest(url, headers=headers), timeout=30
         ) as response:
             payload = response.read(max_bytes + 1)
     except Exception:

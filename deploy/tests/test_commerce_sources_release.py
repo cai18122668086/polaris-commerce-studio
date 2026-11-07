@@ -41,6 +41,11 @@ class CommerceReleaseTests(unittest.TestCase):
                 self.assertNotIn("depends_on", active["services"][role])
                 self.assertEqual(rollback["services"][role]["image"], "sha256:" + "1" * 64)
             self.assertNotIn("POLARIS_EVERYINFRA_API_KEY", rollback["services"]["replica-api"]["environment"])
+            root2 = Path(tmp) / "image-fix"
+            with patch.object(release, "inspect", side_effect=inspect), patch.object(release.subprocess, "check_output", return_value=json.dumps(original).encode()), patch.object(release, "compose"):
+                release.prepare(root2, "sha256:" + "2" * 64, "sha256:" + "3" * 64, None)
+            unchanged_env = json.loads((root2 / "active.compose.private.json").read_text())
+            self.assertEqual(unchanged_env["services"]["replica-api"]["environment"], rollback["services"]["replica-api"]["environment"])
 
     def test_active_api_work_prevents_service_replacement(self):
         with patch.object(release, "unchanged"), patch.object(release, "idle", side_effect=AssertionError("active")), patch.object(release, "compose") as compose:

@@ -760,6 +760,10 @@ class ImageRedirects(HTTPRedirectHandler):
 def _download(url: str, max_bytes: int) -> bytes:
     if not image_url(url):
         raise ApiError(400, "IMAGE_URL_REJECTED", "图片地址不受支持。")
+    from .aliexpress_images import downloader, is_aliexpress_image
+
+    if is_aliexpress_image(url):
+        return downloader.download(url, max_bytes)
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         host = (urlparse(url).hostname or "").lower()

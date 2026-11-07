@@ -80,12 +80,13 @@ def prepare(root, backend, frontend, key_file):
     rollback = copy.deepcopy(config)
     config["services"]["replica-api"]["image"] = backend
     config["services"]["frontend"]["image"] = frontend
-    key = key_file.read_text().strip()
-    assert key.startswith("ei_") and not any(c.isspace() for c in key)
-    config["services"]["replica-api"]["environment"].update({
-        "POLARIS_EVERYINFRA_API_KEY": escaped(key),
-        "POLARIS_EVERYINFRA_PRODUCT_SOURCES_ENABLED": "true",
-    })
+    if key_file is not None:
+        key = key_file.read_text().strip()
+        assert key.startswith("ei_") and not any(c.isspace() for c in key)
+        config["services"]["replica-api"]["environment"].update({
+            "POLARIS_EVERYINFRA_API_KEY": escaped(key),
+            "POLARIS_EVERYINFRA_PRODUCT_SOURCES_ENABLED": "true",
+        })
     root.mkdir(mode=0o700)
     private(root / "baseline.json", summary(live))
     private(root / "rollback.compose.private.json", rollback)

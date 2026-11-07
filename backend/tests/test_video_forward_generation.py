@@ -106,19 +106,25 @@ def test_uploaded_audio_measures_fractional_duration_and_preserves_original_wave
     assert response.headers["content-type"].startswith("audio/wav")
 
 
-def test_forward_registration_unknown_is_not_retried_or_lipsynced(video_gen):
+def test_forward_registration_unknown_is_not_retried_or_lipsynced(
+    video_gen, monkeypatch
+):
+    monkeypatch.setattr("app.video_generation_media.MODEL_LOOKUP_WINDOW", 0)
     client, _, provider, root, pid, _ = video_gen
     provider.audio_seconds = 4
     provider.fail = "/api/digital_human/models"
     body = request_body(pid)
     client.post(root + "/generation-tasks", json=body)
     job = client.get(root + "/generation-tasks").json()[0]
-    assert job["status"] == "unknown" and job["stage"] == "forward_model_submitting"
-    assert job["can_resume"] is False
+    assert (
+        job["status"] == "awaiting_resume"
+        and job["stage"] == "forward_model_submitting"
+    )
+    assert job["can_resume"] is True
     assert job["audio_url"]
     client.post(root + "/generation-tasks", json=body)
     assert (
-        client.post(root + f"/generation-tasks/{job['id']}/resume").status_code == 409
+        client.post(root + f"/generation-tasks/{job['id']}/resume").status_code == 200
     )
     assert [p for _, p, _ in provider.posts] == [
         "/api/tts/generate",

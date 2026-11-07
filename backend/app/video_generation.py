@@ -36,6 +36,14 @@ from .video_generation_models import (
     VideoAvatarRecord,
     VideoGenerationRecord,
 )
+from .video_generation_runtime import (
+    VideoRunLease,
+    VideoRunLost,
+    acquire_run,
+    guard_run,
+    owner_can_run,
+    unconfirmed_paid_submission,
+)
 from .video_lipsync import run_lipsync
 from .video_providers import VideoProviders, safe_media_url
 from .video_stage_timing import transition
@@ -198,8 +206,29 @@ def process_generation(
     settings: Settings,
     job_id: str | UUID,
     provider: VideoProviders,
+    *,
+    lease: VideoRunLease | None = None,
+) -> None:
+    lease = lease or acquire_run(factory, settings, str(job_id))
+    if lease is None:
+        return
+    with lease:
+        try:
+            _process_generation(factory, settings, job_id, provider, lease)
+        except VideoRunLost:
+            return
+
+
+def _process_generation(
+    factory: sessionmaker[Session],
+    settings: Settings,
+    job_id: str | UUID,
+    provider: VideoProviders,
+    lease: VideoRunLease,
 ) -> None:
     with factory() as session:
+        session.info["video_run_lease"] = lease
+        guard_run(session)
         changed = session.execute(
             update(VideoGenerationRecord)
             .where(
@@ -217,6 +246,18 @@ def process_generation(
         session.commit()
         set_stage(session, job, job.stage)
         try:
+            if not owner_can_run(session, job):
+                raise ApiError(
+                    403,
+                    "VIDEO_RECOVERY_ACCESS_REVOKED",
+                    "原任务权限已失效，已停止继续生成。",
+                )
+            if unconfirmed_paid_submission(job, settings):
+                raise ApiError(
+                    502,
+                    "VIDEO_PROVIDER_OUTCOME_UNKNOWN",
+                    "付费提交结果尚未确认，已保留原任务，禁止重复提交。",
+                )
             if job.kind == "h3_template":
                 local = (
                     Path(job.details["uploaded_video_path"])
@@ -273,6 +314,7 @@ def process_generation(
                 if not job.details.get("review_approved"):
                     set_stage(session, job, "awaiting_review", result_path=str(local))
                     job.status = "awaiting_review"
+                    guard_run(session)
                     session.commit()
                     return
                 if not job.details.get("template_url"):
@@ -410,11 +452,20 @@ def process_generation(
                         )
                 set_stage(session, job, "completed", result_path=str(local))
             job.status = "completed"
+            guard_run(session)
             session.commit()
+        except VideoRunLost:
+            session.rollback()
+            return
         except Exception as error:
             session.rollback()
             job = session.get(VideoGenerationRecord, job_id)
             if job is None:
+                return
+            try:
+                guard_run(session)
+            except VideoRunLost:
+                session.rollback()
                 return
             code = (
                 error.code if isinstance(error, ApiError) else "VIDEO_PROCESSING_FAILED"
@@ -455,6 +506,7 @@ def poll_until_complete(
     session: Session, job: VideoGenerationRecord, provider: VideoProviders, vendor: str
 ) -> bool:
     for _ in range(180):
+        guard_run(session)
         job.updated_at = utc_now()
         session.commit()
         path = (
@@ -480,6 +532,7 @@ def poll_until_complete(
             raise ApiError(502, "VIDEO_PROVIDER_TASK_FAILED", "供应商任务失败。")
         time.sleep(5)
     job.status = "awaiting_resume"
+    guard_run(session)
     job.details = {
         **job.details,
         "stage_history": transition(

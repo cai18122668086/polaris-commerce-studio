@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     app_name: str = "Polaris Commerce Studio API"
     app_version: str = "1.1.0"
     video_providers_enabled: bool = False
+    video_background_recovery_enabled: bool = False
+    video_recovery_interval_seconds: float = Field(default=15, ge=1, le=300)
+    video_recovery_lease_seconds: float = Field(default=120, ge=30, le=600)
+    video_recovery_workers: int = Field(default=2, ge=1, le=4)
     video_script_planning_enabled: bool = False
     video_script_api_key: SecretStr = SecretStr("")
     video_script_base_url: str = "https://api.tengliapi.xyz"

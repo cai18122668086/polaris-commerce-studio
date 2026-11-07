@@ -22,6 +22,7 @@ from .errors import ApiError
 from .models import utc_now
 from .video_generation_media import set_stage
 from .video_generation_models import VideoGenerationRecord, VideoLipsyncAvatarRecord
+from .video_generation_runtime import guard_run
 from .video_providers import VideoProviders, safe_media_url
 from .video_stage_timing import transition
 
@@ -39,6 +40,7 @@ def route(job: VideoGenerationRecord) -> dict[str, Any]:
 
 
 def checkpoint(session: Session, job: VideoGenerationRecord, **changes: Any) -> None:
+    guard_run(session)
     job.details = {**job.details, "lipsync_routing": {**route(job), **changes}}
     job.updated_at = utc_now()
     session.commit()
@@ -221,6 +223,7 @@ def avatar_for_backup(
 
 
 def wait_for_resume(session: Session, job: VideoGenerationRecord) -> bool:
+    guard_run(session)
     job.status = "awaiting_resume"
     job.details = {
         **job.details,

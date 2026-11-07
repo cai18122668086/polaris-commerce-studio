@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .config import Settings
 from .errors import ApiError
 from .video_generation_models import VideoAudioRecord, VideoGenerationRecord
+from .video_generation_runtime import guard_run
 from .video_providers import VideoProviders
 from .video_stage_timing import transition
 from .video_template_media import audio_duration, prepare_forward, video_info
@@ -120,6 +121,7 @@ def register_model(
 def set_stage(
     session: Session, job: VideoGenerationRecord, stage: str, **details: Any
 ) -> None:
+    guard_run(session)
     history = transition(job.details.get("stage_history"), stage)
     if stage in {"completed", "awaiting_review"}:
         history = transition(history, stage, finish=True, outcome=stage)

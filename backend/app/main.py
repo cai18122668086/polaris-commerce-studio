@@ -226,9 +226,27 @@ def create_app(
         from .credit_memberships import maintenance_loop
 
         membership_task = asyncio.create_task(maintenance_loop(session_factory))
+        from .video_generation_recovery import VideoRecoveryService
+        from .video_providers import VideoProviders
+
+        video_recovery = None
+        if (
+            app_settings.video_background_recovery_enabled
+            and app_settings.video_providers_enabled
+        ):
+            video_recovery = VideoRecoveryService(
+                session_factory,
+                app_settings,
+                getattr(application.state, "video_providers", None)
+                or VideoProviders(app_settings),
+            )
+            application.state.video_recovery = video_recovery
+            video_recovery.start()
         try:
             yield
         finally:
+            if video_recovery:
+                video_recovery.stop()
             membership_task.cancel()
             with suppress(asyncio.CancelledError):
                 await membership_task

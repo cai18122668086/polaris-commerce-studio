@@ -41,6 +41,10 @@
 
 数据接口不自动回退到自建浏览器。拼多多目前可作为输出目标，来源图片可手动上传；此版本不承诺拼多多链接采集。
 
+2026-11-07 补充 AliExpress 来源适配：[商品概览 V1](https://docs.justoneapi.com/zh/api/aliexpress/product-overview-v1)，路径为 `/api/aliexpress/get-product-detail/v1`。`.us` 链接传 `site=US`，`.com` 链接传 `site=GLO`，裸商品 ID 默认美国站；按站点分别缓存，核验返回的 `product_id`，允许 AliExpress 图片 CDN。来源平台下拉框由后端目录自动提供。该接口的账户单价尚未核验，费用元数据留空。
+
+用户反馈的商品 `3256807411229880` 已用现有生产凭证分别请求 US 和 GLO：两次均返回 `code=0`、对应商品 ID、标题和简介，但 `images=[]`。这证明接口可调用，尚不能证明该商品图片可采集。适配器将其显示为 `PRODUCT_IMAGES_MISSING` 并提示上传参考图，不将其当作可用商品，也不自动切站、重试或回退浏览器。轮询不会重复请求，失败后的主动重试仍会发起新的上游调用。真实结果已覆盖回归用例；带图成功、图片预览和导入链路使用模拟数据验证，不冒充真实采集成功。
+
 本功能按网站供应商顺序配置：分析以 Tengli 为主、玩转为备用；生图以 Artflow 为主、Tengli 为备用。生图使用固定模型与画质，用户无需选择。两类备用路由独立，玩转凭证不会用于图片请求；传输结果不明时保留未知状态，避免自动重复生图扣费。图片生成沿用已有 `reference_remix` 任务、配额、用量、素材与任务记录。
 
 新界面始终显式发送 `replication_method=exact|style`，不能只更换旧提示词的名称。省略该字段的旧客户端和历史 session 继续使用原有 `reference-visual-reverse-remix`，不会伪装成新 Skill；旧任务仍可恢复和下载。

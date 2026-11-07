@@ -18,6 +18,7 @@ ENDPOINTS = {
     "tmall": ("/api/taobao/get-item-detail/v6", 25),
     "1688": ("/api/1688/get-item-detail/v1", 10),
     "jd": ("/api/jd/get-item-detail/v3", 40),
+    "aliexpress": ("/api/aliexpress/get-product-detail/v1", None),
 }
 TAOBAO_FALLBACK_ENDPOINT = "/api/taobao/get-item-detail/v3"
 MARKET_HOSTS = {
@@ -25,8 +26,25 @@ MARKET_HOSTS = {
     "tmall": ("tmall.com",),
     "1688": ("1688.com",),
     "jd": ("jd.com", "3.cn", "npcitem.jd.hk"),
+    "aliexpress": ("aliexpress.us", "aliexpress.com"),
 }
-IMAGE_HOSTS = ("alicdn.com", "taobaocdn.com", "tbcdn.cn", "360buyimg.com")
+IMAGE_HOSTS = (
+    "alicdn.com",
+    "taobaocdn.com",
+    "tbcdn.cn",
+    "360buyimg.com",
+    "aliexpress-media.com",
+)
+
+
+def aliexpress_site(canonical: str) -> str:
+    return (
+        "US"
+        if domain_matches(
+            (urlparse(canonical).hostname or "").lower(), ("aliexpress.us",)
+        )
+        else "GLO"
+    )
 
 
 def domain_matches(host: str, domains: tuple[str, ...]) -> bool:
@@ -85,6 +103,7 @@ def parse_product_link(
             400, "INVALID_PRODUCT_LINK", "分享链接跳转过多，请使用完整商品链接。"
         )
     raw = html.unescape(raw.strip())
+    aliexpress_host = "www.aliexpress.us"
     if raw.isdigit():
         if platform_hint not in ENDPOINTS:
             raise ApiError(400, "PLATFORM_REQUIRED", "输入商品 ID 时，请选择来源平台。")
@@ -93,7 +112,9 @@ def parse_product_link(
         match = re.search(r"https?://[^\s<>\"，]+", raw)
         if not match:
             raise ApiError(
-                400, "INVALID_PRODUCT_LINK", "请粘贴淘宝、天猫、1688 或京东的商品链接。"
+                400,
+                "INVALID_PRODUCT_LINK",
+                "请粘贴淘宝、天猫、1688、京东或 AliExpress 的商品链接。",
             )
         raw = match.group(0).rstrip("，。；！）)]}￥¥")
         try:
@@ -120,6 +141,8 @@ def parse_product_link(
                 400, "UNSUPPORTED_SOURCE", "暂不支持该商品链接，可切换为上传参考图。"
             )
         query = parse_qs(parsed.query)
+        if platform == "aliexpress" and domain_matches(host, ("aliexpress.com",)):
+            aliexpress_host = "www.aliexpress.com"
         for key in ("url", "target", "redirectUrl", "redirect_url", "tu"):
             nested = query.get(key, [""])[0]
             nested_host = (urlparse(nested).hostname or "").lower()
@@ -135,7 +158,12 @@ def parse_product_link(
             ),
             "",
         )
-        if not item_id:
+        if platform == "aliexpress":
+            # The listing path identifies the product; query parameters may
+            # refer to a selected SKU or a recommendation instead.
+            match = re.fullmatch(r"/item/(\d{6,})\.html?", parsed.path)
+            item_id = match.group(1) if match else ""
+        elif not item_id:
             match = re.search(r"/(?:offer/|product/|i)?(\d{6,})\.html?", parsed.path)
             item_id = match.group(1) if match else ""
         if not item_id and (
@@ -182,6 +210,7 @@ def parse_product_link(
         "tmall": f"https://detail.tmall.com/item.htm?id={item_id}",
         "1688": f"https://detail.1688.com/offer/{item_id}.html",
         "jd": f"https://item.jd.com/{item_id}.html",
+        "aliexpress": f"https://{aliexpress_host}/item/{item_id}.html",
     }[platform]
     return platform, item_id, canonical
 
@@ -324,6 +353,13 @@ def normalize_product(
                 groups["detail"].extend(_urls(root[key]))
     groups = {name: list(dict.fromkeys(urls))[:120] for name, urls in groups.items()}
     if not groups["main"] and not groups["detail"]:
+        if platform == "aliexpress":
+            raise ApiError(
+                502,
+                "PRODUCT_IMAGES_MISSING",
+                "AliExpress 商品信息已返回，但采集服务未提供可用图片；"
+                "请上传该商品的参考图，或更换商品链接。",
+            )
         raise ApiError(
             502,
             "PRODUCT_IMAGES_MISSING",
@@ -388,12 +424,12 @@ def fetch_product(token: str, platform: str, item_id: str, canonical: str) -> di
 def _fetch_endpoint(
     token: str, platform: str, item_id: str, canonical: str, endpoint: str
 ) -> dict:
+    params = {"token": token, "itemId": item_id}
+    if platform == "aliexpress":
+        params["site"] = aliexpress_site(canonical)
     try:
         request = Request(
-            "https://api.justoneapi.com"
-            + endpoint
-            + "?"
-            + urlencode({"token": token, "itemId": item_id}),
+            "https://api.justoneapi.com" + endpoint + "?" + urlencode(params),
             headers={"User-Agent": "Polaris/1.0", "Accept": "application/json"},
         )
         with build_opener(ProxyHandler({})).open(request, timeout=120) as response:
@@ -434,6 +470,16 @@ def _fetch_endpoint(
             messages.get(code, "商品服务返回异常，请稍后重试。"),
         )
     body = wire.get("data")
+    if (
+        platform == "aliexpress"
+        and isinstance(body, Mapping)
+        and str(body.get("product_id", "")) != item_id
+    ):
+        raise ApiError(
+            502,
+            "PRODUCT_ID_MISMATCH",
+            "采集服务返回的商品与链接不一致，请稍后重试或上传参考图。",
+        )
     if (
         endpoint == TAOBAO_FALLBACK_ENDPOINT
         and isinstance(body, Mapping)

@@ -35,7 +35,7 @@ from .auth import (
 from .database import get_session
 from .domain import AssetMediaKind, AssetOriginKind
 from .errors import ApiError
-from .justone import fetch_product, image_url, parse_product_link
+from .justone import aliexpress_site, fetch_product, image_url, parse_product_link
 from .models import (
     AssetRecord,
     JobAssetRecord,
@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 
 class ProductRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
-    platform: Literal["auto", "taobao", "tmall", "1688", "jd"] = "auto"
+    platform: Literal["auto", "taobao", "tmall", "1688", "jd", "aliexpress"] = "auto"
 
 
 class ImportRequest(BaseModel):
@@ -457,6 +457,7 @@ def product_platforms(workspace: WorkspaceDependency) -> list[dict[str, str]]:
             ("tmall", "天猫"),
             ("1688", "1688"),
             ("jd", "京东"),
+            ("aliexpress", "AliExpress（速卖通）"),
         )
     ]
 
@@ -482,6 +483,8 @@ async def create_product(
                 platform,
                 item_id,
                 (datetime.now(UTC) + timedelta(hours=8)).date().isoformat(),
+                # US and global responses are separate products in the cache.
+                *([aliexpress_site(canonical)] if platform == "aliexpress" else []),
             ]
         ),
         {"platform": platform, "item_id": item_id, "canonical_url": canonical},

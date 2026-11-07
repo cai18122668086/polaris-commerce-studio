@@ -5,6 +5,18 @@ import { build } from "esbuild";
 const compiled = await build({ entryPoints: ["features/video-studio/generation-progress.ts"], bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent" });
 const { generationProgress, elapsedLabel } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
 
+test("long waits keep the original task and backup stages stay in video generation", () => {
+  const slow = generationProgress({ status: "running", kind: "lipsync", stage: "lipsync_generating", lipsync_routing: { long_wait: true } });
+  assert.equal(slow.title, "生成耗时较长，继续查询原任务");
+  assert.equal(slow.active, true);
+  assert.equal(slow.step, 2);
+  for (const stage of ["backup_avatar_preparing", "backup_lipsync_submitting", "backup_lipsync_generating"]) {
+    const backup = generationProgress({ status: "running", kind: "lipsync", stage });
+    assert.equal(backup.step, 2);
+    assert.match(backup.title, /备用/);
+  }
+});
+
 test("video stage feedback follows real stages and never claims early completion", () => {
   const job = { status: "running", kind: "lipsync" };
   const stages = ["tts_submitting", "preparing_forward_template", "lipsync_generating", "downloading_video"];

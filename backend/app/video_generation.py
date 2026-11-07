@@ -31,6 +31,7 @@ from .video_generation_models import (
     VideoAvatarRecord,
     VideoGenerationRecord,
 )
+from .video_lipsync import run_lipsync
 from .video_providers import VideoProviders, safe_media_url
 from .video_stage_timing import transition
 from .video_studio_models import VideoProjectRecord
@@ -120,6 +121,7 @@ RESUMABLE_STAGES = {
     "measuring_source",
     "preparing_forward_template",
     "uploading_forward_template",
+    "backup_avatar_preparing",
 }
 
 
@@ -155,6 +157,18 @@ def job_response(row: VideoGenerationRecord) -> dict[str, Any]:
         "audio_url": base + "/audio" if row.details.get("audio_url") else None,
         "snapshot": row.details.get("snapshot"),
         "audio_duration_seconds": row.details.get("audio_duration_seconds"),
+        "lipsync_routing": {
+            key: value
+            for key, value in (row.details.get("lipsync_routing") or {}).items()
+            if key
+            in {
+                "selected_provider",
+                "switch_reason",
+                "primary_status",
+                "backup_status",
+                "long_wait",
+            }
+        },
         "template_preparation": row.details.get("template_preparation"),
         "stage_history": row.details.get("stage_history", []),
         "tts": {"voice_name": (row.details.get("tts") or {}).get("voice_name")},
@@ -375,39 +389,21 @@ def process_generation(
                         )
                 if not job.provider_task_id:
                     prepare_lipsync_media(session, job, settings, provider)
-                    set_stage(session, job, "lipsync_submitting")
-                    data = provider.request(
-                        "quanyu",
-                        "POST",
-                        "/api/digital_human/submit",
-                        json={
-                            "model_id": job.details["model_id"],
-                            "audio_url": job.details["audio_url"],
-                        },
-                    )
-                    if not data.get("task_id"):
-                        raise ApiError(
-                            502, "VIDEO_PROVIDER_OUTCOME_UNKNOWN", "任务结果未确认。"
-                        )
-                    job.provider_task_id = data["task_id"]
-                    set_stage(
-                        session,
-                        job,
-                        "lipsync_generating",
-                        billing=job.details.get("billing", [])
-                        + [data.get("billing", {})],
-                    )
-                if not poll_until_complete(session, job, provider, "quanyu"):
+                if not run_lipsync(session, job, settings, provider):
                     return
                 local = settings.video_media_dir / "jobs" / job.id / "result.mp4"
                 if not local.exists():
                     set_stage(session, job, "downloading_video")
-                    provider.download(
-                        "https://quanyu.sowa.chat/api/download/"
-                        + provider_task_id(job),
-                        local,
-                        vendor="quanyu",
-                    )
+                    routing = job.details.get("lipsync_routing") or {}
+                    if routing.get("selected_provider") == "skyhuman":
+                        provider.download(routing["result_url"], local)
+                    else:
+                        provider.download(
+                            "https://quanyu.sowa.chat/api/download/"
+                            + provider_task_id(job),
+                            local,
+                            vendor="quanyu",
+                        )
                 set_stage(session, job, "completed", result_path=str(local))
             job.status = "completed"
             session.commit()
@@ -427,6 +423,7 @@ def process_generation(
                 "tts_submitting",
                 "lipsync_submitting",
                 "forward_model_submitting",
+                "backup_lipsync_submitting",
             }
             job.status = (
                 "unknown"
@@ -1008,6 +1005,7 @@ def generation_tasks(
                     "tts_submitting",
                     "lipsync_submitting",
                     "forward_model_submitting",
+                    "backup_lipsync_submitting",
                 }
                 else "awaiting_resume"
             )

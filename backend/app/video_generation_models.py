@@ -68,3 +68,29 @@ class VideoAudioRecord(TimestampMixin, Base):
     filename: Mapped[str] = mapped_column(String(255))
     path: Mapped[str] = mapped_column(Text)
     mime: Mapped[str] = mapped_column(String(80))
+
+
+class VideoLipsyncAvatarRecord(TimestampMixin, Base):
+    """One durable backup registration per owner and exact prepared model."""
+
+    __tablename__ = "video_lipsync_avatars"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "owner_user_id",
+            "model_id",
+            name="uq_video_lipsync_avatar_model",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT")
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    model_id: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(24))
+    provider_task_id: Mapped[str | None] = mapped_column(String(160))
+    avatar_code: Mapped[str | None] = mapped_column(String(160))
+    error_code: Mapped[str | None] = mapped_column(String(80))

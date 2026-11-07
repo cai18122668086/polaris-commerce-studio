@@ -13,6 +13,8 @@ from .config import Settings
 from .errors import ApiError
 
 MEDIA_HOSTS = {
+    "skyhumanapi.pilihu.vip",
+    "cdn-oss.pilihu.vip",
     "quanyu.sowa.chat",
     "www.wuyeai.cn",
     "res.chanjing.cc",
@@ -51,23 +53,26 @@ class VideoProviders:
     ) -> dict[str, Any]:
         if not self.settings.video_providers_enabled:
             raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
-        key = (
-            self.settings.quanyu_api_key
-            if vendor == "quanyu"
-            else self.settings.wuye_api_key
-        ).get_secret_value()
+        if vendor not in {"quanyu", "wuye", "skyhuman"}:
+            raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
+        key = {
+            "quanyu": self.settings.quanyu_api_key,
+            "wuye": self.settings.wuye_api_key,
+            "skyhuman": self.settings.skyhuman_api_key,
+        }[vendor].get_secret_value()
         if not key:
             raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
-        host = (
-            "https://quanyu.sowa.chat"
-            if vendor == "quanyu"
-            else "https://www.wuyeai.cn"
-        )
+        host = {
+            "quanyu": "https://quanyu.sowa.chat",
+            "wuye": "https://www.wuyeai.cn",
+            "skyhuman": "https://skyhumanapi.pilihu.vip",
+        }[vendor]
         headers = (
             {"X-API-Key": key}
             if vendor == "quanyu"
             else {"Authorization": "Bearer " + key}
         )
+        headers = {**kwargs.pop("headers", {}), **headers}
         try:
             with httpx.Client(
                 timeout=httpx.Timeout(120, connect=15),
@@ -102,7 +107,13 @@ class VideoProviders:
             and "status" in data
             and (path.startswith("/api/status/") or path.startswith("/v1/videos/"))
         )
-        if not response.is_success or data.get("error") and not task_status_response:
+        if (
+            not response.is_success
+            or data.get("error")
+            and not task_status_response
+            or vendor == "skyhuman"
+            and data.get("code", 0) != 0
+        ):
             # Never expose raw upstream bodies (they may contain URLs or tokens).
             raise ApiError(
                 502,

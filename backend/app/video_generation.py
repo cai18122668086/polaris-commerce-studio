@@ -25,7 +25,12 @@ from .models import utc_now
 from .video_avatar_access import avatar_scope
 from .video_avatar_catalog import public_avatar_gender
 from .video_cosyvoice import CosyVoice
-from .video_generation_media import prepare_lipsync_media, set_stage
+from .video_generation_media import (
+    MODEL_REGISTRATION_STAGES,
+    prepare_lipsync_media,
+    register_model,
+    set_stage,
+)
 from .video_generation_models import (
     VideoAudioRecord,
     VideoAvatarRecord,
@@ -126,8 +131,10 @@ RESUMABLE_STAGES = {
 
 
 def can_resume(row: VideoGenerationRecord) -> bool:
-    return row.status == "awaiting_resume" or (
-        row.status == "failed" and row.stage in RESUMABLE_STAGES
+    return (
+        row.status == "awaiting_resume"
+        or (row.status == "failed" and row.stage in RESUMABLE_STAGES)
+        or (row.status == "unknown" and row.stage in MODEL_REGISTRATION_STAGES)
     )
 
 
@@ -273,16 +280,13 @@ def process_generation(
                     link = provider.upload(local, "video/mp4", "digital_human_model")
                     set_stage(session, job, "template_ready", template_url=link)
                 if not job.details.get("model_id"):
-                    set_stage(session, job, "model_submitting")
-                    data = provider.request(
-                        "quanyu",
-                        "POST",
-                        "/api/digital_human/models",
-                        json={
-                            "model_name": "极光原创-" + job.id,
-                            "model_type": "video",
-                            "video_url": job.details["template_url"],
-                        },
+                    data = register_model(
+                        session,
+                        job,
+                        provider,
+                        stage="model_submitting",
+                        name="极光原创-" + job.id,
+                        video_url=job.details["template_url"],
                     )
                     model_id = (data.get("model") or {}).get("id")
                     if not model_id:
@@ -426,7 +430,9 @@ def process_generation(
                 "backup_lipsync_submitting",
             }
             job.status = (
-                "unknown"
+                "awaiting_resume"
+                if code == "VIDEO_MODEL_REGISTRATION_PENDING"
+                else "unknown"
                 if code == "VIDEO_PROVIDER_OUTCOME_UNKNOWN"
                 or submitting
                 and code != "VIDEO_PROVIDER_REJECTED"

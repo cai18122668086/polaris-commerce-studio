@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
+import httpx
 from sqlalchemy.orm import Session
 
 from .config import Settings
@@ -13,6 +15,106 @@ from .video_generation_models import VideoAudioRecord, VideoGenerationRecord
 from .video_providers import VideoProviders
 from .video_stage_timing import transition
 from .video_template_media import audio_duration, prepare_forward, video_info
+
+MODEL_REGISTRATION_STAGES = {"model_submitting", "forward_model_submitting"}
+MODEL_REGISTRATION_TIMEOUT = 180
+MODEL_LOOKUP_WINDOW = 90
+
+
+def register_model(
+    session: Session,
+    job: VideoGenerationRecord,
+    provider: VideoProviders,
+    *,
+    stage: str,
+    name: str,
+    video_url: str,
+) -> dict[str, Any]:
+    """Submit once, then reconcile lost replies by this job's unique name.
+
+    The provider copies uploaded videos to a different URL during registration,
+    so URL equality is not an identity check. Only one active private video with
+    the exact job UUID name in the authenticated account can be adopted.
+    """
+    receipt = dict(job.details.get("model_registration") or {})
+    if receipt and receipt.get("name") != name:
+        raise ApiError(409, "VIDEO_MODEL_REGISTRATION_CONFLICT", "形象登记记录不匹配。")
+    if receipt.get("model_id"):
+        return {"model": {"id": receipt["model_id"]}, "billing": receipt.get("billing")}
+    attempted = receipt.get("submission_started") or any(
+        item.get("stage") == stage for item in job.details.get("stage_history", [])
+    )
+    receipt.update(name=name, submission_started=True)
+    if not attempted:
+        # Commit the intent before the POST, including before a process crash.
+        set_stage(session, job, stage, model_registration=receipt)
+        try:
+            data = provider.request(
+                "quanyu",
+                "POST",
+                "/api/digital_human/models",
+                json={
+                    "model_name": name,
+                    "model_type": "video",
+                    "video_url": video_url,
+                },
+                timeout=httpx.Timeout(MODEL_REGISTRATION_TIMEOUT, connect=15),
+            )
+            model_id = (data.get("model") or {}).get("id")
+            if (
+                isinstance(model_id, int)
+                and not isinstance(model_id, bool)
+                and model_id > 0
+            ):
+                receipt.update(
+                    model_id=model_id, reconciled=False, billing=data.get("billing")
+                )
+                set_stage(session, job, stage, model_registration=receipt)
+                return data
+        except ApiError as error:
+            if error.code != "VIDEO_PROVIDER_OUTCOME_UNKNOWN":
+                raise
+
+    # Existing/legacy submissions also enter here. No recovery path repeats POST.
+    deadline = time.monotonic() + MODEL_LOOKUP_WINDOW
+    while True:
+        set_stage(session, job, stage, model_registration=receipt)
+        try:
+            data = provider.request(
+                "quanyu",
+                "GET",
+                "/api/digital_human/models",
+                timeout=min(15, max(1, deadline - time.monotonic())),
+            )
+            matches = [
+                model
+                for model in data.get("models", [])
+                if model.get("model_name") == name
+                and model.get("model_type") == "video"
+                and model.get("is_active") is True
+                and model.get("is_public") is False
+                and isinstance(model.get("id"), int)
+                and not isinstance(model.get("id"), bool)
+                and model["id"] > 0
+                and model.get("video_url")
+            ]
+            if len(matches) == 1:
+                receipt.update(model_id=matches[0]["id"], reconciled=True)
+                set_stage(session, job, stage, model_registration=receipt)
+                return {"model": {"id": matches[0]["id"]}}
+            if len(matches) > 1:
+                break  # Never guess between ambiguous registrations.
+        except ApiError:
+            pass  # A failed GET does not justify another registration.
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(5, remaining))
+    raise ApiError(
+        502,
+        "VIDEO_MODEL_REGISTRATION_PENDING",
+        "形象登记结果仍待确认，可继续查询原任务，无需重新登记。",
+    )
 
 
 def set_stage(
@@ -121,16 +223,13 @@ def prepare_lipsync_media(
         url = provider.upload(target, "video/mp4", "digital_human_model")
         set_stage(session, job, "forward_template_uploaded", forward_template_url=url)
     if not job.details.get("forward_model_id"):
-        set_stage(session, job, "forward_model_submitting")
-        data = provider.request(
-            "quanyu",
-            "POST",
-            "/api/digital_human/models",
-            json={
-                "model_name": "极光正向动作-" + job.id,
-                "model_type": "video",
-                "video_url": job.details["forward_template_url"],
-            },
+        data = register_model(
+            session,
+            job,
+            provider,
+            stage="forward_model_submitting",
+            name="极光正向动作-" + job.id,
+            video_url=job.details["forward_template_url"],
         )
         model_id = (data.get("model") or {}).get("id")
         if not model_id:

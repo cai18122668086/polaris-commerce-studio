@@ -105,6 +105,8 @@ class FakeVideoProviders:
             shutil.copyfile(FakeVideoProviders.media, target)
 
     def request(self, vendor, method, path, **kwargs):
+        if method == "GET" and path == "/api/digital_human/models":
+            return {"models": self.models()}
         if method == "POST":
             self.posts.append((vendor, path, kwargs.get("json", {})))
             if self.fail == path:

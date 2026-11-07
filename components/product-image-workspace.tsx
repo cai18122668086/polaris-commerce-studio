@@ -26,11 +26,10 @@ import { ReplicaSelect } from "@/components/replica-select";
 import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceJobGate, WorkspaceJobInputs } from "@/components/workspace-job-gate";
-import { useWorkspaceJobId, useWorkspaceJobReview } from "@/lib/jobs/use-workspace-job-id";
+import { useWorkspaceJobId } from "@/lib/jobs/use-workspace-job-id";
 import { workspaceJobSnapshot } from "@/lib/jobs/workspace-restore";
 import { AssetLibraryDialog } from "@/components/asset-library-picker";
 import { ResultGrid } from "@/components/result-grid";
-import { SkillReviewChecklist } from "@/components/skill-review-checklist";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { useUploadAsset } from "@/features/assets/api/assets";
@@ -148,7 +147,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   const [draftInstruction, setInstruction] = useDraftState(workspace?.id, feature?.id ?? "product-image", "draftInstruction", "");
   const [draftTargetColor, setTargetColor] = useDraftState(workspace?.id, feature?.id ?? "product-image", "draftTargetColor", "");
   const [uiError, setUiError] = useState<string>();
-  const [humanReviewComplete, setHumanReviewComplete] = useWorkspaceJobReview(jobId);
   const runtime = useRuntimeStatus();
   const capability = resolveRuntimeCapability(runtime.data, feature?.runtimeCapability ?? "product_image");
   const workflow = presentWorkflow(capability);
@@ -226,7 +224,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   const retryFailedImages = async () => {
     if (!job.data || !allowsJobAction(job.data.allowed_actions, "retry")) return;
     setUiError(undefined);
-    setHumanReviewComplete(false);
     try {
       const retried = await retryJob.mutateAsync({
         jobId: job.data.id,
@@ -263,7 +260,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
     };
     try {
       const created = await createJob.mutateAsync(body);
-      setHumanReviewComplete(false);
       setJobId(created.id);
     } catch (error) {
       setUiError(errorMessage(error));
@@ -273,7 +269,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
   const resetTask = () => {
     setJobId(undefined);
     setUiError(undefined);
-    setHumanReviewComplete(false);
     createJob.reset();
     retryJob.reset();
   };
@@ -440,22 +435,6 @@ export function ProductImageWorkspace({ preset }: { preset: string }) {
               expectedCount={job.data?.expected_item_count ?? imageCount}
               title={`${feature.title}结果`}
             />
-            {job.data && ["completed", "partial"].includes(job.data.status) && resultAssets.length > 0 ? (
-              <SkillReviewChecklist key={jobId}
-                items={[
-                  { key: "fidelity", label: inputGuide.reviewIdentity },
-                  { key: "composition", label: "商品比例、透视和场景关系自然，背景或道具没有遮挡主体。" },
-                  { key: "legibility", label: "缩略图和移动端首屏仍看得清商品，没有乱码、密集小字或低清伪影。" },
-                  { key: "compliance", label: "没有虚假认证、销量、评价、功效、价格、徽章、水印或未授权额外元素。" },
-                ]}
-                description={
-                  humanReviewComplete
-                    ? "已完成当前 Skill 的人工检查；如需更稳上架，仍可再做一版保守白底/灰底图。"
-                    : undefined
-                }
-                onCompleteChange={setHumanReviewComplete}
-              />
-            ) : null}
           </main>
 
         </div>

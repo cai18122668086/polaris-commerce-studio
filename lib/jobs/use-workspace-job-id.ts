@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 export function useWorkspaceJobId(route: string) {
   const router = useRouter();
@@ -16,10 +16,4 @@ export function useWorkspaceJobId(route: string) {
     router.replace(next ? `${route}?jobId=${encodeURIComponent(next)}` : route, { scroll: false });
   };
   return [jobId, setJobId] as const;
-}
-
-export function useWorkspaceJobReview(jobId?: string) {
-  const [reviewedJobId, setReviewedJobId] = useState<string>();
-  const setComplete = useCallback((complete: boolean) => setReviewedJobId(complete ? jobId : undefined), [jobId]);
-  return [Boolean(jobId && reviewedJobId === jobId), setComplete] as const;
 }

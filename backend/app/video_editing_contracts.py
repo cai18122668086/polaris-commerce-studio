@@ -74,6 +74,11 @@ class Transcript(StrictVideoModel):
     reference_matches: bool | None = None
     differences: list[dict] = Field(default_factory=list)
     timing_review: Literal["unreviewed", "reviewed"] = "unreviewed"
+    parent_transcript_sha256: str | None = None
+    text_revision_id: str | None = None
+    text_status: Literal["automatic", "user_corrected", "operator_candidate"] = (
+        "automatic"
+    )
 
     @model_validator(mode="after")
     def stable_measured_ids(self) -> Self:

@@ -1,0 +1,71 @@
+{
+  "schema": "tengli.funasr-alignment-bundle/1",
+  "source": "https://modelscope.cn/models/iic/speech_timestamp_prediction-v1-16k-offline",
+  "models": {
+    "fa_zh": {
+      "model_id": "iic/speech_timestamp_prediction-v1-16k-offline",
+      "files": [
+        {
+          "Path": ".gitattributes",
+          "Revision": "baaec697fbb310b2446bcfbe3b6365ac4a39b9ff",
+          "Sha256": "f3d04437c926962476701a7939d22f21400b4eb0bdd31a15f0012576f2d00932",
+          "Size": 1414
+        },
+        {
+          "Path": "README.md",
+          "Revision": "ed6abeae67748098b6055978a17eefd2fa0f9fd6",
+          "Sha256": "e759d922ab52a60727eb5332816fde56a00436928ccff609516168f5f30fb693",
+          "Size": 14304
+        },
+        {
+          "Path": "am.mvn",
+          "Revision": "5b78a09d7819bfa32eae80decc6905e24d753568",
+          "Sha256": "29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5",
+          "Size": 11203
+        },
+        {
+          "Path": "config.yaml",
+          "Revision": "9189916580a65d8f523ecdfe6a2d2c330eea8412",
+          "Sha256": "bf673207f2a2e2263403d64adec49666166c047dc74bc03153b0e7882f8d09b4",
+          "Size": 2455
+        },
+        {
+          "Path": "configuration.json",
+          "Revision": "05190503a1aae2077cfc98726c814b1b51eca555",
+          "Sha256": "fbb37220a629e1eb5468c8486fcd5f5650bc0817b28551530e5485db41662c73",
+          "Size": 448
+        },
+        {
+          "Path": "example/asr_example.wav",
+          "Revision": "9189916580a65d8f523ecdfe6a2d2c330eea8412",
+          "Sha256": "2ffa478de2cd570dd54e8762008cd6bbde9871fd79757f1cdbbec7d6b7b49274",
+          "Size": 144770
+        },
+        {
+          "Path": "example/text.txt",
+          "Revision": "f88fe97fd0027b51a7627eb008c244c8fbf5986b",
+          "Sha256": "0cce095c368c0b04d3e4b3d6e18c26a696ccac49b3b2382ed63644a67b0696cb",
+          "Size": 43
+        },
+        {
+          "Path": "model.pt",
+          "Revision": "05190503a1aae2077cfc98726c814b1b51eca555",
+          "Sha256": "f34ede558af831fb504206b25f1c2f27ca2f77753c26c4dd38d03323153b6f73",
+          "Size": 158469618
+        },
+        {
+          "Path": "seg_dict",
+          "Revision": "120e8aeadffc0721544b50e984357e09dde2c94a",
+          "Sha256": "59a2ef803a3f1648ad03a2e1480db1c1ee0c0d7dc4ef4dbd16cea33944329022",
+          "Size": 8287834
+        },
+        {
+          "Path": "tokens.json",
+          "Revision": "05190503a1aae2077cfc98726c814b1b51eca555",
+          "Sha256": "2b20c2b12572d682afff84ce1c8d560f67b8b32a4c1f21567411d141ed352127",
+          "Size": 93676
+        }
+      ]
+    }
+  }
+}

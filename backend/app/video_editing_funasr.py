@@ -22,8 +22,11 @@ MANIFEST = Path(__file__).parent / "data/editing_funasr_models.json"
 UNIT = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]|[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*")
 
 
-def bundle_identity(root: Path, *, verify: bool = True) -> str:
-    manifest = read_json(MANIFEST)
+def bundle_identity(
+    root: Path, *, verify: bool = True, manifest_path: Path | None = None
+) -> str:
+    selected_manifest = manifest_path or MANIFEST
+    manifest = read_json(selected_manifest)
     if verify:
         for name, model in manifest["models"].items():
             for item in model["files"]:
@@ -34,7 +37,7 @@ def bundle_identity(root: Path, *, verify: bool = True) -> str:
                     or sha256(path) != item["Sha256"]
                 ):
                     raise EditingFailure("EDITING_ASR_MODEL_INTEGRITY_FAILED")
-    return sha256(MANIFEST)
+    return sha256(selected_manifest)
 
 
 def normalize_result(

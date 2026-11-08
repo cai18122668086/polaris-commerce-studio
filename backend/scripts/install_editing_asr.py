@@ -13,11 +13,19 @@ from app.video_editing_funasr import MANIFEST, bundle_identity
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument(
+        "--bundle", choices=["recognition", "alignment"], default="recognition"
+    )
     args = parser.parse_args()
+    manifest = (
+        MANIFEST
+        if args.bundle == "recognition"
+        else MANIFEST.with_name("editing_alignment_models.json")
+    )
     with httpx.Client(
         timeout=httpx.Timeout(90, connect=20), follow_redirects=True
     ) as client:
-        for name, model in read_json(MANIFEST)["models"].items():
+        for name, model in read_json(manifest)["models"].items():
             for item in model["files"]:
                 path = inside(args.root / name, item["Path"])
                 if path.is_file() and sha256(path) == item["Sha256"]:
@@ -46,7 +54,7 @@ def main() -> None:
                     raise ValueError("Model download integrity failed")
                 temporary.replace(path)
                 print("Verified", name, item["Path"], flush=True)
-    print("Pinned bundle verified:", bundle_identity(args.root))
+    print("Pinned bundle verified:", bundle_identity(args.root, manifest_path=manifest))
 
 
 if __name__ == "__main__":

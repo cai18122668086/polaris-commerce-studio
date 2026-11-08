@@ -117,3 +117,15 @@ HY-A3 第三个新实例已通过原生 Build/get 编码：`bld_20261108T1832220
 规划提交现已支持以任务稳定目录复用已保存响应；在响应保存后、校验保存前崩溃，可重做合同校验而不再次请求模型。输入摘要变化、结果未知或响应不合合同均不能自动重付费。请求、响应、校验结果以摘要关联；校验仅标为 contract_only，语义与视觉仍 unreviewed。后续 worker 接入必须使用任务级目录，不能用每次 attempt 的目录规避提交标记。新增计费仍等待用户授权，实际模型调用为零。
 
 该轮新增与既有流程合计 76 项测试通过，日志 `C:/tl/native-compiler-regression.log`；345 个 app 文件 Windows/Linux mypy 及后端 Ruff 通过。dry-run `C:/tl/planning/dry-native-bindings-v1` 包含全部 132 组及词绑定字段，235415 字节，最大输出 5000 tokens，未提交模型。前端未在此轮变更；编译器尚未作为网站语义模式接入 worker，基础字幕链路继续运行。
+
+上述词锚点编译工作保存于本地提交 `677166c`，未推送。
+
+## 校对文字重新对齐的实施进展
+
+新增独立、可选的 `fa-zh` 本机强制对齐路径，使用官方 `iic/speech_timestamp_prediction-v1-16k-offline`。官方模型文档的 [Timestamp Prediction](https://huggingface.co/funasr/fa-zh/blob/main/README.md#timestamp-prediction) 与 [维护者说明](https://github.com/modelscope/FunASR/discussions/2971) 明确使用实际音频和已有文字，专用于中文，不等同于多语言识别。新 `editing_alignment_models.json` 固定 10 个官方文件的 revision、SHA256 和字节数，共 167025765 字节；其中 `model.pt` 的 SHA256 为 `f34ede558af831fb504206b25f1c2f27ca2f77753c26c4dd38d03323153b6f73`。本机逐文件校验安装在 `C:/tl/asr/alignment/fa_zh`，模型包清单摘要 `48072d77a20fa3f3e244a598b6af1485ffbb939e9e11d8df370b23c6d0d70116`。未更换现有三模型 ASR 包，默认安装仍为 recognition，alignment 需显式选择。
+
+`align_editing_transcript.py` 读取原任务音频、prepared 和原转录，保存独立文字、原始对齐结果、新转录和 receipt；UTF-8、音频摘要、原转录 source/audio/duration 一致性和模型摘要在执行中检查，禁止 remote code，禁止覆盖已有对齐实例。新转录记 parent 摘要、文字 revision、独立词 ID 和处理版本，原 ASR 文件不改。用户校对与操作者候选有不同状态；命令行只能产生 operator_candidate，不能冒充用户校对。新时间轴始终 timing_review=unreviewed，强制对齐不能证明文字确实被说出，也不核验商品事实。
+
+真实音频验证保存在 `C:/tl/alignment-validation`：same-text-v1 与 candidate-v1 均产生 243 个词点；numeric-candidate-v1 使用“14块9、1000克、4斤、A类”等写法，产生 240 个单位，3 处把原生数字子词以真实首尾边界合并，原区间和下标保留在 timing_adjustments，未均分或猜测字符时间。首词起点 410 ms、尾词结束 48050 ms，原音频仍长 48475 ms。操作者对“关点/关键、真话事/真划算、刷的/刷到”的候选更改和未核验的品牌名登记在 operator-candidate-provenance.json，尚未逐词听验，更不是用户确认稿。原数据库中已有确认稿也包含识别式错字，不能直接替代当前实际音频。数字写法与实际读法的对齐精度仍需专项听验，未证明 150 ms/300 ms 目标。
+
+新增测试拒绝缺词、字词不匹配、缺时间戳、重叠时间、越界与跨源对齐，验证原文与原时间轴不变、新时间点与新词 ID、大小写/标点保留及数字子词的真实边界合并。29 项相关回归、346 个 app 文件 mypy 与后端 Ruff 通过。这一轮完成对齐模块和运行脚本；校对版本数据库、网站校对界面、独立 worker 消费校对稿及据此重新出片仍待继续接入。没有付费模型调用或部署。

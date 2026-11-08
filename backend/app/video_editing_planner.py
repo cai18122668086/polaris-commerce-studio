@@ -115,6 +115,9 @@ def build_request(
                 "reference_matches": transcript.reference_matches,
                 "differences": transcript.differences,
                 "timing_review": transcript.timing_review,
+                "text_status": transcript.text_status,
+                "text_revision_id": transcript.text_revision_id,
+                "parent_transcript_sha256": transcript.parent_transcript_sha256,
             },
             "utterances": [
                 u.model_dump(exclude={"start_ms", "end_ms"})

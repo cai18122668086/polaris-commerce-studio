@@ -18,6 +18,12 @@ from .errors import ApiError
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .motion_library_validation import group_status
 from .motion_parameter_contracts import input_contract
+from .video_editing_catalog import (
+    asset_metadata,
+    audio_asset,
+    catalog_summary,
+    template_dependencies,
+)
 from .video_editing_contracts import EditingTaskCreate, EditingTaskResponse
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -156,6 +162,12 @@ def library(
         "next_offset": offset + limit
         if offset + limit < len(catalog["groups"])
         else None,
+        "summary": catalog_summary(
+            package,
+            settings.video_editing_tasks_dir
+            / "_library-validation"
+            / MOTION_SHA256[:12],
+        ),
     }
 
 
@@ -240,6 +252,11 @@ def describe_group(
         "group": group,
         "input_schema": read_json(package / group["input_schema"]),
         "parameter_contract": input_contract(package, group),
+        "template_dependencies": template_dependencies(package, group),
+        "dependency_scope": (
+            "template input references only; "
+            "native preflight may require implicit engine dependencies"
+        ),
         "contract": read_json(package / group["contract"])
         if group.get("contract")
         else None,
@@ -262,6 +279,7 @@ def library_resources(
     workspace: VideoWorkspace,
     source: str = Query(default="bundled", pattern="^(bundled|external)$"),
     kind: str | None = None,
+    search: str = Query(default="", max_length=100),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
@@ -273,15 +291,62 @@ def library_resources(
     )
     if kind:
         rows = [r for r in rows if r.get("kind") == kind]
+    if search.strip():
+        query = search.strip().casefold()
+        rows = [
+            r
+            for r in rows
+            if query
+            in (
+                asset_metadata(r, bundled=source == "bundled")["display_name"]
+                + " "
+                + r["id"]
+            ).casefold()
+        ]
     return {
         "release": MOTION_SHA256,
         "source": source,
         "total": len(rows),
-        "resources": rows[offset : offset + limit],
+        "resources": [
+            asset_metadata(r, bundled=source == "bundled")
+            for r in rows[offset : offset + limit]
+        ],
         "next_offset": offset + limit if offset + limit < len(rows) else None,
         "external_files_available": False if source == "external" else None,
         "website_runtime_validation": "unverified",
     }
+
+
+@router.get("/editing-library/assets/{asset_id}/audio")
+def preview_audio(
+    asset_id: str,
+    request: Request,
+    workspace: VideoWorkspace,
+) -> FileResponse:
+    package = enabled(request).video_editing_library_dir
+    try:
+        asset, path = audio_asset(package, asset_id)
+    except LookupError:
+        raise ApiError(404, "EDITING_AUDIO_NOT_FOUND", "未找到原包音频。") from None
+    except ValueError:
+        raise ApiError(
+            409, "EDITING_AUDIO_CHANGED", "原包音频摘要不符，请恢复原始资源。"
+        ) from None
+    media_type = {
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".ogg": "audio/ogg",
+        ".flac": "audio/flac",
+    }[path.suffix.lower()]
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "ETag": '"' + asset["sha256"] + '"',
+        },
+    )
 
 
 @router.post("/editing-tasks", response_model=EditingTaskResponse)

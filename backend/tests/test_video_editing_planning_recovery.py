@@ -29,7 +29,7 @@ def setup_request(tmp_path, monkeypatch):
         video_editing_planning_enabled=True,
     )
 
-    def request(t, p, m, assets):
+    def request(t, p, m, assets, choices=None):
         body = {"transcript": t.model_dump(), "model": m, "assets": assets}
         fingerprint = hashlib.sha256(
             json.dumps(body, sort_keys=True).encode()

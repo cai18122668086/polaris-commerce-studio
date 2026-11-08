@@ -119,3 +119,46 @@ class EditingTranscriptRevisionRecord(TimestampMixin, Base):
     text_sha256: Mapped[str] = mapped_column(String(64))
     text_status: Mapped[str] = mapped_column(String(24))
     details: Mapped[dict] = mapped_column(json_type(), default=dict)
+
+
+class EditingLibraryNoteRecord(TimestampMixin, Base):
+    __tablename__ = "video_editing_library_notes"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "owner_user_id",
+            "request_id",
+            name="uq_editing_library_note_request",
+        ),
+        UniqueConstraint(
+            "project_id",
+            "owner_user_id",
+            "library_release",
+            "target_kind",
+            "target_id",
+            "sequence",
+            name="uq_editing_library_note_sequence",
+        ),
+        Index(
+            "ix_editing_library_note_project",
+            "workspace_id",
+            "owner_user_id",
+            "project_id",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("video_projects.id"))
+    library_release: Mapped[str] = mapped_column(String(64))
+    request_id: Mapped[str] = mapped_column(String(40))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    target_kind: Mapped[str] = mapped_column(String(24))
+    target_id: Mapped[str] = mapped_column(String(160))
+    sequence: Mapped[int] = mapped_column()
+    choice: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    parent_note_id: Mapped[str | None] = mapped_column(
+        ForeignKey("video_editing_library_notes.id")
+    )
+    details: Mapped[dict] = mapped_column(json_type(), default=dict)

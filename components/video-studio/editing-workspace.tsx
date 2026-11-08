@@ -6,6 +6,7 @@ import { unwrapApiResponse } from "@/lib/api/request";
 import type { GenerationJob } from "@/features/video-studio/library";
 import type { components } from "@/lib/api/generated/openapi";
 import { TranscriptEditor } from "./transcript-editor";
+import { EditingLibrary } from "./editing-library";
 import styles from "./editing-workspace.module.css";
 
 type Artifact = { id: string; role: string; url: string; bytes: number; duration_ms: number | null };
@@ -23,6 +24,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [correctionTask, setCorrectionTask] = useState("");
+  const [libraryOpened, setLibraryOpened] = useState(false);
   const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
@@ -74,6 +76,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     <button type="button" onClick={() => void submit()} disabled={busy || !saved || !selected || subtitles === "unknown" || (selected === "upload" && !file)}>{busy ? "正在处理…" : "开始剪辑"}</button>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
+    <details onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>原库目录与项目选组备忘</summary>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
     <div className={styles.tasks}>{tasks.map(task => {
       const final = task.artifacts.find(a => a.role === "final");
       return <article key={task.id}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>

@@ -18,12 +18,18 @@ def main():
     parser.add_argument("--model", default="gpt-6.1-sol")
     parser.add_argument("--env-file", type=Path)
     parser.add_argument(
+        "--library-choices",
+        type=Path,
+        help="Owner-scoped immutable project choice snapshot JSON",
+    )
+    parser.add_argument(
         "--execute",
         action="store_true",
         help="Makes one paid planning request; no automatic retry",
     )
     args = parser.parse_args()
     transcript = Transcript.model_validate(read_json(args.transcript))
+    choices = read_json(args.library_choices) if args.library_choices else None
     args.out.mkdir(parents=True, exist_ok=True)
     settings = Settings(
         _env_file=args.env_file,
@@ -32,12 +38,20 @@ def main():
         video_editing_planning_enabled=args.execute,
     )
     if args.execute:
-        generate(args.out, transcript, settings, VideoAssistanceProvider(settings))
+        generate(
+            args.out,
+            transcript,
+            settings,
+            VideoAssistanceProvider(settings),
+            choice_snapshot=choices,
+        )
         print(
             "One planning request submitted; review the saved response and validation."
         )
     else:
-        request, evidence = build_request(transcript, args.library, args.model)
+        request, evidence = build_request(
+            transcript, args.library, args.model, choice_snapshot=choices
+        )
         atomic_json(args.out / "semantic-request.json", request)
         atomic_json(args.out / "semantic-request-evidence.json", evidence)
         print(

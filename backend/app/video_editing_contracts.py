@@ -172,6 +172,63 @@ class EditingTranscriptRevisionResponse(StrictVideoModel):
     created_at: datetime
 
 
+class EditingLibraryNoteCreate(StrictVideoModel):
+    request_id: UUID
+    target_kind: Literal["group", "bundled_asset", "external_resource"]
+    target_id: str = Field(min_length=1, max_length=160)
+    choice: Literal["consider", "avoid", "clear"]
+    reason: str = Field(min_length=1, max_length=1000)
+    parent_note_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def meaningful_reason(self) -> Self:
+        if not self.reason.strip():
+            raise ValueError("Record the current project selection reason")
+        return self
+
+
+class EditingLibraryNoteResponse(StrictVideoModel):
+    id: str
+    project_id: str
+    library_release: str
+    target_kind: Literal["group", "bundled_asset", "external_resource"]
+    target_id: str
+    target_name: str
+    choice: Literal["consider", "avoid", "clear"]
+    reason: str
+    sequence: int
+    parent_note_id: str | None
+    created_at: datetime
+    scope: Literal["project_selection_memo"] = "project_selection_memo"
+
+
+class EditingLibraryNotesResponse(StrictVideoModel):
+    items: list[EditingLibraryNoteResponse]
+    total: int
+    next_offset: int | None
+
+
+class LibraryChoice(StrictVideoModel):
+    note_id: str
+    target_kind: Literal["group", "bundled_asset", "external_resource"]
+    target_id: str
+    target_name: str
+    sequence: int = Field(ge=1)
+    choice: Literal["consider", "avoid", "clear"]
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class LibraryChoiceSnapshot(StrictVideoModel):
+    schema_version: Literal["tengli.library-choice-snapshot/1"] = (
+        "tengli.library-choice-snapshot/1"
+    )
+    scope: Literal["project_selection_memo"] = "project_selection_memo"
+    project_id: UUID
+    library_release: str
+    notes: list[LibraryChoice] = Field(max_length=1028)
+    sha256: str = Field(pattern="^[a-f0-9]{64}$")
+
+
 class NativeTextAnchor(StrictVideoModel):
     path: str = Field(min_length=1, max_length=200)
     first_token_id: str
@@ -214,7 +271,7 @@ class SemanticBeat(StrictVideoModel):
     group_id: str
     asset_ids: list[str] = Field(default_factory=list)
     reason: str = Field(min_length=1, max_length=1000)
-    locked_by_user: bool = False
+    locked_by_user: Literal[False] = False
     native_text: list[NativeTextAnchor] = Field(default_factory=list, max_length=50)
     native_events: list[NativeEventAnchor] = Field(default_factory=list, max_length=80)
     native_media: list[NativeMediaAnchor] = Field(default_factory=list, max_length=30)

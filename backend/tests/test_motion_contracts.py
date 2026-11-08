@@ -55,6 +55,7 @@ def test_semantic_model_cannot_inject_seconds_paths_or_code():
         ("start_ms", 100),
         ("path", "C:/other.mp4"),
         ("code", "import os"),
+        ("locked_by_user", True),
     ]:
         with pytest.raises(ValidationError):
             SemanticBeat.model_validate({**beat, key: value})

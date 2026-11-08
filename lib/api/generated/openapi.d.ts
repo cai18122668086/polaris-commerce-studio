@@ -1747,6 +1747,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-library/assets/{asset_id}/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Audio */
+        get: operations["preview_audio_api_v1_video_studio_workspaces__workspace_id__editing_library_assets__asset_id__audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-library/groups/{group_id}": {
         parameters: {
             query?: never;
@@ -2136,6 +2153,41 @@ export interface paths {
         /** Save Project */
         put: operations["save_project_api_v1_video_studio_workspaces__workspace_id__projects__project_id__put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-library-choice-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Planning Choice Snapshot */
+        get: operations["planning_choice_snapshot_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_library_choice_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-library-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notes */
+        get: operations["list_notes_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_library_notes_get"];
+        put?: never;
+        /** Save Note */
+        post: operations["save_note_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_library_notes_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5171,6 +5223,79 @@ export interface components {
              */
             status: "accepted" | "aligning" | "editing" | "result_ready" | "failed";
         };
+        /** EditingLibraryNoteCreate */
+        EditingLibraryNoteCreate: {
+            /**
+             * Choice
+             * @enum {string}
+             */
+            choice: "consider" | "avoid" | "clear";
+            /** Parent Note Id */
+            parent_note_id?: string | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Target Id */
+            target_id: string;
+            /**
+             * Target Kind
+             * @enum {string}
+             */
+            target_kind: "group" | "bundled_asset" | "external_resource";
+        };
+        /** EditingLibraryNoteResponse */
+        EditingLibraryNoteResponse: {
+            /**
+             * Choice
+             * @enum {string}
+             */
+            choice: "consider" | "avoid" | "clear";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Library Release */
+            library_release: string;
+            /** Parent Note Id */
+            parent_note_id: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Scope
+             * @default project_selection_memo
+             * @constant
+             */
+            scope: "project_selection_memo";
+            /** Sequence */
+            sequence: number;
+            /** Target Id */
+            target_id: string;
+            /**
+             * Target Kind
+             * @enum {string}
+             */
+            target_kind: "group" | "bundled_asset" | "external_resource";
+            /** Target Name */
+            target_name: string;
+        };
+        /** EditingLibraryNotesResponse */
+        EditingLibraryNotesResponse: {
+            /** Items */
+            items: components["schemas"]["EditingLibraryNoteResponse"][];
+            /** Next Offset */
+            next_offset: number | null;
+            /** Total */
+            total: number;
+        };
         /** EditingOptions */
         EditingOptions: {
             /**
@@ -5925,6 +6050,55 @@ export interface components {
          * @enum {string}
          */
         JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "domestic_detail_review" | "amazon_visual_suite" | "domestic_main_image";
+        /** LibraryChoice */
+        LibraryChoice: {
+            /**
+             * Choice
+             * @enum {string}
+             */
+            choice: "consider" | "avoid" | "clear";
+            /** Note Id */
+            note_id: string;
+            /** Reason */
+            reason: string;
+            /** Sequence */
+            sequence: number;
+            /** Target Id */
+            target_id: string;
+            /**
+             * Target Kind
+             * @enum {string}
+             */
+            target_kind: "group" | "bundled_asset" | "external_resource";
+            /** Target Name */
+            target_name: string;
+        };
+        /** LibraryChoiceSnapshot */
+        LibraryChoiceSnapshot: {
+            /** Library Release */
+            library_release: string;
+            /** Notes */
+            notes: components["schemas"]["LibraryChoice"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Schema Version
+             * @default tengli.library-choice-snapshot/1
+             * @constant
+             */
+            schema_version: "tengli.library-choice-snapshot/1";
+            /**
+             * Scope
+             * @default project_selection_memo
+             * @constant
+             */
+            scope: "project_selection_memo";
+            /** Sha256 */
+            sha256: string;
+        };
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /**
@@ -10916,6 +11090,38 @@ export interface operations {
             };
         };
     };
+    preview_audio_api_v1_video_studio_workspaces__workspace_id__editing_library_assets__asset_id__audio_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     describe_group_api_v1_video_studio_workspaces__workspace_id__editing_library_groups__group_id__get: {
         parameters: {
             query?: never;
@@ -10955,6 +11161,7 @@ export interface operations {
             query?: {
                 source?: string;
                 kind?: string | null;
+                search?: string;
                 offset?: number;
                 limit?: number;
             };
@@ -11826,6 +12033,113 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoWriteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    planning_choice_snapshot_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_library_choice_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryChoiceSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notes_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_library_notes_get: {
+        parameters: {
+            query?: {
+                latest_only?: boolean;
+                target_kind?: ("group" | "bundled_asset" | "external_resource") | null;
+                target_id?: string | null;
+                release?: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingLibraryNotesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_note_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_library_notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingLibraryNoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingLibraryNoteResponse"];
                 };
             };
             /** @description Validation Error */

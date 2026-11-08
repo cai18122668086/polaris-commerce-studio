@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
 COPY pyproject.toml README.md editing-constraints.txt ./
 COPY app ./app
 COPY scripts ./scripts
+COPY third_party ./third_party
 RUN python -m pip install torch==2.5.1+cpu torchaudio==2.5.1+cpu --index-url https://download.pytorch.org/whl/cpu \
     && python -m pip install -c editing-constraints.txt '.[editing,editing-zh]' \
     && python -m playwright install --with-deps chromium \

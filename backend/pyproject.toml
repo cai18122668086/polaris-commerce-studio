@@ -32,6 +32,7 @@ browser = [
   "playwright>=1.50,<2",
 ]
 editing = [
+  "jieba==0.42.1",
   "numpy==2.5.4",
   "opencv-python-headless==5.0.0.93",
   "fonttools==4.68.0",
@@ -50,6 +51,7 @@ editing-zh = [
   "tokenizers==0.21.4",
 ]
 dev = [
+  "jieba==0.42.1",
   "fakeredis[lua]>=2.40,<3",
   "mypy>=1.16,<2",
   "pytest>=8,<10",

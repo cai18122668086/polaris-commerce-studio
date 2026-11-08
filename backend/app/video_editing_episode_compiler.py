@@ -17,9 +17,10 @@ from pydantic import Field, model_validator
 
 from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_native_compiler import compile_native_job
-from .video_editing_pipeline import EditingFailure, baseline_documents
+from .video_editing_pipeline import EditingFailure, baseline_documents, layout_captions
 from .video_editing_planner import validate_plan
 from .video_studio_schemas import StrictVideoModel
 
@@ -157,15 +158,18 @@ def compile_episode(
     )
     if episode["design"].get("caption_font_id") != options["caption_font_id"]:
         raise EditingFailure("EDITING_CAPTION_DESIGN_MISMATCH")
-    episode["editorial"] = {
-        "source_verified": True,
-        "source_review": authoring.source_review,
-        "audience_question": semantic.audience_question,
-        "argument_outline": semantic.argument_outline,
-        "style_reason": semantic.style_reason,
-        "planning_origin": authoring.planning_origin,
-        "semantic_review": "unreviewed",
-    }
+    episode["editorial"].update(
+        {
+            "source_verified": True,
+            "source_review": authoring.source_review,
+            "audience_question": semantic.audience_question,
+            "argument_outline": semantic.argument_outline,
+            "style_reason": semantic.style_reason,
+            "planning_origin": authoring.planning_origin,
+            "semantic_review": "unreviewed",
+        }
+    )
+    layout_captions(episode, captions, settings)
     episode["production"].update(beats=[], materials=[])
     tokens = transcript.tokens
     positions = {t.id: i for i, t in enumerate(tokens)}
@@ -447,6 +451,13 @@ def compile_episode(
     atomic_json(root / "semantic-plan.json", semantic.model_dump(mode="json"))
     atomic_json(root / "episode-recipes.json", authoring.model_dump(mode="json"))
     atomic_json(root / "caption-anchors.json", captions)
+    atomic_json(
+        root / "caption-adapter-layout.json",
+        episode["editorial"]["caption_line_layout"],
+    )
+    write_caption_receipt(
+        root, transcript, captions, options["source_subtitles"] == "none"
+    )
     atomic_json(root / "bindings.json", bindings)
     atomic_json(root / "selection.json", selection)
     atomic_json(root / "episode.json", episode)

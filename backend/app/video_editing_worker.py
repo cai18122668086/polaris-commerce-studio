@@ -526,6 +526,12 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             ("final", final, "video/mp4"),
             ("transcript", root / "transcript.json", "application/json"),
             ("caption_anchors", root / "caption-anchors.json", "application/json"),
+            ("caption_receipt", root / "caption-segmentation.json", "application/json"),
+            (
+                "caption_layout",
+                root / "caption-adapter-layout.json",
+                "application/json",
+            ),
             ("receipt", root / "validation.json", "application/json"),
         ]
         if native_plan:

@@ -18,6 +18,16 @@ from uuid import uuid4
 
 from .config import Settings
 from .motion_library import atomic_json, read_json, sha256
+from .video_editing_caption_layout import (
+    layout_main_captions,
+    verify_native_caption_layout,
+)
+from .video_editing_captioning import (
+    CaptionFailure,
+    measured_caption_rows,
+    segmentation_metadata,
+    write_caption_receipt,
+)
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
 
 
@@ -351,38 +361,32 @@ def reference_differences(
 
 
 def caption_rows(transcript: Transcript) -> list[dict[str, Any]]:
-    # Split only at measured word boundaries. Repeated text keeps distinct IDs.
-    rows = []
-    chunk: list[TranscriptToken] = []
-    for token in transcript.tokens:
-        if chunk and (
-            len("".join(t.text for t in chunk)) + len(token.text) > 20
-            or token.start_ms - chunk[-1].end_ms > 600
-        ):
-            rows.append(chunk)
-            chunk = []
-        chunk.append(token)
-        if re.search(r"[。！？.!?]$", token.text):
-            rows.append(chunk)
-            chunk = []
-    if chunk:
-        rows.append(chunk)
-    result = []
-    for i, chunk in enumerate(rows):
-        end = chunk[-1].end_ms
-        if i + 1 < len(rows):
-            end = min(end, rows[i + 1][0].start_ms)
-        if end <= chunk[0].start_ms:
-            raise EditingFailure("EDITING_CAPTION_TIMING_INVALID")
-        result.append(
-            {
-                "text": "".join(t.text for t in chunk).strip(),
-                "start_seconds": chunk[0].start_ms / 1000,
-                "end_seconds": end / 1000,
-                "token_ids": [t.id for t in chunk],
-            }
+    try:
+        return measured_caption_rows(transcript)
+    except CaptionFailure as error:
+        raise EditingFailure(error.code) from None
+
+
+def layout_captions(plan: dict, captions: list[dict], settings: Settings) -> None:
+    role = plan.get("typography", {}).get("caption")
+    if (
+        not isinstance(role, dict)
+        or not {"font_id", "size_px", "max_width_px"} <= role.keys()
+    ):
+        raise EditingFailure("EDITING_CAPTION_LAYOUT_INVALID")
+    if role["font_id"] != plan["design"]["caption_font_id"]:
+        raise EditingFailure("EDITING_CAPTION_DESIGN_MISMATCH")
+    try:
+        rendered, report = layout_main_captions(
+            settings.video_editing_library_dir,
+            captions,
+            plan["typography"]["caption"],
+            bool(plan["captions"]),
         )
-    return result
+    except CaptionFailure as error:
+        raise EditingFailure(error.code) from None
+    plan["captions"] = rendered
+    plan["editorial"]["caption_line_layout"] = report
 
 
 def baseline_documents(
@@ -464,6 +468,7 @@ def baseline_documents(
         "music": [],
         "mix": {"voice_gain_db": 0},
         "editorial": {
+            "caption_segmentation": segmentation_metadata(),
             "source_verified": True,
             "audience_question": "这段实际录音说了什么？",
             "argument_outline": [u.text for u in transcript.utterances],
@@ -497,6 +502,7 @@ def baseline_documents(
     }
     if options["source_subtitles"] == "present":
         plan["captions"] = []
+    layout_captions(plan, captions, settings)
     selection: dict[str, Any] = {
         "catalog_sha256": sha256(package / "catalog/groups.json"),
         "reference_mode": "none",
@@ -541,6 +547,12 @@ def compile_baseline(
         root, prepared, transcript, options, settings
     )
     atomic_json(root / "caption-anchors.json", captions)
+    atomic_json(
+        root / "caption-adapter-layout.json", plan["editorial"]["caption_line_layout"]
+    )
+    write_caption_receipt(
+        root, transcript, captions, options["source_subtitles"] == "none"
+    )
     atomic_json(root / "selection.json", selection)
     atomic_json(root / "bindings.json", {"resources": {}, "tools": {}})
     atomic_json(root / "episode.json", plan)
@@ -627,5 +639,10 @@ def validate_result(
     }
     if validation["native_source_sha256"] != prepared["source_sha256"]:
         raise EditingFailure("EDITING_OUTPUT_SOURCE_MISMATCH")
+    if (root / "caption-adapter-layout.json").is_file():
+        try:
+            validation["caption_layout"] = verify_native_caption_layout(root)
+        except CaptionFailure as error:
+            raise EditingFailure(error.code) from None
     atomic_json(root / "validation.json", validation)
     return validation

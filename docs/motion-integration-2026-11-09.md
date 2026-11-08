@@ -211,3 +211,27 @@ CLI 首次检查因没有注册本片 source asset ID 失败，原实例保留�
 同时针对 CX-G01 缺失的原指定优设标题黑检查可获取文件。[优设官方公开页面](https://www.uisdc.com/uisdc-first-free-font)的搜索索引可见免费商用说明，但直接抓取返回 403，未取得官方下载包和包内许可，不据此推断 SaaS 嵌入或再分发授权。从 [FontsForWeb](https://github.com/callmeyyzx/FontsForWeb) 与 [scale-new-heights-generator](https://github.com/zhousiru/scale-new-heights-generator) 取到的两份同名文件分别为 1398644 字节 / SHA256 `32290ca978add7fe0e5281d2faba19563a43f4f2ff405a4e083fdc69553803c1`、1414784 字节 / SHA256 `e9463117dd453471fbc38cc7ed2cd90aa197db3d36ae609e3e6a294f51b124a1`，均不等于原清单要求的 `dab883d69fb713233ea5d9aff8d1f27ccc2b71e249143edf6ea08367784c5dba`。只留本地候选和检索 receipt，未绑定、未嵌入、未放入仓库，CX-G01 状态仍失败，未静默换字体。
 
 新增发现：当前基础字幕按 20 字硬切，可能把中文数字或品牌切成“二十 / 八”等片段，已在真实画面看到。这是字幕分页规则的实际质量问题，下一步需按标点、实际 token 边界和中文数字/单位整体改善，不能把当前试片当作已完成审美验收。全库运行数量仍 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收，11 项时钟资料不提高此计数。获准后的实际腾力模型调用、剩余原生配方、音乐音效和多条正式验收片继续待实施；没有付费调用、推送或部署。
+
+上述源时钟接入保存于本地提交 `768098e`。以下继续修正实际成片中的字幕断句和页内换行。
+
+## 实际词点分页与原生字体换行的修复
+
+新增 `video_editing_captioning.py`：使用固定 jieba 0.42.1 词典、HMM=False、明确的数字/金额/单位/ASCII 标记保护规则，优先标点和实际停顿，再在已有 token 与词边界之间平衡长句。顿号并列项在同一候选段内，较长列表优先在顿号后换页，避免“刷锅、”的短暂单项或“洗 / 水果”的断口。重复文字继续使用原词 ID；不增加文字、修正品牌、均分识别 token 或生成新时间。页边界仍取实际首尾 token，过长且无法合法分段的识别单位或数字标签会明确拒绝，不能截字或拆造子词时间。
+
+新词典的 5071852 字节 SHA256 为 `7197c3211ddd98962b036cdf40324d1ea2bfaa12bd028e68faa70111a88e12a8`，版本和字典摘要在运行时核验。词典只给文字边界，不判定事实或时间准确性。[原作者文档](https://github.com/fxsjy/jieba/blob/v0.42.1/README.md)和 [MIT 许可](https://github.com/fxsjy/jieba/blob/v0.42.1/LICENSE)已核对，原许可 1075 字节保存于 backend/third_party/jieba-LICENSE.txt，editing-worker Dockerfile 携带许可。jieba 只加入 editing 与 dev 可选依赖，API 生产二进制锁不变；再次用阻止 jieba 导入的独立进程验证当前 API/OpenAPI 可加载。未构建或部署 Docker 镜像。
+
+试读词典时默认在 D:/Temp/a1726 新建了 9254935 字节缓存；通过精确绝对路径、字节数与本次创建时间 2026-11-08T21:47:40.1643183Z 核验后，仅移除此任务生成的文件，没有递归删除或清理用户其他临时文件。编辑分词器改用专有缓存 C:/Users/a1726/AppData/Local/TengliEditing/text-cache，并以字典摘要命名，不再使用全局 jieba.cache。原主目录仍为 HEAD 22fc356、81 项既存未提交条目，没有纳入本分支。
+
+真实迭代 `fe4957b2-6e4c-4399-9dac-ef9833f475c6` 先解决分页，但实际清单仍把“洗水果”切成两页；该已完成工程输出保留，不当作修复完成。随后 `025b26b3-2543-4ed9-964a-43e5d3ff3e49` 分页保持 240 个单位、26 页和最短 0.58 秒，但从原生 plans/caption-layout.json 发现同页仍自动折成“14块 / 9”、末行单独逗号等问题。没有用截图缺失、退出码或分页测试替代这个实际换行问题。
+
+新增 `video_editing_caption_layout.py`，使用本期原包内 Noto Sans SC Bold 的实际字节、字号和 Pillow 字形宽度，在允许的文字边界插入显式换行，再交给未修改的原 commercial_runtime/captions.py / libass 出口。Pillow 在此只用于原生主字幕同一字体与测量方法，不外推浏览器或 Hypit 字体。原 raw caption-anchors 保留原文字与词 ID；显示行只新增换行，不改配音、词点、字号或字体。当前字体 SHA256 `d1961be1161ea1be08496c920862d06ea5c23a757628f4fd69368de1d9f51bed`。字体缺失/改变、原子标签无法容纳、错误编排字段均失败，不自动换字体或缩字号。原画面已有硬字幕时仍关闭额外主字幕。
+
+每个新任务增加 caption-segmentation.json 与 caption-adapter-layout.json，记录算法版本、加载代码摘要、字典摘要、字体摘要、原文、显示行、实际行宽和真实时间。worker 返回归属受控的 caption_receipt / caption_layout 产物。最终校验把适配层的每条显示行、行宽、起止点、字体摘要与原生引擎实际生成的 plans/caption-layout.json 逐项比较；不一致为 EDITING_CAPTION_LAYOUT_MISMATCH，不能作为成功成片。网页补充容量、依赖、字体与换行失败的可读提示。
+
+最终真实网页任务 `2b511873-062d-4b1f-8ba4-61d3f9bca625` 使用原编排候选 `8e342ab2-5f0c-4a84-b8b8-5e70bdf9fe97`，独立 Redis / Celery 1 次完成，转录仍为原 fa-zh 240 个单位和同一摘要 `ba0c92807edb79686353bb236bd780f568ad896f4118b59ffb3cc819207d1c22`。26 页、240 单位依次完整覆盖；原生行宽比对 verified_against_original_caption_engine；原生布局 passed、0 errors，整片全量解码通过。48.475 秒成片 SHA256 `09e3c71276ee28e7f5e08d7643fb2dfef84a426d6c9438b192fd1b59abc7ceea`。网页实际从 8.8 秒播放到 10.364 秒、readyState=4、无媒体错误，按钮下载与最终摘要一致。
+
+可查看 `C:/tl/episode-validation/website-caption-layout-v3-download.mp4`。证据同目录 caption-layout-v3-website-submission.json / caption-layout-v3-task-result.json / caption-layout-v3-website-playback-evidence.json / caption-layout-v3-runtime-evidence.json。已检查网页价格截图及 3.2 / 15.0 / 18.0 / 32.8 / 41.4 秒对应局部截图中的主要价格、数量、等级和并列句；“14块9”“1000克”“4斤”“A类”保持在各自同一行，“火力二十八”不再拆页。该抽样不等于连续观看或听验，不确认品牌“火力/活力”或商品标准事实。原包 1426 项再次完整性通过，新任务识别/对齐/规划调用均为 0，旧任务与视频保留。
+
+89 项相关回归（82 项 Motion/剪辑、7 项生产锁检查）通过，357 个 app 文件 Windows/Linux mypy、后端 Ruff、前端类型和剪辑组件 ESLint 通过。协议测试使用明确的模拟转录与 Pillow 小字体字节，只验证输入/边界/容量和拒绝逻辑；真实字体、原生出口及实际视频证据来自上述网站任务，不能混作同一类证据。仍有 jsonschema.RefResolver 与 jieba/pkg_resources 的依赖弃用提示；没有因此更换原库或解除版本检查。
+
+这一轮是同一工程候选的字幕质量修复，不算多条不同创意成品。全库依旧 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收。获准后的实际腾力模型语义任务、其余原生组配方和依赖、音乐音效、文稿事实核验及正式验收片继续待实施。未调用付费模型、推送、部署或发布。

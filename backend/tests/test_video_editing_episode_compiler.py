@@ -14,6 +14,8 @@ from app.video_editing_planner import validate_plan
 
 
 def protocol(tmp_path):
+    from PIL import ImageFont
+
     package = tmp_path / "library"
     groups = [
         {
@@ -26,7 +28,21 @@ def protocol(tmp_path):
         for i in range(132)
     ]
     atomic_json(package / "catalog/groups.json", {"groups": groups})
-    atomic_json(package / "asset-manifest.json", {"assets": []})
+    font = package / "fixture-font.ttf"
+    font.write_bytes(ImageFont.load_default().path.getvalue())
+    atomic_json(
+        package / "asset-manifest.json",
+        {
+            "assets": [
+                {
+                    "id": "font-d1961be1161ea1be",
+                    "kind": "font",
+                    "path": font.name,
+                    "sha256": sha256(font),
+                }
+            ]
+        },
+    )
     atomic_json(package / "catalog/external-resources.json", {"resources": []})
     atomic_json(package / "catalog/relationship-capabilities.json", {"groups": []})
     atomic_json(
@@ -189,7 +205,14 @@ def protocol(tmp_path):
             "planning_origin": "operator_candidate",
             "source_review": "protocol fixture, no media acceptance",
             "design": {"caption_font_id": "font-d1961be1161ea1be"},
-            "typography": {},
+            "typography": {
+                "caption": {
+                    "font_id": "font-d1961be1161ea1be",
+                    "size_px": 48,
+                    "max_width_px": 604,
+                    "max_lines": 2,
+                }
+            },
             "layout_policy": {},
             "sound_mode": "original_voice_only",
             "entries": {

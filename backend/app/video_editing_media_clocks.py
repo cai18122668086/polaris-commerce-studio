@@ -114,6 +114,7 @@ def compile_media_clocks(
                 "duration_path": duration_path,
                 "profile_id": profile["id"],
                 "native_source_files": profile["source_files"],
+                "native_sampling_expression": profile["local_sample_seconds"],
                 "sampling": (
                     "Original asset_frame rounds to source frames and clamps "
                     "the last frame; no resampling or speed change added"

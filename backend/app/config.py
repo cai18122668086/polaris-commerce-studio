@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     video_editing_asr_device: Literal["cpu", "cuda"] = "cpu"
     video_editing_planning_enabled: bool = False
     video_editing_plan_model: str = "gpt-6.1-sol"
+    video_writing_workflow_enabled: bool = False
+    video_writing_library_dir: Path = Path(".data/motion-library/3b4d100ebf6c/writing")
     video_editing_lease_seconds: int = Field(default=120, ge=30, le=600)
     video_editing_subprocess_timeout: int = Field(default=3600, ge=30, le=14400)
     video_cosyvoice_enabled: bool = False

@@ -976,6 +976,27 @@
         "title": "AnnouncementUpdate",
         "type": "object"
       },
+      "ApplyWritingDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "title": "ApplyWritingDraft",
+        "type": "object"
+      },
       "AssetLifecycleStatus": {
         "enum": [
           "pending",
@@ -4899,6 +4920,67 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "FactItem": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "identity",
+              "product",
+              "story"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "source_note": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Source Note",
+            "type": "string"
+          },
+          "status": {
+            "default": "unknown",
+            "enum": [
+              "user_declared",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "label"
+        ],
+        "title": "FactItem",
+        "type": "object"
+      },
       "FetchItemRequest": {
         "properties": {
           "includeDescImages": {
@@ -8083,6 +8165,85 @@
         "title": "RuntimeStatusResponse",
         "type": "object"
       },
+      "SaveWritingFacts": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "$ref": "#/components/schemas/WritingFacts"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "project_id",
+          "body"
+        ],
+        "title": "SaveWritingFacts",
+        "type": "object"
+      },
+      "SaveWritingReference": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "title": "Reference Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "project_id",
+          "expected_revision",
+          "reference_id"
+        ],
+        "title": "SaveWritingReference",
+        "type": "object"
+      },
+      "SaveWritingResult": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "task_id"
+        ],
+        "title": "SaveWritingResult",
+        "type": "object"
+      },
       "SessionCancelRequest": {
         "properties": {
           "account_id": {
@@ -9548,6 +9709,134 @@
           "role"
         ],
         "title": "WorkspaceResponse",
+        "type": "object"
+      },
+      "WritingFacts": {
+        "additionalProperties": false,
+        "properties": {
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/FactItem"
+            },
+            "maxItems": 60,
+            "minItems": 1,
+            "title": "Facts",
+            "type": "array"
+          },
+          "forbidden_terms": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Forbidden Terms",
+            "type": "array"
+          },
+          "restricted_claims": {
+            "items": {
+              "enum": [
+                "price",
+                "net_quantity",
+                "health_effect"
+              ],
+              "type": "string"
+            },
+            "title": "Restricted Claims",
+            "type": "array"
+          }
+        },
+        "required": [
+          "facts"
+        ],
+        "title": "WritingFacts",
+        "type": "object"
+      },
+      "WritingTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Document Id"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "facts_document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facts Document Id"
+          },
+          "kind": {
+            "enum": [
+              "ref_analysis",
+              "fact_draft"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "presentation": {
+            "default": "unspecified",
+            "enum": [
+              "on_camera",
+              "hands_only",
+              "unspecified"
+            ],
+            "title": "Presentation",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "reference_document_id": {
+            "format": "uuid",
+            "title": "Reference Document Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "target_duration_seconds": {
+            "anyOf": [
+              {
+                "maximum": 300.0,
+                "minimum": 5.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Duration Seconds"
+          }
+        },
+        "required": [
+          "request_id",
+          "project_id",
+          "expected_revision",
+          "kind",
+          "reference_document_id"
+        ],
+        "title": "WritingTaskRequest",
         "type": "object"
       }
     },
@@ -18791,6 +19080,418 @@
         "summary": "Voice Preview",
         "tags": [
           "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-config": {
+      "get": {
+        "operationId": "config_api_v1_video_studio_workspaces__workspace_id__writing_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Config Api V1 Video Studio Workspaces  Workspace Id  Writing Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Config",
+        "tags": [
+          "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents": {
+      "get": {
+        "operationId": "documents_api_v1_video_studio_workspaces__workspace_id__writing_documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Documents Api V1 Video Studio Workspaces  Workspace Id  Writing Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Documents",
+        "tags": [
+          "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/facts": {
+      "post": {
+        "operationId": "save_facts_api_v1_video_studio_workspaces__workspace_id__writing_documents_facts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveWritingFacts"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Facts Api V1 Video Studio Workspaces  Workspace Id  Writing Documents Facts Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Save Facts",
+        "tags": [
+          "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/reference": {
+      "post": {
+        "operationId": "save_reference_api_v1_video_studio_workspaces__workspace_id__writing_documents_reference_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveWritingReference"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Reference Api V1 Video Studio Workspaces  Workspace Id  Writing Documents Reference Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Save Reference",
+        "tags": [
+          "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/result": {
+      "post": {
+        "operationId": "save_result_api_v1_video_studio_workspaces__workspace_id__writing_documents_result_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveWritingResult"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Result Api V1 Video Studio Workspaces  Workspace Id  Writing Documents Result Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Save Result",
+        "tags": [
+          "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/{document_id}/apply": {
+      "post": {
+        "operationId": "apply_draft_api_v1_video_studio_workspaces__workspace_id__writing_documents__document_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyWritingDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoWriteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Apply Draft",
+        "tags": [
+          "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-tasks": {
+      "post": {
+        "operationId": "create_task_api_v1_video_studio_workspaces__workspace_id__writing_tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritingTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Task",
+        "tags": [
+          "video-writing-workflow"
         ]
       }
     },

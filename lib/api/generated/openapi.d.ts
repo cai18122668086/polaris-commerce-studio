@@ -2262,6 +2262,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Config */
+        get: operations["config_api_v1_video_studio_workspaces__workspace_id__writing_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Documents */
+        get: operations["documents_api_v1_video_studio_workspaces__workspace_id__writing_documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Facts */
+        post: operations["save_facts_api_v1_video_studio_workspaces__workspace_id__writing_documents_facts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/reference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Reference */
+        post: operations["save_reference_api_v1_video_studio_workspaces__workspace_id__writing_documents_reference_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Result */
+        post: operations["save_result_api_v1_video_studio_workspaces__workspace_id__writing_documents_result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/{document_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Draft */
+        post: operations["apply_draft_api_v1_video_studio_workspaces__workspace_id__writing_documents__document_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Task */
+        post: operations["create_task_api_v1_video_studio_workspaces__workspace_id__writing_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces": {
         parameters: {
             query?: never;
@@ -3611,6 +3730,16 @@ export interface components {
             summary?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** ApplyWritingDraft */
+        ApplyWritingDraft: {
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
         };
         /**
          * AssetLifecycleStatus
@@ -5100,6 +5229,31 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** FactItem */
+        FactItem: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "identity" | "product" | "story";
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Source Note
+             * @default
+             */
+            source_note: string;
+            /**
+             * Status
+             * @default unknown
+             * @enum {string}
+             */
+            status: "user_declared" | "unknown";
+            /** Value */
+            value?: string | null;
+        };
         /** FetchItemRequest */
         FetchItemRequest: {
             /**
@@ -6310,6 +6464,53 @@ export interface components {
              */
             task_runner: "mock" | "tengli";
         };
+        /** SaveWritingFacts */
+        SaveWritingFacts: {
+            body: components["schemas"]["WritingFacts"];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** SaveWritingReference */
+        SaveWritingReference: {
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Reference Id
+             * Format: uuid
+             */
+            reference_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** SaveWritingResult */
+        SaveWritingResult: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+        };
         /** SessionCancelRequest */
         SessionCancelRequest: {
             /** Account Id */
@@ -6838,6 +7039,52 @@ export interface components {
             /** Name */
             name: string;
             role: components["schemas"]["MembershipRole"];
+        };
+        /** WritingFacts */
+        WritingFacts: {
+            /** Facts */
+            facts: components["schemas"]["FactItem"][];
+            /** Forbidden Terms */
+            forbidden_terms?: string[];
+            /** Restricted Claims */
+            restricted_claims?: ("price" | "net_quantity" | "health_effect")[];
+        };
+        /** WritingTaskRequest */
+        WritingTaskRequest: {
+            /** Analysis Document Id */
+            analysis_document_id?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Facts Document Id */
+            facts_document_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ref_analysis" | "fact_draft";
+            /**
+             * Presentation
+             * @default unspecified
+             * @enum {string}
+             */
+            presentation: "on_camera" | "hands_only" | "unspecified";
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Reference Document Id
+             * Format: uuid
+             */
+            reference_document_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Target Duration Seconds */
+            target_duration_seconds?: number | null;
         };
     };
     responses: never;
@@ -11733,6 +11980,256 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    config_api_v1_video_studio_workspaces__workspace_id__writing_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    documents_api_v1_video_studio_workspaces__workspace_id__writing_documents_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_facts_api_v1_video_studio_workspaces__workspace_id__writing_documents_facts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveWritingFacts"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_reference_api_v1_video_studio_workspaces__workspace_id__writing_documents_reference_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveWritingReference"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_result_api_v1_video_studio_workspaces__workspace_id__writing_documents_result_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveWritingResult"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_draft_api_v1_video_studio_workspaces__workspace_id__writing_documents__document_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyWritingDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoWriteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_task_api_v1_video_studio_workspaces__workspace_id__writing_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WritingTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistanceResponse"];
                 };
             };
             /** @description Validation Error */

@@ -1,0 +1,19 @@
+# Explicit local opt-in; the existing script-provider configuration is reused.
+# This overlay does not enable a model provider or deploy anything by itself.
+services:
+  api:
+    environment:
+      POLARIS_VIDEO_WRITING_WORKFLOW_ENABLED: "true"
+      POLARIS_VIDEO_WRITING_LIBRARY_DIR: /writing
+      POLARIS_VIDEO_EDITING_TASKS_DIR: /app/.data/editing-tasks
+    volumes:
+      - type: bind
+        source: ${POLARIS_WRITING_LIBRARY_HOST:?Set the verified original writing package root}
+        target: /writing
+        read_only: true
+        bind:
+          create_host_path: false
+      - polaris_editing_tasks:/app/.data/editing-tasks
+
+volumes:
+  polaris_editing_tasks:

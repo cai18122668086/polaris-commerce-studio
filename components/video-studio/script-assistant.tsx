@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertCircle, ArrowDownToLine, ArrowRight, Copy, FilePenLine, LoaderCircle, Send, Sparkles } from "lucide-react";
+import type { ReactNode } from "react";
 import { assistanceMessage, type AssistanceJob, type AssistanceKind } from "@/features/video-studio/assistance";
 import { Disclosure, TextDocument } from "./studio-content";
 import styles from "./studio-workflow.module.css";
@@ -21,6 +22,7 @@ export function ScriptAssistant(props: {
   result: string; onResultChange: (text: string) => void;
   job?: AssistanceJob; busy: boolean; onSubmit: () => void; onResume: () => void;
   onUseResult: () => void; onUseOriginal: () => void; onCopy: (text: string) => void;
+  workflow?: ReactNode;
 }) {
   const tool = tools.find(item => item.id === props.mode)!;
   const Icon = tool.icon;
@@ -33,6 +35,7 @@ export function ScriptAssistant(props: {
   return <div className={styles.assistantPanel}>
     <div className={styles.assistantTools} role="group" aria-label="文案助手工具">{tools.map(item => <button key={item.id} type="button" aria-pressed={props.mode === item.id} onClick={() => props.onModeChange(item.id)}><item.icon size={16} />{item.label}</button>)}</div>
     <div className={styles.assistantScroll}>
+      {props.workflow}
       <div className={styles.toolIntro}><span><Icon size={25} /></span><h2>{tool.title}</h2><p>{tool.hint}</p></div>
       {props.mode === "extract" ? <label className={styles.assistantField}>参考视频链接<input type="url" aria-label="参考视频链接" value={props.sourceLink} onChange={event => props.onSourceLinkChange(event.target.value)} placeholder="粘贴公开抖音视频链接" maxLength={2048} /><small>当前支持公开抖音视频，提取后请核对转写内容。</small></label>
         : props.mode === "rewrite" ? <label className={styles.assistantField}><span>参考文案<button type="button" onClick={() => props.onModeChange("extract")}>从视频提取 <ArrowRight size={12} /></button></span><textarea aria-label="原始文案" rows={5} value={props.sourceText} onChange={event => props.onSourceTextChange(event.target.value)} maxLength={6000} placeholder="粘贴参考文案，也可以先从视频提取" /></label>

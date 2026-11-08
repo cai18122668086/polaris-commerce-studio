@@ -32,6 +32,7 @@ import workflowStyles from "./studio-workflow.module.css";
 import { MyVoices, VoiceCloneDialog } from "./voice-cloning";
 import { useVoiceClones } from "@/features/video-studio/voice-clones";
 import { useVideoAssistance } from "@/features/video-studio/assistance";
+import { WritingWorkflow } from "./writing-workflow";
 import { useProjectSession } from "@/features/video-studio/use-project-session";
 import { useVideoLibrary, type VideoAvatar, type GenerationJob } from "@/features/video-studio/library";
 import type { VideoDraft, VideoContent } from "@/features/video-studio/projects";
@@ -293,7 +294,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   };
 
   const assistantJob = assistantMode === "create" ? createJob : assistantMode === "extract" ? extractJob : rewriteJob;
-  const assistant = <ScriptAssistant mode={assistantMode} onModeChange={mode => showAssistant(mode, false)} prompt={assistantPrompt} onPromptChange={setAssistantPrompt} style={assistantType} onStyleChange={setAssistantType}
+  const assistant = <ScriptAssistant workflow={<WritingWorkflow key={projectId} workspaceId={workspaceId} projectId={projectId} revision={session.state.revision} saved={session.state.status === "saved" && session.state.revision > 0} references={content.references} productFacts={content.product_facts} onApplied={async () => { await session.select(projectId); revealScript(); notify("已采用为新草稿，确认稿仍由原流程管理", "success"); }} />} mode={assistantMode} onModeChange={mode => showAssistant(mode, false)} prompt={assistantPrompt} onPromptChange={setAssistantPrompt} style={assistantType} onStyleChange={setAssistantType}
     facts={content.product_facts} onFactsChange={facts => session.edit({ ...session.state.content, product_facts: facts })}
     sourceLink={sourceLink} onSourceLinkChange={setSourceLink} sourceText={sourceText} onSourceTextChange={setSourceText}
     result={assistantMode === "create" ? assistantResult : rewrittenText} onResultChange={setRewrittenText}
@@ -315,7 +316,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
             attempt(async () => { const uploaded = await library.uploadAudio(file); if (session.state.projectId === uploadProjectId) updateDraft({ audioAssetId: uploaded.id }); notify("音频已保存，可用于口型驱动"); });
             session.edit({ ...session.state.content, media: [{ id: uid(), kind: "audio", name: file.name, mime_type: file.type, size_bytes: file.size, availability: "local_only" }, ...session.state.content.media.filter(m => m.kind !== "audio")] });
           }} /></label>{draft.audioAssetId && !audio && <audio controls src={`/api/v1/video-studio/workspaces/${workspaceId}/audio-files/${draft.audioAssetId}`} />}{audio ? <div className={styles.audioFile}><b>{audio.name}</b><audio controls src={audio.url} /><small>上传完成后可跨设备继续使用</small></div> : <small>{draft.audioAssetId ? "音频已保存，可继续生成" : content.media.find(m => m.kind === "audio") ? `已关联 ${content.media.find(m => m.kind === "audio")?.name}，请重新选择原文件` : "支持 MP3、WAV、M4A · 最大 50 MB"}</small>}</div>}</div></div>
-      <footer className={styles.editorFooter}><label><Settings2 size={15} /><select aria-label="视频清晰度" value="source" disabled title="按所选动作模板的原始分辨率交付"><option value="source">模板原始清晰度</option></select></label><button type="button" className={styles.generateButton} onClick={generate}><Video size={18} />生成视频</button><span className={styles.editLater}><i />智能剪辑<small>即将上线</small></span></footer>
+      <footer className={styles.editorFooter}><label><Settings2 size={15} /><select aria-label="视频清晰度" value="source" disabled title="按所选动作模板的原始分辨率交付"><option value="source">模板原始清晰度</option></select></label><button type="button" className={styles.generateButton} onClick={generate}><Video size={18} />生成视频</button><button type="button" className={styles.editLater} onClick={() => setRightTab("editing")}><Clapperboard size={15} />口播剪辑<small>基础字幕试运行</small></button></footer>
     </section>
     <aside ref={assistantPanelRef} className={styles.editorAside}><div className={styles.rightTabs} role="group" aria-label="创作工具">{[{ key: "works", label: "作品" }, { key: "library", label: "文案库" }, { key: "assistant", label: "文案助手" }, { key: "editing", label: "智能剪辑" }].map(item => <button type="button" key={item.key} className={rightTab === item.key ? styles.activeRightTab : ""} aria-pressed={rightTab === item.key} onClick={() => setRightTab(item.key)}>{item.label}</button>)}</div><div className={styles.rightContent}>{rightTab === "assistant" ? assistant : rightTab === "works" ? <div className={styles.workList}>{workList(true)}</div> : rightTab === "library" ? copyList(true) : <EditingWorkspace workspaceId={workspaceId} projectId={projectId} saved={Boolean(persisted.revision)} jobs={library.jobs} />}</div></aside>
   </main>;

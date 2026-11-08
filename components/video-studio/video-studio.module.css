@@ -191,7 +191,7 @@
 .editorFooter select { padding: 7px; font-size: 10px; color: #6b6274; border: 0; }
 .studio .generateButton { display: flex; align-items: center; justify-content: center; gap: 10px; flex: 1; max-width: 290px; min-width: 140px; height: 42px; border: 0; border-radius: 6px; background: #29262e; color: #fff; font-size: 13px; transition: background .18s, color .18s; }
 .studio .generateButton:hover { background: #d8ff00; color: #302b37; }
-.editLater { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 10px; color: #6b6274; }
+.editLater { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 10px; color: #6b6274; border: 1px solid var(--border); border-radius: 7px; padding: 8px; background: #fff; cursor: pointer; }
 .editLater i { width: 22px; height: 13px; background: #e8e2ee; border-radius: 9px; position: relative; }
 .editLater i::after { content: ""; position: absolute; height: 9px; width: 9px; border-radius: 50%; background: #fff; left: 2px; top: 2px; }
 .editLater small { font-size: 8px; }

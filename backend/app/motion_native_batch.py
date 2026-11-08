@@ -1,0 +1,283 @@
+"""Run an explicit current-source native cohort; never generate or replace recipes.
+
+Operator manifests include every original group in their chosen backend. A
+blocked entry remains recorded, while success means one concrete native sample,
+not semantic fitness, production readiness, a whole film or human acceptance.
+"""
+
+import argparse
+import hashlib
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+from .config import Settings
+from .motion_library import (
+    MOTION_SHA256,
+    atomic_json,
+    read_json,
+    sha256,
+    verify_package,
+)
+from .motion_library_validation import (
+    measure_encoded_output,
+    record_failure,
+    record_native,
+)
+from .video_editing_contracts import SemanticBeat, Transcript
+from .video_editing_native_compiler import compile_native_job
+from .video_editing_pipeline import run
+
+
+def verify_rgba_sequence(root: Path, report: dict, expected_frames: int) -> dict:
+    """Require real, varied visible RGBA pixels and exact native sequence bytes."""
+    from PIL import Image
+
+    directory = Path(report["rgba_sequence"]).resolve()
+    if not directory.is_relative_to(root.resolve()):
+        raise ValueError("Native RGBA sequence leaves its current instance")
+    sequence = read_json(directory / "sequence.json")
+    frames = sequence["frames"]
+    if len(frames) != expected_frames or [f["frame"] for f in frames] != list(
+        range(expected_frames)
+    ):
+        raise ValueError("Native RGBA sequence is incomplete or reordered")
+    visible, pixel_hashes = [], set()
+    for row in frames:
+        file = (directory / row["path"]).resolve()
+        if not file.is_relative_to(directory) or sha256(file) != row["sha256"]:
+            raise ValueError("Native RGBA frame is missing or changed")
+        with Image.open(file) as frame:
+            if frame.mode != "RGBA" or frame.size != (
+                sequence["width"],
+                sequence["height"],
+            ):
+                raise ValueError("Native frame does not preserve the RGBA format")
+            if frame.getchannel("A").getbbox():
+                visible.append(row["frame"])
+            pixel_hashes.add(hashlib.sha256(frame.tobytes()).hexdigest())
+    if not visible or len(pixel_hashes) < 2:
+        raise ValueError("Native output has no visible motion evidence")
+    return {
+        "frames_checked": len(frames),
+        "visible_frames": len(visible),
+        "first_visible_frame": visible[0],
+        "last_visible_frame": visible[-1],
+        "distinct_pixel_states": len(pixel_hashes),
+        "sequence_sha256": sha256(directory / "sequence.json"),
+        "scope": "byte, alpha and variation checks; not layout or visual approval",
+        "visual_acceptance": "unreviewed",
+    }
+
+
+def validate_manifest(data: dict, package: Path) -> list[dict]:
+    if (
+        data["version"] != "tengli.native-validation-batch/1"
+        or data["library_release"] != MOTION_SHA256
+    ):
+        raise ValueError("Native batch belongs to a different original release")
+    if data["backend"] != "subtitle":
+        raise ValueError("This batch requires original subtitle RGBA components")
+    groups = read_json(package / "catalog/groups.json")["groups"]
+    expected = {g["id"] for g in groups if g["backend"] == data["backend"]}
+    actual = [c["group_id"] for c in data["cases"]]
+    if not expected or set(actual) != expected or len(actual) != len(expected):
+        raise ValueError(
+            "Every original group in the selected backend must be recorded"
+        )
+    for case in data["cases"]:
+        if case["disposition"] == "blocked":
+            if not case.get("blockers") or not case.get("reason"):
+                raise ValueError("Unattempted original entries need explicit blockers")
+        elif case["disposition"] == "ready":
+            if (
+                case["beat"]["group_id"] != case["group_id"]
+                or case["recipe"]["group_id"] != case["group_id"]
+            ):
+                raise ValueError("Batch beat/recipe group identities disagree")
+        else:
+            raise ValueError("Unknown authoring disposition")
+    return data["cases"]
+
+
+def native_failure(root: Path) -> Path | None:
+    # Preserve an actual original diagnostic, not a fabricated native failure.
+    for file in (root / "diagnostics").glob("*-last-error.json"):
+        try:
+            value = read_json(file)
+        except (ValueError, OSError):
+            continue
+        if value.get("status") == "failed" and value.get("error"):
+            return file
+    return None
+
+
+def execute(
+    manifest: Path,
+    root: Path,
+    state: Path,
+    settings: Settings,
+    requested: set[str] | None = None,
+) -> dict[str, Any]:
+    package = settings.video_editing_library_dir.resolve()
+    if root.resolve().is_relative_to(package) or state.resolve().is_relative_to(
+        package
+    ):
+        raise ValueError(
+            "Native cases and evidence must remain outside the original library"
+        )
+    verify_package(package)
+    if manifest.stat().st_size > 8_000_000:
+        raise ValueError("Native validation manifest is too large")
+    data = read_json(manifest)
+    cases = validate_manifest(data, package)
+    if requested and not requested <= {c["group_id"] for c in cases}:
+        raise ValueError("Requested group is outside the recorded original cohort")
+    transcript_file = Path(data["transcript"]["path"]).resolve()
+    if sha256(transcript_file) != data["transcript"]["sha256"]:
+        raise ValueError("Current measured transcript bytes changed")
+    transcript = Transcript.model_validate(read_json(transcript_file))
+    if sha256(Path(data["source_path"])) != transcript.source_sha256:
+        raise ValueError("Current source does not match the measured transcript")
+    root.mkdir(parents=True, exist_ok=False)
+    atomic_json(root / "manifest.json", data)
+    receipt: dict[str, Any] = {
+        "version": "tengli.native-validation-batch-result/1",
+        "library_release": MOTION_SHA256,
+        "manifest_sha256": sha256(manifest),
+        "source_sha256": transcript.source_sha256,
+        "transcript_sha256": sha256(transcript_file),
+        "backend": data["backend"],
+        "cohort_size": len(cases),
+        "filter": sorted(requested) if requested else None,
+        "new_recognition_alignment_planning_calls": 0,
+        "state": "running",
+        "cases": [],
+        "semantic_review": "unreviewed",
+        "visual_acceptance": "unreviewed",
+        "scope": "concrete native components from current words, not completed films",
+    }
+    for case in cases:
+        gid = case["group_id"]
+        result: dict[str, Any] = {"group_id": gid}
+        instance = root / gid
+        if requested and gid not in requested:
+            result["status"] = "not_requested"
+        elif case["disposition"] == "blocked":
+            result.update(
+                status="not_attempted", blockers=case["blockers"], reason=case["reason"]
+            )
+        else:
+            try:
+                job = compile_native_job(
+                    package,
+                    instance,
+                    SemanticBeat.model_validate(case["beat"]),
+                    transcript,
+                    case["recipe"],
+                    {},
+                )
+                result["status"] = "schema_admitted"
+                for command in ("check", "render-group"):
+                    run(
+                        [
+                            settings.video_editing_python or sys.executable,
+                            "-B",
+                            "-X",
+                            "utf8",
+                            "-m",
+                            "app.video_editing_native",
+                            "--package",
+                            str(package),
+                            "--kind",
+                            "group",
+                            "--command",
+                            command,
+                            "--instance",
+                            str(instance),
+                        ],
+                        instance,
+                        settings,
+                        lambda: None,
+                        "native_" + command.replace("-", "_"),
+                    )
+                report_path = instance / "native-render-group.json"
+                report = read_json(report_path)
+                output = Path(report["output"]).resolve()
+                if output != Path(job["output"]).resolve() or not output.is_relative_to(
+                    instance.resolve()
+                ):
+                    raise ValueError(
+                        "Native report does not address this instance's output"
+                    )
+                measured = measure_encoded_output(output, job, settings)
+                alpha = verify_rgba_sequence(instance, report, job["config"]["frames"])
+                atomic_json(
+                    instance / "independent-validation.json",
+                    {"encoded": measured, "rgba": alpha},
+                )
+                evidence = record_native(
+                    package, state, instance, report_path, settings
+                )
+                result.update(
+                    status="sample_rendered",
+                    evidence_id=evidence["id"],
+                    output_sha256=report["sha256"],
+                    measured=measured,
+                    rgba=alpha,
+                )
+            except Exception as error:
+                failure = native_failure(instance)
+                if failure and (instance / "job.json").is_file():
+                    evidence = record_failure(package, state, instance, failure)
+                    result["evidence_id"] = evidence["id"]
+                result.update(
+                    status="sample_failed" if failure else "adapter_validation_failed",
+                    exception_type=type(error).__name__,
+                    error=str(error)[:1600],
+                )
+        receipt["cases"].append(result)
+        receipt["counts"] = dict(Counter(c["status"] for c in receipt["cases"]))
+        atomic_json(root / "batch-receipt.json", receipt)
+        print(json.dumps({"group_id": gid, "status": result["status"]}), flush=True)
+    verify_package(package)
+    receipt.update(state="finished", original_integrity="passed")
+    atomic_json(root / "batch-receipt.json", receipt)
+    return receipt
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--library", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--state-dir", type=Path, required=True)
+    parser.add_argument("--ffmpeg", required=True)
+    parser.add_argument("--ffprobe", required=True)
+    parser.add_argument("--groups", nargs="+")
+    args = parser.parse_args()
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]  # Pydantic BaseSettings control.
+        video_editing_library_dir=args.library,
+        video_editing_python=sys.executable,
+        video_editing_ffmpeg=args.ffmpeg,
+        video_editing_ffprobe=args.ffprobe,
+        video_editing_planning_enabled=False,
+        video_script_planning_enabled=False,
+    )
+    result = execute(
+        args.manifest,
+        args.out,
+        args.state_dir,
+        settings,
+        set(args.groups) if args.groups else None,
+    )
+    print(
+        json.dumps({"state": result["state"], "counts": result["counts"]}), flush=True
+    )
+
+
+if __name__ == "__main__":
+    main()

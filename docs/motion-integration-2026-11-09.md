@@ -283,3 +283,21 @@ Compose 增加独立规划 worker 和显式 provider 配置占位引用；渲染
 可查看 `C:/tl/episode-validation/website-adoption-operator-regression-download.mp4`，证据同目录 adoption-operator-regression-website-submission.json / adoption-operator-regression-task-result.json / adoption-operator-regression-website-playback-evidence.json / adoption-operator-regression-runtime-evidence.json。已检查对应网站截图；新 lineage 字段 planning_provenance=null，明确是人工候选，识别/对齐/规划调用均为 0。该片是新版 worker 的兼容回归，与上一条字幕修正版的内容和最终字节相同，不计作新创意或新模型成片。
 
 剩余工作仍包括获准后的真实腾力模型调用及语义采用实测、全 132 组的当前配方/原生变体与逐组运行、数字事实绑定、缺失字体和原合同冲突、音乐音效、连续观看听验及数条不同创意验收片。本阶段没有提高目录运行计数：仍为 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收；全部未验证条目保留。主目录仍 HEAD 22fc356、81 项既存未提交条目；没有付费调用、推送、部署或发布。
+
+上述采用链路保存于本地提交 `a07f4a5`。以下开始按原生后端扩大逐组运行覆盖。
+
+## 43 组字幕动效的当前录音批次
+
+新增 `app.motion_native_batch`，供可信本机操作者执行原字幕组件。输入清单必须恰好列出原包全部 43 个字幕组；重复、遗漏、组与配方身份不一致、未尝试却没有阻塞说明，均拒绝。可显式选少量组复跑，余组标 not_requested，不补计为已运行。每组采用新的实例目录，沿用相同当前词点编译器、原始 job schema、原适配入口 check / render-group 及原渲染。原失败诊断保留；若只是适配校验失败，也不会编造原生失败记录。
+
+成功登记前需要真实原生编码产物，独立 ffprobe 计数、FFmpeg 全解码与原生 RGBA 帧的逐项摘要、顺序、尺寸、alpha 非空和像素变化检查。组件样本可以是静音中性底预览，其透明帧为实际组合材料。此检查不判定表达合适、字角色碰撞、观看或听感，更不把组件预览当作整片。保存真实原生失败与只完成静态 schema 检查的区别。登记进入现有网站目录的仅为组 ID、输入和产物摘要及技术证据，私有转录/视频/组件目录没有加入公开目录或提交。
+
+当前配方由人工按 240 单位、SHA256 `ba0c92807edb79686353bb236bd780f568ad896f4118b59ffb3cc819207d1c22` 的冻结转录逐组选词，价格、规格、表达顺序和两种用途分别采用实际出现的词 ID；事件为词起止点量化，逐字间隔及固定原生动作保留。37 组有明确的当前输入，原组字体及容量继续检查，未把旧示例句或旧秒数带入。本期清单 `C:/tl/subtitle-batch/subtitle-current-manifest-v1.json`，摘要 `5a090ea2e16fbee2598179cb010deb3323a38aff3a2271de60848e3f7610c83c`，作者脚本 `author_current_subtitle_cohort.py` 保存在同目录。6 组 AH-S03、AH-S06、AH-S07、SG-S05、BG-S10、BG-S11 未绑定指定原字体 SHA，登记 not_attempted，不替换或假装失败运行；AH-S07 原引擎还严格需要四位数字加“年”，这条录音不提供所需语义内容。
+
+相关 11 项协议、原编译与证据测试通过，日志 `C:/tl/subtitle-batch/native-batch-tests.log`；362 个 app 文件 Windows/Linux mypy、变更模块与测试 Ruff 通过。初次 mypy 发现 pydantic-settings 的 `_env_file` 专用运行参数未出现在生成签名，已按单条 call-arg 修正静态标注；CLI 实际仍显式禁用付费规划，执行环境不传入模型凭据。
+
+全批次原生执行已结束：37 组均完成各自当前 job 的原 schema admission、原生 check、实际 render-group、视频全解码与 RGBA 核验；6 组明确未尝试，没有适配失败或假报。累计独立核对 3455 个编码帧和对应透明帧，分别保留 job、word-bindings、compile-receipt、native-render-group、independent-validation 及原编码文件。总回执 `C:/tl/subtitle-batch/native-v1/batch-receipt.json`，结束后原包 1426 项完整性通过。BG-S06 以前已有样本，本次给它加一份新输入证据；其余 36 组首次获得实际编码记录。
+
+真实本机 API 枚举 132 组，所有 37 条本批记录逐项按证据 ID、视频摘要和实际帧格式匹配；6 个未尝试组仍未验证，未暴露私有源、配方或视频路径。真实浏览器筛到全部 43 张字幕卡，37 张显示“有编码样本 · 未验收”，6 张显示“待实际验证”；SG-S09 原组详情显示 1 份运行记录，AH-S07 原依赖仍可查。证据 `C:/tl/subtitle-batch/website-subtitle-cohort-evidence.json`、同目录 website-SG-S09-evidence.png / website-AH-S07-dependency.png。已抽看 SG-S09 的“每瓶两斤”和“到手4斤”两个原生组件画面，未将其记为连续观看或事实认可。
+
+全库当前为 41 组有编码样本、2 组有失败样本、89 组待实测、0 组用户画面验收；132 组 / 197 项内置资源 / 699 个外部引用仍完整。35 组统一引擎、37 组 scene、10 组浏览器、7 组 Hypit 的其余未验证输入不能由字幕批次替代。GitHub main 再次 fetch 为 `106d1e3eb17a87b89576d3f97c7ec8c9edf05e5a`，主目录 HEAD 22fc356、81 项未提交条目保持隔离。实际识别、对齐和模型调用均为 0；未推送、部署或发布。

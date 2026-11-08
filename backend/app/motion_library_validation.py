@@ -100,7 +100,7 @@ def record_native(
     if groups[group_id].get("backend") == "hypit" and not encoding:
         if not report.get("build_id") or settings is None:
             raise ValueError("Hypit evidence needs its real Build and media tools")
-        encoding = measure_hypit_output(output, job, settings)
+        encoding = measure_encoded_output(output, job, settings)
     elif (
         not encoding
         or not encoding.get("full_decode")
@@ -127,8 +127,10 @@ def record_native(
     return evidence
 
 
-def measure_hypit_output(output: Path, job: dict, settings: Settings) -> dict[str, Any]:
-    """Hypit receipts omit frame metadata; independently decode and count it."""
+def measure_encoded_output(
+    output: Path, job: dict, settings: Settings
+) -> dict[str, Any]:
+    """Independently decode/count a native output instead of trusting exit status."""
     result = subprocess.run(
         [
             settings.video_editing_ffprobe,
@@ -165,7 +167,7 @@ def measure_hypit_output(output: Path, job: dict, settings: Settings) -> dict[st
         or ("width" in config and video["width"] != config["width"])
         or ("height" in config and video["height"] != config["height"])
     ):
-        raise ValueError("Hypit frame clock differs from its current job")
+        raise ValueError("Encoded frame clock differs from its current native job")
     subprocess.run(
         [
             settings.video_editing_ffmpeg,

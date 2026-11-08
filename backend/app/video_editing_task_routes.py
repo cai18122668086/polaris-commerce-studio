@@ -25,8 +25,10 @@ from .video_editing_catalog import (
     template_dependencies,
 )
 from .video_editing_contracts import EditingTaskCreate, EditingTaskResponse
+from .video_editing_native_plans import admit_render_plan
 from .video_editing_task_models import (
     EditingArtifactRecord,
+    EditingNativePlanRecord,
     EditingSourceRecord,
     EditingTaskRecord,
     EditingTranscriptRevisionRecord,
@@ -362,6 +364,8 @@ def create_task(
     if payload["options"]["transcript_revision_id"] is None:
         # Preserve replay identity of tasks submitted before correction support.
         payload["options"].pop("transcript_revision_id")
+    if payload["options"]["native_plan_id"] is None:
+        payload["options"].pop("native_plan_id")
     fingerprint = digest({**payload, "library_release": MOTION_SHA256})
     previous = session.scalar(
         select(EditingTaskRecord).where(
@@ -377,6 +381,10 @@ def create_task(
             )
         return response(previous, session)
     source: EditingSourceRecord | None
+    if body.options.native_plan_id and body.generation_task_id:
+        raise ApiError(
+            422, "EDITING_NATIVE_SOURCE_REQUIRED", "请选择编排对应的原视频源。"
+        )
     if body.options.transcript_revision_id and body.generation_task_id:
         raise ApiError(
             422, "EDITING_CORRECTION_SOURCE_REQUIRED", "请选择校对版本对应的原视频源。"
@@ -416,6 +424,14 @@ def create_task(
         ):
             raise ApiError(404, "EDITING_SOURCE_NOT_FOUND", "未找到视频源。")
         own_project(session, workspace, source.project_id)
+    if body.options.native_plan_id:
+        admit_render_plan(
+            session,
+            settings,
+            session.get(EditingNativePlanRecord, str(body.options.native_plan_id)),
+            source,
+            body.options,
+        )
     if body.options.transcript_revision_id:
         if not settings.video_editing_alignment_enabled:
             raise ApiError(503, "EDITING_ALIGNMENT_DISABLED", "本机校对对齐尚未启用。")

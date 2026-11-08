@@ -11,13 +11,14 @@ from sqlalchemy.exc import IntegrityError
 from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, read_json, sha256
-from .video_editing_catalog import asset_label, choice_snapshot_hash
+from .video_editing_catalog import asset_label
 from .video_editing_contracts import (
     EditingLibraryNoteCreate,
     EditingLibraryNoteResponse,
     EditingLibraryNotesResponse,
     LibraryChoiceSnapshot,
 )
+from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_task_models import EditingLibraryNoteRecord
 from .video_editing_task_routes import enabled, own_project
 from .video_studio_routes import VideoWorkspace, digest
@@ -35,61 +36,9 @@ def planning_choice_snapshot(
     session: SessionDependency,
 ) -> dict[str, Any]:
     own_project(session, workspace, str(project_id))
-    scope = (
-        EditingLibraryNoteRecord.workspace_id == workspace.workspace_id,
-        EditingLibraryNoteRecord.owner_user_id == workspace.principal.user_id,
-        EditingLibraryNoteRecord.project_id == str(project_id),
-        EditingLibraryNoteRecord.library_release == MOTION_SHA256,
+    return stored_choice_snapshot(
+        session, workspace.workspace_id, workspace.principal.user_id, str(project_id)
     )
-    ranked = (
-        select(
-            EditingLibraryNoteRecord.id,
-            func.row_number()
-            .over(
-                partition_by=(
-                    EditingLibraryNoteRecord.target_kind,
-                    EditingLibraryNoteRecord.target_id,
-                ),
-                order_by=EditingLibraryNoteRecord.sequence.desc(),
-            )
-            .label("position"),
-        )
-        .where(*scope)
-        .subquery()
-    )
-    # One statement sees a consistent set of current versions, even if another
-    # browser writes notes during paginated UI reads.
-    rows = session.scalars(
-        select(EditingLibraryNoteRecord)
-        .join(
-            ranked,
-            ranked.c.id == EditingLibraryNoteRecord.id,
-        )
-        .where(*scope, ranked.c.position == 1)
-        .order_by(
-            EditingLibraryNoteRecord.target_kind,
-            EditingLibraryNoteRecord.target_id,
-        )
-    )
-    data = {
-        "schema_version": "tengli.library-choice-snapshot/1",
-        "scope": "project_selection_memo",
-        "project_id": str(project_id),
-        "library_release": MOTION_SHA256,
-        "notes": [
-            {
-                "note_id": r.id,
-                "target_kind": r.target_kind,
-                "target_id": r.target_id,
-                "target_name": r.details["target_name"],
-                "sequence": r.sequence,
-                "choice": r.choice,
-                "reason": r.reason,
-            }
-            for r in rows
-        ],
-    }
-    return {**data, "sha256": choice_snapshot_hash(data)}
 
 
 def response(row: EditingLibraryNoteRecord) -> dict[str, Any]:

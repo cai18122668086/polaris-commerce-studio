@@ -169,3 +169,23 @@ HY-A3 第三个新实例已通过原生 Build/get 编码：`bld_20261108T1832220
 真实口播项目的规划快照为 0 条备忘，摘要 `a0d158b92cf7f5c747b4f1808c0ad2e80f00f6b1bb5963cc09effd8431715793`。用本项目实际校对转录和此快照产生 `C:/tl/planning/dry-project-choices-v1`：仍含 132 组，242076 字节，最大输出 5000 tokens，没有 --execute，没有模型费用。该准备没有完成语义 worker 或全库 episode 编译。
 
 新增 6 项目录/音频/备忘/快照/迁移测试与相关旧测试合计 50 项通过，日志 `C:/tl/catalog-validation/regression-tests.log`；349 个 app 文件 Windows/Linux mypy、后端 Ruff、前端类型和目录/剪辑组件 ESLint 通过。0045 SQLite 往返及 PostgreSQL 离线 DDL 通过，未在实际 PostgreSQL 升级。本机 API 已重载至目录版本；Compose、部署和公开发布均未执行。目录仍为 5 组样本编码、2 组失败、125 组未实测、0 组用户画面验收，没有因为网页展示和试听而提高运行或验收计数。
+
+## 逐词语义编排到原生 episode 与网站动效试片
+
+本轮新增 `video_editing_episode_compiler.py`，把严格 `SemanticPlan`、当前逐词转录和操作者明确制作的原生配方编译为原库的 episode / selection / bindings，不修改原引擎。语言模型只能提供词 ID、重点、关系和已存在素材 ID；配方、原生设计参数、工具路径和摆位来自可信适配端。缺配方、关系条目未绑定、原生字段不支持、字幕放错图层、来源或摘要不符均失败，不自动退回普通字幕。关系条目需明确映射实际文字或媒体槽位，多条关系不能共用一个槽位假装已表达。已知关系容量也要匹配。原 schema 不支持的关系仅保留适配层元数据，不能偷偷改成因果或宣称原审计已覆盖。
+
+编译器校验完整 132 组目录和原 `params.schema.json`，时间只由实际词点转秒或帧。Z-M00 原景段按实际区间拆为不超过 15 秒的原生片段；整片仍连续保留原始 48.475 秒音频和原景，不压缩口播、不删除静音、不伪造单词时间。当前 sound_mode 仅为 original_voice_only，未混音。原始库的 1426 项完整性检查仍在 worker 执行；失败实例和原始文件都保留。
+
+新增迁移 0046 `video_editing_native_plans`，编排绑定用户/工作区/项目/原片/原任务/原转录产物与摘要、原库版本、项目选组快照及配方摘要。操作者 CLI 只能导入 operator_candidate，不能声明腾力网关来源。网站只能读自己的候选、选择已有候选出片，不能上传任意配方或可执行代码。新 `native_plan` 任务沿用独立 Celery 队列、DB 领取与租约、取消和重试；复用冻结转录的精确原字节，不再识别、对齐或调模型。编排摘要损坏即失败，不走基础字幕替代路径。项目备忘变化时新任务要求先核对并保存新编排；已经提交的任务按其冻结输入执行。动效成片保存字幕文字新版本后，也不能直接复用旧词点编排出片。
+
+候选渲染需 API 和 worker 同时显式开启 `POLARIS_VIDEO_EDITING_NATIVE_PLAN_ENABLED=true`；默认 false，Compose 仅增加开关，未启动、构建或部署。普通字幕任务保持原流程；抽出共享转录读取与选组快照存储函数，保留归属、路径、摘要、单次 SQL 快照规则。网站明确显示“人工工程候选”“语义及视觉待验收”。读取候选只是合同验证状态，不能当作已渲染或用户认可。
+
+真实新工程实例在 `C:/tl/episode-validation`：用现有 240 单位 fa-zh 候选转录，将开头和正文保留 Z-M00，价格句按实际词点选择原 BG-S06，白字“14块9”、金字“到手两大瓶”。本期配方明确字体、几何、阅读区和静态脸部保护矩形；该矩形由当前抽帧选择，不是自动跟踪，也未完成连续听验。第一次编译使用的保护区字段 basis 不符合原合同，失败保留于 native-v1。native-v2 已运行原渲染，但原生 alpha/字角色检查发现上下行入场碰撞 26 帧；没有增加豁免或改库。仅把当前下行几何改为 lower_top=134、mask_top=124 后，native-v3 在全部 111 帧原生字幕层检查中为 0 碰撞，原生检查、原生导出及完整解码成功。静态检查通过不替代用户的视觉/听感验收。
+
+已将 v3 编排导入为 `2089f8af-504c-43ab-9454-84ba168b8d41`，父转录任务 `eb26dcbb-e8b0-4476-8aef-33cbb4effcc8`，原片摘要 `6e90abf677e2f83f84935806faa40a4b6d519a980ee0ec32119109fed6fd53d5`，转录摘要 `ba0c92807edb79686353bb236bd780f568ad896f4118b59ffb3cc819207d1c22`。真实网页点击出片创建任务 `f24966ea-6a0c-4280-afe0-f5ff48ce4a41`，Redis / 独立 worker 1 次尝试完成。原生布局 review=passed、errors=[]、无过渡豁免；48.475 秒、720×1280、H.264/AAC，完整解码通过。最终 SHA256 `954b06e7c84670d9016fca085caa2f8927da8ed1fc2454999142427eac477119`，与 CLI v3 相同，且不同于先前纯字幕视频。网站实际播放 readyState=4、currentTime=3.946、无媒体错误；按钮下载摘要匹配。
+
+可查看 `C:/tl/episode-validation/website-native-download.mp4`；证据为同目录 website-submission.json、website-task-result.json、website-playback-evidence.json，任务目录内 native-plan-lineage.json 记录识别/对齐/规划调用均为 0。已查看网页结果截图 `C:/tl/preflight/website-native-episode-result.png`。这是一条新动效工程试片，重复 CLI / 网页渲染不算两个创意成品；品牌“火力/活力”、商品数量价格及 A 类等事实与实际读法仍未核验，文字仍是 operator_candidate。
+
+本轮相关回归 61 项通过，另补充的“损坏冻结编排不得重识别或退回纯字幕”与原生编排服务合计 5 项通过；354 个 app 文件 Windows/Linux mypy、后端 Ruff、前端类型和三个剪辑组件 ESLint 通过。0046 SQLite 升降级保留原行，PostgreSQL 仅离线 DDL，未做真实 PG 升级。两个历史普通/校对任务重新提交原请求仍返回原 ID，0 新任务；证据 legacy-replay.json。再次 fetch GitHub main 仍为 `106d1e3eb17a87b89576d3f97c7ec8c9edf05e5a`；首次 Windows Schannel 握手失败后使用本次命令级 OpenSSL 后端重试成功，未关 TLS 校验或改全局 Git 配置。主目录 HEAD 仍 22fc356，81 项既存未提交条目未归入本分支。
+
+尚未完成：获准后的实际腾力模型语义规划与任务衔接、全 132 组专用配方与逐组运行证据、Hypit 复合编排、原生视频素材的源时钟绑定、商品事实和逐词听验、音乐音效混入、数条不同创意成品及用户验收。本轮只增加 Z-M00 + BG-S06 的整片级证据，目录计数仍为 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收。付费调用、推送、部署和发布均为零，不能称为全库已经在网站运行。

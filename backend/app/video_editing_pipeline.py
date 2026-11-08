@@ -385,13 +385,13 @@ def caption_rows(transcript: Transcript) -> list[dict[str, Any]]:
     return result
 
 
-def compile_baseline(
+def baseline_documents(
     root: Path,
     prepared: dict,
     transcript: Transcript,
     options: dict,
     settings: Settings,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
     package = settings.video_editing_library_dir
     video = next(s for s in prepared["probe"]["streams"] if s["codec_type"] == "video")
     width, height = video["width"], video["height"]
@@ -527,6 +527,19 @@ def compile_baseline(
         {**selection["decisions"][0], "shot_index": index}
         for index in range(len(shots))
     ]
+    return plan, selection, captions
+
+
+def compile_baseline(
+    root: Path,
+    prepared: dict,
+    transcript: Transcript,
+    options: dict,
+    settings: Settings,
+) -> dict[str, Any]:
+    plan, selection, captions = baseline_documents(
+        root, prepared, transcript, options, settings
+    )
     atomic_json(root / "caption-anchors.json", captions)
     atomic_json(root / "selection.json", selection)
     atomic_json(root / "bindings.json", {"resources": {}, "tools": {}})

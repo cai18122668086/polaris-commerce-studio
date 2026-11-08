@@ -3,7 +3,6 @@
 import difflib
 import hashlib
 from datetime import UTC
-from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -13,18 +12,16 @@ from sqlalchemy.exc import IntegrityError
 
 from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
-from .motion_library import read_json, sha256
 from .video_editing_contracts import (
     EditingTranscriptRevisionCreate,
     EditingTranscriptRevisionResponse,
-    Transcript,
 )
 from .video_editing_task_models import (
     EditingArtifactRecord,
-    EditingTaskRecord,
     EditingTranscriptRevisionRecord,
 )
 from .video_editing_task_routes import enabled, own_task
+from .video_editing_transcript_store import read_transcript_artifact as read_transcript
 from .video_studio_routes import VideoWorkspace, digest
 
 router = APIRouter(
@@ -50,30 +47,6 @@ def revision_response(row: EditingTranscriptRevisionRecord) -> dict[str, Any]:
         if row.created_at.tzinfo is None
         else row.created_at,
     }
-
-
-def read_transcript(
-    record: EditingArtifactRecord | None, task: EditingTaskRecord, task_root: Path
-) -> Transcript:
-    if (
-        task.status != "completed"
-        or not record
-        or record.task_id != task.id
-        or record.role != "transcript"
-    ):
-        raise ApiError(404, "EDITING_TRANSCRIPT_NOT_FOUND", "未找到原识别记录。")
-    path = Path(record.path).resolve()
-    if (
-        not path.is_relative_to((task_root / task.id).resolve())
-        or not path.is_file()
-        or path.stat().st_size != record.bytes
-        or record.bytes > 2_000_000
-        or sha256(path) != record.sha256
-    ):
-        raise ApiError(
-            409, "EDITING_TRANSCRIPT_CHANGED", "识别记录已变化，请恢复原产物。"
-        )
-    return Transcript.model_validate(read_json(path))
 
 
 @router.get("/editing-tasks/{task_id}/transcript")

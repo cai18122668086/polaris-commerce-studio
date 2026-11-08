@@ -69,7 +69,7 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
     finally { setBusy(false); }
   };
   const render = async () => {
-    if (!view || !selected || selected.corrected_text !== text) return;
+    if (!view || !selected || selected.corrected_text !== text || options.mode === "native_plan") return;
     setBusy(true); setError(""); setMessage("");
     try {
       const nextOptions = { ...options, language: "zh" as const, transcript_revision_id: selected.id };
@@ -103,7 +103,8 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
       <label>校对文字<textarea aria-label="校对文字" rows={9} maxLength={20000} value={text} onChange={event => { setText(event.target.value); setReviewed(false); setMessage(""); }} /></label>
       <label className={styles.reviewCheck}><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} />我已对照原声核对这份文字；这不代表成片和时间点已验收</label>
       <div className={styles.correctionActions}><button type="button" disabled={busy || !text.trim() || (selected?.corrected_text === text && selected.text_status === (reviewed ? "user_corrected" : "operator_candidate"))} onClick={() => void save()}>{reviewed ? "保存已校对文字" : "保存待核对版本"}</button>
-        <button type="button" disabled={busy || !view.alignment_available || !selected || selected.corrected_text !== text || options.source_subtitles !== "none"} onClick={() => void render()}>按此版本重新生成字幕</button></div>
+        <button type="button" disabled={busy || !view.alignment_available || !selected || selected.corrected_text !== text || options.source_subtitles !== "none" || options.mode === "native_plan"} onClick={() => void render()}>按此版本重新生成字幕</button></div>
+      {options.mode === "native_plan" && <p className={styles.note}>这条成片使用冻结的动效编排。可保存文字新版本，重新出片前需按新词点保存新的动效编排。</p>}
       {selected && <p className={styles.note}>已选择：{statusLabel(selected.text_status)}。{selected.corrected_text !== text ? "有未保存的修改，请先保存。" : "重新生成会使用这份已保存文字。"}</p>}
       {!view.alignment_available && <p className={styles.note}>校对文字可以保存；重新对齐服务尚未启用。</p>}
       {options.source_subtitles !== "none" && <p className={styles.note}>原画面已有字幕，修改文字不能擦除画面中的字。重新生成字幕需要无硬字幕的原片。</p>}

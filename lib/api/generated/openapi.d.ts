@@ -2194,6 +2194,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Native Plans */
+        get: operations["list_native_plans_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/tasks": {
         parameters: {
             query?: never;
@@ -5296,6 +5313,65 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** EditingNativePlanResponse */
+        EditingNativePlanResponse: {
+            /** Audience Question */
+            audience_question: string;
+            /** Base Task Id */
+            base_task_id: string;
+            /** Base Transcript Artifact Id */
+            base_transcript_artifact_id: string;
+            /** Beats */
+            beats: {
+                [key: string]: unknown;
+            }[];
+            /** Caption Font Id */
+            caption_font_id: string;
+            /** Choice Snapshot Sha256 */
+            choice_snapshot_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Library Release */
+            library_release: string;
+            /** Missing Materials */
+            missing_materials: string[];
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "operator_candidate" | "tengli_gateway";
+            /** Project Id */
+            project_id: string;
+            /** Render Available */
+            render_available: boolean;
+            /**
+             * Semantic Review
+             * @default unreviewed
+             * @constant
+             */
+            semantic_review: "unreviewed";
+            /** Source Id */
+            source_id: string;
+            /**
+             * Source Subtitles
+             * @enum {string}
+             */
+            source_subtitles: "none" | "present";
+            /**
+             * State
+             * @constant
+             */
+            state: "semantic_contract_validated";
+            /** Text Status */
+            text_status: string;
+            /** Warnings */
+            warnings: string[];
+        };
         /** EditingOptions */
         EditingOptions: {
             /**
@@ -5313,9 +5389,11 @@ export interface components {
             /**
              * Mode
              * @default subtitles
-             * @constant
+             * @enum {string}
              */
-            mode: "subtitles";
+            mode: "subtitles" | "native_plan";
+            /** Native Plan Id */
+            native_plan_id?: string | null;
             /**
              * Source Subtitles
              * @default unknown
@@ -12140,6 +12218,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingLibraryNoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_native_plans_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingNativePlanResponse"][];
                 };
             };
             /** @description Validation Error */

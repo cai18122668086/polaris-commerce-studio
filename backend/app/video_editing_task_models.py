@@ -162,3 +162,41 @@ class EditingLibraryNoteRecord(TimestampMixin, Base):
         ForeignKey("video_editing_library_notes.id")
     )
     details: Mapped[dict] = mapped_column(json_type(), default=dict)
+
+
+class EditingNativePlanRecord(TimestampMixin, Base):
+    __tablename__ = "video_editing_native_plans"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "owner_user_id",
+            "request_id",
+            name="uq_editing_native_plan_request",
+        ),
+        Index(
+            "ix_editing_native_plan_project",
+            "workspace_id",
+            "owner_user_id",
+            "project_id",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("video_projects.id"))
+    source_id: Mapped[str] = mapped_column(ForeignKey("video_editing_sources.id"))
+    base_task_id: Mapped[str] = mapped_column(ForeignKey("video_editing_tasks.id"))
+    base_transcript_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("video_editing_artifacts.id")
+    )
+    base_transcript_sha256: Mapped[str] = mapped_column(String(64))
+    library_release: Mapped[str] = mapped_column(String(64))
+    request_id: Mapped[str] = mapped_column(String(40))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    origin: Mapped[str] = mapped_column(String(24))
+    semantic: Mapped[dict] = mapped_column(json_type())
+    semantic_sha256: Mapped[str] = mapped_column(String(64))
+    recipes: Mapped[dict] = mapped_column(json_type())
+    recipes_sha256: Mapped[str] = mapped_column(String(64))
+    choice_snapshot: Mapped[dict] = mapped_column(json_type())
+    details: Mapped[dict] = mapped_column(json_type(), default=dict)

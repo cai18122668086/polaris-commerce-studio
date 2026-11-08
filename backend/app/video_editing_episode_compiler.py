@@ -1,0 +1,453 @@
+"""Compile measured semantic beats into the unmodified original episode protocol.
+
+The model supplies word IDs and meaning. Trusted current-episode recipes supply
+native design/placement. Missing recipes never become a silent Z-M00 fallback.
+"""
+
+import copy
+import hashlib
+import json
+import math
+from pathlib import Path
+from typing import Any, Literal, Self
+
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError as SchemaViolation
+from pydantic import Field, model_validator
+
+from .config import Settings
+from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_native_compiler import compile_native_job
+from .video_editing_pipeline import EditingFailure, baseline_documents
+from .video_editing_planner import validate_plan
+from .video_studio_schemas import StrictVideoModel
+
+
+class NativePlacement(StrictVideoModel):
+    layer: Literal["scene", "overlay", "subtitle"]
+    rect: list[float] = Field(min_length=4, max_length=4)
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def bounded(self) -> Self:
+        x, y, width, height = self.rect
+        if (
+            not all(math.isfinite(v) for v in self.rect)
+            or min(x, y) < 0
+            or min(width, height) <= 0
+            or x + width > 1
+            or y + height > 1
+        ):
+            raise ValueError("Native placement leaves the current output frame")
+        return self
+
+
+class NativeEpisodeEntry(StrictVideoModel):
+    recipe: dict[str, Any]
+    placement: NativePlacement
+    carrier: Literal["text", "picture"]
+
+
+class EpisodeRecipeBundle(StrictVideoModel):
+    version: Literal["tengli.episode-recipes/1"]
+    library_release: str
+    source_sha256: str
+    transcript_sha256: str
+    planning_origin: Literal["operator_candidate", "tengli_gateway"]
+    source_review: str = Field(min_length=1, max_length=2000)
+    design: dict[str, Any]
+    typography: dict[str, Any]
+    layout_policy: dict[str, Any]
+    protected_regions: list[dict[str, Any]] = Field(default_factory=list)
+    entries: dict[str, NativeEpisodeEntry]
+    tools: dict[str, str] = Field(default_factory=dict)
+    sound_mode: Literal["original_voice_only"]
+
+
+RELATION_MAPPING = {
+    "parallel",
+    "contrast",
+    "cause",
+    "sequence",
+    "condition",
+    "transformation",
+}
+
+
+def compile_episode(
+    root: Path,
+    prepared: dict,
+    transcript: Transcript,
+    semantic: SemanticPlan,
+    authoring: EpisodeRecipeBundle,
+    asset_files: dict[str, dict[str, Any]],
+    options: dict,
+    settings: Settings,
+    choice_snapshot: dict[str, Any] | None = None,
+    verified_gateway_plan_hash: str | None = None,
+) -> dict[str, Any]:
+    """Prepare original episode/selection/bindings, without claiming a render."""
+    root = root.resolve()
+    package = settings.video_editing_library_dir
+    semantic_hash = hashlib.sha256(semantic.model_dump_json().encode()).hexdigest()
+    if (
+        authoring.planning_origin == "tengli_gateway"
+        and verified_gateway_plan_hash != semantic_hash
+    ):
+        raise EditingFailure("EDITING_PLANNER_PROVENANCE_REQUIRED")
+    if options.get("source_subtitles") not in {"none", "present"}:
+        raise EditingFailure("EDITING_SOURCE_SUBTITLES_REVIEW_REQUIRED")
+    if root.is_relative_to(package.resolve()) or (root / "episode.json").exists():
+        raise ValueError("Use a fresh instance outside the original library")
+    # Reject non-finite trusted recipe numbers too; no model code or DSL is evaluated.
+    json.dumps(authoring.model_dump(mode="json"), allow_nan=False)
+    file = root / "transcript.json"
+    if (
+        authoring.library_release != MOTION_SHA256
+        or authoring.source_sha256 != prepared["source_sha256"]
+        or transcript.source_sha256 != prepared["source_sha256"]
+        or transcript.audio_sha256 != prepared["audio_sha256"]
+        or transcript.duration_ms != prepared["duration_ms"]
+        or not file.is_file()
+        or sha256(file) != authoring.transcript_sha256
+        or Transcript.model_validate(read_json(file)) != transcript
+    ):
+        raise EditingFailure("EDITING_PLAN_SOURCE_CHANGED")
+    validate_plan(semantic, transcript, package, set(asset_files), choice_snapshot)
+    groups = {g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]}
+    relation_types = set(
+        read_json(package / "params.schema.json")["properties"]["production"][
+            "properties"
+        ]["beats"]["items"]["properties"]["relation"]["properties"]["type"]["enum"]
+    )
+    if len(groups) != 132:
+        raise EditingFailure("EDITING_LIBRARY_INCOMPLETE")
+    capabilities = {
+        c["group_id"]: c
+        for c in read_json(package / "catalog/relationship-capabilities.json")["groups"]
+    }
+    expected = {b.id for b in semantic.beats if b.group_id != "Z-M00"}
+    if set(authoring.entries) - expected:
+        raise EditingFailure("EDITING_UNUSED_NATIVE_RECIPE")
+    episode, selection, captions = baseline_documents(
+        root, prepared, transcript, options, settings
+    )
+    source_shot = copy.deepcopy(episode["shots"][0])
+    episode["shots"] = []
+    selection["decisions"] = []
+    bindings: dict[str, dict[str, str]] = {"resources": {}, "tools": authoring.tools}
+    if set(authoring.tools) - {
+        "chrome",
+        "node",
+        "hypit",
+        "ffmpeg",
+        "ffprobe",
+        "python",
+    }:
+        raise EditingFailure("EDITING_NATIVE_TOOL_NOT_ALLOWED")
+    for value in authoring.tools.values():
+        if not Path(value).is_file():
+            raise EditingFailure("EDITING_NATIVE_TOOL_MISSING")
+    episode.update(
+        design=copy.deepcopy(authoring.design),
+        typography=copy.deepcopy(authoring.typography),
+        layout_policy=copy.deepcopy(authoring.layout_policy),
+        protected_regions=copy.deepcopy(authoring.protected_regions),
+    )
+    if episode["design"].get("caption_font_id") != options["caption_font_id"]:
+        raise EditingFailure("EDITING_CAPTION_DESIGN_MISMATCH")
+    episode["editorial"] = {
+        "source_verified": True,
+        "source_review": authoring.source_review,
+        "audience_question": semantic.audience_question,
+        "argument_outline": semantic.argument_outline,
+        "style_reason": semantic.style_reason,
+        "planning_origin": authoring.planning_origin,
+        "semantic_review": "unreviewed",
+    }
+    episode["production"].update(beats=[], materials=[])
+    tokens = transcript.tokens
+    positions = {t.id: i for i, t in enumerate(tokens)}
+    issues: list[dict[str, Any]] = []
+    compiled: list[dict[str, Any]] = []
+    prior_end = 0
+    for index, beat in enumerate(semantic.beats):
+        first, last = positions[beat.first_token_id], positions[beat.last_token_id]
+        start_ms, end_ms = tokens[first].start_ms, tokens[last].end_ms
+        if start_ms < prior_end or end_ms <= start_ms:
+            issues.append(
+                {
+                    "beat_id": beat.id,
+                    "group_id": beat.group_id,
+                    "code": "WORD_CLOCK_OVERLAP",
+                }
+            )
+            continue
+        prior_end = end_ms
+        start, end = start_ms / 1000, end_ms / 1000
+        item_text = "".join(t.text for t in tokens[first : last + 1])
+        shot_indices = []
+        entry = authoring.entries.get(beat.id)
+        if beat.group_id != "Z-M00" and entry is None:
+            issues.append(
+                {
+                    "beat_id": beat.id,
+                    "group_id": beat.group_id,
+                    "code": "NATIVE_RECIPE_REQUIRED",
+                }
+            )
+            continue
+        if (
+            beat.group_id != "Z-M00"
+            and beat.relation in RELATION_MAPPING
+            and not beat.relation_items
+        ):
+            issues.append(
+                {
+                    "beat_id": beat.id,
+                    "group_id": beat.group_id,
+                    "code": "RELATION_MAPPING_REQUIRED",
+                }
+            )
+            continue
+        if (
+            entry
+            and groups[beat.group_id]["kind"] == "subtitle"
+            and entry.placement.layer != "subtitle"
+        ):
+            issues.append(
+                {
+                    "beat_id": beat.id,
+                    "group_id": beat.group_id,
+                    "code": "SUBTITLE_LAYER_REQUIRED",
+                }
+            )
+            continue
+        if (
+            entry
+            and entry.carrier == "picture"
+            and (
+                not beat.relation_items
+                or any(
+                    not i.asset_ids or not i.native_media_paths
+                    for i in beat.relation_items
+                )
+            )
+        ):
+            issues.append(
+                {
+                    "beat_id": beat.id,
+                    "group_id": beat.group_id,
+                    "code": "PICTURE_RELATION_ASSETS_REQUIRED",
+                }
+            )
+            continue
+        capability = capabilities.get(beat.group_id)
+        if (
+            entry
+            and beat.relation_items
+            and capability
+            and (
+                entry.carrier not in capability["carriers"]
+                or not capability["min_items"]
+                <= len(beat.relation_items)
+                <= capability["max_items"]
+            )
+        ):
+            issues.append(
+                {
+                    "beat_id": beat.id,
+                    "group_id": beat.group_id,
+                    "code": "NATIVE_RELATION_CAPACITY_REQUIRED",
+                }
+            )
+            continue
+        if beat.group_id == "Z-M00":
+            # Native source pages only; speech stays on the single original audio.
+            for page in range(math.ceil((end - start) / 15)):
+                a, b = start + page * 15, min(end, start + (page + 1) * 15)
+                shot = copy.deepcopy(source_shot)
+                shot.update(start_seconds=a, end_seconds=b)
+                shot["config"]["timing"]["duration_seconds"] = b - a
+                shot["config"]["media"]["presenter"].update(
+                    offset_seconds=a, duration_seconds=b - a
+                )
+                shot["intent"] = {
+                    "expected_understanding": item_text,
+                    "reason": beat.reason,
+                }
+                shot_indices.append(len(episode["shots"]))
+                episode["shots"].append(shot)
+        else:
+            assert entry is not None
+            directory = root / "compiled-native" / f"{index:03}-{beat.group_id}"
+            try:
+                job = compile_native_job(
+                    package, directory, beat, transcript, entry.recipe, asset_files
+                )
+                part_bindings = read_json(directory / "bindings.json")
+                for rid, value in part_bindings["resources"].items():
+                    if (
+                        rid in bindings["resources"]
+                        and bindings["resources"][rid] != value
+                    ):
+                        raise ValueError("Conflicting instance resource binding")
+                    bindings["resources"][rid] = value
+                shot_indices.append(len(episode["shots"]))
+                episode["shots"].append(
+                    {
+                        "group_id": beat.group_id,
+                        "config": job["config"],
+                        "start_seconds": start,
+                        "end_seconds": end,
+                        "layer": entry.placement.layer,
+                        "rect": entry.placement.rect,
+                        "intent": {
+                            "expected_understanding": item_text,
+                            "reason": beat.reason,
+                        },
+                    }
+                )
+                compiled.append(
+                    {
+                        "beat_id": beat.id,
+                        "group_id": beat.group_id,
+                        "job_sha256": sha256(directory / "job.json"),
+                        "compile_receipt_sha256": sha256(
+                            directory / "compile-receipt.json"
+                        ),
+                        "placement_reason": entry.placement.reason,
+                    }
+                )
+            except (
+                ValueError,
+                KeyError,
+                IndexError,
+                FileNotFoundError,
+                SchemaViolation,
+            ) as error:
+                issues.append(
+                    {
+                        "beat_id": beat.id,
+                        "group_id": beat.group_id,
+                        "code": "NATIVE_INPUT_CONTRACT_REQUIRED",
+                        "exception_type": type(error).__name__,
+                    }
+                )
+                continue
+        for shot_index in shot_indices:
+            selection["decisions"].append(
+                {
+                    "shot_index": shot_index,
+                    "selected_group_id": beat.group_id,
+                    "viewer_task": item_text,
+                    "reason": beat.reason,
+                    "considered": [{"group_id": beat.group_id}],
+                }
+            )
+        production_beat: dict[str, Any] = {
+            "id": beat.id,
+            "importance": "key" if beat.emphasis_token_ids else "support",
+            "semantic_relation": beat.relation,
+            "spoken_text": item_text,
+            "visual_expression": beat.group_id if beat.group_id != "Z-M00" else None,
+            "intentional_rest_reason": beat.reason
+            if beat.group_id == "Z-M00"
+            else None,
+        }
+        if beat.relation_items:
+            items = [
+                {
+                    "id": i.id,
+                    "meaning": "".join(
+                        t.text
+                        for t in tokens[
+                            positions[i.first_token_id] : positions[i.last_token_id] + 1
+                        ]
+                    ),
+                    "material_ids": i.asset_ids,
+                }
+                for i in beat.relation_items
+            ]
+            mapped_relation = {
+                "type": beat.relation,
+                "count": len(items),
+                "items": items,
+                "expressions": [
+                    {
+                        "carrier": entry.carrier if entry else "text",
+                        "item_ids": [i["id"] for i in items],
+                        "shot_indices": shot_indices,
+                        "reason": beat.reason,
+                    }
+                ]
+                if entry
+                else [],
+                **({"intentional_rest_reason": beat.reason} if not entry else {}),
+            }
+            if beat.relation in relation_types:
+                production_beat["relation"] = mapped_relation
+            else:
+                production_beat["adapter_relation"] = mapped_relation
+                production_beat["native_relation_scope"] = (
+                    "not_in_original_relation_schema"
+                )
+        episode["production"]["beats"].append(production_beat)
+    for aid, asset in asset_files.items():
+        if not any(aid in b.asset_ids for b in semantic.beats):
+            continue
+        path = Path(asset["path"]).resolve()
+        if not path.is_file() or sha256(path) != asset["sha256"]:
+            issues.append({"asset_id": aid, "code": "CURRENT_MATERIAL_CHANGED"})
+            continue
+        episode["production"]["materials"].append(
+            {
+                "id": aid,
+                "path": str(path),
+                "sha256": asset["sha256"],
+                "kind": asset.get("kind", "original_material"),
+                "semantic_use": asset.get("semantic_use", ""),
+                "viewed_identity": asset.get("viewed_identity"),
+                "source": asset.get("source"),
+                "license": asset.get("license"),
+            }
+        )
+    try:
+        Draft202012Validator(read_json(package / "params.schema.json")).validate(
+            episode
+        )
+    except SchemaViolation as error:
+        issues.append(
+            {
+                "code": "ORIGINAL_EPISODE_SCHEMA_REJECTED",
+                "field": ".".join(map(str, error.absolute_path)),
+            }
+        )
+    diagnostic = {
+        "version": "tengli.episode-compilation/1",
+        "library_release": MOTION_SHA256,
+        "catalog_groups_preserved": len(groups),
+        "planning_origin": authoring.planning_origin,
+        "source_sha256": prepared["source_sha256"],
+        "transcript_sha256": sha256(file),
+        "semantic_sha256": semantic_hash,
+        "choice_snapshot_sha256": (choice_snapshot or {}).get("sha256"),
+        "compiled_native_jobs": compiled,
+        "episode_schema_validation": "passed" if not issues else "not_admitted",
+        "issues": issues,
+        "native_execution": "not_performed",
+        "semantic_review": "unreviewed",
+        "visual_review": "unreviewed",
+        "hearing_review": "unreviewed",
+    }
+    atomic_json(root / "compile-diagnostics.json", diagnostic)
+    if issues:
+        raise EditingFailure("EDITING_NATIVE_INPUTS_REQUIRED")
+    atomic_json(root / "semantic-plan.json", semantic.model_dump(mode="json"))
+    atomic_json(root / "episode-recipes.json", authoring.model_dump(mode="json"))
+    atomic_json(root / "caption-anchors.json", captions)
+    atomic_json(root / "bindings.json", bindings)
+    atomic_json(root / "selection.json", selection)
+    atomic_json(root / "episode.json", episode)
+    return episode

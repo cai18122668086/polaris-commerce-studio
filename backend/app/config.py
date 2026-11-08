@@ -117,6 +117,7 @@ class Settings(BaseSettings):
     video_editing_asr_model: str = "small"
     video_editing_asr_device: Literal["cpu", "cuda"] = "cpu"
     video_editing_alignment_enabled: bool = False
+    video_editing_native_plan_enabled: bool = False
     video_editing_alignment_model_dir: Path = Path(".data/asr-alignment")
     video_editing_planning_enabled: bool = False
     video_editing_plan_model: str = "gpt-6.1-sol"

@@ -4,6 +4,8 @@ import hashlib
 import importlib.metadata
 import json
 import shutil
+from collections.abc import Callable
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -24,7 +26,9 @@ from .motion_library import (
     sha256,
     verify_package,
 )
-from .video_editing_contracts import Transcript
+from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
+from .video_editing_native_plans import frozen_plan_snapshot
 from .video_editing_pipeline import (
     EditingFailure,
     compile_baseline,
@@ -36,6 +40,7 @@ from .video_editing_pipeline import (
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingAttemptRecord,
+    EditingNativePlanRecord,
     EditingSourceRecord,
     EditingTaskRecord,
     EditingTranscriptRevisionRecord,
@@ -81,6 +86,226 @@ def asr_profile(settings: Settings, language: str, reference: str | None) -> str
         "reference": reference,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def load_transcript(
+    task_id: str,
+    root: Path,
+    prepared: dict,
+    snapshot: dict[str, Any],
+    settings: Settings,
+    guard: Callable[..., None],
+    stage: Callable[..., None],
+) -> Transcript:
+    """Existing recognition/alignment and exact-byte recovery path."""
+    correction = snapshot["correction"]
+    expected_provider: str = settings.video_editing_asr_provider
+    expected_model = settings.video_editing_asr_model
+    profile: str | None
+    if correction:
+        if not settings.video_editing_alignment_enabled:
+            raise EditingFailure("EDITING_ALIGNMENT_DISABLED")
+        from .video_editing_alignment import ALIGNMENT_MANIFEST, PROCESSING_VERSION
+        from .video_editing_funasr import bundle_identity
+
+        base_path = Path(correction["base_path"]).resolve()
+        if (
+            not base_path.is_relative_to(
+                (
+                    settings.video_editing_tasks_dir / correction["base_task_id"]
+                ).resolve()
+            )
+            or not base_path.is_file()
+            or sha256(base_path) != correction["base_sha256"]
+            or hashlib.sha256(correction["text"].encode()).hexdigest()
+            != correction["text_sha256"]
+            or prepared["source_sha256"] != correction["source_sha256"]
+            or prepared["audio_sha256"] != correction["audio_sha256"]
+        ):
+            raise EditingFailure("EDITING_ALIGNMENT_SOURCE_MISMATCH")
+        identity = bundle_identity(
+            settings.video_editing_alignment_model_dir,
+            manifest_path=ALIGNMENT_MANIFEST,
+        )
+        expected_provider, expected_model = (
+            "funasr-fa-zh",
+            str(settings.video_editing_alignment_model_dir),
+        )
+        profile = hashlib.sha256(
+            json.dumps(
+                {
+                    "correction": correction,
+                    "model_identity": identity,
+                    "funasr_version": importlib.metadata.version("funasr"),
+                    "processing": PROCESSING_VERSION,
+                    "device": settings.video_editing_asr_device,
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        stage("aligning")
+    else:
+        stage("transcribing")
+        profile = asr_profile(
+            settings, snapshot["options"]["language"], snapshot["reference"]
+        )
+    cached = snapshot["checkpoint"].get("transcript")
+    transcript = None
+    if (
+        cached
+        and profile is not None
+        and cached.get("profile") == profile
+        and Path(cached["path"]).is_file()
+        and sha256(Path(cached["path"])) == cached["sha256"]
+    ):
+        candidate = Transcript.model_validate(read_json(Path(cached["path"])))
+        if (
+            candidate.source_sha256 == prepared["source_sha256"]
+            and candidate.audio_sha256 == prepared["audio_sha256"]
+            and candidate.model == expected_model
+            and candidate.provider == expected_provider
+            and candidate.text_revision_id
+            == snapshot["options"].get("transcript_revision_id")
+        ):
+            if correction:
+                evidence = cached.get("alignment_evidence", {})
+                names = {
+                    "alignment-input.txt",
+                    "alignment-raw.json",
+                    "alignment-receipt.json",
+                    "parent-transcript.json",
+                }
+                if set(evidence) == names and all(
+                    Path(item["path"])
+                    .resolve()
+                    .is_relative_to(
+                        (settings.video_editing_tasks_dir / task_id).resolve()
+                    )
+                    and Path(item["path"]).is_file()
+                    and sha256(Path(item["path"])) == item["sha256"]
+                    for item in evidence.values()
+                ):
+                    for name, item in evidence.items():
+                        shutil.copyfile(item["path"], root / name)
+                    transcript = candidate
+            else:
+                transcript = candidate
+    if transcript is None:
+        if correction:
+            shutil.copyfile(correction["base_path"], root / "parent-transcript.json")
+            atomic_json(
+                root / "alignment-config.json",
+                {
+                    "model": expected_model,
+                    "device": settings.video_editing_asr_device,
+                    "parent_sha256": correction["base_sha256"],
+                    "text": correction["text"],
+                    "revision_id": correction["id"],
+                    "text_status": correction["text_status"],
+                },
+            )
+        else:
+            atomic_json(
+                root / "asr-config.json",
+                {
+                    "provider": settings.video_editing_asr_provider,
+                    "model": settings.video_editing_asr_model,
+                    "device": settings.video_editing_asr_device,
+                    "reference": snapshot["reference"],
+                    "language": snapshot["options"]["language"],
+                },
+            )
+        run(
+            [
+                settings.video_editing_python,
+                "-B",
+                "-X",
+                "utf8",
+                "-m",
+                "app.video_editing_alignment"
+                if correction
+                else "app.video_editing_asr",
+                "--instance",
+                str(root),
+            ],
+            root,
+            settings,
+            guard,
+            "alignment" if correction else "asr",
+        )
+        transcript = Transcript.model_validate(read_json(root / "transcript.json"))
+    else:
+        # Preserve the exact immutable bytes referenced by the cached receipt.
+        shutil.copyfile(cached["path"], root / "transcript.json")
+    stage(
+        "compiling",
+        transcript={
+            "path": str(root / "transcript.json"),
+            "sha256": sha256(root / "transcript.json"),
+            "profile": profile,
+            **(
+                {
+                    "alignment_evidence": {
+                        name: {
+                            "path": str(root / name),
+                            "sha256": sha256(root / name),
+                        }
+                        for name in (
+                            "alignment-input.txt",
+                            "alignment-raw.json",
+                            "alignment-receipt.json",
+                            "parent-transcript.json",
+                        )
+                    }
+                }
+                if correction
+                else {}
+            ),
+        },
+    )
+    return transcript
+
+
+def load_plan_transcript(
+    root: Path,
+    prepared: dict,
+    plan: dict[str, Any],
+    settings: Settings,
+) -> Transcript:
+    path = Path(plan["base_transcript_path"]).resolve()
+    if (
+        not path.is_relative_to(
+            (settings.video_editing_tasks_dir / plan["base_task_id"]).resolve()
+        )
+        or not path.is_file()
+        or path.stat().st_size > 2_000_000
+        or sha256(path) != plan["base_transcript_sha256"]
+        or plan["source_sha256"] != prepared["source_sha256"]
+        or plan["audio_sha256"] != prepared["audio_sha256"]
+    ):
+        raise EditingFailure("EDITING_PLAN_SOURCE_CHANGED")
+    transcript = Transcript.model_validate(read_json(path))
+    if (
+        transcript.source_sha256 != prepared["source_sha256"]
+        or transcript.audio_sha256 != prepared["audio_sha256"]
+        or transcript.duration_ms != prepared["duration_ms"]
+    ):
+        raise EditingFailure("EDITING_PLAN_SOURCE_CHANGED")
+    shutil.copyfile(path, root / "transcript.json")
+    atomic_json(
+        root / "native-plan-lineage.json",
+        {
+            "id": plan["id"],
+            "planning_origin": plan["origin"],
+            "base_task_id": plan["base_task_id"],
+            "base_transcript_sha256": plan["base_transcript_sha256"],
+            "transcript_reused_exactly": True,
+            "recognition_calls": 0,
+            "alignment_calls": 0,
+            "planning_calls": 0,
+        },
+    )
+    return transcript
 
 
 def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) -> None:
@@ -144,6 +369,24 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         snapshot["reference"] = (
             version.snapshot.get("draft", {}).get("text") if version else None
         )
+        snapshot["native_plan"] = None
+        plan_id = row.options.get("native_plan_id")
+        if plan_id:
+            plan = session.get(EditingNativePlanRecord, plan_id)
+            if (
+                plan
+                and plan.source_id == row.source_id
+                and plan.project_id == row.project_id
+                and plan.workspace_id == row.workspace_id
+                and plan.owner_user_id == row.owner_user_id
+            ):
+                artifact = session.get(
+                    EditingArtifactRecord, plan.base_transcript_artifact_id
+                )
+                if artifact:
+                    # Fail within the fenced try block if the snapshot is invalid.
+                    with suppress(ValueError, KeyError, TypeError):
+                        snapshot["native_plan"] = frozen_plan_snapshot(plan, artifact)
         snapshot["correction"] = None
         correction_id = row.options.get("transcript_revision_id")
         if correction_id:
@@ -252,173 +495,28 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             settings,
             guard,
         )
-        expected_provider: str = settings.video_editing_asr_provider
-        expected_model = settings.video_editing_asr_model
-        profile: str | None
-        if correction:
-            if not settings.video_editing_alignment_enabled:
-                raise EditingFailure("EDITING_ALIGNMENT_DISABLED")
-            from .video_editing_alignment import ALIGNMENT_MANIFEST, PROCESSING_VERSION
-            from .video_editing_funasr import bundle_identity
-
-            base_path = Path(correction["base_path"]).resolve()
-            if (
-                not base_path.is_relative_to(
-                    (
-                        settings.video_editing_tasks_dir / correction["base_task_id"]
-                    ).resolve()
-                )
-                or not base_path.is_file()
-                or sha256(base_path) != correction["base_sha256"]
-                or hashlib.sha256(correction["text"].encode()).hexdigest()
-                != correction["text_sha256"]
-                or prepared["source_sha256"] != correction["source_sha256"]
-                or prepared["audio_sha256"] != correction["audio_sha256"]
-            ):
-                raise EditingFailure("EDITING_ALIGNMENT_SOURCE_MISMATCH")
-            identity = bundle_identity(
-                settings.video_editing_alignment_model_dir,
-                manifest_path=ALIGNMENT_MANIFEST,
-            )
-            expected_provider, expected_model = (
-                "funasr-fa-zh",
-                str(settings.video_editing_alignment_model_dir),
-            )
-            profile = hashlib.sha256(
-                json.dumps(
-                    {
-                        "correction": correction,
-                        "model_identity": identity,
-                        "funasr_version": importlib.metadata.version("funasr"),
-                        "processing": PROCESSING_VERSION,
-                        "device": settings.video_editing_asr_device,
-                    },
-                    sort_keys=True,
-                ).encode()
-            ).hexdigest()
-            stage("aligning")
-        else:
-            stage("transcribing")
-            profile = asr_profile(
-                settings, snapshot["options"]["language"], snapshot["reference"]
-            )
-        cached = snapshot["checkpoint"].get("transcript")
-        transcript = None
-        if (
-            cached
-            and profile is not None
-            and cached.get("profile") == profile
-            and Path(cached["path"]).is_file()
-            and sha256(Path(cached["path"])) == cached["sha256"]
-        ):
-            candidate = Transcript.model_validate(read_json(Path(cached["path"])))
-            if (
-                candidate.source_sha256 == prepared["source_sha256"]
-                and candidate.audio_sha256 == prepared["audio_sha256"]
-                and candidate.model == expected_model
-                and candidate.provider == expected_provider
-                and candidate.text_revision_id
-                == snapshot["options"].get("transcript_revision_id")
-            ):
-                if correction:
-                    evidence = cached.get("alignment_evidence", {})
-                    names = {
-                        "alignment-input.txt",
-                        "alignment-raw.json",
-                        "alignment-receipt.json",
-                        "parent-transcript.json",
-                    }
-                    if set(evidence) == names and all(
-                        Path(item["path"])
-                        .resolve()
-                        .is_relative_to(
-                            (settings.video_editing_tasks_dir / task_id).resolve()
-                        )
-                        and Path(item["path"]).is_file()
-                        and sha256(Path(item["path"])) == item["sha256"]
-                        for item in evidence.values()
-                    ):
-                        for name, item in evidence.items():
-                            shutil.copyfile(item["path"], root / name)
-                        transcript = candidate
-                else:
-                    transcript = candidate
-        if transcript is None:
-            if correction:
-                shutil.copyfile(
-                    correction["base_path"], root / "parent-transcript.json"
-                )
-                atomic_json(
-                    root / "alignment-config.json",
-                    {
-                        "model": expected_model,
-                        "device": settings.video_editing_asr_device,
-                        "parent_sha256": correction["base_sha256"],
-                        "text": correction["text"],
-                        "revision_id": correction["id"],
-                        "text_status": correction["text_status"],
-                    },
-                )
-            else:
-                atomic_json(
-                    root / "asr-config.json",
-                    {
-                        "provider": settings.video_editing_asr_provider,
-                        "model": settings.video_editing_asr_model,
-                        "device": settings.video_editing_asr_device,
-                        "reference": snapshot["reference"],
-                        "language": snapshot["options"]["language"],
-                    },
-                )
-            run(
-                [
-                    settings.video_editing_python,
-                    "-B",
-                    "-X",
-                    "utf8",
-                    "-m",
-                    "app.video_editing_alignment"
-                    if correction
-                    else "app.video_editing_asr",
-                    "--instance",
-                    str(root),
-                ],
+        native_plan = snapshot["native_plan"]
+        if snapshot["options"].get("mode") == "native_plan":
+            if not settings.video_editing_native_plan_enabled or not native_plan:
+                raise EditingFailure("EDITING_NATIVE_PLAN_NOT_FOUND")
+            transcript = load_plan_transcript(root, prepared, native_plan, settings)
+            stage("compiling", native_plan_id=native_plan["id"])
+            compile_episode(
                 root,
+                prepared,
+                transcript,
+                SemanticPlan.model_validate(native_plan["semantic"]),
+                EpisodeRecipeBundle.model_validate(native_plan["recipes"]),
+                native_plan["asset_files"],
+                snapshot["options"],
                 settings,
-                guard,
-                "alignment" if correction else "asr",
+                native_plan["choice_snapshot"],
             )
-            transcript = Transcript.model_validate(read_json(root / "transcript.json"))
         else:
-            # Preserve the exact immutable bytes referenced by the cached receipt.
-            shutil.copyfile(cached["path"], root / "transcript.json")
-        stage(
-            "compiling",
-            transcript={
-                "path": str(root / "transcript.json"),
-                "sha256": sha256(root / "transcript.json"),
-                "profile": profile,
-                **(
-                    {
-                        "alignment_evidence": {
-                            name: {
-                                "path": str(root / name),
-                                "sha256": sha256(root / name),
-                            }
-                            for name in (
-                                "alignment-input.txt",
-                                "alignment-raw.json",
-                                "alignment-receipt.json",
-                                "parent-transcript.json",
-                            )
-                        }
-                    }
-                    if correction
-                    else {}
-                ),
-            },
-        )
-        compile_baseline(root, prepared, transcript, snapshot["options"], settings)
+            transcript = load_transcript(
+                task_id, root, prepared, snapshot, settings, guard, stage
+            )
+            compile_baseline(root, prepared, transcript, snapshot["options"], settings)
         stage("rendering", render_plan_sha256=sha256(root / "episode.json"))
         final = native_export(root, settings, guard)
         stage("validating")
@@ -430,6 +528,22 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             ("caption_anchors", root / "caption-anchors.json", "application/json"),
             ("receipt", root / "validation.json", "application/json"),
         ]
+        if native_plan:
+            artifacts.extend(
+                [
+                    ("semantic_plan", root / "semantic-plan.json", "application/json"),
+                    (
+                        "compile_receipt",
+                        root / "compile-diagnostics.json",
+                        "application/json",
+                    ),
+                    (
+                        "plan_lineage",
+                        root / "native-plan-lineage.json",
+                        "application/json",
+                    ),
+                ]
+            )
         if correction:
             artifacts.append(
                 (

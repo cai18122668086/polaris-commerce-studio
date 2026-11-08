@@ -153,6 +153,8 @@ def build_request(
         "native_text只用原字段路径和真实词范围，不写自编文本；可显式省略句末标点，数字小数、单位和否定不能丢失。"
         "native_events只给原字段路径、词ID及start/end边界，不给任何时间数值。缺少可用原生字段或素材时列warnings，不能伪造参数。"
         "native_media只能以目录中的resource_paths字段路径绑定可用素材ID。"
+        "并列、对比、因果、顺序、条件和变化的非留白表达，应以relation_items逐项给出真实词范围与对应原生文字/素材字段。"
+        "不能把用途、用量和条件凑为同一并列关系；图片项必须有本期素材ID，并绑定对应native_media_paths。"
         "禁止任何时间数值、文件路径和可执行代码；原生参数由后续编译器根据本期输入和schema生成。"
     )
     body = {
@@ -257,6 +259,53 @@ def validate_plan(
                 )
         if not set(beat.asset_ids).issubset(allowed_assets):
             raise ValueError("Model invented an unavailable project asset")
+        item_ids = set()
+        relation_fields: set[tuple[str, str]] = set()
+        for item in beat.relation_items:
+            if item.id in item_ids:
+                raise ValueError("Duplicate semantic relation item")
+            item_ids.add(item.id)
+            if item.first_token_id not in ids or item.last_token_id not in ids:
+                raise ValueError("Unknown relation item word anchor")
+            a, b = ids[item.first_token_id], ids[item.last_token_id]
+            if not start <= a <= b <= end:
+                raise ValueError("Relation item leaves its actual spoken beat")
+            if not set(item.asset_ids).issubset(set(beat.asset_ids)):
+                raise ValueError("Relation item invents an unselected asset")
+            text_map = {n.path: n for n in beat.native_text}
+            for path in item.native_text_paths:
+                if ("text", path) in relation_fields:
+                    raise ValueError(
+                        "Multiple relation items cannot share one native text slot"
+                    )
+                relation_fields.add(("text", path))
+                relation_anchor = text_map.get(path)
+                if (
+                    relation_anchor is None
+                    or relation_anchor.first_token_id not in ids
+                    or relation_anchor.last_token_id not in ids
+                    or not a
+                    <= ids[relation_anchor.first_token_id]
+                    <= ids[relation_anchor.last_token_id]
+                    <= b
+                ):
+                    raise ValueError(
+                        "Relation item does not bind its actual native text"
+                    )
+            media_map = {n.path: n for n in beat.native_media}
+            for path in item.native_media_paths:
+                if ("media", path) in relation_fields:
+                    raise ValueError(
+                        "Multiple picture items cannot share one native media slot"
+                    )
+                relation_fields.add(("media", path))
+            if any(
+                path not in media_map or media_map[path].asset_id not in item.asset_ids
+                for path in item.native_media_paths
+            ):
+                raise ValueError(
+                    "Relation picture item is not bound to its native slot"
+                )
         if beat.native_text or beat.native_events or beat.native_media:
             word_bindings(
                 beat,

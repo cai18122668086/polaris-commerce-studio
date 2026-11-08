@@ -4879,6 +4879,131 @@
         "title": "EditingLibraryNotesResponse",
         "type": "object"
       },
+      "EditingNativePlanResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "audience_question": {
+            "title": "Audience Question",
+            "type": "string"
+          },
+          "base_task_id": {
+            "title": "Base Task Id",
+            "type": "string"
+          },
+          "base_transcript_artifact_id": {
+            "title": "Base Transcript Artifact Id",
+            "type": "string"
+          },
+          "beats": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Beats",
+            "type": "array"
+          },
+          "caption_font_id": {
+            "title": "Caption Font Id",
+            "type": "string"
+          },
+          "choice_snapshot_sha256": {
+            "title": "Choice Snapshot Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "library_release": {
+            "title": "Library Release",
+            "type": "string"
+          },
+          "missing_materials": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Materials",
+            "type": "array"
+          },
+          "origin": {
+            "enum": [
+              "operator_candidate",
+              "tengli_gateway"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "render_available": {
+            "title": "Render Available",
+            "type": "boolean"
+          },
+          "semantic_review": {
+            "const": "unreviewed",
+            "default": "unreviewed",
+            "title": "Semantic Review",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_subtitles": {
+            "enum": [
+              "none",
+              "present"
+            ],
+            "title": "Source Subtitles",
+            "type": "string"
+          },
+          "state": {
+            "const": "semantic_contract_validated",
+            "title": "State",
+            "type": "string"
+          },
+          "text_status": {
+            "title": "Text Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "source_id",
+          "base_task_id",
+          "base_transcript_artifact_id",
+          "library_release",
+          "origin",
+          "state",
+          "audience_question",
+          "beats",
+          "warnings",
+          "missing_materials",
+          "text_status",
+          "source_subtitles",
+          "caption_font_id",
+          "choice_snapshot_sha256",
+          "render_available",
+          "created_at"
+        ],
+        "title": "EditingNativePlanResponse",
+        "type": "object"
+      },
       "EditingOptions": {
         "additionalProperties": false,
         "properties": {
@@ -4899,10 +5024,25 @@
             "type": "string"
           },
           "mode": {
-            "const": "subtitles",
             "default": "subtitles",
+            "enum": [
+              "subtitles",
+              "native_plan"
+            ],
             "title": "Mode",
             "type": "string"
+          },
+          "native_plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Plan Id"
           },
           "source_subtitles": {
             "default": "unknown",
@@ -19375,6 +19515,67 @@
         "summary": "Save Note",
         "tags": [
           "video-editing-library-notes"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans": {
+      "get": {
+        "operationId": "list_native_plans_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingNativePlanResponse"
+                  },
+                  "title": "Response List Native Plans Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Native Plans Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Native Plans",
+        "tags": [
+          "video-editing-native-plans"
         ]
       }
     },

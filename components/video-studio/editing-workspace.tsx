@@ -7,13 +7,14 @@ import type { GenerationJob } from "@/features/video-studio/library";
 import type { components } from "@/lib/api/generated/openapi";
 import { TranscriptEditor } from "./transcript-editor";
 import { EditingLibrary } from "./editing-library";
+import { EditingNativePlans } from "./editing-native-plans";
 import styles from "./editing-workspace.module.css";
 
 type Artifact = { id: string; role: string; url: string; bytes: number; duration_ms: number | null };
 type EditingTask = { id: string; source_id: string; status: string; stage: string; error_code: string | null; cancel_requested: boolean; created_at: string; artifacts: Artifact[]; options: components["schemas"]["EditingOptions"] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
-const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排字幕", rendering: "生成视频", validating: "检查成片", storing: "保存成片", completed: "成片已生成" };
-const errorLabel: Record<string, string> = { EDITING_NO_SPEECH_RECOGNIZED: "没有识别到清晰口播，请检查原片声音。", EDITING_SOURCE_CHANGED: "原片已变化，请重新选择视频。", EDITING_CLOCK_REVIEW_REQUIRED: "原片音画起点需要校正，请更换原片或联系管理员。", EDITING_ROTATION_REVIEW_REQUIRED: "此视频的旋转信息需要校正，请联系管理员。" };
+const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", storing: "保存成片", completed: "成片已生成" };
+const errorLabel: Record<string, string> = { EDITING_NO_SPEECH_RECOGNIZED: "没有识别到清晰口播，请检查原片声音。", EDITING_SOURCE_CHANGED: "原片已变化，请重新选择视频。", EDITING_CLOCK_REVIEW_REQUIRED: "原片音画起点需要校正，请更换原片或联系管理员。", EDITING_ROTATION_REVIEW_REQUIRED: "此视频的旋转信息需要校正，请联系管理员。", EDITING_NATIVE_INPUTS_REQUIRED: "当前编排所需的原生参数或素材尚未备齐，请先补全编排。", EDITING_PLAN_SOURCE_CHANGED: "编排绑定的原片或转录已变化，请恢复原产物或保存新编排。", EDITING_NATIVE_PLAN_NOT_FOUND: "编排暂不可用，请联系管理员核对版本与运行配置。" };
 
 export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { workspaceId: string; projectId: string; saved: boolean; jobs: GenerationJob[] }) {
   const [tasks, setTasks] = useState<EditingTask[]>([]);
@@ -67,19 +68,21 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     finally { setBusy(false); }
   };
   return <section className={styles.panel} aria-label="口播剪辑">
-    <div className={styles.intro}><b>口播剪辑 · 基础字幕试运行</b><p>从已有口播或上传视频开始，按真实录音生成字幕，保留原声节奏。</p></div>
+    <div className={styles.intro}><b>口播剪辑 · 试运行</b><p>从已有口播或上传视频开始，按真实录音生成字幕，保留原声节奏。</p></div>
     {!saved && <p role="status">请先保存当前项目，再开始剪辑。</p>}
     <label>选择原片<select value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
     {selected === "upload" && <label>视频文件<input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => setFile(event.target.files?.[0])} /></label>}
     <label>原片已有字幕吗？<select value={subtitles} onChange={event => setSubtitles(event.target.value as typeof subtitles)}><option value="unknown">请先查看原片后选择</option><option value="none">没有，生成主字幕</option><option value="present">已有，保留画面中的字幕</option></select></label>
-    <p className={styles.note}>本轮先验证字幕和成片流程。语义重点、动效与音乐编排将在后续接入。</p>
+    <p className={styles.note}>基础剪辑按原声生成主字幕。已保存的动效编排可在下方另行出片。</p>
     <button type="button" onClick={() => void submit()} disabled={busy || !saved || !selected || subtitles === "unknown" || (selected === "upload" && !file)}>{busy ? "正在处理…" : "开始剪辑"}</button>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
+    {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} onCreated={async () => { setTasks(await reload()); }} />}
     <details onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>原库目录与项目选组备忘</summary>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
     <div className={styles.tasks}>{tasks.map(task => {
       const final = task.artifacts.find(a => a.role === "final");
       return <article key={task.id}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
+        {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}
         {task.status === "failed" && <p role="alert">{errorLabel[task.error_code || ""] || "本次剪辑未完成，可以重试；已完成的配音不会重新生成。"}</p>}
         {final && <><video id={`editing-film-${task.id}`} controls preload="metadata" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
           {task.artifacts.some(a => a.role === "transcript") && <button type="button" onClick={() => setCorrectionTask(correctionTask === task.id ? "" : task.id)}>{correctionTask === task.id ? "收起校对" : "校对字幕"}</button>}

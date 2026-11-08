@@ -7,6 +7,7 @@ from app import (
     models,  # noqa: F401
     video_assistance_models,  # noqa: F401
     video_editing_models,  # noqa: F401
+    video_editing_task_models,  # noqa: F401
     video_generation_models,  # noqa: F401
     video_studio_models,  # noqa: F401
     video_voice_models,  # noqa: F401

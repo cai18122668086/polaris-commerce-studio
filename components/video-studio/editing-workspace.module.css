@@ -1,0 +1,14 @@
+.panel { display:grid; gap:16px; max-width:820px; padding:24px; background:#fff; border:1px solid #ece7f1; border-radius:18px; color:#352d3d; }
+.intro b { font-size:18px; }
+.intro p,.note { color:#776c80; line-height:1.7; font-size:13px; }
+.panel label { display:grid; gap:8px; font-size:13px; }
+.panel select,.panel input { border:1px solid #dcd5e4; border-radius:9px; padding:11px; background:#fff; color:inherit; width:100%; min-width:0; }
+.panel button,.panel a { border:0; border-radius:9px; padding:11px 17px; background:#7644ba; color:#fff; cursor:pointer; text-decoration:none; width:fit-content; font-size:13px; }
+.panel button:disabled { opacity:.5; cursor:default; }
+.error { color:#a32d37; }
+.tasks { display:grid; gap:18px; }
+.tasks article { display:grid; gap:12px; border-top:1px solid #ece7f1; padding-top:18px; }
+.taskHeading { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; font-size:13px; }
+.taskHeading time { color:#86788e; font-size:12px; }
+.tasks video { max-width:100%; width:320px; max-height:540px; background:#15111a; border-radius:10px; }
+@media(max-width:640px) { .panel { padding:16px; } }

@@ -107,6 +107,19 @@ class Settings(BaseSettings):
         "speech-2.8-turbo"
     )
     video_editing_handoff_secret: SecretStr = SecretStr("")
+    video_editing_enabled: bool = False
+    video_editing_library_dir: Path = Path(".data/motion-library/c10429057a86/motion")
+    video_editing_tasks_dir: Path = Path(".data/editing-tasks")
+    video_editing_python: str = "python"
+    video_editing_ffmpeg: str = "ffmpeg"
+    video_editing_ffprobe: str = "ffprobe"
+    video_editing_asr_provider: Literal["faster-whisper", "funasr"] = "faster-whisper"
+    video_editing_asr_model: str = "small"
+    video_editing_asr_device: Literal["cpu", "cuda"] = "cpu"
+    video_editing_planning_enabled: bool = False
+    video_editing_plan_model: str = "gpt-6.1-sol"
+    video_editing_lease_seconds: int = Field(default=120, ge=30, le=600)
+    video_editing_subprocess_timeout: int = Field(default=3600, ge=30, le=14400)
     video_cosyvoice_enabled: bool = False
     video_cosyvoice_api_key: SecretStr = SecretStr("")
     video_cosyvoice_platform: Literal["qianwen", "bailian_beijing"] = "qianwen"

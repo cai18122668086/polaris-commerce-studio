@@ -1,0 +1,618 @@
+"""Deterministic media/word-clock adapter around the preserved episode exporter."""
+
+from __future__ import annotations
+
+import copy
+import difflib
+import json
+import math
+import os
+import re
+import subprocess
+import sys
+import time
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from .config import Settings
+from .motion_library import atomic_json, read_json, sha256
+from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
+
+
+class EditingFailure(Exception):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
+def creation_flags() -> int:
+    if sys.platform == "win32":
+        return subprocess.CREATE_NO_WINDOW
+    return 0
+
+
+def environment(settings: Settings) -> dict[str, str]:
+    # The native subprocess gets no application/provider credentials.
+    keep = {
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "LOCALAPPDATA",
+        "USERPROFILE",
+        "HOME",
+        "TEMP",
+        "TMP",
+        "PATH",
+    }
+    env = {k: v for k, v in os.environ.items() if k.upper() in keep}
+    tool_dirs = [
+        str(Path(p).resolve().parent)
+        for p in (settings.video_editing_ffmpeg, settings.video_editing_ffprobe)
+        if Path(p).is_file()
+    ]
+    env["PATH"] = os.pathsep.join([*tool_dirs, env.get("PATH", "")])
+    env.update(PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1", OMP_NUM_THREADS="2")
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    return env
+
+
+def run(
+    arguments: list[str],
+    root: Path,
+    settings: Settings,
+    guard: Callable[[], None],
+    name: str,
+) -> Path:
+    """Fixed argv only; never evaluate shell, model output or arbitrary code."""
+    logs = root / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    output = logs / (name + "-" + uuid4().hex[:8] + ".log")
+    started = time.monotonic()
+    with output.open("wb") as log:
+        process = subprocess.Popen(
+            arguments,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            env=environment(settings),
+            cwd=root,
+            creationflags=creation_flags(),
+            start_new_session=sys.platform != "win32",
+        )
+        try:
+            while process.poll() is None:
+                guard()
+                if (
+                    time.monotonic() - started
+                    > settings.video_editing_subprocess_timeout
+                ):
+                    raise EditingFailure("EDITING_PROCESS_TIMEOUT")
+                time.sleep(0.25)
+            if process.returncode:
+                raise EditingFailure("EDITING_" + name.upper() + "_FAILED")
+        except BaseException:
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+            else:
+                import signal
+
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            raise
+    return output
+
+
+def probe(path: Path, settings: Settings) -> dict[str, Any]:
+    result = subprocess.run(
+        [
+            settings.video_editing_ffprobe,
+            "-v",
+            "error",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-format_whitelist",
+            "mov,matroska,webm",
+            "-show_streams",
+            "-show_format",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        timeout=30,
+        env=environment(settings),
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def prepare(
+    source: Path,
+    expected: str,
+    root: Path,
+    settings: Settings,
+    guard: Callable[[], None],
+) -> dict[str, Any]:
+
+    target = root / "input" / "source.mp4"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        temporary = target.with_suffix(".part")
+        with source.open("rb") as incoming, temporary.open("wb") as output:
+            while block := incoming.read(1024 * 1024):
+                guard()
+                output.write(block)
+        if sha256(temporary) != expected:
+            raise EditingFailure("EDITING_SOURCE_CHANGED")
+        temporary.replace(target)
+    elif sha256(target) != expected:
+        raise EditingFailure("EDITING_SOURCE_CHANGED")
+    info = probe(target, settings)
+    video = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
+    audio = next((s for s in info["streams"] if s["codec_type"] == "audio"), None)
+    if not video or not audio:
+        raise EditingFailure("EDITING_SPEECH_AUDIO_REQUIRED")
+    duration = float(info["format"]["duration"])
+    if not math.isfinite(duration) or not 0.5 <= duration <= 600:
+        raise EditingFailure("EDITING_DURATION_UNSUPPORTED")
+    offset = float(audio.get("start_time", 0)) - float(video.get("start_time", 0))
+    if abs(offset) > 0.02 or abs(float(video.get("start_time", 0))) > 0.02:
+        raise EditingFailure("EDITING_CLOCK_REVIEW_REQUIRED")
+    rotation = [s.get("rotation", 0) for s in video.get("side_data_list", [])]
+    if any(rotation) or int(video.get("tags", {}).get("rotate", 0)):
+        raise EditingFailure("EDITING_ROTATION_REVIEW_REQUIRED")
+    # Preserve the entire source audio, including tail and pauses.
+    audio_path = root / "input" / "speech.wav"
+    if not audio_path.exists():
+        run(
+            [
+                settings.video_editing_ffmpeg,
+                "-nostdin",
+                "-v",
+                "error",
+                "-y",
+                "-protocol_whitelist",
+                "file,pipe",
+                "-format_whitelist",
+                "mov,matroska,webm",
+                "-i",
+                str(target),
+                "-map",
+                "0:a:0",
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "pcm_s16le",
+                str(audio_path),
+            ],
+            root,
+            settings,
+            guard,
+            "extract_audio",
+        )
+    receipt = {
+        "source_sha256": expected,
+        "audio_sha256": sha256(audio_path),
+        "duration_ms": round(duration * 1000),
+        "probe": info,
+        "clock": {
+            "policy": "original_video_audio",
+            "audio_offset_ms": round(offset * 1000),
+            "speech_stretched": False,
+        },
+    }
+    atomic_json(root / "prepared.json", receipt)
+    return receipt
+
+
+def transcribe(
+    audio: Path,
+    prepared: dict,
+    settings: Settings,
+    reference: str | None = None,
+    language: str = "zh",
+) -> Transcript:
+    """An initial local ASR route; no paid call and no invented word timestamps."""
+    if settings.video_editing_asr_provider == "funasr":
+        if language not in {"zh", "auto"}:
+            raise EditingFailure("EDITING_ASR_LANGUAGE_UNSUPPORTED")
+        from .video_editing_funasr import transcribe_funasr
+
+        return transcribe_funasr(
+            audio,
+            prepared,
+            Path(settings.video_editing_asr_model).resolve(),
+            settings.video_editing_asr_device,
+            reference,
+        )
+    import wave
+
+    import numpy as np
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(
+        settings.video_editing_asr_model,
+        device=settings.video_editing_asr_device,
+        compute_type="int8"
+        if settings.video_editing_asr_device == "cpu"
+        else "float16",
+        cpu_threads=4,
+        num_workers=1,
+    )
+    # No reference prompt: recognize what the recording actually says first.
+    # Decode once with the configured FFmpeg; hand the measured PCM to ASR.
+    with wave.open(str(audio), "rb") as stream:
+        if (stream.getnchannels(), stream.getsampwidth(), stream.getframerate()) != (
+            1,
+            2,
+            16000,
+        ):
+            raise EditingFailure("EDITING_ASR_AUDIO_FORMAT_INVALID")
+        samples = (
+            np.frombuffer(stream.readframes(stream.getnframes()), dtype="<i2").astype(
+                np.float32
+            )
+            / 32768
+        )
+    segments, info = model.transcribe(
+        samples,
+        language=None if language == "auto" else language,
+        word_timestamps=True,
+        vad_filter=True,
+        beam_size=5,
+        condition_on_previous_text=False,
+    )
+    tokens: list[TranscriptToken] = []
+    utterances: list[TranscriptUtterance] = []
+    offset = prepared["clock"]["audio_offset_ms"]
+    for segment in segments:
+        ids = []
+        for word in segment.words or []:
+            start, end = (
+                round(word.start * 1000) + offset,
+                round(word.end * 1000) + offset,
+            )
+            if not word.word.strip():
+                continue
+            if not 0 <= start < end <= prepared["duration_ms"] + 30:
+                raise EditingFailure("EDITING_ASR_TIMING_INVALID")
+            token = TranscriptToken(
+                id=f"t{len(tokens):06}",
+                text=word.word,
+                start_ms=start,
+                end_ms=min(end, prepared["duration_ms"]),
+                confidence=word.probability,
+            )
+            tokens.append(token)
+            ids.append(token.id)
+        if ids:
+            selected = tokens[-len(ids) :]
+            utterances.append(
+                TranscriptUtterance(
+                    id=f"u{len(utterances):05}",
+                    text="".join(t.text for t in selected),
+                    token_ids=ids,
+                    start_ms=selected[0].start_ms,
+                    end_ms=selected[-1].end_ms,
+                )
+            )
+    if not tokens:
+        raise EditingFailure("EDITING_NO_SPEECH_RECOGNIZED")
+
+    matches_reference, differences = reference_differences(
+        "".join(t.text for t in tokens), reference
+    )
+    return Transcript(
+        audio_sha256=prepared["audio_sha256"],
+        source_sha256=prepared["source_sha256"],
+        duration_ms=prepared["duration_ms"],
+        provider="faster-whisper",
+        model=settings.video_editing_asr_model,
+        language=info.language,
+        tokens=tokens,
+        utterances=utterances,
+        reference_text=reference,
+        reference_matches=matches_reference,
+        differences=differences,
+    )
+
+
+def reference_differences(
+    spoken: str, reference: str | None
+) -> tuple[bool | None, list[dict]]:
+    def clean(text: str) -> str:
+        return re.sub(r"[^\w]", "", text).casefold()
+
+    actual, expected = clean(spoken), clean(reference or "")
+    differences = []
+    if reference:
+        for op, a, b, c, d in difflib.SequenceMatcher(
+            None, expected, actual, autojunk=False
+        ).get_opcodes():
+            if op != "equal":
+                differences.append(
+                    {"operation": op, "reference": expected[a:b], "spoken": actual[c:d]}
+                )
+    return ((expected == actual) if reference else None), differences
+
+
+def caption_rows(transcript: Transcript) -> list[dict[str, Any]]:
+    # Split only at measured word boundaries. Repeated text keeps distinct IDs.
+    rows = []
+    chunk: list[TranscriptToken] = []
+    for token in transcript.tokens:
+        if chunk and (
+            len("".join(t.text for t in chunk)) + len(token.text) > 20
+            or token.start_ms - chunk[-1].end_ms > 600
+        ):
+            rows.append(chunk)
+            chunk = []
+        chunk.append(token)
+        if re.search(r"[。！？.!?]$", token.text):
+            rows.append(chunk)
+            chunk = []
+    if chunk:
+        rows.append(chunk)
+    result = []
+    for i, chunk in enumerate(rows):
+        end = chunk[-1].end_ms
+        if i + 1 < len(rows):
+            end = min(end, rows[i + 1][0].start_ms)
+        if end <= chunk[0].start_ms:
+            raise EditingFailure("EDITING_CAPTION_TIMING_INVALID")
+        result.append(
+            {
+                "text": "".join(t.text for t in chunk).strip(),
+                "start_seconds": chunk[0].start_ms / 1000,
+                "end_seconds": end / 1000,
+                "token_ids": [t.id for t in chunk],
+            }
+        )
+    return result
+
+
+def compile_baseline(
+    root: Path,
+    prepared: dict,
+    transcript: Transcript,
+    options: dict,
+    settings: Settings,
+) -> dict[str, Any]:
+    package = settings.video_editing_library_dir
+    video = next(s for s in prepared["probe"]["streams"] if s["codec_type"] == "video")
+    width, height = video["width"], video["height"]
+    if abs(width / height - 9 / 16) > 0.02:
+        raise EditingFailure("EDITING_ORIENTATION_REVIEW_REQUIRED")
+    # Keep the input aspect; no portrait crop of a landscape speaker.
+    scale = min(1, 1280 / max(width, height))
+    width, height = 2 * round(width * scale / 2), 2 * round(height * scale / 2)
+    duration = prepared["duration_ms"] / 1000
+    fid = options["caption_font_id"]
+    captions = caption_rows(transcript)
+    config = read_json(package / "catalog/inputs/Z-M00.json")
+    config["content"][
+        "captions"
+    ] = []  # Main transcript uses the original libass layer once.
+    config["media"]["presenter"].update(
+        path=str(root / "input/source.mp4"),
+        offset_seconds=0,
+        duration_seconds=duration,
+        end_policy="error",
+    )
+    config["timing"].update(duration_seconds=duration, events={}, basis="explicit")
+    config["output"]["path"] = str(root / "renders/source.mp4")
+    plan: dict[str, Any] = {
+        "schema": "commercial-talk-episode/1",
+        "instance_dir": str(root),
+        "source": {
+            "path": str(root / "input/source.mp4"),
+            "start_seconds": 0,
+            "duration_seconds": duration,
+            "role": "raw_presenter",
+        },
+        "output": {
+            "path": "outputs/episode.mp4",
+            "width": width,
+            "height": height,
+            "fps": 30,
+        },
+        "shots": [
+            {
+                "group_id": "Z-M00",
+                "start_seconds": 0,
+                "end_seconds": duration,
+                "config": config,
+                "intent": {
+                    "expected_understanding": "保留完整实际口播",
+                    "reason": "阶段一字幕链路，以原库普通口播组保留说话节奏。",
+                },
+            }
+        ],
+        "visual_scenes": [],
+        "captions": [
+            {k: v for k, v in c.items() if k != "token_ids"} for c in captions
+        ],
+        "typography": {
+            "caption": {
+                "font_id": fid,
+                "size_px": round(height * 0.0375),
+                "center_x_px": width / 2,
+                "baseline_y_px": round(height * 0.80),
+                "max_width_px": round(width * 0.84),
+                "max_lines": 2,
+                "fill": "#ffffff",
+                "outline_color": "#111317",
+                "outline_px": 2,
+                "shadow_px": 1,
+            }
+        },
+        "fx": [],
+        "music": [],
+        "mix": {"voice_gain_db": 0},
+        "editorial": {
+            "source_verified": True,
+            "audience_question": "这段实际录音说了什么？",
+            "argument_outline": [u.text for u in transcript.utterances],
+            "style_reason": "首条完整链路使用实际转录主字幕，不声称完成语义规划。",
+        },
+        "design": {
+            "id": "tengli-baseline-subtitles-v1",
+            "mode": "new",
+            "sector": "本期口播",
+            "audience": "本项目观众",
+            "objective": "准确承载当前实际录音",
+            "tone": "清晰",
+            "background_strategy": "保留本期原景",
+            "motion_direction": "保留普通口播，不另造替代动效",
+            "sound_direction": "保留完整原声，本模式不加音乐和音效",
+            "reason": "用户选择基础字幕模式",
+            "caption_font_id": fid,
+        },
+        "layout_policy": {
+            "reason": "按本期画幅放置字幕；人物遮挡和原硬字幕仍需视觉验收。",
+            "subtitle_safe_rect": [0.08, 0.65, 0.84, 0.23],
+        },
+        "production": {
+            "material_policy": "original_only",
+            "no_production_annotations": True,
+            "materials": [],
+            "beats": [],
+            "chapters": [],
+        },
+        "review": {"status": "unreviewed"},
+    }
+    if options["source_subtitles"] == "present":
+        plan["captions"] = []
+    selection: dict[str, Any] = {
+        "catalog_sha256": sha256(package / "catalog/groups.json"),
+        "reference_mode": "none",
+        "decisions": [
+            {
+                "shot_index": 0,
+                "selected_group_id": "Z-M00",
+                "viewer_task": "连续听清实际录音",
+                "reason": "阶段一明确采用普通口播与原生主字幕路径；未运行模型选组。",
+                "considered": [{"group_id": "Z-M00"}],
+            }
+        ],
+    }
+    # The original unified engine limits a native page to 15 seconds. Split
+    # visual source ranges on that limit, never stretch or concatenate speech.
+    shots = []
+    for index in range(math.ceil(duration / 15)):
+        start, end = index * 15, min(duration, (index + 1) * 15)
+        shot = copy.deepcopy(plan["shots"][0])
+        shot.update(start_seconds=start, end_seconds=end)
+        shot["config"]["media"]["presenter"].update(
+            offset_seconds=start, duration_seconds=end - start
+        )
+        shot["config"]["timing"]["duration_seconds"] = end - start
+        shots.append(shot)
+    plan["shots"] = shots
+    selection["decisions"] = [
+        {**selection["decisions"][0], "shot_index": index}
+        for index in range(len(shots))
+    ]
+    atomic_json(root / "caption-anchors.json", captions)
+    atomic_json(root / "selection.json", selection)
+    atomic_json(root / "bindings.json", {"resources": {}, "tools": {}})
+    atomic_json(root / "episode.json", plan)
+    return plan
+
+
+def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> Path:
+    python = settings.video_editing_python or sys.executable
+    for command in ("check", "export"):
+        run(
+            [
+                python,
+                "-B",
+                "-X",
+                "utf8",
+                "-m",
+                "app.video_editing_native",
+                "--package",
+                str(settings.video_editing_library_dir),
+                "--command",
+                command,
+                "--instance",
+                str(root),
+            ],
+            root,
+            settings,
+            guard,
+            "native_" + command,
+        )
+    return root / "outputs/episode.mp4"
+
+
+def validate_result(
+    path: Path,
+    prepared: dict,
+    root: Path,
+    settings: Settings,
+    guard: Callable[[], None],
+) -> dict[str, Any]:
+    info = probe(path, settings)
+    if not all(
+        any(s["codec_type"] == kind for s in info["streams"])
+        for kind in ("audio", "video")
+    ):
+        raise EditingFailure("EDITING_OUTPUT_TRACKS_INVALID")
+    actual = round(float(info["format"]["duration"]) * 1000)
+    if abs(actual - prepared["duration_ms"]) > 150:
+        raise EditingFailure("EDITING_OUTPUT_DURATION_INVALID")
+    run(
+        [
+            settings.video_editing_ffmpeg,
+            "-nostdin",
+            "-v",
+            "error",
+            "-xerror",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-i",
+            str(path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0",
+            "-f",
+            "null",
+            "-",
+        ],
+        root,
+        settings,
+        guard,
+        "decode_output",
+    )
+    native = read_json(path.with_suffix(".delivery.json"))
+    validation = {
+        "decoded": True,
+        "duration_ms": actual,
+        "source_duration_ms": prepared["duration_ms"],
+        "sha256": sha256(path),
+        "native_export_receipt": sha256(path.with_suffix(".delivery.json")),
+        "native_source_sha256": native["source_clock"]["source_sha256"],
+        "semantic_review": "unreviewed",
+        "visual_review": "unreviewed",
+        "listening_review": "unreviewed",
+    }
+    if validation["native_source_sha256"] != prepared["source_sha256"]:
+        raise EditingFailure("EDITING_OUTPUT_SOURCE_MISMATCH")
+    atomic_json(root / "validation.json", validation)
+    return validation

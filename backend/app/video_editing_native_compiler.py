@@ -15,6 +15,7 @@ from jsonschema import Draft202012Validator
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .motion_parameter_contracts import input_contract
 from .video_editing_contracts import SemanticBeat, Transcript
+from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_word_bindings import word_bindings
 
 
@@ -103,9 +104,21 @@ def compile_native_job(
     if len(placeholders) != len(set(placeholders)):
         raise ValueError("Duplicate recipe placeholder")
     native = word_bindings(beat, transcript, contract, set(asset_files))
-    assignments = {row["path"]: row["text"] for row in native["text"]} | {
-        row["path"]: row["value"] for row in native["events"]
-    }
+    media_clocks, clock_receipts = compile_media_clocks(
+        package,
+        group,
+        contract,
+        native,
+        recipe.get("media_clocks", []),
+        asset_files,
+        transcript,
+    )
+    native["media_clocks"] = clock_receipts
+    assignments = (
+        {row["path"]: row["text"] for row in native["text"]}
+        | {row["path"]: row["value"] for row in native["events"]}
+        | media_clocks
+    )
     omitted = recipe.get("empty_text", {})
     for path, reason in omitted.items():
         if (
@@ -165,6 +178,17 @@ def compile_native_job(
         elif category == "output_owned_by_compiler":
             _set(config, path, str(root / "renders/component.mp4"))
         elif category == "clock_owned_by_compiler":
+            if path.startswith("/media/"):
+                if (
+                    path not in media_clocks
+                    or value is not None
+                    or path not in placeholders
+                ):
+                    raise ValueError(
+                        "Native media time requires an empty measured clock slot: "
+                        + path
+                    )
+                continue
             key = path.rsplit("/", 1)[-1]
             duration = (native["clock"]["end_ms"] - native["clock"]["start_ms"]) / 1000
             if key == "frames":
@@ -222,6 +246,7 @@ def compile_native_job(
             "recipe_sha256": sha256(root / "native-recipe.json"),
             "job_sha256": sha256(root / "job.json"),
             "word_bindings_sha256": sha256(root / "word-bindings.json"),
+            "media_clocks": clock_receipts,
             "schema_validation": "passed",
             "native_execution": "not_performed",
             "semantic_review": "unreviewed",

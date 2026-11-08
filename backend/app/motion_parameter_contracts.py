@@ -13,6 +13,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from .motion_library import MOTION_SHA256, read_json, sha256
+from .video_editing_media_clocks import clock_profile
 
 TEXT_NAMES = {
     "text",
@@ -120,6 +121,13 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
                 unit = "seconds" if backend == "unified" else "frames"
             elif backend == "browser" and key == "at":
                 category, unit = "event", "seconds"
+            elif (
+                group["id"] in {"YYP01", "YYP02"}
+                and first == "style"
+                and names[-2:]
+                in [["geometry", "start_frame"], ["geometry", "end_frame"]]
+            ):
+                category, unit = "event", "frames"
             elif backend == "browser" and "keys" in names and parts[-1] == 0:
                 category, unit = "native_keyframe_clock", "frames"
             elif first == "content":
@@ -190,6 +198,14 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
             if keyword in schema
         },
         "fresh_recipe_required": True,
+        "media_clock_profile": (
+            {
+                k: profile[k]
+                for k in ("id", "media_paths", "scope", "local_sample_seconds")
+            }
+            if (profile := clock_profile(group["id"]))
+            else None
+        ),
         "hypit_compound_attributes_require_native_review": backend == "hypit",
         "runtime_validation": "unverified",
     }

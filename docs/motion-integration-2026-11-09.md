@@ -189,3 +189,25 @@ HY-A3 第三个新实例已通过原生 Build/get 编码：`bld_20261108T1832220
 本轮相关回归 61 项通过，另补充的“损坏冻结编排不得重识别或退回纯字幕”与原生编排服务合计 5 项通过；354 个 app 文件 Windows/Linux mypy、后端 Ruff、前端类型和三个剪辑组件 ESLint 通过。0046 SQLite 升降级保留原行，PostgreSQL 仅离线 DDL，未做真实 PG 升级。两个历史普通/校对任务重新提交原请求仍返回原 ID，0 新任务；证据 legacy-replay.json。再次 fetch GitHub main 仍为 `106d1e3eb17a87b89576d3f97c7ec8c9edf05e5a`；首次 Windows Schannel 握手失败后使用本次命令级 OpenSSL 后端重试成功，未关 TLS 校验或改全局 Git 配置。主目录 HEAD 仍 22fc356，81 项既存未提交条目未归入本分支。
 
 尚未完成：获准后的实际腾力模型语义规划与任务衔接、全 132 组专用配方与逐组运行证据、Hypit 复合编排、原生视频素材的源时钟绑定、商品事实和逐词听验、音乐音效混入、数条不同创意成品及用户验收。本轮只增加 Z-M00 + BG-S06 的整片级证据，目录计数仍为 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收。付费调用、推送、部署和发布均为零，不能称为全库已经在网站运行。
+
+上述冻结编排网站链路保存于本地提交 `c9db37d`。以下继续补齐原生视频源时钟。
+
+## 人物原生画面与实际原片区间绑定
+
+新增 `video_editing_media_clocks.py` 和字节固定的 `editing_media_clock_profiles.json`。本轮逐一核对原生 `commercial_runtime/native.py`、`unified/core/media.py` 和对应人物引擎：YYP01–07 / LYO01–04 的 presenter 使用镜头内 frame/30 秒，原 `inspect_asset` / `asset_frame` 只加一次 offset。LYO02 的入口及其导入的 base render.py 同时固定摘要。11 项是已核对的源取帧表达式，不是 11 组已经完成运行或视觉验收；LYO01 的已知原合同冲突继续存在。
+
+原生配方新增 `media_clocks` 明确选中媒体槽和 `transcript_source_window` 策略；不得填写任意数字时间。编译器校验当前素材 ID、实际文件摘要、original_video 身份与转录原片摘要，按当前 beat 的实际首尾词点生成 offset_seconds / duration_seconds。两个原生时间字段必须留空，由编译器填入，历史数字即使附有说明也不能通过。每个选中的视频及每个原生媒体时间字段都需要具体绑定；别的素材、未知接口、改变的引擎字节、未绑定字段均失败。原生取帧仍按原库算法量化并限制末帧，没有改取帧、变速或音频。原输入合同继续保留全部 132 组，只在已核对组上显示时钟适配信息。
+
+YYP01 / YYP02 的 style.geometry.start_frame 和 end_frame 实际是事件时间，已纳入逐词锚定字段，不再作为普通几何数值。其他几何与原生固定编舞保持当前操作者明确设计，不能把各家 start_seconds、source_start_frame 或 shift_frames 一概相加。CXBR、其他未核对接口、独立 B-roll 片段与 Hypit 媒体时钟仍需专用适配，不猜测或静默使用 0 秒。
+
+真实新候选 `8e342ab2-5f0c-4a84-b8b8-5e70bdf9fe97` 沿用同一原片和转录，保留价格 BG-S06，在实际单瓶购买经历段（词 23–44）增加原 YYP01 人物轻推近；后段保持 Z-M00 原景。实际源区间 4870–8250 ms，原生 offset=4.87、duration=3.38、102 帧，景别事件由“花”和“的”的实际词点编译为 25 / 67 帧；未从视频开头重播。当前几何和摆位由适配端明确给出，不是模型生成代码。人物层不再重复画字幕，主字幕继续走原 episode 出口。
+
+CLI 首次检查因没有注册本片 source asset ID 失败，原实例保留。为验证脚本新增 `--source-asset-id`，只能把当前实例里摘要一致的 input/source.mp4 注册为原片说话人卡，不当作商品实拍；新实例编译及原 schema admission 通过。网站使用数据库里原片归属和已有素材卡，不接收任意本地路径。
+
+真实网页创建新任务 `19b7c8a0-dd49-49f9-bc15-9a5f744f01ba`，独立 Redis / Celery 一次成功，原生布局 passed、0 errors，原生导出和全量解码通过。整片仍 48.475 秒、720×1280、H.264/AAC，SHA256 `266c2566cad725f11bbe352f1e0a9e1f8330e09abff615bb329fcced31e85f67`，不同于上一条只加价格字效的整片。网页从 5 秒实际播放到 6.556 秒、readyState=4、无媒体错误，下载文件摘要一致。可查看 `C:/tl/episode-validation/website-presenter-clock-download.mp4`，证据同目录 presenter-clock-website-submission.json / presenter-clock-task-result.json / presenter-clock-website-playback-evidence.json / presenter-clock-runtime-evidence.json。已查看 6.5 秒网站截图 `C:/tl/preflight/website-presenter-clock-result.png`；连续观看、听验及文字事实依然未验收。
+
+运行后再次核验原包 1426 项完整性，未改变原引擎或字体。新任务复用转录原字节，识别、对齐和规划调用均为 0。69 项相关测试、355 个 app 文件 Windows/Linux mypy 和后端 Ruff 通过，包含旧偏移、错源、错种类、数字时间注入、改变引擎字节等拒绝路径；单元测试使用明确不渲染的协议字节，真实视频证据来自上述网站任务，二者分开。
+
+同时针对 CX-G01 缺失的原指定优设标题黑检查可获取文件。[优设官方公开页面](https://www.uisdc.com/uisdc-first-free-font)的搜索索引可见免费商用说明，但直接抓取返回 403，未取得官方下载包和包内许可，不据此推断 SaaS 嵌入或再分发授权。从 [FontsForWeb](https://github.com/callmeyyzx/FontsForWeb) 与 [scale-new-heights-generator](https://github.com/zhousiru/scale-new-heights-generator) 取到的两份同名文件分别为 1398644 字节 / SHA256 `32290ca978add7fe0e5281d2faba19563a43f4f2ff405a4e083fdc69553803c1`、1414784 字节 / SHA256 `e9463117dd453471fbc38cc7ed2cd90aa197db3d36ae609e3e6a294f51b124a1`，均不等于原清单要求的 `dab883d69fb713233ea5d9aff8d1f27ccc2b71e249143edf6ea08367784c5dba`。只留本地候选和检索 receipt，未绑定、未嵌入、未放入仓库，CX-G01 状态仍失败，未静默换字体。
+
+新增发现：当前基础字幕按 20 字硬切，可能把中文数字或品牌切成“二十 / 八”等片段，已在真实画面看到。这是字幕分页规则的实际质量问题，下一步需按标点、实际 token 边界和中文数字/单位整体改善，不能把当前试片当作已完成审美验收。全库运行数量仍 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收，11 项时钟资料不提高此计数。获准后的实际腾力模型调用、剩余原生配方、音乐音效和多条正式验收片继续待实施；没有付费调用、推送或部署。

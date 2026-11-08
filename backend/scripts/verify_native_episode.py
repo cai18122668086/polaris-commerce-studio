@@ -28,6 +28,10 @@ def main() -> None:
         "--source-subtitles", required=True, choices=["none", "present"]
     )
     parser.add_argument("--choice-snapshot", type=Path)
+    parser.add_argument(
+        "--source-asset-id",
+        help="Bind this exact instance source to an explicit original-video asset ID",
+    )
     parser.add_argument("--render", action="store_true")
     args = parser.parse_args()
     parent = args.source_instance
@@ -61,7 +65,19 @@ def main() -> None:
         transcript,
         SemanticPlan.model_validate(read_json(args.plan)),
         bundle,
-        {},
+        {
+            args.source_asset_id: {
+                "path": str(root / "input/source.mp4"),
+                "sha256": transcript.source_sha256,
+                "kind": "original_video",
+                "semantic_use": "本期原片说话人，不是商品实拍证据",
+                "viewed_identity": None,
+                "source": "explicit-current-instance-source",
+                "license": "user-provided source; local processing only",
+            }
+        }
+        if args.source_asset_id
+        else {},
         {
             "caption_font_id": "font-d1961be1161ea1be",
             "source_subtitles": args.source_subtitles,

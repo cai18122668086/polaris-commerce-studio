@@ -1,0 +1,205 @@
+"""Native field inventory for every original group, without executable model data.
+
+This describes concrete original input paths, not universal capacity claims.
+Schema admission, rendering, meaning and visual acceptance remain separate.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+from jsonschema import Draft202012Validator
+
+from .motion_library import MOTION_SHA256, read_json, sha256
+
+TEXT_NAMES = {
+    "text",
+    "label",
+    "title",
+    "subtitle",
+    "caption",
+    "spoken",
+    "english",
+    "intro",
+}
+STYLE_NAMES = {
+    "color",
+    "fill",
+    "kind",
+    "role",
+    "font",
+    "path",
+    "align",
+    "mode",
+    "fit",
+    "theme",
+}
+
+
+def clock_category(backend: str, names: list[str]) -> str | None:
+    """Distinguish native offsets/rates/lengths from absolute event positions.
+
+    In the original browser engine progress=(time-item.at)/item.enter;
+    scene shift_frames is subtracted from the current frame. Neither is an
+    absolute audio anchor. The original stagger/cell knobs are also lengths.
+    """
+    key = names[-1]
+    if key == "shift_frames":
+        return "native_clock_offset"
+    if key == "hand_speeds":
+        return "native_rate"
+    if (backend == "browser" and key == "enter") or re.search(
+        r"(?:^|_)(duration|interval|stagger|spread|step)(?:_|$)", key
+    ):
+        return "native_clock_length"
+    return None
+
+
+def pointer(parts: list[str | int]) -> str:
+    return "/" + "/".join(str(p).replace("~", "~0").replace("/", "~1") for p in parts)
+
+
+def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
+    template = read_json(package / group["input_template"])
+    schema = read_json(package / group["input_schema"])
+    Draft202012Validator.check_schema(schema)
+    external = {
+        r["id"]: r
+        for r in read_json(package / "catalog/external-resources.json")["resources"]
+    }
+    fields = []
+    backend = group["backend"]
+    fps = template.get(
+        "fps", template.get("frame_format", template.get("format", {})).get("fps", 30)
+    )
+
+    def describe(parts: list[str | int], value: Any) -> None:
+        if not parts:
+            return
+        names = [p for p in parts if isinstance(p, str)]
+        key = names[-1]
+        first = names[0]
+        category, unit = "native_parameter", None
+        resource_kind = None
+        if first == "output":
+            category = "output_owned_by_compiler"
+        elif isinstance(value, str) and value.startswith("input://"):
+            record = external.get(value[8:], {})
+            category, resource_kind = "resource", record.get("kind", "unresolved")
+            if resource_kind in {"font", "model"}:
+                category = "native_dependency"
+        elif isinstance(value, str) and value.startswith("pkg://"):
+            category = "font" if "/fonts/" in value else "resource"
+            if category == "resource":
+                resource_kind = "media"
+        elif isinstance(value, str) and (
+            (first == "content" and key not in STYLE_NAMES)
+            or (backend == "browser" and key in TEXT_NAMES)
+        ):
+            category = "text"
+        elif type(value) in {int, float}:
+            if key in {
+                "frames",
+                "fps",
+                "duration",
+                "duration_seconds",
+                "offset_seconds",
+                "start_seconds",
+                "source_start_frame",
+            }:
+                category = "clock_owned_by_compiler"
+            elif native_clock := clock_category(backend, names):
+                category = native_clock
+                unit = "seconds" if backend in {"unified", "browser"} else "frames"
+            elif first in {"events", "timing"} or (
+                first == "content" and key in {"at", "start", "end"}
+            ):
+                category = "event"
+                unit = "seconds" if backend == "unified" else "frames"
+            elif backend == "browser" and key == "at":
+                category, unit = "event", "seconds"
+            elif backend == "browser" and "keys" in names and parts[-1] == 0:
+                category, unit = "native_keyframe_clock", "frames"
+            elif first == "content":
+                category = "numeric_content_requires_grounding"
+        elif value is None and key in {"presenter", "background"}:
+            category = "optional_media"
+        fields.append(
+            {
+                "path": pointer(parts),
+                "category": category,
+                "value_type": type(value).__name__,
+                **({"unit": unit} if unit else {}),
+                **({"resource_kind": resource_kind} if resource_kind else {}),
+            }
+        )
+
+    def visit(value: Any, parts: list[str | int]) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                visit(child, [*parts, key])
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, [*parts, index])
+        else:
+            describe(parts, value)
+
+    visit(template, [])
+    if backend == "hypit":
+        # Only literal existing node attributes can become model text targets.
+        # Compound component strings such as caps/items require a native recipe,
+        # not arbitrary model-authored DSL or executable markup.
+        source = (package / group["entry"]).read_text(encoding="utf-8")
+        for match in re.finditer(r"<([\w:-]+)([^>]*\bid=\"([^\"]+)\"[^>]*)>", source):
+            for attr, value in re.findall(r'([\w-]+)="([^"]*)"', match.group(2)):
+                if attr in TEXT_NAMES and "{" not in value:
+                    fields.append(
+                        {
+                            "path": pointer(["attributes", match.group(3), attr]),
+                            "category": "text",
+                            "value_type": "str",
+                            "origin": "native_literal_attribute",
+                        }
+                    )
+    return {
+        "version": "tengli.native-input-contract/1",
+        "release": MOTION_SHA256,
+        "group_id": group["id"],
+        "backend": backend,
+        "schema_sha256": sha256(package / group["input_schema"]),
+        "template_sha256": sha256(package / group["input_template"]),
+        "native_fps": fps,
+        "fields": fields,
+        "text_paths": [f["path"] for f in fields if f["category"] == "text"],
+        "event_paths": [
+            {"path": f["path"], "unit": f["unit"]}
+            for f in fields
+            if f["category"] == "event"
+        ],
+        "resource_paths": [
+            {"path": f["path"], "kind": f.get("resource_kind")}
+            for f in fields
+            if f["category"] in {"resource", "optional_media"}
+        ],
+        "array_capacity_scope": "observed indices; schema controls capacity",
+        "schema_variants": {
+            keyword: len(schema[keyword])
+            for keyword in ("oneOf", "anyOf")
+            if keyword in schema
+        },
+        "fresh_recipe_required": True,
+        "hypit_compound_attributes_require_native_review": backend == "hypit",
+        "runtime_validation": "unverified",
+    }
+
+
+def all_contracts(package: Path) -> dict[str, dict[str, Any]]:
+    groups = read_json(package / "catalog/groups.json")["groups"]
+    result = {g["id"]: input_contract(package, g) for g in groups}
+    if len(result) != 132:
+        raise ValueError(
+            "Every one of the 132 original groups needs a parameter contract"
+        )
+    return result

@@ -17,6 +17,7 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .motion_library_validation import group_status
+from .motion_parameter_contracts import input_contract
 from .video_editing_contracts import EditingTaskCreate, EditingTaskResponse
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -237,6 +238,7 @@ def describe_group(
         "release": MOTION_SHA256,
         "group": group,
         "input_schema": read_json(package / group["input_schema"]),
+        "parameter_contract": input_contract(package, group),
         "contract": read_json(package / group["contract"])
         if group.get("contract")
         else None,

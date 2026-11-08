@@ -9,8 +9,10 @@ from typing import Any
 from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from .motion_parameter_contracts import input_contract
 from .video_assistance_provider import VideoAssistanceProvider
 from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_word_bindings import word_bindings
 
 RULES_VERSION = "tengli-editorial-rules/1"
 RULES = [
@@ -22,7 +24,7 @@ RULES = [
     "保留原生动作的入场、阅读、交接与退出；对象接续和焦点变化应服务内容，不设组数或声源数配额。",
     "声音服从语义情绪与可见动作，重视有效起音、落点、尾音与留白。未试听不宣称听感通过。",
     "尚未验证的组仍保留，登记环境、字体、抠像模型和素材依赖；目录声明不等于本期运行或视觉验收。",
-    "只能用已给出的词句ID锚定，不能输出任何秒数、毫秒、帧数、路径、Python、HTML或shell代码。",
+    "只能用已给出的词句ID锚定，不能输出任何秒数、毫秒、帧数、文件路径、Python、HTML或shell代码；原生字段路径只能引用目录中给出的JSON指针。",
     "模型给出表达意图和原组ID。程序读取实际schema、检查容量、资源和时间，编译到原生输入。",
 ]
 
@@ -56,6 +58,7 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
             read_json(package / group["contract"]) if group.get("contract") else None
         )
         target = (contract or {}).get("target", {})
+        parameters = input_contract(package, group)
         rows.append(
             {
                 "id": group["id"],
@@ -80,6 +83,12 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
                 or (contract or {}).get("caption_capacity")
                 or target.get("runtime_capabilities"),
                 "declared_limits": (contract or {}).get("limits"),
+                "native_word_binding_contract": {
+                    "text_paths": parameters["text_paths"],
+                    "event_paths": parameters["event_paths"],
+                    "resource_paths": parameters["resource_paths"],
+                    "scope": parameters["array_capacity_scope"],
+                },
                 "demo_pending": group.get("demo_pending"),
                 "website_runtime": "unverified",
             }
@@ -127,7 +136,10 @@ def build_request(
         "素材ID仅可引用available_project_materials；没有文件就写missing_materials，不能编造证据。"
         "没有独立合同字段的组仍需按其schema和入口核查，不把它们删出选择范围。"
         "转录可能有错字，不得自行改成产品事实或擅自修正锚点文字；歧义写进warnings等待校对。"
-        "禁止任何时间数值、路径和可执行代码；原生参数由后续编译器根据本期输入和schema生成。"
+        "native_text只用原字段路径和真实词范围，不写自编文本；可显式省略句末标点，数字小数、单位和否定不能丢失。"
+        "native_events只给原字段路径、词ID及start/end边界，不给任何时间数值。缺少可用原生字段或素材时列warnings，不能伪造参数。"
+        "native_media只能以目录中的resource_paths字段路径绑定可用素材ID。"
+        "禁止任何时间数值、文件路径和可执行代码；原生参数由后续编译器根据本期输入和schema生成。"
     )
     body = {
         "model": model,
@@ -160,7 +172,10 @@ def validate_plan(
     plan: SemanticPlan, transcript: Transcript, package: Path, allowed_assets: set[str]
 ) -> None:
     ids = {t.id: i for i, t in enumerate(transcript.tokens)}
-    groups = {g["id"] for g in read_json(package / "catalog/groups.json")["groups"]}
+    group_rows = {
+        g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]
+    }
+    groups = set(group_rows)
     position = 0
     beat_ids = set()
     for beat in plan.beats:
@@ -195,8 +210,26 @@ def validate_plan(
             raise ValueError(
                 "Negation needs explicit emphasis review; do not reverse the claim"
             )
+        if beat.native_text and beat.relation == "negation":
+            shown: set[int] = set()
+            for anchor in beat.native_text:
+                if anchor.first_token_id in ids and anchor.last_token_id in ids:
+                    shown.update(
+                        range(ids[anchor.first_token_id], ids[anchor.last_token_id] + 1)
+                    )
+            if not set(negations).issubset(shown):
+                raise ValueError(
+                    "Native negation expression dropped the recorded negation"
+                )
         if not set(beat.asset_ids).issubset(allowed_assets):
             raise ValueError("Model invented an unavailable project asset")
+        if beat.native_text or beat.native_events or beat.native_media:
+            word_bindings(
+                beat,
+                transcript,
+                input_contract(package, group_rows[beat.group_id]),
+                allowed_assets,
+            )
     if position != len(transcript.tokens):
         raise ValueError("Model omitted the end of the actual speech")
 
@@ -206,11 +239,13 @@ def generate(
     transcript: Transcript,
     settings: Settings,
     provider: VideoAssistanceProvider,
+    asset_cards: list[dict] | None = None,
 ) -> SemanticPlan:
     """Single paid submission only after explicit operational authorization.
 
-    A lost response leaves an intent marker. The caller must reconcile/approve
-    a new attempt; a task retry must not blindly repeat a billed request.
+    Root must be the stable task planning directory, NEVER an attempt directory.
+    Persisted responses can be revalidated without a provider call. A lost
+    response leaves an intent marker and blocks a second billed submission.
     """
     if not settings.video_editing_planning_enabled:
         raise ApiError(503, "EDITING_PLANNING_DISABLED", "语义规划尚未启用。")
@@ -218,28 +253,71 @@ def generate(
         transcript,
         settings.video_editing_library_dir,
         settings.video_editing_plan_model,
+        asset_cards,
     )
+    root.mkdir(parents=True, exist_ok=True)
     intent = root / "semantic-submit-intent.json"
+    response_path = root / "semantic-response.json"
     if intent.exists():
-        raise ApiError(
-            409, "EDITING_PLAN_ALREADY_SUBMITTED", "此规划请求已提交或结果待核对。"
-        )
-    atomic_json(root / "semantic-request.json", body)
-    # Exclusive creation prevents parallel attempts from both making a paid call.
-    with intent.open("x", encoding="utf-8") as stream:
-        json.dump(evidence, stream, ensure_ascii=False, indent=2)
-    data = provider.request("planner", "POST", "/v1/chat/completions", json=body)
-    content = data["choices"][0]["message"]["content"]
-    atomic_json(
-        root / "semantic-response.json",
-        {
-            "content": content,
+        previous = read_json(intent)
+        if previous.get("request_sha256") != evidence["request_sha256"]:
+            raise ApiError(
+                409,
+                "EDITING_PLAN_INPUT_CHANGED",
+                "规划输入已变化，原付费请求需先核对，不能自动再次提交。",
+            )
+        if not response_path.is_file():
+            raise ApiError(
+                409, "EDITING_PLAN_ALREADY_SUBMITTED", "此规划请求已提交或结果待核对。"
+            )
+        # This includes recovery after a crash between response persistence and
+        # validation. A malformed response fails again without another charge.
+        response = read_json(response_path)
+        if response.get("request_sha256") != evidence["request_sha256"]:
+            raise ApiError(
+                409,
+                "EDITING_PLAN_RESPONSE_MISMATCH",
+                "已保存的规划响应不属于当前请求。",
+            )
+    else:
+        # Exclusive creation happens before any mutable request/response write.
+        # A competing task attempt cannot replace the winning request payload.
+        try:
+            with intent.open("x", encoding="utf-8") as stream:
+                json.dump(evidence, stream, ensure_ascii=False, indent=2)
+        except FileExistsError:
+            raise ApiError(
+                409, "EDITING_PLAN_ALREADY_SUBMITTED", "此规划请求已提交或结果待核对。"
+            ) from None
+        atomic_json(root / "semantic-request.json", body)
+        data = provider.request("planner", "POST", "/v1/chat/completions", json=body)
+        response = {
+            "request_sha256": evidence["request_sha256"],
+            "content": data["choices"][0]["message"]["content"],
             "model": data.get("model"),
             "usage": data.get("usage"),
             "provider_id": data.get("id"),
+        }
+        atomic_json(response_path, response)
+    content = response["content"]
+    plan = SemanticPlan.model_validate_json(content)
+    validate_plan(
+        plan,
+        transcript,
+        settings.video_editing_library_dir,
+        {a["id"] for a in asset_cards or []},
+    )
+    plan_path = root / "semantic-plan.json"
+    atomic_json(plan_path, plan.model_dump(mode="json"))
+    atomic_json(
+        root / "semantic-validated.json",
+        {
+            "request_sha256": evidence["request_sha256"],
+            "response_sha256": sha256(response_path),
+            "plan_sha256": sha256(plan_path),
+            "validation": "contract_only",
+            "semantic_review": "unreviewed",
+            "visual_review": "unreviewed",
         },
     )
-    plan = SemanticPlan.model_validate_json(content)
-    validate_plan(plan, transcript, settings.video_editing_library_dir, set())
-    atomic_json(root / "semantic-plan.json", plan.model_dump(mode="json"))
     return plan

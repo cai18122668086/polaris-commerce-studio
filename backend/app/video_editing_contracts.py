@@ -75,6 +75,35 @@ class Transcript(StrictVideoModel):
     differences: list[dict] = Field(default_factory=list)
     timing_review: Literal["unreviewed", "reviewed"] = "unreviewed"
 
+    @model_validator(mode="after")
+    def stable_measured_ids(self) -> Self:
+        ids = {token.id: i for i, token in enumerate(self.tokens)}
+        if len(ids) != len(self.tokens):
+            raise ValueError("Each recorded token occurrence needs a unique ID")
+        if any(t.end_ms > self.duration_ms for t in self.tokens):
+            raise ValueError("Word clock exceeds the actual source duration")
+        if any(
+            a.start_ms > b.start_ms
+            for a, b in zip(self.tokens, self.tokens[1:], strict=False)
+        ):
+            raise ValueError("Recorded tokens must remain in source order")
+        utterance_ids = set()
+        for utterance in self.utterances:
+            if utterance.id in utterance_ids or not utterance.token_ids:
+                raise ValueError("Utterance IDs/ranges must be unique and nonempty")
+            utterance_ids.add(utterance.id)
+            if any(t not in ids for t in utterance.token_ids):
+                raise ValueError("Utterance references an unknown recorded token")
+            positions = [ids[t] for t in utterance.token_ids]
+            if positions != list(range(positions[0], positions[-1] + 1)):
+                raise ValueError("Utterance must cover consecutive source occurrences")
+            if (
+                utterance.start_ms != self.tokens[positions[0]].start_ms
+                or utterance.end_ms != self.tokens[positions[-1]].end_ms
+            ):
+                raise ValueError("Utterance bounds must come from measured words")
+        return self
+
 
 class EditingArtifactResponse(StrictVideoModel):
     id: str
@@ -103,8 +132,26 @@ class EditingTaskResponse(StrictVideoModel):
     artifacts: list[EditingArtifactResponse]
 
 
+class NativeTextAnchor(StrictVideoModel):
+    path: str = Field(min_length=1, max_length=200)
+    first_token_id: str
+    last_token_id: str
+    punctuation: Literal["preserve", "omit_sentence_punctuation"] = "preserve"
+
+
+class NativeEventAnchor(StrictVideoModel):
+    path: str = Field(min_length=1, max_length=200)
+    token_id: str
+    edge: Literal["start", "end"]
+
+
+class NativeMediaAnchor(StrictVideoModel):
+    path: str = Field(min_length=1, max_length=200)
+    asset_id: str = Field(min_length=1, max_length=100)
+
+
 class SemanticBeat(StrictVideoModel):
-    """Reserved for phase 2: no seconds, code, paths or executable template."""
+    """No time values, file paths or executable template; allowlisted pointers only."""
 
     id: str
     first_token_id: str
@@ -128,6 +175,9 @@ class SemanticBeat(StrictVideoModel):
     asset_ids: list[str] = Field(default_factory=list)
     reason: str = Field(min_length=1, max_length=1000)
     locked_by_user: bool = False
+    native_text: list[NativeTextAnchor] = Field(default_factory=list, max_length=50)
+    native_events: list[NativeEventAnchor] = Field(default_factory=list, max_length=80)
+    native_media: list[NativeMediaAnchor] = Field(default_factory=list, max_length=30)
 
 
 class SemanticPlan(StrictVideoModel):

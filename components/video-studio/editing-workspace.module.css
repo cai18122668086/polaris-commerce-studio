@@ -11,4 +11,12 @@
 .taskHeading { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; font-size:13px; }
 .taskHeading time { color:#86788e; font-size:12px; }
 .tasks video { max-width:100%; width:320px; max-height:540px; background:#15111a; border-radius:10px; }
+.correction { display:grid; gap:12px; padding:16px; background:#faf8fd; border:1px solid #e9e0f2; border-radius:12px; }
+.correction textarea { resize:vertical; width:100%; padding:12px; border:1px solid #dcd5e4; border-radius:9px; background:#fff; color:inherit; line-height:1.8; font:inherit; }
+.panel .reviewCheck { display:flex; align-items:flex-start; gap:8px; line-height:1.6; }
+.panel .reviewCheck input { width:16px; min-width:16px; margin-top:3px; accent-color:#7644ba; }
+.correctionActions { display:flex; flex-wrap:wrap; gap:10px; }
+.utterances { display:grid; gap:6px; max-height:220px; overflow:auto; }
+.panel .utterances button { width:100%; text-align:left; display:flex; gap:10px; line-height:1.7; background:#f0eaf7; color:#49345e; }
+.utterances time { flex:none; font-variant-numeric:tabular-nums; color:#78618c; }
 @media(max-width:640px) { .panel { padding:16px; } }

@@ -4730,6 +4730,18 @@
             ],
             "title": "Source Subtitles",
             "type": "string"
+          },
+          "transcript_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcript Revision Id"
           }
         },
         "title": "EditingOptions",
@@ -4874,6 +4886,146 @@
           "artifacts"
         ],
         "title": "EditingTaskResponse",
+        "type": "object"
+      },
+      "EditingTranscriptRevisionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "attests_spoken_text": {
+            "default": false,
+            "title": "Attests Spoken Text",
+            "type": "boolean"
+          },
+          "base_transcript_artifact_id": {
+            "format": "uuid",
+            "title": "Base Transcript Artifact Id",
+            "type": "string"
+          },
+          "corrected_text": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Corrected Text",
+            "type": "string"
+          },
+          "parent_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Revision Id"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "text_status": {
+            "default": "operator_candidate",
+            "enum": [
+              "operator_candidate",
+              "user_corrected"
+            ],
+            "title": "Text Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "base_transcript_artifact_id",
+          "corrected_text"
+        ],
+        "title": "EditingTranscriptRevisionCreate",
+        "type": "object"
+      },
+      "EditingTranscriptRevisionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "base_task_id": {
+            "title": "Base Task Id",
+            "type": "string"
+          },
+          "base_transcript_artifact_id": {
+            "title": "Base Transcript Artifact Id",
+            "type": "string"
+          },
+          "base_transcript_sha256": {
+            "title": "Base Transcript Sha256",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "corrected_text": {
+            "title": "Corrected Text",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "parent_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Revision Id"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "text_sha256": {
+            "title": "Text Sha256",
+            "type": "string"
+          },
+          "text_status": {
+            "enum": [
+              "operator_candidate",
+              "user_corrected"
+            ],
+            "title": "Text Status",
+            "type": "string"
+          },
+          "timing_review": {
+            "const": "unreviewed",
+            "default": "unreviewed",
+            "title": "Timing Review",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "base_task_id",
+          "base_transcript_artifact_id",
+          "base_transcript_sha256",
+          "parent_revision_id",
+          "corrected_text",
+          "text_sha256",
+          "text_status",
+          "changes",
+          "created_at"
+        ],
+        "title": "EditingTranscriptRevisionResponse",
         "type": "object"
       },
       "ErrorBody": {
@@ -17505,6 +17657,191 @@
         "summary": "Retry Task",
         "tags": [
           "video-editing-tasks"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/transcript": {
+      "get": {
+        "operationId": "get_transcript_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Transcript Api V1 Video Studio Workspaces  Workspace Id  Editing Tasks  Task Id  Transcript Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Transcript",
+        "tags": [
+          "video-editing-transcripts"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/transcript-revisions": {
+      "get": {
+        "operationId": "list_revisions_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingTranscriptRevisionResponse"
+                  },
+                  "title": "Response List Revisions Api V1 Video Studio Workspaces  Workspace Id  Editing Tasks  Task Id  Transcript Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Revisions",
+        "tags": [
+          "video-editing-transcripts"
+        ]
+      },
+      "post": {
+        "operationId": "save_revision_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_revisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingTranscriptRevisionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingTranscriptRevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Save Revision",
+        "tags": [
+          "video-editing-transcripts"
         ]
       }
     },

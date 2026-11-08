@@ -23,6 +23,7 @@ from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingSourceRecord,
     EditingTaskRecord,
+    EditingTranscriptRevisionRecord,
 )
 from .video_generation import own_job
 from .video_studio_models import VideoProjectRecord, VideoScriptVersionRecord
@@ -291,10 +292,12 @@ def create_task(
     session: SessionDependency,
 ) -> dict[str, Any]:
     require_workspace_write(workspace)
-    enabled(request)
-    fingerprint = digest(
-        {**body.model_dump(mode="json"), "library_release": MOTION_SHA256}
-    )
+    settings = enabled(request)
+    payload = body.model_dump(mode="json")
+    if payload["options"]["transcript_revision_id"] is None:
+        # Preserve replay identity of tasks submitted before correction support.
+        payload["options"].pop("transcript_revision_id")
+    fingerprint = digest({**payload, "library_release": MOTION_SHA256})
     previous = session.scalar(
         select(EditingTaskRecord).where(
             EditingTaskRecord.workspace_id == workspace.workspace_id,
@@ -309,6 +312,10 @@ def create_task(
             )
         return response(previous, session)
     source: EditingSourceRecord | None
+    if body.options.transcript_revision_id and body.generation_task_id:
+        raise ApiError(
+            422, "EDITING_CORRECTION_SOURCE_REQUIRED", "请选择校对版本对应的原视频源。"
+        )
     if body.generation_task_id:
         job = own_job(session, workspace, body.generation_task_id)
         if job.kind != "lipsync" or job.status != "completed" or not job.project_id:
@@ -344,6 +351,28 @@ def create_task(
         ):
             raise ApiError(404, "EDITING_SOURCE_NOT_FOUND", "未找到视频源。")
         own_project(session, workspace, source.project_id)
+    if body.options.transcript_revision_id:
+        if not settings.video_editing_alignment_enabled:
+            raise ApiError(503, "EDITING_ALIGNMENT_DISABLED", "本机校对对齐尚未启用。")
+        revision = session.get(
+            EditingTranscriptRevisionRecord, str(body.options.transcript_revision_id)
+        )
+        if (
+            not revision
+            or revision.source_id != source.id
+            or revision.project_id != source.project_id
+            or revision.workspace_id != workspace.workspace_id
+            or revision.owner_user_id != workspace.principal.user_id
+        ):
+            raise ApiError(
+                404, "EDITING_TRANSCRIPT_REVISION_NOT_FOUND", "未找到此视频的校对版本。"
+            )
+        if body.options.language != "zh":
+            raise ApiError(
+                422,
+                "EDITING_ALIGNMENT_LANGUAGE_UNSUPPORTED",
+                "目前校对对齐支持中文口播。",
+            )
     row = EditingTaskRecord(
         id=str(uuid4()),
         workspace_id=workspace.workspace_id,
@@ -353,7 +382,7 @@ def create_task(
         request_id=str(body.request_id),
         request_hash=fingerprint,
         library_release=MOTION_SHA256,
-        options=body.options.model_dump(),
+        options=body.options.model_dump(mode="json"),
     )
     session.add(row)
     try:

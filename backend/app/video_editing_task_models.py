@@ -87,3 +87,35 @@ class EditingArtifactRecord(TimestampMixin, Base):
     bytes: Mapped[int] = mapped_column()
     duration_ms: Mapped[int | None] = mapped_column()
     validation: Mapped[dict] = mapped_column(json_type(), default=dict)
+
+
+class EditingTranscriptRevisionRecord(TimestampMixin, Base):
+    __tablename__ = "video_editing_transcript_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "owner_user_id",
+            "request_id",
+            name="uq_video_editing_transcript_request",
+        ),
+        Index("ix_video_editing_transcript_source", "source_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("video_projects.id"))
+    source_id: Mapped[str] = mapped_column(ForeignKey("video_editing_sources.id"))
+    base_task_id: Mapped[str] = mapped_column(ForeignKey("video_editing_tasks.id"))
+    base_transcript_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("video_editing_artifacts.id")
+    )
+    base_transcript_sha256: Mapped[str] = mapped_column(String(64))
+    parent_revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("video_editing_transcript_revisions.id")
+    )
+    request_id: Mapped[str] = mapped_column(String(40))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    corrected_text: Mapped[str] = mapped_column(Text)
+    text_sha256: Mapped[str] = mapped_column(String(64))
+    text_status: Mapped[str] = mapped_column(String(24))
+    details: Mapped[dict] = mapped_column(json_type(), default=dict)

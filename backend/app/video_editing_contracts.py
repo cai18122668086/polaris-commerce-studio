@@ -15,6 +15,7 @@ class EditingOptions(StrictVideoModel):
     # Explicit website binding to a bundled font, independent of old episodes.
     caption_font_id: Literal["font-d1961be1161ea1be"] = "font-d1961be1161ea1be"
     source_subtitles: Literal["none", "present", "unknown"] = "unknown"
+    transcript_revision_id: UUID | None = None
 
 
 class EditingTaskCreate(StrictVideoModel):
@@ -135,6 +136,40 @@ class EditingTaskResponse(StrictVideoModel):
     options: EditingOptions
     review: dict[str, str]
     artifacts: list[EditingArtifactResponse]
+
+
+class EditingTranscriptRevisionCreate(StrictVideoModel):
+    request_id: UUID
+    base_transcript_artifact_id: UUID
+    parent_revision_id: UUID | None = None
+    corrected_text: str = Field(min_length=1, max_length=20000)
+    text_status: Literal["operator_candidate", "user_corrected"] = "operator_candidate"
+    attests_spoken_text: bool = False
+
+    @model_validator(mode="after")
+    def explicit_review(self) -> Self:
+        if not self.corrected_text.strip():
+            raise ValueError("Correction must contain recorded speech")
+        if self.attests_spoken_text != (self.text_status == "user_corrected"):
+            raise ValueError(
+                "User-corrected status requires explicit spoken-text review"
+            )
+        return self
+
+
+class EditingTranscriptRevisionResponse(StrictVideoModel):
+    id: str
+    source_id: str
+    base_task_id: str
+    base_transcript_artifact_id: str
+    base_transcript_sha256: str
+    parent_revision_id: str | None
+    corrected_text: str
+    text_sha256: str
+    text_status: Literal["operator_candidate", "user_corrected"]
+    timing_review: Literal["unreviewed"] = "unreviewed"
+    changes: list[dict]
+    created_at: datetime
 
 
 class NativeTextAnchor(StrictVideoModel):

@@ -1,5 +1,6 @@
 """Real local Chinese forced alignment, preserving the immutable ASR evidence."""
 
+import argparse
 import hashlib
 import importlib.metadata
 import json
@@ -8,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Literal
 
-from .motion_library import atomic_json, sha256
+from .motion_library import atomic_json, read_json, sha256
 from .video_editing_contracts import Transcript
 from .video_editing_funasr import MANIFEST, UNIT, bundle_identity, normalize_result
 from .video_editing_pipeline import EditingFailure
@@ -250,3 +251,31 @@ def align_transcript(
         },
     )
     return transcript
+
+
+def main() -> None:
+    """Fixed worker protocol, in a cancellable credential-free subprocess."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--instance", type=Path, required=True)
+    args = parser.parse_args()
+    root = args.instance.resolve()
+    config = read_json(root / "alignment-config.json")
+    parent_file = root / "parent-transcript.json"
+    if sha256(parent_file) != config["parent_sha256"]:
+        raise EditingFailure("EDITING_ALIGNMENT_SOURCE_MISMATCH")
+    align_transcript(
+        root / "input/speech.wav",
+        read_json(root / "prepared.json"),
+        Transcript.model_validate(read_json(parent_file)),
+        config["parent_sha256"],
+        config["text"],
+        config["revision_id"],
+        config["text_status"],
+        Path(config["model"]),
+        root,
+        config["device"],
+    )
+
+
+if __name__ == "__main__":
+    main()

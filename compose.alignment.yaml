@@ -1,0 +1,16 @@
+# Optional correction alignment, on top of compose.editing.yaml; never deploys itself.
+services:
+  api:
+    environment:
+      POLARIS_VIDEO_EDITING_ALIGNMENT_ENABLED: "true"
+  editing-worker:
+    environment:
+      POLARIS_VIDEO_EDITING_ALIGNMENT_ENABLED: "true"
+      POLARIS_VIDEO_EDITING_ALIGNMENT_MODEL_DIR: /asr-alignment
+    volumes:
+      - type: bind
+        source: ${POLARIS_EDITING_ALIGNMENT_HOST:?Set the pinned optional fa_zh bundle root}
+        target: /asr-alignment
+        read_only: true
+        bind:
+          create_host_path: false

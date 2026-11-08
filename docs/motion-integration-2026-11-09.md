@@ -129,3 +129,23 @@ HY-A3 第三个新实例已通过原生 Build/get 编码：`bld_20261108T1832220
 真实音频验证保存在 `C:/tl/alignment-validation`：same-text-v1 与 candidate-v1 均产生 243 个词点；numeric-candidate-v1 使用“14块9、1000克、4斤、A类”等写法，产生 240 个单位，3 处把原生数字子词以真实首尾边界合并，原区间和下标保留在 timing_adjustments，未均分或猜测字符时间。首词起点 410 ms、尾词结束 48050 ms，原音频仍长 48475 ms。操作者对“关点/关键、真话事/真划算、刷的/刷到”的候选更改和未核验的品牌名登记在 operator-candidate-provenance.json，尚未逐词听验，更不是用户确认稿。原数据库中已有确认稿也包含识别式错字，不能直接替代当前实际音频。数字写法与实际读法的对齐精度仍需专项听验，未证明 150 ms/300 ms 目标。
 
 新增测试拒绝缺词、字词不匹配、缺时间戳、重叠时间、越界与跨源对齐，验证原文与原时间轴不变、新时间点与新词 ID、大小写/标点保留及数字子词的真实边界合并。29 项相关回归、346 个 app 文件 mypy 与后端 Ruff 通过。这一轮完成对齐模块和运行脚本；校对版本数据库、网站校对界面、独立 worker 消费校对稿及据此重新出片仍待继续接入。没有付费模型调用或部署。
+
+上述本机对齐模块保存于本地提交 `b1d2355`，未推送。下列后续工作已经把校对版本接入网站和独立 worker。
+
+## 网站校对版本与重新出片的真实链路
+
+新增迁移 0044 和不可覆盖的 `video_editing_transcript_revisions`：区分原转录产物、文字版本、父文字版本、修改前后差异、原声身份和用户声明。保存候选不推断用户已校对；`user_corrected` 必须另有明确勾选，仍不意味着时间或成片验收。源、项目、工作区和用户归属都要匹配。相同请求幂等返回已有版本；跨任务产物、其他原片或其他用户的版本被拒绝。新版本只新增记录，不改原 ASR、已完成任务、原确认稿或已完成视频。
+
+网页新增“校对字幕”：按分句定位试听、编辑文字、保存/选择版本、显示待核对或用户校对状态，重新出片只能用已保存版本。编辑未保存时不能悄悄使用旧版本。继续编辑所选版本会记录父子关系和相对该版本的差异；同文同状态不重复保存。原画面有硬字幕时不提供此处重生成，明确提示需要无硬字幕原片。
+
+独立 editing worker 读取校对版本与原转录摘要，在可取消的独立子进程中完成真实 `fa-zh` 对齐，仍由原库 Z-M00 与原生主字幕出口成片。校对路径默认关闭，开启需 API 与 worker 配置 `POLARIS_VIDEO_EDITING_ALIGNMENT_ENABLED=true`，worker 指向独立固定模型目录。新增 `compose.alignment.yaml` 作为显式叠加项，模型只读挂载且禁止自动创建空目录；Compose 合并配置检查通过，未启动 Compose 或部署。
+
+真实网页操作保存候选版本 `b22b1604-4227-429b-8a43-84a8c88ff00f`，刷新后读取相同文字，未勾选人工校对；网页创建新任务 `eb26dcbb-e8b0-4476-8aef-33cbb4effcc8`，由 Redis/独立 Celery 在 1 次尝试完成。新任务使用 240 个 `funasr-fa-zh` 对齐单位，而非旧 ASR 时间数组；字幕文字与保存版本一致。输出 48.475 秒，SHA256 `83b40c10ebf6fd91112ecff024949eb319dd302f20b356d3d1807c3f1a2ad5a4`。浏览器 readyState=4，实际播放到 2.247 秒、无错误，点击下载摘要与服务端一致，且不同于原基础字幕视频。文件 `C:/tl/correction-validation/browser-download.mp4`，证据 `submission-evidence.json` / `browser-playback-evidence.json`；界面截图已查看 `C:/tl/preflight/website-transcript-correction-editor.png`。这仍是候选字幕工程试片，不是不同创意方案的多条成品，更不是全库动效验收。
+
+进一步在网页保存子版本 `fb9f0f95-0f4b-4a22-8668-a64529ddd8c2`，只改一处逗号为冒号，父版本正确记录为上述候选，刷新后文字与父子关系保留，未触发重新出片，未勾选人工校对。证据 `C:/tl/correction-validation/lineage-browser-evidence.json`。
+
+真实恢复试验任务 `990f59d0-3a12-49a4-abd9-027b77079580`：首次完成对齐并进入原生渲染后取消，再重试。第二次尝试复用摘要一致的转录和 alignment-input / alignment-raw / alignment-receipt / parent-transcript 四份证据，没有再次运行对齐，完成后产物仍能下载且 SHA256 与上述视频相同。检查中补上了原先只复用转录却没有携带对齐 receipt 的缺口；缺失或摘要变化的证据不会被当作有效缓存。证据 `C:/tl/correction-validation/recovery-evidence.json`。相同输出只证明恢复可复现，不能算作第二个创意成品。
+
+44 项相关测试通过（`C:/tl/correction-validation/regression-tests.log`）；父子版本补充后 3 项归属/幂等/血缘/迁移测试再次通过。347 个 app 文件 mypy、后端 Ruff、前端类型及两个组件 ESLint 通过，OpenAPI 与生成类型同步。0044 SQLite 往返与 PostgreSQL 离线 DDL 通过，尚未在真实 PostgreSQL 升级。再次 fetch GitHub main 仍为 `106d1e3eb17a87b89576d3f97c7ec8c9edf05e5a`，未推送、未部署，主目录未提交改动未纳入本分支。
+
+仍未完成：逐词听验和 150 ms/300 ms 目标、商品事实核验、获准后的腾力规划模型实测、语义模式到原 episode 的完整编译、全 132 组专用配方及逐组验证、音效/音乐编排与不同创意整片。CX-G01 缺原指定字体、LYO01 原合同冲突和 Hypit 多租户授权条件继续保留。当前目录仍为 5 个组有具体技术样本、2 个组失败、125 个组未实测；这些字幕进展不能提高全库运行或用户验收计数。所有新增付费模型调用仍为零。

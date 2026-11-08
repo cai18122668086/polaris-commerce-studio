@@ -1884,6 +1884,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Transcript */
+        get: operations["get_transcript_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/transcript-revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Revisions */
+        get: operations["list_revisions_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_revisions_get"];
+        put?: never;
+        /** Save Revision */
+        post: operations["save_revision_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/generation-prices": {
         parameters: {
             query?: never;
@@ -5162,6 +5197,8 @@ export interface components {
              * @enum {string}
              */
             source_subtitles: "none" | "present" | "unknown";
+            /** Transcript Revision Id */
+            transcript_revision_id?: string | null;
         };
         /** EditingTaskCreate */
         EditingTaskCreate: {
@@ -5213,6 +5250,73 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "completed" | "failed" | "cancelled";
+        };
+        /** EditingTranscriptRevisionCreate */
+        EditingTranscriptRevisionCreate: {
+            /**
+             * Attests Spoken Text
+             * @default false
+             */
+            attests_spoken_text: boolean;
+            /**
+             * Base Transcript Artifact Id
+             * Format: uuid
+             */
+            base_transcript_artifact_id: string;
+            /** Corrected Text */
+            corrected_text: string;
+            /** Parent Revision Id */
+            parent_revision_id?: string | null;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Text Status
+             * @default operator_candidate
+             * @enum {string}
+             */
+            text_status: "operator_candidate" | "user_corrected";
+        };
+        /** EditingTranscriptRevisionResponse */
+        EditingTranscriptRevisionResponse: {
+            /** Base Task Id */
+            base_task_id: string;
+            /** Base Transcript Artifact Id */
+            base_transcript_artifact_id: string;
+            /** Base Transcript Sha256 */
+            base_transcript_sha256: string;
+            /** Changes */
+            changes: {
+                [key: string]: unknown;
+            }[];
+            /** Corrected Text */
+            corrected_text: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Parent Revision Id */
+            parent_revision_id: string | null;
+            /** Source Id */
+            source_id: string;
+            /** Text Sha256 */
+            text_sha256: string;
+            /**
+             * Text Status
+             * @enum {string}
+             */
+            text_status: "operator_candidate" | "user_corrected";
+            /**
+             * Timing Review
+             * @default unreviewed
+             * @constant
+             */
+            timing_review: "unreviewed";
         };
         /** ErrorBody */
         ErrorBody: {
@@ -11105,6 +11209,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_transcript_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_revisions_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingTranscriptRevisionResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_revision_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_revisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingTranscriptRevisionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingTranscriptRevisionResponse"];
                 };
             };
             /** @description Validation Error */

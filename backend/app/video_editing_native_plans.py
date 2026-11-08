@@ -97,6 +97,70 @@ def register_operator_plan(
         raise ApiError(
             422, "EDITING_PLANNER_PROVENANCE_REQUIRED", "人工导入不能声明腾力模型来源。"
         )
+    return _register_plan(
+        session,
+        settings,
+        workspace_id,
+        owner_user_id,
+        base_task_id,
+        request_id,
+        semantic,
+        recipes,
+    )
+
+
+def register_gateway_plan(
+    session: Session,
+    settings: Settings,
+    workspace_id: str,
+    owner_user_id: str,
+    planning_task_id: str,
+    request_id: str,
+    recipes: EpisodeRecipeBundle,
+) -> EditingNativePlanRecord:
+    """Trusted adapter/CLI only; semantic JSON always comes from the server job."""
+    from .video_editing_planning_provenance import verify_gateway_planning
+
+    verified = verify_gateway_planning(
+        session, settings, workspace_id, owner_user_id, planning_task_id
+    )
+    if recipes.planning_origin != "tengli_gateway":
+        raise ApiError(
+            422, "EDITING_PLANNER_PROVENANCE_REQUIRED", "配方来源需与已捕获规划一致。"
+        )
+    current = stored_choice_snapshot(
+        session, workspace_id, owner_user_id, verified.task.project_id
+    )
+    if current != verified.task.snapshot["choice_snapshot"]:
+        raise ApiError(
+            409,
+            "EDITING_CHOICES_CHANGED_REPLAN_REQUIRED",
+            "选组已变化，请重新准备并核对规划。",
+        )
+    return _register_plan(
+        session,
+        settings,
+        workspace_id,
+        owner_user_id,
+        verified.task.base_task_id,
+        request_id,
+        verified.semantic,
+        recipes,
+        verified.lineage,
+    )
+
+
+def _register_plan(
+    session: Session,
+    settings: Settings,
+    workspace_id: str,
+    owner_user_id: str,
+    base_task_id: str,
+    request_id: str,
+    semantic: SemanticPlan,
+    recipes: EpisodeRecipeBundle,
+    planning_provenance: dict[str, Any] | None = None,
+) -> EditingNativePlanRecord:
     semantic_data, recipe_data = (
         semantic.model_dump(mode="json"),
         recipes.model_dump(mode="json"),
@@ -106,6 +170,11 @@ def register_operator_plan(
             "base_task_id": base_task_id,
             "semantic": semantic_data,
             "recipes": recipe_data,
+            **(
+                {"planning_provenance": planning_provenance}
+                if planning_provenance
+                else {}
+            ),
         }
     )
     previous = session.scalar(
@@ -186,7 +255,7 @@ def register_operator_plan(
         library_release=MOTION_SHA256,
         request_id=request_id,
         request_hash=fingerprint,
-        origin="operator_candidate",
+        origin=recipes.planning_origin,
         semantic=semantic_data,
         semantic_sha256=content_digest(semantic_data),
         recipes=recipe_data,
@@ -218,6 +287,11 @@ def register_operator_plan(
             ],
             "native_execution": "not_performed",
             "semantic_review": "unreviewed",
+            **(
+                {"planning_provenance": planning_provenance}
+                if planning_provenance
+                else {}
+            ),
         },
     )
     session.add(row)
@@ -251,11 +325,17 @@ def frozen_plan_snapshot(
         or artifact.sha256 != row.base_transcript_sha256
         or content_digest(row.semantic) != row.semantic_sha256
         or content_digest(row.recipes) != row.recipes_sha256
+        or row.origin != row.recipes.get("planning_origin")
+        or row.origin not in {"operator_candidate", "tengli_gateway"}
     ):
         raise ValueError("Frozen native plan bytes/identities changed")
     return {
         "id": row.id,
         "origin": row.origin,
+        "workspace_id": row.workspace_id,
+        "owner_user_id": row.owner_user_id,
+        "project_id": row.project_id,
+        "source_id": row.source_id,
         "base_task_id": row.base_task_id,
         "base_transcript_path": str(Path(artifact.path).resolve()),
         "base_transcript_sha256": row.base_transcript_sha256,
@@ -265,6 +345,7 @@ def frozen_plan_snapshot(
         "asset_files": row.details["asset_snapshot"],
         "source_sha256": row.details["source_sha256"],
         "audio_sha256": row.details["audio_sha256"],
+        "planning_provenance": row.details.get("planning_provenance"),
     }
 
 

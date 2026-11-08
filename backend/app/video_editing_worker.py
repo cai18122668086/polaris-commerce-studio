@@ -19,6 +19,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from .celery_app import celery_app
 from .config import Settings
 from .database import build_database
+from .errors import ApiError
 from .motion_library import (
     MOTION_SHA256,
     atomic_json,
@@ -37,6 +38,7 @@ from .video_editing_pipeline import (
     run,
     validate_result,
 )
+from .video_editing_planning_provenance import verify_render_provenance
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingAttemptRecord,
@@ -303,6 +305,7 @@ def load_plan_transcript(
             "recognition_calls": 0,
             "alignment_calls": 0,
             "planning_calls": 0,
+            "planning_provenance": plan.get("planning_provenance"),
         },
     )
     return transcript
@@ -500,6 +503,15 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             if not settings.video_editing_native_plan_enabled or not native_plan:
                 raise EditingFailure("EDITING_NATIVE_PLAN_NOT_FOUND")
             transcript = load_plan_transcript(root, prepared, native_plan, settings)
+            with factory() as session:
+                try:
+                    verified_plan_hash = verify_render_provenance(
+                        session, settings, native_plan
+                    )
+                except (ApiError, ValueError, KeyError, TypeError) as error:
+                    raise EditingFailure(
+                        "EDITING_PLANNER_PROVENANCE_REQUIRED"
+                    ) from error
             stage("compiling", native_plan_id=native_plan["id"])
             compile_episode(
                 root,
@@ -511,6 +523,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 snapshot["options"],
                 settings,
                 native_plan["choice_snapshot"],
+                verified_gateway_plan_hash=verified_plan_hash,
             )
         else:
             transcript = load_transcript(

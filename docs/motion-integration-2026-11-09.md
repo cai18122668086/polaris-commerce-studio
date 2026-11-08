@@ -261,3 +261,25 @@ generate 沿用原腾力脚本服务配置，新增 feature flag 仍默认 false
 Compose 增加独立规划 worker 和显式 provider 配置占位引用；渲染 worker 不接收该规划配置，密钥值未写入文件或日志。合并配置 --quiet 检查通过，没有构建、启动 Compose、部署或发布。当前本机 API / 规划 worker 的 VIDEO_EDITING_PLANNING_ENABLED 与 VIDEO_SCRIPT_PLANNING_ENABLED 都为 false。再次 fetch GitHub main 仍为 `106d1e3eb17a87b89576d3f97c7ec8c9edf05e5a`，主目录 HEAD 22fc356、81 项未提交条目保持隔离。原 Motion 1426 项再次校验通过。
 
 待继续：实际获准的腾力模型调用与语义验收、模型结果到可信当前原生配方的采用链路、剩余 132 组接口/变体/数字与 Hypit 复合参数、缺失字体和原合同问题、音乐音效、事实核验及正式多创意试片。全库运行/验收计数仍 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收，不能因为全量目录已进入请求而增加运行数量。没有付费调用、推送或部署。
+
+上述独立语义任务保存于本地提交 `fb78f48`。以下继续建立已捕获模型结果到原生配方的采用边界。
+
+## 服务器规划结果与原生出片的采用衔接
+
+新增 `video_editing_planning_provenance.py`。可信适配端只能引用同用户、工作区和项目的已完成 generate 任务；prepare 请求、未完成任务、别人的任务或只有一份自称来自模型的 JSON 都不能取得网关来源。逐项校验准备记录、实际原片与转录身份、稳定 provider 目录中的请求/响应/语义/校验回执、唯一提交 intent、父准备产物、摘要与目录范围。请求必须保留全部 132 个原组、同一组实际词 ID 和文字、同一项目素材卡与选组快照；响应解析后的 SemanticPlan 必须与任务记录、semantic-plan.json 和回执摘要一致。
+
+新增可信服务 `register_gateway_plan`，读取上述记录中的语义内容，不接受另传 semantic JSON；操作者 CLI 增加 `--planning-task`，与原 `--plan` 互斥。服务器任务自己提供 base task，不允许从命令行拼接另一条转录。原 `--plan --base-task` 仍只能导入人工候选，既存请求摘要和幂等编号保持兼容。原生配方仍是可信适配端明确制作的数据，不向网站开放任意配方、DSL 或代码上传；此轮没有自动生成全库配方。
+
+采用时保存不可变规划血缘，包含请求摘要、准备及执行 ID、模型/网关身份、来源转录、选组版本和每项受控产物摘要。渲染 worker 在编译之前重新核对血缘、语义、素材卡与来源，只有一致时才把已验证语义摘要交给原 episode 编译器的网关来源检查。排队后产物被改也会停止，不能重调模型、重识别或退回基础字幕。出片侧的读取校验不依赖当前付费开关或当前网关地址，不会因为恢复或换配置而再计费。native-plan-lineage.json 保留此血缘，语义/画面/听感仍是 unreviewed。
+
+114 项相关回归通过，日志及 JUnit 为 `C:/tl/planning/provenance-full-regression.log` / `provenance-full-regression.xml`，含新增 13 项采用测试。模型部分仍使用明确的协议提供方和 132 组协议目录；测试中途主动在原生渲染前停止，不制造视频，也不能据此证明腾力模型语义正确。361 个 app 文件 Windows/Linux mypy、变更后端及 CLI/test Ruff 通过；无数据表或公开响应合同变化。
+
+真实本机库进行只读采用核验：两条 prepared 请求 `c798f299-12a9-4f80-baaf-91b7bf270e81` / `3253ba8e-a7fc-4136-9273-e94e999f72fd` 均返回 EDITING_PLANNING_RESULT_REQUIRED，不能冒充模型结果；两份已存人工候选按原输入重放仍返回 `2089f8af-504c-43ab-9454-84ba168b8d41` / `8e342ab2-5f0c-4a84-b8b8-5e70bdf9fe97`。核验前后都是 2 规划任务、0 generate、2 原生编排，未增加任务、成片或调用。原包 1426 项完整性再次通过。证据 `C:/tl/planning/actual-adoption-gate-evidence.json`；本机尚无真实模型响应，不能宣称此链路已完成真实模型到成片的验收。
+
+另核对全部 HY-A1–07：原 materializer 支持 attributes 内容覆盖，但七个经典输入 schema 都把 attributes 的 properties 置空且 additionalProperties=false；实际非空属性探测均被原 schema 拒绝。只有 HY-A3 的同一原 schema 明确另列 picture-parallel-3 变体。原入口、schema 和 materializer 摘要及探测结果保留在 `C:/tl/planning/hypit-original-authoring-schema-conflicts.json`。这是七组经典作者接口的静态合同冲突，未修改原文件或绕过校验，未登记为七次运行失败；也不影响原 HY-A3 独立变体样本的既有编码证据。后续需按原合同支持的变体逐项适配，并保留经典冲突，不把缺少接口误称全库接通。
+
+本机独立渲染 worker 重载本阶段代码后，从真实网站重新提交同一人工编排 `8e342ab2-5f0c-4a84-b8b8-5e70bdf9fe97`，新任务 `99cfba5f-7af4-495c-a2aa-8cefcfcb921f` 经 Redis、1 次 worker 尝试完成。原 BG-S06 / YYP01 / Z-M00 渲染与整片导出、全量解码、原生字幕行宽比对通过，成片仍为 48.475 秒，最终 SHA256 仍为 `09e3c71276ee28e7f5e08d7643fb2dfef84a426d6c9438b192fd1b59abc7ceea`。网页实际播放至 10.356787 秒、readyState=4、无媒体错误，按钮下载摘要一致。首次浏览器验证下载被取消，核对该验证进程的默认 TEMP 仍为 D:/Temp/a1726；显式改用 C:/Users/a1726/AppData/Local/Temp 后重试成功，没有清理用户临时目录。
+
+可查看 `C:/tl/episode-validation/website-adoption-operator-regression-download.mp4`，证据同目录 adoption-operator-regression-website-submission.json / adoption-operator-regression-task-result.json / adoption-operator-regression-website-playback-evidence.json / adoption-operator-regression-runtime-evidence.json。已检查对应网站截图；新 lineage 字段 planning_provenance=null，明确是人工候选，识别/对齐/规划调用均为 0。该片是新版 worker 的兼容回归，与上一条字幕修正版的内容和最终字节相同，不计作新创意或新模型成片。
+
+剩余工作仍包括获准后的真实腾力模型调用及语义采用实测、全 132 组的当前配方/原生变体与逐组运行、数字事实绑定、缺失字体和原合同冲突、音乐音效、连续观看听验及数条不同创意验收片。本阶段没有提高目录运行计数：仍为 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收；全部未验证条目保留。主目录仍 HEAD 22fc356、81 项既存未提交条目；没有付费调用、推送、部署或发布。

@@ -1798,6 +1798,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task */
+        get: operations["get_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/artifacts/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Artifact */
+        get: operations["get_artifact_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__artifacts__role__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Task */
+        post: operations["cancel_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Task */
+        post: operations["retry_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-sources": {
         parameters: {
             query?: never;
@@ -1878,6 +1946,23 @@ export interface paths {
         put?: never;
         /** Cancel Task */
         post: operations["cancel_task_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/planning-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Task */
+        post: operations["create_task_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__planning_tasks_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2203,6 +2288,23 @@ export interface paths {
         };
         /** List Native Plans */
         get: operations["list_native_plans_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-planning-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tasks */
+        get: operations["list_tasks_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_planning_tasks_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5403,6 +5505,134 @@ export interface components {
             /** Transcript Revision Id */
             transcript_revision_id?: string | null;
         };
+        /** EditingPlanningSpan */
+        EditingPlanningSpan: {
+            /** Beat Id */
+            beat_id: string;
+            /** End Ms */
+            end_ms: number;
+            /** First Token Id */
+            first_token_id: string;
+            /** Group Id */
+            group_id: string;
+            /** Last Token Id */
+            last_token_id: string;
+            /** Start Ms */
+            start_ms: number;
+            /** Text */
+            text: string;
+            /**
+             * Timing Review
+             * @default unreviewed
+             * @constant
+             */
+            timing_review: "unreviewed";
+        };
+        /** EditingPlanningTaskCreate */
+        EditingPlanningTaskCreate: {
+            /**
+             * Mode
+             * @default prepare
+             * @enum {string}
+             */
+            mode: "prepare" | "generate";
+            /** Prepared Task Id */
+            prepared_task_id?: string | null;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** EditingPlanningTaskResponse */
+        EditingPlanningTaskResponse: {
+            /** Aligned Spans */
+            aligned_spans?: components["schemas"]["EditingPlanningSpan"][];
+            /** Artifacts */
+            artifacts: components["schemas"]["EditingArtifactResponse"][];
+            /** Attempts */
+            attempts: number;
+            /** Base Task Id */
+            base_task_id: string;
+            /** Base Transcript Artifact Id */
+            base_transcript_artifact_id: string;
+            /** Base Transcript Sha256 */
+            base_transcript_sha256: string;
+            /**
+             * Call State
+             * @enum {string}
+             */
+            call_state: "not_submitted" | "intent_saved" | "response_saved";
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /** Catalog Group Count */
+            catalog_group_count: number | null;
+            /** Choice Snapshot Sha256 */
+            choice_snapshot_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Execution Available */
+            execution_available: boolean;
+            /** Gateway Host */
+            gateway_host: string | null;
+            /** Id */
+            id: string;
+            /** Library Release */
+            library_release: string;
+            /**
+             * Max Output Tokens
+             * @default 5000
+             */
+            max_output_tokens: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "prepare" | "generate";
+            /** Model */
+            model: string;
+            /**
+             * Native Render State
+             * @default not_compiled
+             * @constant
+             */
+            native_render_state: "not_compiled";
+            /** Prepared Task Id */
+            prepared_task_id: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Request Bytes */
+            request_bytes: number | null;
+            /** Request Sha256 */
+            request_sha256: string | null;
+            /** Revision */
+            revision: number;
+            semantic: components["schemas"]["SemanticPlan"] | null;
+            /** Semantic Origin */
+            semantic_origin: "tengli_gateway" | null;
+            /**
+             * Semantic Review
+             * @default unreviewed
+             * @constant
+             */
+            semantic_review: "unreviewed";
+            /** Source Id */
+            source_id: string;
+            /** Stage */
+            stage: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "prepared" | "completed" | "failed" | "cancelled";
+            /** Text Status */
+            text_status: string | null;
+        };
         /** EditingTaskCreate */
         EditingTaskCreate: {
             /** Generation Task Id */
@@ -6349,6 +6579,40 @@ export interface components {
             /** Micros */
             micros: string;
         };
+        /** NativeEventAnchor */
+        NativeEventAnchor: {
+            /**
+             * Edge
+             * @enum {string}
+             */
+            edge: "start" | "end";
+            /** Path */
+            path: string;
+            /** Token Id */
+            token_id: string;
+        };
+        /** NativeMediaAnchor */
+        NativeMediaAnchor: {
+            /** Asset Id */
+            asset_id: string;
+            /** Path */
+            path: string;
+        };
+        /** NativeTextAnchor */
+        NativeTextAnchor: {
+            /** First Token Id */
+            first_token_id: string;
+            /** Last Token Id */
+            last_token_id: string;
+            /** Path */
+            path: string;
+            /**
+             * Punctuation
+             * @default preserve
+             * @enum {string}
+             */
+            punctuation: "preserve" | "omit_sentence_punctuation";
+        };
         /** NoteBody */
         NoteBody: {
             /** Note */
@@ -6866,6 +7130,81 @@ export interface components {
              * Format: uuid
              */
             task_id: string;
+        };
+        /**
+         * SemanticBeat
+         * @description No time values, file paths or executable template; allowlisted pointers only.
+         */
+        SemanticBeat: {
+            /** Asset Ids */
+            asset_ids?: string[];
+            /** Emphasis Token Ids */
+            emphasis_token_ids?: string[];
+            /** First Token Id */
+            first_token_id: string;
+            /** Group Id */
+            group_id: string;
+            /** Id */
+            id: string;
+            /** Last Token Id */
+            last_token_id: string;
+            /**
+             * Locked By User
+             * @default false
+             * @constant
+             */
+            locked_by_user: false;
+            /** Native Events */
+            native_events?: components["schemas"]["NativeEventAnchor"][];
+            /** Native Media */
+            native_media?: components["schemas"]["NativeMediaAnchor"][];
+            /** Native Text */
+            native_text?: components["schemas"]["NativeTextAnchor"][];
+            /** Reason */
+            reason: string;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "explanation" | "parallel" | "contrast" | "cause" | "sequence" | "summary" | "condition" | "negation" | "transformation" | "amount" | "question" | "call_to_action";
+            /** Relation Items */
+            relation_items?: components["schemas"]["SemanticRelationItem"][];
+        };
+        /** SemanticPlan */
+        SemanticPlan: {
+            /** Argument Outline */
+            argument_outline: string[];
+            /** Audience Question */
+            audience_question: string;
+            /** Beats */
+            beats: components["schemas"]["SemanticBeat"][];
+            /** Missing Materials */
+            missing_materials?: string[];
+            /**
+             * Schema Version
+             * @default tengli.semantic-plan/1
+             * @constant
+             */
+            schema_version: "tengli.semantic-plan/1";
+            /** Style Reason */
+            style_reason: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** SemanticRelationItem */
+        SemanticRelationItem: {
+            /** Asset Ids */
+            asset_ids?: string[];
+            /** First Token Id */
+            first_token_id: string;
+            /** Id */
+            id: string;
+            /** Last Token Id */
+            last_token_id: string;
+            /** Native Media Paths */
+            native_media_paths?: string[];
+            /** Native Text Paths */
+            native_text_paths?: string[];
         };
         /** SessionCancelRequest */
         SessionCancelRequest: {
@@ -11273,6 +11612,135 @@ export interface operations {
             };
         };
     };
+    get_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingPlanningTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_artifact_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__artifacts__role__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                role: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingPlanningTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingPlanningTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_source_api_v1_video_studio_workspaces__workspace_id__editing_sources_post: {
         parameters: {
             query?: never;
@@ -11462,6 +11930,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_task_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__planning_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingPlanningTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingPlanningTaskResponse"];
                 };
             };
             /** @description Validation Error */
@@ -12250,6 +12754,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingNativePlanResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_planning_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingPlanningTaskResponse"][];
                 };
             };
             /** @description Validation Error */

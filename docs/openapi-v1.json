@@ -5070,6 +5070,349 @@
         "title": "EditingOptions",
         "type": "object"
       },
+      "EditingPlanningSpan": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "end_ms": {
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "first_token_id": {
+            "title": "First Token Id",
+            "type": "string"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "last_token_id": {
+            "title": "Last Token Id",
+            "type": "string"
+          },
+          "start_ms": {
+            "title": "Start Ms",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "timing_review": {
+            "const": "unreviewed",
+            "default": "unreviewed",
+            "title": "Timing Review",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beat_id",
+          "group_id",
+          "text",
+          "first_token_id",
+          "last_token_id",
+          "start_ms",
+          "end_ms"
+        ],
+        "title": "EditingPlanningSpan",
+        "type": "object"
+      },
+      "EditingPlanningTaskCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "prepare",
+            "enum": [
+              "prepare",
+              "generate"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "prepared_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared Task Id"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "title": "EditingPlanningTaskCreate",
+        "type": "object"
+      },
+      "EditingPlanningTaskResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "aligned_spans": {
+            "items": {
+              "$ref": "#/components/schemas/EditingPlanningSpan"
+            },
+            "title": "Aligned Spans",
+            "type": "array"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/EditingArtifactResponse"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "base_task_id": {
+            "title": "Base Task Id",
+            "type": "string"
+          },
+          "base_transcript_artifact_id": {
+            "title": "Base Transcript Artifact Id",
+            "type": "string"
+          },
+          "base_transcript_sha256": {
+            "title": "Base Transcript Sha256",
+            "type": "string"
+          },
+          "call_state": {
+            "enum": [
+              "not_submitted",
+              "intent_saved",
+              "response_saved"
+            ],
+            "title": "Call State",
+            "type": "string"
+          },
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "catalog_group_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Group Count"
+          },
+          "choice_snapshot_sha256": {
+            "title": "Choice Snapshot Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "execution_available": {
+            "title": "Execution Available",
+            "type": "boolean"
+          },
+          "gateway_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway Host"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "library_release": {
+            "title": "Library Release",
+            "type": "string"
+          },
+          "max_output_tokens": {
+            "default": 5000,
+            "title": "Max Output Tokens",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "prepare",
+              "generate"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "native_render_state": {
+            "const": "not_compiled",
+            "default": "not_compiled",
+            "title": "Native Render State",
+            "type": "string"
+          },
+          "prepared_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared Task Id"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Bytes"
+          },
+          "request_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Sha256"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "semantic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SemanticPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "semantic_origin": {
+            "anyOf": [
+              {
+                "const": "tengli_gateway",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Origin"
+          },
+          "semantic_review": {
+            "const": "unreviewed",
+            "default": "unreviewed",
+            "title": "Semantic Review",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "prepared",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Status"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "source_id",
+          "base_task_id",
+          "base_transcript_artifact_id",
+          "base_transcript_sha256",
+          "library_release",
+          "choice_snapshot_sha256",
+          "prepared_task_id",
+          "mode",
+          "model",
+          "gateway_host",
+          "status",
+          "stage",
+          "revision",
+          "attempts",
+          "cancel_requested",
+          "error_code",
+          "created_at",
+          "execution_available",
+          "call_state",
+          "request_sha256",
+          "request_bytes",
+          "catalog_group_count",
+          "text_status",
+          "semantic",
+          "semantic_origin",
+          "artifacts"
+        ],
+        "title": "EditingPlanningTaskResponse",
+        "type": "object"
+      },
       "EditingTaskCreate": {
         "additionalProperties": false,
         "properties": {
@@ -7530,6 +7873,94 @@
         "title": "MoneyAmount",
         "type": "object"
       },
+      "NativeEventAnchor": {
+        "additionalProperties": false,
+        "properties": {
+          "edge": {
+            "enum": [
+              "start",
+              "end"
+            ],
+            "title": "Edge",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "token_id",
+          "edge"
+        ],
+        "title": "NativeEventAnchor",
+        "type": "object"
+      },
+      "NativeMediaAnchor": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "asset_id"
+        ],
+        "title": "NativeMediaAnchor",
+        "type": "object"
+      },
+      "NativeTextAnchor": {
+        "additionalProperties": false,
+        "properties": {
+          "first_token_id": {
+            "title": "First Token Id",
+            "type": "string"
+          },
+          "last_token_id": {
+            "title": "Last Token Id",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "punctuation": {
+            "default": "preserve",
+            "enum": [
+              "preserve",
+              "omit_sentence_punctuation"
+            ],
+            "title": "Punctuation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "first_token_id",
+          "last_token_id"
+        ],
+        "title": "NativeTextAnchor",
+        "type": "object"
+      },
       "NoteBody": {
         "additionalProperties": false,
         "properties": {
@@ -8821,6 +9252,229 @@
           "task_id"
         ],
         "title": "SaveWritingResult",
+        "type": "object"
+      },
+      "SemanticBeat": {
+        "additionalProperties": false,
+        "description": "No time values, file paths or executable template; allowlisted pointers only.",
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asset Ids",
+            "type": "array"
+          },
+          "emphasis_token_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Emphasis Token Ids",
+            "type": "array"
+          },
+          "first_token_id": {
+            "title": "First Token Id",
+            "type": "string"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_token_id": {
+            "title": "Last Token Id",
+            "type": "string"
+          },
+          "locked_by_user": {
+            "const": false,
+            "default": false,
+            "title": "Locked By User",
+            "type": "boolean"
+          },
+          "native_events": {
+            "items": {
+              "$ref": "#/components/schemas/NativeEventAnchor"
+            },
+            "maxItems": 80,
+            "title": "Native Events",
+            "type": "array"
+          },
+          "native_media": {
+            "items": {
+              "$ref": "#/components/schemas/NativeMediaAnchor"
+            },
+            "maxItems": 30,
+            "title": "Native Media",
+            "type": "array"
+          },
+          "native_text": {
+            "items": {
+              "$ref": "#/components/schemas/NativeTextAnchor"
+            },
+            "maxItems": 50,
+            "title": "Native Text",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "explanation",
+              "parallel",
+              "contrast",
+              "cause",
+              "sequence",
+              "summary",
+              "condition",
+              "negation",
+              "transformation",
+              "amount",
+              "question",
+              "call_to_action"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "relation_items": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticRelationItem"
+            },
+            "maxItems": 20,
+            "title": "Relation Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "first_token_id",
+          "last_token_id",
+          "relation",
+          "group_id",
+          "reason"
+        ],
+        "title": "SemanticBeat",
+        "type": "object"
+      },
+      "SemanticPlan": {
+        "additionalProperties": false,
+        "properties": {
+          "argument_outline": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Argument Outline",
+            "type": "array"
+          },
+          "audience_question": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Audience Question",
+            "type": "string"
+          },
+          "beats": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticBeat"
+            },
+            "maxItems": 60,
+            "minItems": 1,
+            "title": "Beats",
+            "type": "array"
+          },
+          "missing_materials": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 40,
+            "title": "Missing Materials",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "tengli.semantic-plan/1",
+            "default": "tengli.semantic-plan/1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "style_reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Style Reason",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 40,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "audience_question",
+          "argument_outline",
+          "style_reason",
+          "beats"
+        ],
+        "title": "SemanticPlan",
+        "type": "object"
+      },
+      "SemanticRelationItem": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Asset Ids",
+            "type": "array"
+          },
+          "first_token_id": {
+            "title": "First Token Id",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "last_token_id": {
+            "title": "Last Token Id",
+            "type": "string"
+          },
+          "native_media_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Native Media Paths",
+            "type": "array"
+          },
+          "native_text_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Native Text Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "first_token_id",
+          "last_token_id"
+        ],
+        "title": "SemanticRelationItem",
         "type": "object"
       },
       "SessionCancelRequest": {
@@ -17734,6 +18388,241 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}": {
+      "get": {
+        "operationId": "get_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingPlanningTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Task",
+        "tags": [
+          "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/artifacts/{role}": {
+      "get": {
+        "operationId": "get_artifact_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__artifacts__role__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Artifact",
+        "tags": [
+          "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/cancel": {
+      "post": {
+        "operationId": "cancel_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingPlanningTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Cancel Task",
+        "tags": [
+          "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/retry": {
+      "post": {
+        "operationId": "retry_task_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingPlanningTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Retry Task",
+        "tags": [
+          "video-editing-planning"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-sources": {
       "post": {
         "operationId": "upload_source_api_v1_video_studio_workspaces__workspace_id__editing_sources_post",
@@ -18092,6 +18981,73 @@
         "summary": "Cancel Task",
         "tags": [
           "video-editing-tasks"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/planning-tasks": {
+      "post": {
+        "operationId": "create_task_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__planning_tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingPlanningTaskCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingPlanningTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Task",
+        "tags": [
+          "video-editing-planning"
         ]
       }
     },
@@ -19576,6 +20532,67 @@
         "summary": "List Native Plans",
         "tags": [
           "video-editing-native-plans"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-planning-tasks": {
+      "get": {
+        "operationId": "list_tasks_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_planning_tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingPlanningTaskResponse"
+                  },
+                  "title": "Response List Tasks Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Planning Tasks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Tasks",
+        "tags": [
+          "video-editing-planning"
         ]
       }
     },

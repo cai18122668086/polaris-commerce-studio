@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -20,6 +21,37 @@ class ScriptResult(StrictVideoModel):
     title: str = Field(min_length=1, max_length=80)
     script: str = Field(min_length=10, max_length=3000)
     warnings: list[str] = Field(default_factory=list, max_length=12)
+
+
+def planner_endpoint(settings: Settings) -> dict[str, str] | None:
+    try:
+        base = urlsplit(settings.video_script_base_url)
+        _ = base.port
+    except ValueError:
+        return None
+    if (
+        base.scheme != "https"
+        or not base.hostname
+        or base.username
+        or base.password
+        or base.query
+        or base.fragment
+    ):
+        return None
+    return {
+        "host": base.hostname,
+        "fingerprint": hashlib.sha256(
+            settings.video_script_base_url.rstrip("/").encode()
+        ).hexdigest(),
+    }
+
+
+def planner_configured(settings: Settings) -> bool:
+    return bool(
+        settings.video_script_planning_enabled
+        and settings.video_script_api_key.get_secret_value()
+        and planner_endpoint(settings)
+    )
 
 
 def video_source_url(url: str) -> str:

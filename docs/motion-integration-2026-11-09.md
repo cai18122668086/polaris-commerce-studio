@@ -235,3 +235,29 @@ CLI 首次检查因没有注册本片 source asset ID 失败，原实例保留�
 89 项相关回归（82 项 Motion/剪辑、7 项生产锁检查）通过，357 个 app 文件 Windows/Linux mypy、后端 Ruff、前端类型和剪辑组件 ESLint 通过。协议测试使用明确的模拟转录与 Pillow 小字体字节，只验证输入/边界/容量和拒绝逻辑；真实字体、原生出口及实际视频证据来自上述网站任务，不能混作同一类证据。仍有 jsonschema.RefResolver 与 jieba/pkg_resources 的依赖弃用提示；没有因此更换原库或解除版本检查。
 
 这一轮是同一工程候选的字幕质量修复，不算多条不同创意成品。全库依旧 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收。获准后的实际腾力模型语义任务、其余原生组配方和依赖、音乐音效、文稿事实核验及正式验收片继续待实施。未调用付费模型、推送、部署或发布。
+
+上述字幕分页与原生换行修复保存于本地提交 `8ece88e`。以下把语义规划从 CLI 准备接入持久化网站任务。
+
+## 独立语义任务队列、冻结输入与计费恢复边界
+
+新增迁移 0047：`video_editing_planning_tasks` / `video_editing_planning_attempts`，与成片任务分表。prepare 只准备请求，generate 必须引用已准备记录；同一准备记录只能创建一个执行任务，由数据库唯一约束处理并发双击或不同请求编号的重复提交。任务有独立状态、尝试、租约、取消、幂等、来源转录产物与 SHA、模型名、原库版本、项目选组快照、当前素材卡和产物目录。准备完成是 prepared，不伪装 completed 的成片或模型结果。
+
+新增 `/editing-tasks/{id}/planning-tasks`、项目规划列表、规划状态、取消、重试和鉴权产物下载，共 6 条路径。API 只持久化任务，HTTP 请求线程不连接 broker 或模型。editing-maintenance 为两个队列派送；新 `editing-planning` Celery 队列和独立 worker 负责完整性检查、实际转录读取、请求构建及获准后的生成。API/worker/下载均校验用户、工作区、项目、原片与转录归属；下载还校验规划目录范围、文件大小与摘要。响应不暴露服务器文件路径。
+
+准备会核对原片物理文件摘要和已完成父任务的不可变转录，复制精确转录字节并保存 input-lineage。模型素材卡目前只有同一项目的实际原片说话人，标明不是商品实拍证据；卡中没有本地路径或凭据。完整 132 组、原方法规则、当前项目选组快照及实际词 ID 进入请求，词和分句的结构化时间字段不发给模型，模型仍只输出词 ID、关系与原生字段锚点。返回候选的文字和定位区间由服务器依实际词点还原，不用模型猜时间。
+
+输入合同冻结请求摘要、转录字节摘要、原库、选组版本、模型和网关身份。网关记录只含主机和标准地址指纹，不含密钥；不接收用户信息、查询参数或片段形式的网关地址。准备后模型/选组/网关变化，以及排队期间网关或源文件变化，都会在付费提交前拒绝，要求重新准备。构建请求的代码或 schema 变化导致摘要不符也不会悄悄按新输入收费。已有执行任务的幂等查询仍返回原任务。
+
+generate 沿用原腾力脚本服务配置，新增 feature flag 仍默认 false。任务稳定 provider 目录保存唯一的 semantic-submit-intent，尝试目录只放该尝试的转录和血缘。模型响应先保存，再解析合同；空 choices 等不合规成功响应也留存受控响应封套，不能因为解析失败重复付费。旧 worker 丢失租约后的迟到响应仍可保存，但失去租约便不能发布语义结果；新尝试可重新校验已有响应，付费开关随后关闭也不妨碍这种只读恢复。intent 已存在但响应未确认时，API 不允许自动重发；取消只能停止后续处理，不能承诺撤销已提交请求的费用。状态机的 SQLite 租约同步比较问题在单元测试中发现并以 synchronize_session=False 修正后才进行真实网页测试。
+
+新网页“语义规划任务”可选择某条成片的实际转录、准备请求、读取固定输入、下载 JSON、查看任务、取消或恢复。界面区别“请求已准备 · 未调用模型”与“规划候选已返回 · 待核对”，生成按钮说明最大输出 5000 tokens、输入另计与网关计费。当前真实执行按钮 disabled，后端也以 EDITING_PLANNING_DISABLED / 503 拒绝 generate，不是仅靠前端隐藏。语义结果类型使用严格 SemanticPlan，locked_by_user 仍只能 false；模型候选即使通过合同，也明确为 semantic_review=unreviewed、native_render_state=not_compiled，不自动成为原生编排或确认稿。
+
+真实网页初次联调发现嵌套 label 的可访问名称混入选项文字，已为转录下拉框明确 aria-label。实际准备任务初版 `c798f299-12a9-4f80-baaf-91b7bf270e81` 保留；网关身份冻结补齐后又从网页创建 `3253ba8e-a7fc-4136-9273-e94e999f72fd`，父任务为字幕修正版 `2b511873-062d-4b1f-8ba4-61d3f9bca625`。两次都是实际 Redis / 独立 worker 1 次处理，prepared 后刷新仍可读取，没有模拟模型结果写入真实库。
+
+最新请求含完整 132 组、240 个实际转录单位和 1 张当前原片素材卡，243866 字节，模型 gpt-6.1-sol，网关 api.tengliapi.xyz；请求规范化 SHA256 `8b224ea988c00f920dd3aa4286b13ad9816c29d6042ea95abdbb26c6c7572027`，网页下载原始 JSON SHA256 `b4c764460a1daa65b3c22319bc07f0e2de8e3be534619bca4ca298ce0f652132`，两种序列化的对应关系已计算核验。下载文件 `C:/tl/planning/website-prepared-request.json`。证据同目录 website-planning-queue-evidence.json / website-prepared-task-result.json / website-paid-gate-evidence.json；首版证据另存 *-initial 文件。已查看 `C:/tl/preflight/website-planning-request-prepared.png`。直接调用 generate 也返回 503，未增加执行任务、未创建 provider intent，semantic 为 null、调用次数为 0。网页与产物准备成功不代表已完成实际模型语义测试，也没有在本阶段生成新视频。
+
+101 项相关回归通过，JUnit 为 `C:/tl/planning/planning-current-regression.xml`（0 failures / errors / skipped），包含归属与路径、准备幂等、单一执行、无 broker 的请求线程、broker 断线持久化、选组/网关变更、响应不明、错误封套/JSON、租约失效、迟到响应和关闭付费后的只读恢复。模型部分使用明确的模拟提供方与协议转录，仅验证合同和调用边界，没有真实腾力模型调用，不能用它证明语义正确。360 个 app 文件 Windows/Linux mypy、变更后端 Ruff、前端类型与两个剪辑组件 ESLint 通过。旧 OpenAPI 路径和 schema 逐项结构比较均未改变，只增加 6 条路径；证据 openapi-backward-compatibility.json。0047 SQLite 升降级测试保留既存行，PostgreSQL 只生成离线 SQL，实际 PG 升级未执行。
+
+Compose 增加独立规划 worker 和显式 provider 配置占位引用；渲染 worker 不接收该规划配置，密钥值未写入文件或日志。合并配置 --quiet 检查通过，没有构建、启动 Compose、部署或发布。当前本机 API / 规划 worker 的 VIDEO_EDITING_PLANNING_ENABLED 与 VIDEO_SCRIPT_PLANNING_ENABLED 都为 false。再次 fetch GitHub main 仍为 `106d1e3eb17a87b89576d3f97c7ec8c9edf05e5a`，主目录 HEAD 22fc356、81 项未提交条目保持隔离。原 Motion 1426 项再次校验通过。
+
+待继续：实际获准的腾力模型调用与语义验收、模型结果到可信当前原生配方的采用链路、剩余 132 组接口/变体/数字与 Hypit 复合参数、缺失字体和原合同问题、音乐音效、事实核验及正式多创意试片。全库运行/验收计数仍 5 样本成功 / 2 失败 / 125 未实测 / 0 用户验收，不能因为全量目录已进入请求而增加运行数量。没有付费调用、推送或部署。

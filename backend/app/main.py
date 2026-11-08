@@ -73,6 +73,7 @@ from .video_editing_library_note_routes import (
     router as video_editing_library_note_router,
 )
 from .video_editing_native_plan_routes import router as video_editing_native_plan_router
+from .video_editing_planning_routes import router as video_editing_planning_router
 from .video_editing_routes import router as video_editing_router
 from .video_editing_task_routes import router as video_editing_task_router
 from .video_editing_transcript_routes import router as video_editing_transcript_router
@@ -552,6 +553,7 @@ def create_app(
     application.include_router(video_avatar_uploads_router)
     application.include_router(video_editing_router)
     application.include_router(video_editing_native_plan_router)
+    application.include_router(video_editing_planning_router)
     application.include_router(video_editing_task_router)
     application.include_router(video_editing_library_note_router)
     application.include_router(video_editing_transcript_router)

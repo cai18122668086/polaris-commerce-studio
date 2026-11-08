@@ -7,6 +7,7 @@ import threading
 
 from .config import Settings
 from .database import build_database
+from .video_editing_planning_worker import recover as recover_planning
 from .video_editing_worker import recover
 
 
@@ -27,6 +28,7 @@ def main() -> None:
         while not stop.is_set():
             try:
                 count = recover(factory)
+                count += recover_planning(factory)
                 if count:
                     logging.info("Editing tasks dispatched: %s", count)
             except Exception:

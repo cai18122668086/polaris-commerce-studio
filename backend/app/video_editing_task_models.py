@@ -200,3 +200,62 @@ class EditingNativePlanRecord(TimestampMixin, Base):
     recipes_sha256: Mapped[str] = mapped_column(String(64))
     choice_snapshot: Mapped[dict] = mapped_column(json_type())
     details: Mapped[dict] = mapped_column(json_type(), default=dict)
+
+
+class EditingPlanningTaskRecord(TimestampMixin, Base):
+    __tablename__ = "video_editing_planning_tasks"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "owner_user_id",
+            "request_id",
+            name="uq_editing_planning_request",
+        ),
+        UniqueConstraint("prepared_task_id", name="uq_editing_prepared_execution"),
+        Index("ix_editing_planning_queue", "status", "lease_until"),
+        Index(
+            "ix_editing_planning_project", "workspace_id", "owner_user_id", "project_id"
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("video_projects.id"))
+    source_id: Mapped[str] = mapped_column(ForeignKey("video_editing_sources.id"))
+    base_task_id: Mapped[str] = mapped_column(ForeignKey("video_editing_tasks.id"))
+    base_transcript_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("video_editing_artifacts.id")
+    )
+    base_transcript_sha256: Mapped[str] = mapped_column(String(64))
+    prepared_task_id: Mapped[str | None] = mapped_column(
+        ForeignKey("video_editing_planning_tasks.id")
+    )
+    request_id: Mapped[str] = mapped_column(String(40))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    library_release: Mapped[str] = mapped_column(String(64))
+    mode: Mapped[str] = mapped_column(String(16))
+    model: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(24), default="queued")
+    stage: Mapped[str] = mapped_column(String(40), default="queued")
+    revision: Mapped[int] = mapped_column(default=0)
+    attempts: Mapped[int] = mapped_column(default=0)
+    owner_token: Mapped[str | None] = mapped_column(String(40))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_requested: Mapped[bool] = mapped_column(default=False)
+    snapshot: Mapped[dict] = mapped_column(json_type(), default=dict)
+    checkpoint: Mapped[dict] = mapped_column(json_type(), default=dict)
+    result: Mapped[dict] = mapped_column(json_type(), default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+
+
+class EditingPlanningAttemptRecord(Base):
+    __tablename__ = "video_editing_planning_attempts"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("video_editing_planning_tasks.id"), index=True
+    )
+    number: Mapped[int] = mapped_column()
+    status: Mapped[str] = mapped_column(String(24))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))

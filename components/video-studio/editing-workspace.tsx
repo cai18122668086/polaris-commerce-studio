@@ -8,6 +8,7 @@ import type { components } from "@/lib/api/generated/openapi";
 import { TranscriptEditor } from "./transcript-editor";
 import { EditingLibrary } from "./editing-library";
 import { EditingNativePlans } from "./editing-native-plans";
+import { EditingPlanning } from "./editing-planning";
 import styles from "./editing-workspace.module.css";
 
 type Artifact = { id: string; role: string; url: string; bytes: number; duration_ms: number | null };
@@ -26,6 +27,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [loadError, setLoadError] = useState("");
   const [correctionTask, setCorrectionTask] = useState("");
   const [libraryOpened, setLibraryOpened] = useState(false);
+  const [planningOpened, setPlanningOpened] = useState(false);
   const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
@@ -78,6 +80,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
     {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} onCreated={async () => { setTasks(await reload()); }} />}
+    {saved && <details onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} />}</details>}
     <details onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>原库目录与项目选组备忘</summary>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
     <div className={styles.tasks}>{tasks.map(task => {
       const final = task.artifacts.find(a => a.role === "final");

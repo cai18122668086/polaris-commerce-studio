@@ -3,6 +3,7 @@
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,11 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .motion_parameter_contracts import input_contract
-from .video_assistance_provider import VideoAssistanceProvider
+from .video_assistance_provider import (
+    VideoAssistanceProvider,
+    planner_configured,
+    planner_endpoint,
+)
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_word_bindings import word_bindings
@@ -324,6 +329,8 @@ def generate(
     provider: VideoAssistanceProvider,
     asset_cards: list[dict] | None = None,
     choice_snapshot: dict[str, Any] | None = None,
+    expected_request_sha256: str | None = None,
+    guard: Callable[[], None] | None = None,
 ) -> SemanticPlan:
     """Single paid submission only after explicit operational authorization.
 
@@ -331,7 +338,10 @@ def generate(
     Persisted responses can be revalidated without a provider call. A lost
     response leaves an intent marker and blocks a second billed submission.
     """
-    if not settings.video_editing_planning_enabled:
+    if (
+        not settings.video_editing_planning_enabled
+        and not (root / "semantic-response.json").is_file()
+    ):
         raise ApiError(503, "EDITING_PLANNING_DISABLED", "语义规划尚未启用。")
     body, evidence = build_request(
         transcript,
@@ -340,6 +350,15 @@ def generate(
         asset_cards,
         choice_snapshot,
     )
+    if (
+        expected_request_sha256
+        and evidence["request_sha256"] != expected_request_sha256
+    ):
+        raise ApiError(
+            409,
+            "EDITING_PLAN_INPUT_CHANGED",
+            "已准备的规划输入已变化，请重新准备后核对。",
+        )
     root.mkdir(parents=True, exist_ok=True)
     intent = root / "semantic-submit-intent.json"
     response_path = root / "semantic-response.json"
@@ -365,25 +384,52 @@ def generate(
                 "已保存的规划响应不属于当前请求。",
             )
     else:
+        if not settings.video_editing_planning_enabled or (
+            isinstance(provider, VideoAssistanceProvider)
+            and not planner_configured(settings)
+        ):
+            raise ApiError(503, "EDITING_PLANNING_DISABLED", "付费语义规划尚未开放。")
+        if guard:
+            guard()
         # Exclusive creation happens before any mutable request/response write.
         # A competing task attempt cannot replace the winning request payload.
         try:
             with intent.open("x", encoding="utf-8") as stream:
-                json.dump(evidence, stream, ensure_ascii=False, indent=2)
+                json.dump(
+                    {**evidence, "gateway": planner_endpoint(settings)},
+                    stream,
+                    ensure_ascii=False,
+                    indent=2,
+                )
         except FileExistsError:
             raise ApiError(
                 409, "EDITING_PLAN_ALREADY_SUBMITTED", "此规划请求已提交或结果待核对。"
             ) from None
         atomic_json(root / "semantic-request.json", body)
+        if guard:
+            guard()
         data = provider.request("planner", "POST", "/v1/chat/completions", json=body)
+        choices = data.get("choices")
+        message = (
+            choices[0].get("message")
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict)
+            else None
+        )
+        content = message.get("content") if isinstance(message, dict) else None
         response = {
             "request_sha256": evidence["request_sha256"],
-            "content": data["choices"][0]["message"]["content"],
+            # Save the received envelope before contract parsing, including
+            # malformed successful responses, so recovery never bills again.
+            "content": content if isinstance(content, str) else None,
+            "provider_envelope_valid": isinstance(content, str),
             "model": data.get("model"),
             "usage": data.get("usage"),
             "provider_id": data.get("id"),
+            "gateway": planner_endpoint(settings),
         }
         atomic_json(response_path, response)
+    if guard:
+        guard()
     content = response["content"]
     plan = SemanticPlan.model_validate_json(content)
     validate_plan(

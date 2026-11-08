@@ -260,6 +260,64 @@ class EditingNativePlanResponse(StrictVideoModel):
     created_at: datetime
 
 
+class EditingPlanningTaskCreate(StrictVideoModel):
+    request_id: UUID
+    mode: Literal["prepare", "generate"] = "prepare"
+    prepared_task_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def prepared_execution(self) -> Self:
+        if (self.mode == "generate") != (self.prepared_task_id is not None):
+            raise ValueError("Model execution needs exactly one prepared request")
+        return self
+
+
+class EditingPlanningSpan(StrictVideoModel):
+    beat_id: str
+    group_id: str
+    text: str
+    first_token_id: str
+    last_token_id: str
+    start_ms: int
+    end_ms: int
+    timing_review: Literal["unreviewed"] = "unreviewed"
+
+
+class EditingPlanningTaskResponse(StrictVideoModel):
+    id: str
+    project_id: str
+    source_id: str
+    base_task_id: str
+    base_transcript_artifact_id: str
+    base_transcript_sha256: str
+    library_release: str
+    choice_snapshot_sha256: str
+    prepared_task_id: str | None
+    mode: Literal["prepare", "generate"]
+    model: str
+    gateway_host: str | None
+    status: Literal["queued", "running", "prepared", "completed", "failed", "cancelled"]
+    stage: str
+    revision: int
+    attempts: int
+    cancel_requested: bool
+    error_code: str | None
+    created_at: datetime
+    execution_available: bool
+    call_state: Literal["not_submitted", "intent_saved", "response_saved"]
+    request_sha256: str | None
+    request_bytes: int | None
+    catalog_group_count: int | None
+    max_output_tokens: int = 5000
+    text_status: str | None
+    semantic: "SemanticPlan | None"
+    aligned_spans: list[EditingPlanningSpan] = Field(default_factory=list)
+    semantic_origin: Literal["tengli_gateway"] | None
+    semantic_review: Literal["unreviewed"] = "unreviewed"
+    native_render_state: Literal["not_compiled"] = "not_compiled"
+    artifacts: list[EditingArtifactResponse]
+
+
 class NativeTextAnchor(StrictVideoModel):
     path: str = Field(min_length=1, max_length=200)
     first_token_id: str
@@ -328,3 +386,6 @@ class SemanticPlan(StrictVideoModel):
     beats: list[SemanticBeat] = Field(min_length=1, max_length=60)
     missing_materials: list[str] = Field(default_factory=list, max_length=40)
     warnings: list[str] = Field(default_factory=list, max_length=40)
+
+
+EditingPlanningTaskResponse.model_rebuild()

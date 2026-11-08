@@ -1,8 +1,15 @@
 # Explicit local opt-in overlay. No changes to production compose or provider keys.
 # docker compose -f compose.yaml -f compose.editing.yaml config (review only)
+x-editing-planner-environment: &editing-planner-environment
+  POLARIS_VIDEO_EDITING_PLANNING_ENABLED: ${POLARIS_VIDEO_EDITING_PLANNING_ENABLED:-false}
+  POLARIS_VIDEO_EDITING_PLAN_MODEL: ${POLARIS_VIDEO_EDITING_PLAN_MODEL:-gpt-6.1-sol}
+  POLARIS_VIDEO_SCRIPT_PLANNING_ENABLED: ${POLARIS_VIDEO_SCRIPT_PLANNING_ENABLED:-false}
+  POLARIS_VIDEO_SCRIPT_BASE_URL: ${POLARIS_VIDEO_SCRIPT_BASE_URL:-https://api.tengliapi.xyz}
+  POLARIS_VIDEO_SCRIPT_API_KEY: ${POLARIS_VIDEO_SCRIPT_API_KEY:-}
 services:
   api:
     environment:
+      <<: *editing-planner-environment
       POLARIS_VIDEO_EDITING_ENABLED: "true"
       POLARIS_VIDEO_EDITING_NATIVE_PLAN_ENABLED: ${POLARIS_VIDEO_EDITING_NATIVE_PLAN_ENABLED:-false}
       POLARIS_VIDEO_EDITING_LIBRARY_DIR: /motion
@@ -70,6 +77,12 @@ services:
     <<: *editing-worker
     environment: *editing-environment
     command: ["python", "-m", "app.video_editing_maintenance", "--interval", "30"]
+
+  editing-planning-worker:
+    <<: *editing-worker
+    environment:
+      <<: [*editing-environment, *editing-planner-environment]
+    command: ["python", "-m", "celery", "-A", "app.celery_app:celery_app", "worker", "--queues=editing-planning", "--concurrency=1", "--loglevel=INFO"]
 
 volumes:
   polaris_editing_tasks:

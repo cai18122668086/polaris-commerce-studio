@@ -7,7 +7,12 @@ celery_app = Celery(
     "polaris",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks", "app.ecommerce_worker", "app.video_editing_worker"],
+    include=[
+        "app.tasks",
+        "app.ecommerce_worker",
+        "app.video_editing_worker",
+        "app.video_editing_planning_worker",
+    ],
 )
 celery_app.conf.update(
     task_serializer="json",
@@ -27,5 +32,6 @@ celery_app.conf.update(
         "polaris.cancel_job": {"queue": "default"},
         "polaris.process_crawl_task": {"queue": "crawl"},
         "polaris.process_editing_task": {"queue": "editing"},
+        "polaris.process_editing_planning_task": {"queue": "editing-planning"},
     },
 )

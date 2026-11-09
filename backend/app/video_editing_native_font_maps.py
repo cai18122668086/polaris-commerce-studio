@@ -1,4 +1,4 @@
-"""Reuse the original SG-S09 font coverage within one native subprocess."""
+"""Reuse bundled font coverage in audited original subtitle subprocesses."""
 
 import importlib
 import os
@@ -12,13 +12,20 @@ from .motion_library import read_json, sha256
 
 _SUBTITLES = Path("src/engines/workspace/字幕动效_可编辑库_20261105")
 _NATIVE = Path("commercial_runtime/native.py")
-_ENTRY = _SUBTITLES / "SG-S09/render.py"
+_CORE = _SUBTITLES / "SG-production/core.py"
+_BG_PRODUCTION = _SUBTITLES / "SG-BG-production/production.py"
+_ENTRY_DIGESTS = {
+    **dict.fromkeys(
+        ("SG-S03", "SG-S06", "SG-S09"),
+        "9fda50a11d6abf2fc1e7c51e34b0ef75015c732b07fd1704218b8f20b0d3075c",
+    ),
+    "SG-S02": "87274b5e410831638782fbe4bb3c241b3e546a29d8a32ba3832bf67a25ce68ed",
+    "SG-S10": "3ebc549e6eefe28a4c0cb35f5b6af79c2ccf4352d2b01cdd0a137eb5b7dfd712",
+    "BG-S06": "03636383dc5b06001f3335b81c2e27929204874d2d47fb15412971595fb577d6",
+}
 _SOURCES = {
     _NATIVE: "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
-    _ENTRY: "9fda50a11d6abf2fc1e7c51e34b0ef75015c732b07fd1704218b8f20b0d3075c",
-    _SUBTITLES / "SG-production/core.py": (
-        "7755fe9dd4cc000001d7e64366aac4e44036ab6734e0bfa2ef946529ccfe2d79"
-    ),
+    _CORE: "7755fe9dd4cc000001d7e64366aac4e44036ab6734e0bfa2ef946529ccfe2d79",
     _SUBTITLES / "SG-production/mechanisms.py": (
         "48cd8bf1afd634da9fee47a372048f541902112480ad9fce054d825dcc4bcd9f"
     ),
@@ -59,7 +66,7 @@ def _font_reader(font_root: Path) -> type[TTFont]:
     return NativeCoverageFont
 
 
-def install_sg_s09_font_maps(package: Path, root: Path) -> None:
+def install_native_font_maps(package: Path, root: Path) -> None:
     if "--job" in sys.argv:
         job = Path(sys.argv[sys.argv.index("--job") + 1]).resolve()
         if job.parent != root / "plans":
@@ -70,11 +77,18 @@ def install_sg_s09_font_maps(package: Path, root: Path) -> None:
             return
     else:
         return
-    if read_json(job)["group_id"] != "SG-S09":
+    group = read_json(job)["group_id"]
+    if group not in _ENTRY_DIGESTS:
         return
+    entry = _SUBTITLES / group / "render.py"
+    sources = {**_SOURCES, entry: _ENTRY_DIGESTS[group]}
+    if group == "BG-S06":
+        sources[_BG_PRODUCTION] = (
+            "0a4732fed7c52585bb82fd4b7a8a8235599bee15167e95e9beb585f1ede83d09"
+        )
     if any(
         not (package / path).is_file() or sha256(package / path) != digest
-        for path, digest in _SOURCES.items()
+        for path, digest in sources.items()
     ):
         return
 
@@ -90,8 +104,13 @@ def install_sg_s09_font_maps(package: Path, root: Path) -> None:
 
     def load(path: str | Path, name: str = "motion_native") -> Any:
         module = load_module(path, name)
-        if Path(path).resolve() == package / _ENTRY:
-            module.validate.__globals__["TTFont"] = reader
+        if Path(path).resolve() == package / entry:
+            core = sys.modules.get("core")
+            if (
+                core is not None
+                and Path(core.__file__ or "").resolve() == package / _CORE
+            ):
+                core.__dict__["TTFont"] = reader
         return module
 
     native.module = load

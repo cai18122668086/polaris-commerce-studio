@@ -12,8 +12,8 @@ type Controls = { music: "keep" | "lower" | "off"; segments: string[] };
 const defaultControls: Controls = { music: "keep", segments: [] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
-export function EditingNativePlans({ workspaceId, projectId, onCreated }: {
-  workspaceId: string; projectId: string; onCreated: () => Promise<void>;
+export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion }: {
+  workspaceId: string; projectId: string; onCreated: () => Promise<void>; plansVersion: number;
 }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [busy, setBusy] = useState("");
@@ -31,7 +31,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated }: {
     }).then(result => { if (!controller.signal.aborted) { setPlans(unwrapApiResponse(result)); setError(""); } })
       .catch(() => { if (!controller.signal.aborted) setError("暂时无法读取动效编排，请重试。"); });
     return () => controller.abort();
-  }, [workspaceId, projectId, reload]);
+  }, [workspaceId, projectId, reload, plansVersion]);
   const render = async (plan: Plan, selected: Controls) => {
     setBusy(plan.id); setError("");
     try {
@@ -66,7 +66,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated }: {
       const activeEffects = plan.beats.filter(beat => beat.group_id !== "Z-M00" && !selected.segments.includes(beat.id));
       const activeGroups = new Set(activeEffects.map(beat => beat.group_id));
       const available = plan.render_available && plan.continuous_preview_available;
-      return <article key={plan.id}>
+      return <article key={plan.id} id={`editing-native-plan-${plan.id}`}>
       <b>{plan.audience_question}</b>
       {plan.overlay_template && <p className={styles.note}>组合模板 · {plan.overlay_template.name}</p>}
       <p>{plan.origin === "operator_candidate" ? "人工工程候选 · 未经人工验收" : "腾力模型候选 · 待核对"}</p>

@@ -6,10 +6,12 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
 from app import video_editing_planning_worker as planning_worker
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
+from app.video_editing_contracts import SemanticPlan, TranscriptToken
 from app.video_editing_native_plans import (
     frozen_plan_snapshot,
     register_gateway_plan,
@@ -20,8 +22,11 @@ from app.video_editing_planning_provenance import (
 )
 from app.video_editing_task_models import (
     EditingArtifactRecord,
+    EditingNativePlanRecord,
     EditingPlanningTaskRecord,
+    EditingTaskRecord,
 )
+from app.video_editing_transcript_store import read_transcript_artifact
 from tests.test_video_editing_native_plans import saved_plan, task_owner
 from tests.test_video_editing_planning_tasks import (
     Provider,
@@ -34,12 +39,76 @@ from tests.test_video_projects import base
 pytest_plugins = ["tests.test_video_projects"]
 
 
-def captured_job(video, tmp_path, monkeypatch):
+def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=False):
     client, auth, ws, settings, source, task, semantic, recipes = saved_plan(
         video, tmp_path, monkeypatch
     )
     monkeypatch.setattr(planning_worker, "verify_package", lambda _: None)
     client.app.state.editing_planning_dispatcher = lambda _: None
+    if template:
+        package = settings.video_editing_library_dir
+        catalog = read_json(package / "catalog/groups.json")
+        groups = ["AHG-S02", "SG-S09", "SG-S02", "SG-S06", "BG-S04"]
+        for row, gid in zip(catalog["groups"][1:6], groups, strict=True):
+            row.update(id=gid, input_template=f"{gid}.json")
+            atomic_json(
+                package / row["input_template"],
+                {**read_json(package / "effect.json"), "group_id": gid},
+            )
+        atomic_json(package / "catalog/groups.json", catalog)
+        with client.app.state.session_factory() as session:
+            stored = session.get(EditingTaskRecord, task["id"])
+            artifact = session.scalar(
+                select(EditingArtifactRecord).where(
+                    EditingArtifactRecord.task_id == stored.id,
+                    EditingArtifactRecord.role == "transcript",
+                )
+            )
+            transcript = read_transcript_artifact(
+                artifact, stored, settings.video_editing_tasks_dir
+            )
+            transcript.tokens = [
+                TranscriptToken(
+                    id=f"v{i}", text=gid, start_ms=i * 500, end_ms=(i + 1) * 500
+                )
+                for i, gid in enumerate([*groups, groups[0]])
+            ]
+            atomic_json(Path(artifact.path), transcript.model_dump(mode="json"))
+            artifact.sha256, artifact.bytes = (
+                sha256(Path(artifact.path)),
+                Path(artifact.path).stat().st_size,
+            )
+            session.commit()
+        semantic = SemanticPlan.model_validate(
+            {
+                **semantic.model_dump(mode="json"),
+                "beats": [
+                    {
+                        "id": f"beat-{i}",
+                        "group_id": token.text,
+                        "relation": "explanation",
+                        "first_token_id": token.id,
+                        "last_token_id": token.id,
+                        "reason": "wire fixture",
+                        "native_text": [
+                            {
+                                "path": "/content/text",
+                                "first_token_id": token.id,
+                                "last_token_id": token.id,
+                            }
+                        ],
+                        "native_events": [
+                            {"path": path, "token_id": token.id, "edge": edge}
+                            for path, edge in (
+                                ("/events/enter_start", "start"),
+                                ("/events/enter_end", "end"),
+                            )
+                        ][1 if missing_event and i == 0 else 0 :],
+                    }
+                    for i, token in enumerate(transcript.tokens)
+                ],
+            }
+        )
 
     def protocol_request(transcript, package, model, cards, choices, template=None):
         # Explicit 132-group wire fixture; not a real Tengli result or library.
@@ -69,7 +138,18 @@ def captured_job(video, tmp_path, monkeypatch):
         }
 
     monkeypatch.setattr(planning_worker.planner, "build_request", protocol_request)
-    parent = prepare(client, ws, settings, task)
+    if template:
+        response = client.post(
+            base(ws) + f"/editing-tasks/{task['id']}/planning-tasks",
+            json={"request_id": str(uuid4()), "template_id": "label-compare-v1"},
+        )
+        assert response.status_code == 200, response.text
+        parent = response.json()
+        planning_worker.process(
+            parent["id"], settings, client.app.state.session_factory
+        )
+    else:
+        parent = prepare(client, ws, settings, task)
     enable_fixture(settings)
     job = create(client, ws, task["id"], "generate", parent["id"]).json()
     provider = Provider(semantic)
@@ -91,6 +171,40 @@ def captured_job(video, tmp_path, monkeypatch):
         job["id"],
         parent["id"],
     )
+
+
+@pytest.mark.parametrize("missing_event", [False, True])
+def test_overlay_candidate_endpoint_uses_frozen_words_and_replays_without_model(
+    video, tmp_path, monkeypatch, missing_event
+):
+    client, ws, settings, _, task, semantic, _, job, parent = captured_job(
+        video, tmp_path, monkeypatch, template=True, missing_event=missing_event
+    )
+    settings.video_editing_native_plan_enabled = True
+    path = base(ws) + "/editing-planning-tasks/{}/native-candidate"
+    assert (
+        client.post(path.format(parent)).json()["error"]["code"]
+        == "EDITING_PLANNING_RESULT_REQUIRED"
+    )
+    assert client.post(path.format(uuid4())).status_code == 404
+    response = client.post(path.format(job))
+    if missing_event:
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "EDITING_TEMPLATE_ANCHORS_REQUIRED"
+        return
+    assert response.status_code == 200, response.text
+    candidate = response.json()
+    assert candidate["overlay_template"]["id"] == "label-compare-v1"
+    assert candidate["continuous_preview_available"] and len(candidate["beats"]) == 6
+    assert "recipes" not in candidate
+    assert client.post(path.format(job)).json()["id"] == candidate["id"]
+    with client.app.state.session_factory() as session:
+        native = session.get(EditingNativePlanRecord, candidate["id"])
+        assert native.semantic == semantic.model_dump(mode="json")
+        assert native.recipes["entries"]["beat-0"]["recipe"]["config"]["content"] == {
+            "text": None
+        }
+        assert native.details["planning_provenance"]["base_task_id"] == task["id"]
 
 
 def register(client, ws, settings, task, recipes, planning_id, request_id=None):

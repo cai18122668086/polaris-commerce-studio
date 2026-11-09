@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from typing import Any, cast
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
@@ -13,10 +13,17 @@ from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .motion_library import sha256
 from .video_editing_contracts import (
+    EditingNativePlanResponse,
     EditingOverlayTemplate,
     EditingPlanningTaskCreate,
     EditingPlanningTaskResponse,
 )
+from .video_editing_native_plans import (
+    plan_response,
+    register_gateway_plan,
+    transparent_original_groups,
+)
+from .video_editing_overlay_recipes import PROFILE_ID
 from .video_editing_overlay_templates import overlay_templates
 from .video_editing_planning_store import (
     create_planning_task,
@@ -105,6 +112,33 @@ def get_task(
     return planning_response(
         own_planning_task(session, workspace, str(task_id)), enabled(request)
     )
+
+
+@router.post(
+    "/editing-planning-tasks/{task_id}/native-candidate",
+    response_model=EditingNativePlanResponse,
+)
+def create_native_candidate(
+    task_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict[str, Any]:
+    require_workspace_write(workspace)
+    settings = enabled(request)
+    row = own_planning_task(session, workspace, str(task_id))
+    own_project(session, workspace, row.project_id)
+    if not settings.video_editing_native_plan_enabled:
+        raise ApiError(503, "EDITING_NATIVE_PLAN_DISABLED", "原生编排服务尚未开放。")
+    candidate = register_gateway_plan(
+        session,
+        settings,
+        workspace.workspace_id,
+        workspace.principal.user_id,
+        row.id,
+        str(uuid5(NAMESPACE_URL, f"tengli:{PROFILE_ID}:{row.id}")),
+    )
+    return plan_response(candidate, settings, transparent_original_groups(settings))
 
 
 @router.post(

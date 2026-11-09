@@ -39,7 +39,7 @@ def _get(value: dict, path: str) -> Any:
     return parent[key]
 
 
-def _set(value: dict, path: str, assigned: Any) -> None:
+def set_native_field(value: dict, path: str, assigned: Any) -> None:
     parent, key = _parent(value, path)
     # Never create arbitrary configuration paths on behalf of a model.
     parent[key]  # Existing key/index required.
@@ -262,7 +262,7 @@ def compile_native_job(
                     "Preserve the original named media slot mapping: " + path
                 )
         elif category == "output_owned_by_compiler":
-            _set(config, path, str(root / "renders/component.mp4"))
+            set_native_field(config, path, str(root / "renders/component.mp4"))
         elif category == "clock_owned_by_compiler":
             if path.startswith("/media/"):
                 if (
@@ -278,11 +278,13 @@ def compile_native_job(
             key = path.rsplit("/", 1)[-1]
             duration = (native["clock"]["end_ms"] - native["clock"]["start_ms"]) / 1000
             if key == "frames":
-                _set(config, path, math.ceil(duration * contract["native_fps"]))
+                set_native_field(
+                    config, path, math.ceil(duration * contract["native_fps"])
+                )
             elif key in {"duration", "duration_seconds"} and not path.startswith(
                 "/media/"
             ):
-                _set(config, path, duration)
+                set_native_field(config, path, duration)
             elif key == "fps":
                 if value != contract["native_fps"]:
                     raise ValueError(
@@ -301,7 +303,7 @@ def compile_native_job(
     for path, value in assignments.items():
         if _get(config, path) is not None:
             raise ValueError("A binding would overwrite existing native content")
-        _set(config, path, value)
+        set_native_field(config, path, value)
     if browser_clock is not None:
         if browser_font is None:
             raise ValueError("Browser card font is not bound")

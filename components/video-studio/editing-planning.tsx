@@ -14,7 +14,9 @@ const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = { EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。", EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。", EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。", EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。", EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。", EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。" };
 
-export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId: string; projectId: string; tasks: BaseTask[] }) {
+export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan }: {
+  workspaceId: string; projectId: string; tasks: BaseTask[]; onNativePlan: () => void;
+}) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState("");
   const [materialIds, setMaterialIds] = useState<string[]>([]);
@@ -24,6 +26,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [nativePlans, setNativePlans] = useState<Record<string, string>>({});
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const candidates = tasks.filter(task => task.status === "completed" && task.artifacts.some(a => a.role === "transcript"));
   const refresh = useCallback(async () => unwrapApiResponse(await apiClient.GET(`${root}/projects/{project_id}/editing-planning-tasks`, {
@@ -72,6 +75,17 @@ export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId
     } catch (caught) { setError(caught instanceof Error ? caught.message : "操作未确认，请刷新后查看。"); }
     finally { setBusy(false); }
   };
+  const adopt = async (job: Job) => {
+    setBusy(true); setError("");
+    try {
+      const plan = unwrapApiResponse(await apiClient.POST(`${root}/editing-planning-tasks/{task_id}/native-candidate`, {
+        params: { path: { workspace_id: workspaceId, task_id: job.id } }, signal: AbortSignal.timeout(12000),
+      }));
+      setNativePlans(current => ({ ...current, [job.id]: plan.id }));
+      onNativePlan();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "原生编排未确认，可重试此操作。"); }
+    finally { setBusy(false); }
+  };
   return <section aria-label="语义规划任务">
     <p className={styles.note}>先用已有成片的实际转录准备完整请求，再生成重点与选组候选。准备不会重新配音、识别或调用模型。</p>
     <label>使用哪条成片的实际转录？<select aria-label="使用哪条成片的实际转录？" value={selected} onChange={event => setSelected(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
@@ -100,7 +114,10 @@ export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId
         <button type="button" disabled={busy || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>生成重点与选组候选（付费）</button>
         {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
       </>}
-      {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}</li>)}</ul><p className={styles.note}>这是腾力模型的规划候选，语义与事实待核对；尚未编译原生参数或生成成片。</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
+      {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}</li>)}</ul><p className={styles.note}>语义与事实待核对。原生编排生成后可进入候选预览。</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
+      {job.status === "completed" && job.overlay_template && (nativePlans[job.id]
+        ? <a href={`#editing-native-plan-${nativePlans[job.id]}`}>查看本次原生编排</a>
+        : <button type="button" disabled={busy} onClick={() => void adopt(job)}>生成原生编排</button>)}
       {job.status === "failed" && <p role="alert" className={styles.error}>{errors[job.error_code || ""] || "本次规划未完成，请核对输入或服务配置。"}</p>}
       {job.call_state === "intent_saved" && <p className={styles.note}>请求已登记提交，结果未确认；不能自动重发付费请求。取消只能停止后续处理。</p>}
       {["queued", "running"].includes(job.status) && <button type="button" disabled={busy || job.cancel_requested} onClick={() => void action(job, "cancel")}>{job.cancel_requested ? "正在取消" : job.call_state === "not_submitted" ? "取消" : "取消后续处理"}</button>}

@@ -72,7 +72,7 @@ class EpisodeRecipeBundle(StrictVideoModel):
     planning_origin: Literal["operator_candidate", "tengli_gateway"]
     source_review: str = Field(min_length=1, max_length=2000)
     design: dict[str, Any]
-    typography: dict[str, Any]
+    typography: dict[str, Any] | None
     layout_policy: dict[str, Any]
     protected_regions: list[dict[str, Any]] = Field(default_factory=list)
     entries: dict[str, NativeEpisodeEntry]
@@ -92,6 +92,10 @@ class EpisodeRecipeBundle(StrictVideoModel):
     def sound_mode_matches_design(self) -> Self:
         if (self.sound_mode == "native_mix") != (self.sound is not None):
             raise ValueError("Native mix requires a current sound design")
+        if self.typography is None and not self.overlay_template_id:
+            raise ValueError(
+                "Source-sized typography is only available to overlay templates"
+            )
         return self
 
 
@@ -236,10 +240,11 @@ def compile_episode(
             raise EditingFailure("EDITING_HYPIT_INTERNAL_ONLY") from error
     episode.update(
         design=copy.deepcopy(authoring.design),
-        typography=copy.deepcopy(authoring.typography),
         layout_policy=copy.deepcopy(authoring.layout_policy),
         protected_regions=copy.deepcopy(authoring.protected_regions),
     )
+    if authoring.typography is not None:
+        episode["typography"] = copy.deepcopy(authoring.typography)
     if episode["design"].get("caption_font_id") != options["caption_font_id"]:
         raise EditingFailure("EDITING_CAPTION_DESIGN_MISMATCH")
     episode["editorial"].update(

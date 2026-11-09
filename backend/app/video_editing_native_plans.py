@@ -164,21 +164,34 @@ def register_gateway_plan(
     owner_user_id: str,
     planning_task_id: str,
     request_id: str,
-    recipes: EpisodeRecipeBundle,
+    recipes: EpisodeRecipeBundle | None = None,
 ) -> EditingNativePlanRecord:
-    """Trusted adapter/CLI only; semantic JSON always comes from the server job."""
+    """Adopt a captured server result with a trusted or generated recipe."""
     from .video_editing_planning_provenance import verify_gateway_planning
 
     verified = verify_gateway_planning(
         session, settings, workspace_id, owner_user_id, planning_task_id
     )
+    template = verified.task.snapshot.get("overlay_template")
+    if recipes is None:
+        from .video_editing_overlay_recipes import build_overlay_recipes
+
+        if template is None:
+            raise ApiError(
+                422, "EDITING_TEMPLATE_REQUIRED", "此规划需要先选择组合模板。"
+            )
+        recipes = build_overlay_recipes(
+            settings.video_editing_library_dir,
+            verified.semantic,
+            verified.transcript,
+            verified.task.base_transcript_sha256,
+            template,
+        )
     if recipes.planning_origin != "tengli_gateway":
         raise ApiError(
             422, "EDITING_PLANNER_PROVENANCE_REQUIRED", "配方来源需与已捕获规划一致。"
         )
-    if recipes.overlay_template_id != (
-        verified.task.snapshot.get("overlay_template") or {}
-    ).get("id"):
+    if recipes.overlay_template_id != (template or {}).get("id"):
         raise ApiError(
             422, "EDITING_TEMPLATE_CHANGED", "原生编排必须沿用已准备的组合模板版本。"
         )
@@ -295,6 +308,15 @@ def _register_plan(
     choice_snapshot = stored_choice_snapshot(
         session, workspace_id, owner_user_id, task.project_id
     )
+    if (
+        planning_provenance
+        and choice_snapshot["sha256"] != planning_provenance["choice_snapshot_sha256"]
+    ):
+        raise ApiError(
+            409,
+            "EDITING_CHOICES_CHANGED_REPLAN_REQUIRED",
+            "选组已变化，请重新准备并核对规划。",
+        )
     assets = source_assets(source)
     if planning_cards is not None:
         assets.update(

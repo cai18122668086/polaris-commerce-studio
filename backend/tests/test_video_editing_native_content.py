@@ -5,6 +5,7 @@ from app.video_editing_native_content import (
     chapter_ordinal,
     number_glyphs,
     translation_labels,
+    year_glyphs,
 )
 
 
@@ -78,6 +79,27 @@ def test_original_number_glyphs_preserve_each_spoken_unit_and_its_reveal():
     native["text"][4]["token_ids"] = ["t4", "t6", "t5"]
     with pytest.raises(ValueError, match="within its own caption"):
         number_glyphs(native)
+
+
+def test_year_glyphs_preserve_spoken_digits_and_reveal_anchor():
+    native = {
+        "text": [
+            {
+                "path": "/content/year",
+                "text": "二〇二六年",
+                "token_ids": ["t1", "t2", "t3", "t4", "t5"],
+            }
+        ],
+        "events": [{"path": "/events/year_frame", "token_id": "t1", "edge": "start"}],
+    }
+    proof = year_glyphs(native)
+    assert proof["display_text"] == "2026年" and proof["text"] == "二〇二六年"
+    native["events"][0]["token_id"] = "t2"
+    with pytest.raises(ValueError, match="first digit"):
+        year_glyphs(native)
+    native["text"][0]["text"] = "二十六年"
+    with pytest.raises(ValueError, match="four spoken digits"):
+        year_glyphs(native)
 
 
 def test_translation_labels_require_matching_spoken_occurrences():

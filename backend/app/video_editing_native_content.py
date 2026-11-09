@@ -8,6 +8,8 @@ from .video_editing_contracts import SemanticBeat, Transcript
 CHAPTER_GROUPS = frozenset(("Z-M05", "Z-M15"))
 CHAPTER_PATH = "/content/ordinal"
 NUMBER_GROUP = "W-R07"
+YEAR_GROUP = "AH-S07"
+YEAR_PATH = "/content/year"
 TRANSLATION_GROUP = "W-R02"
 _ORDINALS = (
     "First",
@@ -22,6 +24,10 @@ _ORDINALS = (
     "Tenth",
 )
 _DIGITS = dict(zip("零一二三四五六七八九两", "01234567892", strict=True))
+_YEAR_DIGITS = str.maketrans(
+    "零〇一二三四五六七八九０１２３４５６７８９", "001234567890123456789"
+)
+_YEAR = re.compile(r"(?:[0-9]{4}|[０-９]{4}|[零〇一二三四五六七八九]{4})年")
 _NUMBER = re.compile(
     r"([0-9]{1,3}|[零一二两三四五六七八九十])"
     r"(千克|公斤|毫升|斤|克|升|瓶|件|个|包|盒|元|块|条|天)?"
@@ -96,6 +102,22 @@ def number_glyphs(native: dict[str, Any]) -> list[dict[str, Any]]:
     if first["unit"] != second["unit"] or (first["unit"] and label != first["unit"]):
         raise ValueError("Native comparison must preserve the same spoken unit")
     return readings
+
+
+def year_glyphs(native: dict[str, Any]) -> dict[str, Any]:
+    year = next((row for row in native["text"] if row["path"] == YEAR_PATH), None)
+    if not year or not _YEAR.fullmatch(year["text"]):
+        raise ValueError("Native year needs four spoken digits followed by 年")
+    entry = next(
+        (row for row in native["events"] if row["path"] == "/events/year_frame"), None
+    )
+    if (
+        not entry
+        or entry["token_id"] != year["token_ids"][0]
+        or entry["edge"] != "start"
+    ):
+        raise ValueError("Native year reveal must use the spoken year's first digit")
+    return {**year, "display_text": year["text"].translate(_YEAR_DIGITS)}
 
 
 def translation_labels(native: dict[str, Any], authored: Any) -> list[dict[str, Any]]:

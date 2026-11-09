@@ -42,9 +42,12 @@ from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_native_content import (
     CHAPTER_PATH,
     NUMBER_GROUP,
+    YEAR_GROUP,
+    YEAR_PATH,
     chapter_ordinal,
     number_glyphs,
     translation_labels,
+    year_glyphs,
 )
 from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
@@ -302,6 +305,10 @@ def compile_native_job(
         readings = number_glyphs(native)
         assignments.update({row["path"]: row["display_text"] for row in readings})
         native["number_glyphs"] = readings
+    if group["id"] == YEAR_GROUP:
+        year = year_glyphs(native)
+        assignments[YEAR_PATH] = year["display_text"]
+        native["year_glyphs"] = year
     if "translation_labels" in recipe:
         translations = translation_labels(native, recipe["translation_labels"])
         assignments.update({row["path"]: row["display_text"] for row in translations})
@@ -513,7 +520,12 @@ def compile_native_job(
             **(
                 {
                     key: native[key]
-                    for key in ("chapter", "number_glyphs", "translation_labels")
+                    for key in (
+                        "chapter",
+                        "number_glyphs",
+                        "year_glyphs",
+                        "translation_labels",
+                    )
                     if key in native
                 }
             ),

@@ -31,6 +31,14 @@ from .video_editing_episode_compiler import (
     NativeEpisodeEntry,
     NativePlacement,
 )
+from .video_editing_judgment import (
+    JUDGMENT_BACKGROUND,
+    JUDGMENT_CONCLUSION,
+    JUDGMENT_EVENTS,
+    JUDGMENT_GROUP,
+    JUDGMENT_IMAGES,
+    JUDGMENT_LABELS,
+)
 from .video_editing_materials import project_image_digests
 from .video_editing_native_compiler import set_native_field
 from .video_editing_native_layout import BACKDROP_GROUP
@@ -81,6 +89,19 @@ _ENTRY_SOUNDS = {
     "SG-S10": ("/events/enter_start", _SLIDE),
 }
 _CARD_ENTRY_PATHS = tuple(CARD_LANDMARKS)[:3]
+_JUDGMENT_SOUNDS = dict(
+    zip(
+        JUDGMENT_EVENTS[:5],
+        (
+            _SLIDE,
+            _SLIDE,
+            _SELECT,
+            _IMPACT,
+            _CLICK,
+        ),
+        strict=True,
+    )
+)
 _OPENING_PRESENTER = "/media/presenter/path"
 _OPENING_ROLES = {
     "/content/caption": ("/events/text_frame", 14),
@@ -389,7 +410,12 @@ def _entry_sound(
     card_path: str | None = None,
 ) -> NativeSoundCue:
     path, selection = (
-        (card_path, _SLIDE) if card_path is not None else _ENTRY_SOUNDS[beat.group_id]
+        (
+            card_path,
+            _JUDGMENT_SOUNDS[card_path] if beat.group_id == JUDGMENT_GROUP else _SLIDE,
+        )
+        if card_path is not None
+        else _ENTRY_SOUNDS[beat.group_id]
     )
     event = next(row for row in anchors["events"] if row["path"] == path)
     asset_id, source_start, length, peak = (
@@ -420,6 +446,7 @@ def _entry_sound(
             QUESTION_GROUP: "整帧追问入场时给一次短提示，口播继续。",
             CARD_GROUP: "图卡进入时给一次短提示，口播继续。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
+            JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
         }.get(beat.group_id, "原生文字动效入场时给一次短提示，口播继续。"),
         source_start_seconds=source_start,
         trim_duration_seconds=length,
@@ -506,6 +533,122 @@ def _rotation_entry(
             "config": config,
             "placeholders": slots,
             "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
+        },
+    ), anchors
+
+
+def _judgment_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group, embedded_judgment_caption=False)
+    images = project_image_digests(cards)
+    presenters = {
+        card["id"]
+        for card in cards
+        if card["kind"] == "original_video"
+        and card["sha256"] == transcript.source_sha256
+    }
+    try:
+        anchors = word_bindings(beat, transcript, contract, set(images) | presenters)
+        text = {row["path"]: row for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        if (
+            beat.relation != "contrast"
+            or len(beat.relation_items) != 2
+            or set(text) != {*JUDGMENT_LABELS, JUDGMENT_CONCLUSION}
+            or set(events) != set(JUDGMENT_EVENTS)
+            or set(media) != {JUDGMENT_BACKGROUND, *JUDGMENT_IMAGES}
+            or set(media.values()) != set(beat.asset_ids)
+            or media[JUDGMENT_BACKGROUND] not in presenters
+            or any(media[path] not in images for path in JUDGMENT_IMAGES)
+            or images[media[JUDGMENT_IMAGES[0]]] == images[media[JUDGMENT_IMAGES[1]]]
+        ):
+            raise ValueError("W-R14 requires two distinct current comparison images")
+        for item, label, image, event in zip(
+            beat.relation_items,
+            JUDGMENT_LABELS,
+            JUDGMENT_IMAGES,
+            JUDGMENT_EVENTS[2:4],
+            strict=True,
+        ):
+            if (
+                item.asset_ids != [media[image]]
+                or item.native_text_paths != [label]
+                or item.native_media_paths != [image]
+                or events[event]["token_id"] not in text[label]["token_ids"]
+            ):
+                raise ValueError("Each judgment mark follows its recorded label")
+        times = [events[path]["value"] for path in JUDGMENT_EVENTS]
+        conclusion = text[JUDGMENT_CONCLUSION]
+        clock = anchors["clock"]
+        duration = (clock["end_ms"] - clock["start_ms"]) / 1000
+        if (
+            not 0
+            < times[0]
+            < times[1]
+            < times[2]
+            < times[3]
+            < times[4]
+            < times[5]
+            < duration
+            or not 1 <= len(conclusion["text"]) <= 8
+            or events[JUDGMENT_EVENTS[4]]["token_id"] != conclusion["token_ids"][0]
+            or events[JUDGMENT_EVENTS[4]]["edge"] != "start"
+            or times[5] - times[4] < len(conclusion["text"]) / 8
+        ):
+            raise ValueError(
+                "Preserve ordered comparison actions and conclusion reading time"
+            )
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_JUDGMENT_INPUTS_REQUIRED",
+            "证据判断需要同期原片、两份对应图片和按原顺序出现的勾叉及结论词点。",
+        ) from error
+    config = read_json(inside(package, group["input_template"]))
+    config["content"]["captions"] = []
+    config["media"]["background"]["end_policy"] = "error"
+    slots = [
+        *text,
+        *events,
+        *media,
+        "/media/background/offset_seconds",
+        "/media/background/duration_seconds",
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(
+            layer="scene",
+            rect=[0, 0, 1, 1],
+            reason="保留原勾叉判断整帧构图和同期动态底片。",
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": JUDGMENT_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-evidence-judgment-v1",
+            "design_reason": "保留原判断标记、竖排字及遮罩退出，统一绘制主字幕。",
+            "parameter_decisions": {
+                key: "采用原生角色和几何，由本期实录驱动事件。" for key in config
+            },
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[JUDGMENT_GROUP]),
+            "media_clocks": [
+                {
+                    "media_path": JUDGMENT_BACKGROUND,
+                    "policy": "transcript_source_window",
+                }
+            ],
         },
     ), anchors
 
@@ -665,6 +808,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = ROTATION_EVENTS
+        elif beat.group_id == JUDGMENT_GROUP:
+            entries[beat.id], anchors = _judgment_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = JUDGMENT_EVENTS[:5]
         elif beat.group_id in OPENING_GROUPS:
             entries[beat.id], anchors = _opening_entry(
                 package, group, beat, transcript, asset_cards or []
@@ -679,7 +827,9 @@ def build_overlay_recipes(
             for path in paths
         )
     has_scene = any(entry.placement.layer == "scene" for entry in entries.values())
-    has_rotation = any(beat.group_id == ROTATION_GROUP for beat in beats)
+    has_bottom_caption_lane = any(
+        beat.group_id in {ROTATION_GROUP, JUDGMENT_GROUP} for beat in beats
+    )
     return EpisodeRecipeBundle(
         version="tengli.episode-recipes/1",
         library_release=MOTION_SHA256,
@@ -721,7 +871,7 @@ def build_overlay_recipes(
                 0.055,
                 0.255,
                 0.89,
-                0.735 if has_rotation else 0.625,
+                0.735 if has_bottom_caption_lane else 0.625,
             ],
         },
         protected_regions=[

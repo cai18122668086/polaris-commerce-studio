@@ -398,6 +398,9 @@ class EditingTemplateImageRequirement(StrictVideoModel):
     group_id: str
     required_distinct_images: int
     selected_distinct_images: int
+    transparent_image_ids: list[str] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class EditingPlanningTaskResponse(StrictVideoModel):

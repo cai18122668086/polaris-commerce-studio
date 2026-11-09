@@ -31,6 +31,7 @@ from .video_editing_hypit_strips import (
     stagger_profile,
     strip_fields,
 )
+from .video_editing_judgment import JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_GROUP, LINE_HAND_PATH, line_template
 from .video_editing_media_clocks import clock_profile
 from .video_editing_native_content import (
@@ -53,8 +54,6 @@ from .video_editing_question_branch import (
 
 SILHOUETTE_GROUPS = frozenset(("W-R04", "W-R09"))
 SILHOUETTE_PATHS = tuple(f"/media/silhouettes/{i}/path" for i in range(7))
-JUDGMENT_GROUP = "W-R14"
-JUDGMENT_BRUSH_FONT = "font-06b2048c592b1dae"
 
 TEXT_NAMES = {
     "text",
@@ -126,6 +125,7 @@ def input_contract(
     live_package_presenter: bool = True,
     current_line_art: bool = True,
     embedded_line_caption: bool = True,
+    embedded_judgment_caption: bool = True,
     current_why_props: bool = True,
     embedded_why_caption: bool = True,
 ) -> dict[str, Any]:
@@ -143,6 +143,8 @@ def input_contract(
         template = live_package_template(template)
     if group["id"] == LINE_GROUP and current_line_art:
         template = line_template(template, embedded_caption=embedded_line_caption)
+    if group["id"] == JUDGMENT_GROUP and not embedded_judgment_caption:
+        template["content"]["captions"] = []
     if group["id"] == WHY_GROUP and current_why_props:
         template = why_template(template, embedded_caption=embedded_why_caption)
     schema = read_json(package / group["input_schema"])

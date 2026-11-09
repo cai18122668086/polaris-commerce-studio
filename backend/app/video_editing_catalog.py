@@ -11,11 +11,11 @@ from typing import Any
 from .motion_library import MOTION_SHA256, inside, read_json, sha256
 from .motion_library_validation import group_status
 from .motion_local_dependencies import DependencyState, dependency_state
-from .motion_parameter_contracts import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import LibraryChoiceSnapshot
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
 from .video_editing_hypit_strips import SLANT_GROUP
+from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import WHY_FONT, WHY_GROUP, WHY_PROPS
 from .video_editing_overlay_templates import AUTOMATIC_TEMPLATE_DEPENDENCIES

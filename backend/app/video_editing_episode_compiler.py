@@ -28,10 +28,12 @@ from .video_editing_hypit_strips import (
     stagger_audio_frame,
     stagger_events,
 )
+from .video_editing_judgment import JUDGMENT_GROUP
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
+    JUDGMENT_TEMPLATE_ID,
     LEGACY_PICTURE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
     PICTURE_TEMPLATE_ID,
@@ -568,6 +570,11 @@ def compile_episode(
                 )
         episode["production"]["beats"].append(production_beat)
     caption_lane = {
+        JUDGMENT_TEMPLATE_ID: (
+            (JUDGMENT_GROUP,),
+            1244,
+            "将主字幕放在原判断画布的底部通道。",
+        ),
         LEGACY_PICTURE_TEMPLATE_ID: (
             (CARD_GROUP,),
             732,

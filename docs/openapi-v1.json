@@ -6100,6 +6100,20 @@
           "selected_distinct_images": {
             "title": "Selected Distinct Images",
             "type": "integer"
+          },
+          "transparent_image_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transparent Image Ids"
           }
         },
         "required": [

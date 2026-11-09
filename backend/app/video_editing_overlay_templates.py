@@ -5,6 +5,7 @@ from copy import deepcopy
 from .video_editing_browser_clocks import CARD_GROUP, FRUIT_LIST_FONTS, SPLIT_TITLE_FONT
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
+from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 
 MIN_OVERLAY_TYPES = 5
@@ -13,6 +14,7 @@ LEGACY_PICTURE_TEMPLATE_ID = "picture-compare-v1"
 PICTURE_TEMPLATE_ID = "picture-compare-v2"
 ROTATION_TEMPLATE_ID = "rotation-cards-v1"
 PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
+JUDGMENT_TEMPLATE_ID = "evidence-judgment-v1"
 _OPENING_PURPOSES = {
     "LYO01": (
         "用原放大与暗角强调一条口播短句",
@@ -38,6 +40,7 @@ _OPENING_FONT = "font-06e1a30f687ab7d3"
 AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     CARD_GROUP: (SPLIT_TITLE_FONT,),
     QUESTION_GROUP: (QUESTION_FONT,),
+    JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     ROTATION_GROUP: (*FRUIT_LIST_FONTS, ROTATION_MATTE),
     "LYO01": (_OPENING_FONT,),
     "LYO02": (_OPENING_FONT, ROTATION_MATTE),
@@ -98,6 +101,28 @@ _TEMPLATES = {
         "id": "roll-compare-v2",
         "name": "滚动报价与规格对照",
         "slots": [*_ROLL_SLOTS, _ACTION_SLOT],
+    },
+    JUDGMENT_TEMPLATE_ID: {
+        "id": JUDGMENT_TEMPLATE_ID,
+        "name": "证据判断与口播重点",
+        "slots": [
+            {
+                "group_id": JUDGMENT_GROUP,
+                "purpose": "按实录用两份本期图片对照依据和反例，再显示竖排结论",
+                "layer": "scene",
+                "binding": (
+                    "仅用于口播明确比较的两个对象和后续判断。"
+                    "background 用本期原片。按原生上下两行的出画顺序，"
+                    "第一个标签 left_label 对应右上透明图 person_right 和勾，"
+                    "第二个标签 right_label 对应左下图 evidence_left 和叉。"
+                    "relation_items 按该顺序分别绑定实录标签和对应图片。"
+                    "按原序绑定两次素材入场、勾、叉、结论和退场的词点。"
+                    "结论入场从实际结论首词起，主字幕由网站统一绘制。"
+                ),
+            },
+            *_ROLL_SLOTS,
+            _ACTION_SLOT,
+        ],
     },
     PRESENTER_TEMPLATE_ID: {
         "id": PRESENTER_TEMPLATE_ID,
@@ -200,6 +225,7 @@ def overlay_templates() -> list[dict]:
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,
+            JUDGMENT_TEMPLATE_ID,
         )
     ]
 

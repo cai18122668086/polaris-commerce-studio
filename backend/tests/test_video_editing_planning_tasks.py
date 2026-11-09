@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import wave
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -19,6 +20,8 @@ from app import video_editing_planning_worker as worker
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_contracts import SemanticPlan
+from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
+from app.video_editing_native_sound import verify_rendered_sound
 from app.video_editing_overlay_templates import overlay_template
 from app.video_editing_question_branch import QUESTION_FONT
 from app.video_editing_task_models import (
@@ -99,6 +102,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "picture-compare-v2",
         "rotation-cards-v1",
         "presenter-openings-v1",
+        "evidence-judgment-v1",
     }
     assert all(len(row["slots"]) >= 10 for row in options)
     rotation = next(row for row in options if row["id"] == "rotation-cards-v1")
@@ -648,3 +652,132 @@ def test_current_card_rejects_reused_project_bytes_and_presenter_slot():
             validate_template_images(plan(ids), runtime(cards), cards)
     validate_template_images(plan(good, group="BG-S04"), runtime([source]), [source])
     validate_template_images(plan(good), {"version": "legacy"}, [])
+
+
+def test_judgment_preparation_recognizes_only_meaningful_image_transparency(
+    video, tmp_path, monkeypatch
+):
+    client, _, ws, settings, _, task, semantic = setup(video, tmp_path, monkeypatch)
+    factory = client.app.state.session_factory
+    root = base(ws)
+    materials = []
+    for alpha in (0, 255, 128):
+        image = Image.new("RGBA", (20, 20), (100, 30, 20, alpha))
+        if alpha == 128:
+            image.putpixel((0, 0), (0, 0, 0, 0))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        response = client.post(
+            root + f"/projects/{task['project_id']}/editing-materials",
+            data={
+                "request_id": str(uuid4()),
+                "label": "本期说明图",
+                "description": "透明素材测试",
+            },
+            files={"file": ("evidence.png", buffer.getvalue(), "image/png")},
+        )
+        materials.append(response.raise_for_status().json())
+    created = (
+        client.post(
+            root + f"/editing-tasks/{task['id']}/planning-tasks",
+            json={
+                "request_id": str(uuid4()),
+                "template_id": "evidence-judgment-v1",
+                "material_ids": [m["id"] for m in materials],
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
+    fixture = Provider(semantic)
+    worker.process(created["id"], settings, factory, fixture)
+    result = (
+        client.get(root + "/editing-planning-tasks/" + created["id"])
+        .raise_for_status()
+        .json()
+    )
+    assert result["status"] == "prepared", result
+    assert fixture.calls == 0
+    assert result["project_image_requirements"] == [
+        {
+            "group_id": "W-R14",
+            "required_distinct_images": 2,
+            "selected_distinct_images": 3,
+            "transparent_image_ids": [materials[2]["asset_id"]],
+        }
+    ]
+
+
+def test_judgment_sound_follows_the_original_remapped_mark_frames(tmp_path):
+    shot = {
+        "group_id": "W-R14",
+        "layer": "scene",
+        "start_seconds": 0.410,
+        "config": {
+            "content": {"captions": []},
+            "timing": {
+                "events": {
+                    "evidence_entries": [0.320, 0.500],
+                    "check_in": 0.680,
+                    "cross_in": 5.460,
+                    "conclusion_in": 7.120,
+                    "exit_in": 7.560,
+                }
+            },
+        },
+    }
+    # The original uses t > 1.1/1.75 on the rounded virtual 30fps clock.
+    # The much longer check-to-cross interval delays the first check pixels.
+    assert judgment_entry_frame(shot, 30, JUDGMENT_EVENTS[2]) == 37
+    assert judgment_entry_frame(shot, 30, JUDGMENT_EVENTS[3]) == 176
+    with pytest.raises(ValueError, match="visible entry"):
+        judgment_entry_frame(shot, 30, JUDGMENT_EVENTS[5])
+
+    atomic_json(tmp_path / "episode.json", {"output": {"fps": 30}, "shots": [shot]})
+    for path in ("voice.wav", "fx.wav", "fx-cues/0000.wav"):
+        output = tmp_path / "audio" / path
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(output), "wb") as stream:
+            stream.setparams((1, 2, 48000, 0, "NONE", "not compressed"))
+            stream.writeframes(bytes(96))
+    seconds = 37 / 30
+    cue = {
+        "asset_id": "fixture",
+        "asset_sha256": "source",
+        "anchor_seconds": seconds,
+        "onset_policy": "measured",
+        "word_binding": {"path": JUDGMENT_EVENTS[2]},
+        "judgment_entry": {
+            "shot_index": 0,
+            "event_path": JUDGMENT_EVENTS[2],
+            "output_frame": 37,
+        },
+    }
+    native = {
+        "audio_signal": {"finite": True, "overload": False, "peak_dbfs": -20},
+        "fx_receipt": {
+            "sha256": sha256(tmp_path / "audio/fx.wav"),
+            "events": [
+                {
+                    "index": 0,
+                    "asset_id": "fixture",
+                    "source_sha256": "source",
+                    "anchor_basis": {"kind": "explicit_current_clock"},
+                    "anchor_seconds": seconds,
+                    "effective_onset_seconds": seconds,
+                    "lead_removed_seconds": 0,
+                    "processed_sha256": sha256(tmp_path / "audio/fx-cues/0000.wav"),
+                }
+            ],
+        },
+    }
+    plan = {"fx": [cue], "music": []}
+    assert (
+        verify_rendered_sound(tmp_path, native, plan)["fx"][0][
+            "effective_onset_seconds"
+        ]
+        == seconds
+    )
+    cue["judgment_entry"]["output_frame"] += 1
+    with pytest.raises(ValueError, match="binding or measured onset"):
+        verify_rendered_sound(tmp_path, native, plan)

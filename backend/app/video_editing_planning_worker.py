@@ -238,8 +238,9 @@ def process(
                 raise ApiError(
                     409, "EDITING_PLAN_SOURCE_CHANGED", "转录不属于已选原片。"
                 )
+            verified_materials = {}
             if not (root / "provider/semantic-submit-intent.json").exists():
-                verify_material_cards(
+                verified_materials = verify_material_cards(
                     session,
                     settings,
                     source,
@@ -289,7 +290,7 @@ def process(
                 template,
             )
             image_requirements = template_image_requirements(
-                template, snapshot["asset_cards"]
+                template, snapshot["asset_cards"], verified_materials
             )
             if image_requirements:
                 runtime["project_image_requirements"] = image_requirements

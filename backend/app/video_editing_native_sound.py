@@ -14,6 +14,11 @@ from .video_editing_browser_rotation import (
 )
 from .video_editing_contracts import NativeRenderEdits, Transcript
 from .video_editing_hypit_strips import verify_stagger_entry
+from .video_editing_judgment import (
+    JUDGMENT_EVENTS,
+    JUDGMENT_GROUP,
+    judgment_entry_frame,
+)
 from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_question_branch import (
     QUESTION_BRANCH,
@@ -208,7 +213,7 @@ def compile_sound(
             value / fps if unit == "frames" else value
         )
         seconds = entry_seconds
-        question_entry = package_entry = rotation_entry = None
+        question_entry = package_entry = rotation_entry = judgment_entry = None
         if (
             shot["group_id"] == QUESTION_GROUP
             and shot["layer"] in {"overlay", "scene"}
@@ -249,6 +254,21 @@ def compile_sound(
                 "output_frame": frame,
                 "event_path": cue.event_path,
             }
+        if (
+            shot["group_id"] == JUDGMENT_GROUP
+            and shot["config"]["content"].get("captions") == []
+            and cue.event_path in JUDGMENT_EVENTS[:-1]
+            and cue.phase == "entry"
+        ):
+            output_fps = episode["output"]["fps"]
+            frame = judgment_entry_frame(shot, output_fps, cue.event_path)
+            seconds = frame / output_fps
+            native_ref = {}
+            judgment_entry = {
+                "shot_index": shot_index,
+                "output_frame": frame,
+                "event_path": cue.event_path,
+            }
         if hypit_entry:
             # The original compositor applies setpts in the output frame time
             # base. Its positive fractional shot origin truncates to a frame.
@@ -277,6 +297,7 @@ def compile_sound(
                 **({"question_entry": question_entry} if question_entry else {}),
                 **({"package_entry": package_entry} if package_entry else {}),
                 **({"rotation_entry": rotation_entry} if rotation_entry else {}),
+                **({"judgment_entry": judgment_entry} if judgment_entry else {}),
             }
         )
 
@@ -398,6 +419,20 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
                 and rotation_entry["output_frame"] == frame
+                and cue["anchor_seconds"] == frame / fps
+            )
+        elif judgment_entry := cue.get("judgment_entry"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            fps = episode["output"]["fps"]
+            shot = episode["shots"][judgment_entry["shot_index"]]
+            path = judgment_entry["event_path"]
+            frame = judgment_entry_frame(shot, fps, path)
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and shot["config"]["content"].get("captions") == []
+                and path == cue["word_binding"]["path"]
+                and judgment_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
         else:

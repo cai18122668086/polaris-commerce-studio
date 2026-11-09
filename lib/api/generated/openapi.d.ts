@@ -6013,6 +6013,8 @@ export interface components {
             required_distinct_images: number;
             /** Selected Distinct Images */
             selected_distinct_images: number;
+            /** Transparent Image Ids */
+            transparent_image_ids?: string[] | null;
         };
         /** EditingTranscriptRevisionCreate */
         EditingTranscriptRevisionCreate: {

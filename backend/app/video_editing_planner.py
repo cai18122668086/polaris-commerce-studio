@@ -278,6 +278,14 @@ def build_request(
             "图片数充足时也须逐项根据本期素材描述匹配。"
             "同一张图片的重复上传和口播人物视频不能充当三张用途图。"
         )
+    if runtime and any(
+        "transparent_image_ids" in row
+        for row in runtime.get("project_image_requirements", [])
+    ):
+        message += (
+            "W-R14的person_right只能绑定transparent_image_ids所列的真实透明素材。"
+            "缺少时跳过该槽，使用本模板中语义合适的动效。"
+        )
     body = {
         "model": model,
         "stream": False,

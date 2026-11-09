@@ -16,8 +16,6 @@ from jsonschema import Draft202012Validator
 from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
 from .motion_local_dependencies import dependency_state, local_dependencies
 from .motion_parameter_contracts import (
-    JUDGMENT_BRUSH_FONT,
-    JUDGMENT_GROUP,
     SHIFTED_GEOMETRY_EVENTS,
     SILHOUETTE_GROUPS,
     SILHOUETTE_PATHS,
@@ -58,6 +56,11 @@ from .video_editing_hypit_strips import (
     compile_flow_plate,
     compile_strips,
     strip_config_sha256,
+)
+from .video_editing_judgment import (
+    JUDGMENT_BACKGROUND,
+    JUDGMENT_BRUSH_FONT,
+    JUDGMENT_GROUP,
 )
 from .video_editing_line_branch import (
     LINE_BRUSH_FONT,
@@ -196,6 +199,9 @@ def compile_native_job(
     )
     line_art = beat.group_id == LINE_GROUP and "hand_sequence" in config["media"]
     embedded_line_caption = not line_art or config["content"].get("captions") != []
+    website_judgment = (
+        beat.group_id == JUDGMENT_GROUP and config["content"].get("captions") == []
+    )
     why_props = beat.group_id == WHY_GROUP and "question_props" in config["media"]
     embedded_why_caption = not why_props or config["content"].get("captions") != []
     contract = input_contract(
@@ -207,6 +213,7 @@ def compile_native_job(
         live_package_presenter=live_package_presenter,
         current_line_art=line_art,
         embedded_line_caption=embedded_line_caption,
+        embedded_judgment_caption=not website_judgment,
         current_why_props=why_props,
         embedded_why_caption=embedded_why_caption,
     )
@@ -256,6 +263,22 @@ def compile_native_job(
             embedded_caption=embedded_caption,
             live_background=live_question_background,
         )
+    if website_judgment:
+        template["content"]["captions"] = []
+        if (
+            beat.relation != "contrast"
+            or config["media"]["background"]["end_policy"] != "error"
+            or recipe.get("media_clocks")
+            != [
+                {
+                    "media_path": JUDGMENT_BACKGROUND,
+                    "policy": "transcript_source_window",
+                }
+            ]
+        ):
+            raise ValueError(
+                "W-R14 requires a spoken comparison and live original source"
+            )
     if beat.group_id in SILHOUETTE_GROUPS:
         slots = [
             {"kind": "image", "alpha": True, "path": None} for _ in SILHOUETTE_PATHS

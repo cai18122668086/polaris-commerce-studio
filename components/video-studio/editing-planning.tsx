@@ -110,7 +110,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan }:
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>本机待补原件的模板动效 · {job.unavailable_template_group_ids.join("、")}</p>}
       {job.project_image_requirements?.map(requirement => <p key={requirement.group_id} className={styles.note}>
         {requirement.group_id} · 本期已选 {requirement.selected_distinct_images} 张不同图片，图卡需要 {requirement.required_distinct_images} 张。
-        {requirement.selected_distinct_images < requirement.required_distinct_images && " 本次编排跳过该图卡，仍可使用同模板的其他动效。补图后可重新准备。"}
+        {requirement.transparent_image_ids && (" 其中可用于右上透明图位的图片有 " + requirement.transparent_image_ids.length + " 张。")}
+        {(requirement.selected_distinct_images < requirement.required_distinct_images || requirement.transparent_image_ids?.length === 0) && " 本次编排跳过该图卡，仍可使用同模板的其他动效。补图后可重新准备。"}
       </p>)}
       {job.request_bytes !== null && <p>{job.catalog_group_count} 组原库 · 请求 {job.request_bytes.toLocaleString()} 字节 · 输入版本 {job.request_sha256?.slice(0, 12)}</p>}
       {job.status === "prepared" && <>

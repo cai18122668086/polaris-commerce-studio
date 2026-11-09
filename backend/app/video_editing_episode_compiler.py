@@ -8,6 +8,8 @@ import copy
 import hashlib
 import json
 import math
+import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal, Self
 
@@ -17,6 +19,7 @@ from pydantic import Field, model_validator
 
 from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_captioning import write_caption_receipt
@@ -49,7 +52,12 @@ from .video_editing_overlay_templates import (
     overlay_template,
     validate_template_plan,
 )
-from .video_editing_pipeline import EditingFailure, baseline_documents, layout_captions
+from .video_editing_pipeline import (
+    EditingFailure,
+    baseline_documents,
+    layout_captions,
+    run,
+)
 from .video_editing_planner import validate_plan
 from .video_editing_question_card import question_card_a_shot
 from .video_editing_render_edits import (
@@ -145,6 +153,8 @@ def compile_episode(
     choice_snapshot: dict[str, Any] | None = None,
     verified_gateway_plan_hash: str | None = None,
     workspace_id: str | None = None,
+    *,
+    guard: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Prepare original episode/selection/bindings, without claiming a render."""
     root = root.resolve()
@@ -447,12 +457,61 @@ def compile_episode(
             assert entry is not None
             directory = root / "compiled-native" / f"{index:03}-{beat.group_id}"
             try:
+                readability = None
+                use_outline = (
+                    authoring.overlay_template_id == SUBTITLE_STORY_TEMPLATE_ID
+                    and beat.group_id == BG_OFFSET_GROUP
+                )
+                recipe = entry.recipe
+                if use_outline:
+                    recipe = copy.deepcopy(recipe)
+                    apply_outline(recipe["config"], "both")
+                    probe_dir = root / "readability-probes" / directory.name
+                    compile_native_job(
+                        package,
+                        probe_dir,
+                        beat,
+                        transcript,
+                        recipe,
+                        asset_files,
+                        native_bindings_file=settings.video_editing_native_bindings_file,
+                    )
+                    run(
+                        [
+                            settings.video_editing_python or sys.executable,
+                            "-B",
+                            "-X",
+                            "utf8",
+                            "-m",
+                            "app.video_editing_bg03_readability",
+                            "--package",
+                            str(package.resolve()),
+                            "--job",
+                            str(probe_dir / "job.json"),
+                        ],
+                        root,
+                        settings,
+                        guard or (lambda: None),
+                        "bg03_readability",
+                    )
+                    readability = read_json(probe_dir / "readability.json")
+                    profile = readability["selected"]
+                    if profile is None:
+                        raise ValueError(
+                            "BG-S03 subtitle roles collide without outlines"
+                        )
+                    apply_outline(recipe["config"], profile)
+                    recipe["parameter_decisions"]["fonts"] = {
+                        "both": "保持原字色、字号及原生双行细描边。",
+                        "body": "保持原字色和字号，仅对白字加原生细描边。",
+                        "clear": "保持原字色和字号，沿用无描边排版。",
+                    }[profile]
                 job = compile_native_job(
                     package,
                     directory,
                     beat,
                     transcript,
-                    entry.recipe,
+                    recipe,
                     asset_files,
                     native_bindings_file=settings.video_editing_native_bindings_file,
                 )
@@ -531,6 +590,7 @@ def compile_episode(
                             directory / "compile-receipt.json"
                         ),
                         "placement_reason": entry.placement.reason,
+                        **({"readability": readability} if readability else {}),
                     }
                 )
             except (

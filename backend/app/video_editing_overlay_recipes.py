@@ -7,6 +7,7 @@ from typing import Any
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, inside, read_json
 from .motion_parameter_contracts import input_contract
+from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     CARD_LANDMARKS,
@@ -234,6 +235,10 @@ def _entry(
     if beat.group_id in {"SG-S03", "BG-S03"}:
         for font in config["fonts"].values():
             font["shadow"].update(x=0, y=0, blur=0)
+    decisions = {key: "采用原生输入机制和本版网站模板配置。" for key in config}
+    if beat.group_id == BG_OFFSET_GROUP:
+        apply_outline(config, "both")
+        decisions["fonts"] = "保持原字色和字号，按原生分层检查选择深色描边。"
     for role, (minimum, maximum) in config.get("capacity", {}).items():
         path = "/content/" + config["role_content"][role]
         if not minimum <= len(text[path]) <= maximum:
@@ -262,9 +267,7 @@ def _entry(
             "schema_sha256": contract["schema_sha256"],
             "design_id": PROFILE_ID,
             "design_reason": "本期词点绑定原生透明字效。",
-            "parameter_decisions": {
-                key: "采用原生输入机制和本版网站模板配置。" for key in config
-            },
+            "parameter_decisions": decisions,
             "config": config,
             "placeholders": slots,
             "dependency_bindings": {},

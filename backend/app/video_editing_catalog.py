@@ -11,6 +11,7 @@ from .motion_library_validation import group_status
 from .motion_local_dependencies import dependency_state
 from .motion_parameter_contracts import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_browser_clocks import CARD_GROUP
+from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import LibraryChoiceSnapshot
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import WHY_FONT, WHY_GROUP, WHY_PROPS
@@ -20,6 +21,7 @@ _NATIVE_ENGINE_DEPENDENCIES = {
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     LINE_GROUP: (LINE_BRUSH_FONT,),
     WHY_GROUP: (WHY_FONT, *WHY_PROPS),
+    ROTATION_GROUP: (ROTATION_MATTE,),
     "CXBR01": ("font-43a890795ad133d7",),
     "LYO01": ("font-06e1a30f687ab7d3",),
     "LYO02": ("font-06e1a30f687ab7d3", _MATTING_MODEL),

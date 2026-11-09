@@ -7,6 +7,11 @@ from typing import Any, Literal, Self
 from pydantic import Field, model_validator
 
 from .motion_library import inside, read_json, sha256
+from .video_editing_browser_rotation import (
+    ROTATION_EVENTS,
+    ROTATION_GROUP,
+    rotation_entry_frame,
+)
 from .video_editing_contracts import NativeRenderEdits, Transcript
 from .video_editing_hypit_strips import verify_stagger_entry
 from .video_editing_native_content import PACKAGE_GROUP
@@ -203,7 +208,7 @@ def compile_sound(
             value / fps if unit == "frames" else value
         )
         seconds = entry_seconds
-        question_entry = package_entry = None
+        question_entry = package_entry = rotation_entry = None
         if (
             shot["group_id"] == QUESTION_GROUP
             and shot["layer"] in {"overlay", "scene"}
@@ -226,6 +231,20 @@ def compile_sound(
             seconds = frame / output_fps
             native_ref = {}
             package_entry = {
+                "shot_index": shot_index,
+                "output_frame": frame,
+                "event_path": cue.event_path,
+            }
+        if (
+            shot["group_id"] == ROTATION_GROUP
+            and cue.event_path in ROTATION_EVENTS
+            and cue.phase == "entry"
+        ):
+            output_fps = episode["output"]["fps"]
+            frame = rotation_entry_frame(shot, output_fps, cue.event_path)
+            seconds = frame / output_fps
+            native_ref = {}
+            rotation_entry = {
                 "shot_index": shot_index,
                 "output_frame": frame,
                 "event_path": cue.event_path,
@@ -257,6 +276,7 @@ def compile_sound(
                 **({"hypit_entry": hypit_entry} if hypit_entry else {}),
                 **({"question_entry": question_entry} if question_entry else {}),
                 **({"package_entry": package_entry} if package_entry else {}),
+                **({"rotation_entry": rotation_entry} if rotation_entry else {}),
             }
         )
 
@@ -367,6 +387,17 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
                 and package_entry["output_frame"] == frame
+                and cue["anchor_seconds"] == frame / fps
+            )
+        elif rotation_entry := cue.get("rotation_entry"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            fps = episode["output"]["fps"]
+            shot = episode["shots"][rotation_entry["shot_index"]]
+            frame = rotation_entry_frame(shot, fps, rotation_entry["event_path"])
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and rotation_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
         else:

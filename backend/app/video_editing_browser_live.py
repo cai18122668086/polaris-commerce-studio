@@ -15,7 +15,7 @@ from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_GROUP,
     SPLIT_WRAPPER_SHA,
-    audit_fruit_list_engine,
+    audit_card_family_engine,
 )
 from .video_editing_contracts import Transcript
 
@@ -191,7 +191,7 @@ def install_fruit_list_export(package: Path, root: Path) -> None:
     def with_solid_plate(card: dict, config: dict) -> tuple[Any, dict]:
         if card["id"] != FRUIT_LIST_GROUP:
             return browser_drawer(card, config)
-        audit_fruit_list_engine(package, card)
+        audit_card_family_engine(package, card)
         if sha256(Path(config["presenter"]))[:24] != reference.removeprefix(prefix):
             raise ValueError("Current fruit list header binding changed")
         applied = False

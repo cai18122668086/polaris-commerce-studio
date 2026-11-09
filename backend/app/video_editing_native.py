@@ -41,6 +41,7 @@ def main() -> None:
         "from app.video_editing_hypit_strips import install_native_strips\n"
         "from app.video_editing_browser_live import install_live_card_export\n"
         "from app.video_editing_browser_live import install_fruit_list_export\n"
+        "from app.video_editing_browser_rotation import install_rotation_export\n"
         "from app.video_editing_line_branch import install_native_line_branch\n"
         "from app.video_editing_question_branch import install_native_question_branch\n"
         "package = Path(os.environ['TENGLI_NATIVE_PACKAGE'])\n"
@@ -52,6 +53,7 @@ def main() -> None:
         "    install_native_question_branch(package, root)\n"
         "    install_live_card_export(package, root)\n"
         "    install_fruit_list_export(package, root)\n"
+        "    install_rotation_export(package, root)\n"
         "    install_native_line_branch(package, root)\n"
         "except Exception as error:\n"
         "    raise SystemExit('Unable to prepare native shot adapter') from error\n",

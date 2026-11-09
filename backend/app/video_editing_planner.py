@@ -124,6 +124,11 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
                         else {}
                     ),
                     **(
+                        {"native_card_focus": parameters["native_card_focus"]}
+                        if "native_card_focus" in parameters
+                        else {}
+                    ),
+                    **(
                         {"native_question_gloss": parameters["native_question_gloss"]}
                         if "native_question_gloss" in parameters
                         else {}

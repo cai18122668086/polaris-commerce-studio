@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .video_editing_browser_clocks import CARD_GROUP, CARD_LANDMARKS
+from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_hypit import (
     PICTURE_FPS,
     PICTURE_GROUP,
@@ -426,6 +427,18 @@ def input_contract(
             else {}
         ),
         "fresh_recipe_required": True,
+        **(
+            {
+                "native_card_focus": {
+                    "presenter": "绑定本期同期口播原片。",
+                    "artwork": "三张不同的本期图片对应三项并列内容。",
+                    "timing": "第一项首词开始该镜头，后两项各用首词切换焦点。",
+                    "background": "原生暖色背景固定。",
+                }
+            }
+            if group["id"] == ROTATION_GROUP
+            else {}
+        ),
         "media_clock_profile": (
             {
                 **{

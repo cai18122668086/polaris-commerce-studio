@@ -99,14 +99,14 @@ def card_font_evidence(font: Path, config: dict) -> dict[str, Any]:
     return {"font_sha256": sha256(font), "label_codepoints": len(characters)}
 
 
-def audit_fruit_list_engine(package: Path, group: dict) -> None:
+def audit_card_family_engine(package: Path, group: dict) -> None:
     entry = package / group["entry"]
     if (
         sha256(entry) != _FRUIT_LIST_ENGINE
         or sha256(entry.parent / "legacy/src/renderer.html") != _FRUIT_LIST_LEGACY
         or sha256(package / "commercial_runtime/special.py") != SPLIT_WRAPPER_SHA
     ):
-        raise ValueError("Original fruit list engine or export clock changed")
+        raise ValueError("Original G04–G06 browser engine or export clock changed")
 
 
 def compile_fruit_list_clock(
@@ -117,7 +117,7 @@ def compile_fruit_list_clock(
     native: dict,
     assets: dict[str, dict],
 ) -> dict[str, Any]:
-    audit_fruit_list_engine(package, group)
+    audit_card_family_engine(package, group)
     if set(FRUIT_LIST_FONTS) - resources.keys():
         raise ValueError("Bind the five original fruit list fonts explicitly")
     frames = round(config["duration"] * 30)

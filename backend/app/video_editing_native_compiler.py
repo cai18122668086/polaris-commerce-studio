@@ -37,6 +37,11 @@ from .video_editing_browser_live import (
     FRUIT_LIST_PREFIX,
     card_live_clock,
 )
+from .video_editing_browser_rotation import (
+    ROTATION_GROUP,
+    compile_rotation_clock,
+    rotation_source_clock,
+)
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
 from .video_editing_hypit_strips import (
@@ -320,6 +325,11 @@ def compile_native_job(
     if live_cards:
         media_clocks: dict[str, float] = {}
         clock_receipts = [card_live_clock(package, native, asset_files, transcript)]
+    elif group["id"] == ROTATION_GROUP:
+        if recipe.get("media_clocks"):
+            raise ValueError("Rotating cards use their measured presenter window")
+        media_clocks = {}
+        clock_receipts = [rotation_source_clock(native, asset_files, transcript)]
     elif picture_variant:
         if recipe.get("media_clocks"):
             raise ValueError("Hypit tracks use the measured shot source window")
@@ -477,6 +487,8 @@ def compile_native_job(
         if group["id"] == FRUIT_LIST_GROUP and row["path"] == "/presenter":
             prefix = FRUIT_LIST_PREFIX
         rid = prefix + asset["sha256"][:24]
+        if group["id"] == ROTATION_GROUP and row["path"] == "/presenter":
+            rid = clock_receipts[0]["binding_id"]
         if line_art and row["path"] == LINE_HAND_PATH:
             if asset.get("kind") != "image" or asset.get("source") != "project_upload":
                 raise ValueError("Bind a current registered hand sheet image")
@@ -607,6 +619,13 @@ def compile_native_job(
         if beat.relation != "parallel":
             raise ValueError("Use the original fruit list for three parallel items")
         browser_clock = compile_fruit_list_clock(
+            package, group, config, resources, native, asset_files
+        )
+        native["browser_clock"] = browser_clock
+    elif group["id"] == ROTATION_GROUP:
+        if beat.relation != "parallel":
+            raise ValueError("Use the original rotating cards for three parallel items")
+        browser_clock = compile_rotation_clock(
             package, group, config, resources, native, asset_files
         )
         native["browser_clock"] = browser_clock

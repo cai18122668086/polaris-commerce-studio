@@ -6,9 +6,15 @@ from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_native_layout import (
     intentional_role_overlaps,
     review_with_native_roles,
+    verified_effect_groups,
     verify_inset_layout,
 )
 from app.video_editing_question_card import QUESTION_CARD_A_FONTS
+from app.video_editing_yy_openings import (
+    YY_OPENING_CAPTION_INTENT,
+    verify_yy_opening_captions,
+    yy_opening_entry_frame,
+)
 
 
 def example():
@@ -214,3 +220,73 @@ def test_original_foreground_does_not_authorize_white_roles_after_the_join():
     assert intentional_role_overlaps(episode, report, set(), progress_shots={0})
     overlap["roles"] = ["left", "right"]
     assert not intentional_role_overlaps(episode, report, set(), progress_shots={0})
+
+
+def test_original_opening_scene_checks_composed_frame_and_caption_lane(tmp_path):
+    shot = {
+        "group_id": "YYO05",
+        "layer": "scene",
+        "rect": [0, 0, 1, 1],
+        "start_seconds": 3.389,
+        "end_seconds": 6.5,
+        "config": {"events": {"image_in": 0}},
+    }
+    assert yy_opening_entry_frame(shot, 30) == 102
+    episode = {
+        "output": {"height": 1280},
+        "shots": [shot],
+        "captions": [{"start_seconds": 3.3, "end_seconds": 4.7}],
+    }
+    atomic_json(tmp_path / "episode.json", episode)
+    atomic_json(tmp_path / YY_OPENING_CAPTION_INTENT, {"shots": [0]})
+    report = {
+        "status": "passed",
+        "caption_ink": [{"start": 3.3, "end": 4.7, "box": [120, 1160, 600, 1230]}],
+    }
+    proof = verify_yy_opening_captions(tmp_path, report)
+    assert proof["shots"][0]["smallest_gap_px"] == 40
+    report["caption_ink"][0]["box"][1] = 1119
+    with pytest.raises(ValueError, match="ink enters"):
+        verify_yy_opening_captions(tmp_path, report)
+
+
+def test_preview_counts_decoded_opaque_scenes_and_visible_subtitles():
+    subtitles = ("BG-S06", "BG-S03", "SG-S10", "JJ-S03")
+    groups = (*subtitles, "YYO01", "YYO01", "Z-M00")
+    episode = {
+        "output": {"fps": 30},
+        "shots": [
+            {
+                "group_id": group,
+                "layer": "subtitle" if group in subtitles else "scene",
+                "start_seconds": i,
+                "end_seconds": i + 1,
+            }
+            for i, group in enumerate(groups)
+        ],
+    }
+    delivery = {
+        "review": {"encoded_full_decode": True},
+        "shots": [
+            {
+                "group_id": group,
+                "decoded": True,
+                "encoding": {"full_decode": True, "format": {"frames": 30}},
+            }
+            for group in groups
+        ],
+        "layout_review": {
+            "status": "passed",
+            "subtitle_checks": [
+                {"shot": i, "group_id": group, "visible_frames": 20}
+                for i, group in enumerate(subtitles)
+            ],
+        },
+    }
+    assert verified_effect_groups(episode, delivery) == {*subtitles, "YYO01"}
+    delivery["shots"][4]["rgba_sequence"] = "unchecked"
+    delivery["shots"][5]["rgba_sequence"] = "unchecked"
+    assert verified_effect_groups(episode, delivery) == set(subtitles)
+    delivery["layout_review"]["subtitle_checks"][0]["visible_frames"] = 0
+    with pytest.raises(ValueError, match="no visible effect"):
+        verified_effect_groups(episode, delivery)

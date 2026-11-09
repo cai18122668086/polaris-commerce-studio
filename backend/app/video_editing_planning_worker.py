@@ -39,6 +39,7 @@ from .video_editing_task_models import (
 )
 from .video_editing_template_materials import template_image_requirements
 from .video_editing_transcript_store import read_transcript_artifact
+from .video_editing_yy_openings import require_clean_yy_source
 
 
 def live_strip_blockers(
@@ -314,6 +315,11 @@ def process(
                     settings, workspace_id, template, snapshot["source_subtitles"]
                 )
             )
+            require_clean_yy_source(
+                template,
+                snapshot["source_subtitles"],
+                runtime["unavailable_template_groups"],
+            )
             image_requirements = template_image_requirements(
                 template, snapshot["asset_cards"], verified_materials
             )
@@ -380,6 +386,7 @@ def process(
                         settings, workspace_id, template, snapshot["source_subtitles"]
                     )
                 )
+                require_clean_yy_source(template, snapshot["source_subtitles"], current)
                 if current.keys() - runtime["unavailable_template_groups"].keys():
                     raise ApiError(
                         409,

@@ -58,6 +58,7 @@ from .video_editing_overlay_templates import (
     ROTATION_TEMPLATE_ID,
     SYNC_SUBTITLE_TEMPLATES,
     TEXT_HANDOFF_TEMPLATES,
+    YY_OPENING_TEMPLATE_ID,
     overlay_template,
     validate_template_plan,
 )
@@ -76,6 +77,11 @@ from .video_editing_render_edits import (
     edited_segment_receipt,
     source_only,
     validate_render_edits,
+)
+from .video_editing_yy_openings import (
+    YY_OPENING_CAPTION_BASELINE,
+    YY_OPENING_CAPTION_INTENT,
+    YY_OPENING_GROUPS,
 )
 from .video_studio_schemas import StrictVideoModel
 
@@ -713,6 +719,11 @@ def compile_episode(
             1110,
             "将主字幕放在原生强调词的下方。",
         ),
+        YY_OPENING_TEMPLATE_ID: (
+            tuple(YY_OPENING_GROUPS),
+            YY_OPENING_CAPTION_BASELINE,
+            "月云川整帧开场在下方保留统一主字幕阅读区。",
+        ),
         ROTATION_TEMPLATE_ID: (
             (ROTATION_GROUP,),
             1257,
@@ -778,6 +789,8 @@ def compile_episode(
                 edits,
                 sync_subtitle_entries=authoring.overlay_template_id
                 in SYNC_SUBTITLE_TEMPLATES,
+                sync_yy_opening_entries=authoring.overlay_template_id
+                == YY_OPENING_TEMPLATE_ID,
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})
@@ -918,5 +931,13 @@ def compile_episode(
         ]
         if inset_shots:
             atomic_json(root / "inset-layout-intent.json", {"shots": inset_shots})
+    if authoring.overlay_template_id == YY_OPENING_TEMPLATE_ID:
+        yy_openings = [
+            i
+            for i, shot in enumerate(episode["shots"])
+            if shot["group_id"] in YY_OPENING_GROUPS
+        ]
+        if yy_openings:
+            atomic_json(root / YY_OPENING_CAPTION_INTENT, {"shots": yy_openings})
     atomic_json(root / "episode.json", episode)
     return episode

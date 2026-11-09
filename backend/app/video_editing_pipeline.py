@@ -32,6 +32,10 @@ from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtte
 from .video_editing_hypit_strips import STAGGER_GROUPS
 from .video_editing_native_layout import verify_inset_layout
 from .video_editing_native_sound import verify_rendered_sound
+from .video_editing_yy_openings import (
+    YY_OPENING_CAPTION_INTENT,
+    verify_yy_opening_captions,
+)
 
 
 class EditingFailure(Exception):
@@ -726,5 +730,18 @@ def validate_result(
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             raise EditingFailure("EDITING_NATIVE_INSET_LAYOUT_INVALID") from None
+    if (root / YY_OPENING_CAPTION_INTENT).is_file():
+        try:
+            if native["sha256"] != validation["sha256"]:
+                raise ValueError(
+                    "Native scene output changed before caption validation"
+                )
+            validation["native_yy_opening_captions"] = verify_yy_opening_captions(
+                root, native["layout_review"]
+            )
+        except (ValueError, KeyError, IndexError, TypeError, OSError):
+            raise EditingFailure(
+                "EDITING_NATIVE_OPENING_CAPTION_LAYOUT_INVALID"
+            ) from None
     atomic_json(root / "validation.json", validation)
     return validation

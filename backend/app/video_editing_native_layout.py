@@ -173,6 +173,50 @@ def verify_inset_layout(root: Path, review: dict) -> dict:
     return {"status": "passed", "source": "native libass ink", "insets": checks}
 
 
+def verified_effect_groups(episode: dict, delivery: dict) -> set[str]:
+    """Count visible native effects using the actual original export receipts."""
+    shots, receipts = episode["shots"], delivery["shots"]
+    layout = delivery["layout_review"]
+    if (
+        layout["status"] != "passed"
+        or delivery["review"]["encoded_full_decode"] is not True
+        or len(shots) != len(receipts)
+    ):
+        raise ValueError("The original composition and layout are required")
+    checks = {row["shot"]: row for row in layout["subtitle_checks"]}
+    if len(checks) != len(layout["subtitle_checks"]) or any(
+        not 0 <= index < len(shots) for index in checks
+    ):
+        raise ValueError("Native alpha checks must identify one existing shot each")
+
+    fps = episode["output"]["fps"]
+    visible = set()
+    for index, (shot, receipt) in enumerate(zip(shots, receipts, strict=True)):
+        group = shot["group_id"]
+        if (
+            receipt["group_id"] != group
+            or receipt["decoded"] is not True
+            or receipt["encoding"]["full_decode"] is not True
+            or receipt["encoding"]["format"]["frames"] < 1
+        ):
+            raise ValueError("Native shot encoding does not match the composition")
+        if check := checks.get(index):
+            if check["group_id"] != group or check["visible_frames"] < 1:
+                raise ValueError("Native alpha check found no visible effect")
+        elif shot["layer"] == "subtitle":
+            raise ValueError("A subtitle needs a native alpha check")
+        elif (
+            shot["layer"] not in {"scene", "overlay"}
+            or receipt.get("rgba_sequence")
+            or math.ceil(shot["start_seconds"] * fps - 1e-6)
+            >= math.ceil(shot["end_seconds"] * fps - 1e-6)
+        ):
+            continue
+        if group != "Z-M00":
+            visible.add(group)
+    return visible
+
+
 def intentional_role_overlaps(
     data: dict,
     report: dict,

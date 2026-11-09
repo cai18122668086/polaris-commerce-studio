@@ -100,6 +100,11 @@ from .video_editing_question_card import (
 )
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_word_bindings import word_bindings
+from .video_editing_yy_openings import (
+    YY_OPENING_ENTRY_EVENT,
+    YY_OPENING_GROUPS,
+    validate_yy_opening,
+)
 
 PROFILE_ID = AUTOMATIC_TEXT_PROFILE
 # Audited source slices: asset ID, slice start, slice duration, target peak dBFS.
@@ -109,6 +114,7 @@ _SELECT = ("sfx-dbafeebc3f7297da", 0.04, 0.16, -25)
 _SLIDE = ("sfx-22f661280569e8bc", 0.07, 0.32, -27)
 _IMPACT = ("sfx-69dba3f8f41f94e1", 0.03, 0.27, -25)
 _ENTRY_SOUNDS = {
+    **dict.fromkeys(YY_OPENING_GROUPS, (YY_OPENING_ENTRY_EVENT, _SLIDE)),
     QUESTION_GROUP: (QUESTION_ENTRY, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     QUESTION_CARD_GROUP: (QUESTION_CARD_SOUND, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     "AH-S01": ("/events/keyword_frame", _IMPACT),
@@ -1415,6 +1421,7 @@ def _opening_entry(
         for row in asset_cards
         if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
     }
+    yy_opening = beat.group_id in YY_OPENING_GROUPS
     try:
         anchors = word_bindings(beat, transcript, contract, presenter_ids)
         (presenter,) = anchors["media"]
@@ -1431,31 +1438,42 @@ def _opening_entry(
             or set(events) != {row["path"] for row in contract["event_paths"]}
         ):
             raise ValueError("Missing current source, text or measured opening event")
-        for path, row in text.items():
-            event_path, capacity = _OPENING_ROLES[path]
-            event = events[event_path]
-            reading_frames = max(
-                6, math.ceil(len(row["text"]) * clock["native_fps"] / 8)
-            )
-            if (
-                not 1 <= len(row["text"]) <= capacity
-                or "\n" in row["text"]
-                or event["token_id"] != row["token_ids"][0]
-                or event["edge"] != "start"
-                or event["value"] + reading_frames > frames
+        if yy_opening:
+            if events[YY_OPENING_ENTRY_EVENT]["token_id"] != beat.first_token_id:
+                raise ValueError(
+                    "The original picture entry needs this beat's first word"
+                )
+            validate_yy_opening(beat.group_id, anchors, frames, transcript)
+        else:
+            for path, row in text.items():
+                event_path, capacity = _OPENING_ROLES[path]
+                event = events[event_path]
+                reading_frames = max(
+                    6, math.ceil(len(row["text"]) * clock["native_fps"] / 8)
+                )
+                if (
+                    not 1 <= len(row["text"]) <= capacity
+                    or "\n" in row["text"]
+                    or event["token_id"] != row["token_ids"][0]
+                    or event["edge"] != "start"
+                    or event["value"] + reading_frames > frames
+                ):
+                    raise ValueError(
+                        "Opening text needs capacity, its first word and time"
+                    )
+            if beat.group_id == "LYO02" and not (
+                events["/style/geometry/mask_start_frame"]["value"]
+                < events["/style/geometry/mask_end_frame"]["value"]
+                < events["/events/text_frame"]["value"]
             ):
-                raise ValueError("Opening text needs capacity, its first word and time")
-        if beat.group_id == "LYO02" and not (
-            events["/style/geometry/mask_start_frame"]["value"]
-            < events["/style/geometry/mask_end_frame"]["value"]
-            < events["/events/text_frame"]["value"]
-        ):
-            raise ValueError("Opening round window must settle before its theme")
-        if beat.group_id == "LYO03" and (
-            events["/events/title_frame"]["value"] + 10
-            > events["/events/subtitle_frame"]["value"]
-        ):
-            raise ValueError("Opening title must finish its slide before the subtitle")
+                raise ValueError("Opening round window must settle before its theme")
+            if beat.group_id == "LYO03" and (
+                events["/events/title_frame"]["value"] + 10
+                > events["/events/subtitle_frame"]["value"]
+            ):
+                raise ValueError(
+                    "Opening title must finish its slide before the subtitle"
+                )
     except ValueError as error:
         raise ApiError(
             422,
@@ -1477,7 +1495,8 @@ def _opening_entry(
     ]
     for path in slots:
         set_native_field(config, path, None)
-    config["events"]["shift_frames"] = 0
+    if not yy_opening:
+        config["events"]["shift_frames"] = 0
     config["media"]["presenter"]["end_policy"] = "error"
     return NativeEpisodeEntry(
         carrier="text",
@@ -1490,7 +1509,11 @@ def _opening_entry(
             "group_id": beat.group_id,
             "template_sha256": contract["template_sha256"],
             "schema_sha256": contract["schema_sha256"],
-            "design_id": "tengli-presenter-openings-v1",
+            "design_id": (
+                "tengli-yy-presenter-openings-v1"
+                if yy_opening
+                else "tengli-presenter-openings-v1"
+            ),
             "design_reason": "沿用原景别、字型与轨迹，绑定当前人物和实录文字。",
             "parameter_decisions": {
                 key: "沿用原生构图，人物时钟与文字按本期实录编译。" for key in config
@@ -1602,7 +1625,13 @@ def build_overlay_recipes(
     has_scene = any(entry.placement.layer == "scene" for entry in entries.values())
     has_bottom_caption_lane = any(
         beat.group_id
-        in {ROTATION_GROUP, JUDGMENT_GROUP, NUMBERED_GROUP, LIVE_STRIP_GROUP}
+        in {
+            ROTATION_GROUP,
+            JUDGMENT_GROUP,
+            NUMBERED_GROUP,
+            LIVE_STRIP_GROUP,
+            *YY_OPENING_GROUPS,
+        }
         for beat in beats
     )
     has_lower_caption_lane = any(

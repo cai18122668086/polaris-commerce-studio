@@ -394,6 +394,12 @@ class EditingMaterialsResponse(StrictVideoModel):
     next_offset: int | None
 
 
+class EditingTemplateImageRequirement(StrictVideoModel):
+    group_id: str
+    required_distinct_images: int
+    selected_distinct_images: int
+
+
 class EditingPlanningTaskResponse(StrictVideoModel):
     id: str
     project_id: str
@@ -427,6 +433,9 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     semantic_review: Literal["unreviewed"] = "unreviewed"
     native_render_state: Literal["not_compiled"] = "not_compiled"
     unavailable_template_group_ids: list[str] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    project_image_requirements: list[EditingTemplateImageRequirement] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     overlay_template: EditingOverlayTemplate | None = Field(

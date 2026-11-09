@@ -125,6 +125,14 @@ def material_cards(assets: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def project_image_digests(cards: list[dict]) -> dict[str, str]:
+    return {
+        card["id"]: card["sha256"]
+        for card in cards
+        if card["kind"] == "image" and card["id"].startswith(PREFIX)
+    }
+
+
 def verify_material_cards(
     session: Session,
     settings: Settings,

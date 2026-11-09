@@ -108,6 +108,10 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan }:
       <p className={styles.note}>模型：{job.model} · 网关：{job.gateway_host || "尚未固定"} · 转录版本 {job.base_transcript_sha256.slice(0, 12)}{job.text_status && ` · ${job.text_status === "user_corrected" ? "用户已校对文字，词点待验" : "转录文字待核对"}`}</p>
       {job.overlay_template && <p className={styles.note}>组合模板 · {job.overlay_template.name}</p>}
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>本机待补原件的模板动效 · {job.unavailable_template_group_ids.join("、")}</p>}
+      {job.project_image_requirements?.map(requirement => <p key={requirement.group_id} className={styles.note}>
+        {requirement.group_id} · 本期已选 {requirement.selected_distinct_images} 张不同图片，图卡需要 {requirement.required_distinct_images} 张。
+        {requirement.selected_distinct_images < requirement.required_distinct_images && " 本次编排跳过该图卡，仍可使用同模板的其他动效。补图后可重新准备。"}
+      </p>)}
       {job.request_bytes !== null && <p>{job.catalog_group_count} 组原库 · 请求 {job.request_bytes.toLocaleString()} 字节 · 输入版本 {job.request_sha256?.slice(0, 12)}</p>}
       {job.status === "prepared" && <>
         <p className={styles.note}>尚未调用模型，没有规划结果。执行时最大输出 5000 token，输入另计，实际费用按腾力网关账单。</p>

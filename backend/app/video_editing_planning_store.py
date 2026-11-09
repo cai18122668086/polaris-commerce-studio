@@ -113,6 +113,9 @@ def planning_response(
         )
         if "planning_runtime" in row.snapshot
         else None,
+        "project_image_requirements": row.snapshot.get("planning_runtime", {}).get(
+            "project_image_requirements"
+        ),
         "artifacts": [
             {
                 "id": row.id + ":" + a["role"],

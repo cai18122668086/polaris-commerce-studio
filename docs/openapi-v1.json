@@ -5797,6 +5797,20 @@
             "title": "Project Id",
             "type": "string"
           },
+          "project_image_requirements": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EditingTemplateImageRequirement"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Image Requirements"
+          },
           "request_bytes": {
             "anyOf": [
               {
@@ -6070,6 +6084,30 @@
           "artifacts"
         ],
         "title": "EditingTaskResponse",
+        "type": "object"
+      },
+      "EditingTemplateImageRequirement": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "required_distinct_images": {
+            "title": "Required Distinct Images",
+            "type": "integer"
+          },
+          "selected_distinct_images": {
+            "title": "Selected Distinct Images",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "group_id",
+          "required_distinct_images",
+          "selected_distinct_images"
+        ],
+        "title": "EditingTemplateImageRequirement",
         "type": "object"
       },
       "EditingTranscriptRevisionCreate": {

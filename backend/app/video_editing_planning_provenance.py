@@ -26,6 +26,7 @@ from .video_editing_task_models import (
     EditingSourceRecord,
     EditingTaskRecord,
 )
+from .video_editing_template_materials import runtime_payload, validate_template_images
 from .video_editing_transcript_store import read_transcript_artifact
 
 
@@ -194,11 +195,7 @@ def _verify(
     payload = json.loads(data["request"]["messages"][1]["content"])
     runtime = row.snapshot.get("planning_runtime")
     if runtime is not None and (
-        payload.get("template_runtime")
-        != {
-            "version": runtime["version"],
-            "unavailable_groups": runtime["unavailable_template_groups"],
-        }
+        payload.get("template_runtime") != runtime_payload(runtime)
         or {
             group["id"]: {
                 "sample": group["website_runtime"],
@@ -237,6 +234,7 @@ def _verify(
         row.snapshot["choice_snapshot"],
         (runtime or {}).get("unavailable_template_groups"),
     )
+    validate_template_images(semantic, runtime, row.snapshot["asset_cards"])
     return VerifiedPlanning(
         row,
         transcript,

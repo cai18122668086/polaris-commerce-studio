@@ -5923,6 +5923,8 @@ export interface components {
             prepared_task_id: string | null;
             /** Project Id */
             project_id: string;
+            /** Project Image Requirements */
+            project_image_requirements?: components["schemas"]["EditingTemplateImageRequirement"][] | null;
             /** Request Bytes */
             request_bytes: number | null;
             /** Request Sha256 */
@@ -6002,6 +6004,15 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "awaiting_review" | "completed" | "failed" | "cancelled";
+        };
+        /** EditingTemplateImageRequirement */
+        EditingTemplateImageRequirement: {
+            /** Group Id */
+            group_id: string;
+            /** Required Distinct Images */
+            required_distinct_images: number;
+            /** Selected Distinct Images */
+            selected_distinct_images: number;
         };
         /** EditingTranscriptRevisionCreate */
         EditingTranscriptRevisionCreate: {

@@ -35,6 +35,7 @@ from .video_editing_task_models import (
     EditingSourceRecord,
     EditingTaskRecord,
 )
+from .video_editing_template_materials import template_image_requirements
 from .video_editing_transcript_store import read_transcript_artifact
 
 
@@ -287,6 +288,11 @@ def process(
                 local_dependencies(settings.video_editing_native_bindings_file),
                 template,
             )
+            image_requirements = template_image_requirements(
+                template, snapshot["asset_cards"]
+            )
+            if image_requirements:
+                runtime["project_image_requirements"] = image_requirements
             snapshot = {**snapshot, "planning_runtime": runtime}
         body, evidence = planner.build_request(
             transcript,

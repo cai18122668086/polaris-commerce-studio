@@ -31,6 +31,7 @@ from .video_editing_episode_compiler import (
     NativeEpisodeEntry,
     NativePlacement,
 )
+from .video_editing_materials import project_image_digests
 from .video_editing_native_compiler import set_native_field
 from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import (
@@ -283,11 +284,7 @@ def _card_entry(
     live_background: bool,
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
     contract = input_contract(package, group)
-    assets = {
-        card["id"]: card["sha256"]
-        for card in asset_cards
-        if card["kind"] == "image" and card["id"].startswith("material-")
-    }
+    assets = project_image_digests(asset_cards)
     anchors = word_bindings(beat, transcript, contract, set(beat.asset_ids))
     media = {row["path"]: row["asset_id"] for row in anchors["media"]}
     text = {row["path"]: row["token_ids"] for row in anchors["text"]}

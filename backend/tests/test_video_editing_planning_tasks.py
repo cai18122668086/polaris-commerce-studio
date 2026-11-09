@@ -4,22 +4,30 @@ import hashlib
 import importlib.util
 import json
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy import create_engine, inspect, select, text
 
 from app import video_editing_planning_worker as worker
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
+from app.video_editing_contracts import SemanticPlan
+from app.video_editing_overlay_templates import overlay_template
 from app.video_editing_question_branch import QUESTION_FONT
 from app.video_editing_task_models import (
     EditingPlanningAttemptRecord,
     EditingPlanningTaskRecord,
+)
+from app.video_editing_template_materials import (
+    template_image_requirements,
+    validate_template_images,
 )
 from tests.test_video_editing_native_plans import saved_plan
 from tests.test_video_projects import base
@@ -522,3 +530,121 @@ def test_gateway_cannot_change_after_preparation_or_while_execution_is_queued(
         and result["error_code"] == "EDITING_PLAN_ENDPOINT_CHANGED"
     )
     assert provider.calls == 0 and result["call_state"] == "not_submitted"
+
+
+@pytest.mark.parametrize(
+    ("template_id", "group_id"),
+    [("picture-compare-v2", "CX-G07"), ("rotation-cards-v1", "CX-G04")],
+)
+def test_template_prepares_distinct_verified_project_images(
+    video, tmp_path, monkeypatch, template_id, group_id
+):
+    client, _, ws, settings, _, task, semantic = setup(video, tmp_path, monkeypatch)
+    factory = client.app.state.session_factory
+    root = base(ws)
+    route = root + f"/editing-tasks/{task['id']}/planning-tasks"
+    material_route = root + f"/projects/{task['project_id']}/editing-materials"
+
+    def upload(color):
+        buffer = BytesIO()
+        Image.new("RGB", (32, 32), color).save(buffer, format="PNG")
+        return (
+            client.post(
+                material_route,
+                data={
+                    "request_id": str(uuid4()),
+                    "label": color,
+                    "description": "用途测试",
+                },
+                files={"file": ("item.png", buffer.getvalue(), "image/png")},
+            )
+            .raise_for_status()
+            .json()["id"]
+        )
+
+    ids = [upload(color) for color in ("red", "red", "blue", "green")]
+    provider = Provider(semantic)
+    for selected, count in (([], 0), (ids[:3], 2), (ids, 3)):
+        new = (
+            client.post(
+                route,
+                json={
+                    "request_id": str(uuid4()),
+                    "template_id": template_id,
+                    "material_ids": selected,
+                },
+            )
+            .raise_for_status()
+            .json()
+        )
+        worker.process(new["id"], settings, factory, provider)
+        task_route = root + "/editing-planning-tasks/" + new["id"]
+        result = client.get(task_route).raise_for_status().json()
+        expected = [
+            {
+                "group_id": group_id,
+                "required_distinct_images": 3,
+                "selected_distinct_images": count,
+            }
+        ]
+        assert result["status"] == "prepared", result
+        assert result["project_image_requirements"] == expected
+        artifact = (
+            client.get(task_route + "/artifacts/request").raise_for_status().json()
+        )
+        assert artifact["runtime"]["project_image_requirements"] == expected
+        assert artifact["overlay_template"]["slots"][0]["group_id"] == group_id
+    assert provider.calls == 0
+
+
+def test_current_card_rejects_reused_project_bytes_and_presenter_slot():
+    template = overlay_template("picture-compare-v2")
+    source = {"id": "source-one", "kind": "original_video", "sha256": "source"}
+    images = [
+        {"id": f"material-{i}", "kind": "image", "sha256": digest}
+        for i, digest in enumerate(("a", "a", "b", "c"))
+    ]
+
+    def runtime(cards):
+        return {
+            "project_image_requirements": template_image_requirements(template, cards)
+        }
+
+    def plan(ids, group="CX-G07"):
+        return SemanticPlan.model_validate(
+            {
+                "audience_question": "用途",
+                "argument_outline": ["解释用途"],
+                "style_reason": "按用途配图",
+                "beats": [
+                    {
+                        "id": "cards",
+                        "group_id": group,
+                        "reason": "并列三项",
+                        "relation": "parallel",
+                        "first_token_id": "a",
+                        "last_token_id": "c",
+                        "relation_items": [
+                            {
+                                "id": token,
+                                "first_token_id": token,
+                                "last_token_id": token,
+                                "asset_ids": [asset],
+                            }
+                            for token, asset in zip("abc", ids, strict=True)
+                        ],
+                    }
+                ],
+            }
+        )
+
+    cards = [source, *images]
+    good = ["material-0", "material-2", "material-3"]
+    validate_template_images(plan(good), runtime(cards), cards)
+    with pytest.raises(ValueError, match="lacks distinct project images"):
+        validate_template_images(plan(good), runtime(cards[:-1]), cards[:-1])
+    for ids in (["material-0", "material-1", "material-3"], ["source-one", *good[1:]]):
+        with pytest.raises(ValueError, match="own project image"):
+            validate_template_images(plan(ids), runtime(cards), cards)
+    validate_template_images(plan(good, group="BG-S04"), runtime([source]), [source])
+    validate_template_images(plan(good), {"version": "legacy"}, [])

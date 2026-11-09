@@ -352,7 +352,8 @@
       "id": "unified-build12-live-frame-clock/1",
       "backend": "unified",
       "media_paths": [
-        "/media/presenter/path"
+        "/media/presenter/path",
+        "/media/question_background/path"
       ],
       "scope": "original audited source frame clock only; current render and review remain separate",
       "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",

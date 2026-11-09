@@ -79,11 +79,14 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
     root = base(ws)
     options = client.get(root + "/editing-templates").json()
-    assert len(options) == 2 and all(len(row["slots"]) >= 10 for row in options)
+    assert len(options) == 3 and all(len(row["slots"]) >= 10 for row in options)
+    template = next(row for row in options if row["id"] == "question-story-v1")
+    scene = next(slot for slot in template["slots"] if slot["group_id"] == "W-R18")
+    assert scene["layer"] == "scene" and scene["native_branch"] == "question"
     url = root + f"/editing-tasks/{task['id']}/planning-tasks"
-    body = {"request_id": str(uuid4()), "template_id": options[0]["id"]}
+    body = {"request_id": str(uuid4()), "template_id": template["id"]}
     saved = client.post(url, json=body)
-    assert saved.status_code == 200 and saved.json()["overlay_template"] == options[0]
+    assert saved.status_code == 200 and saved.json()["overlay_template"] == template
     assert (
         client.post(url, json={**body, "template_id": options[1]["id"]}).status_code
         == 409
@@ -92,7 +95,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     ready = client.get(root + "/editing-planning-tasks/" + saved.json()["id"]).json()
     assert ready["status"] == "prepared" and ready["call_state"] == "not_submitted"
     artifact = next(row for row in ready["artifacts"] if row["role"] == "request")
-    assert client.get(artifact["url"]).json()["overlay_template"] == options[0]
+    assert client.get(artifact["url"]).json()["overlay_template"] == template
 
 
 def enable_fixture(settings):

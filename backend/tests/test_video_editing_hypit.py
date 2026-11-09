@@ -313,3 +313,22 @@ def test_hypit_uses_real_source_windows_and_keeps_each_image_on_its_word(
         hypit.compile_picture_clocks(
             tmp_path, config, bindings, assets, transcript, beat
         )
+
+
+def test_full_canvas_keeps_strip_directions_and_card_anchors():
+    strips_before = (
+        "甲@31,386,654,111>wipe-right; 乙@447,736,602,111>wipe-right; "
+        "丙@14,1094,618,111>wipe-left"
+    )
+    assert strips._live_stage_items(strips_before, price_cards=False) == (
+        "甲@31,851,654,111>wipe-right; 乙@447,1201,602,111>wipe-right; "
+        "丙@14,1559,618,111>wipe-left"
+    )
+    cards_before = (
+        "mka6c3@45,1239,938,271>zoom; mka6c2@45,851,938,271>zoom; "
+        "mka6c1@45,475,938,271>zoom"
+    )
+    assert strips._live_stage_items(cards_before, price_cards=True) == (
+        "mka6c3@45,1420,938,238>zoom; mka6c2@45,1148,938,238>zoom; "
+        "mka6c1@45,876,938,238>zoom"
+    )

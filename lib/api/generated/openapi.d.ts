@@ -5675,8 +5675,14 @@ export interface components {
         };
         /** EditingOverlaySlot */
         EditingOverlaySlot: {
+            /** Binding */
+            binding?: string | null;
             /** Group Id */
             group_id: string;
+            /** Layer */
+            layer?: "scene" | null;
+            /** Native Branch */
+            native_branch?: "question" | null;
             /** Purpose */
             purpose: string;
         };

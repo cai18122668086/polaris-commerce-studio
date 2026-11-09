@@ -26,6 +26,14 @@ from .video_editing_native_sound import (
     NativeSoundDesign,
 )
 from .video_editing_overlay_templates import validate_template_plan
+from .video_editing_question_branch import (
+    QUESTION_BACKGROUND,
+    QUESTION_BRANCH,
+    QUESTION_ENTRY,
+    QUESTION_FONT,
+    QUESTION_GROUP,
+    question_variant_template,
+)
 from .video_editing_word_bindings import word_bindings
 
 PROFILE_ID = "tengli-overlay-recipe-v2"
@@ -36,6 +44,7 @@ _SELECT = ("sfx-dbafeebc3f7297da", 0.04, 0.16, -25)
 _SLIDE = ("sfx-22f661280569e8bc", 0.07, 0.32, -27)
 _IMPACT = ("sfx-69dba3f8f41f94e1", 0.03, 0.27, -25)
 _ENTRY_SOUNDS = {
+    QUESTION_GROUP: (QUESTION_ENTRY, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     "AH-S05": ("/events/type_frame", _TYPING),
     "AH-S09": ("/events/title_frame", _CLICK),
     "AHG-S02": ("/events/mark/0", _SELECT),
@@ -158,6 +167,83 @@ def _entry(
     return entry, anchors
 
 
+def _question_entry(
+    package: Path, group: dict, beat: SemanticBeat, transcript: Transcript
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(
+        package,
+        group,
+        branch=QUESTION_BRANCH,
+        embedded_question_caption=False,
+        live_question_background=True,
+    )
+    config = question_variant_template(
+        read_json(inside(package, group["input_template"])),
+        embedded_caption=False,
+        live_background=True,
+    )
+    anchors = word_bindings(beat, transcript, contract, set(beat.asset_ids))
+    media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+    media_slots = ("presenter", QUESTION_BACKGROUND)
+    paths = {f"/media/{slot}/path" for slot in media_slots}
+    events = {row["path"]: row["value"] for row in anchors["events"]}
+    (text,) = contract["text_paths"]
+    if (
+        beat.relation != "question"
+        or set(media) != paths
+        or len(set(media.values())) != 1
+        or set(events) != {QUESTION_ENTRY, "/timing/events/dissolve_in"}
+        or events[QUESTION_ENTRY] != 0
+        or events["/timing/events/dissolve_in"] <= 0
+        or [row["path"] for row in anchors["text"]] != [text]
+    ):
+        raise ApiError(
+            422,
+            "EDITING_QUESTION_SCENE_BINDINGS_REQUIRED",
+            "整帧追问需要实录标题、首词入场、溶解词点及同一原片的两路绑定。",
+        )
+    for slot in media_slots:
+        config["media"][slot]["end_policy"] = "error"
+    slots = [
+        text,
+        *events,
+        *(
+            f"/media/{slot}/{field}"
+            for slot in media_slots
+            for field in ("path", "offset_seconds", "duration_seconds")
+        ),
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(
+            layer="scene",
+            rect=[0, 0, 1, 1],
+            reason="原生追问在整帧虚化并溶回同期原片，口播声音持续。",
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": beat.group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-question-story-v1",
+            "design_reason": "从原片词点绑定整帧追问与溶解。",
+            "config": config,
+            "placeholders": slots,
+            "parameter_decisions": {
+                key: "沿用原生追问画布、字形和溶解。" for key in config
+            },
+            "dependency_ids": [QUESTION_FONT],
+            "media_clocks": [
+                {"media_path": path, "policy": "transcript_source_window"}
+                for path in sorted(paths)
+            ],
+        },
+    ), anchors
+
+
 def _entry_sound(
     beat: SemanticBeat, anchors: dict[str, Any], duration_ms: int, avoided: set[str]
 ) -> NativeSoundCue:
@@ -187,7 +273,11 @@ def _entry_sound(
         beat_id=beat.id,
         event_path=path,
         phase="entry",
-        purpose="原生文字动效入场时给一次短提示，口播继续。",
+        purpose=(
+            "整帧追问入场时给一次短提示，口播继续。"
+            if beat.group_id == QUESTION_GROUP
+            else "原生文字动效入场时给一次短提示，口播继续。"
+        ),
         source_start_seconds=source_start,
         trim_duration_seconds=length,
         target_peak_dbfs=peak,
@@ -226,10 +316,12 @@ def build_overlay_recipes(
         )
     entries, cues = {}, []
     for beat in beats:
-        entries[beat.id], anchors = _entry(
+        make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
+        entries[beat.id], anchors = make_entry(
             package, groups[beat.group_id], beat, transcript
         )
         cues.append(_entry_sound(beat, anchors, transcript.duration_ms, avoided))
+    has_scene = any(entry.placement.layer == "scene" for entry in entries.values())
     return EpisodeRecipeBundle(
         version="tengli.episode-recipes/1",
         library_release=MOTION_SHA256,
@@ -242,10 +334,22 @@ def build_overlay_recipes(
             "mode": "new",
             "sector": "本期口播",
             "audience": "本项目观众",
-            "objective": "按口播重点显示所选模板的原生透明动效。",
+            "objective": (
+                "按口播重点显示所选模板的原生构图和动效。"
+                if has_scene
+                else "按口播重点显示所选模板的原生透明动效。"
+            ),
             "tone": "清晰",
-            "background_strategy": "保留连续人物原片。",
-            "motion_direction": "按实录词点在人物周围叠加原生动效。",
+            "background_strategy": (
+                "保留连续口播，按模板使用原片或整帧原生场景。"
+                if has_scene
+                else "保留连续人物原片。"
+            ),
+            "motion_direction": (
+                "按实录词点执行模板指定的字幕叠加或整帧构图。"
+                if has_scene
+                else "按实录词点在人物周围叠加原生动效。"
+            ),
             "sound_direction": (
                 "保留实际口播电平，每次原生动效入场加短音效。全程以低位原库背景乐铺底。"
             ),

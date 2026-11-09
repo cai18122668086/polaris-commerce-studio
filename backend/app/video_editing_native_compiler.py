@@ -31,6 +31,7 @@ from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
 from .video_editing_hypit_strips import (
     FLOW_GROUP,
+    LIVE_STAGE_GROUPS,
     STAGGER_GROUPS,
     STRIP_SIDECAR,
     compile_flow_plate,
@@ -46,6 +47,7 @@ from .video_editing_native_content import (
     translation_labels,
 )
 from .video_editing_question_branch import (
+    QUESTION_BACKGROUND,
     QUESTION_BRANCH,
     QUESTION_FONT,
     QUESTION_GROUP,
@@ -141,8 +143,15 @@ def compile_native_job(
         raise ValueError("Select an original W-R18 branch")
     question_variant = beat.group_id == QUESTION_GROUP and branch == QUESTION_BRANCH
     embedded_caption = not question_variant or config["content"].get("captions") != []
+    live_question_background = (
+        question_variant and QUESTION_BACKGROUND in config["media"]
+    )
     contract = input_contract(
-        package, group, branch=branch, embedded_question_caption=embedded_caption
+        package,
+        group,
+        branch=branch,
+        embedded_question_caption=embedded_caption,
+        live_question_background=live_question_background,
     )
     if (
         recipe.get("version") != "tengli.native-recipe/1"
@@ -159,7 +168,9 @@ def compile_native_job(
         if beat.relation != "question":
             raise ValueError("W-R18 question branch requires a spoken question beat")
         template = question_variant_template(
-            template, embedded_caption=embedded_caption
+            template,
+            embedded_caption=embedded_caption,
+            live_background=live_question_background,
         )
     if beat.group_id == SILHOUETTE_GROUP:
         slots = [
@@ -173,6 +184,13 @@ def compile_native_job(
         and config.get("profile") == PICTURE_PROFILE
     )
     strip_variant = group["id"] in STAGGER_GROUPS
+    live_stage = recipe.get("hypit_live_stage", False)
+    if type(live_stage) is not bool or (
+        live_stage and beat.group_id not in LIVE_STAGE_GROUPS
+    ):
+        raise ValueError(
+            "Live Hypit stage needs the original strip or price-card canvas"
+        )
     if strip_variant and (
         config.get("attributes") != {} or config.get("fonts") != template["fonts"]
     ):
@@ -186,8 +204,10 @@ def compile_native_job(
             "This recipe changes native field/array topology; "
             "an explicit variant authoring contract is required"
         )
-    if question_variant and config["media"]["presenter"]["end_policy"] != "error":
-        raise ValueError("W-R18 question presenter cannot loop or hold")
+    if question_variant and any(
+        slot["end_policy"] != "error" for slot in config["media"].values()
+    ):
+        raise ValueError("W-R18 question footage cannot loop or hold")
     decisions = recipe.get("parameter_decisions", {})
     placeholders = recipe.get("placeholders", [])
     if len(placeholders) != len(set(placeholders)):
@@ -219,13 +239,15 @@ def compile_native_job(
         media_clocks, clock_receipts = compile_picture_clocks(
             package, config, native, asset_files, transcript, beat
         )
-    elif group["id"] == FLOW_GROUP:
-        if not component_validation:
+    elif group["id"] == FLOW_GROUP or live_stage:
+        if group["id"] == FLOW_GROUP and not component_validation:
             raise ValueError("Hypit flow labels still require fact-grounded chart data")
         if recipe.get("media_clocks"):
-            raise ValueError("Flow labels use the measured moving plate window")
+            raise ValueError("Hypit plate uses the measured moving source window")
         media_clocks = {}
-        clock_receipts = [compile_flow_plate(native, asset_files, transcript)]
+        clock_receipts = [
+            compile_flow_plate(native, asset_files, transcript, live_stage=live_stage)
+        ]
     else:
         media_clocks, clock_receipts = compile_media_clocks(
             package,
@@ -247,6 +269,7 @@ def compile_native_job(
             native,
             asset_files,
             price_card_layout=recipe.get("price_card_layout"),
+            live_stage=live_stage,
         )
         if strip_variant
         else None

@@ -429,3 +429,41 @@ def test_native_plan_migration_roundtrip(tmp_path):
         migration.downgrade()
         assert connection.scalar(text("SELECT id FROM users")) == "preserved"
     engine.dispose()
+
+
+def test_full_frame_requires_the_audited_moving_backdrop():
+    from app.video_editing_render_edits import full_native_canvas_allowed
+
+    entry = {
+        "placement": {"layer": "overlay", "rect": [0, 0, 1, 1]},
+        "recipe": {"group_id": "HY-A5"},
+    }
+    assert not full_native_canvas_allowed("HY-A5", entry)
+    entry["recipe"]["hypit_live_stage"] = True
+    assert full_native_canvas_allowed("HY-A5", entry)
+    entry["recipe"] = {
+        "group_id": "W-R18",
+        "config": {"branch": "question", "content": {"captions": []}, "media": {}},
+    }
+    assert not full_native_canvas_allowed("W-R18", entry)
+    entry["recipe"]["config"]["media"]["question_background"] = {"kind": "video"}
+    assert full_native_canvas_allowed("W-R18", entry)
+
+
+def test_continuous_narration_accepts_an_explicit_full_original_scene():
+    from app.video_editing_render_edits import continuous_overlay_groups
+
+    semantic = {"beats": [{"id": "question", "group_id": "W-R18"}]}
+    entry = {
+        "placement": {"layer": "scene", "rect": [0, 0, 1, 1]},
+        "recipe": {"group_id": "W-R18"},
+    }
+    recipes = {"entries": {"question": entry}}
+    assert not continuous_overlay_groups(semantic, recipes, set())
+    assert continuous_overlay_groups(
+        semantic, recipes, set(), scene_groups={"W-R18"}
+    ) == {"W-R18"}
+    entry["placement"]["rect"] = [0, 0, 0.5, 0.5]
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), scene_groups={"W-R18"}
+    )

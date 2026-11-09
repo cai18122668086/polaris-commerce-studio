@@ -28,6 +28,7 @@ from .video_editing_hypit_strips import (
 )
 from .video_editing_media_clocks import clock_profile
 from .video_editing_question_branch import (
+    QUESTION_BACKGROUND,
     QUESTION_BRANCH,
     QUESTION_FONT,
     QUESTION_GROUP,
@@ -103,6 +104,7 @@ def input_contract(
     *,
     branch: str | None = None,
     embedded_question_caption: bool = True,
+    live_question_background: bool = False,
 ) -> dict[str, Any]:
     template = read_json(package / group["input_template"])
     question_group = group["id"] == QUESTION_GROUP
@@ -110,7 +112,9 @@ def input_contract(
         raise ValueError("Select an original W-R18 branch")
     if question_group and branch == QUESTION_BRANCH:
         template = question_variant_template(
-            template, embedded_caption=embedded_question_caption
+            template,
+            embedded_caption=embedded_question_caption,
+            live_background=live_question_background,
         )
     schema = read_json(package / group["input_schema"])
     Draft202012Validator.check_schema(schema)
@@ -236,7 +240,7 @@ def input_contract(
         smoke_fields = fields.copy()
         smoke_paths = {f["path"] for f in smoke_fields}
         fields.clear()
-        visit(question_variant_template(template), [])
+        visit(question_variant_template(template, live_background=True), [])
         question_paths = {f["path"] for f in fields}
         fields = [
             f if f["path"] in smoke_paths else {**f, "native_branch": QUESTION_BRANCH}
@@ -318,7 +322,13 @@ def input_contract(
                         ],
                     }
                     for name, dependency in (
-                        (QUESTION_BRANCH, {"original_font_id": QUESTION_FONT}),
+                        (
+                            QUESTION_BRANCH,
+                            {
+                                "original_font_id": QUESTION_FONT,
+                                "live_background_slot": QUESTION_BACKGROUND,
+                            },
+                        ),
                         ("smoke", {"original_external_media": "smoke_alpha_sequence"}),
                     )
                 }

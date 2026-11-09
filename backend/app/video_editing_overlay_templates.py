@@ -38,6 +38,26 @@ _TEMPLATES = {
         "name": "滚动报价与规格对照",
         "slots": [*_ROLL_SLOTS, _FRONT_LAYER],
     },
+    "question-story-v1": {
+        "id": "question-story-v1",
+        "name": "整帧追问与口播重点",
+        "slots": [
+            {
+                "group_id": "W-R18",
+                "purpose": "实际追问可短暂整帧虚化，随后回到同期原片",
+                "layer": "scene",
+                "native_branch": "question",
+                "binding": (
+                    "选择完整追问段，将 question_in 锚定该段首词。"
+                    "用 question 和 dissolve_in 标记实录标题和溶解词点。"
+                    "presenter 与 question_background 都绑定同一原片素材 ID。"
+                    "主字幕由网站统一生成。"
+                ),
+            },
+            *_ROLL_SLOTS,
+            {"group_id": "AH-S09", "purpose": "分开显示下单前提与对应行动"},
+        ],
+    },
     "roll-compare-v2": {
         "id": "roll-compare-v2",
         "name": "滚动报价与规格对照",
@@ -50,7 +70,10 @@ _TEMPLATES = {
 
 
 def overlay_templates() -> list[dict]:
-    return [overlay_template(key) for key in ("label-compare-v1", "roll-compare-v2")]
+    return [
+        overlay_template(key)
+        for key in ("label-compare-v1", "roll-compare-v2", "question-story-v1")
+    ]
 
 
 def overlay_template(template_id: str) -> dict:

@@ -70,6 +70,11 @@ def requires_flow_chart(semantic: dict) -> bool:
     return any(beat["group_id"] == FLOW_GROUP for beat in semantic["beats"])
 
 
+def original_scene_groups(settings: Settings) -> set[str]:
+    catalog = read_json(settings.video_editing_library_dir / "catalog/groups.json")
+    return {group["id"] for group in catalog["groups"] if group.get("kind") == "visual"}
+
+
 def plan_response(
     row: EditingNativePlanRecord, settings: Settings, transparent_groups: set[str]
 ) -> dict[str, Any]:
@@ -116,6 +121,9 @@ def plan_response(
                 allow_hypit_insets=row.details["source_subtitles"] == "none"
                 and internal_hypit_available(settings, row.workspace_id),
                 allow_question_insets=row.details["source_subtitles"] == "none",
+                scene_groups=original_scene_groups(settings)
+                if row.details["source_subtitles"] == "none"
+                else None,
             )
         )
         >= MIN_OVERLAY_TYPES,
@@ -537,6 +545,9 @@ def admit_render_plan(
                 allow_hypit_insets=options.source_subtitles == "none"
                 and internal_hypit_available(settings, row.workspace_id),
                 allow_question_insets=options.source_subtitles == "none",
+                scene_groups=original_scene_groups(settings)
+                if options.source_subtitles == "none"
+                else None,
             )
         )
         < MIN_OVERLAY_TYPES

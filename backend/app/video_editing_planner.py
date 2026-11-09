@@ -193,7 +193,19 @@ def build_request(
         "不能把用途、用量和条件凑为同一并列关系；图片项必须有本期素材ID，并绑定对应native_media_paths。"
         "禁止任何时间数值、文件路径和可执行代码；原生参数由后续编译器根据本期输入和schema生成。"
     )
-    if template is not None:
+    if template is not None and any(
+        slot.get("layer") == "scene" for slot in template["slots"]
+    ):
+        message += (
+            "用户已选择 overlay_template，口播原声连续。"
+            "按模板 slots 选择透明叠加或整帧原生场景，允许原构图遮挡人物或换背景。"
+            "遵循槽内 binding，整帧追问与主字幕分别编译。"
+            "缺素材或语义不匹配时登记 warnings。"
+            f"完整出片至少 {MIN_OVERLAY_TYPES} 种不同原生动效，"
+            f"优先 {PREFERRED_OVERLAY_TYPES} 种以上。"
+            "同一动效可以重复，重复出现不增加种类。自然留白用 Z-M00。"
+        )
+    elif template is not None:
         message += (
             "用户已选择 overlay_template，整段人物原片持续播放。"
             "只从模板 slots 选择叠加动效，留白用 Z-M00。"

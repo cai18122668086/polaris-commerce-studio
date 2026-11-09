@@ -189,7 +189,7 @@ def compile_sound(
         question_entry = None
         if (
             shot["group_id"] == QUESTION_GROUP
-            and shot["layer"] == "overlay"
+            and shot["layer"] in {"overlay", "scene"}
             and shot["config"].get("branch") == QUESTION_BRANCH
             and cue.event_path == QUESTION_ENTRY
             and cue.phase == "entry"

@@ -7,7 +7,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, cast
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from .motion_library import atomic_json, read_json, sha256
 from .video_editing_media_clocks import clock_profile
@@ -15,6 +15,7 @@ from .video_editing_media_clocks import clock_profile
 QUESTION_GROUP = "W-R18"
 QUESTION_BRANCH = "question"
 QUESTION_ENTRY = "/timing/events/question_in"
+QUESTION_BACKGROUND = "question_background"
 QUESTION_FONT = "font-06b2048c592b1dae"
 _OWNER = Path("src/engines/workspace/商业口播_可编辑改造_20261104")
 _ORIGINAL_SCENE = Path(
@@ -23,7 +24,9 @@ _ORIGINAL_SCENE = Path(
 )
 
 
-def question_variant_template(template: dict, *, embedded_caption: bool = True) -> dict:
+def question_variant_template(
+    template: dict, *, embedded_caption: bool = True, live_background: bool = False
+) -> dict:
     """Describe the exposed original question inputs alongside the smoke defaults."""
     presenter = {k: v for k, v in template["media"]["presenter"].items() if k != "crop"}
     return {
@@ -35,7 +38,10 @@ def question_variant_template(template: dict, *, embedded_caption: bool = True) 
             if embedded_caption
             else [],
         },
-        "media": {"presenter": presenter},
+        "media": {
+            "presenter": presenter,
+            **({QUESTION_BACKGROUND: presenter.copy()} if live_background else {}),
+        },
         "layout": {**template["layout"], "minimum_font_px": 31},
         "timing": {
             **template["timing"],
@@ -47,12 +53,14 @@ def question_variant_template(template: dict, *, embedded_caption: bool = True) 
 def question_overlay_entry_frame(shot: dict, fps: int) -> int:
     if (
         shot["group_id"] != QUESTION_GROUP
-        or shot["layer"] != "overlay"
+        or shot["layer"] not in {"overlay", "scene"}
         or shot["config"].get("branch") != QUESTION_BRANCH
         or shot["config"]["timing"]["events"]["question_in"] != 0
         or fps != 30
     ):
-        raise ValueError("Question sound needs the original inset entry at local zero")
+        raise ValueError(
+            "Question sound needs the original picture entry at local zero"
+        )
     # The pinned episode compositor enables an overlay with gte(t, shot_start).
     start_ms = round(shot["start_seconds"] * 1000)
     return (start_ms * fps + 999) // 1000
@@ -132,3 +140,27 @@ def install_native_question_branch(package: Path, root: Path) -> None:
         return _DeferredOriginalImage(load_image, path)
 
     cast(Any, media).load_image = defer_unused_smoke
+    if QUESTION_BACKGROUND in job["config"]["media"]:
+        _install_live_blur(package)
+
+
+def _install_live_blur(package: Path) -> None:
+    sys.path[:0] = [str(package / _OWNER), str(package)]
+    try:
+        build = importlib.import_module("unified.build12")
+    finally:
+        del sys.path[:2]
+    if build.__file__ is None or Path(build.__file__).resolve() != (
+        package / _OWNER / "unified/build12.py"
+    ):
+        raise ValueError("Question blur must use the original draw engine")
+    picture = build.Engine.picture
+
+    def current_blur(engine: Any, key: str, *args: Any, **kwargs: Any) -> Image.Image:
+        frame = cast(Image.Image, picture(engine, key, *args, **kwargs))
+        if key == QUESTION_BACKGROUND:
+            # Match the original blur radius. The exposed media slot uses actual_t.
+            return frame.filter(ImageFilter.GaussianBlur(19))
+        return frame
+
+    cast(Any, build.Engine).picture = current_blur

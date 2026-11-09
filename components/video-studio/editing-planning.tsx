@@ -91,7 +91,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan }:
     <label>使用哪条成片的实际转录？<select aria-label="使用哪条成片的实际转录？" value={selected} onChange={event => setSelected(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
     <fieldset className={styles.templatePicker}>
       <legend>选择组合模板</legend>
-      <p className={styles.note}>人物原片持续播放。成片至少使用五种不同动效，优先十种以上。同一种动效可在不同词点重复使用。</p>
+      <p className={styles.note}>口播声音连续。画面可随模板叠加动效或切换整帧场景。成片至少使用五种不同动效，优先十种以上。同一种动效可在不同词点重复使用。</p>
       <div className={styles.templateGrid}>{templates.map(template => <label key={template.id} className={styles.templateOption}>
         <span><input type="radio" name="editing-template" value={template.id} checked={templateId === template.id} disabled={busy} onChange={() => setTemplateId(template.id)} /> <b>{template.name}</b></span>
         <small>{template.slots.length} 种可选动效</small>

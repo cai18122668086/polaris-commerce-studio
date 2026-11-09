@@ -5317,9 +5317,44 @@
       "EditingOverlaySlot": {
         "additionalProperties": false,
         "properties": {
+          "binding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding"
+          },
           "group_id": {
             "title": "Group Id",
             "type": "string"
+          },
+          "layer": {
+            "anyOf": [
+              {
+                "const": "scene",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layer"
+          },
+          "native_branch": {
+            "anyOf": [
+              {
+                "const": "question",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Branch"
           },
           "purpose": {
             "title": "Purpose",

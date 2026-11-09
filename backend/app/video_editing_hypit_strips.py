@@ -18,6 +18,8 @@ STRIP_PROFILE = "hypit-original-strips/1"
 PRICE_CARD_GROUP = "HY-A6"
 PRICE_CARD_PROFILE = "hypit-original-price-cards/1"
 PRICE_CARD_INSET_TYPE = "larger-inset-type-v1"
+LIVE_STAGE_GROUPS = frozenset(("HY-A5", PRICE_CARD_GROUP))
+LIVE_STAGE_PROFILE = "hypit-live-stage/1"
 FLOW_GROUP = "HY-A7"
 FLOW_PROFILE = "hypit-original-flow-labels/1"
 FLOW_PLATE = "/media/plate-clip"
@@ -104,11 +106,16 @@ def strip_config_sha256(config: dict) -> str:
 
 
 def compile_flow_plate(
-    native: dict, assets: dict[str, dict[str, Any]], transcript: Transcript
+    native: dict,
+    assets: dict[str, dict[str, Any]],
+    transcript: Transcript,
+    *,
+    live_stage: bool = False,
 ) -> dict:
-    media = native["media"]
-    if len(media) != 1 or media[0]["path"] != FLOW_PLATE:
-        raise ValueError("Flow labels need the original moving plate slot")
+    path = STRIP_IMAGE if live_stage else FLOW_PLATE
+    media = [row for row in native["media"] if row["path"] == path]
+    if len(media) != 1 or (not live_stage and len(native["media"]) != 1):
+        raise ValueError("Hypit needs the original moving plate slot")
     asset = assets[media[0]["asset_id"]]
     start, end = native["clock"]["start_ms"], native["clock"]["end_ms"]
     frames = math.ceil((end - start) * 30 / 1000)
@@ -122,14 +129,14 @@ def compile_flow_plate(
             "Flow labels require this episode's actual moving source window"
         )
     return {
-        "media_path": FLOW_PLATE,
+        "media_path": path,
         "asset_id": media[0]["asset_id"],
         "source_sha256": transcript.source_sha256,
         "source_start_ms": start,
         "source_end_ms": round(start + frames * 1000 / 30, 6),
         "frames": frames,
         "policy": "transcript_source_window",
-        "profile_id": FLOW_PROFILE,
+        "profile_id": LIVE_STAGE_PROFILE if live_stage else FLOW_PROFILE,
         "native_sampling_expression": (
             "30fps task-local source trim, native plate from frame zero"
         ),
@@ -159,6 +166,21 @@ def _flow_moves(tag: str, entries: list[int], frames: int) -> str:
         limits[index] = end
         moves.append(f"{track}:{start}:{motion}")
     return "; ".join(moves)
+
+
+def _live_stage_items(items: str, *, price_cards: bool) -> str:
+    placed = []
+    for i, item in enumerate(items.split(";")):
+        label, at = item.strip().split("@", 1)
+        box, marker, direction = at.partition(">")
+        x, y, w, h = map(int, box.split(","))
+        if price_cards:
+            # Fit all three cards between the centered face and main captions.
+            y, h = (1420, 1148, 876)[i], 238
+        else:
+            y += 465
+        placed.append(f"{label}@{x},{y},{w},{h}{marker}{direction}")
+    return "; ".join(placed)
 
 
 def _native_attributes(package: Path, group: dict, data: dict) -> dict:
@@ -231,6 +253,15 @@ def _native_attributes(package: Path, group: dict, data: dict) -> dict:
         if flow:
             assert match is not None
             slot.update({"moves": _flow_moves(match[0], starts, frames), "text-en": ""})
+    if data.get("live_stage"):
+        if group["id"] not in LIVE_STAGE_GROUPS:
+            raise ValueError(
+                "Live stage requires the original strip or price-card canvas"
+            )
+        slot["bg"] = ""
+        slot["items"] = _live_stage_items(
+            slot.get("items", tag[1]), price_cards=group["id"] == PRICE_CARD_GROUP
+        )
     return {
         node: {**slot, "frames": ",".join(map(str, starts))},
         "t": {"end": f"{frames}f"},
@@ -244,6 +275,7 @@ def compile_strips(
     assets: dict[str, dict[str, Any]],
     *,
     price_card_layout: str | None = None,
+    live_stage: bool = False,
 ) -> dict:
     text = {row["path"]: row for row in native["text"]}
     events = {row["path"]: row for row in native["events"]}
@@ -269,7 +301,8 @@ def compile_strips(
     if not flow and any(
         assets[aid].get("kind") != "image"
         or assets[aid].get("source") != "project_upload"
-        for aid in media.values()
+        for path, aid in media.items()
+        if not (live_stage and path == STRIP_IMAGE)
     ):
         raise ValueError(
             "Hypit stages and cards require registered current project images"
@@ -300,8 +333,10 @@ def compile_strips(
             data["price_card_layout"] = price_card_layout
     else:
         data["labels"] = [text[path]["text"] for path in titles]
-    if flow:
+    if flow or live_stage:
         data["plate"] = native["media_clocks"][0]
+    if live_stage:
+        data["live_stage"] = True
     _native_attributes(package, group, data)
     return data
 
@@ -340,15 +375,12 @@ def verify_stagger_entry(root: Path, ref: dict) -> None:
         raise ValueError("Native Hypit entry frames differ from the sound plan")
 
 
-def _flow_clip(
-    original: Any, config: dict, data: dict, work: Path
-) -> tuple[dict, dict]:
+def _render_plate_clip(original: Any, source_ref: str, data: dict, clip: Path) -> dict:
     plate = data["plate"]
-    source = Path(original.resolve(config["media"]["plate-clip"], True))
+    source = Path(original.resolve(source_ref, True))
     if sha256(source) != plate["source_sha256"] or data["frames"] != plate["frames"]:
-        raise ValueError("Flow plate differs from the compiled source window")
-    work.mkdir(parents=True, exist_ok=True)
-    clip = work / "current-plate.mp4"
+        raise ValueError("Hypit plate differs from the compiled source window")
+    clip.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
             original.resolve("tool://ffmpeg", True),
@@ -398,9 +430,35 @@ def _flow_clip(
     )
     if int(probe) != data["frames"]:
         raise ValueError("Moving Hypit plate does not cover the complete native window")
+    return {**plate, "clip_sha256": sha256(clip)}
+
+
+def _attach_live_stage(scene: str) -> str:
+    # Use the same original Hypit media pipeline and fit as the moving HY-A7 plate.
+    imports = (
+        '  <import as="pipeline" from="@hypit/media-pipeline@1"/>\n'
+        '  <import as="media-track" from="@hypit/media-track@1"/>\n'
+    )
+    track = """  <spatial:Frame id="tengli-full" within={canvas}
+    left="0%" top="0%" right="100%" bottom="100%"/>
+  <asset:Video id="tengli-clip" src="./inputs/current-plate.mp4"/>
+  <pipeline:Normalize id="tengli-plate" source={tengli-clip} video="primary-moving"
+    audio="none" span-authority="video" clock={clock}/>
+  <media-track:Track id="tengli-track" timeline={t.timeline} canvas={canvas}>
+    <media-track:Item id="tengli-plate-item" frame={tengli-full}
+      media={tengli-plate.media}
+      appearance={style.media.plate} during="program"/>
+  </media-track:Track>
+"""
+    asset = '  <import as="asset" from="@hypit/media@1"/>\n'
+    canvas = '  <spatial:Canvas id="canvas" width="1080" height="1920"/>\n'
+    film = "    <film:Track source={a"
+    if any(scene.count(marker) != 1 for marker in (asset, canvas, film)):
+        raise ValueError("Original Hypit full-frame track anchors changed")
     return (
-        {**config, "media": {"plate-clip": str(clip)}},
-        {**plate, "clip_sha256": sha256(clip)},
+        scene.replace(asset, asset + imports)
+        .replace(canvas, canvas + track)
+        .replace(film, "    <film:Track source={tengli-track.visual}/>\n" + film)
     )
 
 
@@ -459,9 +517,17 @@ def install_native_strips(package: Path, root: Path) -> None:
         if card["id"] != data["group_id"] or config.get("attributes") != {}:
             raise ValueError("Native strip job changed before materialization")
         attrs = _native_attributes(package, card, data)
-        plate = None
+        plate, live_source = None, None
         if card["id"] == FLOW_GROUP:
-            config, plate = _flow_clip(original, config, data, work)
+            clip = work / "current-plate.mp4"
+            plate = _render_plate_clip(
+                original, config["media"]["plate-clip"], data, clip
+            )
+            config = {**config, "media": {"plate-clip": str(clip)}}
+        elif data.get("live_stage"):
+            components = config["component_assets"].copy()
+            live_source = components.pop("stagger#mkstage1")
+            config = {**config, "component_assets": components}
         instance = original.instance
         original.instance = lambda: work
         try:
@@ -490,6 +556,11 @@ def install_native_strips(package: Path, root: Path) -> None:
         updated, count = tag.subn(patch_tag, scene.read_text(encoding="utf-8"))
         if count != 1:
             raise ValueError("Original instance stagger node was not found once")
+        if live_source is not None:
+            plate = _render_plate_clip(
+                original, live_source, data, scene.parent / "inputs/current-plate.mp4"
+            )
+            updated = _attach_live_stage(updated)
         scene.write_text(updated, encoding="utf-8")
         atomic_json(
             receipt,

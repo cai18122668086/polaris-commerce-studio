@@ -1,12 +1,27 @@
 import pytest
 
-from app.motion_library import atomic_json, sha256
+from app.motion_library import atomic_json, sha256, verify_package
 from app.motion_library_validation import (
     canonical_hash,
     group_status,
     record_failure,
     record_native,
 )
+
+
+def test_installed_motion_cannot_supply_its_own_integrity_manifest(tmp_path):
+    entry = tmp_path / "commercial_runtime/entry.py"
+    entry.parent.mkdir()
+    entry.write_bytes(b"unapproved replacement")
+    atomic_json(
+        tmp_path / "integrity.json",
+        {
+            "algorithm": "sha256",
+            "files": {"commercial_runtime/entry.py": sha256(entry)},
+        },
+    )
+    with pytest.raises(ValueError, match=r"metadata integrity failed: integrity\.json"):
+        verify_package(tmp_path)
 
 
 def test_native_evidence_cannot_promote_changed_bytes_or_human_acceptance(

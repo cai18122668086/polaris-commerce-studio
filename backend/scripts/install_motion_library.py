@@ -10,6 +10,7 @@ from app.motion_library import (
     install_archive,
     registry,
 )
+from app.video_writing_rules import verify_writing_package
 
 
 def main():
@@ -21,9 +22,10 @@ def main():
     package = install_archive(
         args.motion_zip, args.root / MOTION_SHA256[:12] / "motion", MOTION_SHA256
     )
-    install_archive(
+    writing = install_archive(
         args.writing_zip, args.root / WRITING_SHA256[:12] / "writing", WRITING_SHA256
     )
+    verify_writing_package(writing)
     index = args.root / MOTION_SHA256[:12] / "registry.json"
     # Do not overwrite later runtime evidence when reinstalling the same release.
     if not index.exists():

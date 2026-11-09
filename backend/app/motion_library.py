@@ -14,6 +14,16 @@ from uuid import uuid4
 
 MOTION_SHA256 = "c10429057a862cd8bd9e24280e5dd3f04448a3829b8b10646dd5d341ca0969bc"
 WRITING_SHA256 = "3b4d100ebf6ce41a233f4c994c1f779502ef568a206e7fc9c26cc9507c0baf17"
+_MOTION_METADATA = (
+    (
+        "integrity.json",
+        "c5be1f5241b3557006f6ea1e123c5518af48b883b59690d80fef47c738801b51",
+    ),
+    (
+        "分享说明.md",
+        "1b1547fc02ab1b4ac0080a6e9a09c3165e3b07008a63cab2efa3ebb3b116812d",
+    ),
+)
 
 
 def sha256(path: Path) -> str:
@@ -47,6 +57,11 @@ def inside(root: Path, relative: str) -> Path:
 
 
 def verify_package(package: Path) -> dict:
+    # These original ZIP entries are outside the author's file manifest.
+    for relative, expected in _MOTION_METADATA:
+        path = inside(package, relative)
+        if not path.is_file() or sha256(path) != expected:
+            raise ValueError(f"Original library metadata integrity failed: {relative}")
     integrity = read_json(package / "integrity.json")
     if integrity["algorithm"] != "sha256":
         raise ValueError("Unsupported package integrity algorithm")

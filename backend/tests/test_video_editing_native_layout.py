@@ -157,6 +157,44 @@ def test_same_place_text_relay_requires_short_original_crossfade():
     mismatched = deepcopy(report)
     mismatched["errors"].append({**report["errors"][0], "against": "main_caption"})
     assert not intentional_role_overlaps(episode, mismatched, set(), handoff_shots={0})
+    mixed_roles = deepcopy(report)
+    collisions = mixed_roles["subtitle_checks"][0]["role_review"]["role_collisions"]
+    collisions.append({**collisions[0], "roles": ["body", "other"]})
+    mixed_roles["errors"].append({**report["errors"][0]})
+    assert not intentional_role_overlaps(episode, mixed_roles, set(), handoff_shots={0})
     for span in ([40, 42], [34, 47]):
         shot["config"]["events"]["handoff"] = span
         assert not intentional_role_overlaps(episode, report, set(), handoff_shots={0})
+
+
+def test_folded_keywords_count_each_original_role_pair_in_the_transition():
+    episode, report = example()
+    shot = episode["shots"][0]
+    check = report["subtitle_checks"][0]
+    shot["group_id"] = check["group_id"] = "SG-S04"
+    shot["config"] = {
+        "events": {"merge_start": 30, "accent_start": 40, "accent_end": 50}
+    }
+    collisions = check["role_review"]["role_collisions"]
+    collisions[0]["roles"] = ["lead_a", "lead_b"]
+    collisions.append({**collisions[0], "roles": ["lead_b", "accent"]})
+    report["errors"].append({**report["errors"][0]})
+    assert (
+        len(intentional_role_overlaps(episode, report, set(), progress_shots={0})) == 2
+    )
+    assert not intentional_role_overlaps(episode, report, set())
+    shot["config"]["events"]["accent_start"] = 42
+    assert not intentional_role_overlaps(episode, report, set(), progress_shots={0})
+
+
+def test_split_titles_keep_only_small_contact_after_the_clone_settles():
+    episode, report = example()
+    shot = episode["shots"][0]
+    check = report["subtitle_checks"][0]
+    shot["group_id"] = check["group_id"] = "SG-S01"
+    shot["config"] = {"events": {"split_end": 34, "detail_start": 37}, "frames": 90}
+    overlap = check["role_review"]["role_collisions"][0]
+    overlap.update(roles=["main", "detail"], pixels=64)
+    assert intentional_role_overlaps(episode, report, set(), progress_shots={0})
+    overlap["pixels"] = 65
+    assert not intentional_role_overlaps(episode, report, set(), progress_shots={0})

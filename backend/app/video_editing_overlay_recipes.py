@@ -110,6 +110,7 @@ _IMPACT = ("sfx-69dba3f8f41f94e1", 0.03, 0.27, -25)
 _ENTRY_SOUNDS = {
     QUESTION_GROUP: (QUESTION_ENTRY, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     QUESTION_CARD_GROUP: (QUESTION_CARD_SOUND, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
+    "AH-S01": ("/events/keyword_frame", _IMPACT),
     "AH-S02": ("/events/body_frame", _SLIDE),
     "AH-S04": ("/events/body_frame", _TYPING),
     "AH-S05": ("/events/type_frame", _TYPING),
@@ -119,6 +120,7 @@ _ENTRY_SOUNDS = {
     "AHG-S02": ("/events/mark/0", _SELECT),
     "AHG-S04": ("/events/type/0", _TYPING),
     "AHG-S05": ("/events/body/0", _SLIDE),
+    "BG-S01": ("/events/body_frame", _SLIDE),
     "BG-S02": ("/events/body_frame", _CLICK),
     "BG-S03": ("/events/body_frame", _SLIDE),
     "BG-S04": ("/events/body_frame", _SLIDE),
@@ -132,14 +134,20 @@ _ENTRY_SOUNDS = {
     "JJ-S04": ("/events/body/0", _CLICK),
     "JJ-S05": ("/events/body/0", _SELECT),
     "JJ-S06": ("/events/body/0", _SLIDE),
+    "JJ-S07": ("/events/merge/0", _SLIDE),
+    "JJ-S08": ("/events/settle/0", _SLIDE),
+    "JJ-S09": ("/events/zoom1/0", _IMPACT),
     LINE_GROUP: (LINE_HAND_ENTRY, _SLIDE),
     "LYO01": ("/events/text_frame", _SLIDE),
     "LYO02": ("/events/text_frame", _SELECT),
     "LYO03": ("/events/subtitle_frame", _CLICK),
     "LYO04": ("/events/text_frame", _SLIDE),
+    "SG-S01": ("/events/enter_start", _SLIDE),
     "SG-S02": ("/events/drop_frame", _SELECT),
     "SG-S03": ("/events/enter_start", _IMPACT),
+    "SG-S04": ("/events/enter_start", _SLIDE),
     "SG-S06": ("/events/upper_start", _SLIDE),
+    "SG-S07": ("/events/lead_start", _SLIDE),
     "SG-S09": ("/events/enter_start", _TYPING),
     "SG-S10": ("/events/enter_start", _SLIDE),
 }
@@ -186,8 +194,11 @@ _FONT_SIZES = {
     "BG-S06": {"upper": 42, "lower": 62},
     "BG-S08": {"lower": 84},
     "SG-S03": {"prefix": 59, "keyword": 59},
+    "SG-S01": {"main": 86, "detail": 62},
     "AH-S05": {"body": 49, "emphasis": 69},
     "JJ-S01": {"main": 60, "detail": 44},
+    "JJ-S07": {"left": 54, "right": 54, "keyword": 57},
+    "JJ-S09": {"top": 63, "bottom": 62},
     "AH-S09": {"title": 78},
 }
 _TEXT_RECIPE_FIELDS = {
@@ -199,12 +210,30 @@ _TEXT_RECIPE_FIELDS = {
     "clock_owned_by_compiler",
     "output_owned_by_compiler",
 }
-_RELAY_ENTRY_WORDS = {
+_TEXT_ENTRY_WORDS = {
+    "AH-S01": {"keyword_frame": "keyword", "body_frame": "body"},
     "AH-S04": {"body_frame": "body", "header_frame": "header"},
     "AHG-S01": {"body/0": "body", "keyword/0": "keyword"},
+    "BG-S01": {"body_frame": "body", "focus_frame": "focus"},
     "BG-S07": {"upper_start": "upper", "lower_start": "lower"},
     "BG-S08": {"upper_start": "upper", "lower_start": "lower"},
     TEXT_HANDOFF_GROUP: {"body/0": "body", "handoff/0": "keyword"},
+    "JJ-S07": {"merge/0": "left", "keyword/0": "keyword"},
+    "JJ-S08": {"settle/0": "headline", "swap/0": "detail"},
+    "JJ-S09": {"zoom1/0": "top", "zoom2/0": "bottom"},
+    "SG-S01": {"enter_start": "main", "detail_start": "detail"},
+    "SG-S04": {"enter_start": "lead_a", "accent_start": "accent"},
+    "SG-S07": {"lead_start": "lead", "accent_start": "accent"},
+}
+_TEXT_CLEAR_FRAMES = {"AH-S01": 10, "AH-S04": 10}
+_SIMULTANEOUS_TEXT_START = {"JJ-S08": "headline", "JJ-S09": "top"}
+_TEXT_TRANSITIONS = {
+    "JJ-S07": ("merge", "split", "keyword"),
+    "JJ-S08": ("settle", "swap"),
+    "JJ-S09": ("zoom1", "zoom2"),
+    "SG-S01": ("enter", "split", "detail"),
+    "SG-S04": ("enter", "merge", "accent", "exit"),
+    "SG-S07": ("lead", "raise", "accent", "swap", "exit"),
 }
 
 
@@ -248,7 +277,7 @@ def _entry(
             "EDITING_TEMPLATE_ANCHORS_REQUIRED",
             f"{beat.group_id} 缺少原生文字或动作的词点。",
         )
-    if entry_words := _RELAY_ENTRY_WORDS.get(beat.group_id):
+    if entry_words := _TEXT_ENTRY_WORDS.get(beat.group_id):
         text_starts = {row["path"]: row["token_ids"][0] for row in anchors["text"]}
         events = {row["path"]: row for row in anchors["events"]}
         if any(
@@ -263,9 +292,10 @@ def _entry(
                 f"{beat.group_id} 的各层文字必须在对应实录首词入场。",
             )
         entrance_frames = [event_values["/events/" + event] for event in entry_words]
+        clear_length = _TEXT_CLEAR_FRAMES.get(beat.group_id)
         if entrance_frames != sorted(set(entrance_frames)) or (
-            beat.group_id == "AH-S04"
-            and event_values["/events/clear_frame"] - entrance_frames[-1] < 10
+            clear_length
+            and event_values["/events/clear_frame"] - entrance_frames[-1] < clear_length
         ):
             raise ApiError(
                 422,
@@ -284,6 +314,24 @@ def _entry(
                 "EDITING_TEMPLATE_ROLE_LENGTH",
                 f"{beat.group_id} 的实录词组超出原生角色字数范围。",
             )
+        first_role = _SIMULTANEOUS_TEXT_START.get(beat.group_id)
+        if first_role and text_starts["/content/" + first_role] != beat.first_token_id:
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_ANCHORS_REQUIRED",
+                f"{beat.group_id} 的原生双行须从本段首个实录词开始。",
+            )
+        for transition in _TEXT_TRANSITIONS.get(beat.group_id, ()):
+            path = "/events/" + transition
+            begin, end = (
+                ("/0", "/1") if beat.group_id.startswith("JJ-") else ("_start", "_end")
+            )
+            if event_values[path + begin] >= event_values[path + end]:
+                raise ApiError(
+                    422,
+                    "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+                    f"{beat.group_id} 的原生动作起止需要不同的实录帧。",
+                )
     for role, size in _FONT_SIZES.get(beat.group_id, {}).items():
         config["fonts"][role]["size"] = size
     if beat.group_id == "BG-S06":
@@ -309,6 +357,25 @@ def _entry(
             "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
             "AHG-S01 须在前字退定后再按实录词点显示后字。",
         )
+    if beat.group_id == "SG-S04" and not (
+        0
+        < event_values["/events/accent_start"] - event_values["/events/merge_start"]
+        < event_values["/events/accent_end"] - event_values["/events/merge_start"]
+        <= 32
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+            "SG-S04 的白词合并与金字接力须处在同一段短交接。",
+        )
+    if beat.group_id == "JJ-S08" and (
+        event_values["/events/swap/0"] - event_values["/events/settle/1"] < 6
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+            "JJ-S08 两行落定后须留出可读时间，再开始斜排换位。",
+        )
     if beat.group_id == TEXT_HANDOFF_GROUP and not (
         1
         <= event_values["/events/handoff/1"] - event_values["/events/handoff/0"]
@@ -319,7 +386,15 @@ def _entry(
             "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
             "JJ-S06 的同位换字需要 1 至 12 帧的实录交接窗口。",
         )
-    if beat.group_id in {"AH-S04", "AHG-S01", "SG-S03", "BG-S03"}:
+    if beat.group_id in {
+        "AH-S04",
+        "AHG-S01",
+        "SG-S01",
+        "SG-S03",
+        "BG-S03",
+        "JJ-S07",
+        "JJ-S09",
+    }:
         for font in config["fonts"].values():
             font["shadow"].update(x=0, y=0, blur=0)
     if beat.group_id == "BG-S08":

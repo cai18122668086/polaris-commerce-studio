@@ -117,8 +117,13 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "explainer-steps-v1",
         "subtitle-story-v1",
         "subtitle-relay-v1",
+        "subtitle-progress-v1",
     }
     assert all(len(row["slots"]) >= 10 for row in options)
+    progress = next(row for row in options if row["id"] == "subtitle-progress-v1")
+    relay = next(row for row in options if row["id"] == "subtitle-relay-v1")
+    assert len(progress["slots"]) == len(relay["slots"]) + 8
+    assert progress["slots"][8:] == relay["slots"]
     rotation = next(row for row in options if row["id"] == "rotation-cards-v1")
     assert rotation["slots"][0]["group_id"] == "CX-G04"
     openings = next(row for row in options if row["id"] == "presenter-openings-v1")

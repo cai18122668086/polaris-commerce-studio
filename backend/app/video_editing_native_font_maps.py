@@ -16,10 +16,12 @@ _CORE = _SUBTITLES / "SG-production/core.py"
 _BG_PRODUCTION = _SUBTITLES / "SG-BG-production/production.py"
 _ENTRY_DIGESTS = {
     **dict.fromkeys(
-        ("SG-S03", "SG-S06", "SG-S09"),
+        ("SG-S03", "SG-S04", "SG-S06", "SG-S09"),
         "9fda50a11d6abf2fc1e7c51e34b0ef75015c732b07fd1704218b8f20b0d3075c",
     ),
     "SG-S02": "87274b5e410831638782fbe4bb3c241b3e546a29d8a32ba3832bf67a25ce68ed",
+    "SG-S01": "940fc34a86e7f24d89a87a74bf5651a60fdab31f79ccf8b2ce337d32a7685063",
+    "SG-S07": "c8ddd2b750fa39b6115efd62a7a82d7d71c9d95dcc59d1a806a101ed671356e6",
     "SG-S10": "3ebc549e6eefe28a4c0cb35f5b6af79c2ccf4352d2b01cdd0a137eb5b7dfd712",
     **dict.fromkeys(
         ("BG-S06", "BG-S07", "BG-S08"),

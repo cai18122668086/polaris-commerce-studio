@@ -30,8 +30,12 @@ PACKAGE_TEMPLATE_ID = "package-specs-v1"
 LINE_TEMPLATE_ID = "line-story-v1"
 SUBTITLE_STORY_TEMPLATE_ID = "subtitle-story-v1"
 SUBTITLE_RELAY_TEMPLATE_ID = "subtitle-relay-v1"
+SUBTITLE_PROGRESS_TEMPLATE_ID = "subtitle-progress-v1"
+TEXT_HANDOFF_TEMPLATES = frozenset(
+    {SUBTITLE_RELAY_TEMPLATE_ID, SUBTITLE_PROGRESS_TEMPLATE_ID}
+)
 SYNC_SUBTITLE_TEMPLATES = frozenset(
-    {SUBTITLE_STORY_TEMPLATE_ID, SUBTITLE_RELAY_TEMPLATE_ID}
+    {SUBTITLE_STORY_TEMPLATE_ID, *TEXT_HANDOFF_TEMPLATES}
 )
 NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
 LIVE_STRIP_TEMPLATE_ID = "live-strip-story-v1"
@@ -127,6 +131,20 @@ _SUBTITLE_RELAY_SLOTS = {
     ),
     "BG-S07": "用实录四字主题和五字补充说明做白、金双行接力。",
     "BG-S08": "四字实录标题和五字后续说明分别放入原大标题与下方读区。",
+}
+_SUBTITLE_PROGRESS_SLOTS = {
+    "AH-S01": (
+        "用两字内关键词带出八字内的实录说明。说明入场后留足展开时间，再清除画面。"
+    ),
+    "SG-S01": "三字主词复制分开，再接六字实录说明。两段文字各从首词进入。",
+    "SG-S04": "同一实录主题拆成两个两字短语，按原动作一起进入，再由三字重点接力。",
+    "SG-S07": "以实录两字引导接五字说明。两词分别按首词入场，保留原上下换位。",
+    "JJ-S07": (
+        "两个相邻实录短语合并再分开，中间接后续实录关键词。左四字、右三字、中七字以内。"
+    ),
+    "JJ-S08": "以本段首词开始四字内标题和五字内说明的原生斜排。说明首词触发换位。",
+    "JJ-S09": "以本段首词开始双行第一段缩放，后句首词触发第二段。上五字、下四字以内。",
+    "BG-S01": "先以白字显示四字内实录主题，后接五字内同基线说明。两句各以首词入场。",
 }
 _EXPLAINER_SLOTS = [
     {"group_id": "BG-S06", "purpose": "用两层文字交代使用场景和要解决的问题"},
@@ -367,6 +385,17 @@ _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
         *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[SUBTITLE_PROGRESS_TEMPLATE_ID] = {
+    "id": SUBTITLE_PROGRESS_TEMPLATE_ID,
+    "name": "关键词递进",
+    "slots": [
+        *(
+            {"group_id": group, "purpose": purpose}
+            for group, purpose in _SUBTITLE_PROGRESS_SLOTS.items()
+        ),
+        *_TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID]["slots"],
+    ],
+}
 
 _TEMPLATES[PICTURE_TEMPLATE_ID] = {
     "id": PICTURE_TEMPLATE_ID,
@@ -435,6 +464,7 @@ def overlay_templates() -> list[dict]:
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,
             SUBTITLE_RELAY_TEMPLATE_ID,
+            SUBTITLE_PROGRESS_TEMPLATE_ID,
         )
     ]
 

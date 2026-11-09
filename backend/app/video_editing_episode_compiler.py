@@ -38,7 +38,11 @@ from .video_editing_judgment import JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_content import PACKAGE_GROUP
-from .video_editing_native_layout import BACKDROP_GROUP, TEXT_HANDOFF_GROUP
+from .video_editing_native_layout import (
+    BACKDROP_GROUP,
+    PROGRESS_ROLE_GROUPS,
+    TEXT_HANDOFF_GROUP,
+)
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
@@ -51,8 +55,9 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
-    SUBTITLE_RELAY_TEMPLATE_ID,
+    SUBTITLE_PROGRESS_TEMPLATE_ID,
     SYNC_SUBTITLE_TEMPLATES,
+    TEXT_HANDOFF_TEMPLATES,
     overlay_template,
     validate_template_plan,
 )
@@ -875,10 +880,22 @@ def compile_episode(
     handoff_shots = [
         i
         for i, shot in enumerate(episode["shots"])
-        if authoring.overlay_template_id == SUBTITLE_RELAY_TEMPLATE_ID
+        if authoring.overlay_template_id in TEXT_HANDOFF_TEMPLATES
         and shot["group_id"] == TEXT_HANDOFF_GROUP
     ]
-    if backdrop_shots or question_shots or numbered_shots or handoff_shots:
+    progress_role_shots = [
+        i
+        for i, shot in enumerate(episode["shots"])
+        if authoring.overlay_template_id == SUBTITLE_PROGRESS_TEMPLATE_ID
+        and shot["group_id"] in PROGRESS_ROLE_GROUPS
+    ]
+    if (
+        backdrop_shots
+        or question_shots
+        or numbered_shots
+        or handoff_shots
+        or progress_role_shots
+    ):
         atomic_json(
             root / "layout-intent.json",
             {
@@ -886,6 +903,11 @@ def compile_episode(
                 "ah_s03_input_a_shots": question_shots,
                 **({"numbered_alpha_shots": numbered_shots} if numbered_shots else {}),
                 **({"jj_s06_handoff_shots": handoff_shots} if handoff_shots else {}),
+                **(
+                    {"progress_role_shots": progress_role_shots}
+                    if progress_role_shots
+                    else {}
+                ),
             },
         )
     if continuous_base:

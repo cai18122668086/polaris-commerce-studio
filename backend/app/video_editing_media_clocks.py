@@ -4,6 +4,7 @@ This is not a generic offset heuristic. Other media/choreography stays pending
 until its original sampling expression has a dedicated, byte-pinned profile.
 """
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ def compile_media_clocks(
     declarations: list[dict],
     assets: dict[str, dict[str, Any]],
     transcript: Transcript,
+    config: dict,
 ) -> tuple[dict[str, float], list[dict]]:
     fields = {f["path"]: f for f in contract["fields"]}
     media_clock_fields = {
@@ -66,19 +68,67 @@ def compile_media_clocks(
     assigned: dict[str, float] = {}
     receipts = []
     used = set()
+    clips = profile.get("project_clip_event_frames", {})
     for row in declarations:
-        if (
-            set(row) != {"media_path", "policy"}
-            or row["policy"] != "transcript_source_window"
-        ):
-            raise ValueError("Only measured original presenter windows are implemented")
+        if set(row) != {"media_path", "policy"} or row["policy"] not in {
+            "transcript_source_window",
+            "project_clip_from_start",
+        }:
+            raise ValueError("Media clock policy must use an audited native slot")
         path = row["media_path"]
-        if path in used or path not in media or path not in profile["media_paths"]:
+        clip = row["policy"] == "project_clip_from_start"
+        if (
+            path in used
+            or path not in media
+            or path not in (clips if clip else profile["media_paths"])
+        ):
             raise ValueError(
                 "Media clock must address one selected, audited native slot"
             )
         used.add(path)
         asset = assets[media[path]["asset_id"]]
+        if clip:
+            fps = profile["native_fps"]
+            shift = config["events"]["shift_frames"]
+            if type(shift) is not int:
+                raise ValueError("Native clip choreography shift must be an integer")
+            fps_window = math.ceil(
+                (native["clock"]["end_ms"] - native["clock"]["start_ms"]) / 1000 * fps
+            )
+            if fps_window <= shift + profile["project_clip_settle_frame"]:
+                raise ValueError(
+                    "Current scene ends before the native dual-clip transition settles"
+                )
+            required_ms = math.ceil(
+                max(1, fps_window - shift - clips[path]) * 1000 / fps
+            )
+            if (
+                asset.get("kind") != "video"
+                or asset.get("source") != "project_upload"
+                or type(asset.get("duration_ms")) is not int
+                or asset["duration_ms"] < required_ms
+            ):
+                raise ValueError(
+                    "Supplemental clip is missing or shorter than its native window"
+                )
+            receipts.append(
+                {
+                    "media_path": path,
+                    "asset_id": media[path]["asset_id"],
+                    "policy": row["policy"],
+                    "source_sha256": asset["sha256"],
+                    "source_start_ms": 0,
+                    "source_end_ms": required_ms,
+                    "asset_duration_ms": asset["duration_ms"],
+                    "profile_id": profile["id"],
+                    "native_source_files": profile["source_files"],
+                    "native_sampling_expression": (
+                        f"max(0, (local frame - shift_frames - {clips[path]}) / {fps})"
+                    ),
+                    "timing_review": "unreviewed",
+                }
+            )
+            continue
         if (
             asset.get("kind") != "original_video"
             or asset.get("sha256") != transcript.source_sha256

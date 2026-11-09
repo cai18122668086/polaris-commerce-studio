@@ -29,6 +29,7 @@ from .motion_library import (
 )
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
+from .video_editing_materials import PREFIX, project_material_files
 from .video_editing_native_plans import frozen_plan_snapshot
 from .video_editing_pipeline import (
     EditingFailure,
@@ -306,9 +307,67 @@ def load_plan_transcript(
             "alignment_calls": 0,
             "planning_calls": 0,
             "planning_provenance": plan.get("planning_provenance"),
+            **(
+                {
+                    "project_materials": [
+                        {"id": aid, "sha256": asset["sha256"], "kind": asset["kind"]}
+                        for aid, asset in sorted(plan["asset_files"].items())
+                        if aid.startswith(PREFIX)
+                    ]
+                }
+                if any(aid.startswith(PREFIX) for aid in plan.get("asset_files", {}))
+                else {}
+            ),
         },
     )
     return transcript
+
+
+def stage_plan_materials(
+    session: Session,
+    root: Path,
+    plan: dict,
+    settings: Settings,
+    guard: Callable[[], None],
+) -> dict:
+    assets = plan["asset_files"]
+    frozen = {aid: asset for aid, asset in assets.items() if aid.startswith(PREFIX)}
+    if not frozen:
+        return assets
+    source = session.get(EditingSourceRecord, plan["source_id"])
+    if not source or (source.workspace_id, source.owner_user_id, source.project_id) != (
+        plan["workspace_id"],
+        plan["owner_user_id"],
+        plan["project_id"],
+    ):
+        raise EditingFailure("EDITING_MATERIAL_CHANGED")
+    try:
+        if project_material_files(session, settings, source, set(frozen)) != frozen:
+            raise EditingFailure("EDITING_MATERIAL_CHANGED")
+        session.rollback()
+        used = {aid for beat in plan["semantic"]["beats"] for aid in beat["asset_ids"]}
+        staged = dict(assets)
+        for aid in frozen.keys() & used:
+            asset = frozen[aid]
+            origin = Path(asset["path"])
+            target = root / "input" / "materials" / (aid + origin.suffix)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            digest = hashlib.sha256()
+            length = 0
+            with origin.open("rb") as src, target.open("xb") as dst:
+                while block := src.read(1024 * 1024):
+                    guard()
+                    length += len(block)
+                    if length > asset["bytes"]:
+                        raise EditingFailure("EDITING_MATERIAL_CHANGED")
+                    digest.update(block)
+                    dst.write(block)
+            if length != asset["bytes"] or digest.hexdigest() != asset["sha256"]:
+                raise EditingFailure("EDITING_MATERIAL_CHANGED")
+            staged[aid] = {**asset, "path": str(target)}
+        return staged
+    except (ApiError, OSError, ValueError) as error:
+        raise EditingFailure("EDITING_MATERIAL_CHANGED") from error
 
 
 def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) -> None:
@@ -513,13 +572,17 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                         "EDITING_PLANNER_PROVENANCE_REQUIRED"
                     ) from error
             stage("compiling", native_plan_id=native_plan["id"])
+            with factory() as session:
+                assets = stage_plan_materials(
+                    session, root, native_plan, settings, guard
+                )
             compile_episode(
                 root,
                 prepared,
                 transcript,
                 SemanticPlan.model_validate(native_plan["semantic"]),
                 EpisodeRecipeBundle.model_validate(native_plan["recipes"]),
-                native_plan["asset_files"],
+                assets,
                 snapshot["options"],
                 settings,
                 native_plan["choice_snapshot"],

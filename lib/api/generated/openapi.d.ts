@@ -2279,6 +2279,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Materials */
+        get: operations["list_materials_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_get"];
+        put?: never;
+        /** Upload Material */
+        post: operations["upload_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Original */
+        get: operations["original_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans": {
         parameters: {
             query?: never;
@@ -4146,6 +4181,20 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_upload_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_post */
+        Body_upload_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_post: {
+            /** Description */
+            description: string;
+            /** File */
+            file: string;
+            /** Label */
+            label: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
         /** Body_upload_source_api_v1_video_studio_workspaces__workspace_id__editing_sources_post */
         Body_upload_source_api_v1_video_studio_workspaces__workspace_id__editing_sources_post: {
             /** Confirmed Version Id */
@@ -5415,6 +5464,43 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** EditingMaterialResponse */
+        EditingMaterialResponse: {
+            /** Asset Id */
+            asset_id: string;
+            /** Bytes */
+            bytes: number;
+            /** Description */
+            description: string;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Height */
+            height: number;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** Label */
+            label: string;
+            /** Mime */
+            mime: string;
+            /** Sha256 */
+            sha256: string;
+            /** Url */
+            url: string;
+            /** Width */
+            width: number;
+        };
+        /** EditingMaterialsResponse */
+        EditingMaterialsResponse: {
+            /** Items */
+            items: components["schemas"]["EditingMaterialResponse"][];
+            /** Next Offset */
+            next_offset: number | null;
+        };
         /** EditingNativePlanResponse */
         EditingNativePlanResponse: {
             /** Audience Question */
@@ -5530,6 +5616,8 @@ export interface components {
         };
         /** EditingPlanningTaskCreate */
         EditingPlanningTaskCreate: {
+            /** Material Ids */
+            material_ids?: string[] | null;
             /**
              * Mode
              * @default prepare
@@ -12722,6 +12810,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingLibraryNoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_materials_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingMaterialsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingMaterialResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    original_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                material_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

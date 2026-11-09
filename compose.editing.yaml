@@ -8,6 +8,9 @@ x-editing-planner-environment: &editing-planner-environment
   POLARIS_VIDEO_SCRIPT_API_KEY: ${POLARIS_VIDEO_SCRIPT_API_KEY:-}
 services:
   api:
+    build:
+      args:
+        POLARIS_INCLUDE_EDITING_PROBE: "1"
     environment:
       <<: *editing-planner-environment
       POLARIS_VIDEO_EDITING_ENABLED: "true"

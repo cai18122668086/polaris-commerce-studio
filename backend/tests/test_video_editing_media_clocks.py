@@ -138,3 +138,42 @@ def test_media_clock_rejects_history_wrong_source_and_unaudited_sampling(
             package, tmp_path / "rejected", beat, transcript, recipe, assets
         )
     assert not (tmp_path / "rejected/job.json").exists()
+
+
+def test_independent_video_clock_requires_the_uploaded_clip_length(
+    tmp_path, monkeypatch
+):
+    package, transcript, _, _, _, engine = media_inputs(tmp_path, monkeypatch)
+    slot = "/media/broll1/path"
+    manifest = read_json(clocks.MANIFEST)
+    profile = manifest["profiles"].pop("YYP01")
+    profile["project_clip_event_frames"] = {slot: 32}
+    profile["project_clip_settle_frame"] = 47
+    manifest["profiles"]["YYP05"] = profile
+    atomic_json(clocks.MANIFEST, manifest)
+    group = {"id": "YYP05", "backend": "scene"}
+    contract = {"native_fps": 30, "fields": [{"path": slot, "category": "resource"}]}
+    native = {
+        "media": [{"path": slot, "asset_id": "clip"}],
+        "clock": {"start_ms": 1000, "end_ms": 4000},
+    }
+    declarations = [{"media_path": slot, "policy": "project_clip_from_start"}]
+    assets = {
+        "clip": {
+            "kind": "video",
+            "source": "project_upload",
+            "duration_ms": 2000,
+            "sha256": "a" * 64,
+        }
+    }
+    config = {"events": {"shift_frames": 0}}
+    assigned, proof = clocks.compile_media_clocks(
+        package, group, contract, native, declarations, assets, transcript, config
+    )
+    assert not assigned and proof[0]["source_start_ms"] == 0
+    assert proof[0]["source_end_ms"] == 1934
+    assets["clip"]["duration_ms"] = 1933
+    with pytest.raises(ValueError, match="shorter than its native window"):
+        clocks.compile_media_clocks(
+            package, group, contract, native, declarations, assets, transcript, config
+        )

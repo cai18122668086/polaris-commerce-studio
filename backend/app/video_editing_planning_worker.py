@@ -19,6 +19,7 @@ from .errors import ApiError
 from .motion_library import MOTION_SHA256, atomic_json, sha256, verify_package
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
 from .video_editing_library_choice_store import stored_choice_snapshot
+from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest
 from .video_editing_planning_store import FILES, execution_available, planning_root
 from .video_editing_task_models import (
@@ -229,6 +230,14 @@ def process(
             if transcript.source_sha256 != snapshot["source_sha256"]:
                 raise ApiError(
                     409, "EDITING_PLAN_SOURCE_CHANGED", "转录不属于已选原片。"
+                )
+            if not (root / "provider/semantic-submit-intent.json").exists():
+                verify_material_cards(
+                    session,
+                    settings,
+                    source,
+                    snapshot["asset_cards"],
+                    verify_bytes=True,
                 )
             shutil.copyfile(record.path, attempt / FILES["transcript"])
             if (

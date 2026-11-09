@@ -17,6 +17,7 @@ from .motion_library import MOTION_SHA256
 from .video_editing_contracts import EditingOptions, SemanticPlan
 from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_library_choice_store import stored_choice_snapshot
+from .video_editing_materials import project_material_files, verify_material_cards
 from .video_editing_planner import validate_plan
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -147,6 +148,7 @@ def register_gateway_plan(
         verified.semantic,
         recipes,
         verified.lineage,
+        verified.task.snapshot["asset_cards"],
     )
 
 
@@ -160,6 +162,7 @@ def _register_plan(
     semantic: SemanticPlan,
     recipes: EpisodeRecipeBundle,
     planning_provenance: dict[str, Any] | None = None,
+    planning_cards: list[dict] | None = None,
 ) -> EditingNativePlanRecord:
     semantic_data, recipe_data = (
         semantic.model_dump(mode="json"),
@@ -235,11 +238,27 @@ def _register_plan(
     choice_snapshot = stored_choice_snapshot(
         session, workspace_id, owner_user_id, task.project_id
     )
+    assets = source_assets(source)
+    if planning_cards is not None:
+        assets.update(
+            verify_material_cards(
+                session, settings, source, planning_cards, verify_bytes=False
+            )
+        )
+    else:
+        assets.update(
+            project_material_files(
+                session,
+                settings,
+                source,
+                {aid for beat in semantic.beats for aid in beat.asset_ids},
+            )
+        )
     validate_plan(
         semantic,
         transcript,
         settings.video_editing_library_dir,
-        set(source_assets(source)),
+        set(assets),
         choice_snapshot,
     )
     positions = {t.id: i for i, t in enumerate(transcript.tokens)}
@@ -266,7 +285,7 @@ def _register_plan(
             "text_status": transcript.text_status,
             "source_sha256": transcript.source_sha256,
             "audio_sha256": transcript.audio_sha256,
-            "asset_snapshot": source_assets(source),
+            "asset_snapshot": assets,
             "beats": [
                 {
                     "id": beat.id,

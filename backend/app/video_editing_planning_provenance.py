@@ -16,6 +16,7 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest, source_assets
 from .video_editing_planner import validate_plan
 from .video_editing_planning_store import FILES, planning_root
@@ -265,6 +266,13 @@ def verify_render_provenance(
     source = session.get(EditingSourceRecord, verified.task.source_id)
     if not source:
         raise ValueError("Planning source disappeared during verification")
+    assets = source_assets(source) | verify_material_cards(
+        session,
+        settings,
+        source,
+        verified.task.snapshot["asset_cards"],
+        verify_bytes=False,
+    )
     if (
         verified.lineage != captured
         or verified.task.project_id != native["project_id"]
@@ -274,7 +282,7 @@ def verify_render_provenance(
         or verified.task.snapshot["choice_snapshot"] != native["choice_snapshot"]
         or verified.semantic.model_dump(mode="json") != native["semantic"]
         or native["recipes"]["planning_origin"] != "tengli_gateway"
-        or native["asset_files"] != source_assets(source)
+        or native["asset_files"] != assets
     ):
         raise ValueError("Frozen native plan does not match its captured planning job")
     return hashlib.sha256(verified.semantic.model_dump_json().encode()).hexdigest()

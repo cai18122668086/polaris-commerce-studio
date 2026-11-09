@@ -102,12 +102,17 @@
       "native_fps": 30
     },
     "YYP05": {
-      "id": "native-presenter-local-seconds/1",
+      "id": "native-yyp05-presenter-and-independent-clips/1",
       "backend": "scene",
       "media_paths": [
         "/media/presenter/path"
       ],
-      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "project_clip_event_frames": {
+        "/media/broll1/path": 32,
+        "/media/broll2/path": 40
+      },
+      "project_clip_settle_frame": 47,
+      "scope": "presenter clock plus two original independent start-of-clip sampling expressions; visual acceptance separate",
       "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
       "source_files": {
         "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",

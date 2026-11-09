@@ -120,6 +120,7 @@ def compile_native_job(
         recipe.get("media_clocks", []),
         asset_files,
         transcript,
+        config,
     )
     native["media_clocks"] = clock_receipts
     assignments = (

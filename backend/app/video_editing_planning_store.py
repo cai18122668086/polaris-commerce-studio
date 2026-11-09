@@ -16,6 +16,7 @@ from .motion_library import MOTION_SHA256
 from .video_assistance_provider import planner_configured, planner_endpoint
 from .video_editing_contracts import EditingPlanningTaskCreate
 from .video_editing_library_choice_store import stored_choice_snapshot
+from .video_editing_materials import PREFIX, material_cards, project_material_files
 from .video_editing_native_plans import content_digest, source_assets
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -179,22 +180,17 @@ def create_planning_task(
     choices = stored_choice_snapshot(
         session, workspace.workspace_id, workspace.principal.user_id, base.project_id
     )
-    # Only bounded source metadata goes to the model, never paths or credentials.
-    cards = [
-        {
-            "id": aid,
-            **{
-                k: asset[k]
-                for k in ("kind", "sha256", "semantic_use", "viewed_identity")
-            },
-        }
-        for aid, asset in source_assets(source).items()
-    ]
+    selected = project_material_files(
+        session,
+        settings,
+        source,
+        {PREFIX + str(key) for key in body.material_ids or []},
+    )
     snapshot: dict[str, Any] = {
         "gateway": planner_endpoint(settings),
         "source_sha256": source.media_sha256,
         "choice_snapshot": choices,
-        "asset_cards": cards,
+        "asset_cards": material_cards(source_assets(source) | selected),
         "source_subtitles": base.options["source_subtitles"],
     }
     model = settings.video_editing_plan_model

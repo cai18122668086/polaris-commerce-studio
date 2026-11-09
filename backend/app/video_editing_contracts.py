@@ -264,11 +264,19 @@ class EditingPlanningTaskCreate(StrictVideoModel):
     request_id: UUID
     mode: Literal["prepare", "generate"] = "prepare"
     prepared_task_id: UUID | None = None
+    material_ids: list[UUID] | None = Field(
+        default=None, max_length=24, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def prepared_execution(self) -> Self:
         if (self.mode == "generate") != (self.prepared_task_id is not None):
             raise ValueError("Model execution needs exactly one prepared request")
+        if self.material_ids is not None and (
+            self.mode != "prepare"
+            or len(set(self.material_ids)) != len(self.material_ids)
+        ):
+            raise ValueError("Only preparation accepts distinct project material IDs")
         return self
 
 
@@ -281,6 +289,26 @@ class EditingPlanningSpan(StrictVideoModel):
     start_ms: int
     end_ms: int
     timing_review: Literal["unreviewed"] = "unreviewed"
+
+
+class EditingMaterialResponse(StrictVideoModel):
+    id: str
+    asset_id: str
+    label: str
+    description: str
+    kind: Literal["image", "video"]
+    mime: str
+    sha256: str
+    bytes: int
+    width: int
+    height: int
+    duration_ms: int | None
+    url: str
+
+
+class EditingMaterialsResponse(StrictVideoModel):
+    items: list[EditingMaterialResponse]
+    next_offset: int | None
 
 
 class EditingPlanningTaskResponse(StrictVideoModel):

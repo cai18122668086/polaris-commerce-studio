@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
+import { EditingProjectMaterials } from "./editing-project-materials";
 import styles from "./editing-workspace.module.css";
 
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
@@ -15,6 +16,7 @@ const errors: Record<string, string> = { EDITING_PLAN_ALREADY_SUBMITTED: "模型
 export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId: string; projectId: string; tasks: BaseTask[] }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState("");
+  const [materialIds, setMaterialIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -34,11 +36,12 @@ export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId
     if (!taskId) return;
     setBusy(true); setError("");
     try {
-      const key = JSON.stringify([taskId, mode, prepared?.id]);
+      const currentMaterials = mode === "prepare" ? [...materialIds].sort() : [];
+      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials]);
       if (!intent.current || intent.current.key !== key) intent.current = { key, id: crypto.randomUUID() };
       unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/planning-tasks`, {
         params: { path: { workspace_id: workspaceId, task_id: taskId } }, signal: AbortSignal.timeout(12000),
-        body: { request_id: intent.current.id, mode, ...(prepared ? { prepared_task_id: prepared.id } : {}) },
+        body: { request_id: intent.current.id, mode, ...(prepared ? { prepared_task_id: prepared.id } : {}), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
       }));
       intent.current = undefined; setJobs(await refresh());
     } catch (caught) { setError(caught instanceof Error ? caught.message : "提交暂未确认，再次点击会查询同一请求。"); }
@@ -58,6 +61,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId
   return <section aria-label="语义规划任务">
     <p className={styles.note}>先用已有成片的实际转录准备完整请求，再生成重点与选组候选。准备不会重新配音、识别或调用模型。</p>
     <label>使用哪条成片的实际转录？<select aria-label="使用哪条成片的实际转录？" value={selected} onChange={event => setSelected(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
+    <EditingProjectMaterials workspaceId={workspaceId} projectId={projectId} selected={materialIds} onSelect={setMaterialIds} />
     <button type="button" disabled={busy || !selected} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {loadError && <p role="alert" className={styles.error}>{loadError}</p>}

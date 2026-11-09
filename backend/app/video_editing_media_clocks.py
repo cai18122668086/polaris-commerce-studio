@@ -65,6 +65,14 @@ def compile_media_clocks(
         ):
             raise ValueError("Audited original source-time implementation changed")
     media = {m["path"]: m for m in native["media"]}
+    for reference, source in profile.get("source_reference_aliases", {}).items():
+        if (
+            reference not in selected_videos
+            or source not in selected_videos
+            or media[reference]["asset_id"] != media[source]["asset_id"]
+        ):
+            raise ValueError("Native source reference must match its presenter slot")
+        selected_videos.remove(reference)
     assigned: dict[str, float] = {}
     receipts = []
     used = set()

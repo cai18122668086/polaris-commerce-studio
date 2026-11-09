@@ -104,6 +104,45 @@ def test_native_presenter_uses_measured_nonzero_source_window(tmp_path, monkeypa
     )
 
 
+def test_audited_reference_matches_presenter_without_a_second_clock(
+    tmp_path, monkeypatch
+):
+    package, transcript, _, _, assets, _ = media_inputs(tmp_path, monkeypatch)
+    manifest = read_json(clocks.MANIFEST)
+    presenter = "/media/presenter/path"
+    manifest["profiles"]["YYP01"]["source_reference_aliases"] = {
+        "/reference": presenter
+    }
+    atomic_json(clocks.MANIFEST, manifest)
+    config = read_json(package / "template.json")
+    config["reference"] = "input://fixture-reference"
+    atomic_json(package / "template.json", config)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    contract = input_contract(package, group)
+    reference_slot = next(
+        r for r in contract["resource_paths"] if r["path"] == "/reference"
+    )
+    assert reference_slot["same_asset_as"] == presenter
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 2000},
+        "media": [
+            {"path": presenter, "asset_id": "current-raw"},
+            {"path": "/reference", "asset_id": "current-raw"},
+        ],
+    }
+    declarations = [{"media_path": presenter, "policy": "transcript_source_window"}]
+    _, proof = clocks.compile_media_clocks(
+        package, group, contract, native, declarations, assets, transcript, config
+    )
+    assert [row["media_path"] for row in proof] == [presenter]
+    assets["unrelated"] = assets["current-raw"].copy()
+    native["media"][1]["asset_id"] = "unrelated"
+    with pytest.raises(ValueError, match="source reference must match"):
+        clocks.compile_media_clocks(
+            package, group, contract, native, declarations, assets, transcript, config
+        )
+
+
 @pytest.mark.parametrize(
     "change",
     [

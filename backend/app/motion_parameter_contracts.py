@@ -308,6 +308,8 @@ def input_contract(
             }
             for path in SILHOUETTE_PATHS
         )
+    media_profile = clock_profile(group["id"])
+    references = (media_profile or {}).get("source_reference_aliases", {})
     return {
         "version": "tengli.native-input-contract/1",
         "release": MOTION_SHA256,
@@ -324,7 +326,15 @@ def input_contract(
             if f["category"] == "event"
         ],
         "resource_paths": [
-            {"path": f["path"], "kind": f.get("resource_kind")}
+            {
+                "path": f["path"],
+                "kind": f.get("resource_kind"),
+                **(
+                    {"same_asset_as": references[f["path"]]}
+                    if f["path"] in references
+                    else {}
+                ),
+            }
             for f in fields
             if f["category"] in {"resource", "optional_media"}
         ],
@@ -419,20 +429,20 @@ def input_contract(
         "media_clock_profile": (
             {
                 **{
-                    k: profile[k]
+                    k: media_profile[k]
                     for k in ("id", "media_paths", "scope", "local_sample_seconds")
                 },
                 **(
                     {
                         "project_scene_clip_paths": list(
-                            profile["project_scene_clip_start_events"]
+                            media_profile["project_scene_clip_start_events"]
                         )
                     }
-                    if "project_scene_clip_start_events" in profile
+                    if "project_scene_clip_start_events" in media_profile
                     else {}
                 ),
             }
-            if (profile := clock_profile(group["id"]))
+            if media_profile
             else None
         ),
         "hypit_compound_attributes_require_native_review": backend == "hypit",

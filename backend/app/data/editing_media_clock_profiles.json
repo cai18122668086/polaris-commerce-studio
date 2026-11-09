@@ -570,6 +570,31 @@
       },
       "native_fps": 30
     },
+    "CXBR01": {
+      "id": "cxbr01-measured-room-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "source_reference_aliases": {
+        "/reference": "/media/presenter/path"
+      },
+      "project_scene_clip_start_events": {
+        "/media/room/path": "/timing/room_in"
+      },
+      "require_source_end_error": true,
+      "scope": "audited original scene source windows; the top-level reference is metadata, and draw samples the presenter, room, and paper slots",
+      "local_sample_seconds": "frame / 30 for the presenter; original asset_frame applies the measured presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR01/render-media.py": "6cd18505e78910e69dd47f9ad6330c7910d92058bb740bddd9d12d872535faa6",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR01/render.py": "dd23984484a1f9444f554c8161ee069da9288bc1dffb08a22900fe7a8d1a5e2b",
+        "src/engines/workspace/motion-replica-coach/scripts/render_layers.py": "4eef24b0ab17c744b0f7d343c3958cfc9d5be1caf4d44d87efdd4dddc34a8c91"
+      },
+      "native_fps": 30
+    },
     "CXBR02": {
       "id": "cxbr02-measured-broll-window/1",
       "backend": "scene",

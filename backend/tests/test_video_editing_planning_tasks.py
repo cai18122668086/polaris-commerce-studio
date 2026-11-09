@@ -104,6 +104,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "rotation-cards-v1",
         "presenter-openings-v1",
         "evidence-judgment-v1",
+        "explainer-steps-v1",
     }
     assert all(len(row["slots"]) >= 10 for row in options)
     rotation = next(row for row in options if row["id"] == "rotation-cards-v1")

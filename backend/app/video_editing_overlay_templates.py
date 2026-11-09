@@ -17,6 +17,7 @@ ROTATION_TEMPLATE_ID = "rotation-cards-v1"
 PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
 JUDGMENT_TEMPLATE_ID = "evidence-judgment-v1"
 QUESTION_CARD_TEMPLATE_ID = "question-card-story-v1"
+EXPLAINER_TEMPLATE_ID = "explainer-steps-v1"
 _OPENING_PURPOSES = {
     "LYO01": (
         "用原放大与暗角强调一条口播短句",
@@ -79,6 +80,23 @@ _QUESTION_SLOT = {
 }
 _ACTION_SLOT = {"group_id": "AH-S09", "purpose": "分开显示下单前提与对应行动"}
 _TEMPLATES = {
+    EXPLAINER_TEMPLATE_ID: {
+        "id": EXPLAINER_TEMPLATE_ID,
+        "name": "讲解步骤与口播重点",
+        "slots": [
+            {"group_id": "BG-S06", "purpose": "用两层文字交代使用场景和要解决的问题"},
+            {"group_id": "SG-S03", "purpose": "让典型场景里的实录短词从说明中突出"},
+            {"group_id": "AH-S05", "purpose": "从动作说明中跳出核心动作词"},
+            {"group_id": "JJ-S01", "purpose": "分开呈现适用对象及其说明"},
+            {"group_id": "SG-S02", "purpose": "从说明中标出选择或安排的关键词"},
+            {"group_id": "SG-S06", "purpose": "分两层呈现做法和对应目标"},
+            {"group_id": "BG-S04", "purpose": "左右对照两个相关的实录短词"},
+            {"group_id": "AH-S09", "purpose": "分开呈现主题和补充说明"},
+            {"group_id": "JJ-S03", "purpose": "突出实录给出的做法或结论"},
+            {"group_id": "SG-S10", "purpose": "让背景概念承托前景行动建议"},
+            {"group_id": "AHG-S02", "purpose": "标记分类或行动的实录短语"},
+        ],
+    },
     "label-compare-v1": {
         "id": "label-compare-v1",
         "name": "价签与规格对照",
@@ -254,6 +272,7 @@ def overlay_templates() -> list[dict]:
             ROTATION_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
+            EXPLAINER_TEMPLATE_ID,
         )
     ]
 

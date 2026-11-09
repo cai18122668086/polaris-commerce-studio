@@ -31,6 +31,21 @@ class EditingHighlightTarget(StrictVideoModel):
     options: list[EditingHighlightChoice]
 
 
+class NativeImageEdit(StrictVideoModel):
+    beat_id: str = Field(min_length=1, max_length=120)
+    path: str = Field(min_length=2, max_length=160)
+    material_id: UUID
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class EditingImageTarget(StrictVideoModel):
+    beat_id: str
+    path: str
+    label: str
+    current_material_id: UUID
+    requires_transparency: bool
+
+
 class NativeRenderEdits(StrictVideoModel):
     music: Literal["lower", "off"] | None = None
     source_only_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
@@ -41,14 +56,19 @@ class NativeRenderEdits(StrictVideoModel):
         default_factory=list, max_length=120, exclude_if=lambda value: not value
     )
 
+    image_edits: list[NativeImageEdit] = Field(
+        default_factory=list, max_length=120, exclude_if=lambda value: not value
+    )
+
     @model_validator(mode="after")
     def checked_selection(self) -> Self:
         if (
             not self.music
             and not self.source_only_beat_ids
             and not self.highlight_edits
+            and not self.image_edits
         ):
-            raise ValueError("Select a music, segment or highlight edit")
+            raise ValueError("Select a music, segment, highlight or image edit")
         if len(set(self.source_only_beat_ids)) != len(self.source_only_beat_ids):
             raise ValueError("Select each segment at most once")
         keys = {(edit.beat_id, edit.path) for edit in self.highlight_edits}
@@ -56,8 +76,14 @@ class NativeRenderEdits(StrictVideoModel):
             beat_id in self.source_only_beat_ids for beat_id, _ in keys
         ):
             raise ValueError("Select each highlight once on an active segment")
+        image_keys = {(edit.beat_id, edit.path) for edit in self.image_edits}
+        if len(image_keys) != len(self.image_edits) or any(
+            beat_id in self.source_only_beat_ids for beat_id, _ in image_keys
+        ):
+            raise ValueError("Select each image once on an active segment")
         self.source_only_beat_ids = sorted(self.source_only_beat_ids)
         self.highlight_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
+        self.image_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
         return self
 
 
@@ -356,6 +382,7 @@ class EditingNativePlanResponse(StrictVideoModel):
     continuous_preview_available: bool
     music_edit_available: bool
     highlight_edit_available: bool = False
+    image_edit_available: bool = False
     overlay_template: EditingOverlayTemplate | None = Field(
         default=None, exclude_if=lambda value: value is None
     )

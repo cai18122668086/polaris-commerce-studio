@@ -19,6 +19,11 @@ from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_highlights import apply_highlight_edits, editable_highlight_roles
 from .video_editing_hypit import internal_hypit_available, requires_hypit
 from .video_editing_hypit_strips import FLOW_GROUP
+from .video_editing_image_edits import (
+    apply_image_edits,
+    editable_image_roles,
+    resolve_image_edits,
+)
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import project_material_files, verify_material_cards
 from .video_editing_overlay_templates import (
@@ -114,6 +119,9 @@ def plan_response(
         "choice_snapshot_sha256": row.choice_snapshot["sha256"],
         "semantic_review": "unreviewed",
         "music_edit_available": has_music,
+        "image_edit_available": any(
+            editable_image_roles(beat, row.recipes) for beat in row.semantic["beats"]
+        ),
         "highlight_edit_available": any(
             editable_highlight_roles(beat, row.recipes)
             for beat in row.semantic["beats"]
@@ -564,12 +572,16 @@ def admit_render_plan(
                 "EDITING_NATIVE_EDITS_INVALID",
                 "所选段落或背景音乐不适用于这份编排。",
             ) from error
-    if options.native_edits and options.native_edits.highlight_edits:
+    edits = options.native_edits
+    if edits and (edits.highlight_edits or edits.image_edits):
         transcript = native_edit_transcript(session, settings, row)
+        semantic = SemanticPlan.model_validate(row.semantic)
+        assets = row.details["asset_snapshot"]
+    if edits and edits.highlight_edits:
         try:
             edited, _ = apply_highlight_edits(
-                options.native_edits.highlight_edits,
-                SemanticPlan.model_validate(row.semantic),
+                edits.highlight_edits,
+                semantic,
                 row.recipes,
                 transcript,
             )
@@ -577,14 +589,36 @@ def admit_render_plan(
                 edited,
                 transcript,
                 settings.video_editing_library_dir,
-                set(row.details["asset_snapshot"]),
+                set(assets),
                 current,
             )
+            semantic = edited
         except ValueError as error:
             raise ApiError(
                 422,
                 "EDITING_HIGHLIGHT_INVALID",
                 "请从这份编排列出的实录短语中重新选择。",
+            ) from error
+    if edits and edits.image_edits:
+        assets = resolve_image_edits(
+            session, settings, source, edits.image_edits, assets
+        )
+        try:
+            edited, _ = apply_image_edits(
+                edits.image_edits, semantic, row.recipes, assets, transcript
+            )
+            validate_plan(
+                edited,
+                transcript,
+                settings.video_editing_library_dir,
+                set(assets),
+                current,
+            )
+        except (ValueError, KeyError) as error:
+            raise ApiError(
+                422,
+                "EDITING_IMAGE_EDIT_INVALID",
+                "请选择不同的本期图片，透明图槽需使用含透明像素的图片。",
             ) from error
     if (
         options.delivery == "preview_first"

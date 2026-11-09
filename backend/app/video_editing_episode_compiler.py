@@ -29,6 +29,7 @@ from .video_editing_hypit_strips import (
     stagger_audio_frame,
     stagger_events,
 )
+from .video_editing_image_edits import apply_image_edits
 from .video_editing_judgment import JUDGMENT_GROUP
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_layout import BACKDROP_GROUP
@@ -194,6 +195,21 @@ def compile_episode(
             )
         except ValueError as error:
             raise EditingFailure("EDITING_HIGHLIGHT_INVALID") from error
+    image_replacements: list[dict[str, Any]] = []
+    if edits and edits.image_edits:
+        try:
+            semantic, image_replacements = apply_image_edits(
+                edits.image_edits,
+                semantic,
+                authoring.model_dump(mode="json"),
+                asset_files,
+                transcript,
+            )
+            validate_plan(
+                semantic, transcript, package, set(asset_files), choice_snapshot
+            )
+        except (ValueError, KeyError) as error:
+            raise EditingFailure("EDITING_IMAGE_EDIT_INVALID") from error
     groups = {g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]}
     relation_types = set(
         read_json(package / "params.schema.json")["properties"]["production"][
@@ -716,12 +732,17 @@ def compile_episode(
         ),
         **(
             {
-                "applied_highlight_edits": highlights,
+                **({"applied_highlight_edits": highlights} if highlights else {}),
+                **(
+                    {"applied_image_edits": image_replacements}
+                    if image_replacements
+                    else {}
+                ),
                 "effective_semantic_sha256": hashlib.sha256(
                     semantic.model_dump_json().encode()
                 ).hexdigest(),
             }
-            if highlights
+            if highlights or image_replacements
             else {}
         ),
         "episode_schema_validation": "passed" if not issues else "not_admitted",

@@ -4,14 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
+import { EditingImageEdits } from "./editing-image-edits";
 import styles from "./editing-workspace.module.css";
 
 type Plan = components["schemas"]["EditingNativePlanResponse"];
 type NativeEdits = components["schemas"]["NativeRenderEdits"];
 type Highlight = components["schemas"]["NativeHighlightEdit"];
 type HighlightTarget = components["schemas"]["EditingHighlightTarget"];
-type Controls = { music: "keep" | "lower" | "off"; segments: string[]; highlights: Highlight[] };
-const defaultControls: Controls = { music: "keep", segments: [], highlights: [] };
+type ImageEdit = components["schemas"]["NativeImageEdit"];
+type Controls = { music: "keep" | "lower" | "off"; segments: string[]; highlights: Highlight[]; images: ImageEdit[] };
+const defaultControls: Controls = { music: "keep", segments: [], highlights: [], images: [] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
 export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion }: {
@@ -56,10 +58,16 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
     try {
       const segments = selected.segments.slice().sort();
       const music = selected.music === "keep" ? null : selected.music;
-      const highlights = selected.highlights.slice().sort((a, b) =>
-        a.beat_id.localeCompare(b.beat_id) || a.path.localeCompare(b.path));
-      const edits: NativeEdits | undefined = music || segments.length || highlights.length
-        ? { music, source_only_beat_ids: segments, ...(highlights.length ? { highlight_edits: highlights } : {}) }
+      const bySlot = (a: Highlight | ImageEdit, b: Highlight | ImageEdit) =>
+        a.beat_id.localeCompare(b.beat_id) || a.path.localeCompare(b.path);
+      const highlights = selected.highlights.slice().sort(bySlot);
+      const images = selected.images.slice().sort(bySlot);
+      const edits: NativeEdits | undefined = music || segments.length || highlights.length || images.length
+        ? {
+          music, source_only_beat_ids: segments,
+          ...(highlights.length ? { highlight_edits: highlights } : {}),
+          ...(images.length ? { image_edits: images } : {}),
+        }
         : undefined;
       const key = JSON.stringify([plan.id, edits]);
       if (intent.current?.key !== key) intent.current = { key, id: crypto.randomUUID() };
@@ -95,7 +103,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       <p>{plan.origin === "operator_candidate" ? "人工工程候选 · 未经人工验收" : "腾力模型候选 · 待核对"}</p>
       <ul>{plan.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.text}<br />{beat.reason}</li>)}</ul>
       {(plan.warnings.length > 0 || plan.missing_materials.length > 0) && <p>{[...plan.warnings, ...plan.missing_materials].join("；")}</p>}
-      {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available) && <details>
+      {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available) && <details>
         <summary>调整本次出片</summary>
         <p className={styles.note}>调整随这次出片保存。勾选保留原景的段落仍显示主字幕，该段动效和绑定音效会关闭。</p>
         {plan.music_edit_available && <label>本次背景音乐
@@ -107,6 +115,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
           <input type="checkbox" disabled={!!busy} checked={selected.segments.includes(beat.id)} onChange={event => change({
             segments: event.target.checked ? [...selected.segments, beat.id] : selected.segments.filter(id => id !== beat.id),
             highlights: event.target.checked ? selected.highlights.filter(edit => edit.beat_id !== beat.id) : selected.highlights,
+            images: event.target.checked ? selected.images.filter(edit => edit.beat_id !== beat.id) : selected.images,
           })} />
           保留原景 · {beat.group_id} · {beat.text}
         </label>)}
@@ -139,6 +148,8 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
             </label>;
           })}
         </details>}
+        {plan.image_edit_available && <EditingImageEdits workspaceId={workspaceId} projectId={projectId} planId={plan.id}
+          selected={selected.images} sourceOnly={selected.segments} disabled={!!busy} onChange={images => change({ images })} />}
       </details>}
       {available ? <>
         <p className={styles.note}>本次使用 {activeGroups.size} 种动效，共出现 {activeEffects.length} 次。{activeGroups.size < 5 && "请保留至少五种不同动效。"}</p>

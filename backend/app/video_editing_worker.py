@@ -27,8 +27,9 @@ from .motion_library import (
     sha256,
     verify_package,
 )
-from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
+from .video_editing_image_edits import apply_image_edits, resolve_image_edits
 from .video_editing_materials import PREFIX, project_material_files
 from .video_editing_native_plans import frozen_plan_snapshot
 from .video_editing_overlay_templates import MIN_OVERLAY_TYPES
@@ -584,24 +585,58 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                         "EDITING_PLANNER_PROVENANCE_REQUIRED"
                     ) from error
             stage("compiling", native_plan_id=native_plan["id"])
+            semantic = SemanticPlan.model_validate(native_plan["semantic"])
+            raw_edits = snapshot["options"].get("native_edits")
+            try:
+                edits = (
+                    NativeRenderEdits.model_validate(raw_edits) if raw_edits else None
+                )
+            except ValueError as error:
+                raise EditingFailure("EDITING_NATIVE_EDITS_INVALID") from error
             with factory() as session:
+                material_plan = native_plan
+                if edits and edits.image_edits:
+                    source = session.get(EditingSourceRecord, native_plan["source_id"])
+                    if source is None:
+                        raise EditingFailure("EDITING_MATERIAL_CHANGED")
+                    try:
+                        merged = resolve_image_edits(
+                            session,
+                            settings,
+                            source,
+                            edits.image_edits,
+                            native_plan["asset_files"],
+                        )
+                    except ApiError as error:
+                        raise EditingFailure("EDITING_MATERIAL_CHANGED") from error
+                    try:
+                        effective, _ = apply_image_edits(
+                            edits.image_edits,
+                            semantic,
+                            native_plan["recipes"],
+                            merged,
+                            transcript,
+                        )
+                    except (ValueError, KeyError) as error:
+                        raise EditingFailure("EDITING_IMAGE_EDIT_INVALID") from error
+                    material_plan = {
+                        **native_plan,
+                        "semantic": effective.model_dump(mode="json"),
+                        "asset_files": merged,
+                    }
                 assets = stage_plan_materials(
                     session,
                     root,
-                    native_plan,
+                    material_plan,
                     settings,
                     guard,
-                    set(
-                        (snapshot["options"].get("native_edits") or {}).get(
-                            "source_only_beat_ids", []
-                        )
-                    ),
+                    set(edits.source_only_beat_ids) if edits else None,
                 )
             compile_episode(
                 root,
                 prepared,
                 transcript,
-                SemanticPlan.model_validate(native_plan["semantic"]),
+                semantic,
                 EpisodeRecipeBundle.model_validate(native_plan["recipes"]),
                 assets,
                 snapshot["options"],

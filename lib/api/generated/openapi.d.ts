@@ -2467,6 +2467,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/image-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Native Image Targets */
+        get: operations["native_image_targets_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__image_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-planning-tasks": {
         parameters: {
             query?: never;
@@ -5611,6 +5628,22 @@ export interface components {
              */
             request_id: string;
         };
+        /** EditingImageTarget */
+        EditingImageTarget: {
+            /** Beat Id */
+            beat_id: string;
+            /**
+             * Current Material Id
+             * Format: uuid
+             */
+            current_material_id: string;
+            /** Label */
+            label: string;
+            /** Path */
+            path: string;
+            /** Requires Transparency */
+            requires_transparency: boolean;
+        };
         /** EditingLibraryNoteCreate */
         EditingLibraryNoteCreate: {
             /**
@@ -5768,6 +5801,11 @@ export interface components {
             highlight_edit_available: boolean;
             /** Id */
             id: string;
+            /**
+             * Image Edit Available
+             * @default false
+             */
+            image_edit_available: boolean;
             /** Library Release */
             library_release: string;
             /** Missing Materials */
@@ -6980,6 +7018,20 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** NativeImageEdit */
+        NativeImageEdit: {
+            /** Beat Id */
+            beat_id: string;
+            /**
+             * Material Id
+             * Format: uuid
+             */
+            material_id: string;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+        };
         /** NativeMediaAnchor */
         NativeMediaAnchor: {
             /** Asset Id */
@@ -6991,6 +7043,8 @@ export interface components {
         NativeRenderEdits: {
             /** Highlight Edits */
             highlight_edits?: components["schemas"]["NativeHighlightEdit"][];
+            /** Image Edits */
+            image_edits?: components["schemas"]["NativeImageEdit"][];
             /** Music */
             music?: ("lower" | "off") | null;
             /** Source Only Beat Ids */
@@ -13524,6 +13578,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingHighlightTarget"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    native_image_targets_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__image_targets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                plan_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingImageTarget"][];
                 };
             };
             /** @description Validation Error */

@@ -10,10 +10,12 @@ from .auth import SessionDependency
 from .errors import ApiError
 from .video_editing_contracts import (
     EditingHighlightTarget,
+    EditingImageTarget,
     EditingNativePlanResponse,
     SemanticPlan,
 )
 from .video_editing_highlights import highlight_targets
+from .video_editing_image_edits import image_edit_targets
 from .video_editing_native_plans import (
     native_edit_transcript,
     plan_response,
@@ -64,6 +66,41 @@ def native_highlight_options(
     session: SessionDependency,
 ) -> list[EditingHighlightTarget]:
     settings = enabled(request)
+    row = own_native_plan(session, workspace, project_id, plan_id)
+    transcript = native_edit_transcript(session, settings, row)
+    return highlight_targets(
+        SemanticPlan.model_validate(row.semantic), row.recipes, transcript
+    )
+
+
+@router.get(
+    "/editing-native-plans/{plan_id}/image-targets",
+    response_model=list[EditingImageTarget],
+)
+def native_image_targets(
+    project_id: UUID,
+    plan_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> list[EditingImageTarget]:
+    settings = enabled(request)
+    row = own_native_plan(session, workspace, project_id, plan_id)
+    transcript = native_edit_transcript(session, settings, row)
+    return image_edit_targets(
+        SemanticPlan.model_validate(row.semantic),
+        row.recipes,
+        row.details["asset_snapshot"],
+        transcript,
+    )
+
+
+def own_native_plan(
+    session: SessionDependency,
+    workspace: VideoWorkspace,
+    project_id: UUID,
+    plan_id: UUID,
+) -> EditingNativePlanRecord:
     own_project(session, workspace, str(project_id))
     row = session.get(EditingNativePlanRecord, str(plan_id))
     if (
@@ -73,7 +110,4 @@ def native_highlight_options(
         or row.owner_user_id != workspace.principal.user_id
     ):
         raise ApiError(404, "EDITING_NATIVE_PLAN_NOT_FOUND", "未找到此项目的动效编排。")
-    transcript = native_edit_transcript(session, settings, row)
-    return highlight_targets(
-        SemanticPlan.model_validate(row.semantic), row.recipes, transcript
-    )
+    return row

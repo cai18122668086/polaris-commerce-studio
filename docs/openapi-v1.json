@@ -4929,6 +4929,41 @@
         "title": "EditingImageResultImport",
         "type": "object"
       },
+      "EditingImageTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "current_material_id": {
+            "format": "uuid",
+            "title": "Current Material Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "requires_transparency": {
+            "title": "Requires Transparency",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "beat_id",
+          "path",
+          "label",
+          "current_material_id",
+          "requires_transparency"
+        ],
+        "title": "EditingImageTarget",
+        "type": "object"
+      },
       "EditingLibraryNoteCreate": {
         "additionalProperties": false,
         "properties": {
@@ -5331,6 +5366,11 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "image_edit_available": {
+            "default": false,
+            "title": "Image Edit Available",
+            "type": "boolean"
           },
           "library_release": {
             "title": "Library Release",
@@ -8581,6 +8621,41 @@
         "title": "NativeHighlightEdit",
         "type": "object"
       },
+      "NativeImageEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "material_id": {
+            "format": "uuid",
+            "title": "Material Id",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beat_id",
+          "path",
+          "material_id",
+          "sha256"
+        ],
+        "title": "NativeImageEdit",
+        "type": "object"
+      },
       "NativeMediaAnchor": {
         "additionalProperties": false,
         "properties": {
@@ -8613,6 +8688,14 @@
             },
             "maxItems": 120,
             "title": "Highlight Edits",
+            "type": "array"
+          },
+          "image_edits": {
+            "items": {
+              "$ref": "#/components/schemas/NativeImageEdit"
+            },
+            "maxItems": 120,
+            "title": "Image Edits",
             "type": "array"
           },
           "music": {
@@ -21947,6 +22030,77 @@
           }
         ],
         "summary": "Native Highlight Options",
+        "tags": [
+          "video-editing-native-plans"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/image-targets": {
+      "get": {
+        "operationId": "native_image_targets_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__image_targets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingImageTarget"
+                  },
+                  "title": "Response Native Image Targets Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Native Plans  Plan Id  Image Targets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Native Image Targets",
         "tags": [
           "video-editing-native-plans"
         ]

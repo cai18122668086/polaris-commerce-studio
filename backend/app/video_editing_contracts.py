@@ -223,6 +223,14 @@ class EditingExportConfirmation(StrictVideoModel):
     preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class EditingSourceOrigin(StrictVideoModel):
+    kind: Literal["upload_asset", "generation_task"]
+    confirmed_version_id: str | None
+    generation_task_id: str | None
+    media_sha256: str
+    script_sha256: str | None
+
+
 class EditingTaskResponse(StrictVideoModel):
     id: str
     project_id: str
@@ -240,6 +248,9 @@ class EditingTaskResponse(StrictVideoModel):
     options: EditingOptions
     review: dict[str, str]
     artifacts: list[EditingArtifactResponse]
+    source_origin: EditingSourceOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class EditingTranscriptRevisionCreate(StrictVideoModel):

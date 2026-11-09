@@ -6040,6 +6040,22 @@ export interface components {
             /** Unavailable Template Group Ids */
             unavailable_template_group_ids?: string[] | null;
         };
+        /** EditingSourceOrigin */
+        EditingSourceOrigin: {
+            /** Confirmed Version Id */
+            confirmed_version_id: string | null;
+            /** Generation Task Id */
+            generation_task_id: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "upload_asset" | "generation_task";
+            /** Media Sha256 */
+            media_sha256: string;
+            /** Script Sha256 */
+            script_sha256: string | null;
+        };
         /** EditingTaskCreate */
         EditingTaskCreate: {
             /** Generation Task Id */
@@ -6083,6 +6099,7 @@ export interface components {
             revision: number;
             /** Source Id */
             source_id: string;
+            source_origin?: components["schemas"]["EditingSourceOrigin"] | null;
             /** Stage */
             stage: string;
             /**

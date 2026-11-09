@@ -33,6 +33,7 @@ from .video_editing_contracts import (
     EditingTaskResponse,
 )
 from .video_editing_native_plans import admit_render_plan
+from .video_editing_source_lineage import freeze_generation_source, source_origin
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingNativePlanRecord,
@@ -105,7 +106,11 @@ def artifact_visible(row: EditingTaskRecord, record: EditingArtifactRecord) -> b
     )
 
 
-def response(row: EditingTaskRecord, session: Session) -> dict[str, Any]:
+def response(
+    row: EditingTaskRecord, session: Session, source: EditingSourceRecord | None = None
+) -> dict[str, Any]:
+    if source is None:
+        source = session.get(EditingSourceRecord, row.source_id)
     base = f"/api/v1/video-studio/workspaces/{row.workspace_id}/editing-tasks/{row.id}"
     artifacts = session.scalars(
         select(EditingArtifactRecord).where(EditingArtifactRecord.task_id == row.id)
@@ -114,6 +119,7 @@ def response(row: EditingTaskRecord, session: Session) -> dict[str, Any]:
         "id": row.id,
         "project_id": row.project_id,
         "source_id": row.source_id,
+        **({"source_origin": source_origin(source)} if source else {}),
         "status": row.status,
         "stage": row.stage,
         "revision": row.revision,
@@ -449,6 +455,12 @@ def create_task(
             raise ApiError(
                 409, "EDITING_SOURCE_MISSING", "原片暂不可用，请恢复原任务。"
             )
+        version = (
+            session.get(VideoScriptVersionRecord, job.confirmed_version_id)
+            if job.confirmed_version_id
+            else None
+        )
+        lineage = freeze_generation_source(job, version)
         source = EditingSourceRecord(
             id=str(uuid4()),
             workspace_id=workspace.workspace_id,
@@ -462,6 +474,7 @@ def create_task(
             details={
                 "audio_policy": "source_video_audio",
                 "generation_task_id": job.id,
+                "generation_lineage": lineage,
             },
         )
         session.add(source)
@@ -533,7 +546,7 @@ def create_task(
             409, "EDITING_TASK_CONFLICT", "剪辑请求发生冲突，请刷新任务后重试。"
         ) from None
     dispatch(request, row.id)
-    return response(row, session)
+    return response(row, session, source)
 
 
 @router.get("/editing-tasks", response_model=list[EditingTaskResponse])
@@ -542,15 +555,21 @@ def list_tasks(
     session: SessionDependency,
     project_id: UUID | None = None,
 ) -> list[dict[str, Any]]:
-    query = select(EditingTaskRecord).where(
-        EditingTaskRecord.workspace_id == workspace.workspace_id,
-        EditingTaskRecord.owner_user_id == workspace.principal.user_id,
+    query = (
+        select(EditingTaskRecord, EditingSourceRecord)
+        .join(
+            EditingSourceRecord, EditingSourceRecord.id == EditingTaskRecord.source_id
+        )
+        .where(
+            EditingTaskRecord.workspace_id == workspace.workspace_id,
+            EditingTaskRecord.owner_user_id == workspace.principal.user_id,
+        )
     )
     if project_id:
         query = query.where(EditingTaskRecord.project_id == str(project_id))
     return [
-        response(row, session)
-        for row in session.scalars(
+        response(row, session, source)
+        for row, source in session.execute(
             query.order_by(EditingTaskRecord.created_at.desc()).limit(100)
         )
     ]

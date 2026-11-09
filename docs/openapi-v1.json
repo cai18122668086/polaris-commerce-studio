@@ -6069,6 +6069,65 @@
         "title": "EditingPlanningTaskResponse",
         "type": "object"
       },
+      "EditingSourceOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Version Id"
+          },
+          "generation_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Task Id"
+          },
+          "kind": {
+            "enum": [
+              "upload_asset",
+              "generation_task"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_sha256": {
+            "title": "Media Sha256",
+            "type": "string"
+          },
+          "script_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Sha256"
+          }
+        },
+        "required": [
+          "kind",
+          "confirmed_version_id",
+          "generation_task_id",
+          "media_sha256",
+          "script_sha256"
+        ],
+        "title": "EditingSourceOrigin",
+        "type": "object"
+      },
       "EditingTaskCreate": {
         "additionalProperties": false,
         "properties": {
@@ -6174,6 +6233,16 @@
           "source_id": {
             "title": "Source Id",
             "type": "string"
+          },
+          "source_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingSourceOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "stage": {
             "title": "Stage",

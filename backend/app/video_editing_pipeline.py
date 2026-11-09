@@ -127,7 +127,9 @@ def run(
     return output
 
 
-def probe(path: Path, settings: Settings) -> dict[str, Any]:
+def probe(
+    path: Path, settings: Settings, *, formats: str = "mov,matroska,webm"
+) -> dict[str, Any]:
     result = subprocess.run(
         [
             settings.video_editing_ffprobe,
@@ -136,7 +138,7 @@ def probe(path: Path, settings: Settings) -> dict[str, Any]:
             "-protocol_whitelist",
             "file,pipe",
             "-format_whitelist",
-            "mov,matroska,webm",
+            formats,
             "-show_streams",
             "-show_format",
             "-of",

@@ -12,10 +12,10 @@ import { EditingPlanning } from "./editing-planning";
 import styles from "./editing-workspace.module.css";
 
 type Artifact = { id: string; role: string; url: string; sha256: string; bytes: number; duration_ms: number | null };
-type EditingTask = { id: string; source_id: string; status: string; stage: string; error_code: string | null; cancel_requested: boolean; created_at: string; artifacts: Artifact[]; options: components["schemas"]["EditingOptions"] };
+type EditingTask = { source_origin?: components["schemas"]["EditingSourceOrigin"] | null; id: string; source_id: string; status: string; stage: string; error_code: string | null; cancel_requested: boolean; created_at: string; artifacts: Artifact[]; options: components["schemas"]["EditingOptions"] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", building_preview: "生成代理预览", storing: "保存产物", preview_ready: "代理预览已就绪", completed: "成片已生成" };
-const errorLabel: Record<string, string> = { EDITING_IMAGE_EDIT_INVALID: "这次选择的配图无法用于原图槽，请核对图片是否重复及透明图要求。", EDITING_MATERIAL_CHANGED: "配图原件已缺失或变化，请回到本期素材核对。", EDITING_HIGHLIGHT_INVALID: "这次选择的实录短语无法用于原动效，请返回编排重新选择。", EDITING_NO_SPEECH_RECOGNIZED: "没有识别到清晰口播，请检查原片声音。", EDITING_SOURCE_CHANGED: "原片已变化，请重新选择视频。", EDITING_CLOCK_REVIEW_REQUIRED: "原片音画起点需要校正，请更换原片或联系管理员。", EDITING_ROTATION_REVIEW_REQUIRED: "此视频的旋转信息需要校正，请联系管理员。", EDITING_NATIVE_INPUTS_REQUIRED: "当前编排所需的原生参数或素材尚未备齐，请先补全编排。", EDITING_PLAN_SOURCE_CHANGED: "编排绑定的原片或转录已变化，请恢复原产物或保存新编排。", EDITING_NATIVE_PLAN_NOT_FOUND: "编排暂不可用，请联系管理员核对版本与运行配置。", EDITING_CAPTION_CAPACITY_REVIEW_REQUIRED: "当前识别词组超出字幕容量，请核对文字或联系管理员调整排版。", EDITING_CAPTION_DICTIONARY_MISSING: "剪辑服务缺少中文分词依赖，请联系管理员。", EDITING_CAPTION_DICTIONARY_CHANGED: "剪辑分词词典版本不匹配，请联系管理员核对。", EDITING_CAPTION_FONT_MISSING: "剪辑服务缺少已选定的原字幕字体，请联系管理员。", EDITING_CAPTION_FONT_CHANGED: "字幕字体与原库记录不一致，请联系管理员核对。", EDITING_CAPTION_LAYOUT_MISMATCH: "字幕换行与原生检查不一致，请先核对编排。" };
+const errorLabel: Record<string, string> = { EDITING_GENERATION_SCRIPT_CHANGED: "这条原口播的确认稿无法核对，请检查原生成任务。", EDITING_IMAGE_EDIT_INVALID: "这次选择的配图无法用于原图槽，请核对图片是否重复及透明图要求。", EDITING_MATERIAL_CHANGED: "配图原件已缺失或变化，请回到本期素材核对。", EDITING_HIGHLIGHT_INVALID: "这次选择的实录短语无法用于原动效，请返回编排重新选择。", EDITING_NO_SPEECH_RECOGNIZED: "没有识别到清晰口播，请检查原片声音。", EDITING_SOURCE_CHANGED: "原片已变化，请重新选择视频。", EDITING_CLOCK_REVIEW_REQUIRED: "原片音画起点需要校正，请更换原片或联系管理员。", EDITING_ROTATION_REVIEW_REQUIRED: "此视频的旋转信息需要校正，请联系管理员。", EDITING_NATIVE_INPUTS_REQUIRED: "当前编排所需的原生参数或素材尚未备齐，请先补全编排。", EDITING_PLAN_SOURCE_CHANGED: "编排绑定的原片或转录已变化，请恢复原产物或保存新编排。", EDITING_NATIVE_PLAN_NOT_FOUND: "编排暂不可用，请联系管理员核对版本与运行配置。", EDITING_CAPTION_CAPACITY_REVIEW_REQUIRED: "当前识别词组超出字幕容量，请核对文字或联系管理员调整排版。", EDITING_CAPTION_DICTIONARY_MISSING: "剪辑服务缺少中文分词依赖，请联系管理员。", EDITING_CAPTION_DICTIONARY_CHANGED: "剪辑分词词典版本不匹配，请联系管理员核对。", EDITING_CAPTION_FONT_MISSING: "剪辑服务缺少已选定的原字幕字体，请联系管理员。", EDITING_CAPTION_FONT_CHANGED: "字幕字体与原库记录不一致，请联系管理员核对。", EDITING_CAPTION_LAYOUT_MISMATCH: "字幕换行与原生检查不一致，请先核对编排。" };
 
 export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { workspaceId: string; projectId: string; saved: boolean; jobs: GenerationJob[] }) {
   const [tasks, setTasks] = useState<EditingTask[]>([]);
@@ -84,7 +84,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   return <section className={styles.panel} aria-label="口播剪辑">
     <div className={styles.intro}><b>口播剪辑 · 试运行</b><p>从已有口播或上传视频开始，按真实录音生成字幕，保留原声节奏。</p></div>
     {!saved && <p role="status">请先保存当前项目，再开始剪辑。</p>}
-    <label>选择原片<select value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
+    <label>选择原片<select aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && (" · 确认稿 " + job.confirmed_version_id.slice(0, 8))}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
     {selected === "upload" && <label>视频文件<input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => setFile(event.target.files?.[0])} /></label>}
     <label>原片已有字幕吗？<select value={subtitles} onChange={event => setSubtitles(event.target.value as typeof subtitles)}><option value="unknown">请先查看原片后选择</option><option value="none">没有，生成主字幕</option><option value="present">已有，保留画面中的字幕</option></select></label>
     <p className={styles.note}>基础剪辑按原声生成主字幕。已保存的动效编排可在下方另行出片。</p>
@@ -98,9 +98,15 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
       const final = task.artifacts.find(a => a.role === "final");
       const preview = task.artifacts.find(a => a.role === "preview");
       const audioReceipt = task.artifacts.find(a => a.role === "audio_receipt");
+      const sourceReceipt = task.artifacts.find(a => a.role === "source_receipt");
       const layoutReceipt = task.artifacts.find(a => a.role === "layout_receipt");
       const editReceipt = task.options.native_edits && task.artifacts.find(a => a.role === "compile_receipt");
       return <article key={task.id}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
+        {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
+          原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>
+          {task.source_origin.confirmed_version_id && <> · 确认稿 <code title={task.source_origin.confirmed_version_id}>{task.source_origin.confirmed_version_id.slice(0, 8)}</code></>}
+        </p>}
+        {sourceReceipt && <a href={sourceReceipt.url} download>下载原片与配音核对记录</a>}
         {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}
         {task.options.native_edits && <p className={styles.note}>
           本次设置 · {task.options.native_edits.music === "off" ? "关闭背景音乐。" : task.options.native_edits.music === "lower" ? "背景音乐降低 6 dB。" : ""}

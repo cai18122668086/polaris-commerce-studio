@@ -43,6 +43,12 @@ from .video_editing_pipeline import (
 )
 from .video_editing_planning_provenance import verify_render_provenance
 from .video_editing_preview import build_preview
+from .video_editing_source_lineage import (
+    generation_source_receipt,
+    script_digest,
+    script_reference,
+    source_origin,
+)
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingAttemptRecord,
@@ -435,6 +441,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             "checkpoint": row.checkpoint,
             "library_release": row.library_release,
             "confirmed_version_id": source.confirmed_version_id,
+            "source_origin": source_origin(source),
+            "generation_lineage": source.details.get("generation_lineage"),
         }
         version = (
             session.get(VideoScriptVersionRecord, source.confirmed_version_id)
@@ -442,7 +450,16 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             else None
         )
         snapshot["reference"] = (
-            version.snapshot.get("draft", {}).get("text") if version else None
+            script_reference(version)
+            if snapshot["generation_lineage"]
+            else version.snapshot.get("draft", {}).get("text")
+            if version
+            else None
+        )
+        snapshot["confirmed_version_valid"] = not source.confirmed_version_id or bool(
+            version
+            and version.project_id == source.project_id
+            and version.kind == "confirmed"
         )
         snapshot["native_plan"] = None
         plan_id = row.options.get("native_plan_id")
@@ -562,6 +579,12 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             raise EditingFailure("EDITING_SOURCE_SUBTITLES_REVIEW_REQUIRED")
         if snapshot["library_release"] != MOTION_SHA256:
             raise EditingFailure("EDITING_LIBRARY_CHANGED")
+        lineage = snapshot["generation_lineage"]
+        if lineage and (
+            not snapshot["confirmed_version_valid"]
+            or script_digest(snapshot["reference"]) != lineage["script_sha256"]
+        ):
+            raise EditingFailure("EDITING_GENERATION_SCRIPT_CHANGED")
         verify_package(settings.video_editing_library_dir)
         prepared = prepare(
             Path(snapshot["source_path"]),
@@ -570,6 +593,13 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             settings,
             guard,
         )
+        if lineage:
+            atomic_json(
+                root / "source-receipt.json",
+                generation_source_receipt(
+                    snapshot["source_origin"], lineage, prepared, settings, guard
+                ),
+            )
         native_plan = snapshot["native_plan"]
         if snapshot["options"].get("mode") == "native_plan":
             if not settings.video_editing_native_plan_enabled or not native_plan:
@@ -692,6 +722,10 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 ]
             )
         stage("storing")
+        if lineage:
+            artifacts.append(
+                ("source_receipt", root / "source-receipt.json", "application/json")
+            )
         if native_plan:
             artifacts.extend(
                 [

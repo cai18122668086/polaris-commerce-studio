@@ -1,8 +1,29 @@
 """Compile allowed native field anchors from measured token occurrences only."""
 
+from collections.abc import Iterator
 from typing import Any
 
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+
+
+def measured_clause_windows(transcript: Transcript) -> Iterator[list[TranscriptToken]]:
+    """Yield bounded clause ranges for original template admission hints."""
+    tokens = transcript.tokens
+    if not tokens:
+        return
+    cuts = [0]
+    cuts.extend(
+        index
+        for index in range(1, len(tokens))
+        if tokens[index - 1].text.rstrip().endswith(tuple("，。！？；、,.!?;"))
+        or tokens[index].start_ms - tokens[index - 1].end_ms >= 250
+    )
+    cuts.append(len(tokens))
+    for index, first in enumerate(cuts[:-1]):
+        for stop in cuts[index + 1 : index + 4]:
+            if tokens[stop - 1].end_ms - tokens[first].start_ms > 6500:
+                break
+            yield tokens[first:stop]
 
 
 def emphasis_text(text: str, policy: str) -> str:

@@ -19,6 +19,14 @@ from pydantic import Field, model_validator
 
 from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from .video_editing_azl_panels import (
+    AZL_CAPTION_BASELINE,
+    AZL_GROUPS,
+    AZL_LAYOUT_INTENT,
+    azl_backing,
+    azl_projected_end,
+    require_azl_compositor,
+)
 from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
 from .video_editing_browser_clocks import CARD_GROUP, NUMBERED_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP
@@ -45,6 +53,7 @@ from .video_editing_native_layout import (
 )
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
+    AZL_TEMPLATE_ID,
     JUDGMENT_TEMPLATE_ID,
     LAYERED_SUBTITLE_TEMPLATES,
     LEGACY_PICTURE_TEMPLATE_ID,
@@ -589,7 +598,17 @@ def compile_episode(
                         "group_id": beat.group_id,
                         "config": job["config"],
                         "start_seconds": start,
-                        "end_seconds": end,
+                        "end_seconds": (
+                            azl_projected_end(
+                                start,
+                                end,
+                                job["config"]["frames"],
+                                episode["output"]["fps"],
+                            )
+                            if authoring.overlay_template_id == AZL_TEMPLATE_ID
+                            and beat.group_id in AZL_GROUPS
+                            else end
+                        ),
                         "layer": entry.placement.layer,
                         "rect": entry.placement.rect,
                         "intent": {
@@ -726,6 +745,11 @@ def compile_episode(
             1230,
             "将主字幕移到同期人物运镜和分区构图的底部读区。",
         ),
+        AZL_TEMPLATE_ID: (
+            tuple(AZL_GROUPS),
+            AZL_CAPTION_BASELINE,
+            "主字幕进入原生板式下方的读区。",
+        ),
         **dict.fromkeys(
             YY_OPENING_TEMPLATES,
             (
@@ -786,6 +810,32 @@ def compile_episode(
                 "license": asset.get("license"),
             }
         )
+    azl_shots = [
+        index
+        for index, shot in enumerate(episode["shots"])
+        if authoring.overlay_template_id == AZL_TEMPLATE_ID
+        and shot["group_id"] in AZL_GROUPS
+    ]
+    if azl_shots:
+        try:
+            require_azl_compositor(package)
+            episode["visual_scenes"] = [
+                azl_backing(episode["shots"][index], episode, index)
+                for index in azl_shots
+            ]
+            selection["decisions"].extend(
+                {
+                    "scene_id": backing["id"],
+                    "viewer_task": "保留原板式下方独立的主字幕读区。",
+                    "reason": "整帧底色与板式同步切换，保留原构图比例。",
+                    "considered": [{"group_id": episode["shots"][index]["group_id"]}],
+                }
+                for index, backing in zip(
+                    azl_shots, episode["visual_scenes"], strict=True
+                )
+            )
+        except (ValueError, KeyError, OSError):
+            issues.append({"code": "EDITING_AZL_LAYOUT_INPUTS_REQUIRED"})
     sound_plan = None
     if authoring.sound and not issues:
         try:
@@ -803,6 +853,7 @@ def compile_episode(
                 in YY_OPENING_TEMPLATES,
                 sync_presenter_motion_entries=authoring.overlay_template_id
                 == PRESENTER_MOTION_TEMPLATE_ID,
+                sync_azl_entries=authoring.overlay_template_id == AZL_TEMPLATE_ID,
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})
@@ -951,5 +1002,7 @@ def compile_episode(
         ]
         if yy_openings:
             atomic_json(root / YY_OPENING_CAPTION_INTENT, {"shots": yy_openings})
+    if azl_shots:
+        atomic_json(root / AZL_LAYOUT_INTENT, {"shots": azl_shots})
     atomic_json(root / "episode.json", episode)
     return episode

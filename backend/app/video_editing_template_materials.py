@@ -119,6 +119,8 @@ def runtime_payload(runtime: dict) -> dict[str, Any]:
         payload["project_image_requirements"] = runtime["project_image_requirements"]
     if "presenter_motion_windows" in runtime:
         payload["presenter_motion_windows"] = runtime["presenter_motion_windows"]
+    if "azl_panel_windows" in runtime:
+        payload["azl_panel_windows"] = runtime["azl_panel_windows"]
     return payload
 
 

@@ -252,6 +252,32 @@ def test_continuous_cards_require_the_audited_full_canvas_alpha_export():
     ) == {CARD_GROUP}
 
 
+def test_continuous_azl_panel_requires_its_frozen_website_projection():
+    from app.video_editing_azl_panels import AZL_DESIGN_ID, AZL_RECT, AZL_TEMPLATE_ID
+    from app.video_editing_render_edits import continuous_overlay_groups
+
+    semantic = {"beats": [{"id": "board", "group_id": "AZL01"}]}
+    placement = {"layer": "scene", "rect": list(AZL_RECT)}
+    recipe = {"group_id": "AZL01", "design_id": AZL_DESIGN_ID}
+    recipes = {
+        "overlay_template_id": AZL_TEMPLATE_ID,
+        "entries": {"board": {"placement": placement, "recipe": recipe}},
+    }
+    assert continuous_overlay_groups(
+        semantic, recipes, set(), scene_groups={"AZL01"}
+    ) == {"AZL01"}
+    assert not continuous_overlay_groups(semantic, recipes, set())
+    placement["rect"] = [0, 0, 1, 0.8]
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), scene_groups={"AZL01"}
+    )
+    placement["rect"] = list(AZL_RECT)
+    recipes["overlay_template_id"] = None
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), scene_groups={"AZL01"}
+    )
+
+
 def test_continuous_hypit_inset_needs_internal_access_and_speaker_clearance():
     from app.video_editing_hypit_strips import PRICE_CARD_INSET_TYPE
     from app.video_editing_render_edits import continuous_overlay_groups

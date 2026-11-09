@@ -2,6 +2,8 @@
 
 from copy import deepcopy
 
+from .video_editing_azl_panels import AZL_DEPENDENCIES, AZL_GROUPS, azl_binding
+from .video_editing_azl_panels import AZL_TEMPLATE_ID as AZL_TEMPLATE_ID
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_FONTS,
@@ -61,6 +63,7 @@ SYNC_SUBTITLE_TEMPLATES = frozenset(
     {
         SUBTITLE_STORY_TEMPLATE_ID,
         PRESENTER_MOTION_TEMPLATE_ID,
+        AZL_TEMPLATE_ID,
         *YY_OPENING_TEMPLATES,
         *TEXT_HANDOFF_TEMPLATES,
     }
@@ -91,6 +94,7 @@ _OPENING_PURPOSES = {
 OPENING_GROUPS = frozenset(_OPENING_PURPOSES.keys() | YY_OPENING_EXPANDED_GROUPS.keys())
 _OPENING_FONT = "font-06e1a30f687ab7d3"
 AUTOMATIC_TEMPLATE_DEPENDENCIES = {
+    **dict.fromkeys(AZL_GROUPS, AZL_DEPENDENCIES),
     **FOREGROUND_SUBTITLE_DEPENDENCIES,
     **dict.fromkeys(YY_OPENING_EXPANDED_GROUPS, YY_OPENING_DEPENDENCIES),
     **dict.fromkeys(PRESENTER_MOTION_GROUPS, (MOTION_FONT,)),
@@ -456,6 +460,22 @@ _TEMPLATES[PRESENTER_MOTION_TEMPLATE_ID] = {
         *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[AZL_TEMPLATE_ID] = {
+    "id": AZL_TEMPLATE_ID,
+    "name": "阿哲多素材板式",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": azl_binding(group),
+            }
+            for group, (purpose, _) in AZL_GROUPS.items()
+        ),
+        *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
     "id": SUBTITLE_RELAY_TEMPLATE_ID,
     "name": "双层字幕接力",
@@ -555,6 +575,7 @@ def overlay_templates() -> list[dict]:
             PRESENTER_TEMPLATE_ID,
             YY_OPENING_EXPANDED_TEMPLATE_ID,
             PRESENTER_MOTION_TEMPLATE_ID,
+            AZL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,

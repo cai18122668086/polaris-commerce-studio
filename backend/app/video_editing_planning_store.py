@@ -19,6 +19,7 @@ from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import PREFIX, material_cards, project_material_files
 from .video_editing_native_plans import content_digest, source_assets
 from .video_editing_overlay_templates import (
+    AZL_TEMPLATE_ID,
     PRESENTER_MOTION_TEMPLATE_ID,
     overlay_template,
 )
@@ -208,7 +209,8 @@ def create_planning_task(
         "choice_snapshot": choices,
         "asset_cards": material_cards(
             source_assets(source) | selected,
-            include_video_durations=body.template_id == PRESENTER_MOTION_TEMPLATE_ID,
+            include_video_durations=body.template_id
+            in {PRESENTER_MOTION_TEMPLATE_ID, AZL_TEMPLATE_ID},
         ),
         "source_subtitles": base.options["source_subtitles"],
     }

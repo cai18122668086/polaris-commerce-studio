@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from .config import Settings
 from .motion_library import atomic_json, read_json, sha256
+from .video_editing_azl_panels import AZL_LAYOUT_INTENT, verify_azl_layout
 from .video_editing_caption_layout import (
     layout_main_captions,
     verify_native_caption_layout,
@@ -743,5 +744,12 @@ def validate_result(
             raise EditingFailure(
                 "EDITING_NATIVE_OPENING_CAPTION_LAYOUT_INVALID"
             ) from None
+    if (root / AZL_LAYOUT_INTENT).is_file():
+        try:
+            if native["sha256"] != validation["sha256"]:
+                raise ValueError("Original panel output changed before validation")
+            validation["native_azl_panel_layout"] = verify_azl_layout(root, native)
+        except (ValueError, KeyError, IndexError, TypeError, OSError):
+            raise EditingFailure("EDITING_NATIVE_AZL_PANEL_LAYOUT_INVALID") from None
     atomic_json(root / "validation.json", validation)
     return validation

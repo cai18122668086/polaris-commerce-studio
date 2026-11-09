@@ -7,6 +7,16 @@ from typing import Any
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, inside, read_json
 from .motion_parameter_contracts import input_contract
+from .video_editing_azl_panels import (
+    AZL_DESIGN_ID,
+    AZL_ENTRY,
+    AZL_GROUPS,
+    AZL_PRESENTER,
+    AZL_RECT,
+    azl_materials,
+    azl_slots,
+    validate_azl_anchors,
+)
 from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
 from .video_editing_browser_clocks import (
     CARD_GROUP,
@@ -124,6 +134,7 @@ _SELECT = ("sfx-dbafeebc3f7297da", 0.04, 0.16, -25)
 _SLIDE = ("sfx-22f661280569e8bc", 0.07, 0.32, -27)
 _IMPACT = ("sfx-69dba3f8f41f94e1", 0.03, 0.27, -25)
 _ENTRY_SOUNDS = {
+    **dict.fromkeys(AZL_GROUPS, (AZL_ENTRY, _SLIDE)),
     **{group: (path, _SLIDE) for group, path in YY_OPENING_ENTRY_EVENTS.items()},
     QUESTION_GROUP: (QUESTION_ENTRY, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     QUESTION_CARD_GROUP: (QUESTION_CARD_SOUND, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
@@ -844,7 +855,7 @@ def _entry_sound(
         }.get(
             beat.group_id,
             "原生画面运动开始时给一次短提示，口播继续。"
-            if beat.group_id in PRESENTER_MOTION_GROUPS
+            if beat.group_id in PRESENTER_MOTION_GROUPS or beat.group_id in AZL_GROUPS
             else "原生文字动效入场时给一次短提示，口播继续。",
         ),
         source_start_seconds=source_start,
@@ -1422,6 +1433,99 @@ def _package_entry(
     ), anchors
 
 
+def _azl_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    config = read_json(inside(package, group["input_template"]))
+    presenter_ids = {
+        row["id"]
+        for row in asset_cards
+        if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
+    }
+    media_paths = (AZL_PRESENTER, *azl_slots(beat.group_id))
+    try:
+        available = azl_materials(asset_cards, transcript.source_sha256, 1)
+        anchors = word_bindings(
+            beat, transcript, contract, presenter_ids | available.keys()
+        )
+        bound = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        if (
+            set(bound) != set(media_paths)
+            or bound[AZL_PRESENTER] not in presenter_ids
+            or set(beat.asset_ids) != set(bound.values())
+            or {row["path"] for row in anchors["text"]} != set(contract["text_paths"])
+        ):
+            raise ValueError("Original panel requires its exact text and media slots")
+        clock = anchors["clock"]
+        frames = math.ceil((clock["end_ms"] - clock["start_ms"]) * 30 / 1000)
+        available = azl_materials(asset_cards, transcript.source_sha256, frames)
+        if (
+            len({available[bound[path]]["sha256"] for path in media_paths[1:]})
+            != len(media_paths) - 1
+        ):
+            raise ValueError("Original panel needs distinct current project materials")
+        validate_azl_anchors(
+            beat.group_id,
+            anchors,
+            config["capacity"],
+            {token.id: i for i, token in enumerate(transcript.tokens)},
+        )
+    except (ValueError, KeyError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_AZL_INPUTS_REQUIRED",
+            f"{beat.group_id} 需绑定同期原片、实录短句及四个字幕词点。"
+            "各素材槽需不同的本期原件，补充视频须覆盖整段。",
+        ) from error
+    slots = [
+        *media_paths,
+        *(row["path"] for row in anchors["text"]),
+        *(row["path"] for row in anchors["events"]),
+        *(
+            field["path"]
+            for field in contract["fields"]
+            if field["category"] == "clock_owned_by_compiler"
+            and field["path"].startswith("/media/")
+        ),
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    for media in config["media"].values():
+        media["end_policy"] = "error"
+    reason = "上方完整保留原生二比三板式，底部留给连续主字幕。"
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(layer="scene", rect=list(AZL_RECT), reason=reason),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": beat.group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": AZL_DESIGN_ID,
+            "design_reason": reason,
+            "parameter_decisions": {key: reason for key in config},
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
+            "media_clocks": [
+                {
+                    "media_path": path,
+                    "policy": "transcript_source_window"
+                    if path == AZL_PRESENTER
+                    else "project_scene_clip_window",
+                }
+                for path in media_paths
+            ],
+        },
+    ), anchors
+
+
 def _presenter_motion_entry(
     package: Path,
     group: dict,
@@ -1723,6 +1827,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = motion_sound_paths(beat.group_id)
+        elif beat.group_id in AZL_GROUPS:
+            entries[beat.id], anchors = _azl_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = (None,)
         else:
             make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
             entries[beat.id], anchors = make_entry(package, group, beat, transcript)
@@ -1741,6 +1850,7 @@ def build_overlay_recipes(
             LIVE_STRIP_GROUP,
             *YY_OPENING_EXPANDED_GROUPS,
             *PRESENTER_MOTION_GROUPS,
+            *AZL_GROUPS,
         }
         for beat in beats
     )

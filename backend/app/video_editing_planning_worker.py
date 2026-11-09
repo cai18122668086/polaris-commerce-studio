@@ -19,6 +19,7 @@ from .errors import ApiError
 from .motion_library import MOTION_SHA256, atomic_json, sha256, verify_package
 from .motion_local_dependencies import dependency_state, local_dependencies
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
+from .video_editing_azl_panels import azl_blockers, azl_panel_windows
 from .video_editing_catalog import (
     external_dependencies,
     planning_runtime_snapshot,
@@ -328,6 +329,21 @@ def process(
                 snapshot["source_sha256"],
                 runtime["unavailable_template_groups"],
             )
+            azl_blockers(
+                template,
+                snapshot["source_subtitles"],
+                snapshot["asset_cards"],
+                snapshot["source_sha256"],
+                runtime["unavailable_template_groups"],
+            )
+            panel_windows = azl_panel_windows(
+                template,
+                transcript,
+                snapshot["asset_cards"],
+                runtime["unavailable_template_groups"],
+            )
+            if panel_windows:
+                runtime["azl_panel_windows"] = panel_windows
             motion_windows = motion_word_windows(
                 template,
                 transcript,
@@ -404,6 +420,13 @@ def process(
                 )
                 require_clean_yy_source(template, snapshot["source_subtitles"], current)
                 motion_blockers(
+                    template,
+                    snapshot["source_subtitles"],
+                    snapshot["asset_cards"],
+                    snapshot["source_sha256"],
+                    current,
+                )
+                azl_blockers(
                     template,
                     snapshot["source_subtitles"],
                     snapshot["asset_cards"],

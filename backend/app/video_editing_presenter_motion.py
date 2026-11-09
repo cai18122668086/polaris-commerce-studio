@@ -5,6 +5,7 @@ from typing import Any
 
 from .video_editing_contracts import Transcript
 from .video_editing_materials import PREFIX
+from .video_editing_word_bindings import measured_clause_windows
 
 PRESENTER_MOTION_GROUPS: dict[str, tuple[str, str | int, str | int]] = {
     "YYP01": ("在实录重点处用原人物窗推近。", "start_frame", "end_frame"),
@@ -33,7 +34,6 @@ MOTION_MATTE = "model-01eb6a29a5c4d8edb30b"
 _TAIL_FRAMES = 8
 _CLIP_ENTRIES = (32, 40)
 _FIXED_SHIFT = -5
-_SENTENCE_END = "，。！？；、,.!?;"
 
 
 def motion_event_paths(group: str) -> tuple[str, ...]:
@@ -136,59 +136,46 @@ def motion_word_windows(
     groups = (groups & PRESENTER_MOTION_GROUPS.keys()) - unavailable.keys()
     if not groups or not transcript.tokens:
         return {}
-    tokens = transcript.tokens
-    cuts = [0]
-    cuts.extend(
-        i
-        for i in range(1, len(tokens))
-        if tokens[i - 1].text.rstrip().endswith(tuple(_SENTENCE_END))
-        or tokens[i].start_ms - tokens[i - 1].end_ms >= 250
-    )
-    cuts.append(len(tokens))
     clips = motion_project_clips(cards, transcript.source_sha256)
     windows: dict[str, list[dict[str, Any]]] = {group: [] for group in sorted(groups)}
-    for index, first in enumerate(cuts[:-1]):
-        start_ms = tokens[first].start_ms
-        for stop in cuts[index + 1 : index + 4]:
-            duration_ms = tokens[stop - 1].end_ms - start_ms
-            if duration_ms > 6500:
-                break
-            frames = math.ceil(duration_ms * 30 / 1000)
-            ticks = [
-                (token.id, round((token.start_ms - start_ms) * 30 / 1000))
-                for token in tokens[first:stop]
-            ]
-            for group, options in windows.items():
-                _, start, end = PRESENTER_MOTION_GROUPS[group]
-                media = {}
-                if group == "YYP05":
-                    media = _dual_clip_options(clips, frames, _FIXED_SHIFT)
-                    if not media:
-                        continue
-                if isinstance(start, int):
-                    assert isinstance(end, int)
-                    if frames < end + _FIXED_SHIFT + _TAIL_FRAMES:
-                        continue
-                    available = [
-                        token
-                        for token, frame in ticks
-                        if start + _FIXED_SHIFT <= frame <= end + _FIXED_SHIFT
-                    ]
-                    if not available:
-                        continue
-                    events = {MOTION_CLOCK: available}
-                else:
-                    events = _motion_geometry_example(group, ticks, frames)
-                    if not events:
-                        continue
-                options.append(
-                    {
-                        "first_token_id": tokens[first].id,
-                        "last_token_id": tokens[stop - 1].id,
-                        "start_edge_token_ids": events,
-                        **({"project_video_ids_by_path": media} if media else {}),
-                    }
-                )
+    for tokens in measured_clause_windows(transcript):
+        start_ms = tokens[0].start_ms
+        frames = math.ceil((tokens[-1].end_ms - start_ms) * 30 / 1000)
+        ticks = [
+            (token.id, round((token.start_ms - start_ms) * 30 / 1000))
+            for token in tokens
+        ]
+        for group, options in windows.items():
+            _, start, end = PRESENTER_MOTION_GROUPS[group]
+            media = {}
+            if group == "YYP05":
+                media = _dual_clip_options(clips, frames, _FIXED_SHIFT)
+                if not media:
+                    continue
+            if isinstance(start, int):
+                assert isinstance(end, int)
+                if frames < end + _FIXED_SHIFT + _TAIL_FRAMES:
+                    continue
+                available = [
+                    token
+                    for token, frame in ticks
+                    if start + _FIXED_SHIFT <= frame <= end + _FIXED_SHIFT
+                ]
+                if not available:
+                    continue
+                events = {MOTION_CLOCK: available}
+            else:
+                events = _motion_geometry_example(group, ticks, frames)
+                if not events:
+                    continue
+            options.append(
+                {
+                    "first_token_id": tokens[0].id,
+                    "last_token_id": tokens[-1].id,
+                    "start_edge_token_ids": events,
+                    **({"project_video_ids_by_path": media} if media else {}),
+                }
+            )
     return {
         group: [options[i * (len(options) - 1) // 11] for i in range(12)]
         if len(options) > 12

@@ -7,6 +7,7 @@ from typing import Any, Literal, Self
 from pydantic import Field, model_validator
 
 from .motion_library import inside, read_json, sha256
+from .video_editing_azl_panels import AZL_ENTRY, AZL_GROUPS, azl_output_bounds
 from .video_editing_browser_rotation import (
     ROTATION_EVENTS,
     ROTATION_GROUP,
@@ -138,6 +139,7 @@ def compile_sound(
     sync_subtitle_entries: bool = False,
     sync_yy_opening_entries: bool = False,
     sync_presenter_motion_entries: bool = False,
+    sync_azl_entries: bool = False,
 ) -> dict[str, Any]:
     """Compile trusted sound choices without copying an old timeline."""
     duration = episode["source"]["duration_seconds"]
@@ -246,7 +248,20 @@ def compile_sound(
         )
         seconds = entry_seconds
         question_entry = package_entry = rotation_entry = judgment_entry = None
-        question_card_entry = yy_opening_entry = presenter_motion_entry = None
+        question_card_entry = yy_opening_entry = presenter_motion_entry = azl_entry = (
+            None
+        )
+        if (
+            sync_azl_entries
+            and shot["group_id"] in AZL_GROUPS
+            and cue.phase == "entry"
+            and cue.event_path == AZL_ENTRY
+        ):
+            fps = episode["output"]["fps"]
+            frame, _ = azl_output_bounds(shot, fps)
+            seconds = frame / fps
+            native_ref = {}
+            azl_entry = {"shot_index": shot_index, "output_frame": frame}
         if (
             sync_presenter_motion_entries
             and shot["group_id"] in PRESENTER_MOTION_GROUPS
@@ -380,6 +395,7 @@ def compile_sound(
                 **({"rotation_entry": rotation_entry} if rotation_entry else {}),
                 **({"judgment_entry": judgment_entry} if judgment_entry else {}),
                 **({"yy_opening_entry": yy_opening_entry} if yy_opening_entry else {}),
+                **({"azl_entry": azl_entry} if azl_entry else {}),
                 **(
                     {"presenter_motion_entry": presenter_motion_entry}
                     if presenter_motion_entry
@@ -572,6 +588,18 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
                 and motion_entry["output_frame"] == frame
+                and cue["anchor_seconds"] == frame / fps
+            )
+        elif panel_entry := cue.get("azl_entry"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            fps = episode["output"]["fps"]
+            shot = episode["shots"][panel_entry["shot_index"]]
+            frame, _ = azl_output_bounds(shot, fps)
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and cue["word_binding"]["path"] == AZL_ENTRY
+                and panel_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
         else:

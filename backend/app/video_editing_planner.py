@@ -346,6 +346,13 @@ def build_request(
             "同一条示例中的不同字段一起使用，其他段落仍按模板条件由服务端校验。"
             "双素材示例从project_video_ids_by_path中为每个槽选择不同的项目视频。"
         )
+    if runtime and runtime.get("azl_panel_windows"):
+        message += (
+            "azl_panel_windows是服务端核对过的板式段落示例。"
+            "按本段语义选择其中可用的组，在material_ids中按画面用途选不同素材。"
+            "可以沿用示例native_events，并用first_token_id至subtitle_last_token_id绑定原subtitle。"
+            "标题、标签和三张关键词卡仍需从该段各自的实录选词。"
+        )
     body = {
         "model": model,
         "stream": False,

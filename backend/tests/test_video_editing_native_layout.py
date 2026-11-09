@@ -3,6 +3,14 @@ from copy import deepcopy
 import pytest
 
 from app.motion_library import atomic_json, read_json, sha256
+from app.video_editing_azl_panels import (
+    AZL_LAYOUT_INTENT,
+    AZL_RECT,
+    azl_backing,
+    azl_output_bounds,
+    azl_projected_end,
+    verify_azl_layout,
+)
 from app.video_editing_native_layout import (
     intentional_role_overlaps,
     review_with_native_roles,
@@ -290,6 +298,65 @@ def test_presenter_motion_sound_uses_fixed_and_measured_native_frames():
     }
     assert motion_entry_frame(reveal, 30, "/style/geometry/camera_start_frame") == 1194
     assert motion_entry_frame(reveal, 30, "/style/geometry/reveal_start_frame") == 1267
+
+
+def test_azl_backing_uses_output_frame_boundaries_and_checks_main_caption_ink(tmp_path):
+    shot = {
+        "group_id": "AZL01",
+        "layer": "scene",
+        "rect": list(AZL_RECT),
+        "start_seconds": 0.41,
+        "end_seconds": 2.24,
+        "config": {"events": {"subtitle_in": [0, 8]}},
+    }
+    episode = {
+        "output": {"width": 720, "height": 1280, "fps": 30},
+        "source": {"duration_seconds": 3},
+        "shots": [shot],
+        "captions": [{"start_seconds": 0.41, "end_seconds": 2.24}],
+    }
+    backing = azl_backing(shot, episode, 0)
+    assert backing == {
+        "id": "azl-backing-0",
+        "start_seconds": 13 / 30,
+        "end_seconds": (68 - 1e-5) / 30,
+        "background": {"mode": "solid", "color": "#ffffff"},
+        "layers": [],
+    }
+    episode["visual_scenes"] = [backing]
+    atomic_json(tmp_path / "episode.json", episode)
+    atomic_json(tmp_path / AZL_LAYOUT_INTENT, {"shots": [0]})
+    ink = {"start": 0.41, "end": 2.24, "box": [45, 1120, 400, 1240]}
+    receipt = {"scene_id": backing["id"], "frames": 55, "fps": 30, "layer_kinds": []}
+    delivery = {
+        "layout_review": {"status": "passed", "caption_ink": [ink]},
+        "visual_scene_receipts": [receipt],
+    }
+    assert (
+        verify_azl_layout(tmp_path, delivery)["shots"][0]["smallest_caption_gap_px"]
+        == 40
+    )
+    ink["box"][1] = 1079
+    with pytest.raises(ValueError, match="Main subtitle ink enters"):
+        verify_azl_layout(tmp_path, delivery)
+    ink["box"][1] = 1120
+    receipt["frames"] = 54
+    with pytest.raises(ValueError, match="does not cover the panel frames"):
+        verify_azl_layout(tmp_path, delivery)
+
+
+def test_azl_projection_stops_before_original_component_eof():
+    shot = {
+        "group_id": "AZL03",
+        "layer": "scene",
+        "rect": list(AZL_RECT),
+        "start_seconds": 15.63,
+        "end_seconds": azl_projected_end(15.63, 19.05, 103, 30),
+        "config": {"events": {"subtitle_in": [0, 8]}},
+    }
+    assert azl_output_bounds(shot, 30) == (469, 571)
+    assert 103 / 30 - (shot["end_seconds"] - shot["start_seconds"]) <= 1 / 30 + 0.0001
+    assert azl_projected_end(0.41, 3.59, 96, 30) == 3.59
 
 
 def test_preview_counts_decoded_opaque_scenes_and_visible_subtitles():

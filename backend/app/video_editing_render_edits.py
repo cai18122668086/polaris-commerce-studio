@@ -3,6 +3,12 @@
 import math
 from typing import Any
 
+from .video_editing_azl_panels import (
+    AZL_DESIGN_ID,
+    AZL_GROUPS,
+    AZL_RECT,
+    AZL_TEMPLATE_ID,
+)
 from .video_editing_browser_clocks import LIVE_BROWSER_SOURCE_FIELDS
 from .video_editing_contracts import NativeRenderEdits, SemanticBeat
 from .video_editing_hypit_strips import (
@@ -140,9 +146,16 @@ def continuous_overlay_groups(
         placement = entry.get("placement", {})
         recipe = entry.get("recipe", {})
         layer = placement.get("layer")
+        azl_panel = (
+            gid in AZL_GROUPS
+            and recipes.get("overlay_template_id") == AZL_TEMPLATE_ID
+            and recipe.get("design_id") == AZL_DESIGN_ID
+            and layer == "scene"
+            and placement.get("rect") == list(AZL_RECT)
+        )
         native_canvas = (
             gid in (scene_groups or ())
-            and placement.get("rect") == FULL_FRAME
+            and (placement.get("rect") == FULL_FRAME or azl_panel)
             and recipe.get("group_id") == gid
             and (
                 layer == "scene"

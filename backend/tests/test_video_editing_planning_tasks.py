@@ -24,6 +24,7 @@ from app import video_editing_task_routes as task_routes
 from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
+from app.video_editing_azl_panels import azl_blockers
 from app.video_editing_contracts import SemanticPlan
 from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
 from app.video_editing_native_sound import verify_rendered_sound
@@ -118,6 +119,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "presenter-openings-v1",
         "yy-presenter-openings-v2",
         "presenter-reframing-v1",
+        "azl-panels-v1",
         "evidence-judgment-v1",
         "explainer-steps-v1",
         "subtitle-story-v1",
@@ -1044,3 +1046,17 @@ def test_presenter_motion_preparation_rejects_duplicate_or_short_clips():
     assert unavailable == {}
     motion_blockers(template, "present", [clip, second], "source", unavailable)
     assert unavailable == {f"YYP{i:02}": ["clean_source_required"] for i in range(1, 8)}
+
+
+def test_azl_preparation_requires_distinct_assets_by_original_slot_count():
+    template = overlay_template("azl-panels-v1")
+    photo = {"id": "material-a", "kind": "image", "sha256": "a"}
+    same = {**photo, "id": "material-b"}
+    clip = {"id": "material-c", "kind": "video", "sha256": "c", "duration_ms": 1199}
+    unavailable = {}
+    azl_blockers(template, "none", [photo, same, clip], "source", unavailable)
+    assert set(unavailable) == {"AZL02", "AZL04", "AZL05"}
+    clip["duration_ms"] = 1200
+    unavailable = {}
+    azl_blockers(template, "none", [photo, same, clip], "source", unavailable)
+    assert set(unavailable) == {"AZL04"}

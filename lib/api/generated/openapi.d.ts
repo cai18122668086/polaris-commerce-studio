@@ -1747,6 +1747,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-extractions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extract Candidates */
+        post: operations["extract_candidates_api_v1_video_studio_workspaces__workspace_id__benchmark_extractions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-searches": {
         parameters: {
             query?: never;
@@ -2752,6 +2769,23 @@ export interface paths {
         put?: never;
         /** Save Reference */
         post: operations["save_reference_api_v1_video_studio_workspaces__workspace_id__writing_documents_reference_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/reference/from-benchmark/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Benchmark Reference */
+        post: operations["save_benchmark_reference_api_v1_video_studio_workspaces__workspace_id__writing_documents_reference_from_benchmark__task_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4259,6 +4293,7 @@ export interface components {
         };
         /** AssistanceResponse */
         AssistanceResponse: {
+            benchmark_source?: components["schemas"]["BenchmarkExtractionSource"] | null;
             /** Can Resume */
             can_resume: boolean;
             /** Error Code */
@@ -4321,8 +4356,53 @@ export interface components {
             /** Tag */
             tag: string;
         };
+        /** BenchmarkExtractionPick */
+        BenchmarkExtractionPick: {
+            /** Platform Id */
+            platform_id: string;
+            /**
+             * Search Task Id
+             * Format: uuid
+             */
+            search_task_id: string;
+        };
+        /** BenchmarkExtractionRequest */
+        BenchmarkExtractionRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Items */
+            items: components["schemas"]["BenchmarkExtractionPick"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /** BenchmarkExtractionSource */
+        BenchmarkExtractionSource: {
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Keyword */
+            keyword: string;
+            /** Platform Id */
+            platform_id: string;
+            /**
+             * Search Task Id
+             * Format: uuid
+             */
+            search_task_id: string;
+            /** Source Url */
+            source_url: string;
+        };
         /** BenchmarkSearchConfig */
         BenchmarkSearchConfig: {
+            /** Can Extract */
+            can_extract: boolean;
+            /** Can Save Reference */
+            can_save_reference: boolean;
             /** Enabled */
             enabled: boolean;
         };
@@ -12044,6 +12124,41 @@ export interface operations {
             };
         };
     };
+    extract_candidates_api_v1_video_studio_workspaces__workspace_id__benchmark_extractions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BenchmarkExtractionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistanceResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_search_api_v1_video_studio_workspaces__workspace_id__benchmark_searches_post: {
         parameters: {
             query?: never;
@@ -14290,6 +14405,40 @@ export interface operations {
                 "application/json": components["schemas"]["SaveWritingReference"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_benchmark_reference_api_v1_video_studio_workspaces__workspace_id__writing_documents_reference_from_benchmark__task_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

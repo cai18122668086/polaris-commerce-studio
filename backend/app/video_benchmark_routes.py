@@ -16,7 +16,7 @@ from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .video_assistance import AssistanceResponse, process, provider, response
 from .video_assistance_models import VideoAssistanceRecord
-from .video_assistance_provider import benchmark_search_configured
+from .video_assistance_provider import benchmark_search_configured, video_source_url
 from .video_benchmark import BENCHMARK_KIND, page_identity
 from .video_studio_models import VideoProjectRecord
 from .video_studio_routes import VideoWorkspace, scope
@@ -40,6 +40,19 @@ class BenchmarkSearchRequest(StrictVideoModel):
 
 class BenchmarkSearchConfig(StrictVideoModel):
     enabled: bool
+    can_extract: bool
+    can_save_reference: bool
+
+
+class BenchmarkExtractionPick(StrictVideoModel):
+    search_task_id: UUID
+    platform_id: str = Field(pattern=r"^[0-9]{6,25}$")
+
+
+class BenchmarkExtractionRequest(StrictVideoModel):
+    project_id: UUID
+    expected_revision: int = Field(ge=1)
+    items: list[BenchmarkExtractionPick] = Field(min_length=1, max_length=10)
 
 
 def owned_searches(workspace: VideoWorkspace) -> Select[VideoAssistanceRecord]:
@@ -103,9 +116,129 @@ def save_page(
 
 @router.get("/benchmark-config", response_model=BenchmarkSearchConfig)
 def search_config(request: Request, workspace: VideoWorkspace) -> BenchmarkSearchConfig:
+    settings = request.app.state.settings
     return BenchmarkSearchConfig(
-        enabled=benchmark_search_configured(request.app.state.settings)
+        enabled=benchmark_search_configured(settings),
+        can_extract=settings.video_extract_enabled
+        and bool(settings.video_extract_api_key.get_secret_value().strip()),
+        can_save_reference=settings.video_writing_workflow_enabled,
     )
+
+
+@router.post("/benchmark-extractions", response_model=list[AssistanceResponse])
+def extract_candidates(
+    body: BenchmarkExtractionRequest,
+    request: Request,
+    background: BackgroundTasks,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> list[AssistanceResponse]:
+    require_workspace_write(workspace)
+    project = session.scalar(
+        select(VideoProjectRecord).where(
+            VideoProjectRecord.id == str(body.project_id), *scope(workspace)
+        )
+    )
+    if project is None:
+        raise ApiError(404, "VIDEO_PROJECT_NOT_FOUND", "未找到项目。")
+    if len({item.platform_id for item in body.items}) != len(body.items):
+        raise ApiError(422, "VIDEO_BENCHMARK_DUPLICATE", "请只勾选同一作品一次。")
+
+    pages = {
+        row.id: row
+        for row in session.scalars(
+            owned_searches(workspace).where(
+                VideoAssistanceRecord.id.in_(
+                    [str(pick.search_task_id) for pick in body.items]
+                ),
+                VideoAssistanceRecord.project_id == project.id,
+                VideoAssistanceRecord.kind == BENCHMARK_KIND,
+                VideoAssistanceRecord.status == "completed",
+            )
+        )
+    }
+    entries = {}
+    for pick in body.items:
+        page = pages.get(str(pick.search_task_id))
+        source = next(
+            (
+                row
+                for row in (page.result.get("items", []) if page else [])
+                if row["platform_id"] == pick.platform_id
+            ),
+            None,
+        )
+        if page is None or source is None:
+            raise ApiError(404, "VIDEO_BENCHMARK_NOT_FOUND", "未找到本项目的对标作品。")
+        marker = f"tengli-benchmark-extraction:{project.id}:{pick.platform_id}"
+        url = video_source_url(source["source_url"])
+        entries[str(uuid5(NAMESPACE_URL, marker))] = (
+            hashlib.sha256(marker.encode()).hexdigest(),
+            {
+                "search_task_id": page.id,
+                "platform_id": pick.platform_id,
+                "source_url": url,
+                "keyword": page.result["keyword"],
+                "captured_at": page.result["captured_at"],
+            },
+        )
+    existing_query = owned_searches(workspace).where(
+        VideoAssistanceRecord.request_id.in_(entries)
+    )
+    settings = request.app.state.settings
+    for attempt in range(2):
+        rows = {row.request_id: row for row in session.scalars(existing_query)}
+        if any(
+            row.kind != "extract" or row.request_hash != entries[rid][0]
+            for rid, row in rows.items()
+        ):
+            raise ApiError(409, "VIDEO_REQUEST_REUSED", "此请求已用于其他内容。")
+        if len(rows) == len(entries):
+            return [response(rows[rid]) for rid in entries]
+        if project.revision != body.expected_revision:
+            raise ApiError(
+                409, "VIDEO_REVISION_CONFLICT", "项目已变化，请重新载入后确认。"
+            )
+        if not (
+            settings.video_extract_enabled
+            and settings.video_extract_api_key.get_secret_value().strip()
+        ):
+            raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "语音提取服务尚未配置。")
+        new = []
+        for rid, (fingerprint, source_info) in entries.items():
+            if rid in rows:
+                continue
+            row = VideoAssistanceRecord(
+                id=str(uuid4()),
+                workspace_id=workspace.workspace_id,
+                owner_user_id=workspace.principal.user_id,
+                project_id=project.id,
+                request_id=rid,
+                request_hash=fingerprint,
+                kind="extract",
+                inputs={
+                    "revision": project.revision,
+                    "source_url": source_info["source_url"],
+                    "benchmark_source": source_info,
+                },
+            )
+            rows[rid] = row
+            new.append(row)
+        session.add_all(new)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            if attempt == 0:
+                continue
+            break
+        service = provider(request)
+        for row in new:
+            background.add_task(
+                process, request.app.state.session_factory, row.id, service
+            )
+        return [response(rows[rid]) for rid in entries]
+    raise ApiError(409, "VIDEO_REQUEST_REUSED", "批量提取任务发生冲突，请刷新后确认。")
 
 
 @router.post("/benchmark-searches", response_model=AssistanceResponse)

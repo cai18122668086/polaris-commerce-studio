@@ -305,7 +305,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   </>;
 
   const assistantJob = assistantMode === "create" ? createJob : assistantMode === "extract" ? extractJob : assistantMode === "rewrite" ? rewriteJob : undefined;
-  const assistant = <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} workspaceId={workspaceId} jobs={assistance.benchmarkJobs}
+  const assistant = <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} workspaceId={workspaceId} projectId={projectId} jobs={assistance.benchmarkJobs} extractions={assistance.benchmarkExtractions}
     extractBusy={assistance.busy("extract")}
     onSearch={async criteria => {
       const target = session.state.projectId;
@@ -314,6 +314,12 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
       await assistance.submitBenchmark({ ...criteria, project_id: target, expected_revision: session.state.revision });
     }}
     onNext={assistance.nextBenchmarkPage} onResume={assistance.resume}
+    onExtract={async items => {
+      const target = session.state.projectId;
+      await session.save();
+      if (session.state.projectId !== target) return;
+      await assistance.submitBenchmarkExtractions({ project_id: target, expected_revision: session.state.revision, items });
+    }}
     onUse={(item, page) => {
       const note = "抖音对标「" + page.result.keyword + "」，搜索任务 " + page.id;
       setReferenceDraft({ projectId, link: item.source_url, text: "", note });

@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from app import video_writing_routes
 from app.main import create_app
 from app.video_assistance_models import VideoAssistanceRecord
 from app.video_assistance_provider import VideoAssistanceProvider
@@ -92,7 +93,12 @@ def benchmark(tmp_path):
         assert str(request.url) == "https://api.everyinfra.com/api/v1/social"
         body = json.loads(request.content)
         calls.append(body)
-        return pages[body["params"]["page_token"]]
+        if body["action"] == "search":
+            return pages[body["params"]["page_token"]]
+        assert body["action"] == "transcript"
+        post_id = body["params"]["url"].rsplit("/", 1)[-1]
+        text = "这是语音提取的独立原文。" if post_id == POST_A else ""
+        return httpx.Response(200, json={"results": {"text": text}})
 
     app = create_app(settings, auth)
     app.state.video_assistance_provider = VideoAssistanceProvider(
@@ -130,7 +136,11 @@ def result_rows(client, root, body):
 
 def test_search_pages_are_separately_submitted_deduplicated_and_private(benchmark):
     client, _, root, body, calls, _ = benchmark
-    assert client.get(root + "/benchmark-config").json() == {"enabled": True}
+    assert client.get(root + "/benchmark-config").json() == {
+        "enabled": True,
+        "can_extract": True,
+        "can_save_reference": False,
+    }
     before = client.get(root + "/projects/" + body["project_id"]).json()
     initial = client.post(root + "/benchmark-searches", json=body)
     assert initial.status_code == 200, initial.text
@@ -204,7 +214,7 @@ def test_search_disabled_stale_and_unknown_requests_do_not_repeat(benchmark):
     client, _, root, body, calls, pages = benchmark
     settings = client.app.state.settings
     settings.video_benchmark_search_enabled = False
-    assert client.get(root + "/benchmark-config").json() == {"enabled": False}
+    assert client.get(root + "/benchmark-config").json()["enabled"] is False
     assert client.post(root + "/benchmark-searches", json=body).status_code == 503
     settings.video_benchmark_search_enabled = True
     assert (
@@ -244,3 +254,89 @@ def test_search_expired_page_and_unowned_project(benchmark):
         404,
     }
     assert len(calls) == 1
+
+
+def test_batch_extraction_is_scoped_idempotent_and_keeps_separate_reference(
+    benchmark, monkeypatch
+):
+    client, _, root, body, calls, _ = benchmark
+    before = client.get(root + "/projects/" + body["project_id"]).json()
+    first = (
+        client.post(root + "/benchmark-searches", json=body).raise_for_status().json()
+    )
+    second = (
+        client.post(root + f"/benchmark-searches/{first['id']}/next")
+        .raise_for_status()
+        .json()
+    )
+    first_pick = {"search_task_id": first["id"], "platform_id": POST_A}
+    second_pick = {"search_task_id": second["id"], "platform_id": POST_B}
+    batch = {
+        "project_id": body["project_id"],
+        "expected_revision": 1,
+        "items": [first_pick, second_pick],
+    }
+    route = root + "/benchmark-extractions"
+    assert (
+        client.post(
+            route, json={**batch, "items": [first_pick, first_pick]}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            route,
+            json={
+                **batch,
+                "items": [first_pick, {**first_pick, "platform_id": POST_B}],
+            },
+        ).status_code
+        == 404
+    )
+    other_project = str(uuid4())
+    assert (
+        client.put(root + "/projects/" + other_project, json=payload()).status_code
+        == 200
+    )
+    assert (
+        client.post(route, json={**batch, "project_id": other_project}).status_code
+        == 404
+    )
+    assert len(calls) == 2
+    one, two = client.post(route, json=batch).raise_for_status().json()
+    assert [row["benchmark_source"]["platform_id"] for row in (one, two)] == [
+        POST_A,
+        POST_B,
+    ]
+    results = result_rows(client, root, body)
+    assert results[one["id"]]["status"] == "completed"
+    assert results[two["id"]]["status"] == "failed"
+    assert results[two["id"]]["error_code"] == "VIDEO_TRANSCRIPT_EMPTY"
+    assert [row["action"] for row in calls] == [
+        "search",
+        "search",
+        "transcript",
+        "transcript",
+    ]
+    replay = (
+        client.post(
+            route,
+            json={**batch, "expected_revision": 2, "items": [second_pick, first_pick]},
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert [row["id"] for row in replay] == [two["id"], one["id"]]
+    assert len(calls) == 4
+
+    client.app.state.settings.video_writing_workflow_enabled = True
+    monkeypatch.setattr(video_writing_routes, "verify_writing_package", lambda _: None)
+    save = root + "/writing-documents/reference/from-benchmark/"
+    assert client.post(save + two["id"]).status_code == 409
+    stored = client.post(save + one["id"]).raise_for_status().json()
+    assert stored["assistance_task_id"] == one["id"]
+    assert stored["body"]["original_text"] == "这是语音提取的独立原文。"
+    assert stored["body"]["source_url"].endswith(POST_A)
+    assert stored["body"]["visual_evidence"] == "not_provided"
+    assert client.post(save + one["id"]).json()["id"] == stored["id"]
+    assert client.get(root + "/projects/" + body["project_id"]).json() == before

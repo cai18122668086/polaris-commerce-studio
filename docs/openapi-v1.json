@@ -1234,6 +1234,16 @@
       "AssistanceResponse": {
         "additionalProperties": false,
         "properties": {
+          "benchmark_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BenchmarkExtractionSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "can_resume": {
             "title": "Can Resume",
             "type": "boolean"
@@ -1373,16 +1383,114 @@
         "title": "AvatarResponse",
         "type": "object"
       },
+      "BenchmarkExtractionPick": {
+        "additionalProperties": false,
+        "properties": {
+          "platform_id": {
+            "pattern": "^[0-9]{6,25}$",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "search_task_id": {
+            "format": "uuid",
+            "title": "Search Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "search_task_id",
+          "platform_id"
+        ],
+        "title": "BenchmarkExtractionPick",
+        "type": "object"
+      },
+      "BenchmarkExtractionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkExtractionPick"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "expected_revision",
+          "items"
+        ],
+        "title": "BenchmarkExtractionRequest",
+        "type": "object"
+      },
+      "BenchmarkExtractionSource": {
+        "additionalProperties": false,
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "keyword": {
+            "title": "Keyword",
+            "type": "string"
+          },
+          "platform_id": {
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "search_task_id": {
+            "format": "uuid",
+            "title": "Search Task Id",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "search_task_id",
+          "platform_id",
+          "source_url",
+          "keyword",
+          "captured_at"
+        ],
+        "title": "BenchmarkExtractionSource",
+        "type": "object"
+      },
       "BenchmarkSearchConfig": {
         "additionalProperties": false,
         "properties": {
+          "can_extract": {
+            "title": "Can Extract",
+            "type": "boolean"
+          },
+          "can_save_reference": {
+            "title": "Can Save Reference",
+            "type": "boolean"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
           }
         },
         "required": [
-          "enabled"
+          "enabled",
+          "can_extract",
+          "can_save_reference"
         ],
         "title": "BenchmarkSearchConfig",
         "type": "object"
@@ -19157,6 +19265,67 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-extractions": {
+      "post": {
+        "operationId": "extract_candidates_api_v1_video_studio_workspaces__workspace_id__benchmark_extractions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkExtractionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AssistanceResponse"
+                  },
+                  "title": "Response Extract Candidates Api V1 Video Studio Workspaces  Workspace Id  Benchmark Extractions Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Extract Candidates",
+        "tags": [
+          "video-assistance"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-searches": {
       "post": {
         "operationId": "submit_search_api_v1_video_studio_workspaces__workspace_id__benchmark_searches_post",
@@ -23390,6 +23559,65 @@
           }
         ],
         "summary": "Save Reference",
+        "tags": [
+          "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/reference/from-benchmark/{task_id}": {
+      "post": {
+        "operationId": "save_benchmark_reference_api_v1_video_studio_workspaces__workspace_id__writing_documents_reference_from_benchmark__task_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Benchmark Reference Api V1 Video Studio Workspaces  Workspace Id  Writing Documents Reference From Benchmark  Task Id  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Save Benchmark Reference",
         "tags": [
           "video-writing-workflow"
         ]

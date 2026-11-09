@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/api-error";
 import { unwrapApiResponse } from "@/lib/api/request";
+import type { components } from "@/lib/api/generated/openapi";
 
 export type AssistanceKind = "create" | "rewrite" | "extract";
 export type AssistantMode = AssistanceKind | "benchmark";
@@ -40,8 +41,10 @@ type BenchmarkPage = BenchmarkCriteria & {
   top_author_item_count?: number;
   unknown_author_count?: number;
 };
-export type AssistanceJob = { id: string; request_id: string; project_id: string; kind: string; status: string; stage: string; error_code: string | null; source_revision: number; can_resume: boolean; result: { title?: string; script?: string; warnings?: string[]; text?: string; source_url?: string; segments?: { start: number; end: number; text: string }[] } };
+export type AssistanceJob = { id: string; request_id: string; project_id: string; kind: string; status: string; stage: string; error_code: string | null; source_revision: number; can_resume: boolean; benchmark_source?: components["schemas"]["BenchmarkExtractionSource"] | null; result: { title?: string; script?: string; warnings?: string[]; text?: string; source_url?: string; segments?: { start: number; end: number; text: string }[] } };
 export type BenchmarkJob = AssistanceJob & { kind: "benchmark_search"; result: BenchmarkPage };
+export type BenchmarkExtractionPick = components["schemas"]["BenchmarkExtractionPick"];
+export type BenchmarkExtractionJob = AssistanceJob & { benchmark_source: NonNullable<AssistanceJob["benchmark_source"]> };
 type BenchmarkSubmission = BenchmarkCriteria & { request_id: string; project_id: string; expected_revision: number };
 type Submission = { request_id: string; project_id: string; expected_revision: number; kind: AssistanceKind; brief: string; style: "产品介绍" | "好物种草" | "知识分享" | "品牌故事"; reference_id?: string };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
@@ -97,10 +100,16 @@ export function useVideoAssistance(userId: string, workspaceId: string, projectI
     remember(job);
   };
   const resume = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/assistance-tasks/{task_id}/resume`, { ...options(), params: { path: { workspace_id: workspaceId, task_id: id } } })); await reload(); };
-  const latest = (kind: AssistanceKind) => current.find(j => j.kind === kind);
+  const submitBenchmarkExtractions = async (body: components["schemas"]["BenchmarkExtractionRequest"]) => {
+    const results = unwrapApiResponse(await apiClient.POST(`${root}/benchmark-extractions`, { ...options(), body })) as AssistanceJob[];
+    const ids = new Set(results.map(job => job.id));
+    setJobs(previous => [...results, ...previous.filter(job => !ids.has(job.id))]);
+  };
+  const latest = (kind: AssistanceKind) => current.find(j => j.kind === kind && !j.benchmark_source);
   const busy = (kind: AssistanceKind) => ["queued", "running", "unknown"].includes(latest(kind)?.status || "");
   const benchmarkJobs = current.filter((job): job is BenchmarkJob => job.kind === "benchmark_search");
-  return { latest, busy, submit, reload, resume, benchmarkJobs, submitBenchmark, nextBenchmarkPage };
+  const benchmarkExtractions = current.filter((job): job is BenchmarkExtractionJob => job.kind === "extract" && !!job.benchmark_source);
+  return { latest, busy, submit, reload, resume, benchmarkJobs, submitBenchmark, nextBenchmarkPage, benchmarkExtractions, submitBenchmarkExtractions };
 }
 
 export function assistanceMessage(job: AssistanceJob | undefined) {

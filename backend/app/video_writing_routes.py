@@ -2,7 +2,7 @@
 
 import copy
 from typing import Any, cast
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Request
 from sqlalchemy import select, update
@@ -17,6 +17,7 @@ from .models import utc_now
 from .motion_library import WRITING_SHA256
 from .video_assistance import (
     AssistanceResponse,
+    BenchmarkExtractionSource,
     process,
     provider,
 )
@@ -238,6 +239,60 @@ def save_reference(
             body.request_id,
             "reference",
             reference.model_dump(mode="json"),
+        )
+    )
+
+
+@router.post("/writing-documents/reference/from-benchmark/{task_id}")
+def save_benchmark_reference(
+    task_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict:
+    require_workspace_write(workspace)
+    enabled(request)
+    task = session.get(VideoAssistanceRecord, str(task_id))
+    if (
+        task is None
+        or task.workspace_id != workspace.workspace_id
+        or task.owner_user_id != workspace.principal.user_id
+        or task.kind != "extract"
+        or not task.inputs.get("benchmark_source")
+    ):
+        raise ApiError(404, "VIDEO_ASSISTANCE_NOT_FOUND", "未找到该对标提取任务。")
+    own_project(session, workspace, task.project_id)
+    source = BenchmarkExtractionSource.model_validate(task.inputs["benchmark_source"])
+    if task.status != "completed" or task.result.get("source_url") != source.source_url:
+        raise ApiError(409, "VIDEO_TRANSCRIPT_NOT_READY", "本次提取原文尚未就绪。")
+    try:
+        reference = reference_from_project(
+            {
+                "id": task.id,
+                "original_text": task.result.get("text", ""),
+                "url": source.source_url,
+                "note": (
+                    f"抖音对标「{source.keyword}」作品 {source.platform_id}。"
+                    f"搜索页 {source.search_task_id}，"
+                    f"采集于 {source.captured_at.isoformat()}。"
+                    "语音转写，正文待核对。"
+                ),
+            }
+        )
+        reference.source_project_revision = task.inputs["revision"]
+    except ValueError:
+        raise ApiError(
+            422, "VIDEO_REFERENCE_REQUIRED", "本次提取无可拆解原文。"
+        ) from None
+    return document_response(
+        create_document(
+            session,
+            workspace,
+            task.project_id,
+            uuid5(NAMESPACE_URL, f"tengli-benchmark-writing-reference:{task.id}"),
+            "reference",
+            reference.model_dump(mode="json"),
+            assistance_task_id=task.id,
         )
     )
 

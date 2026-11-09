@@ -18,7 +18,7 @@ type Draft = {
 };
 const draftModeName = (draft: Draft["draft"]) => draft.schema_version === "tengli.structure-draft/1" ? "借鉴结构创作" : "按原结构改编";
 type CommonDocument = { id: string; created_at: string; reference_document_id: string | null; analysis_document_id: string | null; facts_document_id: string | null; assistance_task_id: string | null };
-type Document = CommonDocument & ({ kind: "reference"; body: { original_text: string; sentences: { id: string; text: string }[] } } | { kind: "analysis"; body: Analysis } | { kind: "facts"; body: Facts } | { kind: "draft"; body: Draft });
+type Document = CommonDocument & ({ kind: "reference"; body: { original_text: string; source_note?: string; sentences: { id: string; text: string }[] } } | { kind: "analysis"; body: Analysis } | { kind: "facts"; body: Facts } | { kind: "draft"; body: Draft });
 type Job = { id: string; request_id: string; kind: string; status: string; error_code: string | null; result: { analysis?: Analysis; draft?: Draft["draft"]; text?: string; shape_check?: Draft["shape_check"] } };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const stamp = (date: string) => new Date(date).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -126,7 +126,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
       <select aria-label="选择项目参考原文" value={source} onChange={e => setSource(e.target.value)}><option value="">选择已保存的参考文案</option>{references.filter(r => r.original_text.trim()).map(r => <option key={r.id} value={r.id}>{r.original_text.slice(0, 35)}</option>)}</select>
       <button type="button" disabled={!source} onClick={() => void saveReference()}>保存原文版本</button>
       {refDocs.length > 0 && <label>使用原文版本<select aria-label="使用原文版本" value={selectedReference?.id || ""} onChange={e => setReferenceId(e.target.value)}>{refDocs.map(d => <option key={d.id} value={d.id}>{stamp(d.created_at)} · {d.body.original_text.slice(0, 22)}</option>)}</select></label>}
-      {selectedReference && <details><summary>查看原文</summary><p className={styles.document}>{selectedReference.body.original_text}</p></details>}
+      {selectedReference && <details><summary>查看原文</summary>{selectedReference.body.source_note && <small>{selectedReference.body.source_note}</small>}<p className={styles.document}>{selectedReference.body.original_text}</p></details>}
     </fieldset>
     <fieldset disabled={busy}><legend>2. 核对用户事实</legend>
       <small>编辑区保存后才会成为新的事实卡版本。</small>

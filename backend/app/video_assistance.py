@@ -45,6 +45,14 @@ class AssistanceRequest(StrictVideoModel):
     reference_id: UUID | None = None
 
 
+class BenchmarkExtractionSource(StrictVideoModel):
+    search_task_id: UUID
+    platform_id: str
+    source_url: str
+    keyword: str
+    captured_at: datetime
+
+
 class AssistanceResponse(StrictVideoModel):
     id: UUID
     request_id: UUID
@@ -56,6 +64,7 @@ class AssistanceResponse(StrictVideoModel):
     source_revision: int
     result: dict
     can_resume: bool
+    benchmark_source: BenchmarkExtractionSource | None = None
     stage_history: list[dict] = Field(default_factory=list)
     receipt: dict = Field(default_factory=dict)
 
@@ -78,6 +87,7 @@ def response(row: VideoAssistanceRecord) -> AssistanceResponse:
         source_revision=row.inputs["revision"],
         result=row.result,
         can_resume=row.status in {"queued", "awaiting_resume"},
+        benchmark_source=row.inputs.get("benchmark_source"),
         stage_history=row.receipt.get("stage_history", []),
         receipt={},  # Supplier receipts remain server-side.
     )
@@ -228,7 +238,12 @@ def process(
                 or (
                     row.stage == "submitting"
                     and code
-                    not in {"VIDEO_ASSISTANCE_REJECTED", "VIDEO_ASSISTANCE_DISABLED"}
+                    not in {
+                        "VIDEO_ASSISTANCE_REJECTED",
+                        "VIDEO_ASSISTANCE_DISABLED",
+                        "VIDEO_TRANSCRIPT_EMPTY",
+                        "VIDEO_TRANSCRIPT_TOO_LONG",
+                    }
                 )
                 else "failed"
             )

@@ -11465,6 +11465,21 @@
             ],
             "title": "Analysis Document Id"
           },
+          "draft_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "structure",
+                  "shadow"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Mode"
+          },
           "expected_revision": {
             "minimum": 1.0,
             "title": "Expected Revision",

@@ -7987,6 +7987,8 @@ export interface components {
         WritingTaskRequest: {
             /** Analysis Document Id */
             analysis_document_id?: string | null;
+            /** Draft Mode */
+            draft_mode?: ("structure" | "shadow") | null;
             /** Expected Revision */
             expected_revision: number;
             /** Facts Document Id */

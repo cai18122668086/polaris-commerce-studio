@@ -9,7 +9,14 @@ import styles from "./writing-workflow.module.css";
 type Fact = { id: string; category: "identity" | "product" | "story"; label: string; value: string | null; status: "user_declared" | "unknown"; source_note: string };
 type Facts = { facts: Fact[]; forbidden_terms: string[]; restricted_claims: ("price" | "net_quantity" | "health_effect")[] };
 type Analysis = { topic: string; sections: { id: string; first_sentence_id: string; last_sentence_id: string; function: string; explanation: string }[]; source_claims: { sentence_id: string; quote: string; handling: string; reason: string }[]; limitations: string[] };
-type Draft = { text: string; draft: { title: string; sentences: { reference_sentence_id: string; text: string; fact_ids: string[] }[]; replacements: { original: string; replacement: string; fact_id: string }[]; missing_facts: string[]; warnings: string[] }; shape_check: { verdict: string; failures?: string[]; warnings?: string[] } };
+type DraftMode = "structure" | "shadow";
+type DraftLine = { text: string; fact_ids: string[] } & ({ reference_sentence_id: string } | { analysis_section_id: string });
+type Draft = {
+  text: string;
+  draft: { schema_version?: string; title: string; sentences: DraftLine[]; missing_facts: string[]; warnings: string[] };
+  shape_check: { verdict: string; failures?: string[]; warnings?: string[] };
+};
+const draftModeName = (draft: Draft["draft"]) => draft.schema_version === "tengli.structure-draft/1" ? "借鉴结构创作" : "按原结构改编";
 type CommonDocument = { id: string; created_at: string; reference_document_id: string | null; analysis_document_id: string | null; facts_document_id: string | null; assistance_task_id: string | null };
 type Document = CommonDocument & ({ kind: "reference"; body: { original_text: string; sentences: { id: string; text: string }[] } } | { kind: "analysis"; body: Analysis } | { kind: "facts"; body: Facts } | { kind: "draft"; body: Draft });
 type Job = { id: string; request_id: string; kind: string; status: string; error_code: string | null; result: { analysis?: Analysis; draft?: Draft["draft"]; text?: string; shape_check?: Draft["shape_check"] } };
@@ -29,6 +36,8 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const [referenceId, setReferenceId] = useState("");
   const [factsId, setFactsId] = useState("");
   const [analysisId, setAnalysisId] = useState("");
+  const [draftId, setDraftId] = useState("");
+  const [draftMode, setDraftMode] = useState<DraftMode>("structure");
   const [facts, setFacts] = useState<Fact[]>(() => productFacts.trim() && productFacts.length <= 1000 ? [{ ...blankFact(), label: "现有产品资料", value: productFacts, status: "user_declared", source_note: "沿用项目资料，请核对后保存" }] : [blankFact()]);
   const [forbidden, setForbidden] = useState("");
   const [restrictions, setRestrictions] = useState<Facts["restricted_claims"]>([]);
@@ -58,7 +67,9 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const analysisDocs = documents.filter((d): d is Document & { kind: "analysis" } => d.kind === "analysis" && d.reference_document_id === selectedReference?.id);
   const selectedAnalysis = analysisDocs.find(d => d.id === analysisId) || analysisDocs[0];
   const draftDocs = documents.filter((d): d is Document & { kind: "draft" } => d.kind === "draft" && d.reference_document_id === selectedReference?.id);
-  const latestDraft = draftDocs[0];
+  const selectedDraft = draftDocs.find(d => d.id === draftId) || draftDocs[0];
+  const draftAnalysis = analysisDocs.find(d => d.id === selectedDraft?.analysis_document_id);
+  const draftFacts = factDocs.find(d => d.id === selectedDraft?.facts_document_id);
   const running = jobs.some(j => ["queued", "running", "unknown"].includes(j.status));
   const unsavedResults = jobs.filter(j => j.status === "completed" && !documents.some(d => d.assistance_task_id === j.id));
   const saveReference = () => attempt(async () => {
@@ -76,15 +87,18 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const generate = (kind: "ref_analysis" | "fact_draft") => attempt(async () => {
     if (!selectedReference) throw new Error("请先保存参考原文。");
     const payload = { project_id: projectId, expected_revision: revision, kind, reference_document_id: selectedReference.id, presentation: kind === "fact_draft" ? presentation : "unspecified" as const,
-      ...(kind === "fact_draft" ? { analysis_document_id: selectedAnalysis?.id, facts_document_id: selectedFacts?.id, presentation, target_duration_seconds: duration ? Number(duration) : null } : {}) };
+      ...(kind === "fact_draft" ? { analysis_document_id: selectedAnalysis?.id, facts_document_id: selectedFacts?.id, presentation, target_duration_seconds: duration ? Number(duration) : null, draft_mode: draftMode } : {}) };
     const key = `tengli-writing-intent:${workspaceId}:${projectId}:${kind}`;
     let intent: { request_id: string; payload: string } | undefined;
     try { const stored = sessionStorage.getItem(key); if (stored) intent = JSON.parse(stored) as typeof intent; } catch {}
-    if (intent && intent.payload !== JSON.stringify(payload)) throw new Error("已有提交待核对，请先刷新并查看原任务，避免重复调用。");
-    intent ||= { request_id: crypto.randomUUID(), payload: JSON.stringify(payload) };
+    const legacyPayload = { ...payload, draft_mode: undefined };
+    const resumeLegacy = kind === "fact_draft" && draftMode === "shadow" && intent?.payload === JSON.stringify(legacyPayload);
+    const submission = resumeLegacy ? legacyPayload : payload;
+    if (intent && intent.payload !== JSON.stringify(submission)) throw new Error("已有提交待核对，请先刷新并查看原任务，避免重复调用。");
+    intent ||= { request_id: crypto.randomUUID(), payload: JSON.stringify(submission) };
     sessionStorage.setItem(key, JSON.stringify(intent));
     try {
-      unwrapApiResponse(await apiClient.POST(`${root}/writing-tasks`, { ...options(), body: { ...payload, request_id: intent.request_id } }));
+      unwrapApiResponse(await apiClient.POST(`${root}/writing-tasks`, { ...options(), body: { ...submission, request_id: intent.request_id } }));
       sessionStorage.removeItem(key); await reload();
     } catch (caught) {
       const rows = await reload().catch(() => []);
@@ -94,11 +108,13 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
     }
   });
   const keepResult = (job: Job) => attempt(async () => {
-    unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/result`, { ...options(), body: { request_id: freeIntent("result", job.id), task_id: job.id } })); await reload();
+    const doc = unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/result`, { ...options(), body: { request_id: freeIntent("result", job.id), task_id: job.id } })) as Document;
+    if (doc.kind === "draft") setDraftId(doc.id);
+    await reload();
   });
   const apply = () => attempt(async () => {
-    if (!latestDraft) return;
-    unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/{document_id}/apply`, { ...options(), params: { path: { workspace_id: workspaceId, document_id: latestDraft.id } }, body: { request_id: freeIntent("apply", [latestDraft.id, revision]), expected_revision: revision } }));
+    if (!selectedDraft) return;
+    unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/{document_id}/apply`, { ...options(), params: { path: { workspace_id: workspaceId, document_id: selectedDraft.id } }, body: { request_id: freeIntent("apply", [selectedDraft.id, revision]), expected_revision: revision } }));
     await onApplied(); await reload();
   });
   const editFact = (id: string, change: Partial<Fact>) => setFacts(rows => rows.map(f => f.id === id ? { ...f, ...change } : f));
@@ -128,14 +144,37 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
       <small>会调用现有文稿模型。没有画面、互动或跨号样本时，只做文字拆解。</small>
       <button type="button" disabled={!config.can_generate || !selectedReference} onClick={() => void generate("ref_analysis")}>调用模型拆解原文</button>
       {selectedAnalysis && <><label>使用拆解<select aria-label="使用拆解版本" value={selectedAnalysis.id} onChange={e => setAnalysisId(e.target.value)}>{analysisDocs.map(d => <option key={d.id} value={d.id}>{stamp(d.created_at)} · {d.body.topic}</option>)}</select></label><ol>{selectedAnalysis.body.sections.map(section => <li key={section.id}><b>{section.function}</b><p>{section.explanation}</p></li>)}</ol>{selectedAnalysis.body.source_claims.map((claim, i) => <p key={i}>“{claim.quote}” · {claim.reason}</p>)}{selectedAnalysis.body.limitations.map((text, i) => <small key={i}>{text}</small>)}</>}
+      <label>写稿方式<select aria-label="写稿方式" value={draftMode} onChange={e => setDraftMode(e.target.value as DraftMode)}>
+        <option value="structure">借鉴结构创作</option>
+        <option value="shadow">按原结构改编</option>
+      </select></label>
+      <small>{draftMode === "structure" ? "沿用段落功能，用自己的事实重新表达，可以拆句或合句。" : "适用于自有或明确获准使用的原文。保留逐句对应，并运行原结构检查。"}</small>
       <label>口播形式<select aria-label="写稿口播形式" value={presentation} onChange={e => setPresentation(e.target.value as typeof presentation)}><option value="unspecified">暂不设置字数预算</option><option value="on_camera">出镜口播</option><option value="hands_only">手部快切 / 画外音</option></select></label>
       <label>目标秒数（选填）<input aria-label="写稿目标秒数" type="number" min={5} max={300} value={duration} onChange={e => setDuration(e.target.value)} /></label>
-      <button type="button" disabled={!config.can_generate || !selectedReference || !selectedAnalysis || factsDirty || !selectedFacts?.body.facts.some(f => f.status === "user_declared") || (!!duration && presentation === "unspecified")} onClick={() => void generate("fact_draft")}>按事实卡逐句生成草稿</button>
+      <button type="button" disabled={!config.can_generate || !selectedReference || !selectedAnalysis || factsDirty || !selectedFacts?.body.facts.some(f => f.status === "user_declared") || (!!duration && presentation === "unspecified")} onClick={() => void generate("fact_draft")}>按事实卡生成草稿</button>
       {!config.can_generate && <small>文稿模型暂未配置，可以先保存原文与事实卡。</small>}
     </fieldset>
     {jobs.filter(j => ["queued", "running", "unknown", "failed"].includes(j.status)).slice(0, 3).map(j => <p key={j.id} role="status">{j.status === "unknown" ? "原提交结果待核对，请勿再次调用。" : j.status === "failed" ? "本次结果未通过检查，请查看原任务并核对事实。" : "文稿模型正在处理…"}</p>)}
     {unsavedResults.map(job => <div key={job.id} className={styles.result}><b>{job.kind === "ref_analysis" ? "拆解结果待保存" : "新稿结果待保存"}</b><p className={styles.document}>{job.result.analysis?.topic || job.result.text}</p><button type="button" disabled={busy} onClick={() => void keepResult(job)}>保存这份{job.kind === "ref_analysis" ? "拆解" : "草稿"}</button></div>)}
-    {latestDraft && <section className={styles.result}><b>逐句核对新稿</b><ol>{latestDraft.body.draft.sentences.map(sentence => { const original = selectedReference?.body.sentences.find(s => s.id === sentence.reference_sentence_id); const card = factDocs.find(f => f.id === latestDraft.facts_document_id); return <li key={sentence.reference_sentence_id}><small>原句：{original?.text}</small><p>{sentence.text}</p><small>映射事实：{sentence.fact_ids.map(id => card?.body.facts.find(f => f.id === id)?.label || "需核对").join("、") || "未引用产品事实"}</small></li>; })}</ol><p>结构检查：{latestDraft.body.shape_check.verdict}。通过结构检查仍需逐句对义。</p>{[...latestDraft.body.draft.missing_facts, ...latestDraft.body.draft.warnings, ...(latestDraft.body.shape_check.warnings || [])].map((text, i) => <p key={i}>{text}</p>)}<button type="button" disabled={busy || !saved || latestDraft.body.draft.missing_facts.length > 0 || latestDraft.body.shape_check.verdict === "FAIL"} onClick={() => void apply()}>采用为编辑器草稿</button></section>}
+    {selectedDraft && <section className={styles.result}>
+      <b>核对新稿及事实映射</b>
+      <label>使用草稿版本<select aria-label="使用草稿版本" value={selectedDraft.id} onChange={e => setDraftId(e.target.value)}>
+        {draftDocs.map(d => <option key={d.id} value={d.id}>{stamp(d.created_at)} · {draftModeName(d.body.draft)} · {d.body.draft.title}</option>)}
+      </select></label>
+      <ol>{selectedDraft.body.draft.sentences.map((line, index) => {
+        const context = "reference_sentence_id" in line
+          ? selectedReference?.body.sentences.find(s => s.id === line.reference_sentence_id)?.text
+          : draftAnalysis?.body.sections.find(s => s.id === line.analysis_section_id)?.function;
+        return <li key={index}>
+          <small>{"reference_sentence_id" in line ? "原句" : "段落功能"} · {context}</small>
+          <p>{line.text}</p>
+          <small>映射事实 · {line.fact_ids.map(id => draftFacts?.body.facts.find(f => f.id === id)?.label || "需核对").join("、") || "未引用产品事实"}</small>
+        </li>;
+      })}</ol>
+      <p>{draftModeName(selectedDraft.body.draft)} · 检查结果 {selectedDraft.body.shape_check.verdict}，请核对内容和事实。</p>
+      {[...selectedDraft.body.draft.missing_facts, ...selectedDraft.body.draft.warnings, ...(selectedDraft.body.shape_check.warnings || [])].map((text, i) => <p key={i}>{text}</p>)}
+      <button type="button" disabled={busy || !saved || selectedDraft.body.draft.missing_facts.length > 0 || selectedDraft.body.shape_check.verdict === "FAIL"} onClick={() => void apply()}>采用为编辑器草稿</button>
+    </section>}
     <button type="button" disabled={busy || !revision} onClick={() => void attempt(async () => { await reload(); })}>刷新资料与原任务</button>
     {error && <p role="alert" className={styles.error}>{error}</p>}
   </details>;

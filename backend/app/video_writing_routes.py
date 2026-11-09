@@ -45,6 +45,7 @@ from .video_writing_contracts import (
     WritingDraft,
     WritingFacts,
     WritingReference,
+    WritingStructureDraft,
     WritingTaskRequest,
 )
 from .video_writing_models import VideoWritingAdoption, VideoWritingDocument
@@ -273,7 +274,11 @@ def create_task(
 ) -> AssistanceResponse:
     require_workspace_write(workspace)
     settings = enabled(request)
-    fingerprint = digest({"workflow": "writing", **body.model_dump(mode="json")})
+    # Omitted mode preserves the idempotency key for existing shadow requests.
+    parameters = body.model_dump(mode="json")
+    if body.draft_mode is None:
+        parameters.pop("draft_mode")
+    fingerprint = digest({"workflow": "writing", **parameters})
     query = select(VideoAssistanceRecord).where(
         VideoAssistanceRecord.workspace_id == workspace.workspace_id,
         VideoAssistanceRecord.owner_user_id == workspace.principal.user_id,
@@ -324,6 +329,7 @@ def create_task(
             analysis=analysis.body,
             facts_document_id=facts.id,
             facts=facts.body,
+            draft_mode=body.draft_mode or "shadow",
         )
     if any(p.project_id != project.id for p in parents):
         raise ApiError(404, "VIDEO_WRITING_DOCUMENT_NOT_FOUND", "资料属于另一项目。")
@@ -405,7 +411,12 @@ def save_result(
         )
         content = parsed.model_dump(mode="json")
     else:
-        parsed_draft = WritingDraft.model_validate(task.result["draft"])
+        draft_model = (
+            WritingStructureDraft
+            if task.inputs.get("draft_mode") == "structure"
+            else WritingDraft
+        )
+        parsed_draft = draft_model.model_validate(task.result["draft"])
         text = validate_draft(
             parsed_draft,
             WritingReference.model_validate(task.inputs["reference"]),
@@ -451,7 +462,13 @@ def apply_draft(
     if previous:
         return previous
     project = own_project(session, workspace, document.project_id)
-    draft = WritingDraft.model_validate(document.body["draft"])
+    stored = document.body["draft"]
+    draft_model = (
+        WritingStructureDraft
+        if stored.get("schema_version") == "tengli.structure-draft/1"
+        else WritingDraft
+    )
+    draft = draft_model.model_validate(stored)
     if draft.missing_facts or document.body["shape_check"]["verdict"] == "FAIL":
         raise ApiError(
             409, "VIDEO_WRITING_REVIEW_REQUIRED", "请先补齐缺失事实并处理结构问题。"

@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+from itertools import groupby
 from typing import TYPE_CHECKING, Any
 
 from .motion_library import atomic_json, inside, read_json
@@ -15,8 +16,9 @@ from .video_writing_contracts import (
     WritingDraft,
     WritingFacts,
     WritingReference,
+    WritingStructureDraft,
 )
-from .video_writing_rules import RULES, verify_writing_package
+from .video_writing_rules import DRAFT_RULES, RULES, verify_writing_package
 
 if TYPE_CHECKING:
     from .video_assistance_provider import VideoAssistanceProvider
@@ -65,19 +67,30 @@ def numeric_claims(text: str) -> set[tuple[str, str]]:
 
 
 def validate_draft(
-    draft: WritingDraft,
+    draft: WritingDraft | WritingStructureDraft,
     reference: WritingReference,
     facts: WritingFacts,
     analysis: WritingAnalysis,
 ) -> str:
-    if [s.reference_sentence_id for s in draft.sentences] != [
-        s.id for s in reference.sentences
-    ]:
-        raise ValueError(
-            "Draft must map one source sentence to one new sentence in order"
-        )
+    if isinstance(draft, WritingDraft):
+        if [s.reference_sentence_id for s in draft.sentences] != [
+            s.id for s in reference.sentences
+        ]:
+            raise ValueError(
+                "Draft must map one source sentence to one new sentence in order"
+            )
+        text = "".join(s.text for s in draft.sentences)
+    else:
+        validate_analysis(analysis, reference)
+        sections = [
+            key for key, _ in groupby(draft.sentences, lambda s: s.analysis_section_id)
+        ]
+        if sections != [section.id for section in analysis.sections]:
+            raise ValueError("Draft must cover each analyzed section in order")
+        if any(not s.text.strip() for s in draft.sentences):
+            raise ValueError("Structure draft contains an empty spoken line")
+        text = "\n".join(s.text for s in draft.sentences)
     known = {f.id: f for f in facts.facts if f.status == "user_declared"}
-    text = "".join(s.text for s in draft.sentences)
     if len(text) > 3000:
         raise ValueError("Draft exceeds the existing editor limit; no truncation")
     for sentence in draft.sentences:
@@ -126,13 +139,42 @@ def validate_draft(
         for c in analysis.source_claims
         if c.handling in {"must_replace", "do_not_copy"}
     ]
-    for sentence in draft.sentences:
-        for claim in source_claims:
-            if claim.sentence_id == sentence.reference_sentence_id and (
-                claim.quote in sentence.text or sentence.rewritten_for != "must_replace"
-            ):
-                raise ValueError("A do-not-copy source passage was retained")
+    if isinstance(draft, WritingDraft):
+        for sentence in draft.sentences:
+            for claim in source_claims:
+                if claim.sentence_id == sentence.reference_sentence_id and (
+                    claim.quote in sentence.text
+                    or sentence.rewritten_for != "must_replace"
+                ):
+                    raise ValueError("A do-not-copy source passage was retained")
+    elif any(claim.quote in text for claim in source_claims):
+        raise ValueError("A do-not-copy source passage was retained")
     return text
+
+
+def structure_check(inputs: dict, text: str) -> dict:
+    result: dict[str, Any] = {
+        "verdict": "PASS",
+        "method": "section-coverage-and-fact-mapping",
+        "warnings": [],
+        "failures": [],
+    }
+    duration = inputs.get("target_duration_seconds")
+    if duration is not None:
+        min_rate, max_rate = (
+            (4.7, 5.4) if inputs["presentation"] == "on_camera" else (5.4, 7.5)
+        )
+        estimate = sum(0.55 if c.isascii() else 1 for c in text if c.isalnum())
+        low, high = int(duration * min_rate), int(duration * max_rate)
+        result["estimated_spoken_chars"] = round(estimate)
+        result["estimated_budget"] = [low, high]
+        if not low * 0.85 <= estimate <= high * 1.15:
+            result["verdict"] = "WARN"
+            result["warnings"].append(
+                f"口播估算约 {round(estimate)} 字，目标约 {low} 至 {high} 字，"
+                "请以实录时长核对。"
+            )
+    return result
 
 
 def shape_check(
@@ -211,7 +253,12 @@ def plan_writing(
         raise ValueError("Writing workflow is not enabled")
     rules = verify_writing_package(service.settings.video_writing_library_dir)
     reference = WritingReference.model_validate(inputs["reference"])
-    output = WritingAnalysis if kind == "ref_analysis" else WritingDraft
+    mode = inputs.get("draft_mode", "shadow")
+    output: type[WritingAnalysis] | type[WritingDraft] | type[WritingStructureDraft]
+    if kind == "ref_analysis":
+        output = WritingAnalysis
+    else:
+        output = WritingStructureDraft if mode == "structure" else WritingDraft
     payload: dict[str, Any] = {
         "task": kind,
         "reference": reference.model_dump(mode="json"),
@@ -222,7 +269,12 @@ def plan_writing(
         facts = WritingFacts.model_validate(inputs["facts"])
         analysis = WritingAnalysis.model_validate(inputs["analysis"])
         validate_analysis(analysis, reference)
-        payload.update(facts=facts.model_dump(), analysis=analysis.model_dump())
+        payload.update(
+            facts=facts.model_dump(),
+            analysis=analysis.model_dump(),
+            draft_mode=mode,
+            rules=[*RULES, *DRAFT_RULES[mode]],
+        )
         payload.update(
             target_duration_seconds=inputs.get("target_duration_seconds"),
             presentation=inputs.get("presentation", "unspecified"),
@@ -266,7 +318,11 @@ def plan_writing(
             }
         else:
             text = validate_draft(parsed, reference, facts, analysis)
-            shape = shape_check(service, inputs, parsed, reference, facts)
+            shape = (
+                shape_check(service, inputs, parsed, reference, facts)
+                if isinstance(parsed, WritingDraft)
+                else structure_check(inputs, text)
+            )
             result = {
                 "draft": parsed.model_dump(mode="json"),
                 "text": text,

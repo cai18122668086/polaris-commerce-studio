@@ -8,9 +8,18 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect, select, text
 
 from app.video_studio_models import VideoScriptVersionRecord
-from app.video_writing_contracts import WritingAnalysis, WritingDraft, WritingFacts
+from app.video_writing_contracts import (
+    WritingAnalysis,
+    WritingDraft,
+    WritingFacts,
+    WritingStructureDraft,
+)
 from app.video_writing_models import VideoWritingAdoption
-from app.video_writing_provider import validate_analysis, validate_draft
+from app.video_writing_provider import (
+    structure_check,
+    validate_analysis,
+    validate_draft,
+)
 from app.video_writing_rules import reference_from_project
 from tests.test_video_projects import base, payload
 
@@ -132,6 +141,52 @@ def draft():
     )
 
 
+def structure_draft():
+    return WritingStructureDraft(
+        title="新款介绍",
+        sentences=[
+            {"analysis_section_id": "a", "text": "想了解这款新品吗？"},
+            {
+                "analysis_section_id": "a",
+                "text": "它是新款，目前售价39元。",
+                "fact_ids": ["name", "price"],
+            },
+            {
+                "analysis_section_id": "b",
+                "text": "容量是250毫升。",
+                "fact_ids": ["volume"],
+            },
+        ],
+    )
+
+
+def test_structure_draft_checks_sections_facts_and_transferred_source_claims():
+    ref, a, f, d = reference(), analysis(), facts(), structure_draft()
+    text = validate_draft(d, ref, f, a)
+    assert text.splitlines() == [s.text for s in d.sentences]
+    assert len(d.sentences) != len(ref.sentences)
+    assert structure_check({}, text)["verdict"] == "PASS"
+    budget = structure_check(
+        {"target_duration_seconds": 60, "presentation": "on_camera"}, text
+    )
+    assert budget["verdict"] == "WARN"
+    assert budget["estimated_budget"] == [282, 324]
+    for section in ["missing", "b"]:
+        invalid = d.model_copy(deep=True)
+        invalid.sentences[0].analysis_section_id = section
+        with pytest.raises(ValueError, match="each analyzed section"):
+            validate_draft(invalid, ref, f, a)
+    a.source_claims[0].quote = "旧款"
+    a.source_claims[0].handling = "do_not_copy"
+    invalid = d.model_copy(deep=True)
+    invalid.sentences[-1].text = "旧款容量是250毫升。"
+    with pytest.raises(ValueError, match="do-not-copy"):
+        validate_draft(invalid, ref, f, a)
+    invalid.sentences[-1].text = "容量是500毫升。"
+    with pytest.raises(ValueError, match="numeric claim"):
+        validate_draft(invalid, ref, f, a)
+
+
 def test_writing_contract_rejects_invented_evidence_unknown_facts_and_old_claims():
     ref, a, f, d = reference(), analysis(), facts(), draft()
     validate_analysis(a, ref)
@@ -166,6 +221,7 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
     a = analysis()
     f = facts()
     d = draft()
+    structured = structure_draft()
 
     class FakeWriting:
         calls = []
@@ -174,9 +230,10 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
             self.calls.append((kind, inputs))
             if kind == "ref_analysis":
                 return {"analysis": a.model_dump()}, {}
+            result = structured if inputs.get("draft_mode") == "structure" else d
             return {
-                "draft": d.model_dump(),
-                "text": "".join(s.text for s in d.sentences),
+                "draft": result.model_dump(),
+                "text": validate_draft(result, ref, f, a),
                 "shape_check": {"verdict": "PASS"},
             }, {}
 
@@ -254,6 +311,7 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
         == applied.json()
     )
     assert len(fake.calls) == 2
+    assert fake.calls[-1][1]["draft_mode"] == "shadow"
     with client.app.state.session_factory() as session:
         assert len(list(session.scalars(select(VideoWritingAdoption)))) == 1
         assert not list(
@@ -263,6 +321,57 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
                 )
             )
         )
+    structure_request = {
+        **request,
+        "request_id": str(uuid4()),
+        "expected_revision": 2,
+        "draft_mode": "structure",
+    }
+    new_task = client.post(url + "/writing-tasks", json=structure_request)
+    assert new_task.status_code == 200, new_task.text
+    mode_conflict = client.post(
+        url + "/writing-tasks", json={**structure_request, "draft_mode": "shadow"}
+    )
+    assert mode_conflict.status_code == 409
+    new_draft = (
+        client.post(
+            url + "/writing-documents/result",
+            json={"request_id": str(uuid4()), "task_id": new_task.json()["id"]},
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert new_draft["body"]["draft"]["schema_version"] == "tengli.structure-draft/1"
+    assert new_draft["facts_document_id"] == saved_facts.json()["id"]
+    assert new_draft["analysis_document_id"] == saved_analysis.json()["id"]
+    adopted = (
+        client.post(
+            url + f"/writing-documents/{new_draft['id']}/apply",
+            json={"request_id": str(uuid4()), "expected_revision": 2},
+        )
+        .raise_for_status()
+        .json()
+    )
+    confirmed = (
+        client.put(
+            url + f"/projects/{pid}",
+            json={
+                "request_id": str(uuid4()),
+                "expected_revision": 3,
+                "content": adopted["project"]["content"],
+                "action": "demo",
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert confirmed["task"]["confirmed_version_id"] == confirmed["version"]["id"]
+    assert (
+        confirmed["version"]["snapshot"]["draft"]["text"] == new_draft["body"]["text"]
+    )
+    assert fake.calls[-1][1]["draft_mode"] == "structure"
+    assert len(fake.calls) == 3
+
     kinds = {
         r["kind"]
         for r in client.get(

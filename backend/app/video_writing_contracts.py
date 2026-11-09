@@ -86,10 +86,16 @@ class WritingAnalysis(StrictVideoModel):
     interaction_analysis: Literal["not_provided"] = "not_provided"
 
 
-class DraftSentence(StrictVideoModel):
-    reference_sentence_id: str
+WritingDraftMode = Literal["structure", "shadow"]
+
+
+class SpokenDraftLine(StrictVideoModel):
     text: str = Field(min_length=1, max_length=1500)
     fact_ids: list[str] = Field(default_factory=list, max_length=60)
+
+
+class DraftSentence(SpokenDraftLine):
+    reference_sentence_id: str
     rewritten_for: Literal["fact_replacement", "must_replace", "unchanged_structure"]
 
 
@@ -100,13 +106,25 @@ class FactReplacement(StrictVideoModel):
     fact_id: str
 
 
-class WritingDraft(StrictVideoModel):
-    schema_version: Literal["tengli.fact-mapped-draft/1"] = "tengli.fact-mapped-draft/1"
+class DraftContent(StrictVideoModel):
     title: str = Field(min_length=1, max_length=80)
-    sentences: list[DraftSentence] = Field(min_length=1, max_length=100)
     replacements: list[FactReplacement] = Field(default_factory=list, max_length=100)
     missing_facts: list[str] = Field(default_factory=list, max_length=60)
     warnings: list[str] = Field(default_factory=list, max_length=30)
+
+
+class WritingDraft(DraftContent):
+    schema_version: Literal["tengli.fact-mapped-draft/1"] = "tengli.fact-mapped-draft/1"
+    sentences: list[DraftSentence] = Field(min_length=1, max_length=100)
+
+
+class StructureDraftLine(SpokenDraftLine):
+    analysis_section_id: str
+
+
+class WritingStructureDraft(DraftContent):
+    schema_version: Literal["tengli.structure-draft/1"] = "tengli.structure-draft/1"
+    sentences: list[StructureDraftLine] = Field(min_length=1, max_length=100)
 
 
 class SaveWritingReference(StrictVideoModel):
@@ -130,6 +148,7 @@ class WritingTaskRequest(StrictVideoModel):
     reference_document_id: UUID
     analysis_document_id: UUID | None = None
     facts_document_id: UUID | None = None
+    draft_mode: WritingDraftMode | None = None
     target_duration_seconds: int | None = Field(default=None, ge=5, le=300)
     presentation: Literal["on_camera", "hands_only", "unspecified"] = "unspecified"
 
@@ -139,6 +158,7 @@ class WritingTaskRequest(StrictVideoModel):
             self.analysis_document_id
             or self.facts_document_id
             or self.target_duration_seconds is not None
+            or self.draft_mode is not None
         ):
             raise ValueError("Reference analysis takes its source only")
         if (

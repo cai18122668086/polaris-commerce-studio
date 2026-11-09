@@ -141,6 +141,16 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
     assert result.status_code == 200, result.text
     assert client.post(url, json=body).json()["id"] == result.json()["id"]
     assert "native_edits" not in result.json()["options"]
+    preview = client.post(
+        url,
+        json={
+            **body,
+            "request_id": str(uuid4()),
+            "options": {**body["options"], "delivery": "preview_first"},
+        },
+    )
+    assert preview.status_code == 422
+    assert preview.json()["error"]["code"] == "EDITING_CONTINUOUS_COMBINATION_REQUIRED"
     edited = {
         **body,
         "request_id": str(uuid4()),
@@ -198,6 +208,26 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
 
 def task_owner(session, task_id):
     return session.get(EditingTaskRecord, task_id).owner_user_id
+
+
+def test_continuous_combinations_count_types_allow_repetition_and_reject_scene_layers():
+    from app.video_editing_overlay_templates import MIN_OVERLAY_TYPES, overlay_template
+    from app.video_editing_render_edits import continuous_overlay_groups
+
+    chosen = overlay_template("roll-compare-v1")
+    groups = {slot["group_id"] for slot in chosen["slots"]}
+    sampled = sorted(groups)[:MIN_OVERLAY_TYPES]
+    sequence = [*sampled, sampled[0], sampled[0], "Z-M00"]
+    beats = [{"id": f"beat-{i}", "group_id": group} for i, group in enumerate(sequence)]
+    entries = {beat["id"]: {"placement": {"layer": "subtitle"}} for beat in beats[:-1]}
+    semantic, recipes = {"beats": beats}, {"entries": entries}
+    assert continuous_overlay_groups(semantic, recipes, groups) == set(sampled)
+    assert (
+        len(continuous_overlay_groups(semantic, recipes, groups, {"beat-1"}))
+        == MIN_OVERLAY_TYPES - 1
+    )
+    entries["beat-2"]["placement"]["layer"] = "scene"
+    assert not continuous_overlay_groups(semantic, recipes, groups)
 
 
 def test_corrupt_frozen_plan_fails_without_asr_or_plain_subtitle_fallback(

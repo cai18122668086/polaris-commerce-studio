@@ -1,6 +1,6 @@
 """Owner-scoped editing API. All decoding, ASR and rendering run in a worker."""
 
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
@@ -24,7 +24,11 @@ from .video_editing_catalog import (
     catalog_summary,
     template_dependencies,
 )
-from .video_editing_contracts import EditingTaskCreate, EditingTaskResponse
+from .video_editing_contracts import (
+    EditingExportConfirmation,
+    EditingTaskCreate,
+    EditingTaskResponse,
+)
 from .video_editing_native_plans import admit_render_plan
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -79,6 +83,25 @@ def own_task(
     return row
 
 
+def artifact_visible(row: EditingTaskRecord, record: EditingArtifactRecord) -> bool:
+    if (
+        row.status not in {"completed", "awaiting_review"}
+        or record.role == "staged_final"
+    ):
+        return False
+    if record.role != "final":
+        return True
+    if row.status != "completed":
+        return False
+    if row.options.get("delivery") != "preview_first":
+        return True
+    confirmed = row.checkpoint.get("export_confirmation", {})
+    return (
+        confirmed.get("final_id") == record.id
+        and confirmed.get("final_sha256") == record.sha256
+    )
+
+
 def response(row: EditingTaskRecord, session: Session) -> dict[str, Any]:
     base = f"/api/v1/video-studio/workspaces/{row.workspace_id}/editing-tasks/{row.id}"
     artifacts = session.scalars(
@@ -103,6 +126,15 @@ def response(row: EditingTaskRecord, session: Session) -> dict[str, Any]:
             "semantic": "unreviewed",
             "visual": "unreviewed",
             "timing": "unreviewed",
+            **(
+                {
+                    "delivery": "confirmed"
+                    if row.checkpoint.get("export_confirmation")
+                    else "unconfirmed"
+                }
+                if row.options.get("delivery") == "preview_first"
+                else {}
+            ),
         },
         "artifacts": [
             {
@@ -115,9 +147,8 @@ def response(row: EditingTaskRecord, session: Session) -> dict[str, Any]:
                 "url": base + "/artifacts/" + a.id,
             }
             for a in artifacts
-        ]
-        if row.status == "completed"
-        else [],
+            if artifact_visible(row, a)
+        ],
     }
 
 
@@ -589,7 +620,7 @@ def artifact(
 ) -> FileResponse:
     row = own_task(session, workspace, str(task_id))
     record = session.get(EditingArtifactRecord, str(artifact_id))
-    if row.status != "completed" or not record or record.task_id != row.id:
+    if not record or record.task_id != row.id or not artifact_visible(row, record):
         raise ApiError(404, "EDITING_ARTIFACT_NOT_FOUND", "未找到已校验的剪辑产物。")
     path = Path(record.path)
     if (
@@ -605,3 +636,117 @@ def artifact(
         content_disposition_type="inline",
         headers={"Cache-Control": "private, no-store"},
     )
+
+
+@router.post(
+    "/editing-tasks/{task_id}/confirm-export", response_model=EditingTaskResponse
+)
+def confirm_export(
+    task_id: UUID,
+    body: EditingExportConfirmation,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict[str, Any]:
+    require_workspace_write(workspace)
+    settings = enabled(request)
+    row = own_task(session, workspace, str(task_id))
+    own_project(session, workspace, row.project_id)
+    confirmation = {
+        "preview_id": str(body.preview_artifact_id),
+        "preview_sha256": body.preview_sha256,
+    }
+
+    def confirmed(current: EditingTaskRecord) -> bool:
+        saved = current.checkpoint.get("export_confirmation", {})
+        return current.status == "completed" and all(
+            saved.get(key) == value for key, value in confirmation.items()
+        )
+
+    if row.options.get("delivery") != "preview_first":
+        raise ApiError(
+            409, "EDITING_EXPORT_REVIEW_STATE", "请选择需要预览确认的剪辑任务。"
+        )
+    if confirmed(row):
+        return response(row, session)
+    if row.status != "awaiting_review" or row.cancel_requested:
+        raise ApiError(409, "EDITING_EXPORT_REVIEW_STATE", "当前任务未等待高清确认。")
+    preview = session.get(EditingArtifactRecord, confirmation["preview_id"])
+    if not preview or (preview.task_id, preview.role, preview.sha256) != (
+        row.id,
+        "preview",
+        body.preview_sha256,
+    ):
+        raise ApiError(
+            409, "EDITING_PREVIEW_CHANGED", "预览版本不一致，请重新读取并查看。"
+        )
+    master = session.scalar(
+        select(EditingArtifactRecord).where(
+            EditingArtifactRecord.task_id == row.id,
+            EditingArtifactRecord.role == "staged_final",
+        )
+    )
+    if not master:
+        session.refresh(row)
+        if confirmed(row):
+            return response(row, session)
+    root = (settings.video_editing_tasks_dir / row.id).resolve()
+    if (
+        not master
+        or preview.validation.get("native_render_sha256") != master.sha256
+        or not preview.validation.get("decoded")
+        or not master.validation.get("decoded")
+    ):
+        raise ApiError(
+            409, "EDITING_EXPORT_CHANGED", "待交付的高清文件与预览校验不一致。"
+        )
+    try:
+        for record in (preview, master):
+            path = Path(record.path).resolve()
+            if (
+                not path.is_relative_to(root)
+                or not path.is_file()
+                or path.stat().st_size != record.bytes
+                or sha256(path) != record.sha256
+            ):
+                raise OSError("Artifact identity changed")
+    except (OSError, ValueError):
+        raise ApiError(
+            409, "EDITING_EXPORT_CHANGED", "预览或待交付文件已变化，请重新生成预览。"
+        ) from None
+    result = session.execute(
+        update(EditingTaskRecord)
+        .where(
+            EditingTaskRecord.id == row.id,
+            EditingTaskRecord.status == "awaiting_review",
+            EditingTaskRecord.revision == row.revision,
+            EditingTaskRecord.cancel_requested.is_(False),
+        )
+        .values(
+            status="completed",
+            stage="completed",
+            revision=EditingTaskRecord.revision + 1,
+            checkpoint={
+                **row.checkpoint,
+                "export_confirmation": {
+                    **confirmation,
+                    "final_id": master.id,
+                    "final_sha256": master.sha256,
+                    "confirmed_at": datetime.now(UTC).isoformat(),
+                    "confirmed_by": workspace.principal.user_id,
+                },
+            },
+        )
+    )
+    if not cast(CursorResult, result).rowcount:
+        session.rollback()
+        current = own_task(session, workspace, str(task_id))
+        if confirmed(current):
+            return response(current, session)
+        raise ApiError(
+            409, "EDITING_EXPORT_REVIEW_STATE", "任务状态已变化，请刷新后核对。"
+        )
+    master.role = "final"
+    session.commit()
+    session.refresh(row)
+    return response(row, session)

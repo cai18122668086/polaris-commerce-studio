@@ -13,14 +13,23 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .errors import ApiError
-from .motion_library import MOTION_SHA256
+from .motion_library import MOTION_SHA256, read_json
 from .video_editing_contracts import EditingOptions, SemanticPlan
 from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_hypit import internal_hypit_available, requires_hypit
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import project_material_files, verify_material_cards
+from .video_editing_overlay_templates import (
+    MIN_OVERLAY_TYPES,
+    overlay_template,
+    validate_template_plan,
+)
 from .video_editing_planner import validate_plan
-from .video_editing_render_edits import available_render_edits, validate_render_edits
+from .video_editing_render_edits import (
+    available_render_edits,
+    continuous_overlay_groups,
+    validate_render_edits,
+)
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingNativePlanRecord,
@@ -43,7 +52,19 @@ def content_digest(value: dict[str, Any]) -> str:
     ).hexdigest()
 
 
-def plan_response(row: EditingNativePlanRecord, settings: Settings) -> dict[str, Any]:
+def transparent_original_groups(settings: Settings) -> set[str]:
+    return {
+        group["id"]
+        for group in read_json(
+            settings.video_editing_library_dir / "catalog/groups.json"
+        )["groups"]
+        if group.get("kind") == "subtitle" and group.get("backend") == "subtitle"
+    }
+
+
+def plan_response(
+    row: EditingNativePlanRecord, settings: Settings, transparent_groups: set[str]
+) -> dict[str, Any]:
     editable, has_music = available_render_edits(
         row.semantic, row.recipes, row.choice_snapshot
     )
@@ -75,6 +96,13 @@ def plan_response(row: EditingNativePlanRecord, settings: Settings) -> dict[str,
         "choice_snapshot_sha256": row.choice_snapshot["sha256"],
         "semantic_review": "unreviewed",
         "music_edit_available": has_music,
+        "continuous_preview_available": len(
+            continuous_overlay_groups(row.semantic, row.recipes, transparent_groups)
+        )
+        >= MIN_OVERLAY_TYPES,
+        "overlay_template": overlay_template(row.recipes["overlay_template_id"])
+        if row.recipes.get("overlay_template_id")
+        else None,
         "render_available": settings.video_editing_native_plan_enabled
         and (
             not requires_hypit(row.semantic)
@@ -148,6 +176,12 @@ def register_gateway_plan(
         raise ApiError(
             422, "EDITING_PLANNER_PROVENANCE_REQUIRED", "配方来源需与已捕获规划一致。"
         )
+    if recipes.overlay_template_id != (
+        verified.task.snapshot.get("overlay_template") or {}
+    ).get("id"):
+        raise ApiError(
+            422, "EDITING_TEMPLATE_CHANGED", "原生编排必须沿用已准备的组合模板版本。"
+        )
     current = stored_choice_snapshot(
         session, workspace_id, owner_user_id, verified.task.project_id
     )
@@ -183,6 +217,10 @@ def _register_plan(
     planning_provenance: dict[str, Any] | None = None,
     planning_cards: list[dict] | None = None,
 ) -> EditingNativePlanRecord:
+    if recipes.overlay_template_id:
+        validate_template_plan(
+            semantic, overlay_template(recipes.overlay_template_id), complete=True
+        )
     semantic_data, recipe_data = (
         semantic.model_dump(mode="json"),
         recipes.model_dump(mode="json"),
@@ -441,3 +479,22 @@ def admit_render_plan(
                 "EDITING_NATIVE_EDITS_INVALID",
                 "所选段落或背景音乐不适用于这份编排。",
             ) from error
+    if (
+        options.delivery == "preview_first"
+        and len(
+            continuous_overlay_groups(
+                row.semantic,
+                row.recipes,
+                transparent_original_groups(settings),
+                set(options.native_edits.source_only_beat_ids)
+                if options.native_edits
+                else None,
+            )
+        )
+        < MIN_OVERLAY_TYPES
+    ):
+        raise ApiError(
+            422,
+            "EDITING_CONTINUOUS_COMBINATION_REQUIRED",
+            "连续口播预览需要保留至少五种不同的原生动效。",
+        )

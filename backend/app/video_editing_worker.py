@@ -31,6 +31,7 @@ from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
 from .video_editing_materials import PREFIX, project_material_files
 from .video_editing_native_plans import frozen_plan_snapshot
+from .video_editing_overlay_templates import MIN_OVERLAY_TYPES
 from .video_editing_pipeline import (
     EditingFailure,
     compile_baseline,
@@ -40,6 +41,7 @@ from .video_editing_pipeline import (
     validate_result,
 )
 from .video_editing_planning_provenance import verify_render_provenance
+from .video_editing_preview import build_preview
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingAttemptRecord,
@@ -617,9 +619,11 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         final = native_export(root, settings, guard)
         stage("validating")
         validation = validate_result(final, prepared, root, settings, guard)
-        stage("storing")
+        review_first = snapshot["options"].get("delivery") == "preview_first"
+        final_role = "staged_final" if review_first else "final"
+        media_validation = {final_role: validation}
         artifacts = [
-            ("final", final, "video/mp4"),
+            (final_role, final, "video/mp4"),
             ("transcript", root / "transcript.json", "application/json"),
             ("caption_anchors", root / "caption-anchors.json", "application/json"),
             ("caption_receipt", root / "caption-segmentation.json", "application/json"),
@@ -630,6 +634,29 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             ),
             ("receipt", root / "validation.json", "application/json"),
         ]
+        if review_first:
+            checks = read_json(root / "layout/review.json")["subtitle_checks"]
+            if (
+                any(check["visible_frames"] < 1 for check in checks)
+                or len({check["group_id"] for check in checks}) < MIN_OVERLAY_TYPES
+            ):
+                raise EditingFailure("EDITING_CONTINUOUS_COMBINATION_REQUIRED")
+            stage("building_preview")
+            preview, preview_receipt = build_preview(
+                final, root, validation, settings, guard
+            )
+            media_validation["preview"] = preview_receipt
+            artifacts.extend(
+                [
+                    ("preview", preview, "video/mp4"),
+                    (
+                        "preview_receipt",
+                        root / "preview-validation.json",
+                        "application/json",
+                    ),
+                ]
+            )
+        stage("storing")
         if native_plan:
             artifacts.extend(
                 [
@@ -670,8 +697,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     EditingTaskRecord.cancel_requested.is_(False),
                 )
                 .values(
-                    status="completed",
-                    stage="completed",
+                    status="awaiting_review" if review_first else "completed",
+                    stage="preview_ready" if review_first else "completed",
                     owner_token=None,
                     lease_until=None,
                     revision=EditingTaskRecord.revision + 1,
@@ -681,6 +708,10 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             if not cast(CursorResult, fenced).rowcount:
                 raise EditingFailure("EDITING_LEASE_LOST")
             for role, path, mime in artifacts:
+                identity = sha256(path)
+                media = media_validation.get(role, {})
+                if review_first and media and identity != media["sha256"]:
+                    raise EditingFailure("EDITING_PREVIEW_ARTIFACT_CHANGED")
                 session.add(
                     EditingArtifactRecord(
                         id=str(uuid4()),
@@ -688,12 +719,10 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                         role=role,
                         path=str(path),
                         mime=mime,
-                        sha256=sha256(path),
+                        sha256=identity,
                         bytes=path.stat().st_size,
-                        duration_ms=validation["duration_ms"]
-                        if role == "final"
-                        else None,
-                        validation=validation if role == "final" else {},
+                        duration_ms=media.get("duration_ms"),
+                        validation=media,
                     )
                 )
             session.execute(

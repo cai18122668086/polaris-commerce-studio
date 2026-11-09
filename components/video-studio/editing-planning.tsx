@@ -8,6 +8,7 @@ import { EditingProjectMaterials } from "./editing-project-materials";
 import styles from "./editing-workspace.module.css";
 
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
+type OverlayTemplate = components["schemas"]["EditingOverlayTemplate"];
 type BaseTask = { id: string; status: string; created_at: string; artifacts: { role: string }[] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
@@ -17,6 +18,9 @@ export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState("");
   const [materialIds, setMaterialIds] = useState<string[]>([]);
+  const [templates, setTemplates] = useState<OverlayTemplate[]>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [templateError, setTemplateError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -31,17 +35,27 @@ export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId
     reload(); const timer = setInterval(reload, 5000);
     return () => { live = false; clearInterval(timer); };
   }, [refresh]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiClient.GET(`${root}/editing-templates`, {
+      params: { path: { workspace_id: workspaceId } },
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]),
+    }).then(result => { if (!controller.signal.aborted) setTemplates(unwrapApiResponse(result)); })
+      .catch(() => { if (!controller.signal.aborted) setTemplateError(true); });
+    return () => controller.abort();
+  }, [workspaceId]);
   const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
     const taskId = prepared?.base_task_id || selected;
-    if (!taskId) return;
+    if (!taskId || (mode === "prepare" && !templateId)) return;
     setBusy(true); setError("");
     try {
       const currentMaterials = mode === "prepare" ? [...materialIds].sort() : [];
-      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials]);
+      const selectedTemplate = mode === "prepare" ? templateId : undefined;
+      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials, selectedTemplate]);
       if (!intent.current || intent.current.key !== key) intent.current = { key, id: crypto.randomUUID() };
       unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/planning-tasks`, {
         params: { path: { workspace_id: workspaceId, task_id: taskId } }, signal: AbortSignal.timeout(12000),
-        body: { request_id: intent.current.id, mode, ...(prepared ? { prepared_task_id: prepared.id } : {}), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
+        body: { request_id: intent.current.id, mode, template_id: selectedTemplate, ...(prepared ? { prepared_task_id: prepared.id } : {}), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
       }));
       intent.current = undefined; setJobs(await refresh());
     } catch (caught) { setError(caught instanceof Error ? caught.message : "提交暂未确认，再次点击会查询同一请求。"); }
@@ -61,13 +75,24 @@ export function EditingPlanning({ workspaceId, projectId, tasks }: { workspaceId
   return <section aria-label="语义规划任务">
     <p className={styles.note}>先用已有成片的实际转录准备完整请求，再生成重点与选组候选。准备不会重新配音、识别或调用模型。</p>
     <label>使用哪条成片的实际转录？<select aria-label="使用哪条成片的实际转录？" value={selected} onChange={event => setSelected(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
+    <fieldset className={styles.templatePicker}>
+      <legend>选择组合模板</legend>
+      <p className={styles.note}>人物原片持续播放。成片至少使用五种不同动效，优先十种以上。同一种动效可在不同词点重复使用。</p>
+      <div className={styles.templateGrid}>{templates.map(template => <label key={template.id} className={styles.templateOption}>
+        <span><input type="radio" name="editing-template" value={template.id} checked={templateId === template.id} disabled={busy} onChange={() => setTemplateId(template.id)} /> <b>{template.name}</b></span>
+        <small>{template.slots.length} 种可选动效</small>
+        <small>{template.slots.slice(0, 3).map(slot => slot.purpose).join(" · ")}</small>
+      </label>)}</div>
+      {templateError && <p role="alert">暂时无法读取组合模板，请刷新后重试。</p>}
+    </fieldset>
     <EditingProjectMaterials workspaceId={workspaceId} projectId={projectId} selected={materialIds} onSelect={setMaterialIds} />
-    <button type="button" disabled={busy || !selected} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>
+    <button type="button" disabled={busy || !selected || !templateId} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {loadError && <p role="alert" className={styles.error}>{loadError}</p>}
     <div className={styles.tasks}>{jobs.map(job => <article key={job.id} data-planning-job={job.id}>
       <div className={styles.taskHeading}><b>{labels[job.status === "running" ? job.stage : job.status] || "正在处理规划"}</b><time>{new Date(job.created_at).toLocaleString("zh-CN")}</time></div>
       <p className={styles.note}>模型：{job.model} · 网关：{job.gateway_host || "尚未固定"} · 转录版本 {job.base_transcript_sha256.slice(0, 12)}{job.text_status && ` · ${job.text_status === "user_corrected" ? "用户已校对文字，词点待验" : "转录文字待核对"}`}</p>
+      {job.overlay_template && <p className={styles.note}>组合模板 · {job.overlay_template.name}</p>}
       {job.request_bytes !== null && <p>{job.catalog_group_count} 组原库 · 请求 {job.request_bytes.toLocaleString()} 字节 · 输入版本 {job.request_sha256?.slice(0, 12)}</p>}
       {job.status === "prepared" && <>
         <p className={styles.note}>尚未调用模型，没有规划结果。执行时最大输出 5000 token，输入另计，实际费用按腾力网关账单。</p>

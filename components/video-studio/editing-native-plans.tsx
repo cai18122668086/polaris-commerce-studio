@@ -45,7 +45,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated }: {
         body: { request_id: intent.current.id, source_id: plan.source_id, options: {
           mode: "native_plan", native_plan_id: plan.id, language: "zh",
           source_subtitles: plan.source_subtitles, caption_font_id: "font-d1961be1161ea1be",
-          native_edits: edits,
+          native_edits: edits, delivery: "preview_first",
         } },
       }));
       intent.current = undefined;
@@ -55,7 +55,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated }: {
   };
   return <section aria-label="动效编排候选">
     <b>已有动效编排候选</b>
-    <p className={styles.note}>每份候选绑定原片、逐词转录和选组版本；出片后仍需核对语义、字幕及观看听感。</p>
+    <p className={styles.note}>每份候选绑定原片、逐词转录和选组版本。先看代理预览，再确认并下载对应的高清文件。</p>
     {plans.length === 0 && !error && <p>当前项目还没有保存的编排。</p>}
     {plans.map(plan => {
       const selected = controls[plan.id] || defaultControls;
@@ -63,12 +63,16 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated }: {
         ...current, [plan.id]: { ...(current[plan.id] || defaultControls), ...update },
       }));
       const editable = plan.beats.filter(beat => beat.source_only_available);
+      const activeEffects = plan.beats.filter(beat => beat.group_id !== "Z-M00" && !selected.segments.includes(beat.id));
+      const activeGroups = new Set(activeEffects.map(beat => beat.group_id));
+      const available = plan.render_available && plan.continuous_preview_available;
       return <article key={plan.id}>
       <b>{plan.audience_question}</b>
+      {plan.overlay_template && <p className={styles.note}>组合模板 · {plan.overlay_template.name}</p>}
       <p>{plan.origin === "operator_candidate" ? "人工工程候选 · 未经人工验收" : "腾力模型候选 · 待核对"}</p>
       <ul>{plan.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.text}<br />{beat.reason}</li>)}</ul>
       {(plan.warnings.length > 0 || plan.missing_materials.length > 0) && <p>{[...plan.warnings, ...plan.missing_materials].join("；")}</p>}
-      {plan.render_available && (plan.music_edit_available || editable.length > 0) && <details>
+      {available && (plan.music_edit_available || editable.length > 0) && <details>
         <summary>调整本次出片</summary>
         <p className={styles.note}>调整随这次出片保存。勾选保留原景的段落仍显示主字幕，该段动效和绑定音效会关闭。</p>
         {plan.music_edit_available && <label>本次背景音乐
@@ -83,7 +87,10 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated }: {
           保留原景 · {beat.group_id} · {beat.text}
         </label>)}
       </details>}
-      <button type="button" onClick={() => void render(plan, selected)} disabled={!!busy || !plan.render_available}>{busy === plan.id ? "正在提交…" : "按此动效编排出片"}</button>
+      {available ? <>
+        <p className={styles.note}>本次使用 {activeGroups.size} 种动效，共出现 {activeEffects.length} 次。{activeGroups.size < 5 && "请保留至少五种不同动效。"}</p>
+        <button type="button" onClick={() => void render(plan, selected)} disabled={!!busy || activeGroups.size < 5}>{busy === plan.id ? "正在提交…" : "生成代理预览"}</button>
+      </> : <p className={styles.note}>历史验证候选 · 待适配连续人物底片与组合动效</p>}
     </article>})}
     {error && <p role="alert" className={styles.error}>{error} <button type="button" onClick={() => setReload(n => n + 1)}>重新读取编排</button></p>}
   </section>;

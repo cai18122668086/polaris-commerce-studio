@@ -1,13 +1,16 @@
-"""Windows copy-mode compatibility, strictly limited to task-local copies."""
+"""Native compatibility for task-local copies and immutable bundled fonts."""
 
 import atexit
 import json
 import os
 import shutil
 import stat
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
+
+from PIL import ImageFont
 
 
 def install(package: Path, root: Path) -> None:
@@ -60,8 +63,36 @@ def install(package: Path, root: Path) -> None:
     cast(Any, shutil).copy2 = instance_copy
     cast(Any, shutil).copytree = instance_tree
 
+    original_font = ImageFont.truetype
+    font_root = package / "assets" / "fonts"
+
+    @lru_cache(maxsize=12)
+    def bundled_font(
+        path: str, size: float, index: int, encoding: str, layout_engine: Any
+    ) -> ImageFont.FreeTypeFont:
+        return original_font(path, size, index, encoding, layout_engine)
+
+    def load_font(
+        font: Any,
+        size: float = 10,
+        index: int = 0,
+        encoding: str = "",
+        layout_engine: Any = None,
+    ) -> ImageFont.FreeTypeFont:
+        # The pinned original subtitle renderers only read these fonts. On
+        # Windows, Pillow otherwise re-reads Unicode paths into memory per call.
+        if os.name == "nt" and isinstance(font, (str, Path)):
+            path = Path(font)
+            if path.is_absolute() and path.is_relative_to(font_root):
+                return bundled_font(str(path), size, index, encoding, layout_engine)
+        return original_font(font, size, index, encoding, layout_engine)
+
+    if os.name == "nt":
+        cast(Any, ImageFont).truetype = load_font
+
     def receipt() -> None:
-        if copied:
+        cache = bundled_font.cache_info()
+        if copied or cache.hits:
             directory = root / "compatibility"
             directory.mkdir(parents=True, exist_ok=True)
             (directory / f"copies-{os.getpid()}-{uuid4().hex[:8]}.json").write_text(
@@ -70,6 +101,7 @@ def install(package: Path, root: Path) -> None:
                         "version": "task-copy-permissions/2",
                         "native_sources_changed": False,
                         "writable_task_copies": sorted(copied),
+                        "bundled_font_reuses": cache.hits,
                     },
                     ensure_ascii=False,
                     indent=2,

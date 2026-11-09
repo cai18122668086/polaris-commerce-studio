@@ -18,6 +18,7 @@ from .video_editing_contracts import EditingPlanningTaskCreate
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import PREFIX, material_cards, project_material_files
 from .video_editing_native_plans import content_digest, source_assets
+from .video_editing_overlay_templates import overlay_template
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingPlanningTaskRecord,
@@ -106,6 +107,7 @@ def planning_response(
         "semantic_origin": "tengli_gateway" if row.status == "completed" else None,
         "semantic_review": "unreviewed",
         "native_render_state": "not_compiled",
+        "overlay_template": row.snapshot.get("overlay_template"),
         "artifacts": [
             {
                 "id": row.id + ":" + a["role"],
@@ -193,6 +195,26 @@ def create_planning_task(
         "asset_cards": material_cards(source_assets(source) | selected),
         "source_subtitles": base.options["source_subtitles"],
     }
+    if body.template_id is not None:
+        try:
+            template = overlay_template(body.template_id)
+        except ValueError as error:
+            raise ApiError(
+                422, "EDITING_TEMPLATE_INVALID", "未找到该组合模板版本。"
+            ) from error
+        slots = {slot["group_id"] for slot in template["slots"]}
+        if any(
+            note["target_kind"] == "group"
+            and note["target_id"] in slots
+            and note["choice"] == "avoid"
+            for note in choices["notes"]
+        ):
+            raise ApiError(
+                409,
+                "EDITING_TEMPLATE_EXCLUDED",
+                "项目备忘排除了该模板中的动效，请选择其他模板。",
+            )
+        snapshot["overlay_template"] = template
     model = settings.video_editing_plan_model
     if body.mode == "generate":
         prepared = own_planning_task(session, workspace, str(body.prepared_task_id))

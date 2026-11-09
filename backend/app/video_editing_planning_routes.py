@@ -13,9 +13,11 @@ from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .motion_library import sha256
 from .video_editing_contracts import (
+    EditingOverlayTemplate,
     EditingPlanningTaskCreate,
     EditingPlanningTaskResponse,
 )
+from .video_editing_overlay_templates import overlay_templates
 from .video_editing_planning_store import (
     create_planning_task,
     execution_available,
@@ -38,6 +40,12 @@ def dispatch(request: Request, task_id: str) -> None:
     observer = getattr(request.app.state, "editing_planning_dispatcher", None)
     if observer:
         observer(task_id)
+
+
+@router.get("/editing-templates", response_model=list[EditingOverlayTemplate])
+def list_templates(request: Request, workspace: VideoWorkspace) -> list[dict]:
+    enabled(request)
+    return overlay_templates()
 
 
 @router.post(

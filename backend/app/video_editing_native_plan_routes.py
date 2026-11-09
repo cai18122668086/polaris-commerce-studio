@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from .auth import SessionDependency
 from .video_editing_contracts import EditingNativePlanResponse
-from .video_editing_native_plans import plan_response
+from .video_editing_native_plans import plan_response, transparent_original_groups
 from .video_editing_task_models import EditingNativePlanRecord
 from .video_editing_task_routes import enabled, own_project
 from .video_studio_routes import VideoWorkspace
@@ -38,4 +38,5 @@ def list_native_plans(
         .order_by(EditingNativePlanRecord.created_at.desc())
         .limit(100)
     )
-    return [plan_response(r, settings) for r in rows]
+    groups = transparent_original_groups(settings)
+    return [plan_response(r, settings, groups) for r in rows]

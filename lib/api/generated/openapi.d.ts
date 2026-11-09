@@ -1952,6 +1952,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/confirm-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Export */
+        post: operations["confirm_export_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__confirm_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/planning-tasks": {
         parameters: {
             query?: never;
@@ -2015,6 +2032,23 @@ export interface paths {
         put?: never;
         /** Save Revision */
         post: operations["save_revision_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__transcript_revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Templates */
+        get: operations["list_templates_api_v1_video_studio_workspaces__workspace_id__editing_templates_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5391,6 +5425,16 @@ export interface components {
              */
             status: "accepted" | "aligning" | "editing" | "result_ready" | "failed";
         };
+        /** EditingExportConfirmation */
+        EditingExportConfirmation: {
+            /**
+             * Preview Artifact Id
+             * Format: uuid
+             */
+            preview_artifact_id: string;
+            /** Preview Sha256 */
+            preview_sha256: string;
+        };
         /** EditingLibraryNoteCreate */
         EditingLibraryNoteCreate: {
             /**
@@ -5530,6 +5574,8 @@ export interface components {
             caption_font_id: string;
             /** Choice Snapshot Sha256 */
             choice_snapshot_sha256: string;
+            /** Continuous Preview Available */
+            continuous_preview_available: boolean;
             /**
              * Created At
              * Format: date-time
@@ -5548,6 +5594,7 @@ export interface components {
              * @enum {string}
              */
             origin: "operator_candidate" | "tengli_gateway";
+            overlay_template?: components["schemas"]["EditingOverlayTemplate"] | null;
             /** Project Id */
             project_id: string;
             /** Render Available */
@@ -5583,6 +5630,8 @@ export interface components {
              * @constant
              */
             caption_font_id: "font-d1961be1161ea1be";
+            /** Delivery */
+            delivery?: "preview_first" | null;
             /**
              * Language
              * @default zh
@@ -5606,6 +5655,22 @@ export interface components {
             source_subtitles: "none" | "present" | "unknown";
             /** Transcript Revision Id */
             transcript_revision_id?: string | null;
+        };
+        /** EditingOverlaySlot */
+        EditingOverlaySlot: {
+            /** Group Id */
+            group_id: string;
+            /** Purpose */
+            purpose: string;
+        };
+        /** EditingOverlayTemplate */
+        EditingOverlayTemplate: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slots */
+            slots: components["schemas"]["EditingOverlaySlot"][];
         };
         /** EditingPlanningSpan */
         EditingPlanningSpan: {
@@ -5647,6 +5712,8 @@ export interface components {
              * Format: uuid
              */
             request_id: string;
+            /** Template Id */
+            template_id?: string | null;
         };
         /** EditingPlanningTaskResponse */
         EditingPlanningTaskResponse: {
@@ -5706,6 +5773,7 @@ export interface components {
              * @constant
              */
             native_render_state: "not_compiled";
+            overlay_template?: components["schemas"]["EditingOverlayTemplate"] | null;
             /** Prepared Task Id */
             prepared_task_id: string | null;
             /** Project Id */
@@ -5786,7 +5854,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "completed" | "failed" | "cancelled";
+            status: "queued" | "running" | "awaiting_review" | "completed" | "failed" | "cancelled";
         };
         /** EditingTranscriptRevisionCreate */
         EditingTranscriptRevisionCreate: {
@@ -12054,6 +12122,42 @@ export interface operations {
             };
         };
     };
+    confirm_export_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__confirm_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingExportConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_task_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__planning_tasks_post: {
         parameters: {
             query?: never;
@@ -12211,6 +12315,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingTranscriptRevisionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_video_studio_workspaces__workspace_id__editing_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingOverlayTemplate"][];
                 };
             };
             /** @description Validation Error */

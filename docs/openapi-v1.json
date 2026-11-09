@@ -4730,6 +4730,27 @@
         "title": "EditingEvent",
         "type": "object"
       },
+      "EditingExportConfirmation": {
+        "additionalProperties": false,
+        "properties": {
+          "preview_artifact_id": {
+            "format": "uuid",
+            "title": "Preview Artifact Id",
+            "type": "string"
+          },
+          "preview_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Preview Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preview_artifact_id",
+          "preview_sha256"
+        ],
+        "title": "EditingExportConfirmation",
+        "type": "object"
+      },
       "EditingLibraryNoteCreate": {
         "additionalProperties": false,
         "properties": {
@@ -5091,6 +5112,10 @@
             "title": "Choice Snapshot Sha256",
             "type": "string"
           },
+          "continuous_preview_available": {
+            "title": "Continuous Preview Available",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -5122,6 +5147,16 @@
             ],
             "title": "Origin",
             "type": "string"
+          },
+          "overlay_template": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingOverlayTemplate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "project_id": {
             "title": "Project Id",
@@ -5184,6 +5219,7 @@
           "caption_font_id",
           "choice_snapshot_sha256",
           "render_available",
+          "continuous_preview_available",
           "music_edit_available",
           "created_at"
         ],
@@ -5198,6 +5234,18 @@
             "default": "font-d1961be1161ea1be",
             "title": "Caption Font Id",
             "type": "string"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "const": "preview_first",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery"
           },
           "language": {
             "default": "zh",
@@ -5264,6 +5312,52 @@
           }
         },
         "title": "EditingOptions",
+        "type": "object"
+      },
+      "EditingOverlaySlot": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "purpose"
+        ],
+        "title": "EditingOverlaySlot",
+        "type": "object"
+      },
+      "EditingOverlayTemplate": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/EditingOverlaySlot"
+            },
+            "title": "Slots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slots"
+        ],
+        "title": "EditingOverlayTemplate",
         "type": "object"
       },
       "EditingPlanningSpan": {
@@ -5360,6 +5454,19 @@
             "format": "uuid",
             "title": "Request Id",
             "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
           }
         },
         "required": [
@@ -5490,6 +5597,16 @@
             "default": "not_compiled",
             "title": "Native Render State",
             "type": "string"
+          },
+          "overlay_template": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingOverlayTemplate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "prepared_task_id": {
             "anyOf": [
@@ -5739,6 +5856,7 @@
             "enum": [
               "queued",
               "running",
+              "awaiting_review",
               "completed",
               "failed",
               "cancelled"
@@ -19228,6 +19346,73 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/confirm-export": {
+      "post": {
+        "operationId": "confirm_export_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__confirm_export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingExportConfirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Confirm Export",
+        "tags": [
+          "video-editing-tasks"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/planning-tasks": {
       "post": {
         "operationId": "create_task_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__planning_tasks_post",
@@ -19534,6 +19719,57 @@
         "summary": "Save Revision",
         "tags": [
           "video-editing-transcripts"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-templates": {
+      "get": {
+        "operationId": "list_templates_api_v1_video_studio_workspaces__workspace_id__editing_templates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingOverlayTemplate"
+                  },
+                  "title": "Response List Templates Api V1 Video Studio Workspaces  Workspace Id  Editing Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Templates",
+        "tags": [
+          "video-editing-planning"
         ]
       }
     },

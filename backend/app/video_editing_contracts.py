@@ -36,6 +36,9 @@ class EditingOptions(StrictVideoModel):
     native_edits: NativeRenderEdits | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    delivery: Literal["preview_first"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def matching_plan_mode(self) -> Self:
@@ -45,6 +48,8 @@ class EditingOptions(StrictVideoModel):
             raise ValueError("Saved native plans use their own frozen transcript")
         if self.native_edits and not self.native_plan_id:
             raise ValueError("User edits require a frozen native plan")
+        if self.delivery and not self.native_plan_id:
+            raise ValueError("Preview confirmation requires a frozen native plan")
         return self
 
 
@@ -151,11 +156,18 @@ class EditingArtifactResponse(StrictVideoModel):
     url: str
 
 
+class EditingExportConfirmation(StrictVideoModel):
+    preview_artifact_id: UUID
+    preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class EditingTaskResponse(StrictVideoModel):
     id: str
     project_id: str
     source_id: str
-    status: Literal["queued", "running", "completed", "failed", "cancelled"]
+    status: Literal[
+        "queued", "running", "awaiting_review", "completed", "failed", "cancelled"
+    ]
     stage: str
     revision: int
     attempts: int
@@ -268,6 +280,17 @@ class EditingNativeBeatResponse(StrictVideoModel):
     source_only_available: bool
 
 
+class EditingOverlaySlot(StrictVideoModel):
+    group_id: str
+    purpose: str
+
+
+class EditingOverlayTemplate(StrictVideoModel):
+    id: str
+    name: str
+    slots: list[EditingOverlaySlot]
+
+
 class EditingNativePlanResponse(StrictVideoModel):
     id: str
     project_id: str
@@ -287,7 +310,11 @@ class EditingNativePlanResponse(StrictVideoModel):
     choice_snapshot_sha256: str
     semantic_review: Literal["unreviewed"] = "unreviewed"
     render_available: bool
+    continuous_preview_available: bool
     music_edit_available: bool
+    overlay_template: EditingOverlayTemplate | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     created_at: datetime
 
 
@@ -298,11 +325,19 @@ class EditingPlanningTaskCreate(StrictVideoModel):
     material_ids: list[UUID] | None = Field(
         default=None, max_length=24, exclude_if=lambda value: value is None
     )
+    template_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def prepared_execution(self) -> Self:
         if (self.mode == "generate") != (self.prepared_task_id is not None):
             raise ValueError("Model execution needs exactly one prepared request")
+        if self.template_id is not None and self.mode != "prepare":
+            raise ValueError("Template is frozen when preparing the planning request")
         if self.material_ids is not None and (
             self.mode != "prepare"
             or len(set(self.material_ids)) != len(self.material_ids)
@@ -374,6 +409,9 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     semantic_origin: Literal["tengli_gateway"] | None
     semantic_review: Literal["unreviewed"] = "unreviewed"
     native_render_state: Literal["not_compiled"] = "not_compiled"
+    overlay_template: EditingOverlayTemplate | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     artifacts: list[EditingArtifactResponse]
 
 

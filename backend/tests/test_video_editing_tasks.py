@@ -5,7 +5,12 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from app.video_editing_task_models import EditingAttemptRecord, EditingTaskRecord
+from app.motion_library import sha256
+from app.video_editing_task_models import (
+    EditingArtifactRecord,
+    EditingAttemptRecord,
+    EditingTaskRecord,
+)
 from app.video_editing_worker import process
 from tests.test_video_projects import base, payload
 
@@ -157,3 +162,93 @@ def test_create_task_never_connects_to_broker_in_request_thread(
         json={"request_id": str(uuid4()), "source_id": source},
     )
     assert result.status_code == 200 and result.json()["status"] == "queued"
+
+
+def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
+    from tests.test_auth_external import verified_identity
+
+    client, auth, ws, _, settings, _, source = setup_source(video, tmp_path)
+    url = base(ws) + "/editing-tasks"
+    old = client.post(url, json={"request_id": str(uuid4()), "source_id": source})
+    assert old.status_code == 200
+    tid = old.json()["id"]
+    assert "delivery" not in old.json()["options"]
+    root = settings.video_editing_tasks_dir / tid
+    root.mkdir()
+    preview, master = root / "preview.mp4", root / "master.mp4"
+    preview.write_bytes(b"proxy test fixture")
+    master.write_bytes(b"master test fixture")
+    preview_id, final_id = str(uuid4()), str(uuid4())
+    preview_sha, final_sha = sha256(preview), sha256(master)
+    with client.app.state.session_factory() as session:
+        row = session.get(EditingTaskRecord, tid)
+        row.options = {
+            **row.options,
+            "mode": "native_plan",
+            "native_plan_id": str(uuid4()),
+            "delivery": "preview_first",
+        }
+        row.status, row.stage, row.attempts = "awaiting_review", "preview_ready", 1
+        for identity, path, role in (
+            (preview_id, preview, "preview"),
+            (final_id, master, "staged_final"),
+        ):
+            session.add(
+                EditingArtifactRecord(
+                    id=identity,
+                    task_id=tid,
+                    role=role,
+                    path=str(path),
+                    mime="video/mp4",
+                    bytes=path.stat().st_size,
+                    sha256=sha256(path),
+                    duration_ms=2000,
+                    validation={"decoded": True, "native_render_sha256": final_sha},
+                )
+            )
+        session.commit()
+    task_url = url + "/" + tid
+    confirm_url = task_url + "/confirm-export"
+    artifact_url = task_url + "/artifacts/"
+    body = {"preview_artifact_id": preview_id, "preview_sha256": preview_sha}
+    waiting = client.get(task_url).json()
+    assert waiting["status"] == "awaiting_review"
+    assert [item["role"] for item in waiting["artifacts"]] == ["preview"]
+    assert client.get(artifact_url + final_id).status_code == 404
+    assert client.get(artifact_url + preview_id).content == preview.read_bytes()
+    assert (
+        client.post(confirm_url, json={**body, "preview_sha256": "0" * 64}).status_code
+        == 409
+    )
+    identity = auth.identity
+    auth.identity = verified_identity(
+        primary_user_id="other-user", email="1474953130@qq.com"
+    )
+    assert client.post(confirm_url, json=body).status_code in {403, 404}
+    auth.identity = identity
+    master.write_bytes(b"X" * master.stat().st_size)
+    assert (
+        client.post(confirm_url, json=body).json()["error"]["code"]
+        == "EDITING_EXPORT_CHANGED"
+    )
+    assert client.get(artifact_url + final_id).status_code == 404
+    master.write_bytes(b"master test fixture")
+    confirmed = client.post(confirm_url, json=body)
+    assert confirmed.status_code == 200, confirmed.text
+    record = confirmed.json()
+    assert record["status"] == "completed" and record["attempts"] == 1
+    assert (
+        record["review"]["delivery"] == "confirmed"
+        and record["review"]["visual"] == "unreviewed"
+    )
+    assert (
+        next(a for a in record["artifacts"] if a["role"] == "final")["id"] == final_id
+    )
+    assert client.get(artifact_url + final_id).content == master.read_bytes()
+    assert client.post(confirm_url, json=body).json() == record
+    assert (
+        client.post(
+            confirm_url, json={**body, "preview_artifact_id": str(uuid4())}
+        ).status_code
+        == 409
+    )

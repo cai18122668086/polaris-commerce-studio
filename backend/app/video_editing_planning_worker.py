@@ -276,6 +276,7 @@ def process(
             model,
             snapshot["asset_cards"],
             snapshot["choice_snapshot"],
+            snapshot.get("overlay_template"),
         )
         result = {**evidence, "text_status": transcript.text_status}
         if mode == "prepare":
@@ -319,6 +320,7 @@ def process(
                 snapshot["choice_snapshot"],
                 expected_request_sha256=evidence["request_sha256"],
                 guard=guard,
+                template=snapshot.get("overlay_template"),
             )
             atomic_json(root / "provider" / FILES["request_evidence"], evidence)
             result.update(

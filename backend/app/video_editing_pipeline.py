@@ -631,22 +631,9 @@ def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> 
     return root / "outputs/episode.mp4"
 
 
-def validate_result(
-    path: Path,
-    prepared: dict,
-    root: Path,
-    settings: Settings,
-    guard: Callable[[], None],
-) -> dict[str, Any]:
-    info = probe(path, settings)
-    if not all(
-        any(s["codec_type"] == kind for s in info["streams"])
-        for kind in ("audio", "video")
-    ):
-        raise EditingFailure("EDITING_OUTPUT_TRACKS_INVALID")
-    actual = round(float(info["format"]["duration"]) * 1000)
-    if abs(actual - prepared["duration_ms"]) > 150:
-        raise EditingFailure("EDITING_OUTPUT_DURATION_INVALID")
+def decode_av(
+    path: Path, root: Path, settings: Settings, guard: Callable[[], None], name: str
+) -> None:
     run(
         [
             settings.video_editing_ffmpeg,
@@ -669,8 +656,27 @@ def validate_result(
         root,
         settings,
         guard,
-        "decode_output",
+        name,
     )
+
+
+def validate_result(
+    path: Path,
+    prepared: dict,
+    root: Path,
+    settings: Settings,
+    guard: Callable[[], None],
+) -> dict[str, Any]:
+    info = probe(path, settings)
+    if not all(
+        any(s["codec_type"] == kind for s in info["streams"])
+        for kind in ("audio", "video")
+    ):
+        raise EditingFailure("EDITING_OUTPUT_TRACKS_INVALID")
+    actual = round(float(info["format"]["duration"]) * 1000)
+    if abs(actual - prepared["duration_ms"]) > 150:
+        raise EditingFailure("EDITING_OUTPUT_DURATION_INVALID")
+    decode_av(path, root, settings, guard, "decode_output")
     native = read_json(path.with_suffix(".delivery.json"))
     validation = {
         "decoded": True,

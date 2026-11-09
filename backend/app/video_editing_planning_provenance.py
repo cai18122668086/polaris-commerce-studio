@@ -201,6 +201,7 @@ def _verify(
         != [{"id": t.id, "text": t.text} for t in transcript.tokens]
         or payload["project_library_choices"] != row.snapshot["choice_snapshot"]
         or payload["available_project_materials"] != row.snapshot["asset_cards"]
+        or payload.get("overlay_template") != row.snapshot.get("overlay_template")
     ):
         raise ValueError("Captured full-library request does not match scoped inputs")
     semantic = SemanticPlan.model_validate_json(data["response"]["content"])

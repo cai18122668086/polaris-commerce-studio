@@ -31,12 +31,13 @@ def setup(video, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(worker, "verify_package", lambda _: None)
 
-    def request(transcript, package, model, cards, choices):
+    def request(transcript, package, model, cards, choices, template=None):
         body = {
             "model": model,
             "words": [{"id": t.id, "text": t.text} for t in transcript.tokens],
             "cards": cards,
             "choices": choices,
+            **({"overlay_template": template} if template else {}),
         }
         data = json.dumps(body, sort_keys=True, ensure_ascii=False).encode()
         return body, {
@@ -70,6 +71,28 @@ def prepare(client, ws, settings, task):
     result = client.get(base(ws) + "/editing-planning-tasks/" + submitted.json()["id"])
     assert result.json()["status"] == "prepared", result.text
     return result.json()
+
+
+def test_selected_overlay_template_is_frozen_in_preparation(
+    video, tmp_path, monkeypatch
+):
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    root = base(ws)
+    options = client.get(root + "/editing-templates").json()
+    assert len(options) == 2 and all(len(row["slots"]) >= 10 for row in options)
+    url = root + f"/editing-tasks/{task['id']}/planning-tasks"
+    body = {"request_id": str(uuid4()), "template_id": options[0]["id"]}
+    saved = client.post(url, json=body)
+    assert saved.status_code == 200 and saved.json()["overlay_template"] == options[0]
+    assert (
+        client.post(url, json={**body, "template_id": options[1]["id"]}).status_code
+        == 409
+    )
+    worker.process(saved.json()["id"], settings, client.app.state.session_factory)
+    ready = client.get(root + "/editing-planning-tasks/" + saved.json()["id"]).json()
+    assert ready["status"] == "prepared" and ready["call_state"] == "not_submitted"
+    artifact = next(row for row in ready["artifacts"] if row["role"] == "request")
+    assert client.get(artifact["url"]).json()["overlay_template"] == options[0]
 
 
 def enable_fixture(settings):

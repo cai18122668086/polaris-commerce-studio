@@ -20,6 +20,13 @@
 .panel .reviewCheck { display:flex; align-items:flex-start; gap:8px; line-height:1.6; }
 .panel .reviewCheck input { width:16px; min-width:16px; margin-top:3px; accent-color:#7644ba; }
 .correctionActions { display:flex; flex-wrap:wrap; gap:10px; }
+.templatePicker { margin:12px 0; padding:12px; border:1px solid #e9e0f2; border-radius:12px; }
+.templatePicker legend { padding:0 6px; font-weight:600; }
+.templateGrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr)); gap:10px; }
+.panel .templateOption { padding:12px; border:1px solid #e9e0f2; border-radius:10px; background:#faf8fd; cursor:pointer; }
+.templateOption:has(input:checked) { border-color:#7644ba; background:#f3ecfd; }
+.panel .templateOption input { width:16px; accent-color:#7644ba; vertical-align:middle; }
+.templateOption small { color:#6b5e78; line-height:1.5; }
 .utterances { display:grid; gap:6px; max-height:220px; overflow:auto; }
 .panel .utterances button { width:100%; text-align:left; display:flex; gap:10px; line-height:1.7; background:#f0eaf7; color:#49345e; }
 .utterances time { flex:none; font-variant-numeric:tabular-nums; color:#78618c; }

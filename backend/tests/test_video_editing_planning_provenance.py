@@ -41,7 +41,7 @@ def captured_job(video, tmp_path, monkeypatch):
     monkeypatch.setattr(planning_worker, "verify_package", lambda _: None)
     client.app.state.editing_planning_dispatcher = lambda _: None
 
-    def protocol_request(transcript, package, model, cards, choices):
+    def protocol_request(transcript, package, model, cards, choices, template=None):
         # Explicit 132-group wire fixture; not a real Tengli result or library.
         payload = {
             "transcript": {
@@ -50,6 +50,7 @@ def captured_job(video, tmp_path, monkeypatch):
             "full_library": read_json(package / "catalog/groups.json")["groups"],
             "available_project_materials": cards,
             "project_library_choices": choices,
+            **({"overlay_template": template} if template else {}),
         }
         body = {
             "model": model,

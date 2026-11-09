@@ -37,6 +37,28 @@ def validate_render_edits(
         raise ValueError("Native edits must address this candidate's editable inputs")
 
 
+def continuous_overlay_groups(
+    semantic: dict,
+    recipes: dict,
+    transparent_groups: set[str],
+    excluded: set[str] | None = None,
+) -> set[str]:
+    """An eligible combination uses only original transparent overlay groups."""
+    active = set()
+    for beat in semantic["beats"]:
+        gid = beat["group_id"]
+        if gid == SOURCE_GROUP or (excluded and beat["id"] in excluded):
+            continue
+        entry = recipes["entries"].get(beat["id"], {})
+        if (
+            gid not in transparent_groups
+            or entry.get("placement", {}).get("layer") != "subtitle"
+        ):
+            return set()
+        active.add(gid)
+    return active
+
+
 def source_only(beat: SemanticBeat) -> SemanticBeat:
     return beat.model_copy(
         update={

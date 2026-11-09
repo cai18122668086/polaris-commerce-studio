@@ -22,9 +22,15 @@ from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_hypit import hypit_tools, requires_hypit
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
+from .video_editing_overlay_templates import (
+    MIN_OVERLAY_TYPES,
+    overlay_template,
+    validate_template_plan,
+)
 from .video_editing_pipeline import EditingFailure, baseline_documents, layout_captions
 from .video_editing_planner import validate_plan
 from .video_editing_render_edits import (
+    continuous_overlay_groups,
     edited_segment_receipt,
     source_only,
     validate_render_edits,
@@ -69,6 +75,9 @@ class EpisodeRecipeBundle(StrictVideoModel):
     layout_policy: dict[str, Any]
     protected_regions: list[dict[str, Any]] = Field(default_factory=list)
     entries: dict[str, NativeEpisodeEntry]
+    overlay_template_id: str | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
     tools: dict[str, str] = Field(default_factory=dict)
     sound_mode: Literal["original_voice_only", "native_mix"]
     sound: NativeSoundDesign | None = Field(
@@ -153,6 +162,32 @@ def compile_episode(
     )
     if len(groups) != 132:
         raise EditingFailure("EDITING_LIBRARY_INCOMPLETE")
+    continuous_base = (
+        options.get("delivery") == "preview_first"
+        or authoring.overlay_template_id is not None
+    )
+    if authoring.overlay_template_id:
+        validate_template_plan(
+            semantic, overlay_template(authoring.overlay_template_id), complete=True
+        )
+    if (
+        continuous_base
+        and len(
+            continuous_overlay_groups(
+                semantic.model_dump(mode="json"),
+                authoring.model_dump(mode="json"),
+                {
+                    gid
+                    for gid, group in groups.items()
+                    if group.get("kind") == "subtitle"
+                    and group.get("backend") == "subtitle"
+                },
+                set(edits.source_only_beat_ids) if edits else None,
+            )
+        )
+        < MIN_OVERLAY_TYPES
+    ):
+        raise EditingFailure("EDITING_CONTINUOUS_COMBINATION_REQUIRED")
     capabilities = {
         c["group_id"]: c
         for c in read_json(package / "catalog/relationship-capabilities.json")["groups"]
@@ -311,7 +346,7 @@ def compile_episode(
                 }
             )
             continue
-        if beat.group_id == "Z-M00":
+        if beat.group_id == "Z-M00" and not continuous_base:
             # Native source pages only; speech stays on the single original audio.
             for page in range(math.ceil((end - start) / 15)):
                 a, b = start + page * 15, min(end, start + (page + 1) * 15)
@@ -327,7 +362,7 @@ def compile_episode(
                 }
                 shot_indices.append(len(episode["shots"]))
                 episode["shots"].append(shot)
-        else:
+        elif beat.group_id != "Z-M00":
             assert entry is not None
             directory = root / "compiled-native" / f"{index:03}-{beat.group_id}"
             try:
@@ -504,6 +539,15 @@ def compile_episode(
         "semantic_sha256": semantic_hash,
         "choice_snapshot_sha256": (choice_snapshot or {}).get("sha256"),
         "compiled_native_jobs": compiled,
+        **(
+            {
+                "visual_base": "continuous_original_source",
+                "overlay_group_ids": sorted({row["group_id"] for row in compiled}),
+                "overlay_occurrences": len(compiled),
+            }
+            if continuous_base
+            else {}
+        ),
         **(
             {
                 "native_edits": edits.model_dump(mode="json"),

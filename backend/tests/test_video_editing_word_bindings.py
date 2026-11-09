@@ -101,6 +101,23 @@ def test_model_cannot_use_arbitrary_native_paths_assets_times_or_wrong_occurrenc
         Transcript.model_validate(damaged)
 
 
+def test_native_anchors_cannot_mix_question_and_smoke_branches():
+    contract = {
+        **CONTRACT,
+        "fields": [
+            {"path": "/content/text", "native_branch": "question"},
+            {"path": "/events/in", "native_branch": "smoke"},
+        ],
+    }
+    b = beat()
+    with pytest.raises(ValueError, match="separate branches"):
+        word_bindings(b, transcript(), contract, set())
+    b.native_events = []
+    assert (
+        word_bindings(b, transcript(), contract, set())["text"][0]["text"] == "洗碗洗碗"
+    )
+
+
 def test_native_offsets_lengths_and_rates_are_not_absolute_word_events():
     assert clock_category("scene", ["events", "shift_frames"]) == "native_clock_offset"
     assert clock_category("browser", ["items", "enter"]) == "native_clock_length"

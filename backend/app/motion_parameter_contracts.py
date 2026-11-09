@@ -27,6 +27,12 @@ from .video_editing_hypit_strips import (
     strip_fields,
 )
 from .video_editing_media_clocks import clock_profile
+from .video_editing_question_branch import (
+    QUESTION_BRANCH,
+    QUESTION_FONT,
+    QUESTION_GROUP,
+    question_variant_template,
+)
 
 SILHOUETTE_GROUP = "W-R09"
 SILHOUETTE_PATHS = tuple(f"/media/silhouettes/{i}/path" for i in range(7))
@@ -91,8 +97,15 @@ def pointer(parts: list[str | int]) -> str:
     return "/" + "/".join(str(p).replace("~", "~0").replace("/", "~1") for p in parts)
 
 
-def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
+def input_contract(
+    package: Path, group: dict[str, Any], *, branch: str | None = None
+) -> dict[str, Any]:
     template = read_json(package / group["input_template"])
+    question_group = group["id"] == QUESTION_GROUP
+    if question_group and branch not in (None, QUESTION_BRANCH, "smoke"):
+        raise ValueError("Select an original W-R18 branch")
+    if question_group and branch == QUESTION_BRANCH:
+        template = question_variant_template(template)
     schema = read_json(package / group["input_schema"])
     Draft202012Validator.check_schema(schema)
     external = {
@@ -213,6 +226,20 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
         fps = PICTURE_FPS
     else:
         visit(template, [])
+    if question_group and branch is None:
+        smoke_fields = fields.copy()
+        smoke_paths = {f["path"] for f in smoke_fields}
+        fields.clear()
+        visit(question_variant_template(template), [])
+        question_paths = {f["path"] for f in fields}
+        fields = [
+            f if f["path"] in smoke_paths else {**f, "native_branch": QUESTION_BRANCH}
+            for f in fields
+        ] + [
+            {**f, "native_branch": "smoke"}
+            for f in smoke_fields
+            if f["path"] not in question_paths
+        ]
     if group["id"] in STAGGER_GROUPS:
         fields.extend(strip_fields(group["id"]))
     if group["id"] == SILHOUETTE_GROUP:
@@ -271,6 +298,26 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
         **(
             {"website_sidecar_scope": "component_only_until_chart_facts_are_bound"}
             if group["id"] == FLOW_GROUP
+            else {}
+        ),
+        **(
+            {
+                "native_branches": {
+                    name: {
+                        **dependency,
+                        "branch_paths": [
+                            field["path"]
+                            for field in fields
+                            if field.get("native_branch") == name
+                        ],
+                    }
+                    for name, dependency in (
+                        (QUESTION_BRANCH, {"original_font_id": QUESTION_FONT}),
+                        ("smoke", {"original_external_media": "smoke_alpha_sequence"}),
+                    )
+                }
+            }
+            if question_group and branch is None
             else {}
         ),
         "fresh_recipe_required": True,

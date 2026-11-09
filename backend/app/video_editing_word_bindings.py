@@ -109,6 +109,13 @@ def word_bindings(
         ):
             raise ValueError("Native media is not an available selected project asset")
         media.append({"path": media_anchor.path, "asset_id": media_anchor.asset_id})
+    branches = {
+        field["native_branch"]
+        for field in contract.get("fields", [])
+        if field["path"] in used and "native_branch" in field
+    }
+    if len(branches) > 1:
+        raise ValueError("Native anchors cannot mix fields from separate branches")
     return {
         "version": "tengli.native-word-bindings/1",
         "beat_id": beat.id,

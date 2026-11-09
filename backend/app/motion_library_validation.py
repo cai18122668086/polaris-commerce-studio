@@ -20,6 +20,7 @@ from .motion_library import (
     verify_package,
 )
 from .video_editing_pipeline import environment
+from .video_editing_question_branch import QUESTION_BRANCH, QUESTION_GROUP
 
 
 def audit(package: Path) -> dict[str, Any]:
@@ -123,6 +124,9 @@ def record_native(
         "semantic_review": "unreviewed",
         "listening_review": "unreviewed",
     }
+    branch = job.get("config", {}).get("branch")
+    if job["group_id"] == QUESTION_GROUP and branch in (QUESTION_BRANCH, "smoke"):
+        evidence["native_branch"] = branch
     atomic_json(inside(state, f"{group_id}/{evidence['id']}.json"), evidence)
     return evidence
 
@@ -262,5 +266,8 @@ def record_failure(
         "semantic_review": "unreviewed",
         "listening_review": "unreviewed",
     }
+    branch = job.get("config", {}).get("branch")
+    if job["group_id"] == QUESTION_GROUP and branch in (QUESTION_BRANCH, "smoke"):
+        evidence["native_branch"] = branch
     atomic_json(inside(state, f"{job['group_id']}/{evidence['id']}.json"), evidence)
     return evidence

@@ -17,12 +17,13 @@ type Catalog = { total: number; groups: Group[]; next_offset: number | null; sum
 type ResourcePage = { resources: Asset[]; total: number; next_offset: number | null };
 type Detail = {
   template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; local_dependency_state?: LocalDependencyState }[];
-  runtime_evidence: { id: string; runtime_validation: string; recorded_at: string }[];
+  runtime_evidence: { id: string; runtime_validation: string; recorded_at: string; native_branch?: string }[];
   contract_status: string;
   parameter_contract: {
     native_profile?: string | null;
     classic_authoring_status?: string;
     website_sidecar_scope?: string;
+    native_branches?: Record<string, { branch_paths: string[] }>;
     media_clock_profile?: { project_scene_clip_paths?: string[] } | null;
   };
 };
@@ -170,6 +171,16 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
           {detail.parameter_contract.classic_authoring_status === "classic_attributes_schema_closed" && <p>经典入口的原 schema 拒绝写入当前文字和时点参数。{detail.parameter_contract.native_profile === "picture-parallel-3" && "原三图变体仅供已配置的内部工作区验证。"}</p>}
           {detail.parameter_contract.website_sidecar_scope === "component_only_until_chart_facts_are_bound" && (
             <p>已有原生组件样本。饼图绑定本期核对过的数据后，才可用于组合出片。</p>
+          )}
+          {detail.parameter_contract.native_branches?.question && (
+            <p>
+              {detail.runtime_evidence.some(row => row.native_branch === "question" && row.runtime_validation === "sample_rendered")
+                ? "竖排追问已有编码样本。"
+                : "竖排追问等待编码样本。"}
+              {detail.runtime_evidence.some(row => row.native_branch === "smoke" && row.runtime_validation === "sample_rendered")
+                ? "烟雾收尾已有编码样本。"
+                : "烟雾收尾需单独核验原透明序列。"}
+            </p>
           )}
           {detail.parameter_contract.media_clock_profile?.project_scene_clip_paths && <p>已核对口播取帧规则及 {detail.parameter_contract.media_clock_profile.project_scene_clip_paths.length} 个独立补充素材槽。</p>}
           {detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>

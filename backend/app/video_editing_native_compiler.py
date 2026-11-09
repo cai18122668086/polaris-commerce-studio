@@ -45,6 +45,12 @@ from .video_editing_native_content import (
     number_glyphs,
     translation_labels,
 )
+from .video_editing_question_branch import (
+    QUESTION_BRANCH,
+    QUESTION_FONT,
+    QUESTION_GROUP,
+    question_variant_template,
+)
 from .video_editing_word_bindings import word_bindings
 
 
@@ -129,7 +135,12 @@ def compile_native_job(
         )
     groups = {g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]}
     group = groups[beat.group_id]
-    contract = input_contract(package, group)
+    config = copy.deepcopy(recipe["config"])
+    branch = config.get("branch") if beat.group_id == QUESTION_GROUP else None
+    if beat.group_id == QUESTION_GROUP and branch not in (QUESTION_BRANCH, "smoke"):
+        raise ValueError("Select an original W-R18 branch")
+    question_variant = beat.group_id == QUESTION_GROUP and branch == QUESTION_BRANCH
+    contract = input_contract(package, group, branch=branch)
     if (
         recipe.get("version") != "tengli.native-recipe/1"
         or recipe.get("release") != MOTION_SHA256
@@ -140,8 +151,11 @@ def compile_native_job(
         raise ValueError("Recipe does not match this exact original group release")
     if not recipe.get("design_id") or not recipe.get("design_reason"):
         raise ValueError("A current episode design decision is required")
-    config = copy.deepcopy(recipe["config"])
     template = read_json(package / group["input_template"])
+    if question_variant:
+        if beat.relation != "question":
+            raise ValueError("W-R18 question branch requires a spoken question beat")
+        template = question_variant_template(template)
     if beat.group_id == SILHOUETTE_GROUP:
         slots = [
             {"kind": "image", "alpha": True, "path": None} for _ in SILHOUETTE_PATHS
@@ -167,6 +181,8 @@ def compile_native_job(
             "This recipe changes native field/array topology; "
             "an explicit variant authoring contract is required"
         )
+    if question_variant and config["media"]["presenter"]["end_policy"] != "error":
+        raise ValueError("W-R18 question presenter cannot loop or hold")
     decisions = recipe.get("parameter_decisions", {})
     placeholders = recipe.get("placeholders", [])
     if len(placeholders) != len(set(placeholders)):
@@ -300,6 +316,8 @@ def compile_native_job(
     if set(dependency_ids) - set(registered):
         raise ValueError("Selected original dependency is not registered on this host")
     dependencies = {**direct, **{rid: registered[rid] for rid in dependency_ids}}
+    if question_variant and QUESTION_FONT not in dependencies:
+        raise ValueError("Bind the original W-R18 question brush font")
     for rid, declared_path in dependencies.items():
         identity = dependency_rows.get(rid, {})
         source = Path(declared_path).resolve()
@@ -473,6 +491,7 @@ def compile_native_job(
             ),
             **({"local_dependency_ids": dependency_ids} if dependency_ids else {}),
             **({"native_profile": PICTURE_PROFILE} if picture_variant else {}),
+            **({"native_branch": branch} if branch is not None else {}),
             **(
                 {
                     "website_sidecar_profile": contract["website_sidecar_profile"],

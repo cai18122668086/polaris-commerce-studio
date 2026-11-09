@@ -164,3 +164,31 @@ def test_scene_camera_events_are_measured_on_the_unshifted_local_clock(tmp_path)
         package, tmp_path / "measured", beat, transcript, recipe, {}
     )
     assert job["config"]["style"]["geometry"]["camera_start_frame"] == 9
+
+
+def test_original_photo_slots_are_internal_keys_not_spoken_text(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="Z-M08", backend="unified")
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    template = read_json(package / "template.json")
+    template["content"]["items"] = [{"image": "first_original_slot"}]
+    atomic_json(package / "template.json", template)
+    contract = input_contract(package, group)
+    assert "/content/items/0/image" not in contract["text_paths"]
+    assert (
+        next(f for f in contract["fields"] if f["path"] == "/content/items/0/image")[
+            "category"
+        ]
+        == "native_media_key"
+    )
+    beat.group_id = "Z-M08"
+    recipe.update(group_id="Z-M08", template_sha256=contract["template_sha256"])
+    recipe["parameter_decisions"]["content"] = (
+        "Use the original slot while replacing the media"
+    )
+    recipe["config"]["content"]["items"] = [{"image": "relabelled"}]
+    with pytest.raises(ValueError, match="original named media slot mapping"):
+        compile_native_job(
+            package, tmp_path / "rejected-slot", beat, transcript, recipe, {}
+        )

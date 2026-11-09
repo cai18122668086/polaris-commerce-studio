@@ -69,19 +69,20 @@ def compile_media_clocks(
     receipts = []
     used = set()
     clips = profile.get("project_clip_event_frames", {})
+    cuts = profile.get("transcript_cut_media", {})
+    event_bindings = {event["path"]: event for event in native.get("events", [])}
     for row in declarations:
         if set(row) != {"media_path", "policy"} or row["policy"] not in {
             "transcript_source_window",
             "project_clip_from_start",
+            "transcript_cut_window",
         }:
             raise ValueError("Media clock policy must use an audited native slot")
         path = row["media_path"]
         clip = row["policy"] == "project_clip_from_start"
-        if (
-            path in used
-            or path not in media
-            or path not in (clips if clip else profile["media_paths"])
-        ):
+        cut = row["policy"] == "transcript_cut_window"
+        allowed = clips if clip else cuts if cut else profile["media_paths"]
+        if path in used or path not in media or path not in allowed:
             raise ValueError(
                 "Media clock must address one selected, audited native slot"
             )
@@ -148,6 +149,22 @@ def compile_media_clocks(
         start, end = native["clock"]["start_ms"], native["clock"]["end_ms"]
         if not 0 <= start < end <= transcript.duration_ms:
             raise ValueError("Presenter window leaves the actual recorded source")
+        cut_paths = None
+        if cut:
+            first, following = cuts[path]
+            cut_paths = [first, following]
+            boundaries = [event_bindings[p] for p in cut_paths if p is not None]
+            if any(
+                event["unit"] != "seconds"
+                or event["value"] != (event["measured_anchor_ms"] - start) / 1000
+                for event in boundaries
+            ):
+                raise ValueError("Native cuts must use measured local seconds")
+            clip_start = boundaries[0]["measured_anchor_ms"]
+            clip_end = boundaries[1]["measured_anchor_ms"] if following else end
+            if not start <= clip_start < clip_end <= end:
+                raise ValueError("Native source cut leaves the measured beat window")
+            start, end = clip_start, clip_end
         assigned[offset_path], assigned[duration_path] = (
             start / 1000,
             (end - start) / 1000,
@@ -165,6 +182,7 @@ def compile_media_clocks(
                 "profile_id": profile["id"],
                 "native_source_files": profile["source_files"],
                 "native_sampling_expression": profile["local_sample_seconds"],
+                **({"cut_event_paths": cut_paths} if cut_paths else {}),
                 "sampling": (
                     "Original asset_frame rounds to source frames and clamps "
                     "the last frame; no resampling or speed change added"

@@ -94,7 +94,8 @@ def compile_native_job(
         # their original authoring protocol, not JSON-to-DSL interpolation.
         raise ValueError("Hypit requires an explicit original authoring recipe")
     config = copy.deepcopy(recipe["config"])
-    if not _same_shape(read_json(package / group["input_template"]), config):
+    template = read_json(package / group["input_template"])
+    if not _same_shape(template, config):
         raise ValueError(
             "This recipe changes native field/array topology; "
             "an explicit variant authoring contract is required"
@@ -184,6 +185,11 @@ def compile_native_job(
             raise ValueError(
                 "Native numeric content needs a fact-grounded recipe: " + path
             )
+        elif category == "native_media_key":
+            if value != _get(template, path) or not decisions.get("content"):
+                raise ValueError(
+                    "Preserve the original named media slot mapping: " + path
+                )
         elif category == "output_owned_by_compiler":
             _set(config, path, str(root / "renders/component.mp4"))
         elif category == "clock_owned_by_compiler":

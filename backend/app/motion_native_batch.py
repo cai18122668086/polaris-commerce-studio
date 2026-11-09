@@ -12,8 +12,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from .config import Settings
+from .database import build_database
 from .motion_library import (
     MOTION_SHA256,
     atomic_json,
@@ -27,8 +29,10 @@ from .motion_library_validation import (
     record_native,
 )
 from .video_editing_contracts import SemanticBeat, Transcript
+from .video_editing_materials import PREFIX, project_material_files
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_pipeline import run
+from .video_editing_task_models import EditingSourceRecord
 
 
 def verify_rgba_sequence(root: Path, report: dict, expected_frames: int) -> dict:
@@ -121,13 +125,11 @@ def validate_manifest(data: dict, package: Path) -> list[dict]:
         or data["library_release"] != MOTION_SHA256
     ):
         raise ValueError("Native batch belongs to a different original release")
-    if data["backend"] not in {"subtitle", "scene"}:
+    if data["backend"] not in {"subtitle", "scene", "unified"}:
+        raise ValueError("Unsupported native cohort evidence backend")
+    if data["backend"] != "subtitle" and not data.get("source_asset_id"):
         raise ValueError(
-            "Only original subtitle and scene cohort evidence is supported"
-        )
-    if data["backend"] == "scene" and not data.get("source_asset_id"):
-        raise ValueError(
-            "Scene cohort needs the current recorded source asset identity"
+            "Visual cohort needs the current recorded source asset identity"
         )
     groups = read_json(package / "catalog/groups.json")["groups"]
     expected = {g["id"] for g in groups if g["backend"] == data["backend"]}
@@ -163,6 +165,52 @@ def native_failure(root: Path) -> Path | None:
     return None
 
 
+def batch_assets(
+    data: dict, settings: Settings, source: Path, transcript: Transcript
+) -> dict:
+    if data["backend"] == "subtitle":
+        return {}
+    source_id = data["source_asset_id"]
+    assets = {
+        source_id: {
+            "path": str(source),
+            "sha256": transcript.source_sha256,
+            "kind": "original_video",
+        }
+    }
+    materials = data.get("project_material_ids", [])
+    if not materials:
+        return assets
+    if (
+        not source_id.startswith("source-")
+        or len(materials) > 24
+        or len(set(materials)) != len(materials)
+        or any(
+            not key.startswith(PREFIX)
+            or str(UUID(key.removeprefix(PREFIX))) != key.removeprefix(PREFIX)
+            for key in materials
+        )
+    ):
+        raise ValueError(
+            "Cohort material inputs require distinct current project identities"
+        )
+    engine, factory = build_database(settings.database_url)
+    try:
+        with factory() as session:
+            registered = session.get(
+                EditingSourceRecord, source_id.removeprefix("source-")
+            )
+            if not registered or registered.media_sha256 != transcript.source_sha256:
+                raise ValueError(
+                    "Cohort materials must belong to the current registered source"
+                )
+            return assets | project_material_files(
+                session, settings, registered, set(materials), verify_bytes=True
+            )
+    finally:
+        engine.dispose()
+
+
 def execute(
     manifest: Path,
     root: Path,
@@ -191,13 +239,7 @@ def execute(
     source = Path(data["source_path"]).resolve()
     if sha256(source) != transcript.source_sha256:
         raise ValueError("Current source does not match the measured transcript")
-    assets = {}
-    if data["backend"] == "scene":
-        assets[data["source_asset_id"]] = {
-            "path": str(source),
-            "sha256": transcript.source_sha256,
-            "kind": "original_video",
-        }
+    assets = batch_assets(data, settings, source, transcript)
     root.mkdir(parents=True, exist_ok=False)
     atomic_json(root / "manifest.json", data)
     receipt: dict[str, Any] = {

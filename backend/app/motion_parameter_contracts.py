@@ -109,6 +109,11 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
             if category == "resource":
                 resource_kind = "media"
         elif isinstance(value, str) and (
+            (group["id"] == "Z-M07" and names == ["content", "photos"])
+            or (group["id"] == "Z-M08" and names == ["content", "items", "image"])
+        ):
+            category = "native_media_key"
+        elif isinstance(value, str) and (
             (first == "content" and key not in STYLE_NAMES)
             or (group["id"] == "LYO02" and parts == ["content", "theme"])
             or (backend == "browser" and key in TEXT_NAMES)

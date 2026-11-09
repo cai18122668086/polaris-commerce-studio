@@ -177,3 +177,52 @@ def test_independent_video_clock_requires_the_uploaded_clip_length(
         clocks.compile_media_clocks(
             package, group, contract, native, declarations, assets, transcript, config
         )
+
+
+def test_audited_source_cut_uses_both_measured_edges(tmp_path, monkeypatch):
+    package, transcript, _, _, assets, _ = media_inputs(tmp_path, monkeypatch)
+    slot = "/media/shots/0/path"
+    first, second = "/timing/events/cuts/0", "/timing/events/cuts/1"
+    manifest = read_json(clocks.MANIFEST)
+    manifest["profiles"]["YYP01"]["transcript_cut_media"] = {slot: [first, second]}
+    atomic_json(clocks.MANIFEST, manifest)
+    group = {"id": "YYP01", "backend": "scene"}
+    contract = {
+        "native_fps": 30,
+        "fields": [
+            {"path": "/media/shots/0/" + name, "category": "clock_owned_by_compiler"}
+            for name in ("offset_seconds", "duration_seconds")
+        ],
+    }
+    native = {
+        "media": [{"path": slot, "asset_id": "current-raw"}],
+        "clock": {"start_ms": 1000, "end_ms": 4000},
+        "events": [
+            {
+                "path": first,
+                "unit": "seconds",
+                "value": 0.25,
+                "measured_anchor_ms": 1250,
+            },
+            {
+                "path": second,
+                "unit": "seconds",
+                "value": 1.8,
+                "measured_anchor_ms": 2800,
+            },
+        ],
+    }
+    declaration = [{"media_path": slot, "policy": "transcript_cut_window"}]
+    assigned, proof = clocks.compile_media_clocks(
+        package, group, contract, native, declaration, assets, transcript, {}
+    )
+    assert assigned == {
+        "/media/shots/0/offset_seconds": 1.25,
+        "/media/shots/0/duration_seconds": 1.55,
+    }
+    assert proof[0]["cut_event_paths"] == [first, second]
+    native["events"][1]["value"] = 0.9
+    with pytest.raises(ValueError, match="measured local seconds"):
+        clocks.compile_media_clocks(
+            package, group, contract, native, declaration, assets, transcript, {}
+        )

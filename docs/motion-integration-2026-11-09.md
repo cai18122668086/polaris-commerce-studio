@@ -1025,3 +1025,11 @@ worker 在高清校验通过后、生成代理之前保存检查点，代理校�
 Docker Desktop 的 WSL 目录为指向现有 D 盘数据的 junction。用独立 Ubuntu WSL 2 发行版和单独 Unix socket 的 Docker Engine 构建测试镜像，原 Desktop 目录和数据盘留在原位。独立 PostgreSQL 18.4 从空库迁移到 `20261109_0049`，Redis 8.6.4 可用。应用测试网络为内部网络，仅使用本地测试配置。
 
 首次 API 镜像成功构建但无法启动。图卡字形校验提前在 API 路由导入 `fontTools`，该依赖由剪辑 worker 提供。把导入移动到字形校验调用中，保留原校验逻辑。重建后，API 容器实测在没有 `fontTools` 的环境启动，UID 10001 可初始化并读写共享任务卷。容器 API 可读取完整 132 组目录，并接受实际桌面收纳口播，持久任务初始状态为 queued。原生图卡时钟与编译器的 11 项针对性回归通过。原包变更后的整组回归为 275 项通过，回执在 C:/tl/clean-motion-install-20261110/regression.xml。
+
+测试系统使用核对官方 SHA256 的 Ubuntu Base 24.04.5。独立 worker 镜像实际构建完成，容器以 UID 10001 断网自检七项均通过。原 Motion、视频媒体、FunASR、fa-zh 与私有依赖目录均为只读挂载，共享任务卷可写。容器运行的 Python 为 3.12.10，FFmpeg 为 5.1.9，Chromium 为 156.0.8078.4。API 容器另以只读挂载校验写稿原包全部 33 个文件。Compose 合并剪辑、对齐、外部依赖和文稿覆盖文件的静态校验通过。 [Ubuntu Base 发行文件](https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/) [Microsoft WSL 导入文档](https://learn.microsoft.com/en-us/windows/wsl/use-custom-distro)
+
+真实口播由 HTTP API 写入 PostgreSQL，由维护容器经 Redis 投递，独立 Celery worker 领取。基础任务 735b5059-6adc-4b5f-8326-1be1cda1c606 实际 FunASR 识别 201 个词点，177 秒完成。基础字幕片长 40.123 秒，容器 Chromium 实播，范围下载返回 206，高清摘要为 edab712079b91604c04f4ec08f70ba51271c7eafbd6cdffe39c79a77b39f87be。独立对齐任务 b008c28e-0219-4e1b-a766-4537a5e198b9 实际执行 fa-zh，153 秒完成，核对了原声音频、转录版本和 201 个对齐词点。三个成片任务各仅领取一次实际执行；队列长等候期间的重投消息由任务状态拒绝重复执行。
+
+独立规划 worker 以实录词 ID 和完整 132 组目录生成请求，向内部 HTTPS 测试端点提交一次。受控响应沿用同条口播的已核对编排，覆盖十种原生动效。网站将候选冻结并提交渲染，新任务 7fb98bd7-c030-43de-9cc1-3bec5fa17b64 实际重新编译和编码，耗时 1064 秒，主要耗时在原生逐角色版面检查。先交付代理，再通过 API 确认导出。代理与高清均返回 206，确认后的作品接口仅登记一条同摘要成片。高清以 720×1280 在容器 Chromium 实播，片长 40.123 秒。
+
+整片通过完整解码和原生版面检查。十个动效各抽样一帧核对同期人物，包含原生末尾 0.4 秒淡出，人物区像素绝对平均差最大 1.56。口播分轨与独立解码的原音 1,925,904 个单声道样本逐样本一致。十条原库音效均有实际信号，起音与锚点同帧。实际口播区间内，背景乐均方根电平比人声低约 11.35 dB。高清为 D:/codex-motion-runtime-20261110/linux-native-hd.mp4，SHA256 为 4658fd5ce2b75e3937caefbea2f464be030e11c9bd3d2fe42f620db6f2c2cc60。自检、浏览器、编排、声音、作品和对齐回执均在同目录。供应商真实规划、全库缺件组与用户视觉听感仍待验收。

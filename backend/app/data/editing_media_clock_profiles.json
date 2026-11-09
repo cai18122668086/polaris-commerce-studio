@@ -41,6 +41,27 @@
       },
       "native_fps": 30
     },
+    "W-R06": {
+      "id": "wr06-comment-live-background/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/background_before/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited original CTA clock for the video before submission; the after-submission image remains an independent project asset",
+      "local_sample_seconds": "CtaFrames uses actual_t = local frame / 30 before submitted_in; afterward it samples the separately bound image",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/arguments-cta-clock/build.py": "cca1c8cec3a8423124b29c17058dffc88b460ac5468c3fa85e75ae56445b938c",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/media-carriers/runtime.py": "1fe655fbb657fb799ea7e542d7a4e6242723d0b56aecc13ba37856c38637ab47"
+      },
+      "native_fps": 30
+    },
     "YYP01": {
       "id": "native-presenter-local-seconds/1",
       "backend": "scene",

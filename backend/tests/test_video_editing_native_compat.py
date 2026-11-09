@@ -40,3 +40,61 @@ assert (task/'font.ttf').read_bytes()==source.read_bytes()
     )
     assert result.returncode == 0, result.stderr
     assert list((tmp_path / "task/compatibility").glob("copies-*.json"))
+
+
+def test_azl_worker_mattes_are_isolated_per_prepared_job(tmp_path):
+    backend = Path(__file__).resolve().parents[1]
+    package = tmp_path / "package"
+    module = package / "commercial_runtime/paths.py"
+    module.parent.mkdir(parents=True)
+    module.write_text(
+        "from pathlib import Path\n"
+        "def cache_path(base, name='cache'):\n"
+        "    return Path(base) / name\n",
+        encoding="utf-8",
+    )
+    plans = tmp_path / "task/plans"
+    plans.mkdir(parents=True)
+    first, second, unrelated = (
+        plans / f"{key}.json" for key in ("first", "next", "other")
+    )
+    first.write_text('{"group_id":"AZL01","offset":1}', encoding="utf-8")
+    second.write_text('{"group_id":"AZL01","offset":2}', encoding="utf-8")
+    unrelated.write_text('{"group_id":"CXBR02","offset":2}', encoding="utf-8")
+    code = """
+import sys
+from pathlib import Path
+from app.video_editing_native_compat import isolate_azl_matte_cache
+package, task = map(Path, sys.argv[1:3])
+sys.path.insert(0, str(package))
+isolate_azl_matte_cache(package, task)
+from commercial_runtime.paths import cache_path
+print(cache_path('shared', 'cache/mattes').as_posix())
+assert cache_path('shared', 'unrelated').as_posix() == 'shared/unrelated'
+"""
+
+    def cache_for(job):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-B",
+                "-c",
+                code,
+                str(package),
+                str(plans.parent),
+                "--job",
+                str(job),
+            ],
+            env={**os.environ, "PYTHONPATH": str(backend)},
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+        return result.stdout.strip()
+
+    first_cache = cache_for(first)
+    assert first_cache != cache_for(second)
+    first.write_text('{"group_id":"AZL01","offset":3}', encoding="utf-8")
+    assert cache_for(first) != first_cache
+    assert cache_for(unrelated) == "shared/cache/mattes"

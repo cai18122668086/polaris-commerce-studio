@@ -1,16 +1,51 @@
 """Native compatibility for task-local copies and immutable bundled fonts."""
 
 import atexit
+import hashlib
+import importlib
 import json
 import os
 import shutil
 import stat
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
 from PIL import ImageFont
+
+
+def isolate_azl_matte_cache(package: Path, root: Path) -> None:
+    """Keep the original fixed-offset matte keys local to each native shot."""
+    if "--job" not in sys.argv:
+        return
+    job_path = Path(sys.argv[sys.argv.index("--job") + 1]).resolve()
+    if job_path.parent != root / "plans":
+        return
+    job = job_path.read_bytes()
+    if json.loads(job)["group_id"] not in {f"AZL{number:02}" for number in range(1, 8)}:
+        return
+    sys.path.insert(0, str(package))
+    try:
+        paths = importlib.import_module("commercial_runtime.paths")
+    finally:
+        sys.path.pop(0)
+    source = paths.__file__
+    if (
+        source is None
+        or Path(source).resolve() != package / "commercial_runtime/paths.py"
+    ):
+        raise ValueError("AZL matte cache must use the pinned original runtime")
+    original_cache_path = paths.cache_path
+    shot = hashlib.sha256(job).hexdigest()
+
+    def cache_path(base: str | Path, name: str = "cache") -> Path:
+        if name == "cache/mattes":
+            base = Path(base) / shot
+        return original_cache_path(base, name)
+
+    cast(Any, paths).cache_path = cache_path
 
 
 def install(package: Path, root: Path) -> None:

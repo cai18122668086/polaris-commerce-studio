@@ -239,8 +239,19 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
         "fresh_recipe_required": True,
         "media_clock_profile": (
             {
-                k: profile[k]
-                for k in ("id", "media_paths", "scope", "local_sample_seconds")
+                **{
+                    k: profile[k]
+                    for k in ("id", "media_paths", "scope", "local_sample_seconds")
+                },
+                **(
+                    {
+                        "project_scene_clip_paths": list(
+                            profile["project_scene_clip_start_events"]
+                        )
+                    }
+                    if "project_scene_clip_start_events" in profile
+                    else {}
+                ),
             }
             if (profile := clock_profile(group["id"]))
             else None

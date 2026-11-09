@@ -15,7 +15,16 @@ type Asset = { id: string; kind: string; display_name: string; duration_seconds?
 type Summary = { groups: number; bundled_assets: number; external_references: number; runtime: Record<string, number>; visual_accepted: number };
 type Catalog = { total: number; groups: Group[]; next_offset: number | null; summary: Summary };
 type ResourcePage = { resources: Asset[]; total: number; next_offset: number | null };
-type Detail = { template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; local_dependency_state?: LocalDependencyState }[]; runtime_evidence: { id: string; runtime_validation: string; recorded_at: string }[]; contract_status: string; parameter_contract: { native_profile?: string | null; classic_authoring_status?: string } };
+type Detail = {
+  template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; local_dependency_state?: LocalDependencyState }[];
+  runtime_evidence: { id: string; runtime_validation: string; recorded_at: string }[];
+  contract_status: string;
+  parameter_contract: {
+    native_profile?: string | null;
+    classic_authoring_status?: string;
+    media_clock_profile?: { project_scene_clip_paths?: string[] } | null;
+  };
+};
 type Target = { kind: TargetKind; id: string; name: string };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const notePath = `${root}/projects/{project_id}/editing-library-notes` as const;
@@ -153,6 +162,7 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
         {detail ? <>
           <p>{detail.contract_status === "declared" ? "有原始参数合同" : "保留原始 schema 与入口"}。以下是模板与已核查原入口的外部输入，其他运行依赖仍需按实际分支核对。</p>
           {detail.parameter_contract.classic_authoring_status === "classic_attributes_schema_closed" && <p>经典入口的原 schema 拒绝写入当前文字和时点参数。{detail.parameter_contract.native_profile === "picture-parallel-3" && "原三图变体仅供已配置的内部工作区验证。"}</p>}
+          {detail.parameter_contract.media_clock_profile?.project_scene_clip_paths && <p>已核对口播取帧规则及 {detail.parameter_contract.media_clock_profile.project_scene_clip_paths.length} 个独立补充素材槽。</p>}
           {detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>
             {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}{d.local_dependency_state && ` · ${localDependencyLabel[d.local_dependency_state]}`}
           </li>)}</ul> : <p>暂未登记外部输入引用。</p>}

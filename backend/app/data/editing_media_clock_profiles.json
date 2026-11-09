@@ -526,6 +526,204 @@
         "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR01/render.py": "dd23984484a1f9444f554c8161ee069da9288bc1dffb08a22900fe7a8d1a5e2b"
       },
       "native_fps": 30
+    },
+    "AZL01": {
+      "id": "azl01-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL02": {
+      "id": "azl02-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null,
+        "/media/secondary/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path",
+        "/media/secondary/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL03": {
+      "id": "azl03-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/secondary/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/secondary/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL04": {
+      "id": "azl04-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null,
+        "/media/secondary/path": null,
+        "/media/lower/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path",
+        "/media/secondary/path",
+        "/media/lower/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL05": {
+      "id": "azl05-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null,
+        "/media/secondary/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path",
+        "/media/secondary/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL06": {
+      "id": "azl06-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL07": {
+      "id": "azl07-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v6.py": "44365c828fb6579f2c2de15a06b952dd058449c2be8d4bf3afe05afec3f473e3"
+      },
+      "native_fps": 30
     }
   },
   "unsupported_policy": "retain original groups; require dedicated audited native media clock binding, no offset guessing"

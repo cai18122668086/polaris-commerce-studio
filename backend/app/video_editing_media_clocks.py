@@ -71,6 +71,7 @@ def compile_media_clocks(
     clips = profile.get("project_clip_event_frames", {})
     cuts = profile.get("transcript_cut_media", {})
     scene_clips = profile.get("project_scene_clip_start_events", {})
+    implicit_scene_clips = set(profile.get("project_scene_implicit_extent_paths", []))
     event_bindings = {event["path"]: event for event in native.get("events", [])}
     for row in declarations:
         if set(row) != {"media_path", "policy"} or row["policy"] not in {
@@ -162,6 +163,11 @@ def compile_media_clocks(
                 "Presenter source clock cannot be applied to unrelated project media"
             )
         prefix = path.rsplit("/", 1)[0]
+        if (
+            implicit_scene_clips
+            and config["media"][path.split("/")[2]].get("end_policy") != "error"
+        ):
+            raise ValueError("Presenter must run without looping or holding")
         offset_path, duration_path = (
             prefix + "/offset_seconds",
             prefix + "/duration_seconds",
@@ -216,9 +222,9 @@ def compile_media_clocks(
         )
     if set(assigned) != media_clock_fields:
         raise ValueError("Every native media offset/duration needs a measured binding")
-    if used != selected_videos:
+    if used != selected_videos | (implicit_scene_clips & media.keys()):
         raise ValueError(
-            "Every selected native video needs its own audited source clock"
+            "Each native video or audited still needs its own audited source clock"
         )
     return assigned, receipts
 
@@ -248,18 +254,33 @@ def _project_scene_clip(
     length = (frames - start_frame) / fps
     required_ms = math.ceil((frames - start_frame) * 1000 / fps)
     slot = path.split("/")[2]
+    implicit_extent = path in profile.get("project_scene_implicit_extent_paths", [])
+    still = implicit_extent and asset.get("kind") == "image"
     if (
-        asset.get("kind") != "video"
-        or asset.get("source") != "project_upload"
-        or type(asset.get("duration_ms")) is not int
-        or asset["duration_ms"] < required_ms
+        asset.get("source") != "project_upload"
         or config["media"][slot].get("end_policy") != "error"
+        or (
+            not still
+            and (
+                asset.get("kind") != "video"
+                or type(asset.get("duration_ms")) is not int
+                or asset["duration_ms"] < required_ms
+            )
+        )
     ):
         raise ValueError(
             "Scene clip must cover its native window without looping or holding"
         )
     prefix = path.rsplit("/", 1)[0]
-    assigned = {prefix + "/offset_seconds": 0.0, prefix + "/duration_seconds": length}
+    offset_path = prefix + "/offset_seconds"
+    assigned = {offset_path: 0.0}
+    if implicit_extent:
+        if start_event is not None:
+            raise ValueError("This scene slot has no explicit start or duration")
+        if offset_path not in media_clock_fields:
+            assigned = {}
+    else:
+        assigned[prefix + "/duration_seconds"] = length
     if start_event is not None:
         assigned[prefix + "/start_seconds"] = start_frame / fps
     if not set(assigned) <= media_clock_fields:
@@ -269,12 +290,16 @@ def _project_scene_clip(
         "policy": "project_scene_clip_window",
         "source_sha256": asset["sha256"],
         "source_start_ms": 0,
-        "source_end_ms": required_ms,
-        "asset_duration_ms": asset["duration_ms"],
+        "source_end_ms": None if still else required_ms,
+        "asset_duration_ms": asset.get("duration_ms"),
         "start_event_path": start_event,
         "start_frame": start_frame,
         "profile_id": profile["id"],
         "native_source_files": profile["source_files"],
-        "native_sampling_expression": f"max(0, (local frame - {start_frame}) / {fps})",
+        "native_sampling_expression": (
+            "Original registered still image"
+            if still
+            else f"max(0, (local frame - {start_frame}) / {fps})"
+        ),
         "timing_review": "unreviewed",
     }

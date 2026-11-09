@@ -261,6 +261,65 @@ def test_scene_clip_clock_binds_native_window_without_using_presenter_offset(
             )
 
 
+def test_implicit_scene_extents_bind_video_and_still_without_inventing_fields(
+    tmp_path, monkeypatch
+):
+    package, transcript, _, _, _, _ = media_inputs(tmp_path, monkeypatch)
+    main, lower = "/media/main/path", "/media/lower/path"
+    manifest = read_json(clocks.MANIFEST)
+    profile = manifest["profiles"]["YYP01"]
+    profile["project_scene_clip_start_events"] = {main: None, lower: None}
+    profile["project_scene_implicit_extent_paths"] = [main, lower]
+    atomic_json(clocks.MANIFEST, manifest)
+    group = {"id": "YYP01", "backend": "scene"}
+    offset = "/media/main/offset_seconds"
+    contract = {
+        "native_fps": 30,
+        "fields": [{"path": offset, "category": "clock_owned_by_compiler"}],
+    }
+    native = {
+        "media": [
+            {"path": main, "asset_id": "registered-video"},
+            {"path": lower, "asset_id": "registered-image"},
+        ],
+        "clock": {"start_ms": 8600, "end_ms": 11600},
+    }
+    assets = {
+        "registered-video": {
+            "kind": "video",
+            "source": "project_upload",
+            "duration_ms": 3000,
+            "sha256": "a" * 64,
+        },
+        "registered-image": {
+            "kind": "image",
+            "source": "project_upload",
+            "duration_ms": None,
+            "sha256": "b" * 64,
+        },
+    }
+    config = {"media": {slot: {"end_policy": "error"} for slot in ("main", "lower")}}
+    declarations = [
+        {"media_path": path, "policy": "project_scene_clip_window"}
+        for path in (main, lower)
+    ]
+
+    def compile_clocks(rows):
+        return clocks.compile_media_clocks(
+            package, group, contract, native, rows, assets, transcript, config
+        )
+
+    assigned, (video, still) = compile_clocks(declarations)
+    assert assigned == {offset: 0.0}
+    assert video["source_end_ms"] == 3000 and video["start_frame"] == 0
+    assert still["source_end_ms"] is None and still["asset_duration_ms"] is None
+    with pytest.raises(ValueError, match="own audited source clock"):
+        compile_clocks(declarations[:1])
+    assets["registered-video"]["duration_ms"] = 2999
+    with pytest.raises(ValueError, match="cover its native window"):
+        compile_clocks(declarations)
+
+
 def test_audited_source_cut_uses_both_measured_edges(tmp_path, monkeypatch):
     package, transcript, _, _, assets, _ = media_inputs(tmp_path, monkeypatch)
     slot = "/media/shots/0/path"

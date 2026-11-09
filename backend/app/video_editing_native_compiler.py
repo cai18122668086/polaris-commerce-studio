@@ -30,8 +30,10 @@ from .video_editing_browser_clocks import (
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
 from .video_editing_hypit_strips import (
+    FLOW_GROUP,
     STAGGER_GROUPS,
     STRIP_SIDECAR,
+    compile_flow_plate,
     compile_strips,
     strip_config_sha256,
 )
@@ -111,6 +113,7 @@ def compile_native_job(
     asset_files: dict[str, dict[str, Any]],
     *,
     native_bindings_file: Path | None = None,
+    component_validation: bool = False,
 ) -> dict[str, Any]:
     """Return a schema-admitted original job plus traceable measured bindings.
 
@@ -195,6 +198,13 @@ def compile_native_job(
         media_clocks, clock_receipts = compile_picture_clocks(
             package, config, native, asset_files, transcript, beat
         )
+    elif group["id"] == FLOW_GROUP:
+        if not component_validation:
+            raise ValueError("Hypit flow labels still require fact-grounded chart data")
+        if recipe.get("media_clocks"):
+            raise ValueError("Flow labels use the measured moving plate window")
+        media_clocks = {}
+        clock_receipts = [compile_flow_plate(native, asset_files, transcript)]
     else:
         media_clocks, clock_receipts = compile_media_clocks(
             package,

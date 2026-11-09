@@ -20,7 +20,12 @@ from .video_editing_hypit import (
     PICTURE_PROFILE,
     picture_fields,
 )
-from .video_editing_hypit_strips import STAGGER_GROUPS, stagger_profile, strip_fields
+from .video_editing_hypit_strips import (
+    FLOW_GROUP,
+    STAGGER_GROUPS,
+    stagger_profile,
+    strip_fields,
+)
 from .video_editing_media_clocks import clock_profile
 
 SILHOUETTE_GROUP = "W-R09"
@@ -261,6 +266,11 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
         **(
             {"website_sidecar_profile": stagger_profile(group["id"])}
             if group["id"] in STAGGER_GROUPS
+            else {}
+        ),
+        **(
+            {"website_sidecar_scope": "component_only_until_chart_facts_are_bound"}
+            if group["id"] == FLOW_GROUP
             else {}
         ),
         "fresh_recipe_required": True,

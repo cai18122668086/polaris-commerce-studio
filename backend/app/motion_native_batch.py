@@ -180,11 +180,7 @@ def batch_assets(
         }
     }
     materials = data.get("project_material_ids", [])
-    if data["backend"] == "hypit" and not materials:
-        raise ValueError(
-            "Hypit cohort requires current project media and workspace identity"
-        )
-    if not materials:
+    if not materials and data["backend"] != "hypit":
         return assets
     if (
         not source_id.startswith("source-")
@@ -300,6 +296,7 @@ def execute(
                     case["recipe"],
                     assets,
                     native_bindings_file=settings.video_editing_native_bindings_file,
+                    component_validation=True,
                 )
                 if tools:
                     bindings = instance / "bindings.json"

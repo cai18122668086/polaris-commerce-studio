@@ -123,6 +123,45 @@ def test_hypit_price_cards_anchor_numbers_to_distinct_current_images(
         strips.compile_strips(tmp_path, group, native, assets)
 
 
+def test_hypit_flow_keeps_original_rearrangement_and_checks_source_duration():
+    moves = (
+        'moves="0:0:208,25,7; 0:19:-220,-37,18; 0:50:12,11,12; '
+        '1:24:-584,632,7; 1:51:263,-162,9; 1:61:321,-470,9; 2:52:0,0,9"'
+    )
+    assert strips._flow_moves(" " + moves, [20, 32, 50], 120) == (
+        "0:20:208,25,7; 0:27:-220,-37,18; 0:48:12,11,12; "
+        "1:32:-584,632,7; 1:49:263,-162,9; 1:59:321,-470,9; 2:50:0,0,9"
+    )
+    with pytest.raises(ValueError, match="too little room"):
+        strips._flow_moves(" " + moves, [20, 31, 40], 120)
+    with pytest.raises(ValueError, match="too little room"):
+        strips._flow_moves(" " + moves, [20, 32, 50], 68)
+
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=5000,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        utterances=[],
+        tokens=[],
+    )
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 5000},
+        "media": [{"path": strips.FLOW_PLATE, "asset_id": "source"}],
+    }
+    assets = {"source": {"kind": "original_video", "sha256": transcript.source_sha256}}
+    assert strips.compile_flow_plate(native, assets, transcript)["frames"] == 120
+    native["clock"]["start_ms"] = 1001
+    with pytest.raises(ValueError, match="actual moving source window"):
+        strips.compile_flow_plate(native, assets, transcript)
+    native["clock"]["start_ms"] = 1000
+    assets["source"]["sha256"] = "c" * 64
+    with pytest.raises(ValueError, match="actual moving source window"):
+        strips.compile_flow_plate(native, assets, transcript)
+
+
 def test_hypit_sound_anchor_requires_the_rendered_scene_entry(tmp_path):
     stem = "001-HY-A6"
     sidecar = tmp_path / "hypit-strips" / f"{stem}.json"

@@ -17,6 +17,7 @@ from .motion_library import MOTION_SHA256, read_json
 from .video_editing_contracts import EditingOptions, SemanticPlan
 from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_hypit import internal_hypit_available, requires_hypit
+from .video_editing_hypit_strips import FLOW_GROUP
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import project_material_files, verify_material_cards
 from .video_editing_overlay_templates import (
@@ -62,12 +63,23 @@ def transparent_original_groups(settings: Settings) -> set[str]:
     }
 
 
+FLOW_CHART_WARNING = "HY-A7 的饼图需先绑定本期经核对的数据，当前只开放原生组件验证。"
+
+
+def requires_flow_chart(semantic: dict) -> bool:
+    return any(beat["group_id"] == FLOW_GROUP for beat in semantic["beats"])
+
+
 def plan_response(
     row: EditingNativePlanRecord, settings: Settings, transparent_groups: set[str]
 ) -> dict[str, Any]:
     editable, has_music = available_render_edits(
         row.semantic, row.recipes, row.choice_snapshot
     )
+    needs_chart = requires_flow_chart(row.semantic)
+    warnings = row.semantic.get("warnings", [])
+    if needs_chart:
+        warnings = [*warnings, FLOW_CHART_WARNING]
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -88,7 +100,7 @@ def plan_response(
                 row.semantic["beats"], row.details["beats"], strict=True
             )
         ],
-        "warnings": row.semantic.get("warnings", []),
+        "warnings": warnings,
         "missing_materials": row.semantic.get("missing_materials", []),
         "text_status": row.details["text_status"],
         "source_subtitles": row.details["source_subtitles"],
@@ -110,6 +122,7 @@ def plan_response(
         if row.recipes.get("overlay_template_id")
         else None,
         "render_available": settings.video_editing_native_plan_enabled
+        and not needs_chart
         and (
             not requires_hypit(row.semantic)
             or internal_hypit_available(settings, row.workspace_id)
@@ -472,6 +485,8 @@ def admit_render_plan(
         or row.library_release != MOTION_SHA256
     ):
         raise ApiError(404, "EDITING_NATIVE_PLAN_NOT_FOUND", "未找到此原片的动效编排。")
+    if requires_flow_chart(row.semantic):
+        raise ApiError(409, "EDITING_HYPIT_FLOW_CHART_REQUIRED", FLOW_CHART_WARNING)
     if requires_hypit(row.semantic) and not internal_hypit_available(
         settings, source.workspace_id
     ):

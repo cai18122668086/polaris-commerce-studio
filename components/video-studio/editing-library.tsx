@@ -22,6 +22,7 @@ type Detail = {
   parameter_contract: {
     native_profile?: string | null;
     classic_authoring_status?: string;
+    website_sidecar_scope?: string;
     media_clock_profile?: { project_scene_clip_paths?: string[] } | null;
   };
 };
@@ -167,6 +168,9 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
         {detail ? <>
           <p>{detail.contract_status === "declared" ? "有原始参数合同" : "保留原始 schema 与入口"}。以下是模板与已核查原入口的外部输入，其他运行依赖仍需按实际分支核对。</p>
           {detail.parameter_contract.classic_authoring_status === "classic_attributes_schema_closed" && <p>经典入口的原 schema 拒绝写入当前文字和时点参数。{detail.parameter_contract.native_profile === "picture-parallel-3" && "原三图变体仅供已配置的内部工作区验证。"}</p>}
+          {detail.parameter_contract.website_sidecar_scope === "component_only_until_chart_facts_are_bound" && (
+            <p>已有原生组件样本。饼图绑定本期核对过的数据后，才可用于组合出片。</p>
+          )}
           {detail.parameter_contract.media_clock_profile?.project_scene_clip_paths && <p>已核对口播取帧规则及 {detail.parameter_contract.media_clock_profile.project_scene_clip_paths.length} 个独立补充素材槽。</p>}
           {detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>
             {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}{d.local_dependency_state && ` · ${localDependencyLabel[d.local_dependency_state]}`}

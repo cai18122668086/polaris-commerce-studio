@@ -101,6 +101,11 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
                     "resource_paths": parameters["resource_paths"],
                     "scope": parameters["array_capacity_scope"],
                     **(
+                        {"website_sidecar_scope": parameters["website_sidecar_scope"]}
+                        if "website_sidecar_scope" in parameters
+                        else {}
+                    ),
+                    **(
                         {
                             "native_profile": parameters["native_profile"],
                             "classic_authoring_status": parameters[

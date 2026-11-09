@@ -24,7 +24,8 @@ SLANT_IMAGES = tuple(f"/component_assets/stagger#mkpic{i}" for i in range(1, 4))
 PRICE_CARD_GROUP = "HY-A6"
 PRICE_CARD_PROFILE = "hypit-original-price-cards/1"
 PRICE_CARD_INSET_TYPE = "larger-inset-type-v1"
-LIVE_STAGE_GROUPS = frozenset(("HY-A5", PRICE_CARD_GROUP))
+LIVE_STRIP_GROUP = "HY-A5"
+LIVE_STAGE_GROUPS = frozenset((LIVE_STRIP_GROUP, PRICE_CARD_GROUP))
 LIVE_STAGE_PROFILE = "hypit-live-stage/1"
 FLOW_GROUP = "HY-A7"
 FLOW_PROFILE = "hypit-original-flow-labels/1"
@@ -47,7 +48,7 @@ STAGGER_GROUPS = {
         "a4m",
         "b02ffa4c994e697eb3af1405483df2fd2d2e42d02fa035bdfb4663b49c416ddb",
     ),
-    "HY-A5": (
+    LIVE_STRIP_GROUP: (
         "a5m",
         "aefef4aa6e1f9d10c58bc9c50b5df4538c68ed2352af00a0f6e5d32fa4cb4ed6",
     ),
@@ -88,7 +89,7 @@ def stagger_audio_frame(group_id: str, entry_frame: int) -> int:
     # In the pinned wipe and zoom profiles, the entry marker still has zero
     # visibility. The original component first changes pixels on the next frame.
     return entry_frame + int(
-        group_id in {SLANT_GROUP, "HY-A5", PRICE_CARD_GROUP, FLOW_GROUP}
+        group_id in {SLANT_GROUP, LIVE_STRIP_GROUP, PRICE_CARD_GROUP, FLOW_GROUP}
     )
 
 

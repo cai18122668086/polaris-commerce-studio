@@ -17,9 +17,11 @@ from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy import create_engine, inspect, select, text
 
+from app import video_editing_hypit as hypit
 from app import video_editing_planning_routes as planning_routes
 from app import video_editing_planning_worker as worker
 from app import video_editing_task_routes as task_routes
+from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_contracts import SemanticPlan
@@ -107,6 +109,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "picture-compare-v2",
         "rotation-cards-v1",
         "numbered-pictures-v1",
+        "live-strip-story-v1",
         "package-specs-v1",
         "line-story-v1",
         "presenter-openings-v1",
@@ -277,6 +280,41 @@ def test_missing_original_after_preparation_stops_before_model_submission(
     frozen = client.get(request["url"]).raise_for_status().json()["runtime"]
     assert frozen["unavailable_template_groups"] == {"W-R18": [QUESTION_FONT]}
     assert str(font) not in json.dumps(frozen)
+
+
+def test_strip_planning_checks_scoped_runtime_and_original_subtitles(
+    tmp_path, monkeypatch
+):
+    cli = tmp_path / "bin" / "hypit.mjs"
+    cli.parent.mkdir()
+    cli.write_bytes(b"local verification fixture")
+    chrome = tmp_path / "chrome"
+    chrome.touch()
+    atomic_json(tmp_path / "package.json", {"version": "0.2.12"})
+    monkeypatch.setattr(hypit, "CLI_SHA256", sha256(cli))
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        auth_mode="development",
+        video_editing_hypit_internal_workspace="internal",
+        video_editing_hypit_local_module=cli,
+        video_editing_hypit_local_chrome=chrome,
+    )
+    template = overlay_template("live-strip-story-v1")
+    assert worker.live_strip_blockers(settings, "internal", template, "none") == {}
+    assert worker.live_strip_blockers(settings, "internal", template, "present") == {
+        "HY-A5": ["source-subtitles-must-be-none"]
+    }
+    unavailable = {"HY-A5": ["original-hypit-internal-runtime-unavailable"]}
+    assert (
+        worker.live_strip_blockers(settings, "other", template, "none") == unavailable
+    )
+    cli.write_bytes(b"changed")
+    assert (
+        worker.live_strip_blockers(settings, "internal", template, "none")
+        == unavailable
+    )
+    assert worker.live_strip_blockers(settings, "internal", None, "none") == {}
 
 
 def test_one_execution_per_prepared_request_and_valid_response_contract(

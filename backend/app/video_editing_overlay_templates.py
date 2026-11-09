@@ -10,6 +10,7 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
+from .video_editing_hypit_strips import LIVE_STRIP_GROUP
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP
@@ -29,6 +30,7 @@ PACKAGE_TEMPLATE_ID = "package-specs-v1"
 LINE_TEMPLATE_ID = "line-story-v1"
 SUBTITLE_STORY_TEMPLATE_ID = "subtitle-story-v1"
 NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
+LIVE_STRIP_TEMPLATE_ID = "live-strip-story-v1"
 PACKAGE_TEMPLATES = frozenset({PACKAGE_TEMPLATE_ID, LINE_TEMPLATE_ID})
 _OPENING_PURPOSES = {
     "LYO01": (
@@ -123,6 +125,26 @@ _EXPLAINER_SLOTS = [
     {"group_id": "AHG-S02", "purpose": "标记分类或行动的实录短语"},
 ]
 _TEMPLATES = {
+    LIVE_STRIP_TEMPLATE_ID: {
+        "id": LIVE_STRIP_TEMPLATE_ID,
+        "name": "斜切标签与口播重点",
+        "slots": [
+            {
+                "group_id": LIVE_STRIP_GROUP,
+                "purpose": "用三道交错的原生斜切标签呈现实录中的并列短词",
+                "layer": "overlay",
+                "binding": (
+                    "仅在 Hypit 运行已核验且原片无内嵌字幕时选择。"
+                    "三个标签各取实录 1–3 个汉字，relation_items 各绑定一项文本，"
+                    "三个 entry_frame 分别绑定其首词。条幅下移避开人物，"
+                    "末项需留出原入场和阅读时间。同组可在不同段重复。"
+                    "stagger#mkstage1 只绑定本期原片，不需要额外图片。"
+                ),
+            },
+            *_ROLL_SLOTS,
+            _ACTION_SLOT,
+        ],
+    },
     NUMBERED_TEMPLATE_ID: {
         "id": NUMBERED_TEMPLATE_ID,
         "name": "三项编号图与口播重点",
@@ -377,6 +399,7 @@ def overlay_templates() -> list[dict]:
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
             NUMBERED_TEMPLATE_ID,
+            LIVE_STRIP_TEMPLATE_ID,
             PACKAGE_TEMPLATE_ID,
             LINE_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,

@@ -27,6 +27,7 @@ from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_highlights import apply_highlight_edits
 from .video_editing_hypit import hypit_tools, internal_hypit_available, requires_hypit
 from .video_editing_hypit_strips import (
+    LIVE_STRIP_GROUP,
     STAGGER_GROUPS,
     STRIP_SIDECAR,
     stagger_audio_frame,
@@ -43,6 +44,7 @@ from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
     LEGACY_PICTURE_TEMPLATE_ID,
     LINE_TEMPLATE_ID,
+    LIVE_STRIP_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
     NUMBERED_TEMPLATE_ID,
     PACKAGE_TEMPLATE_ID,
@@ -694,6 +696,11 @@ def compile_episode(
             (NUMBERED_GROUP,),
             1240,
             "将主字幕放在原生编号标签的下方。",
+        ),
+        LIVE_STRIP_TEMPLATE_ID: (
+            (LIVE_STRIP_GROUP,),
+            1240,
+            "将主字幕放在原生斜切标签的下方。",
         ),
         PRESENTER_TEMPLATE_ID: (
             ("LYO01", "LYO04"),

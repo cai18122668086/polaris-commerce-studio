@@ -24,6 +24,8 @@ from .video_editing_catalog import (
     planning_runtime_snapshot,
     unavailable_template_groups,
 )
+from .video_editing_hypit import hypit_tools
+from .video_editing_hypit_strips import LIVE_STRIP_GROUP
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest
@@ -37,6 +39,24 @@ from .video_editing_task_models import (
 )
 from .video_editing_template_materials import template_image_requirements
 from .video_editing_transcript_store import read_transcript_artifact
+
+
+def live_strip_blockers(
+    settings: Settings, workspace_id: str, template: dict | None, source_subtitles: str
+) -> dict[str, list[str]]:
+    if not any(
+        slot["group_id"] == LIVE_STRIP_GROUP
+        for slot in (template or {}).get("slots", [])
+    ):
+        return {}
+    blockers = []
+    if source_subtitles != "none":
+        blockers.append("source-subtitles-must-be-none")
+    try:
+        hypit_tools(settings, workspace_id)
+    except (OSError, ValueError):
+        blockers.append("original-hypit-internal-runtime-unavailable")
+    return {LIVE_STRIP_GROUP: blockers} if blockers else {}
 
 
 def eligible() -> ColumnElement[bool]:
@@ -289,6 +309,11 @@ def process(
                 local_dependencies(settings.video_editing_native_bindings_file),
                 template,
             )
+            runtime["unavailable_template_groups"].update(
+                live_strip_blockers(
+                    settings, workspace_id, template, snapshot["source_subtitles"]
+                )
+            )
             image_requirements = template_image_requirements(
                 template, snapshot["asset_cards"], verified_materials
             )
@@ -350,11 +375,16 @@ def process(
                         external.get(rid, {}), bindings.get(rid)
                     ),
                 )
+                current.update(
+                    live_strip_blockers(
+                        settings, workspace_id, template, snapshot["source_subtitles"]
+                    )
+                )
                 if current.keys() - runtime["unavailable_template_groups"].keys():
                     raise ApiError(
                         409,
                         "EDITING_TEMPLATE_DEPENDENCIES_CHANGED",
-                        "准备后有模板原件无法核验，请重新准备并核对可选动效。",
+                        "准备后有模板运行条件发生变化，请重新准备并核对可选动效。",
                     )
             guard("planning")
             scoped = settings.model_copy(update={"video_editing_plan_model": model})

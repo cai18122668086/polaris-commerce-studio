@@ -39,6 +39,14 @@ from .video_editing_episode_compiler import (
     NativePlacement,
 )
 from .video_editing_highlights import AUTOMATIC_TEXT_PROFILE
+from .video_editing_hypit_strips import (
+    LIVE_STRIP_GROUP,
+    STRIP_EVENTS,
+    STRIP_IMAGE,
+    STRIP_TEXT,
+    compile_flow_plate,
+    compile_strips,
+)
 from .video_editing_judgment import (
     JUDGMENT_BACKGROUND,
     JUDGMENT_CONCLUSION,
@@ -554,6 +562,7 @@ def _entry_sound(
             QUESTION_CARD_GROUP: "原问号首个可见帧给一次短提示，口播继续。",
             CARD_GROUP: "图卡进入时给一次短提示，口播继续。",
             NUMBERED_GROUP: "各项原生编号标签进入时给一次短提示，口播继续。",
+            LIVE_STRIP_GROUP: "每道斜切标签开始出现时给一次短提示，口播继续。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
             JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
             LINE_GROUP: "线描手势入场时给一次原库提示音，口播继续。",
@@ -659,6 +668,75 @@ def _numbered_entry(
             "placeholders": slots,
             "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[NUMBERED_GROUP]),
             "browser_live_background": True,
+        },
+    ), anchors
+
+
+def _live_strip_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    assets = {
+        row["id"]: row
+        for row in cards
+        if row["kind"] == "original_video" and row["id"].startswith("source-")
+    }
+    try:
+        anchors = word_bindings(beat, transcript, contract, set(assets))
+        text = {row["path"]: row["token_ids"] for row in anchors["text"]}
+        media = anchors["media"]
+        if (
+            beat.relation not in {"parallel", "sequence"}
+            or len(beat.relation_items) != 3
+            or set(text) != set(STRIP_TEXT)
+            or len(media) != 1
+            or media[0]["path"] != STRIP_IMAGE
+            or beat.asset_ids != [media[0]["asset_id"]]
+            or any(
+                item.native_text_paths != [path]
+                or item.asset_ids
+                or item.native_media_paths
+                or item.first_token_id != text[path][0]
+                or item.last_token_id != text[path][-1]
+                for item, path in zip(beat.relation_items, STRIP_TEXT, strict=True)
+            )
+        ):
+            raise ValueError("Each original strip must correspond to a spoken item")
+        anchors["media_clocks"] = [
+            compile_flow_plate(anchors, assets, transcript, live_stage=True)
+        ]
+        compile_strips(package, group, anchors, assets, live_stage=True)
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_STRIP_INPUTS_REQUIRED",
+            "斜切标签需绑定同期原片及三个按首词触发的实录短词，末项须留出入场时间。",
+        ) from error
+    config = read_json(inside(package, group["input_template"]))
+    set_native_field(config, STRIP_IMAGE, None)
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(
+            layer="overlay",
+            rect=[0, 0, 1, 1],
+            reason="原生斜切标签使用本期同期活动画面，主字幕单独排在下方。",
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": LIVE_STRIP_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-live-strip-story-v1",
+            "design_reason": "按实录词点沿用原斜切、擦入、字体与大小，标签让出脸部。",
+            "parameter_decisions": {"fonts": "沿用原思源宋体 Heavy。"},
+            "config": config,
+            "placeholders": [STRIP_IMAGE],
+            "hypit_live_stage": True,
         },
     ), anchors
 
@@ -1224,6 +1302,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = NUMBERED_EVENTS
+        elif beat.group_id == LIVE_STRIP_GROUP:
+            entries[beat.id], anchors = _live_strip_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = STRIP_EVENTS
         elif beat.group_id == JUDGMENT_GROUP:
             entries[beat.id], anchors = _judgment_entry(
                 package, group, beat, transcript, asset_cards or []
@@ -1259,7 +1342,8 @@ def build_overlay_recipes(
         )
     has_scene = any(entry.placement.layer == "scene" for entry in entries.values())
     has_bottom_caption_lane = any(
-        beat.group_id in {ROTATION_GROUP, JUDGMENT_GROUP, NUMBERED_GROUP}
+        beat.group_id
+        in {ROTATION_GROUP, JUDGMENT_GROUP, NUMBERED_GROUP, LIVE_STRIP_GROUP}
         for beat in beats
     )
     has_lower_caption_lane = any(

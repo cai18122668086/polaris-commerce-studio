@@ -8,6 +8,7 @@ from typing import Any
 
 from .motion_library import MOTION_SHA256, inside, read_json, sha256
 from .motion_library_validation import group_status
+from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import LibraryChoiceSnapshot
 
 
@@ -143,15 +144,37 @@ def template_dependencies(package: Path, group: dict[str, Any]) -> list[dict[str
             references.setdefault(value[8:], []).append(path)
 
     visit(read_json(package / group["input_template"]), "")
+    native_aliases: dict[str, list[str]] = {}
+    if group.get("backend") == "browser":
+        prefix = group["browser_directory"] + "/"
+        for path, value in read_json(
+            package / "catalog/native-relative-assets.json"
+        ).items():
+            if path.startswith(prefix) and value.startswith("input://"):
+                rid = value[8:]
+                if external.get(rid, {}).get("kind") == "font":
+                    native_aliases.setdefault(rid, []).append(path.removeprefix(prefix))
+                    references.setdefault(rid, [])
     return [
         {
             "id": rid,
             "kind": external.get(rid, {}).get("kind", "unresolved"),
             "display_name": asset_label(external[rid]) if rid in external else rid,
             "input_fields": fields,
-            "binding_scope": "current_project_media"
-            if external.get(rid, {}).get("kind") == "media"
-            else "exact_native_dependency",
+            "binding_scope": (
+                "current_project_media"
+                if external.get(rid, {}).get("kind") == "media"
+                else "selectable_original_font"
+                if group.get("id") == CARD_GROUP and fields == ["/font"]
+                else "engine_font_reference"
+                if rid in native_aliases
+                else "exact_native_dependency"
+            ),
+            **(
+                {"native_resource_paths": native_aliases[rid]}
+                if rid in native_aliases
+                else {}
+            ),
             "availability": "requires_explicit_task_binding",
         }
         for rid, fields in references.items()

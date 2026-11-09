@@ -125,7 +125,7 @@ def validate_manifest(data: dict, package: Path) -> list[dict]:
         or data["library_release"] != MOTION_SHA256
     ):
         raise ValueError("Native batch belongs to a different original release")
-    if data["backend"] not in {"subtitle", "scene", "unified"}:
+    if data["backend"] not in {"subtitle", "scene", "unified", "browser"}:
         raise ValueError("Unsupported native cohort evidence backend")
     if data["backend"] != "subtitle" and not data.get("source_asset_id"):
         raise ValueError(
@@ -217,6 +217,7 @@ def execute(
     state: Path,
     settings: Settings,
     requested: set[str] | None = None,
+    chrome: Path | None = None,
 ) -> dict[str, Any]:
     package = settings.video_editing_library_dir.resolve()
     if root.resolve().is_relative_to(package) or state.resolve().is_relative_to(
@@ -230,6 +231,8 @@ def execute(
         raise ValueError("Native validation manifest is too large")
     data = read_json(manifest)
     cases = validate_manifest(data, package)
+    if chrome is not None and (data["backend"] != "browser" or not chrome.is_file()):
+        raise ValueError("Browser evidence needs an installed Chrome executable")
     if requested and not requested <= {c["group_id"] for c in cases}:
         raise ValueError("Requested group is outside the recorded original cohort")
     transcript_file = Path(data["transcript"]["path"]).resolve()
@@ -257,6 +260,7 @@ def execute(
         "semantic_review": "unreviewed",
         "visual_acceptance": "unreviewed",
         "scope": "concrete native components from current words, not completed films",
+        **({"chrome_sha256": sha256(chrome)} if chrome else {}),
     }
     for case in cases:
         gid = case["group_id"]
@@ -278,6 +282,15 @@ def execute(
                     case["recipe"],
                     assets,
                 )
+                if chrome:
+                    bindings = instance / "bindings.json"
+                    atomic_json(
+                        bindings,
+                        {
+                            **read_json(bindings),
+                            "tools": {"chrome": str(chrome.resolve())},
+                        },
+                    )
                 result["status"] = "schema_admitted"
                 for command in ("check", "render-group"):
                     run(
@@ -370,6 +383,7 @@ def main() -> None:
     parser.add_argument("--ffmpeg", required=True)
     parser.add_argument("--ffprobe", required=True)
     parser.add_argument("--groups", nargs="+")
+    parser.add_argument("--chrome", type=Path)
     args = parser.parse_args()
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]  # Pydantic BaseSettings control.
@@ -386,6 +400,7 @@ def main() -> None:
         args.state_dir,
         settings,
         set(args.groups) if args.groups else None,
+        args.chrome,
     )
     print(
         json.dumps({"state": result["state"], "counts": result["counts"]}), flush=True

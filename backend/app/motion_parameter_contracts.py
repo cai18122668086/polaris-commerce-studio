@@ -13,6 +13,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from .motion_library import MOTION_SHA256, read_json, sha256
+from .video_editing_browser_clocks import CARD_GROUP, CARD_LANDMARKS
 from .video_editing_media_clocks import clock_profile
 
 TEXT_NAMES = {
@@ -109,6 +110,14 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
             if category == "resource":
                 resource_kind = "media"
         elif isinstance(value, str) and (
+            (
+                group["id"] in {"CX-G04", "CX-G05", "CX-G06"}
+                and names == ["items", "image"]
+            )
+            or (group["id"] == "CX-G08" and parts == ["presenter"])
+        ):
+            category, resource_kind = "resource", "media"
+        elif isinstance(value, str) and (
             (group["id"] == "Z-M07" and names == ["content", "photos"])
             or (group["id"] == "Z-M08" and names == ["content", "items", "image"])
         ):
@@ -117,6 +126,7 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
             (first == "content" and key not in STYLE_NAMES)
             or (group["id"] == "LYO02" and parts == ["content", "theme"])
             or (backend == "browser" and key in TEXT_NAMES)
+            or (group["id"] == "CX-G06" and names == ["items", "description"])
         ):
             category = "text"
         elif type(value) in {int, float}:
@@ -146,7 +156,12 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
             ] and key in SHIFTED_GEOMETRY_EVENTS.get(group["id"], ()):
                 category, unit = "event", "frames"
             elif backend == "browser" and "keys" in names and parts[-1] == 0:
-                category, unit = "native_keyframe_clock", "frames"
+                category = (
+                    "event"
+                    if group["id"] == CARD_GROUP and pointer(parts) in CARD_LANDMARKS
+                    else "native_keyframe_clock"
+                )
+                unit = "frames"
             elif first == "content":
                 category = "numeric_content_requires_grounding"
         elif value is None and key in {"presenter", "background"}:

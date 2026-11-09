@@ -12,8 +12,13 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
 from .motion_parameter_contracts import SHIFTED_GEOMETRY_EVENTS, input_contract
+from .video_editing_browser_clocks import (
+    CARD_GROUP,
+    card_font_evidence,
+    compile_card_clock,
+)
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_word_bindings import word_bindings
@@ -129,6 +134,14 @@ def compile_native_job(
         | {row["path"]: row["value"] for row in native["events"]}
         | media_clocks
     )
+    browser_clock = None
+    browser_font = None
+    if group["id"] == CARD_GROUP:
+        keyframes, browser_clock = compile_card_clock(
+            package, group, template, config, native
+        )
+        assignments.update(keyframes)
+        native["browser_clock"] = browser_clock
     omitted = recipe.get("empty_text", {})
     for path, reason in omitted.items():
         if (
@@ -168,7 +181,7 @@ def compile_native_job(
     for field in contract["fields"]:
         path, category = field["path"], field["category"]
         value = _get(config, path)
-        if category in {"text", "event", "resource", "optional_media"}:
+        if category in {"text", "event", "resource", "native_keyframe_clock"}:
             if path not in assignments or path not in placeholders or value is not None:
                 raise ValueError(
                     "Fresh native content/event/media needs an empty bound slot: "
@@ -177,10 +190,43 @@ def compile_native_job(
         elif category == "native_dependency":
             if not decisions.get(path.split("/")[1]) and not decisions.get(path):
                 raise ValueError("Record the native font/model choice: " + path)
-            if not isinstance(value, str) or value[8:] not in resources:
+            is_card_font = group["id"] == CARD_GROUP and path == "/font"
+            if is_card_font and isinstance(value, str) and value.startswith("pkg://"):
+                font = next(
+                    (
+                        asset
+                        for asset in read_json(package / "asset-manifest.json")[
+                            "assets"
+                        ]
+                        if asset["kind"] == "font" and asset["path"] == value[6:]
+                    ),
+                    None,
+                )
+                if not font:
+                    raise ValueError(
+                        "The selected browser card font must be an exact bundled font"
+                    )
+                browser_font = inside(package, font["path"])
+                if sha256(browser_font) != font["sha256"]:
+                    raise ValueError(
+                        "The selected browser card font must be an exact bundled font"
+                    )
+            elif (
+                not isinstance(value, str)
+                or not value.startswith("input://")
+                or value[8:] not in resources
+            ):
                 raise ValueError(
                     "Exact original font/model dependency is not bound: " + path
                 )
+            elif is_card_font:
+                if value != template["font"] or value[8:] not in recipe.get(
+                    "dependency_bindings", {}
+                ):
+                    raise ValueError(
+                        "Bind the original browser card font or select a bundled font"
+                    )
+                browser_font = Path(resources[value[8:]])
         elif category == "numeric_content_requires_grounding":
             raise ValueError(
                 "Native numeric content needs a fact-grounded recipe: " + path
@@ -231,6 +277,10 @@ def compile_native_job(
         if _get(config, path) is not None:
             raise ValueError("A binding would overwrite existing native content")
         _set(config, path, value)
+    if browser_clock is not None:
+        if browser_font is None:
+            raise ValueError("Browser card font is not bound")
+        browser_clock.update(card_font_evidence(browser_font, config))
     schema = read_json(package / group["input_schema"])
     Draft202012Validator(schema).validate(config)
     job = {
@@ -262,6 +312,7 @@ def compile_native_job(
             "job_sha256": sha256(root / "job.json"),
             "word_bindings_sha256": sha256(root / "word-bindings.json"),
             "media_clocks": clock_receipts,
+            **({"browser_clock": browser_clock} if browser_clock else {}),
             "schema_validation": "passed",
             "native_execution": "not_performed",
             "semantic_review": "unreviewed",

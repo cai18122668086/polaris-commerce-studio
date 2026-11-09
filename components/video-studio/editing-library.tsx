@@ -20,6 +20,11 @@ const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const notePath = `${root}/projects/{project_id}/editing-library-notes` as const;
 const runtimeLabel: Record<string, string> = { unverified: "待实际验证", sample_rendered: "有编码样本 · 未验收", sample_failed: "有失败样本", mixed_samples: "样本结果不一" };
 const kindLabel: Record<string, string> = { font: "字体", sfx: "音效", "sfx-processed": "处理后的音效", music: "背景音乐", image: "插画", geometry: "几何轮廓", media: "历史素材引用", model: "模型依赖" };
+const dependencyLabel: Record<string, string> = {
+  current_project_media: "需绑定本片真实素材",
+  engine_font_reference: "原入口引用，按运行分支核对",
+  selectable_original_font: "可显式选择原包字体",
+};
 const choiceLabel = { consider: "优先考虑", avoid: "本项目暂不选用", clear: "清除倾向" };
 const targetKey = (kind: TargetKind, id: string) => `${kind}:${id}`;
 
@@ -136,7 +141,16 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
       <div className={styles.filters}><label>搜索动效<input aria-label="搜索原库动效" value={search} onChange={e => setSearch(e.target.value)} placeholder="组 ID、名称或用途" /></label><label>画面类型<select aria-label="动效画面类型" value={groupKind} onChange={e => setGroupKind(e.target.value)}><option value="">全部</option><option value="visual">画面动效</option><option value="subtitle">字幕动效</option></select></label><label>表达用途<select aria-label="动效表达用途" value={functionFilter} onChange={e => setFunctionFilter(e.target.value)}><option value="">全部用途</option>{functions.map(f => <option key={f} value={f}>{f}</option>)}</select></label></div>
       <p>显示 {filtered.length} / {catalog.total} 组</p>
       <div className={styles.grid} aria-label="原库动效列表">{filtered.map(g => <article key={g.id} data-group-id={g.id}><div><small>{g.id} · {g.kind === "subtitle" ? "字幕" : "画面"}</small><b>{g.name}</b></div><p>{g.purpose}</p><span className={styles.status}>{runtimeLabel[g.runtime_validation] || "待实际验证"}</span>{noteBadge("group", g.id)}<div className={styles.actions}><button type="button" onClick={() => void inspectGroup(g)}>查看详情</button><button type="button" disabled={!saved} onClick={() => chooseTarget({ kind: "group", id: g.id, name: g.name })}>记录选组倾向</button></div></article>)}</div>
-      {detailId && <section className={styles.detail} aria-label="动效组详情"><b>{detailId} · {catalog.groups.find(g => g.id === detailId)?.name}</b>{detail ? <><p>{detail.contract_status === "declared" ? "有原始参数合同" : "使用原始 schema 与入口，未删去本组"}。模板列出的外部依赖如下；引擎还可能有隐含依赖，仍需实际运行检查。</p>{detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>{kindLabel[d.kind] || d.kind}：{d.display_name} · {d.binding_scope === "current_project_media" ? "需绑定本片真实素材" : "需绑定原指定依赖"}</li>)}</ul> : <p>模板未列出外部输入引用；这不等于运行依赖已齐全。</p>}<p>已登记 {detail.runtime_evidence.length} 份具体运行记录，画面和听感未验收。</p></> : <p>正在读取本组详情…</p>}</section>}
+      {detailId && <section className={styles.detail} aria-label="动效组详情">
+        <b>{detailId} · {catalog.groups.find(g => g.id === detailId)?.name}</b>
+        {detail ? <>
+          <p>{detail.contract_status === "declared" ? "有原始参数合同" : "保留原始 schema 与入口"}。以下是模板及浏览器入口登记的外部输入，其他运行依赖仍需按实际分支核对。</p>
+          {detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>
+            {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}
+          </li>)}</ul> : <p>暂未登记外部输入引用。</p>}
+          <p>已登记 {detail.runtime_evidence.length} 份具体运行记录，画面和听感未验收。</p>
+        </> : <p>正在读取本组详情…</p>}
+      </section>}
     </>}
     {tab === "resources" && <>
       <div className={styles.filters}><label>资源来源<select aria-label="原库资源来源" value={source} onChange={e => { setSource(e.target.value as typeof source); setAssetKind(""); setResourceOffset(0); setAudioId(""); setResourceLoading(true); }}><option value="bundled">原包内置资源</option><option value="external">原包外部引用</option></select></label><label>资源类型<select aria-label="原库资源类型" value={assetKind} onChange={e => { setAssetKind(e.target.value); setResourceOffset(0); setResourceLoading(true); }}><option value="">全部</option>{(source === "bundled" ? ["font", "sfx", "sfx-processed", "music", "image", "geometry"] : ["font", "model", "media"]).map(k => <option key={k} value={k}>{kindLabel[k]}</option>)}</select></label></div>

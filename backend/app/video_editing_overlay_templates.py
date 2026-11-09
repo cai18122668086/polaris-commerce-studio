@@ -2,12 +2,14 @@
 
 from copy import deepcopy
 
+from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
 
 MIN_OVERLAY_TYPES = 5
 PREFERRED_OVERLAY_TYPES = 10
 LEGACY_PICTURE_TEMPLATE_ID = "picture-compare-v1"
 PICTURE_TEMPLATE_ID = "picture-compare-v2"
+ROTATION_TEMPLATE_ID = "rotation-cards-v1"
 _SHARED_SLOTS = [
     {"group_id": "SG-S09", "purpose": "分别表达单件规格和到手总量"},
     {"group_id": "SG-S03", "purpose": "强调真实的使用时长或体验短句"},
@@ -62,6 +64,27 @@ _TEMPLATES = {
         "id": "roll-compare-v2",
         "name": "滚动报价与规格对照",
         "slots": [*_ROLL_SLOTS, _ACTION_SLOT],
+    },
+    ROTATION_TEMPLATE_ID: {
+        "id": ROTATION_TEMPLATE_ID,
+        "name": "三图轮换与口播重点",
+        "slots": [
+            {
+                "group_id": ROTATION_GROUP,
+                "purpose": "保留同期人物，围绕三个并列事项逐张轮换图卡焦点",
+                "layer": "scene",
+                "binding": (
+                    "仅在有三个并列事项及三张对应项目图时使用。"
+                    "presenter 使用本期原片 source 素材，原生暖色背景固定。"
+                    "首项首词开始该段，三项各用短标签和自己的首词锚定 at。"
+                    "relation_items 按顺序绑定各项标签和图片，不共用素材。"
+                    "在第三项之后给切换留出实录阅读区间。"
+                ),
+            },
+            _QUESTION_SLOT,
+            *_ROLL_SLOTS,
+            _ACTION_SLOT,
+        ],
     },
     LEGACY_PICTURE_TEMPLATE_ID: {
         "id": LEGACY_PICTURE_TEMPLATE_ID,
@@ -119,6 +142,7 @@ def overlay_templates() -> list[dict]:
             "roll-compare-v2",
             "question-story-v1",
             PICTURE_TEMPLATE_ID,
+            ROTATION_TEMPLATE_ID,
         )
     ]
 

@@ -6,7 +6,21 @@ from typing import Any
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, inside, read_json
 from .motion_parameter_contracts import input_contract
-from .video_editing_browser_clocks import CARD_GROUP, CARD_LANDMARKS, SPLIT_TITLE_FONT
+from .video_editing_browser_clocks import (
+    CARD_GROUP,
+    CARD_LANDMARKS,
+    FRUIT_LIST_FONTS,
+    SPLIT_TITLE_FONT,
+)
+from .video_editing_browser_rotation import (
+    ROTATION_EVENTS,
+    ROTATION_GROUP,
+    ROTATION_IMAGES,
+    ROTATION_LABELS,
+    ROTATION_MATTE,
+    rotation_card_clock,
+    rotation_source_clock,
+)
 from .video_editing_contracts import (
     EditingOptions,
     SemanticBeat,
@@ -398,11 +412,95 @@ def _entry_sound(
         purpose={
             QUESTION_GROUP: "整帧追问入场时给一次短提示，口播继续。",
             CARD_GROUP: "图卡进入时给一次短提示，口播继续。",
+            ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
         }.get(beat.group_id, "原生文字动效入场时给一次短提示，口播继续。"),
         source_start_seconds=source_start,
         trim_duration_seconds=length,
         target_peak_dbfs=peak,
     )
+
+
+def _rotation_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    assets = {
+        card["id"]: {
+            "kind": card["kind"],
+            "sha256": card["sha256"],
+            **({"source": "project_upload"} if card["kind"] == "image" else {}),
+        }
+        for card in asset_cards
+        if (card["kind"] == "image" and card["id"].startswith("material-"))
+        or (card["kind"] == "original_video" and card["id"].startswith("source-"))
+    }
+    config = read_json(inside(package, group["input_template"]))
+    try:
+        anchors = word_bindings(beat, transcript, contract, set(assets))
+        media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        text = {row["path"]: row for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        if (
+            beat.relation != "parallel"
+            or len(beat.relation_items) != 3
+            or set(media.values()) != set(beat.asset_ids)
+            or set(text) != set(ROTATION_LABELS)
+            or set(events) != set(ROTATION_EVENTS)
+            or any(
+                item.asset_ids != [media.get(image_path)]
+                or item.native_text_paths != [label_path]
+                or item.native_media_paths != [image_path]
+                or item.first_token_id != text[label_path]["token_ids"][0]
+                or item.last_token_id != text[label_path]["token_ids"][-1]
+                for item, label_path, image_path in zip(
+                    beat.relation_items, ROTATION_LABELS, ROTATION_IMAGES, strict=True
+                )
+            )
+        ):
+            raise ValueError("Rotating cards must bind each spoken item to its image")
+        source = rotation_source_clock(anchors, assets, transcript)
+        config["duration"] = (
+            source["source_end_ms"] - source["source_start_ms"]
+        ) / 1000
+        for path, row in text.items():
+            set_native_field(config, path, row["text"])
+        for path, row in events.items():
+            set_native_field(config, path, row["value"])
+        rotation_card_clock(config, anchors, assets)
+    except ValueError as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_ROTATION_INPUTS_REQUIRED",
+            "轮换图卡需绑定本期原片与三个各自配图的实录短词，首项开场，后两项留足切换时间。",
+        ) from error
+    slots = [*text, *events, *media]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(
+            layer="scene", rect=[0, 0, 1, 1], reason="按原生暖色构图轮换同期图卡。"
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": ROTATION_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-rotation-cards-v1",
+            "design_reason": "保留三张原卡的重叠位置和切换曲线，按本期词点轮换。",
+            "parameter_decisions": {
+                key: "沿用原生构图、画幅和卡片切换机制。" for key in config
+            },
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": [*FRUIT_LIST_FONTS, ROTATION_MATTE],
+        },
+    ), anchors
 
 
 def build_overlay_recipes(
@@ -440,6 +538,7 @@ def build_overlay_recipes(
     cues: list[NativeSoundCue] = []
     for beat in beats:
         group = groups[beat.group_id]
+        paths: tuple[str | None, ...]
         if beat.group_id == CARD_GROUP:
             entries[beat.id], anchors = _card_entry(
                 package,
@@ -449,15 +548,22 @@ def build_overlay_recipes(
                 asset_cards or [],
                 live_background=template["id"] == PICTURE_TEMPLATE_ID,
             )
-            cues.extend(
-                _entry_sound(beat, anchors, transcript.duration_ms, avoided, path)
-                for path in _CARD_ENTRY_PATHS
+            paths = _CARD_ENTRY_PATHS
+        elif beat.group_id == ROTATION_GROUP:
+            entries[beat.id], anchors = _rotation_entry(
+                package, group, beat, transcript, asset_cards or []
             )
+            paths = ROTATION_EVENTS
         else:
             make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
             entries[beat.id], anchors = make_entry(package, group, beat, transcript)
-            cues.append(_entry_sound(beat, anchors, transcript.duration_ms, avoided))
+            paths = (None,)
+        cues.extend(
+            _entry_sound(beat, anchors, transcript.duration_ms, avoided, path)
+            for path in paths
+        )
     has_scene = any(entry.placement.layer == "scene" for entry in entries.values())
+    has_rotation = any(beat.group_id == ROTATION_GROUP for beat in beats)
     return EpisodeRecipeBundle(
         version="tengli.episode-recipes/1",
         library_release=MOTION_SHA256,
@@ -495,7 +601,12 @@ def build_overlay_recipes(
         typography=None,
         layout_policy={
             "reason": "按竖屏居中口播布局保护人物与主字幕。",
-            "subtitle_safe_rect": [0.055, 0.255, 0.89, 0.625],
+            "subtitle_safe_rect": [
+                0.055,
+                0.255,
+                0.89,
+                0.735 if has_rotation else 0.625,
+            ],
         },
         protected_regions=[
             {

@@ -21,6 +21,8 @@ from .video_editing_contracts import Transcript
 ROTATION_GROUP = "CX-G04"
 ROTATION_MATTE = "model-01eb6a29a5c4d8edb30b"
 ROTATION_EVENTS = tuple(f"/items/{i}/at" for i in range(3))
+ROTATION_IMAGES = tuple(f"/items/{i}/image" for i in range(3))
+ROTATION_LABELS = tuple(f"/items/{i}/label" for i in range(3))
 _ROTATION_REF = "tengli-card-rotation-"
 _FPS = 30
 _OWNER = Path("src/engines/workspace/商业口播_可编辑改造_20261104")
@@ -106,29 +108,35 @@ def compile_rotation_clock(
     _audit(package, group)
     if set((*FRUIT_LIST_FONTS, ROTATION_MATTE)) - resources.keys():
         raise ValueError("Bind the original card fonts and presenter matte explicitly")
+    return rotation_card_clock(config, native, assets)
+
+
+def rotation_card_clock(
+    config: dict, native: dict, assets: dict[str, dict]
+) -> dict[str, Any]:
+    """Validate the card geometry's current image and measured focus inputs."""
     duration = config["duration"]
     items = config["items"]
     frames = round(duration * _FPS)
     events = {row["path"]: row for row in native["events"]}
     texts = {row["path"]: row for row in native["text"]}
     media = {row["path"]: row["asset_id"] for row in native["media"]}
-    pictures = [f"/items/{i}/image" for i in range(3)]
     if (
         not 0 < duration <= 30
         or len(items) != 3
         or config["background"] is not None
-        or set(media) != {"/presenter", *pictures}
+        or set(media) != {"/presenter", *ROTATION_IMAGES}
         or any(
-            assets[media[path]].get("kind") != "image"
+            assets.get(media[path], {}).get("kind") != "image"
             or assets[media[path]].get("source") != "project_upload"
-            for path in pictures
+            for path in ROTATION_IMAGES
         )
-        or len({assets[media[path]]["sha256"] for path in pictures}) != 3
+        or len({assets[media[path]]["sha256"] for path in ROTATION_IMAGES}) != 3
     ):
         raise ValueError("Rotating cards need three distinct current pictures")
     for i, item in enumerate(items):
         event = events.get(ROTATION_EVENTS[i])
-        text = texts.get(f"/items/{i}/label")
+        text = texts.get(ROTATION_LABELS[i])
         if (
             not event
             or not text

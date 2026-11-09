@@ -4,6 +4,10 @@ import pytest
 
 from app import video_editing_browser_clocks as cards
 from app import video_editing_browser_rotation as rotation
+from app.errors import ApiError
+from app.motion_library import atomic_json
+from app.video_editing_contracts import SemanticBeat, TranscriptToken
+from app.video_editing_overlay_recipes import _rotation_entry
 from tests.test_video_editing_native_compiler import inputs
 
 
@@ -174,3 +178,91 @@ def test_rotation_binds_spoken_focuses_and_a_moving_presenter(tmp_path, monkeypa
     assets["source"]["sha256"] = "c" * 64
     with pytest.raises(ValueError, match="current, measured presenter"):
         rotation.rotation_source_clock(native, assets, transcript)
+
+
+def test_rotation_template_binds_each_current_item_before_worker_admission(tmp_path):
+    package, transcript, _, _ = inputs(tmp_path)
+    group = {
+        "id": rotation.ROTATION_GROUP,
+        "backend": "browser",
+        "input_template": "rotation.json",
+        "input_schema": "schema.json",
+    }
+    atomic_json(
+        package / group["input_template"],
+        {
+            "background": None,
+            "presenter": "input://original-demo",
+            "duration": 2.4,
+            "items": [
+                {"label": "旧卡", "at": 0.12 + i, "enter": 0.36, "image": ""}
+                for i in range(3)
+            ],
+        },
+    )
+    words = (
+        ("洗碗", 1000, 1340),
+        ("刷锅", 1420, 1700),
+        ("洗水果", 2000, 2300),
+        ("很方便", 2300, 3000),
+    )
+    transcript.tokens = [
+        TranscriptToken(id=f"t{i}", text=word, start_ms=a, end_ms=b)
+        for i, (word, a, b) in enumerate(words)
+    ]
+    pictures = [f"material-{i}" for i in range(3)]
+    beat = SemanticBeat.model_validate(
+        {
+            "id": "rotation",
+            "group_id": group["id"],
+            "relation": "parallel",
+            "reason": "三项用途逐一轮换。",
+            "first_token_id": "t0",
+            "last_token_id": "t3",
+            "asset_ids": ["source-recorded", *pictures],
+            "native_text": [
+                {"path": path, "first_token_id": f"t{i}", "last_token_id": f"t{i}"}
+                for i, path in enumerate(rotation.ROTATION_LABELS)
+            ],
+            "native_events": [
+                {"path": path, "token_id": f"t{i}", "edge": "start"}
+                for i, path in enumerate(rotation.ROTATION_EVENTS)
+            ],
+            "native_media": [{"path": "/presenter", "asset_id": "source-recorded"}]
+            + [
+                {"path": path, "asset_id": asset}
+                for path, asset in zip(rotation.ROTATION_IMAGES, pictures, strict=True)
+            ],
+            "relation_items": [
+                {
+                    "id": f"item-{i}",
+                    "first_token_id": f"t{i}",
+                    "last_token_id": f"t{i}",
+                    "asset_ids": [asset],
+                    "native_text_paths": [rotation.ROTATION_LABELS[i]],
+                    "native_media_paths": [rotation.ROTATION_IMAGES[i]],
+                }
+                for i, asset in enumerate(pictures)
+            ],
+        }
+    )
+    assets = [
+        {
+            "id": "source-recorded",
+            "kind": "original_video",
+            "sha256": transcript.source_sha256,
+        }
+    ]
+    assets.extend(
+        {"id": asset, "kind": "image", "sha256": str(i) * 64}
+        for i, asset in enumerate(pictures)
+    )
+    entry, anchors = _rotation_entry(package, group, beat, transcript, assets)
+    assert entry.placement.layer == "scene"
+    assert entry.recipe["config"]["duration"] == 2
+    assert all(item["at"] is None for item in entry.recipe["config"]["items"])
+    assert [e["value"] for e in anchors["events"]] == [0, 0.42, 1]
+    assets[-1]["sha256"] = assets[-2]["sha256"]
+    with pytest.raises(ApiError) as caught:
+        _rotation_entry(package, group, beat, transcript, assets)
+    assert caught.value.code == "EDITING_TEMPLATE_ROTATION_INPUTS_REQUIRED"

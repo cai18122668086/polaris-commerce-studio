@@ -18,6 +18,7 @@ from pydantic import Field, model_validator
 from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_browser_clocks import CARD_GROUP
+from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_hypit import hypit_tools, internal_hypit_available, requires_hypit
@@ -34,6 +35,7 @@ from .video_editing_overlay_templates import (
     LEGACY_PICTURE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
     PICTURE_TEMPLATE_ID,
+    ROTATION_TEMPLATE_ID,
     overlay_template,
     validate_template_plan,
 )
@@ -564,14 +566,25 @@ def compile_episode(
                     "not_in_original_relation_schema"
                 )
         episode["production"]["beats"].append(production_beat)
-    if authoring.overlay_template_id in {
-        LEGACY_PICTURE_TEMPLATE_ID,
-        PICTURE_TEMPLATE_ID,
-    }:
+    caption_lane = {
+        LEGACY_PICTURE_TEMPLATE_ID: (
+            CARD_GROUP,
+            732,
+            "将主字幕放在原生三张图卡的上方。",
+        ),
+        PICTURE_TEMPLATE_ID: (CARD_GROUP, 732, "将主字幕放在原生三张图卡的上方。"),
+        ROTATION_TEMPLATE_ID: (
+            ROTATION_GROUP,
+            1257,
+            "将主字幕放在原生轮换图卡的下方。",
+        ),
+    }.get(authoring.overlay_template_id or "")
+    if caption_lane:
+        caption_group, baseline, lane_reason = caption_lane
         card_windows = [
             (shot["start_seconds"], shot["end_seconds"])
             for shot in episode["shots"]
-            if shot["group_id"] == CARD_GROUP
+            if shot["group_id"] == caption_group
         ]
         if card_windows:
             caption_role = episode["typography"]["caption"]
@@ -580,8 +593,10 @@ def compile_episode(
                 {
                     "start_seconds": caption["start_seconds"],
                     "end_seconds": caption["end_seconds"],
-                    "baseline_y_px": round(episode["output"]["height"] * 732 / 1280),
-                    "reason": "将主字幕放在原生三张图卡的上方。",
+                    "baseline_y_px": round(
+                        episode["output"]["height"] * baseline / 1280
+                    ),
+                    "reason": lane_reason,
                 }
                 for caption in episode["captions"]
                 if any(

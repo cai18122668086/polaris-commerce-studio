@@ -6,8 +6,6 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-from fontTools.ttLib import TTFont
-
 from .motion_library import sha256
 
 CARD_GROUP = "CX-G07"
@@ -83,6 +81,8 @@ def compile_split_clock(
 
 
 def card_font_evidence(font: Path, config: dict) -> dict[str, Any]:
+    from fontTools.ttLib import TTFont
+
     characters = {
         char
         for card in config["cards"]

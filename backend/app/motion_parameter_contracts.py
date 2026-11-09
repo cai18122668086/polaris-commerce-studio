@@ -27,6 +27,7 @@ from .video_editing_hypit_strips import (
     strip_fields,
 )
 from .video_editing_media_clocks import clock_profile
+from .video_editing_native_content import ROLE_CHAIN_GROUP, role_scene_contract
 from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
     QUESTION_BRANCH,
@@ -336,6 +337,11 @@ def input_contract(
                 }
             }
             if question_group and branch is None
+            else {}
+        ),
+        **(
+            {"native_scene_chain": role_scene_contract()}
+            if group["id"] == ROLE_CHAIN_GROUP
             else {}
         ),
         "fresh_recipe_required": True,

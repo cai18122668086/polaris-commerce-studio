@@ -45,10 +45,12 @@ from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_native_content import (
     CHAPTER_PATH,
     NUMBER_GROUP,
+    ROLE_CHAIN_GROUP,
     YEAR_GROUP,
     YEAR_PATH,
     chapter_ordinal,
     number_glyphs,
+    role_scene_chain,
     translation_labels,
     year_glyphs,
 )
@@ -221,6 +223,8 @@ def compile_native_job(
     if len(placeholders) != len(set(placeholders)):
         raise ValueError("Duplicate recipe placeholder")
     native = word_bindings(beat, transcript, contract, set(asset_files))
+    if beat.group_id == ROLE_CHAIN_GROUP:
+        native["role_scene_chain"] = role_scene_chain(native, asset_files)
     if beat.group_id in SILHOUETTE_GROUPS:
         silhouette_ids = {
             row["asset_id"]
@@ -548,6 +552,7 @@ def compile_native_job(
                         "number_glyphs",
                         "year_glyphs",
                         "translation_labels",
+                        "role_scene_chain",
                     )
                     if key in native
                 }

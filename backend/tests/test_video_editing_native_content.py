@@ -4,6 +4,7 @@ from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToke
 from app.video_editing_native_content import (
     chapter_ordinal,
     number_glyphs,
+    role_scene_chain,
     translation_labels,
     year_glyphs,
 )
@@ -128,3 +129,47 @@ def test_translation_labels_require_matching_spoken_occurrences():
     native["text"][3]["token_ids"] = ["t6", "t7"]
     with pytest.raises(ValueError, match="its own spoken label and caption"):
         translation_labels(native, labels)
+
+
+def test_role_scene_chain_keeps_the_shared_original_clock():
+    timing = "/timing/events/"
+    scenes = [
+        {
+            "path": f"{timing}scene_boundaries/{i}",
+            "value": i * 0.7,
+            "token_id": f"t{i}",
+            "edge": "start",
+        }
+        for i in range(16)
+    ]
+    handoff = {**scenes[5], "path": timing + "handoff"}
+    native = {
+        "events": [
+            *scenes,
+            {**scenes[4], "path": timing + "door_close"},
+            handoff,
+            {**scenes[15], "path": timing + "prohibition_in"},
+        ],
+        "media": [
+            {"path": f"/media/scene_layers/{i}/path", "asset_id": f"image-{i}"}
+            for i in range(16)
+        ],
+    }
+    assets = {f"image-{i}": {"kind": "image"} for i in range(16)}
+    result = role_scene_chain(native, assets)
+    assert result["scene_asset_ids"][5] == "image-5"
+    assert result["boundaries"][5] == {
+        "token_id": "t5",
+        "edge": "start",
+        "start_seconds": 3.5,
+    }
+    handoff["token_id"] = "t6"
+    with pytest.raises(ValueError, match="handoff"):
+        role_scene_chain(native, assets)
+    handoff["token_id"] = "t5"
+    scenes[4]["value"] = scenes[5]["value"]
+    with pytest.raises(ValueError, match="follow speech"):
+        role_scene_chain(native, assets)
+    assets["image-7"]["kind"] = "video"
+    with pytest.raises(ValueError, match="sixteen original"):
+        role_scene_chain(native, assets)

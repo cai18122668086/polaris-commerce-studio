@@ -1,6 +1,7 @@
 """Compile original native labels from current source anchors."""
 
 import re
+from itertools import pairwise
 from typing import Any
 
 from .video_editing_contracts import SemanticBeat, Transcript
@@ -11,6 +12,26 @@ NUMBER_GROUP = "W-R07"
 YEAR_GROUP = "AH-S07"
 YEAR_PATH = "/content/year"
 TRANSLATION_GROUP = "W-R02"
+ROLE_CHAIN_GROUP = "W-R15"
+_ROLE_SCENE_ORDER = (
+    "scene0",
+    "profile",
+    "doctor",
+    "door",
+    "closed",
+    "apart",
+    "apart_clean",
+    "operator_only",
+    "operating",
+    "trust_clean",
+    "trust",
+    "lying",
+    "seated",
+    "patient",
+    "patient_large",
+    "assembly",
+)
+_ROLE_SCENE_SHARED_EVENTS = {"door_close": 4, "handoff": 5, "prohibition_in": 15}
 _ORDINALS = (
     "First",
     "Second",
@@ -172,3 +193,79 @@ def translation_labels(native: dict[str, Any], authored: Any) -> list[dict[str, 
             }
         )
     return result
+
+
+def role_scene_contract() -> dict[str, Any]:
+    return {
+        "image_slots": [
+            {"path": f"/media/scene_layers/{index}/path", "native_role": role}
+            for index, role in enumerate(_ROLE_SCENE_ORDER)
+        ],
+        "role_label_overlay": {
+            "native_roles": ["profile", "doctor"],
+            "canvas_px": [540, 960],
+            "label_boxes_xyxy_px": [
+                [20, 45, 250, 145],
+                [290, 45, 520, 145],
+                [130, 760, 410, 860],
+            ],
+            "binding": "在原生角色字的位置避免给配图再印同层标题。",
+        },
+        "shared_word_events": {
+            f"/timing/events/{event}": f"/timing/events/scene_boundaries/{index}"
+            for event, index in _ROLE_SCENE_SHARED_EVENTS.items()
+        },
+        "binding": (
+            "素材序号保留原生角色顺序，scene_boundaries 只驱动原动作时钟。"
+            "角色名字来自原场景，素材内容按本期语义选用。"
+            "第一个切点绑定本段首词，关门、交接和禁行各与对应切点共用词点。"
+            "交叉淡化、留屏及连续换图仍按原引擎。"
+        ),
+    }
+
+
+def role_scene_chain(
+    native: dict[str, Any], assets: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Check the original sixteen scene roles and three coincident transitions."""
+    events = {row["path"]: row for row in native["events"]}
+    media = {row["path"]: row["asset_id"] for row in native["media"]}
+    prefix = "/timing/events/"
+    boundaries = [
+        events.get(f"{prefix}scene_boundaries/{index}")
+        for index in range(len(_ROLE_SCENE_ORDER))
+    ]
+    image_ids = [
+        media.get(f"/media/scene_layers/{index}/path")
+        for index in range(len(_ROLE_SCENE_ORDER))
+    ]
+    if any(
+        asset_id is None or assets[asset_id].get("kind") != "image"
+        for asset_id in image_ids
+    ):
+        raise ValueError("Bind all sixteen original role scene image slots")
+    anchors = [event for event in boundaries if event is not None]
+    if (
+        len(anchors) != len(_ROLE_SCENE_ORDER)
+        or anchors[0]["value"] != 0
+        or any(left["value"] >= right["value"] for left, right in pairwise(anchors))
+    ):
+        raise ValueError("Role scene boundaries must start at zero and follow speech")
+    for key, index in _ROLE_SCENE_SHARED_EVENTS.items():
+        shared = events.get(prefix + key, {})
+        if any(
+            shared.get(field) != anchors[index][field] for field in ("token_id", "edge")
+        ):
+            raise ValueError("Bind " + key + " to its original shared scene boundary")
+    return {
+        "scene_asset_ids": image_ids,
+        "boundaries": [
+            {
+                "token_id": event["token_id"],
+                "edge": event["edge"],
+                "start_seconds": event["value"],
+            }
+            for event in anchors
+        ],
+        "semantic_review": "unreviewed",
+    }

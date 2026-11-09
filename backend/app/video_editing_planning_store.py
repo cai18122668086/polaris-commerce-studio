@@ -108,6 +108,11 @@ def planning_response(
         "semantic_review": "unreviewed",
         "native_render_state": "not_compiled",
         "overlay_template": row.snapshot.get("overlay_template"),
+        "unavailable_template_group_ids": sorted(
+            row.snapshot["planning_runtime"]["unavailable_template_groups"]
+        )
+        if "planning_runtime" in row.snapshot
+        else None,
         "artifacts": [
             {
                 "id": row.id + ":" + a["role"],

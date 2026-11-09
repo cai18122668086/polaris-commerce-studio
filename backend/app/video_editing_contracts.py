@@ -426,6 +426,9 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     semantic_origin: Literal["tengli_gateway"] | None
     semantic_review: Literal["unreviewed"] = "unreviewed"
     native_render_state: Literal["not_compiled"] = "not_compiled"
+    unavailable_template_group_ids: list[str] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     overlay_template: EditingOverlayTemplate | None = Field(
         default=None, exclude_if=lambda value: value is None
     )

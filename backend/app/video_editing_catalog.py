@@ -3,33 +3,31 @@
 import hashlib
 import json
 from collections import Counter
+from collections.abc import Callable
+from functools import cache
 from pathlib import Path
 from typing import Any
 
 from .motion_library import MOTION_SHA256, inside, read_json, sha256
 from .motion_library_validation import group_status
-from .motion_local_dependencies import dependency_state
+from .motion_local_dependencies import DependencyState, dependency_state
 from .motion_parameter_contracts import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_browser_clocks import CARD_GROUP
-from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import LibraryChoiceSnapshot
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
 from .video_editing_hypit_strips import SLANT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import WHY_FONT, WHY_GROUP, WHY_PROPS
+from .video_editing_overlay_templates import AUTOMATIC_TEMPLATE_DEPENDENCIES
 
 _MATTING_MODEL = "model-01eb6a29a5c4d8edb30b"
 _NATIVE_ENGINE_DEPENDENCIES = {
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     LINE_GROUP: (LINE_BRUSH_FONT,),
     WHY_GROUP: (WHY_FONT, *WHY_PROPS),
-    ROTATION_GROUP: (ROTATION_MATTE,),
+    **AUTOMATIC_TEMPLATE_DEPENDENCIES,
     SLANT_GROUP: (FOREGROUND_MATTE,),
     "CXBR01": ("font-43a890795ad133d7",),
-    "LYO01": ("font-06e1a30f687ab7d3",),
-    "LYO02": ("font-06e1a30f687ab7d3", _MATTING_MODEL),
-    "LYO03": ("font-06e1a30f687ab7d3", _MATTING_MODEL),
-    "LYO04": ("font-06e1a30f687ab7d3",),
     "YYP04": (_MATTING_MODEL,),
     "YYP06": (_MATTING_MODEL,),
     **dict.fromkeys(
@@ -161,10 +159,35 @@ def audio_asset(package: Path, asset_id: str) -> tuple[dict[str, Any], Path]:
 def template_dependencies(
     package: Path, group: dict[str, Any], bindings: dict[str, str] | None = None
 ) -> list[dict[str, Any]]:
-    external = {
+    external = external_dependencies(package)
+    aliases = (
+        read_json(package / "catalog/native-relative-assets.json")
+        if group.get("backend") == "browser"
+        else {}
+    )
+    return _template_dependencies(
+        package,
+        group,
+        external,
+        aliases,
+        lambda rid: dependency_state(external[rid], (bindings or {}).get(rid)),
+    )
+
+
+def external_dependencies(package: Path) -> dict[str, dict]:
+    return {
         r["id"]: r
         for r in read_json(package / "catalog/external-resources.json")["resources"]
     }
+
+
+def _template_dependencies(
+    package: Path,
+    group: dict[str, Any],
+    external: dict[str, dict],
+    aliases: dict[str, str],
+    state_for: Callable[[str], DependencyState],
+) -> list[dict[str, Any]]:
     references: dict[str, list[str]] = {}
 
     def visit(value: Any, path: str) -> None:
@@ -187,9 +210,7 @@ def template_dependencies(
     native_aliases: dict[str, list[str]] = {}
     if group.get("backend") == "browser":
         prefix = group["browser_directory"] + "/"
-        for path, value in read_json(
-            package / "catalog/native-relative-assets.json"
-        ).items():
+        for path, value in aliases.items():
             if path.startswith(prefix) and value.startswith("input://"):
                 rid = value[8:]
                 if external.get(rid, {}).get("kind") == "font":
@@ -220,14 +241,66 @@ def template_dependencies(
             ),
             "availability": "requires_explicit_task_binding",
             **(
-                {
-                    "local_dependency_state": dependency_state(
-                        external[rid], (bindings or {}).get(rid)
-                    )
-                }
+                {"local_dependency_state": state_for(rid)}
                 if external.get(rid, {}).get("kind") in {"font", "model"}
                 else {}
             ),
         }
         for rid, fields in references.items()
     ]
+
+
+def unavailable_template_groups(
+    template: dict | None, state_for: Callable[[str], DependencyState]
+) -> dict[str, list[str]]:
+    unavailable = {}
+    for slot in (template or {}).get("slots", []):
+        gid = slot["group_id"]
+        missing = [
+            rid
+            for rid in AUTOMATIC_TEMPLATE_DEPENDENCIES.get(gid, ())
+            if state_for(rid) != "verified"
+        ]
+        if missing:
+            unavailable[gid] = missing
+    return unavailable
+
+
+def planning_runtime_snapshot(
+    package: Path, state: Path, bindings: dict[str, str], template: dict | None
+) -> dict[str, Any]:
+    """Collect portable evidence labels and deduplicate host byte checks."""
+    groups = read_json(package / "catalog/groups.json")["groups"]
+    external = external_dependencies(package)
+    aliases = (
+        read_json(package / "catalog/native-relative-assets.json")
+        if any(g.get("backend") == "browser" for g in groups)
+        else {}
+    )
+
+    @cache
+    def state_for(rid: str) -> DependencyState:
+        return dependency_state(external.get(rid, {}), bindings.get(rid))
+
+    return {
+        "version": "tengli.planning-runtime/1",
+        "groups": {
+            group["id"]: {
+                "sample": group_status(state, group["id"])["runtime_validation"],
+                "dependencies": [
+                    {
+                        "id": row["id"],
+                        "kind": row["kind"],
+                        "scope": row["binding_scope"],
+                        "state": row["local_dependency_state"],
+                    }
+                    for row in _template_dependencies(
+                        package, group, external, aliases, state_for
+                    )
+                    if row["kind"] in {"font", "model"}
+                ],
+            }
+            for group in groups
+        },
+        "unavailable_template_groups": unavailable_template_groups(template, state_for),
+    }

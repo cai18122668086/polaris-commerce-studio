@@ -5812,6 +5812,20 @@
               }
             ],
             "title": "Text Status"
+          },
+          "unavailable_template_group_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Template Group Ids"
           }
         },
         "required": [

@@ -192,6 +192,23 @@ def _verify(
     ):
         raise ValueError("Captured input, response and validation hashes disagree")
     payload = json.loads(data["request"]["messages"][1]["content"])
+    runtime = row.snapshot.get("planning_runtime")
+    if runtime is not None and (
+        payload.get("template_runtime")
+        != {
+            "version": runtime["version"],
+            "unavailable_groups": runtime["unavailable_template_groups"],
+        }
+        or {
+            group["id"]: {
+                "sample": group["website_runtime"],
+                "dependencies": group.get("known_original_dependencies", []),
+            }
+            for group in payload["full_library"]
+        }
+        != runtime["groups"]
+    ):
+        raise ValueError("Captured runtime evidence differs from the prepared snapshot")
     groups = read_json(settings.video_editing_library_dir / "catalog/groups.json")
     if (
         len(payload["full_library"]) != 132
@@ -218,6 +235,7 @@ def _verify(
         settings.video_editing_library_dir,
         {a["id"] for a in row.snapshot["asset_cards"]},
         row.snapshot["choice_snapshot"],
+        (runtime or {}).get("unavailable_template_groups"),
     )
     return VerifiedPlanning(
         row,

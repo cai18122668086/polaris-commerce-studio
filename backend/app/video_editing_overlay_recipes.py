@@ -10,15 +10,12 @@ from .motion_parameter_contracts import input_contract
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     CARD_LANDMARKS,
-    FRUIT_LIST_FONTS,
-    SPLIT_TITLE_FONT,
 )
 from .video_editing_browser_rotation import (
     ROTATION_EVENTS,
     ROTATION_GROUP,
     ROTATION_IMAGES,
     ROTATION_LABELS,
-    ROTATION_MATTE,
     rotation_card_clock,
     rotation_source_clock,
 )
@@ -42,6 +39,7 @@ from .video_editing_native_sound import (
     NativeSoundDesign,
 )
 from .video_editing_overlay_templates import (
+    AUTOMATIC_TEMPLATE_DEPENDENCIES,
     OPENING_GROUPS,
     PICTURE_TEMPLATE_ID,
     validate_template_plan,
@@ -50,7 +48,6 @@ from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
     QUESTION_BRANCH,
     QUESTION_ENTRY,
-    QUESTION_FONT,
     QUESTION_GROUP,
     question_variant_template,
 )
@@ -84,7 +81,6 @@ _ENTRY_SOUNDS = {
 }
 _CARD_ENTRY_PATHS = tuple(CARD_LANDMARKS)[:3]
 _OPENING_PRESENTER = "/media/presenter/path"
-_OPENING_FONT = "font-06e1a30f687ab7d3"
 _OPENING_ROLES = {
     "/content/caption": ("/events/text_frame", 14),
     "/content/theme": ("/events/text_frame", 8),
@@ -268,7 +264,7 @@ def _question_entry(
             "parameter_decisions": {
                 key: "沿用原生追问画布、字形和溶解。" for key in config
             },
-            "dependency_ids": [QUESTION_FONT],
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
             "media_clocks": [
                 {"media_path": path, "policy": "transcript_source_window"}
                 for path in sorted(paths)
@@ -381,7 +377,7 @@ def _card_entry(
             },
             "config": config,
             "placeholders": slots,
-            "dependency_ids": [SPLIT_TITLE_FONT],
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
             "browser_word_entry": True,
             **({"browser_live_background": True} if live_background else {}),
         },
@@ -512,7 +508,7 @@ def _rotation_entry(
             },
             "config": config,
             "placeholders": slots,
-            "dependency_ids": [*FRUIT_LIST_FONTS, ROTATION_MATTE],
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
         },
     ), anchors
 
@@ -595,9 +591,6 @@ def _opening_entry(
         set_native_field(config, path, None)
     config["events"]["shift_frames"] = 0
     config["media"]["presenter"]["end_policy"] = "error"
-    dependencies = [_OPENING_FONT]
-    if beat.group_id in {"LYO02", "LYO03"}:
-        dependencies.append(ROTATION_MATTE)
     return NativeEpisodeEntry(
         carrier="text",
         placement=NativePlacement(
@@ -616,7 +609,7 @@ def _opening_entry(
             },
             "config": config,
             "placeholders": slots,
-            "dependency_ids": dependencies,
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
             "media_clocks": [
                 {"media_path": _OPENING_PRESENTER, "policy": "transcript_source_window"}
             ],

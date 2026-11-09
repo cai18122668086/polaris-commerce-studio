@@ -5864,6 +5864,8 @@ export interface components {
             status: "queued" | "running" | "prepared" | "completed" | "failed" | "cancelled";
             /** Text Status */
             text_status: string | null;
+            /** Unavailable Template Group Ids */
+            unavailable_template_group_ids?: string[] | null;
         };
         /** EditingTaskCreate */
         EditingTaskCreate: {

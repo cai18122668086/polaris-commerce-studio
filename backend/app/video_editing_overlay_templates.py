@@ -2,8 +2,10 @@
 
 from copy import deepcopy
 
-from .video_editing_browser_rotation import ROTATION_GROUP
+from .video_editing_browser_clocks import CARD_GROUP, FRUIT_LIST_FONTS, SPLIT_TITLE_FONT
+from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
+from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 
 MIN_OVERLAY_TYPES = 5
 PREFERRED_OVERLAY_TYPES = 10
@@ -32,6 +34,16 @@ _OPENING_PURPOSES = {
     ),
 }
 OPENING_GROUPS = frozenset(_OPENING_PURPOSES)
+_OPENING_FONT = "font-06e1a30f687ab7d3"
+AUTOMATIC_TEMPLATE_DEPENDENCIES = {
+    CARD_GROUP: (SPLIT_TITLE_FONT,),
+    QUESTION_GROUP: (QUESTION_FONT,),
+    ROTATION_GROUP: (*FRUIT_LIST_FONTS, ROTATION_MATTE),
+    "LYO01": (_OPENING_FONT,),
+    "LYO02": (_OPENING_FONT, ROTATION_MATTE),
+    "LYO03": (_OPENING_FONT, ROTATION_MATTE),
+    "LYO04": (_OPENING_FONT,),
+}
 _SHARED_SLOTS = [
     {"group_id": "SG-S09", "purpose": "分别表达单件规格和到手总量"},
     {"group_id": "SG-S03", "purpose": "强调真实的使用时长或体验短句"},

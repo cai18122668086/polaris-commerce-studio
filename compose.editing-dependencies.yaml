@@ -17,3 +17,6 @@ services:
   editing-worker:
     environment: *dependency-environment
     volumes: *dependency-volumes
+  editing-planning-worker:
+    environment: *dependency-environment
+    volumes: *dependency-volumes

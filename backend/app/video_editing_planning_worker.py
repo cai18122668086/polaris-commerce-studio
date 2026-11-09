@@ -17,7 +17,13 @@ from .config import Settings
 from .database import build_database
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, atomic_json, sha256, verify_package
+from .motion_local_dependencies import dependency_state, local_dependencies
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
+from .video_editing_catalog import (
+    external_dependencies,
+    planning_runtime_snapshot,
+    unavailable_template_groups,
+)
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest
@@ -270,13 +276,26 @@ def process(
             },
         )
         guard("building_request")
+        template = snapshot.get("overlay_template")
+        runtime = snapshot.get("planning_runtime")
+        if mode == "prepare":
+            runtime = planning_runtime_snapshot(
+                settings.video_editing_library_dir,
+                settings.video_editing_tasks_dir
+                / "_library-validation"
+                / MOTION_SHA256[:12],
+                local_dependencies(settings.video_editing_native_bindings_file),
+                template,
+            )
+            snapshot = {**snapshot, "planning_runtime": runtime}
         body, evidence = planner.build_request(
             transcript,
             settings.video_editing_library_dir,
             model,
             snapshot["asset_cards"],
             snapshot["choice_snapshot"],
-            snapshot.get("overlay_template"),
+            template,
+            runtime,
         )
         result = {**evidence, "text_status": transcript.text_status}
         if mode == "prepare":
@@ -309,6 +328,27 @@ def process(
                 raise ApiError(
                     503, "EDITING_PLANNING_DISABLED", "付费语义规划尚未开放。"
                 )
+            if (
+                runtime
+                and template
+                and not (root / "provider/semantic-submit-intent.json").exists()
+            ):
+                external = external_dependencies(settings.video_editing_library_dir)
+                bindings = local_dependencies(
+                    settings.video_editing_native_bindings_file
+                )
+                current = unavailable_template_groups(
+                    template,
+                    lambda rid: dependency_state(
+                        external.get(rid, {}), bindings.get(rid)
+                    ),
+                )
+                if current.keys() - runtime["unavailable_template_groups"].keys():
+                    raise ApiError(
+                        409,
+                        "EDITING_TEMPLATE_DEPENDENCIES_CHANGED",
+                        "准备后有模板原件无法核验，请重新准备并核对可选动效。",
+                    )
             guard("planning")
             scoped = settings.model_copy(update={"video_editing_plan_model": model})
             plan = planner.generate(
@@ -320,7 +360,8 @@ def process(
                 snapshot["choice_snapshot"],
                 expected_request_sha256=evidence["request_sha256"],
                 guard=guard,
-                template=snapshot.get("overlay_template"),
+                template=template,
+                runtime=runtime,
             )
             atomic_json(root / "provider" / FILES["request_evidence"], evidence)
             result.update(
@@ -373,6 +414,7 @@ def process(
                     lease_until=None,
                     error_code=None,
                     result=result,
+                    snapshot=snapshot,
                     revision=EditingPlanningTaskRecord.revision + 1,
                 )
             )

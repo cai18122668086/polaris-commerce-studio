@@ -125,7 +125,9 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
             }
         )
 
-    def protocol_request(transcript, package, model, cards, choices, template=None):
+    def protocol_request(
+        transcript, package, model, cards, choices, template=None, runtime=None
+    ):
         # Explicit 132-group wire fixture; not a real Tengli result or library.
         payload = {
             "transcript": {
@@ -136,6 +138,16 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
             "project_library_choices": choices,
             **({"overlay_template": template} if template else {}),
         }
+        if runtime is not None:
+            payload["template_runtime"] = {
+                "version": runtime["version"],
+                "unavailable_groups": runtime["unavailable_template_groups"],
+            }
+            for group in payload["full_library"]:
+                observed = runtime["groups"][group["id"]]
+                group["website_runtime"] = observed["sample"]
+                if observed["dependencies"]:
+                    group["known_original_dependencies"] = observed["dependencies"]
         body = {
             "model": model,
             "messages": [

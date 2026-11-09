@@ -15,6 +15,8 @@ from sqlalchemy import create_engine, inspect, select, text
 
 from app import video_editing_planning_worker as worker
 from app.errors import ApiError
+from app.motion_library import atomic_json, read_json, sha256
+from app.video_editing_question_branch import QUESTION_FONT
 from app.video_editing_task_models import (
     EditingPlanningAttemptRecord,
     EditingPlanningTaskRecord,
@@ -31,13 +33,16 @@ def setup(video, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(worker, "verify_package", lambda _: None)
 
-    def request(transcript, package, model, cards, choices, template=None):
+    def request(
+        transcript, package, model, cards, choices, template=None, runtime=None
+    ):
         body = {
             "model": model,
             "words": [{"id": t.id, "text": t.text} for t in transcript.tokens],
             "cards": cards,
             "choices": choices,
             **({"overlay_template": template} if template else {}),
+            **({"runtime": runtime} if runtime else {}),
         }
         data = json.dumps(body, sort_keys=True, ensure_ascii=False).encode()
         return body, {
@@ -191,6 +196,62 @@ def test_free_preparation_is_durable_scoped_and_contains_no_paths(
     assert client.get(
         base(ws) + "/editing-planning-tasks/" + result["id"]
     ).status_code in (403, 404)
+
+
+def test_missing_original_after_preparation_stops_before_model_submission(
+    video, tmp_path, monkeypatch
+):
+    client, _, ws, settings, _, task, semantic = setup(video, tmp_path, monkeypatch)
+    font = tmp_path / "original-font-fixture"
+    font.write_bytes(b"source")
+    index = settings.video_editing_library_dir / "catalog/external-resources.json"
+    catalog = read_json(index)
+    catalog["resources"].append(
+        {"id": QUESTION_FONT, "kind": "font", "bytes": 6, "sha256": sha256(font)}
+    )
+    atomic_json(index, catalog)
+    registry = tmp_path / "registry.json"
+    atomic_json(registry, {"resources": {QUESTION_FONT: str(font)}})
+    settings.video_editing_native_bindings_file = registry
+    enable_fixture(settings)
+
+    route = base(ws) + f"/editing-tasks/{task['id']}/planning-tasks"
+    task_route = base(ws) + "/editing-planning-tasks/"
+    factory = client.app.state.session_factory
+    provider = Provider(semantic)
+
+    def prepare_question():
+        prepared = (
+            client.post(
+                route,
+                json={"request_id": str(uuid4()), "template_id": "question-story-v1"},
+            )
+            .raise_for_status()
+            .json()
+        )
+        worker.process(prepared["id"], settings, factory, provider)
+        return client.get(task_route + prepared["id"]).raise_for_status().json()
+
+    prepared = prepare_question()
+    assert prepared["status"] == "prepared"
+    assert prepared["unavailable_template_group_ids"] == []
+    font.write_bytes(b"broken")
+    submitted = create(client, ws, task["id"], "generate", prepared["id"])
+    assert submitted.status_code == 200
+    job = submitted.json()["id"]
+    worker.process(job, settings, factory, provider)
+    failed = client.get(task_route + job).raise_for_status().json()
+    assert failed["error_code"] == "EDITING_TEMPLATE_DEPENDENCIES_CHANGED"
+    assert failed["call_state"] == "not_submitted"
+    assert provider.calls == 0
+
+    fresh = prepare_question()
+    assert fresh["status"] == "prepared"
+    assert fresh["unavailable_template_group_ids"] == ["W-R18"]
+    request = next(a for a in fresh["artifacts"] if a["role"] == "request")
+    frozen = client.get(request["url"]).raise_for_status().json()["runtime"]
+    assert frozen["unavailable_template_groups"] == {"W-R18": [QUESTION_FONT]}
+    assert str(font) not in json.dumps(frozen)
 
 
 def test_one_execution_per_prepared_request_and_valid_response_contract(

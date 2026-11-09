@@ -51,6 +51,7 @@ from .video_editing_question_branch import (
     QUESTION_GROUP,
     question_variant_template,
 )
+from .video_editing_question_card import QUESTION_CARD_GLYPH, question_card_a_input
 
 SILHOUETTE_GROUPS = frozenset(("W-R04", "W-R09"))
 SILHOUETTE_PATHS = tuple(f"/media/silhouettes/{i}/path" for i in range(7))
@@ -128,8 +129,14 @@ def input_contract(
     embedded_judgment_caption: bool = True,
     current_why_props: bool = True,
     embedded_why_caption: bool = True,
+    original_input_a: bool = False,
 ) -> dict[str, Any]:
-    template = read_json(package / group["input_template"])
+    template_path = (
+        question_card_a_input(package, group)
+        if original_input_a
+        else package / group["input_template"]
+    )
+    template = read_json(template_path)
     question_group = group["id"] == QUESTION_GROUP
     if question_group and branch not in (None, QUESTION_BRANCH, "smoke"):
         raise ValueError("Select an original W-R18 branch")
@@ -194,10 +201,11 @@ def input_contract(
         ):
             category = "native_media_key"
         elif (
-            group["id"] == "YY6O01"
+            original_input_a
+            and pointer(parts) == QUESTION_CARD_GLYPH
+            or group["id"] == "YY6O01"
             and parts == ["content", "question"]
-            and value == "?"
-        ):
+        ) and value == "?":
             category = "original_design_glyph"
         elif isinstance(value, str) and (
             (first == "content" and key not in STYLE_NAMES)
@@ -329,7 +337,7 @@ def input_contract(
         "group_id": group["id"],
         "backend": backend,
         "schema_sha256": sha256(package / group["input_schema"]),
-        "template_sha256": sha256(package / group["input_template"]),
+        "template_sha256": sha256(template_path),
         "native_fps": fps,
         "fields": fields,
         "text_paths": [f["path"] for f in fields if f["category"] == "text"],

@@ -23,6 +23,8 @@ from .video_editing_catalog import (
     asset_metadata,
     audio_asset,
     catalog_summary,
+    original_input_variants,
+    original_startup_assets,
     template_dependencies,
 )
 from .video_editing_contracts import (
@@ -281,16 +283,21 @@ def describe_group(
     group = next((g for g in catalog["groups"] if g["id"] == canonical), None)
     if not group:
         raise ApiError(404, "EDITING_GROUP_NOT_FOUND", "未找到原库动效。")
+    bindings = local_dependencies(settings.video_editing_native_bindings_file)
+    runtime = group_status(
+        settings.video_editing_tasks_dir / "_library-validation" / MOTION_SHA256[:12],
+        group["id"],
+    )
     return {
         "release": MOTION_SHA256,
         "group": group,
         "input_schema": read_json(package / group["input_schema"]),
         "parameter_contract": input_contract(package, group),
-        "template_dependencies": template_dependencies(
-            package,
-            group,
-            local_dependencies(settings.video_editing_native_bindings_file),
+        "template_dependencies": template_dependencies(package, group, bindings),
+        "original_input_variants": original_input_variants(
+            package, group, bindings, runtime["runtime_evidence"]
         ),
+        "original_startup_assets": original_startup_assets(package, group),
         "dependency_scope": (
             "template inputs, indexed browser fonts and audited native engine "
             "references; "
@@ -302,12 +309,7 @@ def describe_group(
         "contract_status": "declared"
         if group.get("contract")
         else "inspect_native_schema_and_entry",
-        **group_status(
-            settings.video_editing_tasks_dir
-            / "_library-validation"
-            / MOTION_SHA256[:12],
-            group["id"],
-        ),
+        **runtime,
         "historical_input_not_used_as_new_defaults": True,
     }
 

@@ -100,6 +100,12 @@ from .video_editing_question_branch import (
     QUESTION_GROUP,
     question_variant_template,
 )
+from .video_editing_question_card import (
+    QUESTION_CARD_A_DESIGN,
+    QUESTION_CARD_ENGLISH,
+    question_card_a_input,
+    question_card_gloss,
+)
 from .video_editing_word_bindings import word_bindings
 
 
@@ -185,6 +191,7 @@ def compile_native_job(
     groups = {g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]}
     group = groups[beat.group_id]
     config = copy.deepcopy(recipe["config"])
+    question_card_a = recipe.get("design_id") == QUESTION_CARD_A_DESIGN
     branch = config.get("branch") if beat.group_id == QUESTION_GROUP else None
     if beat.group_id == QUESTION_GROUP and branch not in (QUESTION_BRANCH, "smoke"):
         raise ValueError("Select an original W-R18 branch")
@@ -216,6 +223,7 @@ def compile_native_job(
         embedded_judgment_caption=not website_judgment,
         current_why_props=why_props,
         embedded_why_caption=embedded_why_caption,
+        original_input_a=question_card_a,
     )
     if (
         recipe.get("version") != "tengli.native-recipe/1"
@@ -227,7 +235,17 @@ def compile_native_job(
         raise ValueError("Recipe does not match this exact original group release")
     if not recipe.get("design_id") or not recipe.get("design_reason"):
         raise ValueError("A current episode design decision is required")
-    template = read_json(package / group["input_template"])
+    template = read_json(
+        question_card_a_input(package, group)
+        if question_card_a
+        else package / group["input_template"]
+    )
+    if question_card_a:
+        if beat.relation != "question" or config.get("fonts") != template["fonts"]:
+            raise ValueError(
+                "AH-S03 input A requires a spoken question and its exact fonts"
+            )
+        _bundled_font(package, config["fonts"]["chinese"]["path"])
     if live_package_presenter:
         template = live_package_template(template)
         if config.get("layout", {}).get("mode") != "native":
@@ -475,6 +493,12 @@ def compile_native_job(
         translations = translation_labels(native, recipe["translation_labels"])
         assignments.update({row["path"]: row["display_text"] for row in translations})
         native["translation_labels"] = translations
+    if question_card_a:
+        gloss = question_card_gloss(
+            native, recipe.get("question_card_gloss"), transcript
+        )
+        assignments[QUESTION_CARD_ENGLISH] = gloss["display_text"]
+        native["question_gloss"] = gloss
     if why_props:
         question = why_word_bindings(native, asset_files)
         assignments[question["path"]] = question["display_text"]

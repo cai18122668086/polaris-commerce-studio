@@ -21,6 +21,7 @@ from .motion_library import (
 )
 from .video_editing_pipeline import environment
 from .video_editing_question_branch import QUESTION_BRANCH, QUESTION_GROUP
+from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_input
 
 
 def audit(package: Path) -> dict[str, Any]:
@@ -127,6 +128,14 @@ def record_native(
     branch = job.get("config", {}).get("branch")
     if job["group_id"] == QUESTION_GROUP and branch in (QUESTION_BRANCH, "smoke"):
         evidence["native_branch"] = branch
+    if group_id == QUESTION_CARD_GROUP:
+        fonts = job.get("config", {}).get("fonts")
+        input_a = read_json(question_card_a_input(package, groups[group_id]))
+        input_b = read_json(package / groups[group_id]["input_template"])
+        if fonts == input_a["fonts"]:
+            evidence["native_branch"] = "input-A"
+        elif fonts == input_b["fonts"]:
+            evidence["native_branch"] = "input-B"
     atomic_json(inside(state, f"{group_id}/{evidence['id']}.json"), evidence)
     return evidence
 

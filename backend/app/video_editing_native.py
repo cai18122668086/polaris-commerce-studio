@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .motion_library import atomic_json
 from .video_editing_native_compat import install
-from .video_editing_native_layout import install_native_backdrop_review
+from .video_editing_native_layout import install_native_role_review
 
 
 def main() -> None:
@@ -84,7 +84,7 @@ def main() -> None:
     ]
     try:
         if args.command == "export":
-            install_native_backdrop_review(package, root)
+            install_native_role_review(package, root)
         runpy.run_path(str(package / "adapter.py"), run_name="__main__")
     finally:
         atomic_json(

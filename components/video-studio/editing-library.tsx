@@ -16,8 +16,11 @@ type Summary = { groups: number; bundled_assets: number; external_references: nu
 type Catalog = { total: number; groups: Group[]; next_offset: number | null; summary: Summary };
 type ResourcePage = { resources: Asset[]; total: number; next_offset: number | null };
 type Detail = {
-  template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; local_dependency_state?: LocalDependencyState }[];
+  template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; original_rights?: string; local_dependency_state?: LocalDependencyState }[];
   runtime_evidence: { id: string; runtime_validation: string; recorded_at: string; native_branch?: string }[];
+  original_input_variants?: { id: string; template_sha256: string; has_encoded_sample: boolean;
+    dependency_fonts: { id: string; display_name: string; local_dependency_state: LocalDependencyState }[] }[];
+  original_startup_assets?: { native_path_pattern: string; expected_count: number; bundled_count: number; indexed_external_ids: string[] }[];
   contract_status: string;
   parameter_contract: {
     native_profile?: string | null;
@@ -183,9 +186,23 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
             </p>
           )}
           {detail.parameter_contract.media_clock_profile?.project_scene_clip_paths && <p>已核对口播取帧规则及 {detail.parameter_contract.media_clock_profile.project_scene_clip_paths.length} 个独立补充素材槽。</p>}
-          {detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>
-            {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}{d.local_dependency_state && ` · ${localDependencyLabel[d.local_dependency_state]}`}
-          </li>)}</ul> : <p>暂未登记外部输入引用。</p>}
+          {!!detail.original_input_variants?.length && <section aria-label="原生输入版本">
+            <b>原生输入版本</b>
+            <ul>{detail.original_input_variants.map(variant => <li key={variant.id}>
+              {variant.id} · {variant.has_encoded_sample ? "有本期编码样本" : "待实际验证"}
+              <ul>{variant.dependency_fonts.map(font => <li key={font.id}>{font.display_name} · {localDependencyLabel[font.local_dependency_state]}</li>)}</ul>
+            </li>)}</ul>
+          </section>}
+          {!!detail.original_startup_assets?.length && <section aria-label="原入口启动原件">
+            <b>原入口启动原件</b>
+            <ul>{detail.original_startup_assets.map(input => <li key={input.native_path_pattern}>
+              {input.native_path_pattern} · 原 ZIP 内 {input.bundled_count}/{input.expected_count} 件
+              {input.indexed_external_ids.length > 0 && " · 外部原件 " + input.indexed_external_ids.join("、")}
+            </li>)}</ul>
+          </section>}
+          {!detail.original_input_variants?.length && (detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>
+            {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}{d.local_dependency_state && ` · ${localDependencyLabel[d.local_dependency_state]}`}{d.original_rights === "noncommercial_marked_no_commercial_or_redistribution_claim" && " · 原件标注仅非商用，商用需核对授权"}
+          </li>)}</ul> : <p>暂未登记外部输入引用。</p>)}
           <p>已登记 {detail.runtime_evidence.length} 份具体运行记录，画面和听感未验收。</p>
         </> : <p>正在读取本组详情…</p>}
       </section>}

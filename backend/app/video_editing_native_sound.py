@@ -26,6 +26,11 @@ from .video_editing_question_branch import (
     QUESTION_GROUP,
     question_overlay_entry_frame,
 )
+from .video_editing_question_card import (
+    QUESTION_CARD_ENTRANCES,
+    question_card_a_shot,
+    question_card_entry_frame,
+)
 from .video_editing_render_edits import MUSIC_REDUCTION_DB
 from .video_studio_schemas import StrictVideoModel
 
@@ -214,6 +219,21 @@ def compile_sound(
         )
         seconds = entry_seconds
         question_entry = package_entry = rotation_entry = judgment_entry = None
+        question_card_entry = None
+        if (
+            question_card_a_shot(shot)
+            and cue.event_path in QUESTION_CARD_ENTRANCES
+            and cue.phase == "entry"
+        ):
+            output_fps = episode["output"]["fps"]
+            frame = question_card_entry_frame(shot, output_fps, cue.event_path)
+            seconds = frame / output_fps
+            native_ref = {}
+            question_card_entry = {
+                "shot_index": shot_index,
+                "output_frame": frame,
+                "event_path": cue.event_path,
+            }
         if (
             shot["group_id"] == QUESTION_GROUP
             and shot["layer"] in {"overlay", "scene"}
@@ -295,6 +315,11 @@ def compile_sound(
                 "group_id": shot["group_id"],
                 **({"hypit_entry": hypit_entry} if hypit_entry else {}),
                 **({"question_entry": question_entry} if question_entry else {}),
+                **(
+                    {"question_card_entry": question_card_entry}
+                    if question_card_entry
+                    else {}
+                ),
                 **({"package_entry": package_entry} if package_entry else {}),
                 **({"rotation_entry": rotation_entry} if rotation_entry else {}),
                 **({"judgment_entry": judgment_entry} if judgment_entry else {}),
@@ -397,6 +422,19 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
                 and question_entry["output_frame"] == frame
+                and cue["anchor_seconds"] == frame / fps
+            )
+        elif question_card_entry := cue.get("question_card_entry"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            fps = episode["output"]["fps"]
+            shot = episode["shots"][question_card_entry["shot_index"]]
+            path = question_card_entry["event_path"]
+            frame = question_card_entry_frame(shot, fps, path)
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and path == cue["word_binding"]["path"]
+                and question_card_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
         elif package_entry := cue.get("package_entry"):

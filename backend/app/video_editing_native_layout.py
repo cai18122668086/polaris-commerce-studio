@@ -1,4 +1,4 @@
-"""Classify the pinned native SG-S10 backing title after the original review."""
+"""Preserve intentional original role overlaps after running the native review."""
 
 import importlib
 import math
@@ -8,12 +8,17 @@ from pathlib import Path
 from typing import Any, cast
 
 from .motion_library import atomic_json, read_json, sha256
+from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_shot
 from .video_editing_render_edits import NATIVE_PORTRAIT_INSETS, boxes_intersect
 
 BACKDROP_GROUP = "SG-S10"
 _RENDERER = (
     "src/engines/workspace/字幕动效_可编辑库_20261105/SG-S10/render.py",
     "3ebc549e6eefe28a4c0cb35f5b6af79c2ccf4352d2b01cdd0a137eb5b7dfd712",
+)
+_QUESTION_RENDERER = (
+    "src/engines/workspace/字幕动效_可编辑库_20261105/AH-S03/render.py",
+    "1aa9c7d92ab7e203fabd482d2cbf459f0eb349699aa1f0421571424387ba229d",
 )
 _REVIEW = (
     "commercial_runtime/layout.py",
@@ -71,8 +76,11 @@ def verify_inset_layout(root: Path, review: dict) -> dict:
     return {"status": "passed", "source": "native libass ink", "insets": checks}
 
 
-def backdrop_role_overlaps(
-    data: dict, report: dict, shot_indices: set[int]
+def intentional_role_overlaps(
+    data: dict,
+    report: dict,
+    backdrop_shots: set[int],
+    question_shots: set[int] | None = None,
 ) -> list[dict]:
     """Return documented overlaps only when every failed frame is accounted for."""
     if report.get("status") != "failed" or not report.get("errors"):
@@ -80,42 +88,54 @@ def backdrop_role_overlaps(
     approved = {}
     for check in report["subtitle_checks"]:
         index = check["shot"]
-        if index not in shot_indices:
-            continue
         shot = data["shots"][index]
-        if (
-            shot["layer"] != "subtitle"
-            or shot["group_id"] != BACKDROP_GROUP
-            or check["group_id"] != BACKDROP_GROUP
-        ):
+        group_id = shot["group_id"]
+        if check["group_id"] != group_id or shot["layer"] != "subtitle":
             continue
         config = shot["config"]
-        fps = config["frame_format"]["fps"]
-        front_start = config["events"]["front_start"]
+        if index in backdrop_shots and group_id == BACKDROP_GROUP:
+            fps = config["frame_format"]["fps"]
+            enter, clear = config["events"]["front_start"], config["frames"]
+            roles = ["lead", "accent"]
+        elif (
+            question_shots
+            and index in question_shots
+            and group_id == QUESTION_CARD_GROUP
+            and question_card_a_shot(shot)
+        ):
+            fps = 30
+            enter, clear = (
+                config["events"]["question_frame"],
+                config["events"]["clear_frame"],
+            )
+            roles = ["english", "question"]
+        else:
+            continue
         for overlap in check["role_review"].get("role_collisions", []):
             frame = overlap["frame"]
             seconds = shot["start_seconds"] + frame / fps
             if (
-                overlap["roles"] == ["lead", "accent"]
-                and front_start < frame < config["frames"]
+                overlap["roles"] == roles
+                and enter < frame < clear
                 and seconds < shot["end_seconds"]
             ):
-                approved[index, seconds] = overlap
+                approved[index, seconds] = {**overlap, "group_id": group_id}
     classified = []
     for error in report["errors"]:
         overlap = approved.get((error["shot"], error.get("seconds")))
         if error["against"] != "native_roles" or overlap is None:
             return []
-        classified.append({**error, **overlap, "group_id": BACKDROP_GROUP})
+        classified.append({**error, **overlap})
     return classified
 
 
-def review_with_backdrop(
+def review_with_native_roles(
     original: Callable[..., dict],
     data: dict,
     root: Path,
     receipts: list[dict] | None,
-    shot_indices: set[int],
+    backdrop_shots: set[int],
+    question_shots: set[int] | None = None,
 ) -> dict:
     try:
         return original(data, root, receipts)
@@ -127,35 +147,49 @@ def review_with_backdrop(
         ):
             raise
         report = read_json(report_path)
-        overlaps = backdrop_role_overlaps(data, report, shot_indices)
+        overlaps = intentional_role_overlaps(
+            data, report, backdrop_shots, question_shots
+        )
         if not overlaps:
             raise
+        groups = {row["group_id"] for row in overlaps}
+        reasons = {
+            BACKDROP_GROUP: "SG-S10 的前景横句叠在原机制指定的灰色背衬字上。",
+            QUESTION_CARD_GROUP: "原 AH-S03 A 版问号覆盖英文释义。",
+        }
         result = {
             **report,
             "status": "passed",
             "errors": [],
             "original_report_sha256": sha256(report_path),
             "intentional_role_overlaps": overlaps,
-            "role_overlap_reason": "SG-S10 的前景横句叠在原机制指定的灰色背衬字上。",
+            "role_overlap_reason": "".join(reasons[group] for group in sorted(groups)),
         }
         atomic_json(root / "layout/adapter-review.json", result)
         return result
 
 
-def install_native_backdrop_review(package: Path, root: Path) -> None:
+def install_native_role_review(package: Path, root: Path) -> None:
     intent = root / "layout-intent.json"
     if not intent.is_file():
         return
-    indices = set(read_json(intent)["sg_s10_backdrop_shots"])
-    if not all(
-        sha256(package / path) == identity for path, identity in (_RENDERER, _REVIEW)
-    ):
-        raise ValueError("Pinned original backdrop renderer or review changed")
+    spec = read_json(intent)
+    backdrop = set(spec.get("sg_s10_backdrop_shots", []))
+    question = set(spec.get("ah_s03_input_a_shots", []))
+    pinned = [_REVIEW]
+    if backdrop:
+        pinned.append(_RENDERER)
+    if question:
+        pinned.append(_QUESTION_RENDERER)
+    if not all(sha256(package / path) == identity for path, identity in pinned):
+        raise ValueError("Pinned original role renderer or review changed")
     sys.path.insert(0, str(package))
     layout = cast(Any, importlib.import_module("commercial_runtime.layout"))
     original = layout.review
 
     def review(data: dict, instance: Path, receipts: list[dict] | None = None) -> dict:
-        return review_with_backdrop(original, data, Path(instance), receipts, indices)
+        return review_with_native_roles(
+            original, data, Path(instance), receipts, backdrop, question
+        )
 
     layout.review = review

@@ -46,6 +46,7 @@ from .video_editing_overlay_templates import (
 )
 from .video_editing_pipeline import EditingFailure, baseline_documents, layout_captions
 from .video_editing_planner import validate_plan
+from .video_editing_question_card import question_card_a_shot
 from .video_editing_render_edits import (
     FULL_FRAME,
     NATIVE_PORTRAIT_INSETS,
@@ -771,9 +772,16 @@ def compile_episode(
     )
     atomic_json(root / "bindings.json", bindings)
     atomic_json(root / "selection.json", selection)
-    if backdrop_shots:
+    question_shots = [
+        i for i, shot in enumerate(episode["shots"]) if question_card_a_shot(shot)
+    ]
+    if backdrop_shots or question_shots:
         atomic_json(
-            root / "layout-intent.json", {"sg_s10_backdrop_shots": backdrop_shots}
+            root / "layout-intent.json",
+            {
+                "sg_s10_backdrop_shots": backdrop_shots,
+                "ah_s03_input_a_shots": question_shots,
+            },
         )
     if continuous_base:
         inset_shots = [

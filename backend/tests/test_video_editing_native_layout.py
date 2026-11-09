@@ -4,10 +4,11 @@ import pytest
 
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_native_layout import (
-    backdrop_role_overlaps,
-    review_with_backdrop,
+    intentional_role_overlaps,
+    review_with_native_roles,
     verify_inset_layout,
 )
+from app.video_editing_question_card import QUESTION_CARD_A_FONTS
 
 
 def example():
@@ -50,7 +51,7 @@ def test_documented_backdrop_preserves_original_evidence(tmp_path):
             "Layout collisions: 1 frame findings; inspect instance layout/review.json"
         )
 
-    review = review_with_backdrop(original, episode, tmp_path, None, {0})
+    review = review_with_native_roles(original, episode, tmp_path, None, {0})
     assert review["status"] == "passed" and review["errors"] == []
     assert review["intentional_role_overlaps"][0]["frame"] == 42
     assert review["original_report_sha256"] == sha256(report_path)
@@ -64,20 +65,20 @@ def test_documented_backdrop_preserves_original_evidence(tmp_path):
 def test_backdrop_does_not_hide_other_collisions(against):
     episode, report = example()
     report["errors"].append({**report["errors"][0], "against": against})
-    assert not backdrop_role_overlaps(episode, report, {0})
+    assert not intentional_role_overlaps(episode, report, {0})
 
 
 def test_backdrop_requires_opt_in_exact_role_pair_and_foreground_phase():
     episode, report = example()
-    assert not backdrop_role_overlaps(episode, report, set())
+    assert not intentional_role_overlaps(episode, report, set())
     changed = deepcopy(report)
     changed["subtitle_checks"][0]["role_review"]["role_collisions"][0]["roles"] = [
         "lead",
         "other",
     ]
-    assert not backdrop_role_overlaps(episode, changed, {0})
+    assert not intentional_role_overlaps(episode, changed, {0})
     episode["shots"][0]["config"]["events"]["front_start"] = 43
-    assert not backdrop_role_overlaps(episode, report, {0})
+    assert not intentional_role_overlaps(episode, report, {0})
 
 
 def test_inset_layout_checks_native_caption_ink_and_portrait_duration(tmp_path):
@@ -114,3 +115,31 @@ def test_inset_layout_checks_native_caption_ink_and_portrait_duration(tmp_path):
     atomic_json(tmp_path / "episode.json", episode)
     with pytest.raises(ValueError, match="speaker keepout for its duration"):
         verify_inset_layout(tmp_path, review)
+
+
+def test_question_card_allows_only_original_front_overlap():
+    episode, report = example()
+    shot = episode["shots"][0]
+    shot["group_id"] = report["subtitle_checks"][0]["group_id"] = "AH-S03"
+    shot["config"] = {
+        "fonts": {
+            "english": {"path": "input://" + QUESTION_CARD_A_FONTS[0]},
+            "question": {"path": "input://" + QUESTION_CARD_A_FONTS[1]},
+        },
+        "events": {"question_frame": 28, "clear_frame": 46},
+    }
+    collisions = report["subtitle_checks"][0]["role_review"]["role_collisions"]
+    collisions[0]["roles"] = ["english", "question"]
+    assert intentional_role_overlaps(episode, report, set(), {0})[0]["frame"] == 42
+    assert not intentional_role_overlaps(episode, report, {0})
+    bad = deepcopy(report)
+    bad["subtitle_checks"][0]["role_review"]["role_collisions"][0]["roles"] = [
+        "chinese",
+        "question",
+    ]
+    assert not intentional_role_overlaps(episode, bad, set(), {0})
+    bad = deepcopy(report)
+    bad["errors"].append({**bad["errors"][0], "against": "main_caption"})
+    assert not intentional_role_overlaps(episode, bad, set(), {0})
+    shot["config"]["events"]["clear_frame"] = 42
+    assert not intentional_role_overlaps(episode, report, set(), {0})

@@ -19,6 +19,12 @@ from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import WHY_FONT, WHY_GROUP, WHY_PROPS
 from .video_editing_overlay_templates import AUTOMATIC_TEMPLATE_DEPENDENCIES
+from .video_editing_question_card import (
+    QUESTION_CARD_A_FONTS,
+    QUESTION_CARD_B_FONTS,
+    QUESTION_CARD_GROUP,
+    question_card_a_input,
+)
 
 _MATTING_MODEL = "model-01eb6a29a5c4d8edb30b"
 _NATIVE_ENGINE_DEPENDENCIES = {
@@ -241,6 +247,11 @@ def _template_dependencies(
             ),
             "availability": "requires_explicit_task_binding",
             **(
+                {"original_rights": external[rid]["rights"]}
+                if external.get(rid, {}).get("rights")
+                else {}
+            ),
+            **(
                 {"local_dependency_state": state_for(rid)}
                 if external.get(rid, {}).get("kind") in {"font", "model"}
                 else {}
@@ -248,6 +259,97 @@ def _template_dependencies(
         }
         for rid, fields in references.items()
     ]
+
+
+def original_input_variants(
+    package: Path, group: dict, bindings: dict[str, str], evidence: list[dict]
+) -> list[dict[str, Any]]:
+    if group["id"] != QUESTION_CARD_GROUP:
+        return []
+    external = external_dependencies(package)
+    a_path = question_card_a_input(package, group)
+    original_serif_path = read_json(a_path)["fonts"]["chinese"]["path"][6:]
+    serif = next(
+        asset
+        for asset in read_json(package / "asset-manifest.json")["assets"]
+        if asset["path"] == original_serif_path
+    )
+    original_serif = {
+        "id": serif["id"],
+        "display_name": asset_label(serif),
+        "local_dependency_state": dependency_state(
+            serif, str(inside(package, serif["path"]))
+        ),
+    }
+    return [
+        {
+            "id": variant,
+            "template_sha256": sha256(template),
+            "dependency_fonts": [
+                *([original_serif] if variant == "input-A" else []),
+                *(
+                    {
+                        "id": rid,
+                        "display_name": asset_label(external[rid]),
+                        "local_dependency_state": dependency_state(
+                            external[rid], bindings.get(rid)
+                        ),
+                    }
+                    for rid in font_ids
+                ),
+            ],
+            "has_encoded_sample": any(
+                row.get("native_branch") == variant
+                and row["runtime_validation"] == "sample_rendered"
+                for row in evidence
+            ),
+        }
+        for variant, template, font_ids in (
+            ("input-A", a_path, QUESTION_CARD_A_FONTS),
+            ("input-B", package / group["input_template"], QUESTION_CARD_B_FONTS),
+        )
+    ]
+
+
+# Both browser entries eagerly read these assets before accepting current inputs.
+# A catalog alias identifies an external original and does not mean it is present.
+def original_startup_assets(package: Path, group: dict) -> list[dict[str, Any]]:
+    gid = group["id"]
+    if gid == "CX-G05":
+        paths = [
+            ("g05-assets/base-{i:03d}.jpg", 69),
+            ("g05-assets/actor-{i:03d}.png", 69),
+            ("g05-assets/photo-{i}.jpg", 3),
+        ]
+    elif gid in {"CX-G08", "CX-G09", "CX-G10"}:
+        paths = [
+            ("assets/material-{i}.png", 3),
+            ("assets/g09-bg/{i:03d}.jpg", 66),
+            ("assets/G10-background-clean.jpg", 1),
+            ("assets/G10-person-clean.png", 1),
+        ]
+    else:
+        return []
+    aliases = read_json(package / "catalog/native-relative-assets.json")
+    archived = read_json(package / "integrity.json")["files"]
+    result = []
+    for pattern, count in paths:
+        expected = [
+            f"{group['browser_directory']}/{pattern.format(i=i)}" for i in range(count)
+        ]
+        result.append(
+            {
+                "native_path_pattern": pattern,
+                "expected_count": count,
+                "bundled_count": sum(name in archived for name in expected),
+                "indexed_external_ids": [
+                    aliases[name][8:]
+                    for name in expected
+                    if aliases.get(name, "").startswith("input://")
+                ],
+            }
+        )
+    return result
 
 
 def unavailable_template_groups(

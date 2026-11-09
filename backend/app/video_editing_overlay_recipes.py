@@ -98,6 +98,7 @@ from .video_editing_question_card import (
     automatic_question_card_gloss,
     question_card_a_input,
 )
+from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_word_bindings import word_bindings
 
 PROFILE_ID = AUTOMATIC_TEXT_PROFILE
@@ -114,6 +115,7 @@ _ENTRY_SOUNDS = {
     "AH-S02": ("/events/body_frame", _SLIDE),
     "AH-S04": ("/events/body_frame", _TYPING),
     "AH-S05": ("/events/type_frame", _TYPING),
+    "AH-S06": ("/events/center_frame", _SLIDE),
     "AH-S08": ("/events/title_frame", _SLIDE),
     "AH-S09": ("/events/title_frame", _CLICK),
     "AHG-S01": ("/events/body/0", _SLIDE),
@@ -128,6 +130,9 @@ _ENTRY_SOUNDS = {
     "BG-S06": ("/events/upper_start", _SLIDE),
     "BG-S07": ("/events/upper_start", _SLIDE),
     "BG-S08": ("/events/upper_start", _IMPACT),
+    "BG-S09": ("/events/body_frame", _IMPACT),
+    "BG-S10": ("/events/left_frame", _SLIDE),
+    "BG-S11": ("/events/body_frame", _IMPACT),
     "JJ-S01": ("/events/main/0", _CLICK),
     "JJ-S02": ("/events/grow/0", _SLIDE),
     "JJ-S03": ("/events/line/0", _IMPACT),
@@ -146,8 +151,10 @@ _ENTRY_SOUNDS = {
     "SG-S02": ("/events/drop_frame", _SELECT),
     "SG-S03": ("/events/enter_start", _IMPACT),
     "SG-S04": ("/events/enter_start", _SLIDE),
+    "SG-S05": ("/events/enter_start", _SLIDE),
     "SG-S06": ("/events/upper_start", _SLIDE),
     "SG-S07": ("/events/lead_start", _SLIDE),
+    "SG-S08": ("/events/lead_start", _SLIDE),
     "SG-S09": ("/events/enter_start", _TYPING),
     "SG-S10": ("/events/enter_start", _SLIDE),
 }
@@ -213,17 +220,23 @@ _TEXT_RECIPE_FIELDS = {
 _TEXT_ENTRY_WORDS = {
     "AH-S01": {"keyword_frame": "keyword", "body_frame": "body"},
     "AH-S04": {"body_frame": "body", "header_frame": "header"},
+    "AH-S06": {"center_frame": "center"},
     "AHG-S01": {"body/0": "body", "keyword/0": "keyword"},
     "BG-S01": {"body_frame": "body", "focus_frame": "focus"},
     "BG-S07": {"upper_start": "upper", "lower_start": "lower"},
     "BG-S08": {"upper_start": "upper", "lower_start": "lower"},
+    "BG-S09": {"body_frame": "body", "focus_frame": "focus"},
+    "BG-S10": {"left_frame": "left", "right_frame": "right", "focus_frame": "focus"},
+    "BG-S11": {"body_frame": "body", "focus_frame": "focus"},
     TEXT_HANDOFF_GROUP: {"body/0": "body", "handoff/0": "keyword"},
     "JJ-S07": {"merge/0": "left", "keyword/0": "keyword"},
     "JJ-S08": {"settle/0": "headline", "swap/0": "detail"},
     "JJ-S09": {"zoom1/0": "top", "zoom2/0": "bottom"},
     "SG-S01": {"enter_start": "main", "detail_start": "detail"},
     "SG-S04": {"enter_start": "lead_a", "accent_start": "accent"},
+    "SG-S05": {"enter_start": "lead", "front_start": "accent"},
     "SG-S07": {"lead_start": "lead", "accent_start": "accent"},
+    "SG-S08": {"lead_start": "lead", "accent_start": "accent"},
 }
 _TEXT_CLEAR_FRAMES = {"AH-S01": 10, "AH-S04": 10}
 _SIMULTANEOUS_TEXT_START = {"JJ-S08": "headline", "JJ-S09": "top"}
@@ -233,8 +246,82 @@ _TEXT_TRANSITIONS = {
     "JJ-S09": ("zoom1", "zoom2"),
     "SG-S01": ("enter", "split", "detail"),
     "SG-S04": ("enter", "merge", "accent", "exit"),
+    "SG-S05": ("enter", "front", "exit"),
     "SG-S07": ("lead", "raise", "accent", "swap", "exit"),
+    "SG-S08": ("lead", "back", "accent", "exit"),
 }
+_BG_FOREGROUND_LIMITS = {
+    "BG-S09": {"body": 6, "focus": 7},
+    "BG-S10": {"left": 2, "right": 2, "focus": 7},
+    "BG-S11": {"body": 6, "focus": 7},
+}
+
+
+def _foreground_anchors(group: str, anchors: dict, text: dict, config: dict) -> None:
+    events = {row["path"][8:]: row for row in anchors["events"]}
+    frames = {event: row["value"] for event, row in events.items()}
+    if group == "AH-S06":
+        words = {row["path"]: row["token_ids"] for row in anchors["text"]}
+        english = text["/content/english"]
+        if (
+            not english.isascii()
+            or not any(char.isalpha() for char in english)
+            or any(not (char.isalpha() or char in " '-") for char in english)
+            or events["english_frame"]["token_id"] not in words["/content/english"]
+            or events["side_frame"]["token_id"] not in words["/content/right"]
+            or not frames["center_frame"]
+            <= frames["english_frame"]
+            <= frames["side_frame"]
+            or frames["clear_frame"] - frames["side_frame"]
+            < config["events"]["shard_spread_frames"] + 8
+        ):
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_ANCHORS_REQUIRED",
+                "AH-S06 须绑定实录英文字母及侧字，并给原生溶落留足时间。",
+            )
+    if group == "SG-S05" and not (
+        frames["enter_end"] <= frames["cycle_2"]
+        and frames["cycle_2"] + 8 <= frames["cycle_3"]
+        and frames["cycle_3"] + 8 <= frames["front_start"]
+        and frames["front_end"] <= frames["exit_start"]
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+            "SG-S05 须先完成三种原字体轮换，再显示金字并退场。",
+        )
+    if group == "SG-S08" and not (
+        frames["lead_end"] <= frames["back_start"] <= frames["accent_start"]
+        and frames["accent_end"] <= frames["exit_start"]
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+            "SG-S08 须从引导词退为背衬，再完成前景重点的入场与退场。",
+        )
+    if limits := _BG_FOREGROUND_LIMITS.get(group):
+        if any(
+            not 1 <= len(text["/content/" + role]) <= limit
+            for role, limit in limits.items()
+        ):
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_ROLE_LENGTH",
+                f"{group} 的实录字数超出原生字槽范围。",
+            )
+        if not 0 <= frames["retreat_frame"] - frames["focus_frame"] <= 5:
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+                f"{group} 的白字须紧随前景重点退为背衬。",
+            )
+        if group == "BG-S10" and frames["right_frame"] + 5 > frames["focus_frame"]:
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+                "BG-S10 须让右侧白词拼合后，再显示金色重点。",
+            )
 
 
 def _entry(
@@ -257,13 +344,29 @@ def _entry(
             f"{beat.group_id} 的模板槽需要纯文字透明层。",
         )
     contract = input_contract(package, group)
-    if {field["category"] for field in contract["fields"]} - _TEXT_RECIPE_FIELDS:
+    config = read_json(inside(package, group["input_template"]))
+    dependency_ids = FOREGROUND_SUBTITLE_DEPENDENCIES.get(beat.group_id, ())
+    dependency_fields = {
+        field["path"]
+        for field in contract["fields"]
+        if field["category"] == "native_dependency"
+    }
+    expected_fields = {
+        f"/fonts/{role}/path": style["path"].removeprefix("input://")
+        for role, style in config.get("fonts", {}).items()
+        if style.get("path", "").startswith("input://")
+    }
+    if (
+        {field["category"] for field in contract["fields"]}
+        - (_TEXT_RECIPE_FIELDS | {"native_dependency"})
+        or dependency_fields != expected_fields.keys()
+        or set(expected_fields.values()) != set(dependency_ids)
+    ):
         raise ApiError(
             422,
             "EDITING_TEMPLATE_NATIVE_PROFILE_REQUIRED",
             f"{beat.group_id} 仍需原生适配。",
         )
-    config = read_json(inside(package, group["input_template"]))
     anchors = word_bindings(beat, transcript, contract, set())
     slots = [
         *contract["text_paths"],
@@ -277,6 +380,11 @@ def _entry(
             "EDITING_TEMPLATE_ANCHORS_REQUIRED",
             f"{beat.group_id} 缺少原生文字或动作的词点。",
         )
+    if beat.group_id in FOREGROUND_SUBTITLE_DEPENDENCIES or beat.group_id in {
+        "BG-S09",
+        "SG-S08",
+    }:
+        _foreground_anchors(beat.group_id, anchors, text, config)
     if entry_words := _TEXT_ENTRY_WORDS.get(beat.group_id):
         text_starts = {row["path"]: row["token_ids"][0] for row in anchors["text"]}
         events = {row["path"]: row for row in anchors["events"]}
@@ -403,8 +511,8 @@ def _entry(
     if beat.group_id == BG_OFFSET_GROUP:
         apply_outline(config, "both")
         decisions["fonts"] = "保持原字色和字号，按原生分层检查选择深色描边。"
-    for role, (minimum, maximum) in config.get("capacity", {}).items():
-        path = "/content/" + config["role_content"][role]
+    for field, (minimum, maximum) in config.get("capacity", {}).items():
+        path = "/content/" + field
         if not minimum <= len(text[path]) <= maximum:
             raise ApiError(
                 422,
@@ -435,6 +543,7 @@ def _entry(
             "config": config,
             "placeholders": slots,
             "dependency_bindings": {},
+            **({"dependency_ids": list(dependency_ids)} if dependency_ids else {}),
         },
     )
     return entry, anchors

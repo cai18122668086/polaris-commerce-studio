@@ -29,6 +29,7 @@ from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
 from app.video_editing_native_sound import verify_rendered_sound
 from app.video_editing_overlay_templates import overlay_template
 from app.video_editing_question_branch import QUESTION_FONT
+from app.video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from app.video_editing_task_models import (
     EditingPlanningAttemptRecord,
     EditingPlanningTaskRecord,
@@ -118,12 +119,16 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "subtitle-story-v1",
         "subtitle-relay-v1",
         "subtitle-progress-v1",
+        "subtitle-foreground-v1",
     }
     assert all(len(row["slots"]) >= 10 for row in options)
     progress = next(row for row in options if row["id"] == "subtitle-progress-v1")
     relay = next(row for row in options if row["id"] == "subtitle-relay-v1")
     assert len(progress["slots"]) == len(relay["slots"]) + 8
     assert progress["slots"][8:] == relay["slots"]
+    foreground = next(row for row in options if row["id"] == "subtitle-foreground-v1")
+    assert len(foreground["slots"]) == len(progress["slots"]) + 6
+    assert foreground["slots"][6:] == progress["slots"]
     rotation = next(row for row in options if row["id"] == "rotation-cards-v1")
     assert rotation["slots"][0]["group_id"] == "CX-G04"
     openings = next(row for row in options if row["id"] == "presenter-openings-v1")
@@ -232,20 +237,35 @@ def test_free_preparation_is_durable_scoped_and_contains_no_paths(
     ).status_code in (403, 404)
 
 
+@pytest.mark.parametrize(
+    ("template_id", "removed", "affected"),
+    [
+        ("question-story-v1", QUESTION_FONT, ["W-R18"]),
+        ("subtitle-foreground-v1", "font-06b2048c592b1dae", ["BG-S10", "BG-S11"]),
+    ],
+)
 def test_missing_original_after_preparation_stops_before_model_submission(
-    video, tmp_path, monkeypatch
+    video, tmp_path, monkeypatch, template_id, removed, affected
 ):
     client, _, ws, settings, _, task, semantic = setup(video, tmp_path, monkeypatch)
-    font = tmp_path / "original-font-fixture"
-    font.write_bytes(b"source")
     index = settings.video_editing_library_dir / "catalog/external-resources.json"
     catalog = read_json(index)
-    catalog["resources"].append(
-        {"id": QUESTION_FONT, "kind": "font", "bytes": 6, "sha256": sha256(font)}
+    ids = (
+        {rid for group in FOREGROUND_SUBTITLE_DEPENDENCIES.values() for rid in group}
+        if template_id == "subtitle-foreground-v1"
+        else {QUESTION_FONT}
     )
+    fonts = {}
+    for rid in ids:
+        font = tmp_path / rid
+        font.write_bytes(b"source")
+        fonts[rid] = str(font)
+        catalog["resources"].append(
+            {"id": rid, "kind": "font", "bytes": 6, "sha256": sha256(font)}
+        )
     atomic_json(index, catalog)
     registry = tmp_path / "registry.json"
-    atomic_json(registry, {"resources": {QUESTION_FONT: str(font)}})
+    atomic_json(registry, {"resources": fonts})
     settings.video_editing_native_bindings_file = registry
     enable_fixture(settings)
 
@@ -254,11 +274,11 @@ def test_missing_original_after_preparation_stops_before_model_submission(
     factory = client.app.state.session_factory
     provider = Provider(semantic)
 
-    def prepare_question():
+    def prepare_template():
         prepared = (
             client.post(
                 route,
-                json={"request_id": str(uuid4()), "template_id": "question-story-v1"},
+                json={"request_id": str(uuid4()), "template_id": template_id},
             )
             .raise_for_status()
             .json()
@@ -266,10 +286,10 @@ def test_missing_original_after_preparation_stops_before_model_submission(
         worker.process(prepared["id"], settings, factory, provider)
         return client.get(task_route + prepared["id"]).raise_for_status().json()
 
-    prepared = prepare_question()
+    prepared = prepare_template()
     assert prepared["status"] == "prepared"
     assert prepared["unavailable_template_group_ids"] == []
-    font.write_bytes(b"broken")
+    Path(fonts[removed]).write_bytes(b"broken")
     submitted = create(client, ws, task["id"], "generate", prepared["id"])
     assert submitted.status_code == 200
     job = submitted.json()["id"]
@@ -279,13 +299,15 @@ def test_missing_original_after_preparation_stops_before_model_submission(
     assert failed["call_state"] == "not_submitted"
     assert provider.calls == 0
 
-    fresh = prepare_question()
+    fresh = prepare_template()
     assert fresh["status"] == "prepared"
-    assert fresh["unavailable_template_group_ids"] == ["W-R18"]
+    assert fresh["unavailable_template_group_ids"] == affected
     request = next(a for a in fresh["artifacts"] if a["role"] == "request")
     frozen = client.get(request["url"]).raise_for_status().json()["runtime"]
-    assert frozen["unavailable_template_groups"] == {"W-R18": [QUESTION_FONT]}
-    assert str(font) not in json.dumps(frozen)
+    assert frozen["unavailable_template_groups"] == {
+        group: [removed] for group in affected
+    }
+    assert fonts[removed] not in json.dumps(frozen)
 
 
 def test_strip_planning_checks_scoped_runtime_and_original_subtitles(

@@ -16,6 +16,7 @@ from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
+from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 
 MIN_OVERLAY_TYPES = 5
 PREFERRED_OVERLAY_TYPES = 10
@@ -31,8 +32,12 @@ LINE_TEMPLATE_ID = "line-story-v1"
 SUBTITLE_STORY_TEMPLATE_ID = "subtitle-story-v1"
 SUBTITLE_RELAY_TEMPLATE_ID = "subtitle-relay-v1"
 SUBTITLE_PROGRESS_TEMPLATE_ID = "subtitle-progress-v1"
+SUBTITLE_FOREGROUND_TEMPLATE_ID = "subtitle-foreground-v1"
+LAYERED_SUBTITLE_TEMPLATES = frozenset(
+    {SUBTITLE_PROGRESS_TEMPLATE_ID, SUBTITLE_FOREGROUND_TEMPLATE_ID}
+)
 TEXT_HANDOFF_TEMPLATES = frozenset(
-    {SUBTITLE_RELAY_TEMPLATE_ID, SUBTITLE_PROGRESS_TEMPLATE_ID}
+    {SUBTITLE_RELAY_TEMPLATE_ID, *LAYERED_SUBTITLE_TEMPLATES}
 )
 SYNC_SUBTITLE_TEMPLATES = frozenset(
     {SUBTITLE_STORY_TEMPLATE_ID, *TEXT_HANDOFF_TEMPLATES}
@@ -63,6 +68,7 @@ _OPENING_PURPOSES = {
 OPENING_GROUPS = frozenset(_OPENING_PURPOSES)
 _OPENING_FONT = "font-06e1a30f687ab7d3"
 AUTOMATIC_TEMPLATE_DEPENDENCIES = {
+    **FOREGROUND_SUBTITLE_DEPENDENCIES,
     CARD_GROUP: (SPLIT_TITLE_FONT,),
     NUMBERED_GROUP: (SPLIT_TITLE_FONT,),
     QUESTION_GROUP: (QUESTION_FONT,),
@@ -145,6 +151,20 @@ _SUBTITLE_PROGRESS_SLOTS = {
     "JJ-S08": "以本段首词开始四字内标题和五字内说明的原生斜排。说明首词触发换位。",
     "JJ-S09": "以本段首词开始双行第一段缩放，后句首词触发第二段。上五字、下四字以内。",
     "BG-S01": "先以白字显示四字内实录主题，后接五字内同基线说明。两句各以首词入场。",
+}
+_SUBTITLE_FOREGROUND_SLOTS = {
+    "AH-S06": (
+        "使用实录短词、实录英文字母与两个单字侧字。"
+        "英文在中心词后、侧字前出现。给侧字保留完整溶落时间。"
+    ),
+    "SG-S05": (
+        "同一八字实录短句依次轮换三款原字体，之后接五字重点。"
+        "先完成轮换，再引出金字并退场。"
+    ),
+    "SG-S08": "两字引导退为原生背衬，五字实录重点从前方进场。",
+    "BG-S09": "白色短句先起，红色重点在对应首词放大，白句同期退为背衬。",
+    "BG-S10": "两个至多两字的短语先左右拼合，再以原粗书体带出实录重点。",
+    "BG-S11": "白色短句收定后，原粗书体红色重点从对应首词冲入。",
 }
 _EXPLAINER_SLOTS = [
     {"group_id": "BG-S06", "purpose": "用两层文字交代使用场景和要解决的问题"},
@@ -396,6 +416,17 @@ _TEMPLATES[SUBTITLE_PROGRESS_TEMPLATE_ID] = {
         *_TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[SUBTITLE_FOREGROUND_TEMPLATE_ID] = {
+    "id": SUBTITLE_FOREGROUND_TEMPLATE_ID,
+    "name": "原字形前景重点",
+    "slots": [
+        *(
+            {"group_id": group, "purpose": purpose}
+            for group, purpose in _SUBTITLE_FOREGROUND_SLOTS.items()
+        ),
+        *_TEMPLATES[SUBTITLE_PROGRESS_TEMPLATE_ID]["slots"],
+    ],
+}
 
 _TEMPLATES[PICTURE_TEMPLATE_ID] = {
     "id": PICTURE_TEMPLATE_ID,
@@ -465,6 +496,7 @@ def overlay_templates() -> list[dict]:
             SUBTITLE_STORY_TEMPLATE_ID,
             SUBTITLE_RELAY_TEMPLATE_ID,
             SUBTITLE_PROGRESS_TEMPLATE_ID,
+            SUBTITLE_FOREGROUND_TEMPLATE_ID,
         )
     ]
 

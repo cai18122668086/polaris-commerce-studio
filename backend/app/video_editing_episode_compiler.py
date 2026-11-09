@@ -40,12 +40,13 @@ from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_native_layout import (
     BACKDROP_GROUP,
-    PROGRESS_ROLE_GROUPS,
+    LAYERED_SUBTITLE_ROLE_GROUPS,
     TEXT_HANDOFF_GROUP,
 )
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
+    LAYERED_SUBTITLE_TEMPLATES,
     LEGACY_PICTURE_TEMPLATE_ID,
     LINE_TEMPLATE_ID,
     LIVE_STRIP_TEMPLATE_ID,
@@ -55,7 +56,6 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
-    SUBTITLE_PROGRESS_TEMPLATE_ID,
     SYNC_SUBTITLE_TEMPLATES,
     TEXT_HANDOFF_TEMPLATES,
     overlay_template,
@@ -886,8 +886,8 @@ def compile_episode(
     progress_role_shots = [
         i
         for i, shot in enumerate(episode["shots"])
-        if authoring.overlay_template_id == SUBTITLE_PROGRESS_TEMPLATE_ID
-        and shot["group_id"] in PROGRESS_ROLE_GROUPS
+        if authoring.overlay_template_id in LAYERED_SUBTITLE_TEMPLATES
+        and shot["group_id"] in LAYERED_SUBTITLE_ROLE_GROUPS
     ]
     if (
         backdrop_shots

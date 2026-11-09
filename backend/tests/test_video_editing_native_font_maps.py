@@ -47,5 +47,10 @@ def test_native_coverage_cache_distinguishes_faces_and_font_replacements(
     external = coverage(outside, 0)
     assert external == {ord("碗"): "marker"}
     assert coverage(outside, 0) is not external
+    bound_reader = _font_reader(package_fonts, frozenset({outside}))
+    with bound_reader(str(outside), fontNumber=0, lazy=True) as font:
+        registered = font.getBestCmap()
+    with bound_reader(str(outside), fontNumber=0, lazy=True) as font:
+        assert font.getBestCmap() is registered
     outside.replace(path)
     assert coverage(path, 0) == external

@@ -12,6 +12,11 @@ from .video_editing_browser_clocks import NUMBERED_GROUP
 from .video_editing_browser_live import CARD_LIVE_PREFIX
 from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_shot
 from .video_editing_render_edits import NATIVE_PORTRAIT_INSETS, boxes_intersect
+from .video_editing_subtitle_foreground import (
+    FOREGROUND_ROLE_REASONS,
+    FOREGROUND_ROLE_RENDERERS,
+    foreground_role_windows,
+)
 
 BACKDROP_GROUP = "SG-S10"
 TEXT_HANDOFF_GROUP = "JJ-S06"
@@ -66,7 +71,9 @@ _SG_MECHANISM = (
     "src/engines/workspace/字幕动效_可编辑库_20261105/SG-production/mechanisms.py",
     "48cd8bf1afd634da9fee47a372048f541902112480ad9fce054d825dcc4bcd9f",
 )
-PROGRESS_ROLE_GROUPS = frozenset(_PROGRESS_ROLE_RENDERERS)
+LAYERED_SUBTITLE_ROLE_GROUPS = frozenset(
+    _PROGRESS_ROLE_RENDERERS.keys() | FOREGROUND_ROLE_RENDERERS.keys()
+)
 _PROGRESS_ROLE_REASONS = {
     "AH-S01": "AH-S01 的白色说明覆盖原生减淡的黄色关键词。",
     "BG-S01": "BG-S01 的两句仅在同基线入场交接期间可短暂相接。",
@@ -215,10 +222,14 @@ def intentional_role_overlaps(
         elif (
             progress_shots
             and index in progress_shots
-            and group_id in PROGRESS_ROLE_GROUPS
+            and group_id in LAYERED_SUBTITLE_ROLE_GROUPS
         ):
             fps = 30
-            windows = _progress_role_windows(group_id, config)
+            windows = (
+                foreground_role_windows(group_id, config)
+                if group_id in FOREGROUND_ROLE_RENDERERS
+                else _progress_role_windows(group_id, config)
+            )
         else:
             continue
         for overlap in check["role_review"].get("role_collisions", []):
@@ -278,6 +289,7 @@ def review_with_native_roles(
             QUESTION_CARD_GROUP: "原 AH-S03 A 版问号覆盖英文释义。",
             TEXT_HANDOFF_GROUP: "JJ-S06 仅在原生同位置淡入淡出交接期间叠放。",
             **_PROGRESS_ROLE_REASONS,
+            **FOREGROUND_ROLE_REASONS,
         }
         result = {
             **report,
@@ -311,7 +323,11 @@ def install_native_role_review(package: Path, root: Path) -> None:
     if progress:
         shots = read_json(root / "episode.json")["shots"]
         groups = {shots[index]["group_id"] for index in progress}
-        pinned.extend(_PROGRESS_ROLE_RENDERERS[group] for group in groups)
+        for group in groups:
+            if group in FOREGROUND_ROLE_RENDERERS:
+                pinned.extend(FOREGROUND_ROLE_RENDERERS[group])
+            else:
+                pinned.append(_PROGRESS_ROLE_RENDERERS[group])
         if groups & {"SG-S04", "SG-S07"}:
             pinned.append(_SG_MECHANISM)
     if not all(sha256(package / path) == identity for path, identity in pinned):

@@ -198,3 +198,19 @@ def test_split_titles_keep_only_small_contact_after_the_clone_settles():
     assert intentional_role_overlaps(episode, report, set(), progress_shots={0})
     overlap["pixels"] = 65
     assert not intentional_role_overlaps(episode, report, set(), progress_shots={0})
+
+
+def test_original_foreground_does_not_authorize_white_roles_after_the_join():
+    episode, report = example()
+    shot = episode["shots"][0]
+    check = report["subtitle_checks"][0]
+    shot["group_id"] = check["group_id"] = "BG-S10"
+    shot["config"] = {
+        "events": {"right_frame": 30, "focus_frame": 38, "retreat_frame": 41},
+        "frames": 90,
+    }
+    overlap = check["role_review"]["role_collisions"][0]
+    overlap["roles"] = ["right", "focus"]
+    assert intentional_role_overlaps(episode, report, set(), progress_shots={0})
+    overlap["roles"] = ["left", "right"]
+    assert not intentional_role_overlaps(episode, report, set(), progress_shots={0})

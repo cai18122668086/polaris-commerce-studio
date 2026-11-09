@@ -9,6 +9,8 @@ from typing import Any
 from fontTools.ttLib import TTFont
 
 from .motion_library import read_json, sha256
+from .motion_local_dependencies import dependency_state, local_dependencies
+from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 
 _SUBTITLES = Path("src/engines/workspace/字幕动效_可编辑库_20261105")
 _NATIVE = Path("commercial_runtime/native.py")
@@ -16,11 +18,12 @@ _CORE = _SUBTITLES / "SG-production/core.py"
 _BG_PRODUCTION = _SUBTITLES / "SG-BG-production/production.py"
 _ENTRY_DIGESTS = {
     **dict.fromkeys(
-        ("SG-S03", "SG-S04", "SG-S06", "SG-S09"),
+        ("SG-S03", "SG-S04", "SG-S06", "SG-S08", "SG-S09"),
         "9fda50a11d6abf2fc1e7c51e34b0ef75015c732b07fd1704218b8f20b0d3075c",
     ),
     "SG-S02": "87274b5e410831638782fbe4bb3c241b3e546a29d8a32ba3832bf67a25ce68ed",
     "SG-S01": "940fc34a86e7f24d89a87a74bf5651a60fdab31f79ccf8b2ce337d32a7685063",
+    "SG-S05": "f607310f0a0010a9d15c1e9fe12e49c3764999573b5d037ad153f286d6770d8e",
     "SG-S07": "c8ddd2b750fa39b6115efd62a7a82d7d71c9d95dcc59d1a806a101ed671356e6",
     "SG-S10": "3ebc549e6eefe28a4c0cb35f5b6af79c2ccf4352d2b01cdd0a137eb5b7dfd712",
     **dict.fromkeys(
@@ -37,7 +40,9 @@ _SOURCES = {
 }
 
 
-def _font_reader(font_root: Path) -> type[TTFont]:
+def _font_reader(
+    font_root: Path, exact_bindings: frozenset[Path] = frozenset()
+) -> type[TTFont]:
     maps: dict[tuple[Path, int, int, int, int, int, int], dict[int, str] | None] = {}
 
     class NativeCoverageFont(TTFont):
@@ -45,7 +50,11 @@ def _font_reader(font_root: Path) -> type[TTFont]:
             super().__init__(file, fontNumber=fontNumber, lazy=lazy)
             self._coverage_key = None
             path = Path(file).resolve()
-            if lazy and path.is_relative_to(font_root) and self.reader is not None:
+            if (
+                lazy
+                and self.reader is not None
+                and (path.is_relative_to(font_root) or path in exact_bindings)
+            ):
                 st = os.fstat(self.reader.file.fileno())
                 self._coverage_key = (
                     path,
@@ -105,7 +114,21 @@ def install_native_font_maps(package: Path, root: Path) -> None:
     if Path(native.__file__).resolve() != package / _NATIVE:
         return
     load_module = native.module
-    reader = _font_reader((package / "assets/fonts").resolve())
+    exact_bindings: frozenset[Path] = frozenset()
+    if group == "SG-S05":
+        registered = local_dependencies(root / "bindings.json")
+        identities = {
+            row["id"]: row
+            for row in read_json(package / "catalog/external-resources.json")[
+                "resources"
+            ]
+        }
+        exact_bindings = frozenset(
+            Path(registered[rid]).resolve()
+            for rid in FOREGROUND_SUBTITLE_DEPENDENCIES[group]
+            if dependency_state(identities[rid], registered.get(rid)) == "verified"
+        )
+    reader = _font_reader((package / "assets/fonts").resolve(), exact_bindings)
 
     def load(path: str | Path, name: str = "motion_native") -> Any:
         module = load_module(path, name)

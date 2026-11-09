@@ -15,6 +15,7 @@ from pathlib import Path
 from .motion_library import atomic_json
 from .video_editing_native_compat import install
 from .video_editing_native_layout import install_native_role_review
+from .video_editing_native_shot_recovery import install_shot_recovery
 
 
 def main() -> None:
@@ -87,6 +88,7 @@ def main() -> None:
     try:
         if args.command == "export":
             install_native_role_review(package, root)
+            install_shot_recovery(package, root)
         runpy.run_path(str(package / "adapter.py"), run_name="__main__")
     finally:
         atomic_json(

@@ -38,26 +38,29 @@ _BASE_RECEIPTS = {
 }
 
 
-def compiled_digest(root: Path, request_hash: str) -> str:
-    """Bind the original engine inputs while allowing a new attempt directory."""
+def normalize_attempt_paths(value: Any, root: Path) -> Any:
     roots = (str(root), root.as_posix())
     prefixes = (roots[0] + "\\", roots[1] + "/")
+    if isinstance(value, dict):
+        return {
+            normalize_attempt_paths(key, root): normalize_attempt_paths(item, root)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [normalize_attempt_paths(item, root) for item in value]
+    if isinstance(value, str):
+        if value in roots:
+            return "instance:///"
+        for prefix in prefixes:
+            if value.startswith(prefix):
+                return "instance:///" + value[len(prefix) :].replace("\\", "/")
+    return value
 
-    def normalize(value: Any) -> Any:
-        if isinstance(value, dict):
-            return {normalize(key): normalize(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [normalize(item) for item in value]
-        if isinstance(value, str):
-            if value in roots:
-                return "instance:///"
-            for prefix in prefixes:
-                if value.startswith(prefix):
-                    return "instance:///" + value[len(prefix) :].replace("\\", "/")
-        return value
 
+def compiled_digest(root: Path, request_hash: str) -> str:
+    """Bind the original engine inputs while allowing a new attempt directory."""
     inputs = {
-        name: normalize(read_json(root / name))
+        name: normalize_attempt_paths(read_json(root / name), root)
         for name in (
             "episode.json",
             "selection.json",
@@ -67,7 +70,7 @@ def compiled_digest(root: Path, request_hash: str) -> str:
     }
     for name in ("audio-plan.json", "layout-intent.json", "inset-layout-intent.json"):
         if (root / name).is_file():
-            inputs[name] = normalize(read_json(root / name))
+            inputs[name] = normalize_attempt_paths(read_json(root / name), root)
     return hashlib.sha256(
         json.dumps([request_hash, inputs], ensure_ascii=False).encode()
     ).hexdigest()

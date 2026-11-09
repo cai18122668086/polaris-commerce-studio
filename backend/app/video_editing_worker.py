@@ -719,6 +719,9 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         reused = []
         if restored is None:
             stage("rendering", render_plan_sha256=sha256(root / "episode.json"))
+            atomic_json(
+                root / "native-shot-plan.json", {"compiled_sha256": compiled_sha}
+            )
             final = native_export(root, settings, guard)
             stage("validating")
             validation = validate_result(final, prepared, root, settings, guard)

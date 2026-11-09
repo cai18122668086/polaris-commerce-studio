@@ -3,6 +3,7 @@ from PIL import Image
 
 from app import video_editing_line_branch as line
 from app.motion_library import read_json, sha256
+from app.video_editing_template_materials import line_image_slots
 
 
 def test_stage_line_sheet_keeps_row_major_alpha_frames(tmp_path, monkeypatch):
@@ -36,3 +37,30 @@ def test_stage_line_sheet_keeps_row_major_alpha_frames(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="Every hand frame"):
         line.stage_line_sheet(target, missing_frame, sha256(missing_frame))
     assert list(target.iterdir()) == []
+
+
+def test_line_preflight_distinguishes_moving_frames_from_stills(tmp_path, monkeypatch):
+    monkeypatch.setattr(line, "_LINE_FRAME", (4, 4))
+    frame = Image.new("RGBA", (4, 4))
+    frame.putpixel((1, 1), (20, 30, 40, 255))
+    sheet = Image.new("RGBA", (24, 16))
+    for index in range(24):
+        row, column = divmod(index, 6)
+        sheet.paste(frame, (column * 4, row * 4))
+    # RGB values in fully transparent pixels do not make the hand move.
+    sheet.putpixel((0, 0), (50, 60, 70, 0))
+    still = tmp_path / "still.png"
+    sheet.save(still)
+    sheet.putpixel((1, 2), (20, 30, 40, 255))
+    moving = tmp_path / "moving.png"
+    sheet.save(moving)
+    drawing = tmp_path / "drawing.png"
+    frame.save(drawing)
+    previous = tmp_path / "previous.png"
+    frame.convert("RGB").save(previous)
+    assets = {p.stem: {"path": str(p)} for p in (still, moving, drawing, previous)}
+    assert line_image_slots(assets) == {
+        line.LINE_DIRECTOR_PATH: ["drawing"],
+        line.LINE_HAND_PATH: ["moving"],
+        line.LINE_PREVIOUS_PATH: ["previous"],
+    }

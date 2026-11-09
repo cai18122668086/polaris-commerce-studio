@@ -108,7 +108,12 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan }:
       <p className={styles.note}>模型：{job.model} · 网关：{job.gateway_host || "尚未固定"} · 转录版本 {job.base_transcript_sha256.slice(0, 12)}{job.text_status && ` · ${job.text_status === "user_corrected" ? "用户已校对文字，词点待验" : "转录文字待核对"}`}</p>
       {job.overlay_template && <p className={styles.note}>组合模板 · {job.overlay_template.name}</p>}
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>本机待补原件的模板动效 · {job.unavailable_template_group_ids.join("、")}</p>}
-      {job.project_image_requirements?.map(requirement => <p key={requirement.group_id} className={styles.note}>
+      {job.project_image_requirements?.map(requirement => requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
+        {requirement.group_id} · 本期线描素材需要不透明过渡图、透明线描图及六列四行的透明手势帧图。
+        {Object.values(requirement.native_image_slot_ids).every(ids => ids.length > 0)
+          ? " 三类素材均有可选原件。"
+          : " 本次编排跳过线描场景，仍可使用同模板的其他动效。补图后可重新准备。"}
+      </p> : <p key={requirement.group_id} className={styles.note}>
         {requirement.group_id} · 本期已选 {requirement.selected_distinct_images} 张不同图片，图卡需要 {requirement.required_distinct_images} 张。
         {requirement.transparent_image_ids && (" 其中可用于右上透明图位的图片有 " + requirement.transparent_image_ids.length + " 张。")}
         {(requirement.selected_distinct_images < requirement.required_distinct_images || requirement.transparent_image_ids?.length === 0) && " 本次编排跳过该图卡，仍可使用同模板的其他动效。补图后可重新准备。"}

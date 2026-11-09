@@ -40,6 +40,14 @@ from .video_editing_judgment import (
     JUDGMENT_IMAGES,
     JUDGMENT_LABELS,
 )
+from .video_editing_line_branch import (
+    LINE_DIRECTOR_PATH,
+    LINE_GROUP,
+    LINE_HAND_ENTRY,
+    LINE_HAND_PATH,
+    LINE_PREVIOUS_PATH,
+    line_template,
+)
 from .video_editing_materials import project_image_digests
 from .video_editing_native_compiler import set_native_field
 from .video_editing_native_content import PACKAGE_GROUP, live_package_template
@@ -90,6 +98,7 @@ _ENTRY_SOUNDS = {
     "BG-S06": ("/events/upper_start", _SLIDE),
     "JJ-S01": ("/events/main/0", _CLICK),
     "JJ-S03": ("/events/line/0", _IMPACT),
+    LINE_GROUP: (LINE_HAND_ENTRY, _SLIDE),
     "LYO01": ("/events/text_frame", _SLIDE),
     "LYO02": ("/events/text_frame", _SELECT),
     "LYO03": ("/events/subtitle_frame", _CLICK),
@@ -119,6 +128,17 @@ _PACKAGE_LABELS = tuple(f"/content/items/{i}/label" for i in range(4))
 _PACKAGE_IMAGES = tuple(f"/media/product_images/{i}/path" for i in range(4))
 _PACKAGE_EVENTS = tuple(f"/timing/events/item{i}" for i in range(4))
 _PACKAGE_EXTRA = "/content/items/3/extra"
+_LINE_LABELS = {
+    "/content/director_label": 4,
+    "/content/hand_label": 4,
+    "/content/paper_text": 9,
+}
+_LINE_EVENTS = (
+    "/timing/events/previous_out",
+    LINE_HAND_ENTRY,
+    "/timing/events/label_in",
+    *(f"/timing/events/portrait_scale_keys/{i}" for i in range(4)),
+)
 _OPENING_ROLES = {
     "/content/caption": ("/events/text_frame", 14),
     "/content/theme": ("/events/text_frame", 8),
@@ -507,6 +527,7 @@ def _entry_sound(
             CARD_GROUP: "图卡进入时给一次短提示，口播继续。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
             JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
+            LINE_GROUP: "线描手势入场时给一次原库提示音，口播继续。",
         }.get(beat.group_id, "原生文字动效入场时给一次短提示，口播继续。"),
         source_start_seconds=source_start,
         trim_duration_seconds=length,
@@ -708,6 +729,107 @@ def _judgment_entry(
                     "media_path": JUDGMENT_BACKGROUND,
                     "policy": "transcript_source_window",
                 }
+            ],
+        },
+    ), anchors
+
+
+def _line_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group, embedded_line_caption=False)
+    images = project_image_digests(cards)
+    presenters = {
+        row["id"]
+        for row in cards
+        if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
+    }
+    try:
+        anchors = word_bindings(beat, transcript, contract, presenters | images.keys())
+        text = {row["path"]: row for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        art_paths = (LINE_PREVIOUS_PATH, LINE_DIRECTOR_PATH, LINE_HAND_PATH)
+        if (
+            beat.relation not in {"explanation", "sequence"}
+            or set(text) != set(_LINE_LABELS)
+            or set(events) != set(_LINE_EVENTS)
+            or set(media) != {_OPENING_PRESENTER, *art_paths}
+            or set(media.values()) != set(beat.asset_ids)
+            or media[_OPENING_PRESENTER] not in presenters
+            or len({images[media[path]] for path in art_paths}) != len(art_paths)
+            or any(
+                len(text[path]["text"]) > limit for path, limit in _LINE_LABELS.items()
+            )
+        ):
+            raise ValueError(
+                "Line scene needs the current source, three art roles and short labels"
+            )
+        for event, label in (
+            (LINE_HAND_ENTRY, "/content/paper_text"),
+            (_LINE_EVENTS[2], "/content/hand_label"),
+        ):
+            if (
+                events[event]["token_id"] != text[label]["token_ids"][0]
+                or events[event]["edge"] != "start"
+            ):
+                raise ValueError(
+                    "Bind the hand and label reveals to their spoken words"
+                )
+        times = [events[path]["value"] for path in _LINE_EVENTS]
+        clock = anchors["clock"]
+        fps = clock["native_fps"]
+        frames = [math.ceil(round(seconds * fps, 8)) for seconds in times]
+        duration = (clock["end_ms"] - clock["start_ms"]) / 1000
+        if frames != sorted(set(frames)) or times[-1] + 0.1 > duration:
+            raise ValueError(
+                "Line scene needs ordered visible actions and a settled live return"
+            )
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_LINE_INPUTS_REQUIRED",
+            "线描场景需要同期原片、三份对应图片和按顺序出现的实录词点。",
+        ) from error
+    config = line_template(
+        read_json(inside(package, group["input_template"])), embedded_caption=False
+    )
+    slots = [
+        *text,
+        *events,
+        *media,
+        "/media/presenter/offset_seconds",
+        "/media/presenter/duration_seconds",
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(
+            layer="scene",
+            rect=[0, 0, 1, 1],
+            reason="沿用原线描画幅和人物回切路径。",
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": LINE_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-line-story-v1",
+            "design_reason": "保留原线描、纸面和人物缩放路径，填入本期素材。",
+            "parameter_decisions": {
+                key: "沿用原线描构图与实录词点。" for key in config
+            },
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[LINE_GROUP]),
+            "media_clocks": [
+                {"media_path": _OPENING_PRESENTER, "policy": "transcript_source_window"}
             ],
         },
     ), anchors
@@ -979,6 +1101,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = _PACKAGE_EVENTS
+        elif beat.group_id == LINE_GROUP:
+            entries[beat.id], anchors = _line_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = (None,)
         elif beat.group_id == QUESTION_CARD_GROUP:
             entries[beat.id], anchors = _question_card_entry(
                 package, group, beat, transcript
@@ -1001,7 +1128,9 @@ def build_overlay_recipes(
     has_bottom_caption_lane = any(
         beat.group_id in {ROTATION_GROUP, JUDGMENT_GROUP} for beat in beats
     )
-    has_package = any(beat.group_id == PACKAGE_GROUP for beat in beats)
+    has_lower_caption_lane = any(
+        beat.group_id in {PACKAGE_GROUP, LINE_GROUP} for beat in beats
+    )
     return EpisodeRecipeBundle(
         version="tengli.episode-recipes/1",
         library_release=MOTION_SHA256,
@@ -1043,7 +1172,11 @@ def build_overlay_recipes(
                 0.055,
                 0.255,
                 0.89,
-                0.735 if has_bottom_caption_lane else 0.705 if has_package else 0.625,
+                0.735
+                if has_bottom_caption_lane
+                else 0.705
+                if has_lower_caption_lane
+                else 0.625,
             ],
         },
         protected_regions=[

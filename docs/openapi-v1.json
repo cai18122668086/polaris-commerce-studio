@@ -6287,6 +6287,23 @@
             "title": "Group Id",
             "type": "string"
           },
+          "native_image_slot_ids": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Image Slot Ids"
+          },
           "required_distinct_images": {
             "title": "Required Distinct Images",
             "type": "integer"

@@ -6,6 +6,7 @@ from .video_editing_browser_clocks import CARD_GROUP, FRUIT_LIST_FONTS, SPLIT_TI
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
+from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
@@ -20,6 +21,8 @@ JUDGMENT_TEMPLATE_ID = "evidence-judgment-v1"
 QUESTION_CARD_TEMPLATE_ID = "question-card-story-v1"
 EXPLAINER_TEMPLATE_ID = "explainer-steps-v1"
 PACKAGE_TEMPLATE_ID = "package-specs-v1"
+LINE_TEMPLATE_ID = "line-story-v1"
+PACKAGE_TEMPLATES = frozenset({PACKAGE_TEMPLATE_ID, LINE_TEMPLATE_ID})
 _OPENING_PURPOSES = {
     "LYO01": (
         "用原放大与暗角强调一条口播短句",
@@ -47,6 +50,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     QUESTION_GROUP: (QUESTION_FONT,),
     QUESTION_CARD_GROUP: QUESTION_CARD_A_FONTS,
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
+    LINE_GROUP: (LINE_BRUSH_FONT,),
     ROTATION_GROUP: (*FRUIT_LIST_FONTS, ROTATION_MATTE),
     "LYO01": (_OPENING_FONT,),
     "LYO02": (_OPENING_FONT, ROTATION_MATTE),
@@ -283,6 +287,29 @@ _TEMPLATES[PICTURE_TEMPLATE_ID] = {
     ],
 }
 
+_TEMPLATES[LINE_TEMPLATE_ID] = {
+    "id": LINE_TEMPLATE_ID,
+    "name": "线描经历与纸面规格",
+    "slots": [
+        {
+            "group_id": LINE_GROUP,
+            "purpose": "用本期线描回顾一段实录经历，再按原动效回切同期人物",
+            "layer": "scene",
+            "binding": (
+                "选择口播中一段具体经历。presenter 绑定本期原片。"
+                "previous、director_ink、hand_sequence 分别绑定不透明过渡图、"
+                "透明线描和六列四行的透明手势帧图。三份原件须不同。"
+                "director_label、hand_label 和 paper_text 使用实际短词。"
+                "依次绑定 previous_out、hand_in、label_in 和四个 portrait_scale_keys。"
+                "hand_in 从纸面短语首词开始，label_in 从手势标签首词开始，"
+                "四个回切点完成后给同期人物留出可见区间。由网站统一绘制主字幕。"
+                "缺少任一素材或合适的实录词点时跳过此场景。"
+            ),
+        },
+        *_TEMPLATES[PACKAGE_TEMPLATE_ID]["slots"],
+    ],
+}
+
 
 def overlay_templates() -> list[dict]:
     return [
@@ -295,6 +322,7 @@ def overlay_templates() -> list[dict]:
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
             PACKAGE_TEMPLATE_ID,
+            LINE_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,

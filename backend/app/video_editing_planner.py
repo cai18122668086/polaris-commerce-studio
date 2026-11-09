@@ -19,10 +19,12 @@ from .video_assistance_provider import (
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_overlay_templates import (
+    LINE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
-    PACKAGE_TEMPLATE_ID,
+    PACKAGE_TEMPLATES,
     PREFERRED_OVERLAY_TYPES,
     QUESTION_CARD_TEMPLATE_ID,
     overlay_template,
@@ -65,7 +67,11 @@ def rule_pack(package: Path) -> dict[str, Any]:
 
 
 def catalog_index(
-    package: Path, *, question_card: bool = False, live_package: bool = False
+    package: Path,
+    *,
+    question_card: bool = False,
+    live_package: bool = False,
+    line_scene: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -88,6 +94,7 @@ def catalog_index(
             group,
             original_input_a=question_a,
             live_package_presenter=live_package and group["id"] == PACKAGE_GROUP,
+            embedded_line_caption=not (line_scene and group["id"] == LINE_GROUP),
         )
         if question_a:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
@@ -193,9 +200,13 @@ def build_request(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rules = rule_pack(package)
     question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
-    live_package = bool(template and template["id"] == PACKAGE_TEMPLATE_ID)
+    live_package = bool(template and template["id"] in PACKAGE_TEMPLATES)
+    line_scene = bool(template and template["id"] == LINE_TEMPLATE_ID)
     catalog = catalog_index(
-        package, question_card=question_card, live_package=live_package
+        package,
+        question_card=question_card,
+        live_package=live_package,
+        line_scene=line_scene,
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
@@ -321,6 +332,12 @@ def build_request(
         message += (
             "W-R14的person_right只能绑定transparent_image_ids所列的真实透明素材。"
             "缺少时跳过该槽，使用本模板中语义合适的动效。"
+        )
+    if line_scene:
+        message += (
+            "W-R11按native_image_slot_ids的字段分别选过渡图、透明线描、手势帧图。"
+            "这三个素材直接绑定native_media，不需要并列图卡的relation_items。"
+            "缺少任一素材角色时跳过W-R11并登记缺件，保留其他合适动效。"
         )
     body = {
         "model": model,

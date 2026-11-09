@@ -3,11 +3,12 @@
 import importlib
 import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 from .motion_library import atomic_json, read_json, sha256
 from .video_editing_media_clocks import clock_profile
@@ -15,6 +16,9 @@ from .video_editing_media_clocks import clock_profile
 LINE_GROUP = "W-R11"
 LINE_BRUSH_FONT = "font-06b2048c592b1dae"
 LINE_HAND_PATH = "/media/hand_sequence/path"
+LINE_DIRECTOR_PATH = "/media/director_ink/path"
+LINE_PREVIOUS_PATH = "/media/previous/path"
+LINE_HAND_ENTRY = "/timing/events/hand_in"
 LINE_HAND_PREFIX = "tengli-line-hand-"
 LINE_SHEET_FRAMES = 24
 _LINE_SHEET_COLUMNS = 6
@@ -57,48 +61,60 @@ def line_template(
     }
 
 
+def line_sheet_shape(image: Image.Image) -> bool:
+    width, height = _LINE_FRAME
+    return (
+        image.format == "PNG"
+        and getattr(image, "n_frames", 1) == 1
+        and image.mode == "RGBA"
+        and image.size
+        == (
+            _LINE_SHEET_COLUMNS * width,
+            (LINE_SHEET_FRAMES // _LINE_SHEET_COLUMNS) * height,
+        )
+    )
+
+
+def line_sheet_frames(sheet: Image.Image) -> Iterator[Image.Image]:
+    if not line_sheet_shape(sheet):
+        raise ValueError("Line hand art needs a 6 by 4 transparent 540×960 PNG sheet")
+    width, height = _LINE_FRAME
+    clear = Image.new("RGBA", _LINE_FRAME)
+    first = None
+    varied = False
+    for index in range(LINE_SHEET_FRAMES):
+        y, x = divmod(index, _LINE_SHEET_COLUMNS)
+        frame = sheet.crop((x * width, y * height, (x + 1) * width, (y + 1) * height))
+        minimum, maximum = frame.getchannel("A").getextrema()
+        if minimum != 0 or maximum == 0:
+            raise ValueError("Every hand frame needs visible art and transparent space")
+        if first is None:
+            first = Image.alpha_composite(clear, frame)
+        elif not varied:
+            difference = ImageChops.difference(
+                first, Image.alpha_composite(clear, frame)
+            )
+            varied = difference.getbbox(alpha_only=False) is not None
+        yield frame
+    if not varied:
+        raise ValueError("The line hand sheet needs actual frame variation")
+
+
 def stage_line_sheet(root: Path, source: Path, digest: str) -> tuple[Path, str]:
     """Split the selected RGBA sheet into the original sequence's frame size."""
-    width, height = _LINE_FRAME
     directory = root / ("hand-" + digest[:24])
     rows = []
-    pixels = set()
     root.mkdir(parents=True, exist_ok=True)
     with (
         Image.open(source) as sheet,
         TemporaryDirectory(prefix="line-sheet-", dir=root) as temporary,
     ):
-        if (
-            sheet.format != "PNG"
-            or getattr(sheet, "n_frames", 1) != 1
-            or sheet.mode != "RGBA"
-            or sheet.size
-            != (
-                _LINE_SHEET_COLUMNS * width,
-                (LINE_SHEET_FRAMES // _LINE_SHEET_COLUMNS) * height,
-            )
-        ):
-            raise ValueError(
-                "Line hand art needs a 6 by 4 transparent 540×960 PNG sheet"
-            )
         staged = Path(temporary) / "frames"
         staged.mkdir()
-        for index in range(LINE_SHEET_FRAMES):
-            y, x = divmod(index, _LINE_SHEET_COLUMNS)
-            frame = sheet.crop(
-                (x * width, y * height, (x + 1) * width, (y + 1) * height)
-            )
-            minimum, maximum = frame.getchannel("A").getextrema()
-            if minimum != 0 or maximum == 0:
-                raise ValueError(
-                    "Every hand frame needs visible art and transparent space"
-                )
+        for index, frame in enumerate(line_sheet_frames(sheet)):
             file = staged / f"{index:03}.png"
             frame.save(file)
-            pixels.add(digest_frame := sha256(file))
-            rows.append({"path": file.name, "sha256": digest_frame})
-        if len(pixels) < 2:
-            raise ValueError("The line hand sheet needs actual frame variation")
+            rows.append({"path": file.name, "sha256": sha256(file)})
         manifest = staged / "sequence-binding.json"
         atomic_json(manifest, {"sheet_sha256": digest, "frames": rows})
         binding = sha256(manifest)

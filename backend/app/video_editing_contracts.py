@@ -493,6 +493,9 @@ class EditingTemplateImageRequirement(StrictVideoModel):
     transparent_image_ids: list[str] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    native_image_slot_ids: dict[str, list[str]] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class EditingPlanningTaskResponse(StrictVideoModel):

@@ -6129,6 +6129,10 @@ export interface components {
         EditingTemplateImageRequirement: {
             /** Group Id */
             group_id: string;
+            /** Native Image Slot Ids */
+            native_image_slot_ids?: {
+                [key: string]: string[];
+            } | null;
             /** Required Distinct Images */
             required_distinct_images: number;
             /** Selected Distinct Images */

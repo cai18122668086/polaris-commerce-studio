@@ -8,20 +8,30 @@ from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
 from .video_editing_judgment import JUDGMENT_GROUP, JUDGMENT_IMAGES
+from .video_editing_line_branch import (
+    LINE_DIRECTOR_PATH,
+    LINE_GROUP,
+    LINE_HAND_PATH,
+    LINE_PREVIOUS_PATH,
+    line_sheet_frames,
+    line_sheet_shape,
+)
 from .video_editing_materials import project_image_digests
 from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
+    LINE_TEMPLATE_ID,
     PACKAGE_TEMPLATE_ID,
     PICTURE_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
 )
 
 _IMAGE_GROUPS = {
-    PICTURE_TEMPLATE_ID: (CARD_GROUP, 3),
-    ROTATION_TEMPLATE_ID: (ROTATION_GROUP, 3),
-    JUDGMENT_TEMPLATE_ID: (JUDGMENT_GROUP, 2),
-    PACKAGE_TEMPLATE_ID: (PACKAGE_GROUP, 4),
+    PICTURE_TEMPLATE_ID: ((CARD_GROUP, 3),),
+    ROTATION_TEMPLATE_ID: ((ROTATION_GROUP, 3),),
+    JUDGMENT_TEMPLATE_ID: ((JUDGMENT_GROUP, 2),),
+    PACKAGE_TEMPLATE_ID: ((PACKAGE_GROUP, 4),),
+    LINE_TEMPLATE_ID: ((LINE_GROUP, 3), (PACKAGE_GROUP, 4)),
 }
 
 
@@ -46,23 +56,56 @@ def template_image_requirements(
     cards: list[dict],
     material_files: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    spec = _IMAGE_GROUPS.get(template["id"]) if template else None
-    if spec is None:
+    if template is None:
         return []
-    group_id, count = spec
+    specs = _IMAGE_GROUPS.get(template["id"], ())
+    if not specs:
+        return []
     images = project_image_digests(cards)
-    row: dict[str, Any] = {
-        "group_id": group_id,
-        "required_distinct_images": count,
-        "selected_distinct_images": len(set(images.values())),
+    files = {
+        key: value for key, value in (material_files or {}).items() if key in images
     }
-    if group_id == JUDGMENT_GROUP:
-        row["transparent_image_ids"] = [
-            image_id
-            for image_id, asset in sorted((material_files or {}).items())
-            if image_id in images and has_transparent_pixels(asset["path"])
-        ]
-    return [row]
+    result = []
+    for group_id, count in specs:
+        row: dict[str, Any] = {
+            "group_id": group_id,
+            "required_distinct_images": count,
+            "selected_distinct_images": len(set(images.values())),
+        }
+        if group_id == JUDGMENT_GROUP:
+            row["transparent_image_ids"] = [
+                image_id
+                for image_id, asset in sorted(files.items())
+                if has_transparent_pixels(asset["path"])
+            ]
+        elif group_id == LINE_GROUP:
+            row["native_image_slot_ids"] = line_image_slots(files)
+        result.append(row)
+    return result
+
+
+def line_image_slots(files: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    slots: dict[str, list[str]] = {
+        LINE_PREVIOUS_PATH: [],
+        LINE_DIRECTOR_PATH: [],
+        LINE_HAND_PATH: [],
+    }
+    for asset_id, asset in sorted(files.items()):
+        try:
+            with Image.open(asset["path"]) as image:
+                if line_sheet_shape(image):
+                    for _ in line_sheet_frames(image):
+                        pass
+                    slots[LINE_HAND_PATH].append(asset_id)
+                    continue
+                low, high = image.convert("RGBA").getchannel("A").getextrema()
+                if low == 255:
+                    slots[LINE_PREVIOUS_PATH].append(asset_id)
+                elif isinstance(high, int) and high > 0:
+                    slots[LINE_DIRECTOR_PATH].append(asset_id)
+        except (OSError, ValueError):
+            continue
+    return slots
 
 
 def runtime_payload(runtime: dict) -> dict[str, Any]:
@@ -92,6 +135,16 @@ def validate_template_images(
         required = requirement["required_distinct_images"]
         if requirement["selected_distinct_images"] < required:
             raise ValueError("Selected template group lacks distinct project images")
+        if beat.group_id == LINE_GROUP:
+            media = {anchor.path: anchor.asset_id for anchor in beat.native_media}
+            slots = requirement["native_image_slot_ids"]
+            if any(
+                media.get(path) not in candidates for path, candidates in slots.items()
+            ):
+                raise ValueError(
+                    "Line scene needs its selected art, frame sheet and previous still"
+                )
+            continue
         bound = [
             images.get(item.asset_ids[0])
             for item in beat.relation_items

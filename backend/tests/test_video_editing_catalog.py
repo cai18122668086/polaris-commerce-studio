@@ -139,6 +139,50 @@ def test_scene_details_include_external_font_referenced_by_original_engine(
     assert detail["runtime_validation"] == "unverified"
 
 
+def test_local_font_state_checks_current_bytes_without_exposing_path(video, tmp_path):
+    client, _, ws, settings, _, _, _ = full_metadata(video, tmp_path)
+    package = settings.video_editing_library_dir
+    font = tmp_path / "private-original-font.ttf"
+    font.write_bytes(b"local exact font fixture")
+    resources = read_json(package / "catalog/external-resources.json")
+    resources["resources"][1].update(bytes=font.stat().st_size, sha256=sha256(font))
+    atomic_json(package / "catalog/external-resources.json", resources)
+    manifest = tmp_path / "bindings.json"
+    atomic_json(
+        manifest,
+        {"resources": {"external-1": str(font), "external-0": str(font)}, "tools": {}},
+    )
+    settings.video_editing_native_bindings_file = manifest
+    url = base(ws) + "/editing-library"
+
+    def read_state():
+        detail = client.get(url + "/groups/G131")
+        listed = client.get(
+            url + "/resources",
+            params={"source": "external", "search": "external-1", "kind": "font"},
+        )
+        assert detail.status_code == listed.status_code == 200
+        assert "private-original-font.ttf" not in detail.text + listed.text
+        rows = {row["id"]: row for row in detail.json()["template_dependencies"]}
+        assert "local_dependency_state" not in rows["external-0"]
+        font_row = listed.json()["resources"][0]
+        assert (
+            font_row["local_dependency_state"]
+            == rows["external-1"]["local_dependency_state"]
+        )
+        return font_row["local_dependency_state"], listed.json()[
+            "external_files_available"
+        ]
+
+    assert read_state() == ("verified", True)
+    font.write_bytes(b"X" * font.stat().st_size)
+    assert read_state() == ("identity_mismatch", False)
+    font.unlink()
+    assert read_state() == ("file_missing", False)
+    atomic_json(manifest, {"resources": {"external-1": "relative.ttf"}})
+    assert read_state() == ("not_registered", False)
+
+
 def test_audio_is_authenticated_range_served_and_changed_bytes_are_rejected(
     video, tmp_path
 ):

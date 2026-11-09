@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from app.motion_library import MOTION_SHA256, atomic_json, read_json
+from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from app.motion_parameter_contracts import input_contract
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from app.video_editing_native_compiler import compile_native_job
@@ -109,6 +109,75 @@ def test_current_bound_content_and_clock_replace_history_without_mutating_librar
     assert receipt["schema_validation"] == "passed"
     assert receipt["native_execution"] == "not_performed"
     assert receipt["semantic_review"] == "unreviewed"
+
+
+def test_registered_native_dependency_is_explicit_and_rechecked(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    model = tmp_path / "exact.onnx"
+    model.write_bytes(b"protocol fixture for original dependency")
+    rid = "model-test"
+    atomic_json(
+        package / "catalog/external-resources.json",
+        {
+            "resources": [
+                {
+                    "id": rid,
+                    "kind": "model",
+                    "sha256": sha256(model),
+                    "bytes": model.stat().st_size,
+                },
+            ]
+        },
+    )
+    template = read_json(package / "template.json")
+    template["model"] = "input://" + rid
+    atomic_json(package / "template.json", template)
+    schema = read_json(package / "schema.json")
+    schema["properties"]["model"] = {"type": "string"}
+    atomic_json(package / "schema.json", schema)
+    contract = input_contract(
+        package, read_json(package / "catalog/groups.json")["groups"][0]
+    )
+    recipe.update(
+        template_sha256=contract["template_sha256"],
+        schema_sha256=contract["schema_sha256"],
+    )
+    recipe["config"]["model"] = template["model"]
+    recipe["parameter_decisions"]["model"] = "Require exact original model"
+    manifest = tmp_path / "bindings.json"
+    atomic_json(manifest, {"resources": {rid: str(model)}, "tools": {}})
+    with pytest.raises(ValueError, match="not bound"):
+        compile_native_job(
+            package,
+            tmp_path / "no_selection",
+            beat,
+            transcript,
+            recipe,
+            {},
+            native_bindings_file=manifest,
+        )
+    recipe["dependency_ids"] = [rid]
+    with pytest.raises(ValueError, match="not registered"):
+        compile_native_job(
+            package, tmp_path / "no_registry", beat, transcript, recipe, {}
+        )
+    root = tmp_path / "exact_binding"
+    compile_native_job(
+        package, root, beat, transcript, recipe, {}, native_bindings_file=manifest
+    )
+    assert read_json(root / "bindings.json")["resources"] == {rid: str(model.resolve())}
+    assert read_json(root / "compile-receipt.json")["local_dependency_ids"] == [rid]
+    model.write_bytes(b"X" * model.stat().st_size)
+    with pytest.raises(ValueError, match="bytes do not match"):
+        compile_native_job(
+            package,
+            tmp_path / "changed",
+            beat,
+            transcript,
+            recipe,
+            {},
+            native_bindings_file=manifest,
+        )
 
 
 def test_incomplete_or_old_recipe_cannot_silently_fill_native_inputs(tmp_path):

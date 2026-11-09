@@ -8,14 +8,18 @@ from typing import Any
 
 from .motion_library import MOTION_SHA256, inside, read_json, sha256
 from .motion_library_validation import group_status
+from .motion_local_dependencies import dependency_state
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import LibraryChoiceSnapshot
 
+_MATTING_MODEL = "model-01eb6a29a5c4d8edb30b"
 _SCENE_ENGINE_DEPENDENCIES = {
     "CXBR01": ("font-43a890795ad133d7",),
+    "YYP04": (_MATTING_MODEL,),
+    "YYP06": (_MATTING_MODEL,),
     **dict.fromkeys(
         (f"AZL{number:02}" for number in range(1, 8)),
-        ("font-aa4560dd8fe56457", "model-01eb6a29a5c4d8edb30b"),
+        ("font-aa4560dd8fe56457", _MATTING_MODEL),
     ),
 }
 
@@ -96,11 +100,22 @@ def asset_label(asset: dict[str, Any]) -> str:
     )
 
 
-def asset_metadata(asset: dict[str, Any], *, bundled: bool) -> dict[str, Any]:
+def asset_metadata(
+    asset: dict[str, Any], *, bundled: bool, bindings: dict[str, str] | None = None
+) -> dict[str, Any]:
     return {
         **asset,
         "display_name": asset_label(asset),
         "availability": "packaged" if bundled else "requires_explicit_task_binding",
+        **(
+            {
+                "local_dependency_state": dependency_state(
+                    asset, (bindings or {}).get(asset["id"])
+                )
+            }
+            if not bundled and asset["kind"] in {"font", "model"}
+            else {}
+        ),
         "audio_preview_supported": bundled
         and asset["kind"] in {"sfx", "sfx-processed", "music"},
         "audition_review": "unreviewed",
@@ -128,7 +143,9 @@ def audio_asset(package: Path, asset_id: str) -> tuple[dict[str, Any], Path]:
     return asset, path
 
 
-def template_dependencies(package: Path, group: dict[str, Any]) -> list[dict[str, Any]]:
+def template_dependencies(
+    package: Path, group: dict[str, Any], bindings: dict[str, str] | None = None
+) -> list[dict[str, Any]]:
     external = {
         r["id"]: r
         for r in read_json(package / "catalog/external-resources.json")["resources"]
@@ -188,6 +205,15 @@ def template_dependencies(package: Path, group: dict[str, Any]) -> list[dict[str
                 else {}
             ),
             "availability": "requires_explicit_task_binding",
+            **(
+                {
+                    "local_dependency_state": dependency_state(
+                        external[rid], (bindings or {}).get(rid)
+                    )
+                }
+                if external.get(rid, {}).get("kind") in {"font", "model"}
+                else {}
+            ),
         }
         for rid, fields in references.items()
     ]

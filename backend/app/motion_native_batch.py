@@ -299,6 +299,7 @@ def execute(
                     transcript,
                     case["recipe"],
                     assets,
+                    native_bindings_file=settings.video_editing_native_bindings_file,
                 )
                 if tools:
                     bindings = instance / "bindings.json"

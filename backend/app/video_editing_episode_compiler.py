@@ -384,7 +384,13 @@ def compile_episode(
             directory = root / "compiled-native" / f"{index:03}-{beat.group_id}"
             try:
                 job = compile_native_job(
-                    package, directory, beat, transcript, entry.recipe, asset_files
+                    package,
+                    directory,
+                    beat,
+                    transcript,
+                    entry.recipe,
+                    asset_files,
+                    native_bindings_file=settings.video_editing_native_bindings_file,
                 )
                 part_bindings = read_json(directory / "bindings.json")
                 for rid, value in part_bindings["resources"].items():

@@ -13,6 +13,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
+from .motion_local_dependencies import dependency_state, local_dependencies
 from .motion_parameter_contracts import SHIFTED_GEOMETRY_EVENTS, input_contract
 from .video_editing_browser_clocks import (
     CARD_GROUP,
@@ -88,6 +89,8 @@ def compile_native_job(
     transcript: Transcript,
     recipe: dict[str, Any],
     asset_files: dict[str, dict[str, Any]],
+    *,
+    native_bindings_file: Path | None = None,
 ) -> dict[str, Any]:
     """Return a schema-admitted original job plus traceable measured bindings.
 
@@ -189,14 +192,23 @@ def compile_native_job(
         r["id"]: r
         for r in read_json(package / "catalog/external-resources.json")["resources"]
     }
-    for rid, declared_path in recipe.get("dependency_bindings", {}).items():
+    direct = recipe.get("dependency_bindings", {})
+    dependency_ids = recipe.get("dependency_ids", [])
+    if (
+        not isinstance(dependency_ids, list)
+        or any(not isinstance(rid, str) for rid in dependency_ids)
+        or len(set(dependency_ids)) != len(dependency_ids)
+        or set(dependency_ids) & set(direct)
+    ):
+        raise ValueError("Choose a single explicit binding per original dependency")
+    registered = local_dependencies(native_bindings_file) if dependency_ids else {}
+    if set(dependency_ids) - set(registered):
+        raise ValueError("Selected original dependency is not registered on this host")
+    dependencies = {**direct, **{rid: registered[rid] for rid in dependency_ids}}
+    for rid, declared_path in dependencies.items():
         identity = dependency_rows.get(rid, {})
         source = Path(declared_path).resolve()
-        if (
-            identity.get("kind") not in {"font", "model"}
-            or not source.is_file()
-            or sha256(source) != identity.get("sha256")
-        ):
+        if dependency_state(identity, str(source)) != "verified":
             raise ValueError(
                 "Original font/model dependency bytes do not match: " + rid
             )
@@ -245,9 +257,7 @@ def compile_native_job(
                     "Exact original font/model dependency is not bound: " + path
                 )
             elif is_card_font:
-                if value != template["font"] or value[8:] not in recipe.get(
-                    "dependency_bindings", {}
-                ):
+                if value != template["font"] or value[8:] not in dependencies:
                     raise ValueError(
                         "Bind the original browser card font or select a bundled font"
                     )
@@ -339,6 +349,7 @@ def compile_native_job(
             "job_sha256": sha256(root / "job.json"),
             "word_bindings_sha256": sha256(root / "word-bindings.json"),
             "media_clocks": clock_receipts,
+            **({"local_dependency_ids": dependency_ids} if dependency_ids else {}),
             **({"native_profile": PICTURE_PROFILE} if picture_variant else {}),
             **({"browser_clock": browser_clock} if browser_clock else {}),
             "schema_validation": "passed",

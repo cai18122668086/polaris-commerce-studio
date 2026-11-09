@@ -487,3 +487,11 @@ Chrome 实测播放 360×640 代理、确认后播放并下载 720×1280 高清�
 批次 `C:/tl/cxbr-batch/native-v1/batch-receipt.json` 记录 4 组各一次原生 `check` 与 `render-group`。720×1280、30 fps，共 526 帧，独立全量解码、画面变化与证据摘要通过。说话人样本采用四个不同非零源偏移，补充视频分别从局部第 40、89、0、7 帧进入，源时间起点均为 0。独立比较 4 个说话人画面和 18 个补充画面样本。正确说话人窗口像素平均绝对误差为 1.883–2.217，错用原片起点为 8.634–17.760。正确补充窗口为 1.454–1.755，各组平均误差均低于错用镜头时钟的对照。证据 `C:/tl/cxbr-batch/clock-and-catalog-evidence.json`。人工抽看实际编码画面确认圆窗、分区、前景和纸条存在。这批静音原生组件使用实录取段作为时钟对照，仍待以本期实际配套素材核对完整画面。连续人物模板沿用已经实测的出片流程。
 
 真实 API 对照四组的证据 ID 和输出摘要。Chrome 实测四张组卡显示“有编码样本 · 未验收”，CXBR01 显示待实测与原字体依赖，CXBR03 详情显示一份具体记录。CXBR02 的原模型缓存检出 73 张各不相同的有效 alpha 蒙版。网站证据 `C:/tl/cxbr-batch/browser-catalog-evidence.json`。原库仍完整登记 132 组、197 项内置资源、699 项外部引用，现有 71 组带编码样本、4 组有失败记录、57 组待实测、0 组获用户画面验收。批次结束时原包 1426 项完整性复核通过。50 项相关回归、Windows/Linux mypy、Ruff、前端类型与目标 ESLint 通过。GitHub main 复核 `106d1e3eb17a87b89576d3f97c7ec8c9edf05e5a`，主目录的 81 项既存改动隔离。无数据库迁移、付费调用、推送或部署。
+
+## 本机原字体和模型依赖
+
+API 与 worker 可通过 `POLARIS_VIDEO_EDITING_NATIVE_BINDINGS_FILE` 读取同一份原包绑定工具生成的本机清单。网站按文件身份显示未登记、已登记文件缺失、摘要不符或原件已核验。只返回核验状态，文件路径保留在本机私有清单。可信配方用 `dependency_ids` 明确指定本次依赖，原有 `dependency_bindings` 继续兼容。每次编译核对字节数与 SHA256，历史视频和其他项目素材继续按原流程独立绑定。
+
+原包绑定工具在本机已安装字体及既存本机素材中核验了 Georgia Bold、Georgia Italic、Impact、Segoe Print、Segoe Script、Consolas 和 u2net 抠像模型。28 项外部字体有 6 项本机已核验、22 项待登记。CXBR01 的 Times New Roman 和 AZL01–07 的黑体已找到本机同名字体，但其字节数与摘要不同。优设标题黑官方发布页需要登录下载，已有两份公开候选摘要均不同。此轮保持这些依赖待登记，库内原件身份不变。
+
+以清单 ID 重编并实际渲染 CXBR02、YYP04、YYP06，三份编码样本与原路径绑定的样本 SHA256 逐一相等。Chrome 核对 AZL01 的模型已核验与黑体未登记，以及外部字体页的 6 项已核验和 22 项未登记。真实 API 与独立比较证据见 `C:/tl/dependency-binding/website-dependency-registry-evidence.json`。原包完整性通过，运行覆盖统计沿用上一阶段，未据此增加视觉验收。

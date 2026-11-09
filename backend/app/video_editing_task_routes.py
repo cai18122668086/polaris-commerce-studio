@@ -17,6 +17,7 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .motion_library_validation import group_status
+from .motion_local_dependencies import local_dependencies
 from .motion_parameter_contracts import input_contract
 from .video_editing_catalog import (
     asset_metadata,
@@ -285,7 +286,11 @@ def describe_group(
         "group": group,
         "input_schema": read_json(package / group["input_schema"]),
         "parameter_contract": input_contract(package, group),
-        "template_dependencies": template_dependencies(package, group),
+        "template_dependencies": template_dependencies(
+            package,
+            group,
+            local_dependencies(settings.video_editing_native_bindings_file),
+        ),
         "dependency_scope": (
             "template inputs, indexed browser fonts and audited scene engine "
             "references; "
@@ -317,7 +322,8 @@ def library_resources(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
-    package = enabled(request).video_editing_library_dir
+    settings = enabled(request)
+    package = settings.video_editing_library_dir
     rows = (
         read_json(package / "asset-manifest.json")["assets"]
         if source == "bundled"
@@ -337,16 +343,26 @@ def library_resources(
                 + r["id"]
             ).casefold()
         ]
+    bindings = (
+        local_dependencies(settings.video_editing_native_bindings_file)
+        if source == "external"
+        else None
+    )
+    resources = [
+        asset_metadata(row, bundled=source == "bundled", bindings=bindings)
+        for row in rows[offset : offset + limit]
+    ]
     return {
         "release": MOTION_SHA256,
         "source": source,
         "total": len(rows),
-        "resources": [
-            asset_metadata(r, bundled=source == "bundled")
-            for r in rows[offset : offset + limit]
-        ],
+        "resources": resources,
         "next_offset": offset + limit if offset + limit < len(rows) else None,
-        "external_files_available": False if source == "external" else None,
+        "external_files_available": (
+            any(row.get("local_dependency_state") == "verified" for row in resources)
+            if source == "external"
+            else None
+        ),
         "website_runtime_validation": "unverified",
     }
 

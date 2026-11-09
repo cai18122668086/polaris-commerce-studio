@@ -91,13 +91,23 @@ _IMPACT = ("sfx-69dba3f8f41f94e1", 0.03, 0.27, -25)
 _ENTRY_SOUNDS = {
     QUESTION_GROUP: (QUESTION_ENTRY, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     QUESTION_CARD_GROUP: (QUESTION_CARD_SOUND, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
+    "AH-S02": ("/events/body_frame", _SLIDE),
     "AH-S05": ("/events/type_frame", _TYPING),
+    "AH-S08": ("/events/title_frame", _SLIDE),
     "AH-S09": ("/events/title_frame", _CLICK),
     "AHG-S02": ("/events/mark/0", _SELECT),
+    "AHG-S04": ("/events/type/0", _TYPING),
+    "AHG-S05": ("/events/body/0", _SLIDE),
+    "BG-S02": ("/events/body_frame", _CLICK),
+    "BG-S03": ("/events/body_frame", _SLIDE),
     "BG-S04": ("/events/body_frame", _SLIDE),
+    "BG-S05": ("/events/body_frame", _IMPACT),
     "BG-S06": ("/events/upper_start", _SLIDE),
     "JJ-S01": ("/events/main/0", _CLICK),
+    "JJ-S02": ("/events/grow/0", _SLIDE),
     "JJ-S03": ("/events/line/0", _IMPACT),
+    "JJ-S04": ("/events/body/0", _CLICK),
+    "JJ-S05": ("/events/body/0", _SELECT),
     LINE_GROUP: (LINE_HAND_ENTRY, _SLIDE),
     "LYO01": ("/events/text_frame", _SLIDE),
     "LYO02": ("/events/text_frame", _SELECT),
@@ -197,7 +207,8 @@ def _entry(
         *(event["path"] for event in contract["event_paths"]),
     ]
     text = {row["path"]: row["text"] for row in anchors["text"]}
-    if set(slots) != set(text) | {row["path"] for row in anchors["events"]}:
+    event_values = {row["path"]: row["value"] for row in anchors["events"]}
+    if set(slots) != set(text) | event_values.keys():
         raise ApiError(
             422,
             "EDITING_TEMPLATE_ANCHORS_REQUIRED",
@@ -212,7 +223,15 @@ def _entry(
         )
         if len(text["/content/lower"]) == 6:
             config["capacity"]["lower"] = [6, 6]
-    if beat.group_id == "SG-S03":
+    if beat.group_id == "JJ-S02" and (
+        event_values["/events/retreat/1"] > event_values["/events/front/0"]
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+            "JJ-S02 的实录词点须让后景退定，再开始显示前景说明。",
+        )
+    if beat.group_id in {"SG-S03", "BG-S03"}:
         for font in config["fonts"].values():
             font["shadow"].update(x=0, y=0, blur=0)
     for role, (minimum, maximum) in config.get("capacity", {}).items():

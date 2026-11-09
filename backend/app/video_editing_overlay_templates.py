@@ -22,6 +22,7 @@ QUESTION_CARD_TEMPLATE_ID = "question-card-story-v1"
 EXPLAINER_TEMPLATE_ID = "explainer-steps-v1"
 PACKAGE_TEMPLATE_ID = "package-specs-v1"
 LINE_TEMPLATE_ID = "line-story-v1"
+SUBTITLE_STORY_TEMPLATE_ID = "subtitle-story-v1"
 PACKAGE_TEMPLATES = frozenset({PACKAGE_TEMPLATE_ID, LINE_TEMPLATE_ID})
 _OPENING_PURPOSES = {
     "LYO01": (
@@ -57,8 +58,9 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     "LYO03": (_OPENING_FONT, ROTATION_MATTE),
     "LYO04": (_OPENING_FONT,),
 }
+_SPECIFICATION_SLOT = {"group_id": "SG-S09", "purpose": "分别表达单件规格和到手总量"}
 _SHARED_SLOTS = [
-    {"group_id": "SG-S09", "purpose": "分别表达单件规格和到手总量"},
+    _SPECIFICATION_SLOT,
     {"group_id": "SG-S03", "purpose": "强调真实的使用时长或体验短句"},
     {"group_id": "AH-S05", "purpose": "突出优惠条件和结论"},
     {"group_id": "JJ-S01", "purpose": "区分来源与对应说明"},
@@ -85,23 +87,39 @@ _QUESTION_SLOT = {
     ),
 }
 _ACTION_SLOT = {"group_id": "AH-S09", "purpose": "分开显示下单前提与对应行动"}
+_SUBTITLE_STORY_SLOTS = {
+    "AH-S02": "先定位实际口播短句，再滑入对应重点，例如已说出的报价。",
+    "AH-S08": "先以实录短标题引出上下文，再滑入一条对应说明。",
+    "AHG-S04": "先打出同句口播，再把句内的重点留在画面中。",
+    "AHG-S05": "先写清对象或成分，再让相关结论从下方翻出。",
+    "BG-S02": "左侧先出现实际短句，右侧大字补充对应说明。",
+    "BG-S03": "用上下两行依次表达两项实录内容，再按原节奏错位。",
+    "BG-S05": "居中缩放实录主题，在下方呈现实际说出的补充信息。",
+    "JJ-S02": (
+        "先写清来源或对象，再显示实际说明。让后景退定后再显示前景，"
+        "retreat/1 最晚锚定 front/0 的词点。"
+    ),
+    "JJ-S04": "实录背景或动作先落位，再引出金色结论。",
+    "JJ-S05": "让实录短主题上下分开，从中间带出对应的短结论。",
+}
+_EXPLAINER_SLOTS = [
+    {"group_id": "BG-S06", "purpose": "用两层文字交代使用场景和要解决的问题"},
+    {"group_id": "SG-S03", "purpose": "让典型场景里的实录短词从说明中突出"},
+    {"group_id": "AH-S05", "purpose": "从动作说明中跳出核心动作词"},
+    {"group_id": "JJ-S01", "purpose": "分开呈现适用对象及其说明"},
+    {"group_id": "SG-S02", "purpose": "从说明中标出选择或安排的关键词"},
+    {"group_id": "SG-S06", "purpose": "分两层呈现做法和对应目标"},
+    {"group_id": "BG-S04", "purpose": "左右对照两个相关的实录短词"},
+    {"group_id": "AH-S09", "purpose": "分开呈现主题和补充说明"},
+    {"group_id": "JJ-S03", "purpose": "突出实录给出的做法或结论"},
+    {"group_id": "SG-S10", "purpose": "让背景概念承托前景行动建议"},
+    {"group_id": "AHG-S02", "purpose": "标记分类或行动的实录短语"},
+]
 _TEMPLATES = {
     EXPLAINER_TEMPLATE_ID: {
         "id": EXPLAINER_TEMPLATE_ID,
         "name": "讲解步骤与口播重点",
-        "slots": [
-            {"group_id": "BG-S06", "purpose": "用两层文字交代使用场景和要解决的问题"},
-            {"group_id": "SG-S03", "purpose": "让典型场景里的实录短词从说明中突出"},
-            {"group_id": "AH-S05", "purpose": "从动作说明中跳出核心动作词"},
-            {"group_id": "JJ-S01", "purpose": "分开呈现适用对象及其说明"},
-            {"group_id": "SG-S02", "purpose": "从说明中标出选择或安排的关键词"},
-            {"group_id": "SG-S06", "purpose": "分两层呈现做法和对应目标"},
-            {"group_id": "BG-S04", "purpose": "左右对照两个相关的实录短词"},
-            {"group_id": "AH-S09", "purpose": "分开呈现主题和补充说明"},
-            {"group_id": "JJ-S03", "purpose": "突出实录给出的做法或结论"},
-            {"group_id": "SG-S10", "purpose": "让背景概念承托前景行动建议"},
-            {"group_id": "AHG-S02", "purpose": "标记分类或行动的实录短语"},
-        ],
+        "slots": _EXPLAINER_SLOTS,
     },
     "label-compare-v1": {
         "id": "label-compare-v1",
@@ -263,6 +281,16 @@ _TEMPLATES = {
     },
 }
 
+_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID] = {
+    "id": SUBTITLE_STORY_TEMPLATE_ID,
+    "name": "原生字效叙事",
+    "slots": [
+        {"group_id": group, "purpose": purpose}
+        for group, purpose in _SUBTITLE_STORY_SLOTS.items()
+    ]
+    + [_SPECIFICATION_SLOT, *_EXPLAINER_SLOTS],
+}
+
 _TEMPLATES[PICTURE_TEMPLATE_ID] = {
     "id": PICTURE_TEMPLATE_ID,
     "name": "三图卡与口播重点",
@@ -326,6 +354,7 @@ def overlay_templates() -> list[dict]:
             PRESENTER_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
+            SUBTITLE_STORY_TEMPLATE_ID,
         )
     ]
 

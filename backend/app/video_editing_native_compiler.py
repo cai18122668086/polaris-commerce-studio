@@ -140,7 +140,10 @@ def compile_native_job(
     if beat.group_id == QUESTION_GROUP and branch not in (QUESTION_BRANCH, "smoke"):
         raise ValueError("Select an original W-R18 branch")
     question_variant = beat.group_id == QUESTION_GROUP and branch == QUESTION_BRANCH
-    contract = input_contract(package, group, branch=branch)
+    embedded_caption = not question_variant or config["content"].get("captions") != []
+    contract = input_contract(
+        package, group, branch=branch, embedded_question_caption=embedded_caption
+    )
     if (
         recipe.get("version") != "tengli.native-recipe/1"
         or recipe.get("release") != MOTION_SHA256
@@ -155,7 +158,9 @@ def compile_native_job(
     if question_variant:
         if beat.relation != "question":
             raise ValueError("W-R18 question branch requires a spoken question beat")
-        template = question_variant_template(template)
+        template = question_variant_template(
+            template, embedded_caption=embedded_caption
+        )
     if beat.group_id == SILHOUETTE_GROUP:
         slots = [
             {"kind": "image", "alpha": True, "path": None} for _ in SILHOUETTE_PATHS

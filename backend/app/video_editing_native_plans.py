@@ -115,6 +115,7 @@ def plan_response(
                 transparent_groups,
                 allow_hypit_insets=row.details["source_subtitles"] == "none"
                 and internal_hypit_available(settings, row.workspace_id),
+                allow_question_insets=row.details["source_subtitles"] == "none",
             )
         )
         >= MIN_OVERLAY_TYPES,
@@ -535,6 +536,7 @@ def admit_render_plan(
                 else None,
                 allow_hypit_insets=options.source_subtitles == "none"
                 and internal_hypit_available(settings, row.workspace_id),
+                allow_question_insets=options.source_subtitles == "none",
             )
         )
         < MIN_OVERLAY_TYPES

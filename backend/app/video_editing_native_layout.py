@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from .motion_library import atomic_json, read_json, sha256
-from .video_editing_render_edits import HY_PORTRAIT_INSETS, boxes_intersect
+from .video_editing_render_edits import NATIVE_PORTRAIT_INSETS, boxes_intersect
 
 BACKDROP_GROUP = "SG-S10"
 _RENDERER = (
@@ -41,7 +41,7 @@ def verify_inset_layout(root: Path, review: dict) -> dict:
         shot = data["shots"][i]
         start, end = shot["start_seconds"], shot["end_seconds"]
         if (
-            shot["group_id"] not in HY_PORTRAIT_INSETS
+            shot["group_id"] not in NATIVE_PORTRAIT_INSETS
             or shot["layer"] != "overlay"
             or not any(
                 region["id"] == "centered-portrait"

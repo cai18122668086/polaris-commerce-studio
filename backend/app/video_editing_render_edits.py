@@ -5,10 +5,12 @@ from typing import Any
 
 from .video_editing_contracts import NativeRenderEdits, SemanticBeat
 from .video_editing_hypit_strips import PRICE_CARD_GROUP, PRICE_CARD_INSET_TYPE
+from .video_editing_question_branch import QUESTION_BRANCH, QUESTION_GROUP
 
 SOURCE_GROUP = "Z-M00"
 MUSIC_REDUCTION_DB = 6
 HY_PORTRAIT_INSETS = frozenset(("HY-A5", PRICE_CARD_GROUP))
+NATIVE_PORTRAIT_INSETS = HY_PORTRAIT_INSETS | {QUESTION_GROUP}
 
 
 def _rect(value: Any) -> tuple[float, float, float, float] | None:
@@ -34,8 +36,9 @@ def portrait_inset_allowed(group_id: str, entry: dict, regions: list[dict]) -> b
     placement = entry.get("placement", {})
     rect = _rect(placement.get("rect"))
     recipe = entry.get("recipe", {})
+    config = recipe.get("config", {})
     if (
-        group_id not in HY_PORTRAIT_INSETS
+        group_id not in NATIVE_PORTRAIT_INSETS
         or placement.get("layer") != "overlay"
         or rect is None
         or not 0.43 <= rect[1] < rect[3] <= 0.86
@@ -43,6 +46,13 @@ def portrait_inset_allowed(group_id: str, entry: dict, regions: list[dict]) -> b
         or (
             group_id == PRICE_CARD_GROUP
             and recipe.get("price_card_layout") != PRICE_CARD_INSET_TYPE
+        )
+        or (
+            group_id == QUESTION_GROUP
+            and (
+                config.get("branch") != QUESTION_BRANCH
+                or config.get("content", {}).get("captions") != []
+            )
         )
         or not any(r.get("id") == "centered-portrait" for r in regions)
     ):
@@ -87,6 +97,7 @@ def continuous_overlay_groups(
     excluded: set[str] | None = None,
     *,
     allow_hypit_insets: bool = False,
+    allow_question_insets: bool = False,
 ) -> set[str]:
     """Admit transparent layers and audited lower-frame native insets."""
     active = set()
@@ -98,8 +109,11 @@ def continuous_overlay_groups(
         transparent = gid in transparent_groups and (
             entry.get("placement", {}).get("layer") == "subtitle"
         )
+        allow_inset = (allow_hypit_insets and gid in HY_PORTRAIT_INSETS) or (
+            allow_question_insets and gid == QUESTION_GROUP
+        )
         if not transparent and not (
-            allow_hypit_insets
+            allow_inset
             and portrait_inset_allowed(gid, entry, recipes.get("protected_regions", []))
         ):
             return set()

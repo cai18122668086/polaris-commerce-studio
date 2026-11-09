@@ -256,6 +256,52 @@ def test_continuous_hypit_inset_needs_internal_access_and_speaker_clearance():
     )
 
 
+def test_question_inset_keeps_the_main_caption_and_aligns_to_the_visible_frame():
+    from app.video_editing_question_branch import question_overlay_entry_frame
+    from app.video_editing_render_edits import continuous_overlay_groups
+
+    semantic = {"beats": [{"id": "question", "group_id": "W-R18"}]}
+    config = {
+        "branch": "question",
+        "content": {"captions": []},
+        "timing": {"events": {"question_in": 0}},
+    }
+    entry = {
+        "placement": {"layer": "overlay", "rect": [0.13, 0.435, 0.74, 0.41]},
+        "recipe": {"group_id": "W-R18", "config": config},
+    }
+    recipes = {
+        "entries": {"question": entry},
+        "protected_regions": [
+            {"id": "centered-portrait", "rect": [0.35, 0.09, 0.34, 0.34]}
+        ],
+    }
+    assert not continuous_overlay_groups(semantic, recipes, set())
+    assert continuous_overlay_groups(
+        semantic, recipes, set(), allow_question_insets=True
+    ) == {"W-R18"}
+
+    config["content"]["captions"].append({"text": "duplicate"})
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), allow_question_insets=True
+    )
+    config["content"]["captions"].clear()
+    config["branch"] = "smoke"
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), allow_question_insets=True
+    )
+    config["branch"] = "question"
+    shot = {
+        "group_id": "W-R18",
+        "layer": "overlay",
+        "start_seconds": 4.87,
+        "config": config,
+    }
+    assert question_overlay_entry_frame(shot, 30) == 147
+    shot["start_seconds"] = 4.9
+    assert question_overlay_entry_frame(shot, 30) == 147
+
+
 def test_corrupt_frozen_plan_fails_without_asr_or_plain_subtitle_fallback(
     video, tmp_path, monkeypatch
 ):

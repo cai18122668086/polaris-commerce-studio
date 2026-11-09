@@ -98,14 +98,20 @@ def pointer(parts: list[str | int]) -> str:
 
 
 def input_contract(
-    package: Path, group: dict[str, Any], *, branch: str | None = None
+    package: Path,
+    group: dict[str, Any],
+    *,
+    branch: str | None = None,
+    embedded_question_caption: bool = True,
 ) -> dict[str, Any]:
     template = read_json(package / group["input_template"])
     question_group = group["id"] == QUESTION_GROUP
     if question_group and branch not in (None, QUESTION_BRANCH, "smoke"):
         raise ValueError("Select an original W-R18 branch")
     if question_group and branch == QUESTION_BRANCH:
-        template = question_variant_template(template)
+        template = question_variant_template(
+            template, embedded_caption=embedded_question_caption
+        )
     schema = read_json(package / group["input_schema"])
     Draft202012Validator.check_schema(schema)
     external = {

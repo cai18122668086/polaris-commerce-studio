@@ -9,6 +9,12 @@ from pydantic import Field, model_validator
 from .motion_library import inside, read_json, sha256
 from .video_editing_contracts import NativeRenderEdits, Transcript
 from .video_editing_hypit_strips import verify_stagger_entry
+from .video_editing_question_branch import (
+    QUESTION_BRANCH,
+    QUESTION_ENTRY,
+    QUESTION_GROUP,
+    question_overlay_entry_frame,
+)
 from .video_editing_render_edits import MUSIC_REDUCTION_DB
 from .video_studio_schemas import StrictVideoModel
 
@@ -180,6 +186,19 @@ def compile_sound(
             value / fps if unit == "frames" else value
         )
         seconds = entry_seconds
+        question_entry = None
+        if (
+            shot["group_id"] == QUESTION_GROUP
+            and shot["layer"] == "overlay"
+            and shot["config"].get("branch") == QUESTION_BRANCH
+            and cue.event_path == QUESTION_ENTRY
+            and cue.phase == "entry"
+        ):
+            output_fps = episode["output"]["fps"]
+            frame = question_overlay_entry_frame(shot, output_fps)
+            seconds = frame / output_fps
+            native_ref = {}
+            question_entry = {"shot_index": shot_index, "output_frame": frame}
         if hypit_entry:
             # The original compositor applies setpts in the output frame time
             # base. Its positive fractional shot origin truncates to a frame.
@@ -205,6 +224,7 @@ def compile_sound(
                 "beat_id": cue.beat_id,
                 "group_id": shot["group_id"],
                 **({"hypit_entry": hypit_entry} if hypit_entry else {}),
+                **({"question_entry": question_entry} if question_entry else {}),
             }
         )
 
@@ -288,12 +308,24 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
     if len(rendered) != len(plan["fx"]):
         raise ValueError("Native FX count differs from the compiled plan")
     events = []
+    episode = None
     for cue, actual in zip(plan["fx"], rendered, strict=True):
         anchor = actual["anchor_basis"]
         onset_delta = actual["effective_onset_seconds"] - cue["anchor_seconds"]
         if hypit_entry := cue.get("hypit_entry"):
             verify_stagger_entry(root, hypit_entry)
             anchor_valid = anchor["kind"] == "explicit_current_clock"
+        elif question_entry := cue.get("question_entry"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            fps = episode["output"]["fps"]
+            shot = episode["shots"][question_entry["shot_index"]]
+            frame = question_overlay_entry_frame(shot, fps)
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and question_entry["output_frame"] == frame
+                and cue["anchor_seconds"] == frame / fps
+            )
         else:
             ref = cue["anchor_ref"]
             anchor_valid = anchor["kind"] == "native_event" and all(

@@ -14,6 +14,7 @@ from .video_editing_media_clocks import clock_profile
 
 QUESTION_GROUP = "W-R18"
 QUESTION_BRANCH = "question"
+QUESTION_ENTRY = "/timing/events/question_in"
 QUESTION_FONT = "font-06b2048c592b1dae"
 _OWNER = Path("src/engines/workspace/商业口播_可编辑改造_20261104")
 _ORIGINAL_SCENE = Path(
@@ -22,7 +23,7 @@ _ORIGINAL_SCENE = Path(
 )
 
 
-def question_variant_template(template: dict) -> dict:
+def question_variant_template(template: dict, *, embedded_caption: bool = True) -> dict:
     """Describe the exposed original question inputs alongside the smoke defaults."""
     presenter = {k: v for k, v in template["media"]["presenter"].items() if k != "crop"}
     return {
@@ -30,7 +31,9 @@ def question_variant_template(template: dict) -> dict:
         "branch": QUESTION_BRANCH,
         "content": {
             "question": "",
-            "captions": [{"start": 0.0, "end": 1.0, "text": ""}],
+            "captions": [{"start": 0.0, "end": 1.0, "text": ""}]
+            if embedded_caption
+            else [],
         },
         "media": {"presenter": presenter},
         "layout": {**template["layout"], "minimum_font_px": 31},
@@ -39,6 +42,20 @@ def question_variant_template(template: dict) -> dict:
             "events": {"question_in": 0.0, "dissolve_in": 1.1},
         },
     }
+
+
+def question_overlay_entry_frame(shot: dict, fps: int) -> int:
+    if (
+        shot["group_id"] != QUESTION_GROUP
+        or shot["layer"] != "overlay"
+        or shot["config"].get("branch") != QUESTION_BRANCH
+        or shot["config"]["timing"]["events"]["question_in"] != 0
+        or fps != 30
+    ):
+        raise ValueError("Question sound needs the original inset entry at local zero")
+    # The pinned episode compositor enables an overlay with gte(t, shot_start).
+    start_ms = round(shot["start_seconds"] * 1000)
+    return (start_ms * fps + 999) // 1000
 
 
 class _DeferredOriginalImage:

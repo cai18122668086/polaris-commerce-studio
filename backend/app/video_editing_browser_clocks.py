@@ -95,6 +95,8 @@ def compile_card_clock(
     template: dict,
     config: dict,
     native: dict,
+    *,
+    word_entry: bool = False,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     if (
         sha256(package / group["entry"]) != CARD_ENGINE_SHA
@@ -133,6 +135,12 @@ def compile_card_clock(
             translated[f"/cards/{i}/keys/{j}/0"] = round(
                 current[index] + progress * (current[index + 1] - current[index]), 6
             )
+        if word_entry:
+            # The pinned tracks' second pose is off canvas and their third
+            # pose is inside. Keep the prior sampled frame outside.
+            outside = f"/cards/{i}/keys/1/0"
+            entry = f"/cards/{i}/keys/2/0"
+            translated[outside] = max(translated[outside], translated[entry] - 1)
     return translated, {
         "policy": "shared_original_card_clock",
         "engine_sha256": CARD_ENGINE_SHA,
@@ -140,5 +148,6 @@ def compile_card_clock(
         "original_landmark_frames": original,
         "current_landmark_frames": current,
         "pose_geometry_preserved": True,
+        **({"first_visible_frame_at_word": True} if word_entry else {}),
         "timing_review": "unreviewed",
     }

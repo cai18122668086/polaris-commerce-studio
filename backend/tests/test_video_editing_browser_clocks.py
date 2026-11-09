@@ -90,6 +90,12 @@ def test_browser_retimes_shared_poses_and_rejects_invalid_landmarks(
     assert frames["/cards/0/keys/3/0"] == frames["/cards/1/keys/2/0"] == 32
     assert frames["/cards/1/keys/3/0"] == frames["/cards/2/keys/2/0"] == 50
     assert frames["/cards/2/keys/10/0"] == 119
+    word_frames, word_receipt = cards.compile_card_clock(
+        tmp_path, group, template, config, native, word_entry=True
+    )
+    assert word_receipt["first_visible_frame_at_word"]
+    assert word_frames["/cards/0/keys/1/0"] == 19
+    assert word_frames["/cards/0/keys/2/0"] == 20
     native["events"][1]["value"] = 20
     with pytest.raises(ValueError, match="distinct ordered frames"):
         cards.compile_card_clock(tmp_path, group, template, config, native)

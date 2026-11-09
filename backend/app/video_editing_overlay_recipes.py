@@ -1,4 +1,4 @@
-"""Build trusted text-layer recipes from original inputs and measured word IDs."""
+"""Build trusted composition recipes from original inputs and measured word IDs."""
 
 from pathlib import Path
 from typing import Any
@@ -6,6 +6,7 @@ from typing import Any
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, inside, read_json
 from .motion_parameter_contracts import input_contract
+from .video_editing_browser_clocks import CARD_GROUP, CARD_LANDMARKS, SPLIT_TITLE_FONT
 from .video_editing_contracts import (
     EditingOptions,
     SemanticBeat,
@@ -58,6 +59,7 @@ _ENTRY_SOUNDS = {
     "SG-S09": ("/events/enter_start", _TYPING),
     "SG-S10": ("/events/enter_start", _SLIDE),
 }
+_CARD_ENTRY_PATHS = tuple(CARD_LANDMARKS)[:3]
 _MUSIC = ("bgm-b5035a43098ee293", "bgm-f318d21e6b2d98bb")
 _FONT_SIZES = {
     "BG-S06": {"upper": 42, "lower": 62},
@@ -244,10 +246,108 @@ def _question_entry(
     ), anchors
 
 
+def _card_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    assets = {
+        card["id"]: card["sha256"]
+        for card in asset_cards
+        if card["kind"] == "image" and card["id"].startswith("material-")
+    }
+    anchors = word_bindings(beat, transcript, contract, set(beat.asset_ids))
+    media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+    text = {row["path"]: row["token_ids"] for row in anchors["text"]}
+    events = {row["path"]: row for row in anchors["events"]}
+    media_paths = {row["path"] for row in contract["resource_paths"]}
+    if (
+        beat.relation != "parallel"
+        or len(beat.relation_items) != 3
+        or set(media) != media_paths
+        or set(media.values()) != set(beat.asset_ids)
+        or not set(media.values()) <= assets.keys()
+        or set(text) != set(contract["text_paths"])
+        or set(events) != CARD_LANDMARKS.keys()
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_CARD_INPUTS_REQUIRED",
+            "三图卡需要本段的三个并列项、已选项目图片及完整词点。",
+        )
+    image_digests = set()
+    for index, item in enumerate(beat.relation_items):
+        food, city = (f"/cards/{index}/{key}" for key in ("food", "city"))
+        pictures = {food + "/image", city + "/image"}
+        labels = {food + "/label", city + "/label"}
+        image_id = media[food + "/image"]
+        entry = events[_CARD_ENTRY_PATHS[index]]
+        if (
+            media[city + "/image"] != image_id
+            or text[food + "/label"] != text[city + "/label"]
+            or item.asset_ids != [image_id]
+            or set(item.native_text_paths) != labels
+            or set(item.native_media_paths) != pictures
+            or entry["token_id"] != text[food + "/label"][0]
+            or entry["edge"] != "start"
+        ):
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_CARD_RELATION_REQUIRED",
+                "每张图卡的两套槽须对应同一词组和图片，并由该词组首词触发。",
+            )
+        image_digests.add(assets[image_id])
+    if len(image_digests) != 3:
+        raise ApiError(
+            422, "EDITING_TEMPLATE_CARD_IMAGES_DISTINCT", "三张图卡需要三份不同的图片。"
+        )
+    config = read_json(inside(package, group["input_template"]))
+    slots = [
+        row["path"]
+        for row in contract["fields"]
+        if row["category"] in {"text", "resource", "event", "native_keyframe_clock"}
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(
+            layer="scene",
+            rect=[0, 0, 1, 1],
+            reason="按原全幅三图卡构图呈现项目图片，口播继续。",
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": CARD_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-picture-compare-v1",
+            "design_reason": "保留原三张图卡的几何和轨迹，按本期三个词组驱动。",
+            "parameter_decisions": {
+                key: "沿用原三图卡的画幅、字形、姿态和主题。" for key in config
+            },
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": [SPLIT_TITLE_FONT],
+            "browser_word_entry": True,
+        },
+    ), anchors
+
+
 def _entry_sound(
-    beat: SemanticBeat, anchors: dict[str, Any], duration_ms: int, avoided: set[str]
+    beat: SemanticBeat,
+    anchors: dict[str, Any],
+    duration_ms: int,
+    avoided: set[str],
+    card_path: str | None = None,
 ) -> NativeSoundCue:
-    path, selection = _ENTRY_SOUNDS[beat.group_id]
+    path, selection = (
+        (card_path, _SLIDE) if card_path is not None else _ENTRY_SOUNDS[beat.group_id]
+    )
     event = next(row for row in anchors["events"] if row["path"] == path)
     asset_id, source_start, length, peak = (
         selection if selection[0] not in avoided else _CLICK
@@ -273,11 +373,10 @@ def _entry_sound(
         beat_id=beat.id,
         event_path=path,
         phase="entry",
-        purpose=(
-            "整帧追问入场时给一次短提示，口播继续。"
-            if beat.group_id == QUESTION_GROUP
-            else "原生文字动效入场时给一次短提示，口播继续。"
-        ),
+        purpose={
+            QUESTION_GROUP: "整帧追问入场时给一次短提示，口播继续。",
+            CARD_GROUP: "图卡进入时给一次短提示，口播继续。",
+        }.get(beat.group_id, "原生文字动效入场时给一次短提示，口播继续。"),
         source_start_seconds=source_start,
         trim_duration_seconds=length,
         target_peak_dbfs=peak,
@@ -291,6 +390,7 @@ def build_overlay_recipes(
     transcript_sha256: str,
     template: dict,
     choice_snapshot: dict,
+    asset_cards: list[dict] | None = None,
 ) -> EpisodeRecipeBundle:
     try:
         validate_template_plan(semantic, template, complete=True)
@@ -314,13 +414,22 @@ def build_overlay_recipes(
         raise ApiError(
             422, "EDITING_TEMPLATE_MUSIC_UNAVAILABLE", "候选背景音乐均已被避用。"
         )
-    entries, cues = {}, []
+    entries = {}
+    cues: list[NativeSoundCue] = []
     for beat in beats:
-        make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
-        entries[beat.id], anchors = make_entry(
-            package, groups[beat.group_id], beat, transcript
-        )
-        cues.append(_entry_sound(beat, anchors, transcript.duration_ms, avoided))
+        group = groups[beat.group_id]
+        if beat.group_id == CARD_GROUP:
+            entries[beat.id], anchors = _card_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            cues.extend(
+                _entry_sound(beat, anchors, transcript.duration_ms, avoided, path)
+                for path in _CARD_ENTRY_PATHS
+            )
+        else:
+            make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
+            entries[beat.id], anchors = make_entry(package, group, beat, transcript)
+            cues.append(_entry_sound(beat, anchors, transcript.duration_ms, avoided))
     has_scene = any(entry.placement.layer == "scene" for entry in entries.values())
     return EpisodeRecipeBundle(
         version="tengli.episode-recipes/1",

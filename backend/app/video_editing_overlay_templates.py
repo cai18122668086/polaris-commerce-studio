@@ -6,6 +6,7 @@ from .video_editing_contracts import SemanticPlan
 
 MIN_OVERLAY_TYPES = 5
 PREFERRED_OVERLAY_TYPES = 10
+PICTURE_TEMPLATE_ID = "picture-compare-v1"
 _SHARED_SLOTS = [
     {"group_id": "SG-S09", "purpose": "分别表达单件规格和到手总量"},
     {"group_id": "SG-S03", "purpose": "强调真实的使用时长或体验短句"},
@@ -21,6 +22,19 @@ _ROLL_SLOTS = [
     {"group_id": "AHG-S02", "purpose": "区分先前的实际购买经历"},
     *_SHARED_SLOTS,
 ]
+_QUESTION_SLOT = {
+    "group_id": "W-R18",
+    "purpose": "实际追问可短暂整帧虚化，随后回到同期原片",
+    "layer": "scene",
+    "native_branch": "question",
+    "binding": (
+        "选择完整追问段，将 question_in 锚定该段首词。"
+        "用 question 和 dissolve_in 标记实录标题和溶解词点。"
+        "presenter 与 question_background 都绑定同一原片素材 ID。"
+        "主字幕由网站统一生成。"
+    ),
+}
+_ACTION_SLOT = {"group_id": "AH-S09", "purpose": "分开显示下单前提与对应行动"}
 _TEMPLATES = {
     "label-compare-v1": {
         "id": "label-compare-v1",
@@ -41,29 +55,32 @@ _TEMPLATES = {
     "question-story-v1": {
         "id": "question-story-v1",
         "name": "整帧追问与口播重点",
-        "slots": [
-            {
-                "group_id": "W-R18",
-                "purpose": "实际追问可短暂整帧虚化，随后回到同期原片",
-                "layer": "scene",
-                "native_branch": "question",
-                "binding": (
-                    "选择完整追问段，将 question_in 锚定该段首词。"
-                    "用 question 和 dissolve_in 标记实录标题和溶解词点。"
-                    "presenter 与 question_background 都绑定同一原片素材 ID。"
-                    "主字幕由网站统一生成。"
-                ),
-            },
-            *_ROLL_SLOTS,
-            {"group_id": "AH-S09", "purpose": "分开显示下单前提与对应行动"},
-        ],
+        "slots": [_QUESTION_SLOT, *_ROLL_SLOTS, _ACTION_SLOT],
     },
     "roll-compare-v2": {
         "id": "roll-compare-v2",
         "name": "滚动报价与规格对照",
+        "slots": [*_ROLL_SLOTS, _ACTION_SLOT],
+    },
+    PICTURE_TEMPLATE_ID: {
+        "id": PICTURE_TEMPLATE_ID,
+        "name": "三图卡与口播重点",
         "slots": [
+            {
+                "group_id": "CX-G07",
+                "purpose": "在整帧画面依次展示与口播对应的三张项目图片",
+                "layer": "scene",
+                "binding": (
+                    "只在本段有三个并列项目和对应图片时使用。"
+                    "background 绑定已选背景图，三个 cards 各用不同图片。"
+                    "同一卡的 food 和 city 槽绑定相同的实录标签和图片。"
+                    "前三个动作锚定各卡标签首词，最后一项落稳使用后续实录词点。"
+                    "relation_items 逐卡列出两套槽对应的词范围和素材。"
+                ),
+            },
+            _QUESTION_SLOT,
             *_ROLL_SLOTS,
-            {"group_id": "AH-S09", "purpose": "分开显示下单前提与对应行动"},
+            _ACTION_SLOT,
         ],
     },
 }
@@ -72,7 +89,12 @@ _TEMPLATES = {
 def overlay_templates() -> list[dict]:
     return [
         overlay_template(key)
-        for key in ("label-compare-v1", "roll-compare-v2", "question-story-v1")
+        for key in (
+            "label-compare-v1",
+            "roll-compare-v2",
+            "question-story-v1",
+            PICTURE_TEMPLATE_ID,
+        )
     ]
 
 

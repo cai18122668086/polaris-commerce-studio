@@ -79,7 +79,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
     root = base(ws)
     options = client.get(root + "/editing-templates").json()
-    assert len(options) == 3 and all(len(row["slots"]) >= 10 for row in options)
+    assert len(options) == 4 and all(len(row["slots"]) >= 10 for row in options)
     template = next(row for row in options if row["id"] == "question-story-v1")
     scene = next(slot for slot in template["slots"] if slot["group_id"] == "W-R18")
     assert scene["layer"] == "scene" and scene["native_branch"] == "question"

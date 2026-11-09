@@ -17,6 +17,7 @@ from pydantic import Field, model_validator
 
 from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_hypit import hypit_tools, internal_hypit_available, requires_hypit
@@ -31,6 +32,7 @@ from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
     MIN_OVERLAY_TYPES,
+    PICTURE_TEMPLATE_ID,
     overlay_template,
     validate_template_plan,
 )
@@ -561,6 +563,28 @@ def compile_episode(
                     "not_in_original_relation_schema"
                 )
         episode["production"]["beats"].append(production_beat)
+    if authoring.overlay_template_id == PICTURE_TEMPLATE_ID:
+        card_windows = [
+            (shot["start_seconds"], shot["end_seconds"])
+            for shot in episode["shots"]
+            if shot["group_id"] == CARD_GROUP
+        ]
+        if card_windows:
+            caption_role = episode["typography"]["caption"]
+            overrides = caption_role.setdefault("layout_overrides", [])
+            overrides.extend(
+                {
+                    "start_seconds": caption["start_seconds"],
+                    "end_seconds": caption["end_seconds"],
+                    "baseline_y_px": round(episode["output"]["height"] * 732 / 1280),
+                    "reason": "将主字幕放在原生三张图卡的上方。",
+                }
+                for caption in episode["captions"]
+                if any(
+                    caption["start_seconds"] < end and start < caption["end_seconds"]
+                    for start, end in card_windows
+                )
+            )
     for aid, asset in asset_files.items():
         if not any(
             aid in b.asset_ids for b in semantic.beats if b.id not in excluded_beats

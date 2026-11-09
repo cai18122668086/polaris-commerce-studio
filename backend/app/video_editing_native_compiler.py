@@ -316,8 +316,11 @@ def compile_native_job(
     browser_clock = None
     browser_font = None
     if group["id"] == CARD_GROUP:
+        word_entry = recipe.get("browser_word_entry", False)
+        if type(word_entry) is not bool:
+            raise ValueError("Browser word entry must be a trusted boolean option")
         keyframes, browser_clock = compile_card_clock(
-            package, group, template, config, native
+            package, group, template, config, native, word_entry=word_entry
         )
         assignments.update(keyframes)
         native["browser_clock"] = browser_clock

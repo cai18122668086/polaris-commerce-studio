@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import case, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -31,6 +31,7 @@ from .video_editing_contracts import (
     EditingExportConfirmation,
     EditingTaskCreate,
     EditingTaskResponse,
+    EditingWorksResponse,
 )
 from .video_editing_native_plans import admit_render_plan
 from .video_editing_source_lineage import freeze_generation_source, source_origin
@@ -106,12 +107,26 @@ def artifact_visible(row: EditingTaskRecord, record: EditingArtifactRecord) -> b
     )
 
 
+def artifact_response(
+    row: EditingTaskRecord, record: EditingArtifactRecord
+) -> dict[str, Any]:
+    base = f"/api/v1/video-studio/workspaces/{row.workspace_id}/editing-tasks/{row.id}"
+    return {
+        "id": record.id,
+        "role": record.role,
+        "mime": record.mime,
+        "sha256": record.sha256,
+        "bytes": record.bytes,
+        "duration_ms": record.duration_ms,
+        "url": base + "/artifacts/" + record.id,
+    }
+
+
 def response(
     row: EditingTaskRecord, session: Session, source: EditingSourceRecord | None = None
 ) -> dict[str, Any]:
     if source is None:
         source = session.get(EditingSourceRecord, row.source_id)
-    base = f"/api/v1/video-studio/workspaces/{row.workspace_id}/editing-tasks/{row.id}"
     artifacts = session.scalars(
         select(EditingArtifactRecord).where(EditingArtifactRecord.task_id == row.id)
     ).all()
@@ -146,17 +161,7 @@ def response(
             ),
         },
         "artifacts": [
-            {
-                "id": a.id,
-                "role": a.role,
-                "mime": a.mime,
-                "sha256": a.sha256,
-                "bytes": a.bytes,
-                "duration_ms": a.duration_ms,
-                "url": base + "/artifacts/" + a.id,
-            }
-            for a in artifacts
-            if artifact_visible(row, a)
+            artifact_response(row, a) for a in artifacts if artifact_visible(row, a)
         ],
     }
 
@@ -580,6 +585,78 @@ def get_task(
     task_id: UUID, workspace: VideoWorkspace, session: SessionDependency
 ) -> dict[str, Any]:
     return response(own_task(session, workspace, str(task_id)), session)
+
+
+@router.get("/editing-works", response_model=EditingWorksResponse)
+def list_editing_works(
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+    keyword: Annotated[str, Query(max_length=120)] = "",
+    before: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 24,
+) -> dict[str, Any]:
+    title = func.coalesce(
+        func.nullif(
+            func.trim(VideoProjectRecord.content["draft"]["name"].as_string()), ""
+        ),
+        "未命名项目",
+    )
+    query = (
+        select(EditingTaskRecord, title, EditingArtifactRecord)
+        .join(VideoProjectRecord, VideoProjectRecord.id == EditingTaskRecord.project_id)
+        .join(
+            EditingArtifactRecord, EditingArtifactRecord.task_id == EditingTaskRecord.id
+        )
+        .where(
+            EditingTaskRecord.workspace_id == workspace.workspace_id,
+            EditingTaskRecord.owner_user_id == workspace.principal.user_id,
+            VideoProjectRecord.workspace_id == workspace.workspace_id,
+            VideoProjectRecord.owner_user_id == workspace.principal.user_id,
+            EditingTaskRecord.status == "completed",
+            EditingArtifactRecord.role == "final",
+        )
+    )
+    if term := keyword.strip():
+        query = query.where(title.icontains(term, autoescape=True))
+    if before:
+        cursor = own_task(session, workspace, str(before))
+        query = query.where(
+            or_(
+                EditingTaskRecord.created_at < cursor.created_at,
+                and_(
+                    EditingTaskRecord.created_at == cursor.created_at,
+                    EditingTaskRecord.id < cursor.id,
+                ),
+            )
+        )
+    items: list[dict[str, Any]] = []
+    results = session.execute(
+        query.order_by(
+            EditingTaskRecord.created_at.desc(), EditingTaskRecord.id.desc()
+        ).execution_options(yield_per=32)
+    )
+    with results:
+        for result in results:
+            row, project_title, final = cast(
+                tuple[EditingTaskRecord, str, EditingArtifactRecord], result
+            )
+            if not artifact_visible(row, final):
+                continue
+            if len(items) == limit:
+                return {"items": items, "next_before": items[-1]["task_id"]}
+            items.append(
+                {
+                    "task_id": row.id,
+                    "project_id": row.project_id,
+                    "project_title": project_title,
+                    "created_at": row.created_at
+                    if row.created_at.tzinfo
+                    else row.created_at.replace(tzinfo=UTC),
+                    "mode": row.options.get("mode", "subtitles"),
+                    "final": artifact_response(row, final),
+                }
+            )
+    return {"items": items, "next_before": None}
 
 
 @router.post("/editing-tasks/{task_id}/cancel", response_model=EditingTaskResponse)

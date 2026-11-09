@@ -2123,6 +2123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-works": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Editing Works */
+        get: operations["list_editing_works_api_v1_video_studio_workspaces__workspace_id__editing_works_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/generation-prices": {
         parameters: {
             query?: never;
@@ -6185,6 +6202,33 @@ export interface components {
              * @constant
              */
             timing_review: "unreviewed";
+        };
+        /** EditingWorkResponse */
+        EditingWorkResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            final: components["schemas"]["EditingArtifactResponse"];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "subtitles" | "native_plan";
+            /** Project Id */
+            project_id: string;
+            /** Project Title */
+            project_title: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /** EditingWorksResponse */
+        EditingWorksResponse: {
+            /** Items */
+            items: components["schemas"]["EditingWorkResponse"][];
+            /** Next Before */
+            next_before: string | null;
         };
         /** ErrorBody */
         ErrorBody: {
@@ -12772,6 +12816,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingOverlayTemplate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_editing_works_api_v1_video_studio_workspaces__workspace_id__editing_works_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingWorksResponse"];
                 };
             };
             /** @description Validation Error */

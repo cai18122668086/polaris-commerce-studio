@@ -218,6 +218,20 @@ class EditingArtifactResponse(StrictVideoModel):
     url: str
 
 
+class EditingWorkResponse(StrictVideoModel):
+    task_id: str
+    project_id: str
+    project_title: str
+    created_at: datetime
+    mode: Literal["subtitles", "native_plan"]
+    final: EditingArtifactResponse
+
+
+class EditingWorksResponse(StrictVideoModel):
+    items: list[EditingWorkResponse]
+    next_before: str | None
+
+
 class EditingExportConfirmation(StrictVideoModel):
     preview_artifact_id: UUID
     preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

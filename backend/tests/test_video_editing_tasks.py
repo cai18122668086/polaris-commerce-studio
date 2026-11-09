@@ -208,12 +208,14 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
             )
         session.commit()
     task_url = url + "/" + tid
+    works_url = base(ws) + "/editing-works"
     confirm_url = task_url + "/confirm-export"
     artifact_url = task_url + "/artifacts/"
     body = {"preview_artifact_id": preview_id, "preview_sha256": preview_sha}
     waiting = client.get(task_url).json()
     assert waiting["status"] == "awaiting_review"
     assert [item["role"] for item in waiting["artifacts"]] == ["preview"]
+    assert client.get(works_url).json() == {"items": [], "next_before": None}
     assert client.get(artifact_url + final_id).status_code == 404
     assert client.get(artifact_url + preview_id).content == preview.read_bytes()
     assert (
@@ -245,6 +247,12 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
         next(a for a in record["artifacts"] if a["role"] == "final")["id"] == final_id
     )
     assert client.get(artifact_url + final_id).content == master.read_bytes()
+    (work,) = client.get(works_url).json()["items"]
+    assert work["task_id"] == tid
+    assert work["project_title"] == "演示产品"
+    assert work["mode"] == "native_plan"
+    assert work["final"]["url"] == artifact_url + final_id
+    assert "preview" not in work and "path" not in work["final"]
     assert client.post(confirm_url, json=body).json() == record
     assert (
         client.post(
@@ -252,3 +260,60 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
         ).status_code
         == 409
     )
+
+
+def test_editing_works_search_cursor_and_owner_scope(video, tmp_path):
+    from tests.test_auth_external import verified_identity
+
+    client, auth, ws, _, _, project, source = setup_source(video, tmp_path)
+    task_url = base(ws) + "/editing-tasks"
+    works_url = base(ws) + "/editing-works"
+    ids = [
+        client.post(
+            task_url, json={"request_id": str(uuid4()), "source_id": source}
+        ).json()["id"]
+        for _ in range(4)
+    ]
+    with client.app.state.session_factory() as session:
+        for tid in ids[:3]:
+            task = session.get(EditingTaskRecord, tid)
+            task.status = task.stage = "completed"
+            task.created_at = datetime(2026, 11, 9, 6, tzinfo=UTC)
+            if tid == ids[2]:
+                task.options = {
+                    **task.options,
+                    "mode": "native_plan",
+                    "native_plan_id": str(uuid4()),
+                    "delivery": "preview_first",
+                }
+            session.add(
+                EditingArtifactRecord(
+                    id=str(uuid4()),
+                    task_id=tid,
+                    role="final",
+                    path=str(tmp_path / "not-served-by-the-list.mp4"),
+                    mime="video/mp4",
+                    bytes=120,
+                    sha256="a" * 64,
+                    duration_ms=2000,
+                )
+            )
+        session.commit()
+    high, low = sorted(ids[:2], reverse=True)
+    first = client.get(works_url, params={"limit": 1, "keyword": "演示"}).json()
+    assert [work["task_id"] for work in first["items"]] == [high]
+    assert first["next_before"] == high
+    second = client.get(
+        works_url, params={"limit": 1, "before": high, "keyword": "演示"}
+    ).json()
+    assert [(work["task_id"], work["project_id"]) for work in second["items"]] == [
+        (low, project)
+    ]
+    assert second["next_before"] is None
+    assert client.get(works_url, params={"keyword": "%"}).json()["items"] == []
+    auth.identity = verified_identity(
+        primary_user_id="other-user", email="1474953130@qq.com"
+    )
+    unscoped = client.get(works_url)
+    assert unscoped.status_code in {403, 404} or unscoped.json()["items"] == []
+    assert client.get(works_url, params={"before": high}).status_code in {403, 404}

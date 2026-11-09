@@ -287,7 +287,8 @@ def describe_group(
         "parameter_contract": input_contract(package, group),
         "template_dependencies": template_dependencies(package, group),
         "dependency_scope": (
-            "template input references and indexed browser font aliases; "
+            "template inputs, indexed browser fonts and audited scene engine "
+            "references; "
             "native preflight may require implicit engine dependencies"
         ),
         "contract": read_json(package / group["contract"])

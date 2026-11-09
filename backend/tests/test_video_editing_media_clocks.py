@@ -179,6 +179,88 @@ def test_independent_video_clock_requires_the_uploaded_clip_length(
         )
 
 
+@pytest.mark.parametrize("delayed", [False, True])
+def test_scene_clip_clock_binds_native_window_without_using_presenter_offset(
+    tmp_path, monkeypatch, delayed
+):
+    package, transcript, _, _, _, _ = media_inputs(tmp_path, monkeypatch)
+    slot = "/media/broll/path"
+    event = "/timing/broll_in"
+    manifest = read_json(clocks.MANIFEST)
+    profile = manifest["profiles"]["YYP01"]
+    profile["project_scene_clip_start_events"] = {slot: event if delayed else None}
+    atomic_json(clocks.MANIFEST, manifest)
+    fields = ["offset_seconds", "duration_seconds"]
+    if delayed:
+        fields.append("start_seconds")
+    contract = {
+        "native_fps": 30,
+        "fields": [
+            {"path": f"/media/broll/{name}", "category": "clock_owned_by_compiler"}
+            for name in fields
+        ],
+    }
+    group = {"id": "YYP01", "backend": "scene"}
+    native = {
+        "media": [{"path": slot, "asset_id": "uploaded"}],
+        "clock": {"start_ms": 8600, "end_ms": 11600},
+        "events": [{"path": event, "unit": "frames", "value": 24}] if delayed else [],
+    }
+    assets = {
+        "uploaded": {
+            "kind": "video",
+            "source": "project_upload",
+            "duration_ms": 4000,
+            "sha256": "a" * 64,
+        }
+    }
+    config = {"media": {"broll": {"end_policy": "error"}}}
+    declarations = [{"media_path": slot, "policy": "project_scene_clip_window"}]
+    assigned, proof = clocks.compile_media_clocks(
+        package, group, contract, native, declarations, assets, transcript, config
+    )
+    assert assigned == {
+        "/media/broll/offset_seconds": 0,
+        "/media/broll/duration_seconds": 2.2 if delayed else 3,
+        **({"/media/broll/start_seconds": 0.8} if delayed else {}),
+    }
+    assert proof[0]["source_start_ms"] == 0
+    assert proof[0]["source_end_ms"] == (2200 if delayed else 3000)
+    assert proof[0]["asset_id"] == "uploaded"
+    config["media"]["broll"]["end_policy"] = "hold"
+    with pytest.raises(ValueError, match="without looping or holding"):
+        clocks.compile_media_clocks(
+            package, group, contract, native, declarations, assets, transcript, config
+        )
+    config["media"]["broll"]["end_policy"] = "error"
+    if delayed:
+        native["events"].clear()
+        with pytest.raises(ValueError, match="measured native frame event"):
+            clocks.compile_media_clocks(
+                package,
+                group,
+                contract,
+                native,
+                declarations,
+                assets,
+                transcript,
+                config,
+            )
+    else:
+        assets["uploaded"]["duration_ms"] = 2999
+        with pytest.raises(ValueError, match="cover its native window"):
+            clocks.compile_media_clocks(
+                package,
+                group,
+                contract,
+                native,
+                declarations,
+                assets,
+                transcript,
+                config,
+            )
+
+
 def test_audited_source_cut_uses_both_measured_edges(tmp_path, monkeypatch):
     package, transcript, _, _, assets, _ = media_inputs(tmp_path, monkeypatch)
     slot = "/media/shots/0/path"

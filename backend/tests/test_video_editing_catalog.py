@@ -115,6 +115,30 @@ def test_all_groups_and_resources_remain_with_explicit_unverified_states(
     assert external["resources"][0]["availability"] == "requires_explicit_task_binding"
 
 
+def test_scene_details_include_external_font_referenced_by_original_engine(
+    video, tmp_path
+):
+    client, _, ws, settings, _, _, _ = full_metadata(video, tmp_path)
+    package = settings.video_editing_library_dir
+    groups = read_json(package / "catalog/groups.json")
+    groups["groups"][0].update(id="CXBR01", backend="scene")
+    atomic_json(package / "catalog/groups.json", groups)
+    resources = read_json(package / "catalog/external-resources.json")
+    resources["resources"][-1] = {"id": "font-43a890795ad133d7", "kind": "font"}
+    atomic_json(package / "catalog/external-resources.json", resources)
+    response = client.get(base(ws) + "/editing-library/groups/CXBR01")
+    assert response.status_code == 200, response.text
+    detail = response.json()
+    item = next(
+        row
+        for row in detail["template_dependencies"]
+        if row["id"] == "font-43a890795ad133d7"
+    )
+    assert item["input_fields"] == []
+    assert item["binding_scope"] == "exact_native_dependency"
+    assert detail["runtime_validation"] == "unverified"
+
+
 def test_audio_is_authenticated_range_served_and_changed_bytes_are_rejected(
     video, tmp_path
 ):

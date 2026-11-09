@@ -70,24 +70,48 @@ def compile_media_clocks(
     used = set()
     clips = profile.get("project_clip_event_frames", {})
     cuts = profile.get("transcript_cut_media", {})
+    scene_clips = profile.get("project_scene_clip_start_events", {})
     event_bindings = {event["path"]: event for event in native.get("events", [])}
     for row in declarations:
         if set(row) != {"media_path", "policy"} or row["policy"] not in {
             "transcript_source_window",
             "project_clip_from_start",
             "transcript_cut_window",
+            "project_scene_clip_window",
         }:
             raise ValueError("Media clock policy must use an audited native slot")
         path = row["media_path"]
         clip = row["policy"] == "project_clip_from_start"
         cut = row["policy"] == "transcript_cut_window"
-        allowed = clips if clip else cuts if cut else profile["media_paths"]
+        scene_clip = row["policy"] == "project_scene_clip_window"
+        allowed = (
+            clips
+            if clip
+            else cuts
+            if cut
+            else scene_clips
+            if scene_clip
+            else profile["media_paths"]
+        )
         if path in used or path not in media or path not in allowed:
             raise ValueError(
                 "Media clock must address one selected, audited native slot"
             )
         used.add(path)
         asset = assets[media[path]["asset_id"]]
+        if scene_clip:
+            clock_fields, receipt = _project_scene_clip(
+                path,
+                scene_clips[path],
+                asset,
+                native,
+                config,
+                media_clock_fields,
+                profile,
+            )
+            assigned.update(clock_fields)
+            receipts.append({**receipt, "asset_id": media[path]["asset_id"]})
+            continue
         if clip:
             fps = profile["native_fps"]
             shift = config["events"]["shift_frames"]
@@ -197,3 +221,60 @@ def compile_media_clocks(
             "Every selected native video needs its own audited source clock"
         )
     return assigned, receipts
+
+
+def _project_scene_clip(
+    path: str,
+    start_event: str | None,
+    asset: dict,
+    native: dict,
+    config: dict,
+    media_clock_fields: set[str],
+    profile: dict,
+) -> tuple[dict[str, float], dict]:
+    fps = profile["native_fps"]
+    start_frame = 0
+    if start_event is not None:
+        event = next(
+            (row for row in native["events"] if row["path"] == start_event), None
+        )
+        if not event or event["unit"] != "frames" or type(event["value"]) is not int:
+            raise ValueError("Scene clip start needs a measured native frame event")
+        start_frame = event["value"]
+    duration = native["clock"]["end_ms"] - native["clock"]["start_ms"]
+    frames = math.ceil(duration / 1000 * fps)
+    if not 0 <= start_frame < frames:
+        raise ValueError("Scene clip starts outside the rendered frame window")
+    length = (frames - start_frame) / fps
+    required_ms = math.ceil((frames - start_frame) * 1000 / fps)
+    slot = path.split("/")[2]
+    if (
+        asset.get("kind") != "video"
+        or asset.get("source") != "project_upload"
+        or type(asset.get("duration_ms")) is not int
+        or asset["duration_ms"] < required_ms
+        or config["media"][slot].get("end_policy") != "error"
+    ):
+        raise ValueError(
+            "Scene clip must cover its native window without looping or holding"
+        )
+    prefix = path.rsplit("/", 1)[0]
+    assigned = {prefix + "/offset_seconds": 0.0, prefix + "/duration_seconds": length}
+    if start_event is not None:
+        assigned[prefix + "/start_seconds"] = start_frame / fps
+    if not set(assigned) <= media_clock_fields:
+        raise ValueError("Scene clip window differs from the original native fields")
+    return assigned, {
+        "media_path": path,
+        "policy": "project_scene_clip_window",
+        "source_sha256": asset["sha256"],
+        "source_start_ms": 0,
+        "source_end_ms": required_ms,
+        "asset_duration_ms": asset["duration_ms"],
+        "start_event_path": start_event,
+        "start_frame": start_frame,
+        "profile_id": profile["id"],
+        "native_source_files": profile["source_files"],
+        "native_sampling_expression": f"max(0, (local frame - {start_frame}) / {fps})",
+        "timing_review": "unreviewed",
+    }

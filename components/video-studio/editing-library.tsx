@@ -144,7 +144,7 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
       {detailId && <section className={styles.detail} aria-label="动效组详情">
         <b>{detailId} · {catalog.groups.find(g => g.id === detailId)?.name}</b>
         {detail ? <>
-          <p>{detail.contract_status === "declared" ? "有原始参数合同" : "保留原始 schema 与入口"}。以下是模板及浏览器入口登记的外部输入，其他运行依赖仍需按实际分支核对。</p>
+          <p>{detail.contract_status === "declared" ? "有原始参数合同" : "保留原始 schema 与入口"}。以下是模板与已核查原入口的外部输入，其他运行依赖仍需按实际分支核对。</p>
           {detail.parameter_contract.classic_authoring_status === "classic_attributes_schema_closed" && <p>经典入口的原 schema 拒绝写入当前文字和时点参数。{detail.parameter_contract.native_profile === "picture-parallel-3" && "原三图变体仅供已配置的内部工作区验证。"}</p>}
           {detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>
             {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}

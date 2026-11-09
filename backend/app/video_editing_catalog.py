@@ -11,6 +11,14 @@ from .motion_library_validation import group_status
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import LibraryChoiceSnapshot
 
+_SCENE_ENGINE_DEPENDENCIES = {
+    "CXBR01": ("font-43a890795ad133d7",),
+    **dict.fromkeys(
+        (f"AZL{number:02}" for number in range(1, 8)),
+        ("font-aa4560dd8fe56457", "model-01eb6a29a5c4d8edb30b"),
+    ),
+}
+
 
 def choice_snapshot_hash(data: dict[str, Any]) -> str:
     return hashlib.sha256(
@@ -155,6 +163,10 @@ def template_dependencies(package: Path, group: dict[str, Any]) -> list[dict[str
                 if external.get(rid, {}).get("kind") == "font":
                     native_aliases.setdefault(rid, []).append(path.removeprefix(prefix))
                     references.setdefault(rid, [])
+    if group.get("backend") == "scene":
+        for rid in _SCENE_ENGINE_DEPENDENCIES.get(group["id"], ()):
+            if rid in external:
+                references.setdefault(rid, [])
     return [
         {
             "id": rid,

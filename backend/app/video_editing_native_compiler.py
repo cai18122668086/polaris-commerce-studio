@@ -30,7 +30,7 @@ from .video_editing_browser_clocks import (
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
 from .video_editing_hypit_strips import (
-    STRIP_PROFILE,
+    STAGGER_GROUPS,
     STRIP_SIDECAR,
     compile_strips,
     strip_config_sha256,
@@ -150,7 +150,7 @@ def compile_native_job(
         contract.get("native_profile") == PICTURE_PROFILE
         and config.get("profile") == PICTURE_PROFILE
     )
-    strip_variant = contract.get("website_sidecar_profile") == STRIP_PROFILE
+    strip_variant = group["id"] in STAGGER_GROUPS
     if strip_variant and (
         config.get("attributes") != {} or config.get("fonts") != template["fonts"]
     ):
@@ -455,7 +455,7 @@ def compile_native_job(
             **({"native_profile": PICTURE_PROFILE} if picture_variant else {}),
             **(
                 {
-                    "website_sidecar_profile": STRIP_PROFILE,
+                    "website_sidecar_profile": contract["website_sidecar_profile"],
                     "sidecar_sha256": strip_digest,
                 }
                 if strip_digest

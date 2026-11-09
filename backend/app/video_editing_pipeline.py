@@ -29,7 +29,7 @@ from .video_editing_captioning import (
     write_caption_receipt,
 )
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
-from .video_editing_hypit_strips import STRIP_GROUPS
+from .video_editing_hypit_strips import STAGGER_GROUPS
 from .video_editing_native_sound import verify_rendered_sound
 
 
@@ -569,7 +569,7 @@ def stop_hypit_runtimes(root: Path, settings: Settings) -> None:
         (root / "hypit").glob("HY-A3-picture-parallel-3-*/hypit.runtime.json")
     )
     strip_root = root / "hypit-strips/work"
-    for group in STRIP_GROUPS:
+    for group in STAGGER_GROUPS:
         profiles.extend(strip_root.glob(f"*/hypit/{group}/hypit.runtime.json"))
     allowed = (root.resolve() / "hypit", root.resolve() / "hypit-strips/work")
     for profile in profiles:

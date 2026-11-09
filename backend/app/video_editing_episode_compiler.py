@@ -20,7 +20,12 @@ from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_hypit import hypit_tools, requires_hypit
-from .video_editing_hypit_strips import STRIP_GROUPS, STRIP_SIDECAR
+from .video_editing_hypit_strips import (
+    STAGGER_GROUPS,
+    STRIP_SIDECAR,
+    stagger_audio_frame,
+    stagger_events,
+)
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
@@ -394,7 +399,8 @@ def compile_episode(
                     native_bindings_file=settings.video_editing_native_bindings_file,
                 )
                 part_bindings = read_json(directory / "bindings.json")
-                if beat.group_id in STRIP_GROUPS:
+                hypit_entries = {}
+                if beat.group_id in STAGGER_GROUPS:
                     stem = f"{len(episode['shots']):03}-{beat.group_id}"
                     part = directory / STRIP_SIDECAR
                     if (
@@ -405,10 +411,27 @@ def compile_episode(
                             "Hypit strip receipt changed during compilation"
                         )
                     sidecar = root / "hypit-strips" / f"{stem}.json"
-                    atomic_json(sidecar, read_json(part))
-                    bindings.setdefault("tengli_hypit_strips", {})[stem] = sha256(
-                        sidecar
-                    )
+                    strip = read_json(part)
+                    atomic_json(sidecar, strip)
+                    digest = sha256(sidecar)
+                    bindings.setdefault("tengli_hypit_strips", {})[stem] = digest
+                    hypit_entries = {
+                        path: {
+                            "group_id": beat.group_id,
+                            "shot": stem,
+                            "sidecar_sha256": digest,
+                            "index": i,
+                            "frame": frame,
+                            "audible_frame": stagger_audio_frame(beat.group_id, frame),
+                        }
+                        for i, (path, frame) in enumerate(
+                            zip(
+                                stagger_events(beat.group_id),
+                                strip["entry_frames"],
+                                strict=True,
+                            )
+                        )
+                    }
                 for rid, value in part_bindings["resources"].items():
                     if (
                         rid in bindings["resources"]
@@ -418,6 +441,8 @@ def compile_episode(
                     bindings["resources"][rid] = value
                 if authoring.sound:
                     for event in read_json(directory / "word-bindings.json")["events"]:
+                        if event["path"] in hypit_entries:
+                            event["hypit_entry"] = hypit_entries[event["path"]]
                         sound_events[beat.id, event["path"]] = (
                             len(episode["shots"]),
                             event,

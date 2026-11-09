@@ -3,6 +3,7 @@ import pytest
 from app import video_editing_hypit as hypit
 from app import video_editing_hypit_strips as strips
 from app.config import Settings
+from app.motion_library import atomic_json
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from app.video_editing_word_bindings import word_bindings
 
@@ -23,7 +24,7 @@ def test_hypit_strips_keep_directions_and_bind_entrances_to_words(
     monkeypatch.setitem(
         strips.NATIVE_FILES, "commercial_runtime/special.py", strips.sha256(special)
     )
-    monkeypatch.setitem(strips.STRIP_GROUPS, "HY-A4", ("a4m", strips.sha256(entry)))
+    monkeypatch.setitem(strips.STAGGER_GROUPS, "HY-A4", ("a4m", strips.sha256(entry)))
     group = {"id": "HY-A4", "entry": entry.name}
     native = {
         "clock": {"start_ms": 1000, "end_ms": 5000},
@@ -55,6 +56,92 @@ def test_hypit_strips_keep_directions_and_bind_entrances_to_words(
     native["text"][1]["text"] = "乙;frame"
     with pytest.raises(ValueError, match="short labels"):
         strips.compile_strips(tmp_path, group, native, assets)
+
+
+def test_hypit_price_cards_anchor_numbers_to_distinct_current_images(
+    tmp_path, monkeypatch
+):
+    entry = tmp_path / "price.svml"
+    entry.write_text(
+        '<stagger:Entry id="a6m"\n'
+        '    items="pic3@1,2,3,4>zoom; pic2@5,6,7,8>zoom; pic1@9,10,11,12>zoom"\n'
+        '    caps="旧价|99; 旧重|99克; 旧量|99斤" frames="1,20,30"/>',
+        encoding="utf-8",
+    )
+    special = tmp_path / "commercial_runtime/special.py"
+    special.parent.mkdir()
+    special.write_text("# Original materializer stand-in")
+    monkeypatch.setitem(
+        strips.NATIVE_FILES, "commercial_runtime/special.py", strips.sha256(special)
+    )
+    monkeypatch.setitem(strips.STAGGER_GROUPS, "HY-A6", ("a6m", strips.sha256(entry)))
+    group = {"id": "HY-A6", "entry": entry.name}
+    paths = (strips.STRIP_IMAGE, *strips.CARD_IMAGES)
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 5000},
+        "text": [
+            {"path": path, "text": label, "token_ids": [f"t{i}"]}
+            for i, (path, label) in enumerate(
+                zip(
+                    strips.CARD_TITLES + strips.CARD_DETAILS,
+                    ("链接", "每瓶", "两瓶", "14块9", "1000克", "4斤"),
+                    strict=True,
+                )
+            )
+        ],
+        "events": [
+            {"path": path, "value": i * 25, "token_id": f"t{i + 3}", "edge": "start"}
+            for i, path in enumerate(strips.CARD_EVENTS)
+        ],
+        "media": [{"path": path, "asset_id": path} for path in paths],
+    }
+    assets = {
+        path: {"kind": "image", "source": "project_upload", "sha256": str(i)}
+        for i, path in enumerate(paths)
+    }
+    data = strips.compile_strips(tmp_path, group, native, assets)
+    assert strips._native_attributes(tmp_path, group, data)["a6m"] == {
+        "caps": "链接|14块9; 每瓶|1000克; 两瓶|4斤",
+        "frames": "0,25,50",
+    }
+    native["events"][0]["token_id"] = "t0"
+    with pytest.raises(ValueError, match="spoken label start"):
+        strips.compile_strips(tmp_path, group, native, assets)
+    native["events"][0]["token_id"] = "t3"
+    assets[paths[1]]["sha256"] = assets[paths[2]]["sha256"]
+    with pytest.raises(ValueError, match="distinct current image bytes"):
+        strips.compile_strips(tmp_path, group, native, assets)
+
+
+def test_hypit_sound_anchor_requires_the_rendered_scene_entry(tmp_path):
+    stem = "001-HY-A6"
+    sidecar = tmp_path / "hypit-strips" / f"{stem}.json"
+    atomic_json(sidecar, {"group_id": "HY-A6", "entry_frames": [10, 20, 30]})
+    work = tmp_path / "hypit-strips" / "work" / stem
+    scene = work / "hypit/HY-A6/scene.svml"
+    scene.parent.mkdir(parents=True)
+    scene.write_text('<stagger:Entry id="a6m" items="picture>zoom" frames="10,20,30"/>')
+    receipt = work / "tengli-strip-materialization.json"
+    ref = {
+        "group_id": "HY-A6",
+        "shot": stem,
+        "sidecar_sha256": strips.sha256(sidecar),
+        "index": 1,
+        "frame": 20,
+        "audible_frame": 21,
+    }
+    atomic_json(
+        receipt,
+        {"sidecar_sha256": ref["sidecar_sha256"], "scene_sha256": strips.sha256(scene)},
+    )
+    strips.verify_stagger_entry(tmp_path, ref)
+    scene.write_text('<stagger:Entry id="a6m" items="picture>zoom" frames="10,21,30"/>')
+    atomic_json(
+        receipt,
+        {"sidecar_sha256": ref["sidecar_sha256"], "scene_sha256": strips.sha256(scene)},
+    )
+    with pytest.raises(ValueError, match="entry frames differ"):
+        strips.verify_stagger_entry(tmp_path, ref)
 
 
 def test_hypit_tools_only_for_the_configured_internal_workspace(tmp_path, monkeypatch):

@@ -8,6 +8,7 @@ from pydantic import Field, model_validator
 
 from .motion_library import inside, read_json, sha256
 from .video_editing_contracts import NativeRenderEdits, Transcript
+from .video_editing_hypit_strips import verify_stagger_entry
 from .video_editing_render_edits import MUSIC_REDUCTION_DB
 from .video_studio_schemas import StrictVideoModel
 
@@ -148,33 +149,53 @@ def compile_sound(
         shot_index, binding = event_bindings[key]
         shot = episode["shots"][shot_index]
         unit = binding["unit"]
-        config_path: list[str | int] = []
-        value = shot["config"]
-        for part in cue.event_path[1:].split("/"):
-            field = part.replace("~1", "/").replace("~0", "~")
-            segment = int(field) if isinstance(value, list) else field
-            config_path.append(segment)
-            value = value[segment]
+        hypit_entry = binding.get("hypit_entry")
+        native_ref = {}
+        if hypit_entry:
+            if (
+                cue.phase != "entry"
+                or unit != "frames"
+                or hypit_entry["group_id"] != shot["group_id"]
+                or episode["output"]["fps"] != 30
+            ):
+                raise ValueError("Hypit sound cue needs a current label entrance")
+            value = hypit_entry["frame"]
+        else:
+            config_path: list[str | int] = []
+            value = shot["config"]
+            for part in cue.event_path[1:].split("/"):
+                field = part.replace("~1", "/").replace("~0", "~")
+                segment = int(field) if isinstance(value, list) else field
+                config_path.append(segment)
+                value = value[segment]
+            native_ref["anchor_ref"] = {
+                "shot_index": shot_index,
+                "config_path": config_path,
+                "unit": unit,
+            }
         if value != binding["value"]:
             raise ValueError("FX anchor differs from the compiled native event")
         fps = shot["config"].get("fps", 30)
-        seconds = shot["start_seconds"] + (value / fps if unit == "frames" else value)
+        entry_seconds = shot["start_seconds"] + (
+            value / fps if unit == "frames" else value
+        )
+        seconds = entry_seconds
+        if hypit_entry:
+            # The original compositor applies setpts in the output frame time
+            # base. Its positive fractional shot origin truncates to a frame.
+            start_ms = round(shot["start_seconds"] * 1000)
+            output_frame = start_ms * 30 // 1000 + hypit_entry["audible_frame"]
+            hypit_entry = {**hypit_entry, "output_frame": output_frame}
+            seconds = output_frame / 30
         if (
             not shot["start_seconds"] <= seconds < shot["end_seconds"]
             or seconds + cue.trim_duration_seconds > duration + 0.0001
-            or abs(seconds - binding["measured_anchor_ms"] / 1000)
+            or abs(entry_seconds - binding["measured_anchor_ms"] / 1000)
             > 1 / episode["output"]["fps"]
         ):
             raise ValueError("FX anchor or tail exceeds its current timing")
         event = cue.model_dump(mode="json", exclude={"beat_id", "event_path"})
-        event.update(
-            anchor_seconds=seconds,
-            anchor_ref={
-                "shot_index": shot_index,
-                "config_path": config_path,
-                "unit": unit,
-            },
-        )
+        event.update(anchor_seconds=seconds, **native_ref)
         fx.append(event)
         cue_evidence.append(
             {
@@ -183,6 +204,7 @@ def compile_sound(
                 "word_binding": binding,
                 "beat_id": cue.beat_id,
                 "group_id": shot["group_id"],
+                **({"hypit_entry": hypit_entry} if hypit_entry else {}),
             }
         )
 
@@ -269,13 +291,18 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
     for cue, actual in zip(plan["fx"], rendered, strict=True):
         anchor = actual["anchor_basis"]
         onset_delta = actual["effective_onset_seconds"] - cue["anchor_seconds"]
+        if hypit_entry := cue.get("hypit_entry"):
+            verify_stagger_entry(root, hypit_entry)
+            anchor_valid = anchor["kind"] == "explicit_current_clock"
+        else:
+            ref = cue["anchor_ref"]
+            anchor_valid = anchor["kind"] == "native_event" and all(
+                anchor[key] == ref[key] for key in ("shot_index", "config_path", "unit")
+            )
         if (
             actual["asset_id"] != cue["asset_id"]
             or actual["source_sha256"] != cue["asset_sha256"]
-            or anchor["kind"] != "native_event"
-            or anchor["shot_index"] != cue["anchor_ref"]["shot_index"]
-            or anchor["config_path"] != cue["anchor_ref"]["config_path"]
-            or anchor["unit"] != cue["anchor_ref"]["unit"]
+            or not anchor_valid
             or abs(actual["anchor_seconds"] - cue["anchor_seconds"]) > 1 / 48000
             or not math.isfinite(onset_delta)
             or (

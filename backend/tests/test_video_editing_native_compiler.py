@@ -3,8 +3,13 @@ import copy
 import pytest
 
 from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
-from app.motion_parameter_contracts import input_contract
-from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from app.motion_parameter_contracts import SILHOUETTE_PATHS, input_contract
+from app.video_editing_contracts import (
+    NativeMediaAnchor,
+    SemanticBeat,
+    Transcript,
+    TranscriptToken,
+)
 from app.video_editing_native_compiler import compile_native_job
 
 
@@ -109,6 +114,65 @@ def test_current_bound_content_and_clock_replace_history_without_mutating_librar
     assert receipt["schema_validation"] == "passed"
     assert receipt["native_execution"] == "not_performed"
     assert receipt["semantic_review"] == "unreviewed"
+
+
+def test_wr09_only_extends_original_shape_with_seven_explicit_alpha_slots(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="W-R09", backend="unified")
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    original = read_json(package / "template.json")
+    original["media"] = {}
+    atomic_json(package / "template.json", original)
+    schema = read_json(package / "schema.json")
+    schema["properties"]["media"] = {"type": "object"}
+    atomic_json(package / "schema.json", schema)
+    contract = input_contract(package, group)
+    beat.group_id = "W-R09"
+    recipe.update(
+        group_id=beat.group_id,
+        template_sha256=contract["template_sha256"],
+        schema_sha256=contract["schema_sha256"],
+    )
+    recipe["config"]["media"] = {
+        "silhouettes": [
+            {"kind": "image", "alpha": True, "path": None} for _ in SILHOUETTE_PATHS
+        ]
+    }
+    recipe["placeholders"].extend(SILHOUETTE_PATHS)
+    assets = {}
+    for index, path in enumerate(SILHOUETTE_PATHS):
+        file = tmp_path / f"{index}.png"
+        file.write_bytes(f"fixture bytes {index}".encode())
+        asset_id = f"image-{index}"
+        assets[asset_id] = {
+            "path": str(file),
+            "kind": "image",
+            "source": "project_upload",
+            "sha256": sha256(file),
+        }
+        beat.asset_ids.append(asset_id)
+        beat.native_media.append(NativeMediaAnchor(path=path, asset_id=asset_id))
+    job = compile_native_job(
+        package, tmp_path / "valid", beat, transcript, recipe, assets
+    )
+    assert len(job["config"]["media"]["silhouettes"]) == 7
+    assert all(
+        slot["alpha"] and slot["path"].startswith("input://tengli-")
+        for slot in job["config"]["media"]["silhouettes"]
+    )
+    assert read_json(package / "template.json") == original
+    recipe["config"]["media"]["silhouettes"][0]["alpha"] = False
+    with pytest.raises(ValueError, match="seven explicit native alpha image slots"):
+        compile_native_job(
+            package, tmp_path / "invalid-alpha", beat, transcript, recipe, assets
+        )
+    recipe["config"]["media"]["silhouettes"][0]["alpha"] = True
+    beat.native_media[0].asset_id = beat.native_media[1].asset_id
+    with pytest.raises(ValueError, match="seven distinct current project"):
+        compile_native_job(
+            package, tmp_path / "reused", beat, transcript, recipe, assets
+        )
 
 
 def test_registered_native_dependency_is_explicit_and_rechecked(tmp_path):

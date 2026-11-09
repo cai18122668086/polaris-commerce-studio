@@ -14,11 +14,18 @@ from jsonschema import Draft202012Validator
 
 from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
 from .motion_local_dependencies import dependency_state, local_dependencies
-from .motion_parameter_contracts import SHIFTED_GEOMETRY_EVENTS, input_contract
+from .motion_parameter_contracts import (
+    SHIFTED_GEOMETRY_EVENTS,
+    SILHOUETTE_GROUP,
+    SILHOUETTE_PATHS,
+    input_contract,
+)
 from .video_editing_browser_clocks import (
     CARD_GROUP,
+    SPLIT_GROUPS,
     card_font_evidence,
     compile_card_clock,
+    compile_split_clock,
 )
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
@@ -119,6 +126,13 @@ def compile_native_job(
         raise ValueError("A current episode design decision is required")
     config = copy.deepcopy(recipe["config"])
     template = read_json(package / group["input_template"])
+    if beat.group_id == SILHOUETTE_GROUP:
+        slots = [
+            {"kind": "image", "alpha": True, "path": None} for _ in SILHOUETTE_PATHS
+        ]
+        if config.get("media", {}).get("silhouettes") != slots:
+            raise ValueError("W-R09 needs seven explicit native alpha image slots")
+        template["media"]["silhouettes"] = slots
     picture_variant = (
         contract.get("native_profile") == PICTURE_PROFILE
         and config.get("profile") == PICTURE_PROFILE
@@ -137,6 +151,18 @@ def compile_native_job(
     if len(placeholders) != len(set(placeholders)):
         raise ValueError("Duplicate recipe placeholder")
     native = word_bindings(beat, transcript, contract, set(asset_files))
+    if beat.group_id == SILHOUETTE_GROUP:
+        silhouette_ids = {
+            row["asset_id"]
+            for row in native["media"]
+            if row["path"] in SILHOUETTE_PATHS
+        }
+        if len(silhouette_ids) != len(SILHOUETTE_PATHS) or any(
+            asset_files[aid].get("kind") != "image"
+            or asset_files[aid].get("source") != "project_upload"
+            for aid in silhouette_ids
+        ):
+            raise ValueError("Bind seven distinct current project silhouette images")
     if (
         group["id"] in SHIFTED_GEOMETRY_EVENTS
         and config.get("events", {}).get("shift_frames", 0) != 0
@@ -318,6 +344,9 @@ def compile_native_job(
         if browser_font is None:
             raise ValueError("Browser card font is not bound")
         browser_clock.update(card_font_evidence(browser_font, config))
+    elif group["id"] in SPLIT_GROUPS:
+        browser_clock = compile_split_clock(package, group, config, resources)
+        native["browser_clock"] = browser_clock
     schema = read_json(package / group["input_schema"])
     Draft202012Validator(schema).validate(config)
     job = {

@@ -5,6 +5,40 @@ import pytest
 from app import video_editing_browser_clocks as cards
 
 
+def test_split_clock_preserves_original_font_and_requires_renderable_items(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        cards,
+        "sha256",
+        lambda path: {
+            "engine.js": cards.SPLIT_ENGINE_SHA,
+            "helpers.js": cards.SPLIT_HELPERS_SHA,
+            "special.py": cards.SPLIT_WRAPPER_SHA,
+        }[path.name],
+    )
+    config = {
+        "duration": 4.0,
+        "source_frames": [59, 114],
+        "items": [
+            {"label": "实录", "at": at, "enter": 0.45} for at in (0.66, 1.08, 1.66)
+        ],
+    }
+    group = {"entry": "engine.js"}
+    with pytest.raises(ValueError, match="original browser split title font"):
+        cards.compile_split_clock(tmp_path, group, config, {})
+    resources = {cards.SPLIT_TITLE_FONT: "fixture-only"}
+    receipt = cards.compile_split_clock(tmp_path, group, config, resources)
+    assert config["source_frames"] == [0, 119]
+    assert receipt["frames"] == 120 and receipt["items"][1]["at"] == 1.08
+    config["items"][2]["at"] = 3.54
+    with pytest.raises(ValueError, match="settle before export"):
+        cards.compile_split_clock(tmp_path, group, config, resources)
+    config["items"][2]["at"] = 0.77
+    with pytest.raises(ValueError, match="three ordered items"):
+        cards.compile_split_clock(tmp_path, group, config, resources)
+
+
 def test_browser_retimes_shared_poses_and_rejects_invalid_landmarks(
     tmp_path, monkeypatch
 ):

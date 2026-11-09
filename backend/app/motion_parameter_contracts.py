@@ -22,6 +22,9 @@ from .video_editing_hypit import (
 )
 from .video_editing_media_clocks import clock_profile
 
+SILHOUETTE_GROUP = "W-R09"
+SILHOUETTE_PATHS = tuple(f"/media/silhouettes/{i}/path" for i in range(7))
+
 TEXT_NAMES = {
     "text",
     "label",
@@ -198,6 +201,16 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
         fps = PICTURE_FPS
     else:
         visit(template, [])
+    if group["id"] == SILHOUETTE_GROUP:
+        fields.extend(
+            {
+                "path": path,
+                "category": "resource",
+                "value_type": "str",
+                "resource_kind": "media",
+            }
+            for path in SILHOUETTE_PATHS
+        )
     return {
         "version": "tengli.native-input-contract/1",
         "release": MOTION_SHA256,

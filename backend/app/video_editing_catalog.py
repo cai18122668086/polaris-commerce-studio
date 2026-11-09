@@ -15,6 +15,10 @@ from .video_editing_contracts import LibraryChoiceSnapshot
 _MATTING_MODEL = "model-01eb6a29a5c4d8edb30b"
 _SCENE_ENGINE_DEPENDENCIES = {
     "CXBR01": ("font-43a890795ad133d7",),
+    "LYO01": ("font-06e1a30f687ab7d3",),
+    "LYO02": ("font-06e1a30f687ab7d3", _MATTING_MODEL),
+    "LYO03": ("font-06e1a30f687ab7d3", _MATTING_MODEL),
+    "LYO04": ("font-06e1a30f687ab7d3",),
     "YYP04": (_MATTING_MODEL,),
     "YYP06": (_MATTING_MODEL,),
     **dict.fromkeys(

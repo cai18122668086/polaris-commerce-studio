@@ -11,6 +11,11 @@ from fontTools.ttLib import TTFont
 from .motion_library import sha256
 
 CARD_GROUP = "CX-G07"
+SPLIT_GROUPS = frozenset(("CX-G01", "CX-G02", "CX-G03"))
+SPLIT_TITLE_FONT = "font-dab883d69fb71323"
+SPLIT_ENGINE_SHA = "a0bbc920f8efda7a49e4cf0690c9276787c37763fd64d5741433ba0a49b3d54d"
+SPLIT_HELPERS_SHA = "8acf164eab612f33b972e64047deb513d134b1d7d99707525358f44f106a6175"
+SPLIT_WRAPPER_SHA = "aac975ae441d6377fbc1063a0900cf5808d3317f6e50765dd34e0d2d65f017ee"
 CARD_ENGINE_SHA = "475a8042114fba9fef8415e05d0950c0f3a94b58a06e2bc4bffd11fe81ae3204"
 CARD_TEMPLATE_SHA = "ff1a9e7fcadbb415acffc1bb610edc4b735fe2d781bdf757dead8485a1300c57"
 # First in-canvas key of each original track, then the shared settled pose.
@@ -20,6 +25,51 @@ CARD_LANDMARKS = {
     "/cards/2/keys/2/0": 42,
     "/cards/2/keys/9/0": 54,
 }
+
+
+def compile_split_clock(
+    package: Path, group: dict, config: dict, resources: dict[str, str]
+) -> dict[str, Any]:
+    """Preflight the original three-item browser entry before launching Chrome."""
+    entry = package / group["entry"]
+    if (
+        sha256(entry) != SPLIT_ENGINE_SHA
+        or sha256(entry.with_name("helpers.js")) != SPLIT_HELPERS_SHA
+        or sha256(package / "commercial_runtime/special.py") != SPLIT_WRAPPER_SHA
+    ):
+        raise ValueError("Original browser split engine or export clock changed")
+    if SPLIT_TITLE_FONT not in resources:
+        raise ValueError("Bind the original browser split title font explicitly")
+    duration, items = config["duration"], config["items"]
+    if not math.isfinite(duration) or not 0 < duration <= 30:
+        raise ValueError("Browser split duration must fit the original output clock")
+    frames = round(duration * 30)
+    if (
+        len(items) != 3
+        or any(
+            not 1 <= len(item["label"]) <= 4
+            or not math.isfinite(item["enter"])
+            or not 0 <= item["at"] < item["at"] + item["enter"] < duration
+            or item["at"] + item["enter"] > (frames - 1) / 30
+            or len(item.get("english", "")) > 24
+            for item in items
+        )
+        or any(left["at"] > right["at"] for left, right in pairwise(items))
+    ):
+        raise ValueError(
+            "Browser split needs three ordered items that settle before export"
+        )
+    # Original drawing uses the explicit local clock, not this historical annotation.
+    config["source_frames"] = [0, frames - 1]
+    return {
+        "policy": "original_three_item_split_clock",
+        "engine_sha256": SPLIT_ENGINE_SHA,
+        "helpers_sha256": SPLIT_HELPERS_SHA,
+        "title_font_id": SPLIT_TITLE_FONT,
+        "frames": frames,
+        "items": [{"at": item["at"], "enter": item["enter"]} for item in items],
+        "timing_review": "unreviewed",
+    }
 
 
 def card_font_evidence(font: Path, config: dict) -> dict[str, Any]:

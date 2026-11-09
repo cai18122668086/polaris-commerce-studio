@@ -149,7 +149,12 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
   const noteBadge = (kind: TargetKind, id: string) => { const record = noteMap.get(targetKey(kind, id)); return record && record.choice !== "clear" ? <small className={styles.choiceBadge}>{choiceLabel[record.choice]}</small> : null; };
   return <section className={styles.library} aria-label="完整原库目录">
     <header><b>完整原库目录</b><p>所有动效和资源均保留。编码样本只证明对应输入运行过，语义、画面和听感仍需逐片验收。</p></header>
-    {catalog && <p className={styles.summary}>已登记 {catalog.summary.groups} 组 · {catalog.summary.runtime.sample_rendered || 0} 组有样本 · {catalog.summary.runtime.sample_failed || 0} 组有失败 · {catalog.summary.runtime.unverified || 0} 组待实测<br />内置资源 {catalog.summary.bundled_assets} 项 · 外部引用 {catalog.summary.external_references} 项 · 用户画面验收 {catalog.summary.visual_accepted} 组</p>}
+    {catalog && <p className={styles.summary}>
+      已登记 {catalog.summary.groups} 组 · {catalog.summary.runtime.sample_rendered || 0} 组有样本 · {catalog.summary.runtime.sample_failed || 0} 组仅有失败记录
+      {catalog.summary.runtime.mixed_samples ? ` · ${catalog.summary.runtime.mixed_samples} 组有成功与失败记录` : ""}
+      {" · "}{catalog.summary.runtime.unverified || 0} 组待实测<br />
+      内置资源 {catalog.summary.bundled_assets} 项 · 外部引用 {catalog.summary.external_references} 项 · 用户画面验收 {catalog.summary.visual_accepted} 组
+    </p>}
     <div className={styles.tabs} role="group" aria-label="原库目录分类">{[{ id: "groups" as const, label: "全部动效组" }, { id: "resources" as const, label: "声音与素材" }, { id: "notes" as const, label: "项目选组备忘" }].map(t => <button type="button" key={t.id} aria-pressed={tab === t.id} onClick={() => { setTab(t.id); if (t.id === "resources" && !resourcePage) setResourceLoading(true); }}>{t.label}</button>)}</div>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {!catalog && !error && <p role="status">正在读取全部原库条目…</p>}

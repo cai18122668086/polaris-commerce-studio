@@ -38,8 +38,7 @@ from .video_editing_subtitle_sound_clock import (
 )
 from .video_editing_yy_openings import (
     YY_OPENING_COMPOSITOR_SHA256,
-    YY_OPENING_ENTRY_EVENT,
-    YY_OPENING_GROUPS,
+    YY_OPENING_ENTRY_EVENTS,
     yy_opening_entry_frame,
 )
 from .video_studio_schemas import StrictVideoModel
@@ -240,8 +239,8 @@ def compile_sound(
         question_card_entry = yy_opening_entry = None
         if (
             sync_yy_opening_entries
-            and shot["group_id"] in YY_OPENING_GROUPS
-            and cue.event_path == YY_OPENING_ENTRY_EVENT
+            and shot["group_id"] in YY_OPENING_ENTRY_EVENTS
+            and cue.event_path == YY_OPENING_ENTRY_EVENTS[shot["group_id"]]
             and cue.phase == "entry"
         ):
             output_fps = episode["output"]["fps"]
@@ -534,7 +533,8 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
             frame = yy_opening_entry_frame(shot, fps)
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
-                and cue["word_binding"]["path"] == YY_OPENING_ENTRY_EVENT
+                and cue["word_binding"]["path"]
+                == YY_OPENING_ENTRY_EVENTS[shot["group_id"]]
                 and yy_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )

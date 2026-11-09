@@ -10,6 +10,7 @@ from app.video_editing_contracts import (
     TranscriptToken,
 )
 from app.video_editing_word_bindings import emphasis_text, word_bindings
+from app.video_editing_yy_openings import validate_yy_opening
 
 
 def transcript():
@@ -116,6 +117,54 @@ def test_native_anchors_cannot_mix_question_and_smoke_branches():
     assert (
         word_bindings(b, transcript(), contract, set())["text"][0]["text"] == "洗碗洗碗"
     )
+
+
+def test_number_opening_requires_adjacent_spoken_amount_and_unit():
+    words = ["规格", "每瓶", "一千克", "4", "斤", "用好久", "瓶"]
+    source = transcript().model_copy(
+        update={
+            "tokens": [
+                TranscriptToken(
+                    id=f"t{i}", text=word, start_ms=i * 400, end_ms=(i + 1) * 400
+                )
+                for i, word in enumerate(words)
+            ]
+        }
+    )
+    text_slots = {"topic": 1, "issue": 2, "count": 3, "unit": 4, "subtitle": 5}
+    event_slots = {
+        "rectangle": 0,
+        "topic": 1,
+        "issue": 2,
+        "circle": 3,
+        "response": 3,
+        "subtitle": 5,
+    }
+    anchors = {
+        "text": [
+            {
+                "path": f"/content/{role}",
+                "text": words[index],
+                "token_ids": [f"t{index}"],
+            }
+            for role, index in text_slots.items()
+        ],
+        "events": [
+            {
+                "path": f"/events/{role}/{offset}",
+                "token_id": f"t{index}",
+                "value": index * 12 + offset * 12,
+                "edge": edge,
+            }
+            for role, index in event_slots.items()
+            for offset, edge in enumerate(("start", "end"))
+        ],
+    }
+    validate_yy_opening("YY6O04", anchors, 84, source)
+    unit = next(row for row in anchors["text"] if row["path"] == "/content/unit")
+    unit.update(text="瓶", token_ids=["t6"])
+    with pytest.raises(ValueError, match="single spoken quantity and its unit"):
+        validate_yy_opening("YY6O04", anchors, 84, source)
 
 
 def test_native_offsets_lengths_and_rates_are_not_absolute_word_events():

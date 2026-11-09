@@ -101,8 +101,9 @@ from .video_editing_question_card import (
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_word_bindings import word_bindings
 from .video_editing_yy_openings import (
-    YY_OPENING_ENTRY_EVENT,
-    YY_OPENING_GROUPS,
+    YY_OPENING_ENTRY_EVENTS,
+    YY_OPENING_EXPANDED_GROUPS,
+    YY_OPENING_SOURCE_EVENTS,
     validate_yy_opening,
 )
 
@@ -114,7 +115,7 @@ _SELECT = ("sfx-dbafeebc3f7297da", 0.04, 0.16, -25)
 _SLIDE = ("sfx-22f661280569e8bc", 0.07, 0.32, -27)
 _IMPACT = ("sfx-69dba3f8f41f94e1", 0.03, 0.27, -25)
 _ENTRY_SOUNDS = {
-    **dict.fromkeys(YY_OPENING_GROUPS, (YY_OPENING_ENTRY_EVENT, _SLIDE)),
+    **{group: (path, _SLIDE) for group, path in YY_OPENING_ENTRY_EVENTS.items()},
     QUESTION_GROUP: (QUESTION_ENTRY, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     QUESTION_CARD_GROUP: (QUESTION_CARD_SOUND, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     "AH-S01": ("/events/keyword_frame", _IMPACT),
@@ -1421,7 +1422,7 @@ def _opening_entry(
         for row in asset_cards
         if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
     }
-    yy_opening = beat.group_id in YY_OPENING_GROUPS
+    yy_opening = beat.group_id in YY_OPENING_EXPANDED_GROUPS
     try:
         anchors = word_bindings(beat, transcript, contract, presenter_ids)
         (presenter,) = anchors["media"]
@@ -1439,7 +1440,10 @@ def _opening_entry(
         ):
             raise ValueError("Missing current source, text or measured opening event")
         if yy_opening:
-            if events[YY_OPENING_ENTRY_EVENT]["token_id"] != beat.first_token_id:
+            if (
+                events[YY_OPENING_SOURCE_EVENTS[beat.group_id]]["token_id"]
+                != beat.first_token_id
+            ):
                 raise ValueError(
                     "The original picture entry needs this beat's first word"
                 )
@@ -1630,7 +1634,7 @@ def build_overlay_recipes(
             JUDGMENT_GROUP,
             NUMBERED_GROUP,
             LIVE_STRIP_GROUP,
-            *YY_OPENING_GROUPS,
+            *YY_OPENING_EXPANDED_GROUPS,
         }
         for beat in beats
     )

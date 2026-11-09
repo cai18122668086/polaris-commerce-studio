@@ -19,6 +19,7 @@ from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GR
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_yy_openings import (
     YY_OPENING_DEPENDENCIES,
+    YY_OPENING_EXPANDED_GROUPS,
     YY_OPENING_GROUPS,
     yy_opening_binding,
 )
@@ -30,6 +31,10 @@ PICTURE_TEMPLATE_ID = "picture-compare-v2"
 ROTATION_TEMPLATE_ID = "rotation-cards-v1"
 PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
 YY_OPENING_TEMPLATE_ID = "yy-presenter-openings-v1"
+YY_OPENING_EXPANDED_TEMPLATE_ID = "yy-presenter-openings-v2"
+YY_OPENING_TEMPLATES = frozenset(
+    {YY_OPENING_TEMPLATE_ID, YY_OPENING_EXPANDED_TEMPLATE_ID}
+)
 JUDGMENT_TEMPLATE_ID = "evidence-judgment-v1"
 QUESTION_CARD_TEMPLATE_ID = "question-card-story-v1"
 EXPLAINER_TEMPLATE_ID = "explainer-steps-v1"
@@ -46,7 +51,7 @@ TEXT_HANDOFF_TEMPLATES = frozenset(
     {SUBTITLE_RELAY_TEMPLATE_ID, *LAYERED_SUBTITLE_TEMPLATES}
 )
 SYNC_SUBTITLE_TEMPLATES = frozenset(
-    {SUBTITLE_STORY_TEMPLATE_ID, YY_OPENING_TEMPLATE_ID, *TEXT_HANDOFF_TEMPLATES}
+    {SUBTITLE_STORY_TEMPLATE_ID, *YY_OPENING_TEMPLATES, *TEXT_HANDOFF_TEMPLATES}
 )
 NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
 LIVE_STRIP_TEMPLATE_ID = "live-strip-story-v1"
@@ -71,11 +76,11 @@ _OPENING_PURPOSES = {
         "caption 最多 14 字，text_frame 锚定其首词。",
     ),
 }
-OPENING_GROUPS = frozenset(_OPENING_PURPOSES.keys() | YY_OPENING_GROUPS.keys())
+OPENING_GROUPS = frozenset(_OPENING_PURPOSES.keys() | YY_OPENING_EXPANDED_GROUPS.keys())
 _OPENING_FONT = "font-06e1a30f687ab7d3"
 AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     **FOREGROUND_SUBTITLE_DEPENDENCIES,
-    **dict.fromkeys(YY_OPENING_GROUPS, YY_OPENING_DEPENDENCIES),
+    **dict.fromkeys(YY_OPENING_EXPANDED_GROUPS, YY_OPENING_DEPENDENCIES),
     CARD_GROUP: (SPLIT_TITLE_FONT,),
     NUMBERED_GROUP: (SPLIT_TITLE_FONT,),
     QUESTION_GROUP: (QUESTION_FONT,),
@@ -401,22 +406,26 @@ _TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID] = {
     ]
     + [_SPECIFICATION_SLOT, *_EXPLAINER_SLOTS],
 }
-_TEMPLATES[YY_OPENING_TEMPLATE_ID] = {
-    "id": YY_OPENING_TEMPLATE_ID,
-    "name": "月云川人物开场",
-    "slots": [
-        *(
-            {
-                "group_id": group,
-                "purpose": purpose,
-                "layer": "scene",
-                "binding": yy_opening_binding(group),
-            }
-            for group, purpose in YY_OPENING_GROUPS.items()
-        ),
-        *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
-    ],
-}
+for _template_id, _opening_groups in (
+    (YY_OPENING_TEMPLATE_ID, YY_OPENING_GROUPS),
+    (YY_OPENING_EXPANDED_TEMPLATE_ID, YY_OPENING_EXPANDED_GROUPS),
+):
+    _TEMPLATES[_template_id] = {
+        "id": _template_id,
+        "name": "月云川人物开场",
+        "slots": [
+            *(
+                {
+                    "group_id": group,
+                    "purpose": purpose,
+                    "layer": "scene",
+                    "binding": yy_opening_binding(group),
+                }
+                for group, purpose in _opening_groups.items()
+            ),
+            *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
+        ],
+    }
 _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
     "id": SUBTITLE_RELAY_TEMPLATE_ID,
     "name": "双层字幕接力",
@@ -514,7 +523,7 @@ def overlay_templates() -> list[dict]:
             PACKAGE_TEMPLATE_ID,
             LINE_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,
-            YY_OPENING_TEMPLATE_ID,
+            YY_OPENING_EXPANDED_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,

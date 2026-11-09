@@ -115,7 +115,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "package-specs-v1",
         "line-story-v1",
         "presenter-openings-v1",
-        "yy-presenter-openings-v1",
+        "yy-presenter-openings-v2",
         "evidence-judgment-v1",
         "explainer-steps-v1",
         "subtitle-story-v1",
@@ -137,11 +137,13 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     assert {
         slot["group_id"] for slot in openings["slots"] if slot.get("layer") == "scene"
     } == {"LYO01", "LYO02", "LYO03", "LYO04"}
-    yy = next(row for row in options if row["id"] == "yy-presenter-openings-v1")
+    yy = next(row for row in options if row["id"] == "yy-presenter-openings-v2")
     yy_groups = {
         slot["group_id"] for slot in yy["slots"] if slot.get("layer") == "scene"
     }
-    assert yy_groups == {"YYO01", "YYO02", "YYO03", "YYO04", "YYO05", "YYO07"}
+    assert yy_groups == {*(f"YYO{i:02}" for i in range(1, 9)), "YY6O04"}
+    frozen = overlay_template("yy-presenter-openings-v1")
+    assert yy["slots"][:6] + yy["slots"][9:] == frozen["slots"]
     unavailable = {"YYO02": ["missing-original"]}
     require_clean_yy_source(yy, "present", unavailable)
     assert set(unavailable) == yy_groups

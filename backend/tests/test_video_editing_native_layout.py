@@ -250,6 +250,26 @@ def test_original_opening_scene_checks_composed_frame_and_caption_lane(tmp_path)
         verify_yy_opening_captions(tmp_path, report)
 
 
+@pytest.mark.parametrize(
+    ("group", "start", "events", "expected"),
+    [
+        ("YYO08", 1.73, {"image_in": 0, "title_in": 16}, 68),
+        ("YY6O04", 13.89, {"rectangle": [0, 24]}, 417),
+    ],
+)
+def test_yy_opening_sound_waits_for_the_first_motion_frame(
+    group, start, events, expected
+):
+    shot = {
+        "group_id": group,
+        "layer": "scene",
+        "rect": [0, 0, 1, 1],
+        "start_seconds": start,
+        "config": {"events": events},
+    }
+    assert yy_opening_entry_frame(shot, 30) == expected
+
+
 def test_preview_counts_decoded_opaque_scenes_and_visible_subtitles():
     subtitles = ("BG-S06", "BG-S03", "SG-S10", "JJ-S03")
     groups = (*subtitles, "YYO01", "YYO01", "Z-M00")

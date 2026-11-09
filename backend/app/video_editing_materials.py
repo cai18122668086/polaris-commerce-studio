@@ -101,7 +101,9 @@ def project_material_files(
     }
 
 
-def material_cards(assets: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def material_cards(
+    assets: dict[str, dict[str, Any]], *, include_video_durations: bool = False
+) -> list[dict[str, Any]]:
     return [
         {
             "id": asset_id,
@@ -109,6 +111,13 @@ def material_cards(assets: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
                 key: asset[key]
                 for key in ("kind", "sha256", "semantic_use", "viewed_identity")
             },
+            **(
+                {"duration_ms": asset["duration_ms"]}
+                if include_video_durations
+                and asset_id.startswith(PREFIX)
+                and asset["kind"] == "video"
+                else {}
+            ),
             **(
                 {
                     "scope": (
@@ -149,6 +158,10 @@ def verify_material_cards(
         {card["id"] for card in expected},
         verify_bytes=verify_bytes,
     )
-    if material_cards(assets) != expected:
+    include_video_durations = any("duration_ms" in card for card in expected)
+    if (
+        material_cards(assets, include_video_durations=include_video_durations)
+        != expected
+    ):
         raise material_changed()
     return assets

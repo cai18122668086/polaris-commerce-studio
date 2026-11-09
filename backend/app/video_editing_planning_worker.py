@@ -30,6 +30,7 @@ from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest
 from .video_editing_planning_store import FILES, execution_available, planning_root
+from .video_editing_presenter_motion import motion_blockers, motion_word_windows
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingPlanningAttemptRecord,
@@ -320,6 +321,21 @@ def process(
                 snapshot["source_subtitles"],
                 runtime["unavailable_template_groups"],
             )
+            motion_blockers(
+                template,
+                snapshot["source_subtitles"],
+                snapshot["asset_cards"],
+                snapshot["source_sha256"],
+                runtime["unavailable_template_groups"],
+            )
+            motion_windows = motion_word_windows(
+                template,
+                transcript,
+                snapshot["asset_cards"],
+                runtime["unavailable_template_groups"],
+            )
+            if motion_windows:
+                runtime["presenter_motion_windows"] = motion_windows
             image_requirements = template_image_requirements(
                 template, snapshot["asset_cards"], verified_materials
             )
@@ -387,6 +403,13 @@ def process(
                     )
                 )
                 require_clean_yy_source(template, snapshot["source_subtitles"], current)
+                motion_blockers(
+                    template,
+                    snapshot["source_subtitles"],
+                    snapshot["asset_cards"],
+                    snapshot["source_sha256"],
+                    current,
+                )
                 if current.keys() - runtime["unavailable_template_groups"].keys():
                     raise ApiError(
                         409,

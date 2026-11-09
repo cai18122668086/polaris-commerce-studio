@@ -54,6 +54,7 @@ from .video_editing_overlay_templates import (
     NUMBERED_TEMPLATE_ID,
     PACKAGE_TEMPLATE_ID,
     PICTURE_TEMPLATE_ID,
+    PRESENTER_MOTION_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
     SYNC_SUBTITLE_TEMPLATES,
@@ -69,6 +70,7 @@ from .video_editing_pipeline import (
     run,
 )
 from .video_editing_planner import validate_plan
+from .video_editing_presenter_motion import PRESENTER_MOTION_GROUPS
 from .video_editing_question_card import question_card_a_shot
 from .video_editing_render_edits import (
     FULL_FRAME,
@@ -719,6 +721,11 @@ def compile_episode(
             1110,
             "将主字幕放在原生强调词的下方。",
         ),
+        PRESENTER_MOTION_TEMPLATE_ID: (
+            tuple(PRESENTER_MOTION_GROUPS),
+            1230,
+            "将主字幕移到同期人物运镜和分区构图的底部读区。",
+        ),
         **dict.fromkeys(
             YY_OPENING_TEMPLATES,
             (
@@ -794,6 +801,8 @@ def compile_episode(
                 in SYNC_SUBTITLE_TEMPLATES,
                 sync_yy_opening_entries=authoring.overlay_template_id
                 in YY_OPENING_TEMPLATES,
+                sync_presenter_motion_entries=authoring.overlay_template_id
+                == PRESENTER_MOTION_TEMPLATE_ID,
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})

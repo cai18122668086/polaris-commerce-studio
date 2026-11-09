@@ -20,6 +20,11 @@ from .video_editing_judgment import (
     judgment_entry_frame,
 )
 from .video_editing_native_content import PACKAGE_GROUP
+from .video_editing_presenter_motion import (
+    MOTION_COMPOSITOR_SHA256,
+    PRESENTER_MOTION_GROUPS,
+    motion_entry_frame,
+)
 from .video_editing_question_branch import (
     QUESTION_BRANCH,
     QUESTION_ENTRY,
@@ -132,6 +137,7 @@ def compile_sound(
     *,
     sync_subtitle_entries: bool = False,
     sync_yy_opening_entries: bool = False,
+    sync_presenter_motion_entries: bool = False,
 ) -> dict[str, Any]:
     """Compile trusted sound choices without copying an old timeline."""
     duration = episode["source"]["duration_seconds"]
@@ -140,6 +146,10 @@ def compile_sound(
         != YY_OPENING_COMPOSITOR_SHA256
     ):
         raise ValueError("Original scene compositor clock changed")
+    if sync_presenter_motion_entries and (
+        sha256(package / "commercial_runtime/episode.py") != MOTION_COMPOSITOR_SHA256
+    ):
+        raise ValueError("Original motion compositor clock changed")
     tokens = {token.id: token for token in transcript.tokens}
     stock = {
         item["id"]: item
@@ -236,7 +246,17 @@ def compile_sound(
         )
         seconds = entry_seconds
         question_entry = package_entry = rotation_entry = judgment_entry = None
-        question_card_entry = yy_opening_entry = None
+        question_card_entry = yy_opening_entry = presenter_motion_entry = None
+        if (
+            sync_presenter_motion_entries
+            and shot["group_id"] in PRESENTER_MOTION_GROUPS
+            and cue.phase == "entry"
+        ):
+            fps = episode["output"]["fps"]
+            frame = motion_entry_frame(shot, fps, cue.event_path)
+            seconds = frame / fps
+            native_ref = {}
+            presenter_motion_entry = {"shot_index": shot_index, "output_frame": frame}
         if (
             sync_yy_opening_entries
             and shot["group_id"] in YY_OPENING_ENTRY_EVENTS
@@ -360,6 +380,11 @@ def compile_sound(
                 **({"rotation_entry": rotation_entry} if rotation_entry else {}),
                 **({"judgment_entry": judgment_entry} if judgment_entry else {}),
                 **({"yy_opening_entry": yy_opening_entry} if yy_opening_entry else {}),
+                **(
+                    {"presenter_motion_entry": presenter_motion_entry}
+                    if presenter_motion_entry
+                    else {}
+                ),
                 **({"subtitle_entry_sync": SUBTITLE_ENTRY_SYNC} if sync_entry else {}),
             }
         )
@@ -536,6 +561,17 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
                 and cue["word_binding"]["path"]
                 == YY_OPENING_ENTRY_EVENTS[shot["group_id"]]
                 and yy_entry["output_frame"] == frame
+                and cue["anchor_seconds"] == frame / fps
+            )
+        elif motion_entry := cue.get("presenter_motion_entry"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            fps = episode["output"]["fps"]
+            shot = episode["shots"][motion_entry["shot_index"]]
+            frame = motion_entry_frame(shot, fps, cue["word_binding"]["path"])
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and motion_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
         else:

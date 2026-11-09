@@ -82,6 +82,15 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     validate_template_plan,
 )
+from .video_editing_presenter_motion import (
+    MOTION_CAPTION,
+    MOTION_CLIPS,
+    MOTION_PRESENTER,
+    PRESENTER_MOTION_GROUPS,
+    motion_project_clips,
+    motion_sound_paths,
+    validate_motion_anchors,
+)
 from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
     QUESTION_BRANCH,
@@ -832,7 +841,12 @@ def _entry_sound(
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
             JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
             LINE_GROUP: "线描手势入场时给一次原库提示音，口播继续。",
-        }.get(beat.group_id, "原生文字动效入场时给一次短提示，口播继续。"),
+        }.get(
+            beat.group_id,
+            "原生画面运动开始时给一次短提示，口播继续。"
+            if beat.group_id in PRESENTER_MOTION_GROUPS
+            else "原生文字动效入场时给一次短提示，口播继续。",
+        ),
         source_start_seconds=source_start,
         trim_duration_seconds=length,
         target_peak_dbfs=peak,
@@ -1408,6 +1422,92 @@ def _package_entry(
     ), anchors
 
 
+def _presenter_motion_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    config = read_json(inside(package, group["input_template"]))
+    presenter_ids = {
+        row["id"]
+        for row in asset_cards
+        if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
+    }
+    clips = motion_project_clips(asset_cards, transcript.source_sha256)
+    media_paths = (
+        (MOTION_PRESENTER, *MOTION_CLIPS)
+        if beat.group_id == "YYP05"
+        else (MOTION_PRESENTER,)
+    )
+    try:
+        anchors = word_bindings(
+            beat, transcript, contract, presenter_ids | clips.keys()
+        )
+        bound = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        if (
+            set(bound) != set(media_paths)
+            or bound[MOTION_PRESENTER] not in presenter_ids
+            or set(beat.asset_ids) != set(bound.values())
+            or any(bound[path] not in clips for path in media_paths[1:])
+        ):
+            raise ValueError("Original camera motion needs current sources per slot")
+        validate_motion_anchors(beat.group_id, anchors, config, clips)
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_PRESENTER_MOTION_INPUTS_REQUIRED",
+            f"{beat.group_id} 需绑定同期原片和原动作对应的实录词点。"
+            "双素材镜头需两段独立且足够长的本期视频。",
+        ) from error
+    slots = [
+        MOTION_CAPTION,
+        *media_paths,
+        *(row["path"] for row in anchors["events"]),
+        *(
+            field["path"]
+            for field in contract["fields"]
+            if field["category"] == "clock_owned_by_compiler"
+            and field["path"].startswith("/media/")
+        ),
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    if beat.group_id in {"YYP01", "YYP02", "YYP06"}:
+        config["events"]["shift_frames"] = 0
+    config["media"]["presenter"]["end_policy"] = "error"
+    reason = "沿用原人物构图与动作，主字幕和原声在整片时钟上持续。"
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": beat.group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-presenter-reframing-v1",
+            "design_reason": reason,
+            "parameter_decisions": {key: reason for key in config},
+            "config": config,
+            "placeholders": slots,
+            "empty_text": {MOTION_CAPTION: "原 episode 的主字幕承载完整实录。"},
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
+            "media_clocks": [
+                {
+                    "media_path": path,
+                    "policy": "transcript_source_window"
+                    if path == MOTION_PRESENTER
+                    else "project_clip_from_start",
+                }
+                for path in media_paths
+            ],
+        },
+    ), anchors
+
+
 def _opening_entry(
     package: Path,
     group: dict,
@@ -1618,6 +1718,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = (None,)
+        elif beat.group_id in PRESENTER_MOTION_GROUPS:
+            entries[beat.id], anchors = _presenter_motion_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = motion_sound_paths(beat.group_id)
         else:
             make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
             entries[beat.id], anchors = make_entry(package, group, beat, transcript)
@@ -1635,6 +1740,7 @@ def build_overlay_recipes(
             NUMBERED_GROUP,
             LIVE_STRIP_GROUP,
             *YY_OPENING_EXPANDED_GROUPS,
+            *PRESENTER_MOTION_GROUPS,
         }
         for beat in beats
     )

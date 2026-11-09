@@ -28,6 +28,7 @@ from app.video_editing_contracts import SemanticPlan
 from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
 from app.video_editing_native_sound import verify_rendered_sound
 from app.video_editing_overlay_templates import overlay_template
+from app.video_editing_presenter_motion import motion_blockers
 from app.video_editing_question_branch import QUESTION_FONT
 from app.video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from app.video_editing_task_models import (
@@ -116,6 +117,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "line-story-v1",
         "presenter-openings-v1",
         "yy-presenter-openings-v2",
+        "presenter-reframing-v1",
         "evidence-judgment-v1",
         "explainer-steps-v1",
         "subtitle-story-v1",
@@ -148,6 +150,10 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     require_clean_yy_source(yy, "present", unavailable)
     assert set(unavailable) == yy_groups
     assert unavailable["YYO02"] == ["missing-original", "clean_source_required"]
+    framing = next(row for row in options if row["id"] == "presenter-reframing-v1")
+    assert {
+        slot["group_id"] for slot in framing["slots"] if slot.get("layer") == "scene"
+    } == {f"YYP{i:02}" for i in range(1, 8)}
     template = next(row for row in options if row["id"] == "question-story-v1")
     scene = next(slot for slot in template["slots"] if slot["group_id"] == "W-R18")
     assert scene["layer"] == "scene" and scene["native_branch"] == "question"
@@ -1019,3 +1025,22 @@ def test_judgment_sound_follows_the_original_remapped_mark_frames(tmp_path):
     cue["judgment_entry"]["output_frame"] += 1
     with pytest.raises(ValueError, match="binding or measured onset"):
         verify_rendered_sound(tmp_path, native, plan)
+
+
+def test_presenter_motion_preparation_rejects_duplicate_or_short_clips():
+    template = overlay_template("presenter-reframing-v1")
+    clip = {"id": "material-a", "kind": "video", "sha256": "a", "duration_ms": 900}
+    second = {**clip, "id": "material-b"}
+    unavailable = {}
+    motion_blockers(template, "none", [clip, second], "source", unavailable)
+    assert unavailable == {"YYP05": ["two_distinct_project_clips_required"]}
+    second.update(sha256="b", duration_ms=499)
+    unavailable = {}
+    motion_blockers(template, "none", [clip, second], "source", unavailable)
+    assert "YYP05" in unavailable
+    second["duration_ms"] = 500
+    unavailable = {}
+    motion_blockers(template, "none", [clip, second], "source", unavailable)
+    assert unavailable == {}
+    motion_blockers(template, "present", [clip, second], "source", unavailable)
+    assert unavailable == {f"YYP{i:02}": ["clean_source_required"] for i in range(1, 8)}

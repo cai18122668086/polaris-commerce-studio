@@ -14,6 +14,12 @@ from .video_editing_hypit_strips import LIVE_STRIP_GROUP
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP
+from .video_editing_presenter_motion import (
+    MOTION_FONT,
+    MOTION_MATTE,
+    PRESENTER_MOTION_GROUPS,
+    motion_binding,
+)
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
@@ -30,6 +36,7 @@ LEGACY_PICTURE_TEMPLATE_ID = "picture-compare-v1"
 PICTURE_TEMPLATE_ID = "picture-compare-v2"
 ROTATION_TEMPLATE_ID = "rotation-cards-v1"
 PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
+PRESENTER_MOTION_TEMPLATE_ID = "presenter-reframing-v1"
 YY_OPENING_TEMPLATE_ID = "yy-presenter-openings-v1"
 YY_OPENING_EXPANDED_TEMPLATE_ID = "yy-presenter-openings-v2"
 YY_OPENING_TEMPLATES = frozenset(
@@ -51,7 +58,12 @@ TEXT_HANDOFF_TEMPLATES = frozenset(
     {SUBTITLE_RELAY_TEMPLATE_ID, *LAYERED_SUBTITLE_TEMPLATES}
 )
 SYNC_SUBTITLE_TEMPLATES = frozenset(
-    {SUBTITLE_STORY_TEMPLATE_ID, *YY_OPENING_TEMPLATES, *TEXT_HANDOFF_TEMPLATES}
+    {
+        SUBTITLE_STORY_TEMPLATE_ID,
+        PRESENTER_MOTION_TEMPLATE_ID,
+        *YY_OPENING_TEMPLATES,
+        *TEXT_HANDOFF_TEMPLATES,
+    }
 )
 NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
 LIVE_STRIP_TEMPLATE_ID = "live-strip-story-v1"
@@ -81,6 +93,8 @@ _OPENING_FONT = "font-06e1a30f687ab7d3"
 AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     **FOREGROUND_SUBTITLE_DEPENDENCIES,
     **dict.fromkeys(YY_OPENING_EXPANDED_GROUPS, YY_OPENING_DEPENDENCIES),
+    **dict.fromkeys(PRESENTER_MOTION_GROUPS, (MOTION_FONT,)),
+    **dict.fromkeys(("YYP04", "YYP06"), (MOTION_FONT, MOTION_MATTE)),
     CARD_GROUP: (SPLIT_TITLE_FONT,),
     NUMBERED_GROUP: (SPLIT_TITLE_FONT,),
     QUESTION_GROUP: (QUESTION_FONT,),
@@ -426,6 +440,22 @@ for _template_id, _opening_groups in (
             *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
         ],
     }
+_TEMPLATES[PRESENTER_MOTION_TEMPLATE_ID] = {
+    "id": PRESENTER_MOTION_TEMPLATE_ID,
+    "name": "同期人物运镜与分区",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": motion_binding(group),
+            }
+            for group, (purpose, _, _) in PRESENTER_MOTION_GROUPS.items()
+        ),
+        *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
     "id": SUBTITLE_RELAY_TEMPLATE_ID,
     "name": "双层字幕接力",
@@ -524,6 +554,7 @@ def overlay_templates() -> list[dict]:
             LINE_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,
             YY_OPENING_EXPANDED_TEMPLATE_ID,
+            PRESENTER_MOTION_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,

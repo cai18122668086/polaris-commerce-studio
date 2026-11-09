@@ -9,6 +9,7 @@ from app.video_editing_native_layout import (
     verified_effect_groups,
     verify_inset_layout,
 )
+from app.video_editing_presenter_motion import motion_entry_frame
 from app.video_editing_question_card import QUESTION_CARD_A_FONTS
 from app.video_editing_yy_openings import (
     YY_OPENING_CAPTION_INTENT,
@@ -268,6 +269,27 @@ def test_yy_opening_sound_waits_for_the_first_motion_frame(
         "config": {"events": events},
     }
     assert yy_opening_entry_frame(shot, 30) == expected
+
+
+def test_presenter_motion_sound_uses_fixed_and_measured_native_frames():
+    shot = {"layer": "scene", "rect": [0, 0, 1, 1]}
+    dual = {
+        **shot,
+        "group_id": "YYP05",
+        "start_seconds": 8.65,
+        "config": {"events": {"shift_frames": -5}},
+    }
+    assert motion_entry_frame(dual, 30, "/events/caption_frame") == 286
+    reveal = {
+        **shot,
+        "group_id": "YYP06",
+        "start_seconds": 39.11,
+        "config": {
+            "style": {"geometry": {"camera_start_frame": 20, "reveal_start_frame": 93}}
+        },
+    }
+    assert motion_entry_frame(reveal, 30, "/style/geometry/camera_start_frame") == 1194
+    assert motion_entry_frame(reveal, 30, "/style/geometry/reveal_start_frame") == 1267
 
 
 def test_preview_counts_decoded_opaque_scenes_and_visible_subtitles():

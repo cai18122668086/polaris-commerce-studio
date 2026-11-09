@@ -339,6 +339,13 @@ def build_request(
             "这三个素材直接绑定native_media，不需要并列图卡的relation_items。"
             "缺少任一素材角色时跳过W-R11并登记缺件，保留其他合适动效。"
         )
+    if runtime and runtime.get("presenter_motion_windows"):
+        message += (
+            "presenter_motion_windows是服务端按实录核对的可用段落示例。"
+            "选择时先核对该范围的语义，再按字段从start_edge_token_ids选择已有词ID，边界用start。"
+            "同一条示例中的不同字段一起使用，其他段落仍按模板条件由服务端校验。"
+            "双素材示例从project_video_ids_by_path中为每个槽选择不同的项目视频。"
+        )
     body = {
         "model": model,
         "stream": False,

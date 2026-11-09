@@ -283,7 +283,7 @@ class EditingNativeBeatResponse(StrictVideoModel):
 class EditingOverlaySlot(StrictVideoModel):
     group_id: str
     purpose: str
-    layer: Literal["scene"] | None = Field(
+    layer: Literal["scene", "overlay"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     native_branch: Literal["question"] | None = Field(

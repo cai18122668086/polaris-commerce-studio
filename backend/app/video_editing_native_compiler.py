@@ -29,6 +29,7 @@ from .video_editing_browser_clocks import (
     compile_card_clock,
     compile_split_clock,
 )
+from .video_editing_browser_live import CARD_LIVE_PREFIX, card_live_clock
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
 from .video_editing_hypit_strips import (
@@ -240,7 +241,15 @@ def compile_native_job(
         )
     ):
         raise ValueError("Word-bound scene geometry requires zero native shift_frames")
-    if picture_variant:
+    live_cards = recipe.get("browser_live_background", False)
+    if type(live_cards) is not bool or (
+        live_cards and (group["id"] != CARD_GROUP or recipe.get("media_clocks"))
+    ):
+        raise ValueError("Live browser background needs the original three-card group")
+    if live_cards:
+        media_clocks: dict[str, float] = {}
+        clock_receipts = [card_live_clock(package, native, asset_files, transcript)]
+    elif picture_variant:
         if recipe.get("media_clocks"):
             raise ValueError("Hypit tracks use the measured shot source window")
         media_clocks, clock_receipts = compile_picture_clocks(
@@ -375,7 +384,12 @@ def compile_native_job(
         source = Path(asset["path"]).resolve()
         if not source.is_file() or sha256(source) != asset["sha256"]:
             raise ValueError("Current project material is missing or changed")
-        rid = "tengli-" + asset["sha256"][:24]
+        prefix = (
+            CARD_LIVE_PREFIX
+            if live_cards and row["path"] == "/background"
+            else "tengli-"
+        )
+        rid = prefix + asset["sha256"][:24]
         resources[rid] = str(source)
         assignments[row["path"]] = "input://" + rid
     retained_glyphs = {}

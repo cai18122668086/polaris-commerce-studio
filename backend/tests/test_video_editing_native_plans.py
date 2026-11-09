@@ -230,6 +230,28 @@ def test_continuous_combinations_count_types_allow_repetition_and_reject_scene_l
     assert not continuous_overlay_groups(semantic, recipes, groups)
 
 
+def test_continuous_cards_require_the_audited_full_canvas_alpha_export():
+    from app.video_editing_browser_clocks import CARD_GROUP
+    from app.video_editing_render_edits import continuous_overlay_groups
+
+    semantic = {"beats": [{"id": "card", "group_id": CARD_GROUP}]}
+    recipe = {"group_id": CARD_GROUP, "browser_live_background": True}
+    placement = {"layer": "overlay", "rect": [0, 0, 1, 1]}
+    recipes = {"entries": {"card": {"placement": placement, "recipe": recipe}}}
+    assert not continuous_overlay_groups(semantic, recipes, set())
+    assert continuous_overlay_groups(
+        semantic, recipes, set(), scene_groups={CARD_GROUP}
+    ) == {CARD_GROUP}
+    recipe.pop("browser_live_background")
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), scene_groups={CARD_GROUP}
+    )
+    placement["layer"] = "scene"
+    assert continuous_overlay_groups(
+        semantic, recipes, set(), scene_groups={CARD_GROUP}
+    ) == {CARD_GROUP}
+
+
 def test_continuous_hypit_inset_needs_internal_access_and_speaker_clearance():
     from app.video_editing_hypit_strips import PRICE_CARD_INSET_TYPE
     from app.video_editing_render_edits import continuous_overlay_groups

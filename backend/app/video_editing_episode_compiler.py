@@ -31,6 +31,7 @@ from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
+    LEGACY_PICTURE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
     PICTURE_TEMPLATE_ID,
     overlay_template,
@@ -563,7 +564,10 @@ def compile_episode(
                     "not_in_original_relation_schema"
                 )
         episode["production"]["beats"].append(production_beat)
-    if authoring.overlay_template_id == PICTURE_TEMPLATE_ID:
+    if authoring.overlay_template_id in {
+        LEGACY_PICTURE_TEMPLATE_ID,
+        PICTURE_TEMPLATE_ID,
+    }:
         card_windows = [
             (shot["start_seconds"], shot["end_seconds"])
             for shot in episode["shots"]

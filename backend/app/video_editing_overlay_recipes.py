@@ -26,7 +26,10 @@ from .video_editing_native_sound import (
     NativeSoundCue,
     NativeSoundDesign,
 )
-from .video_editing_overlay_templates import validate_template_plan
+from .video_editing_overlay_templates import (
+    PICTURE_TEMPLATE_ID,
+    validate_template_plan,
+)
 from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
     QUESTION_BRANCH,
@@ -252,6 +255,8 @@ def _card_entry(
     beat: SemanticBeat,
     transcript: Transcript,
     asset_cards: list[dict],
+    *,
+    live_background: bool,
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
     contract = input_contract(package, group)
     assets = {
@@ -264,12 +269,23 @@ def _card_entry(
     text = {row["path"]: row["token_ids"] for row in anchors["text"]}
     events = {row["path"]: row for row in anchors["events"]}
     media_paths = {row["path"] for row in contract["resource_paths"]}
+    background = media.get("/background")
+    allowed_assets = set(assets)
+    if live_background:
+        allowed_assets.update(
+            card["id"]
+            for card in asset_cards
+            if card["kind"] == "original_video"
+            and card["sha256"] == transcript.source_sha256
+            and card["id"].startswith("source-")
+        )
     if (
         beat.relation != "parallel"
         or len(beat.relation_items) != 3
         or set(media) != media_paths
         or set(media.values()) != set(beat.asset_ids)
-        or not set(media.values()) <= assets.keys()
+        or not set(media.values()) <= allowed_assets
+        or (live_background and background in assets)
         or set(text) != set(contract["text_paths"])
         or set(events) != CARD_LANDMARKS.keys()
     ):
@@ -286,7 +302,8 @@ def _card_entry(
         image_id = media[food + "/image"]
         entry = events[_CARD_ENTRY_PATHS[index]]
         if (
-            media[city + "/image"] != image_id
+            image_id not in assets
+            or media[city + "/image"] != image_id
             or text[food + "/label"] != text[city + "/label"]
             or item.asset_ids != [image_id]
             or set(item.native_text_paths) != labels
@@ -315,9 +332,11 @@ def _card_entry(
     return NativeEpisodeEntry(
         carrier="picture",
         placement=NativePlacement(
-            layer="scene",
+            layer="overlay" if live_background else "scene",
             rect=[0, 0, 1, 1],
-            reason="按原全幅三图卡构图呈现项目图片，口播继续。",
+            reason="原生三图卡叠在同期口播画面上。"
+            if live_background
+            else "按原全幅三图卡构图呈现项目图片，口播继续。",
         ),
         recipe={
             "version": "tengli.native-recipe/1",
@@ -325,7 +344,9 @@ def _card_entry(
             "group_id": CARD_GROUP,
             "template_sha256": contract["template_sha256"],
             "schema_sha256": contract["schema_sha256"],
-            "design_id": "tengli-picture-compare-v1",
+            "design_id": "tengli-picture-compare-v2"
+            if live_background
+            else "tengli-picture-compare-v1",
             "design_reason": "保留原三张图卡的几何和轨迹，按本期三个词组驱动。",
             "parameter_decisions": {
                 key: "沿用原三图卡的画幅、字形、姿态和主题。" for key in config
@@ -334,6 +355,7 @@ def _card_entry(
             "placeholders": slots,
             "dependency_ids": [SPLIT_TITLE_FONT],
             "browser_word_entry": True,
+            **({"browser_live_background": True} if live_background else {}),
         },
     ), anchors
 
@@ -420,7 +442,12 @@ def build_overlay_recipes(
         group = groups[beat.group_id]
         if beat.group_id == CARD_GROUP:
             entries[beat.id], anchors = _card_entry(
-                package, group, beat, transcript, asset_cards or []
+                package,
+                group,
+                beat,
+                transcript,
+                asset_cards or [],
+                live_background=template["id"] == PICTURE_TEMPLATE_ID,
             )
             cues.extend(
                 _entry_sound(beat, anchors, transcript.duration_ms, avoided, path)

@@ -6,7 +6,8 @@ from .video_editing_contracts import SemanticPlan
 
 MIN_OVERLAY_TYPES = 5
 PREFERRED_OVERLAY_TYPES = 10
-PICTURE_TEMPLATE_ID = "picture-compare-v1"
+LEGACY_PICTURE_TEMPLATE_ID = "picture-compare-v1"
+PICTURE_TEMPLATE_ID = "picture-compare-v2"
 _SHARED_SLOTS = [
     {"group_id": "SG-S09", "purpose": "分别表达单件规格和到手总量"},
     {"group_id": "SG-S03", "purpose": "强调真实的使用时长或体验短句"},
@@ -62,8 +63,8 @@ _TEMPLATES = {
         "name": "滚动报价与规格对照",
         "slots": [*_ROLL_SLOTS, _ACTION_SLOT],
     },
-    PICTURE_TEMPLATE_ID: {
-        "id": PICTURE_TEMPLATE_ID,
+    LEGACY_PICTURE_TEMPLATE_ID: {
+        "id": LEGACY_PICTURE_TEMPLATE_ID,
         "name": "三图卡与口播重点",
         "slots": [
             {
@@ -83,6 +84,30 @@ _TEMPLATES = {
             _ACTION_SLOT,
         ],
     },
+}
+
+_TEMPLATES[PICTURE_TEMPLATE_ID] = {
+    "id": PICTURE_TEMPLATE_ID,
+    "name": "三图卡与口播重点",
+    "slots": [
+        {
+            "group_id": "CX-G07",
+            "purpose": "保持同期人物口播，依次叠加对应三个并列事项的图卡",
+            "layer": "overlay",
+            "binding": (
+                "background 绑定本期原片 source 素材，人物随同期画面继续口播。"
+                "每张卡使用一张与标签内容对应的本期项目图片。"
+                "素材描述应支持这一对应关系，通用人物头像不能代替场景图。"
+                "没有合适的三张图片时跳过该槽。"
+                "同一卡的 food 和 city 槽绑定相同的实录标签和图片。"
+                "前三个动作锚定各卡标签首词，最后一项落稳使用后续实录词点。"
+                "relation_items 逐卡列出两套槽对应的词范围和素材。"
+            ),
+        },
+        _QUESTION_SLOT,
+        *_ROLL_SLOTS,
+        _ACTION_SLOT,
+    ],
 }
 
 

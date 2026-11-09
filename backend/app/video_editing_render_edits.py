@@ -3,6 +3,7 @@
 import math
 from typing import Any
 
+from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import NativeRenderEdits, SemanticBeat
 from .video_editing_hypit_strips import (
     LIVE_STAGE_GROUPS,
@@ -137,11 +138,20 @@ def continuous_overlay_groups(
             continue
         entry = recipes["entries"].get(beat["id"], {})
         placement = entry.get("placement", {})
-        scene = (
+        recipe = entry.get("recipe", {})
+        layer = placement.get("layer")
+        native_canvas = (
             gid in (scene_groups or ())
-            and placement.get("layer") == "scene"
             and placement.get("rect") == FULL_FRAME
-            and entry.get("recipe", {}).get("group_id") == gid
+            and recipe.get("group_id") == gid
+            and (
+                layer == "scene"
+                or (
+                    layer == "overlay"
+                    and gid == CARD_GROUP
+                    and recipe.get("browser_live_background") is True
+                )
+            )
         )
         transparent = gid in transparent_groups and (
             entry.get("placement", {}).get("layer") == "subtitle"
@@ -149,7 +159,7 @@ def continuous_overlay_groups(
         allow_inset = (allow_hypit_insets and gid in HY_PORTRAIT_INSETS) or (
             allow_question_insets and gid == QUESTION_GROUP
         )
-        if not (transparent or scene) and not (
+        if not (transparent or native_canvas) and not (
             allow_inset
             and (
                 full_native_canvas_allowed(gid, entry)

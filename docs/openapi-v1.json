@@ -5335,7 +5335,10 @@
           "layer": {
             "anyOf": [
               {
-                "const": "scene",
+                "enum": [
+                  "scene",
+                  "overlay"
+                ],
                 "type": "string"
               },
               {

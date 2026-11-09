@@ -5680,7 +5680,7 @@ export interface components {
             /** Group Id */
             group_id: string;
             /** Layer */
-            layer?: "scene" | null;
+            layer?: ("scene" | "overlay") | null;
             /** Native Branch */
             native_branch?: "question" | null;
             /** Purpose */

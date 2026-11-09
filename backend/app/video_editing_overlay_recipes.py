@@ -66,7 +66,11 @@ from .video_editing_line_branch import (
 from .video_editing_materials import project_image_digests
 from .video_editing_native_compiler import set_native_field
 from .video_editing_native_content import PACKAGE_GROUP, live_package_template
-from .video_editing_native_layout import BACKDROP_GROUP
+from .video_editing_native_layout import (
+    BACKDROP_GROUP,
+    TEXT_HANDOFF_GROUP,
+    TEXT_HANDOFF_MAX_FRAMES,
+)
 from .video_editing_native_sound import (
     NativeMusicTrack,
     NativeSoundCue,
@@ -107,9 +111,11 @@ _ENTRY_SOUNDS = {
     QUESTION_GROUP: (QUESTION_ENTRY, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     QUESTION_CARD_GROUP: (QUESTION_CARD_SOUND, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     "AH-S02": ("/events/body_frame", _SLIDE),
+    "AH-S04": ("/events/body_frame", _TYPING),
     "AH-S05": ("/events/type_frame", _TYPING),
     "AH-S08": ("/events/title_frame", _SLIDE),
     "AH-S09": ("/events/title_frame", _CLICK),
+    "AHG-S01": ("/events/body/0", _SLIDE),
     "AHG-S02": ("/events/mark/0", _SELECT),
     "AHG-S04": ("/events/type/0", _TYPING),
     "AHG-S05": ("/events/body/0", _SLIDE),
@@ -118,11 +124,14 @@ _ENTRY_SOUNDS = {
     "BG-S04": ("/events/body_frame", _SLIDE),
     "BG-S05": ("/events/body_frame", _IMPACT),
     "BG-S06": ("/events/upper_start", _SLIDE),
+    "BG-S07": ("/events/upper_start", _SLIDE),
+    "BG-S08": ("/events/upper_start", _IMPACT),
     "JJ-S01": ("/events/main/0", _CLICK),
     "JJ-S02": ("/events/grow/0", _SLIDE),
     "JJ-S03": ("/events/line/0", _IMPACT),
     "JJ-S04": ("/events/body/0", _CLICK),
     "JJ-S05": ("/events/body/0", _SELECT),
+    "JJ-S06": ("/events/body/0", _SLIDE),
     LINE_GROUP: (LINE_HAND_ENTRY, _SLIDE),
     "LYO01": ("/events/text_frame", _SLIDE),
     "LYO02": ("/events/text_frame", _SELECT),
@@ -172,7 +181,10 @@ _OPENING_ROLES = {
 }
 _MUSIC = ("bgm-b5035a43098ee293", "bgm-f318d21e6b2d98bb")
 _FONT_SIZES = {
+    "AH-S04": {"header": 56},
+    "AHG-S01": {"body": 80},
     "BG-S06": {"upper": 42, "lower": 62},
+    "BG-S08": {"lower": 84},
     "SG-S03": {"prefix": 59, "keyword": 59},
     "AH-S05": {"body": 49, "emphasis": 69},
     "JJ-S01": {"main": 60, "detail": 44},
@@ -186,6 +198,13 @@ _TEXT_RECIPE_FIELDS = {
     "native_clock_length",
     "clock_owned_by_compiler",
     "output_owned_by_compiler",
+}
+_RELAY_ENTRY_WORDS = {
+    "AH-S04": {"body_frame": "body", "header_frame": "header"},
+    "AHG-S01": {"body/0": "body", "keyword/0": "keyword"},
+    "BG-S07": {"upper_start": "upper", "lower_start": "lower"},
+    "BG-S08": {"upper_start": "upper", "lower_start": "lower"},
+    TEXT_HANDOFF_GROUP: {"body/0": "body", "handoff/0": "keyword"},
 }
 
 
@@ -229,6 +248,42 @@ def _entry(
             "EDITING_TEMPLATE_ANCHORS_REQUIRED",
             f"{beat.group_id} 缺少原生文字或动作的词点。",
         )
+    if entry_words := _RELAY_ENTRY_WORDS.get(beat.group_id):
+        text_starts = {row["path"]: row["token_ids"][0] for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        if any(
+            events["/events/" + event]["edge"] != "start"
+            or events["/events/" + event]["token_id"]
+            != text_starts["/content/" + field]
+            for event, field in entry_words.items()
+        ):
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_ANCHORS_REQUIRED",
+                f"{beat.group_id} 的各层文字必须在对应实录首词入场。",
+            )
+        entrance_frames = [event_values["/events/" + event] for event in entry_words]
+        if entrance_frames != sorted(set(entrance_frames)) or (
+            beat.group_id == "AH-S04"
+            and event_values["/events/clear_frame"] - entrance_frames[-1] < 10
+        ):
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+                f"{beat.group_id} 的各层文字须依次出画，留足原生入场时间。",
+            )
+        original_limits = read_json(inside(package, group["contract"])).get(
+            "content_capacity", {}
+        )
+        if any(
+            type(limit) is int and not 1 <= len(text["/content/" + role]) <= limit
+            for role, limit in original_limits.items()
+        ):
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_ROLE_LENGTH",
+                f"{beat.group_id} 的实录词组超出原生角色字数范围。",
+            )
     for role, size in _FONT_SIZES.get(beat.group_id, {}).items():
         config["fonts"][role]["size"] = size
     if beat.group_id == "BG-S06":
@@ -246,9 +301,29 @@ def _entry(
             "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
             "JJ-S02 的实录词点须让后景退定，再开始显示前景说明。",
         )
-    if beat.group_id in {"SG-S03", "BG-S03"}:
+    if beat.group_id == "AHG-S01" and (
+        event_values["/events/retreat/1"] > event_values["/events/keyword/0"]
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+            "AHG-S01 须在前字退定后再按实录词点显示后字。",
+        )
+    if beat.group_id == TEXT_HANDOFF_GROUP and not (
+        1
+        <= event_values["/events/handoff/1"] - event_values["/events/handoff/0"]
+        <= TEXT_HANDOFF_MAX_FRAMES
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
+            "JJ-S06 的同位换字需要 1 至 12 帧的实录交接窗口。",
+        )
+    if beat.group_id in {"AH-S04", "AHG-S01", "SG-S03", "BG-S03"}:
         for font in config["fonts"].values():
             font["shadow"].update(x=0, y=0, blur=0)
+    if beat.group_id == "BG-S08":
+        config["fonts"]["lower"].update(outline_px=2, outline_color="#151419")
     decisions = {key: "采用原生输入机制和本版网站模板配置。" for key in config}
     if beat.group_id == BG_OFFSET_GROUP:
         apply_outline(config, "both")

@@ -21,7 +21,10 @@ _ENTRY_DIGESTS = {
     ),
     "SG-S02": "87274b5e410831638782fbe4bb3c241b3e546a29d8a32ba3832bf67a25ce68ed",
     "SG-S10": "3ebc549e6eefe28a4c0cb35f5b6af79c2ccf4352d2b01cdd0a137eb5b7dfd712",
-    "BG-S06": "03636383dc5b06001f3335b81c2e27929204874d2d47fb15412971595fb577d6",
+    **dict.fromkeys(
+        ("BG-S06", "BG-S07", "BG-S08"),
+        "03636383dc5b06001f3335b81c2e27929204874d2d47fb15412971595fb577d6",
+    ),
 }
 _SOURCES = {
     _NATIVE: "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
@@ -82,7 +85,7 @@ def install_native_font_maps(package: Path, root: Path) -> None:
         return
     entry = _SUBTITLES / group / "render.py"
     sources = {**_SOURCES, entry: _ENTRY_DIGESTS[group]}
-    if group == "BG-S06":
+    if group in {"BG-S06", "BG-S07", "BG-S08"}:
         sources[_BG_PRODUCTION] = (
             "0a4732fed7c52585bb82fd4b7a8a8235599bee15167e95e9beb585f1ede83d09"
         )

@@ -14,6 +14,8 @@ from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_sh
 from .video_editing_render_edits import NATIVE_PORTRAIT_INSETS, boxes_intersect
 
 BACKDROP_GROUP = "SG-S10"
+TEXT_HANDOFF_GROUP = "JJ-S06"
+TEXT_HANDOFF_MAX_FRAMES = 12
 _RENDERER = (
     "src/engines/workspace/字幕动效_可编辑库_20261105/SG-S10/render.py",
     "3ebc549e6eefe28a4c0cb35f5b6af79c2ccf4352d2b01cdd0a137eb5b7dfd712",
@@ -21,6 +23,10 @@ _RENDERER = (
 _QUESTION_RENDERER = (
     "src/engines/workspace/字幕动效_可编辑库_20261105/AH-S03/render.py",
     "1aa9c7d92ab7e203fabd482d2cbf459f0eb349699aa1f0421571424387ba229d",
+)
+_HANDOFF_RENDERER = (
+    "src/engines/workspace/字幕动效_可编辑库_20261105/JJ-S06/render.py",
+    "0c636349453a5f707316445aa84565c05c57bfdfaa8f63fab5b7b0a847aeae90",
 )
 _REVIEW = (
     "commercial_runtime/layout.py",
@@ -83,6 +89,7 @@ def intentional_role_overlaps(
     report: dict,
     backdrop_shots: set[int],
     question_shots: set[int] | None = None,
+    handoff_shots: set[int] | None = None,
 ) -> list[dict]:
     """Return documented overlaps only when every failed frame is accounted for."""
     if report.get("status") != "failed" or not report.get("errors"):
@@ -111,6 +118,14 @@ def intentional_role_overlaps(
                 config["events"]["clear_frame"],
             )
             roles = ["english", "question"]
+        elif (
+            handoff_shots and index in handoff_shots and group_id == TEXT_HANDOFF_GROUP
+        ):
+            fps = 30
+            enter, clear = config["events"]["handoff"]
+            if not 1 <= clear - enter <= TEXT_HANDOFF_MAX_FRAMES:
+                continue
+            roles = ["body", "keyword"]
         else:
             continue
         for overlap in check["role_review"].get("role_collisions", []):
@@ -138,6 +153,7 @@ def review_with_native_roles(
     receipts: list[dict] | None,
     backdrop_shots: set[int],
     question_shots: set[int] | None = None,
+    handoff_shots: set[int] | None = None,
 ) -> dict:
     try:
         return original(data, root, receipts)
@@ -150,7 +166,7 @@ def review_with_native_roles(
             raise
         report = read_json(report_path)
         overlaps = intentional_role_overlaps(
-            data, report, backdrop_shots, question_shots
+            data, report, backdrop_shots, question_shots, handoff_shots
         )
         if not overlaps:
             raise
@@ -158,6 +174,7 @@ def review_with_native_roles(
         reasons = {
             BACKDROP_GROUP: "SG-S10 的前景横句叠在原机制指定的灰色背衬字上。",
             QUESTION_CARD_GROUP: "原 AH-S03 A 版问号覆盖英文释义。",
+            TEXT_HANDOFF_GROUP: "JJ-S06 仅在原生同位置淡入淡出交接期间叠放。",
         }
         result = {
             **report,
@@ -179,11 +196,14 @@ def install_native_role_review(package: Path, root: Path) -> None:
     backdrop = set(spec.get("sg_s10_backdrop_shots", []))
     question = set(spec.get("ah_s03_input_a_shots", []))
     numbered = set(spec.get("numbered_alpha_shots", []))
+    handoff = set(spec.get("jj_s06_handoff_shots", []))
     pinned = [_REVIEW]
     if backdrop:
         pinned.append(_RENDERER)
     if question:
         pinned.append(_QUESTION_RENDERER)
+    if handoff:
+        pinned.append(_HANDOFF_RENDERER)
     if not all(sha256(package / path) == identity for path, identity in pinned):
         raise ValueError("Pinned original role renderer or review changed")
     sys.path.insert(0, str(package))
@@ -209,7 +229,7 @@ def install_native_role_review(package: Path, root: Path) -> None:
                 shots[index] = {**shot, "layer": "subtitle"}
             data = {**data, "shots": shots}
         return review_with_native_roles(
-            original, data, Path(instance), receipts, backdrop, question
+            original, data, Path(instance), receipts, backdrop, question, handoff
         )
 
     layout.review = review

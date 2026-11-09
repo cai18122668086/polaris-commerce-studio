@@ -38,7 +38,7 @@ from .video_editing_judgment import JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_content import PACKAGE_GROUP
-from .video_editing_native_layout import BACKDROP_GROUP
+from .video_editing_native_layout import BACKDROP_GROUP, TEXT_HANDOFF_GROUP
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
@@ -51,7 +51,8 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
-    SUBTITLE_STORY_TEMPLATE_ID,
+    SUBTITLE_RELAY_TEMPLATE_ID,
+    SYNC_SUBTITLE_TEMPLATES,
     overlay_template,
     validate_template_plan,
 )
@@ -462,7 +463,7 @@ def compile_episode(
             try:
                 readability = None
                 use_outline = (
-                    authoring.overlay_template_id == SUBTITLE_STORY_TEMPLATE_ID
+                    authoring.overlay_template_id in SYNC_SUBTITLE_TEMPLATES
                     and beat.group_id == BG_OFFSET_GROUP
                 )
                 recipe = entry.recipe
@@ -771,7 +772,7 @@ def compile_episode(
                 choice_snapshot,
                 edits,
                 sync_subtitle_entries=authoring.overlay_template_id
-                == SUBTITLE_STORY_TEMPLATE_ID,
+                in SYNC_SUBTITLE_TEMPLATES,
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})
@@ -871,13 +872,20 @@ def compile_episode(
         if authoring.overlay_template_id == NUMBERED_TEMPLATE_ID
         and shot["group_id"] == NUMBERED_GROUP
     ]
-    if backdrop_shots or question_shots or numbered_shots:
+    handoff_shots = [
+        i
+        for i, shot in enumerate(episode["shots"])
+        if authoring.overlay_template_id == SUBTITLE_RELAY_TEMPLATE_ID
+        and shot["group_id"] == TEXT_HANDOFF_GROUP
+    ]
+    if backdrop_shots or question_shots or numbered_shots or handoff_shots:
         atomic_json(
             root / "layout-intent.json",
             {
                 "sg_s10_backdrop_shots": backdrop_shots,
                 "ah_s03_input_a_shots": question_shots,
                 **({"numbered_alpha_shots": numbered_shots} if numbered_shots else {}),
+                **({"jj_s06_handoff_shots": handoff_shots} if handoff_shots else {}),
             },
         )
     if continuous_base:

@@ -29,6 +29,10 @@ EXPLAINER_TEMPLATE_ID = "explainer-steps-v1"
 PACKAGE_TEMPLATE_ID = "package-specs-v1"
 LINE_TEMPLATE_ID = "line-story-v1"
 SUBTITLE_STORY_TEMPLATE_ID = "subtitle-story-v1"
+SUBTITLE_RELAY_TEMPLATE_ID = "subtitle-relay-v1"
+SYNC_SUBTITLE_TEMPLATES = frozenset(
+    {SUBTITLE_STORY_TEMPLATE_ID, SUBTITLE_RELAY_TEMPLATE_ID}
+)
 NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
 LIVE_STRIP_TEMPLATE_ID = "live-strip-story-v1"
 PACKAGE_TEMPLATES = frozenset({PACKAGE_TEMPLATE_ID, LINE_TEMPLATE_ID})
@@ -110,6 +114,19 @@ _SUBTITLE_STORY_SLOTS = {
     ),
     "JJ-S04": "实录背景或动作先落位，再引出金色结论。",
     "JJ-S05": "让实录短主题上下分开，从中间带出对应的短结论。",
+}
+_SUBTITLE_RELAY_SLOTS = {
+    "AH-S04": "白色实录短句先折叠展开，后续重点以原生红字落下，两行各至多六字。",
+    "AHG-S01": (
+        "以四字内的实录短语引出五字内的关键词。退定词点 retreat/1 最晚等于 keyword/0。"
+    ),
+    "JJ-S06": (
+        "前后两句必须为同一语义段的实录，前句至多六字，后句至多七字。"
+        "保留原生同位置淡入淡出交接。"
+        "handoff/0 绑定第二句首词，handoff/1 用其附近实录边界结束交接。"
+    ),
+    "BG-S07": "用实录四字主题和五字补充说明做白、金双行接力。",
+    "BG-S08": "四字实录标题和五字后续说明分别放入原大标题与下方读区。",
 }
 _EXPLAINER_SLOTS = [
     {"group_id": "BG-S06", "purpose": "用两层文字交代使用场景和要解决的问题"},
@@ -339,6 +356,17 @@ _TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID] = {
     ]
     + [_SPECIFICATION_SLOT, *_EXPLAINER_SLOTS],
 }
+_TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
+    "id": SUBTITLE_RELAY_TEMPLATE_ID,
+    "name": "双层字幕接力",
+    "slots": [
+        *(
+            {"group_id": group, "purpose": purpose}
+            for group, purpose in _SUBTITLE_RELAY_SLOTS.items()
+        ),
+        *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
+    ],
+}
 
 _TEMPLATES[PICTURE_TEMPLATE_ID] = {
     "id": PICTURE_TEMPLATE_ID,
@@ -406,6 +434,7 @@ def overlay_templates() -> list[dict]:
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,
+            SUBTITLE_RELAY_TEMPLATE_ID,
         )
     ]
 

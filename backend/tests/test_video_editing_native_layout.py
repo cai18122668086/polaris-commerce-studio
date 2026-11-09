@@ -143,3 +143,20 @@ def test_question_card_allows_only_original_front_overlap():
     assert not intentional_role_overlaps(episode, bad, set(), {0})
     shot["config"]["events"]["clear_frame"] = 42
     assert not intentional_role_overlaps(episode, report, set(), {0})
+
+
+def test_same_place_text_relay_requires_short_original_crossfade():
+    episode, report = example()
+    shot = episode["shots"][0]
+    check = report["subtitle_checks"][0]
+    shot["group_id"] = check["group_id"] = "JJ-S06"
+    shot["config"] = {"events": {"handoff": [36, 46]}}
+    check["role_review"]["role_collisions"][0]["roles"] = ["body", "keyword"]
+    assert intentional_role_overlaps(episode, report, set(), handoff_shots={0})
+    assert not intentional_role_overlaps(episode, report, set())
+    mismatched = deepcopy(report)
+    mismatched["errors"].append({**report["errors"][0], "against": "main_caption"})
+    assert not intentional_role_overlaps(episode, mismatched, set(), handoff_shots={0})
+    for span in ([40, 42], [34, 47]):
+        shot["config"]["events"]["handoff"] = span
+        assert not intentional_role_overlaps(episode, report, set(), handoff_shots={0})

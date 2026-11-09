@@ -30,6 +30,12 @@ from .video_editing_browser_clocks import (
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
 from .video_editing_media_clocks import compile_media_clocks
+from .video_editing_native_content import (
+    CHAPTER_PATH,
+    NUMBER_GROUP,
+    chapter_ordinal,
+    number_glyphs,
+)
 from .video_editing_word_bindings import word_bindings
 
 
@@ -194,6 +200,18 @@ def compile_native_job(
         | {row["path"]: row["value"] for row in native["events"]}
         | media_clocks
     )
+    if "chapter_start_token_ids" in recipe:
+        if CHAPTER_PATH in assignments:
+            raise ValueError(
+                "Choose either a spoken ordinal or a saved chapter outline"
+            )
+        chapter = chapter_ordinal(beat, transcript, recipe["chapter_start_token_ids"])
+        assignments[CHAPTER_PATH] = chapter["display_text"]
+        native["chapter"] = chapter
+    if group["id"] == NUMBER_GROUP:
+        readings = number_glyphs(native)
+        assignments.update({row["path"]: row["display_text"] for row in readings})
+        native["number_glyphs"] = readings
     browser_clock = None
     browser_font = None
     if group["id"] == CARD_GROUP:
@@ -378,6 +396,13 @@ def compile_native_job(
             "job_sha256": sha256(root / "job.json"),
             "word_bindings_sha256": sha256(root / "word-bindings.json"),
             "media_clocks": clock_receipts,
+            **(
+                {
+                    key: native[key]
+                    for key in ("chapter", "number_glyphs")
+                    if key in native
+                }
+            ),
             **({"local_dependency_ids": dependency_ids} if dependency_ids else {}),
             **({"native_profile": PICTURE_PROFILE} if picture_variant else {}),
             **({"browser_clock": browser_clock} if browser_clock else {}),

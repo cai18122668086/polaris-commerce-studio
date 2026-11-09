@@ -292,7 +292,7 @@ def describe_group(
             local_dependencies(settings.video_editing_native_bindings_file),
         ),
         "dependency_scope": (
-            "template inputs, indexed browser fonts and audited scene engine "
+            "template inputs, indexed browser fonts and audited native engine "
             "references; "
             "native preflight may require implicit engine dependencies"
         ),

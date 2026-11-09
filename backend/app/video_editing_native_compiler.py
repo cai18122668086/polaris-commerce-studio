@@ -15,8 +15,10 @@ from jsonschema import Draft202012Validator
 from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
 from .motion_local_dependencies import dependency_state, local_dependencies
 from .motion_parameter_contracts import (
+    JUDGMENT_BRUSH_FONT,
+    JUDGMENT_GROUP,
     SHIFTED_GEOMETRY_EVENTS,
-    SILHOUETTE_GROUP,
+    SILHOUETTE_GROUPS,
     SILHOUETTE_PATHS,
     input_contract,
 )
@@ -175,12 +177,14 @@ def compile_native_job(
             embedded_caption=embedded_caption,
             live_background=live_question_background,
         )
-    if beat.group_id == SILHOUETTE_GROUP:
+    if beat.group_id in SILHOUETTE_GROUPS:
         slots = [
             {"kind": "image", "alpha": True, "path": None} for _ in SILHOUETTE_PATHS
         ]
         if config.get("media", {}).get("silhouettes") != slots:
-            raise ValueError("W-R09 needs seven explicit native alpha image slots")
+            raise ValueError(
+                f"{beat.group_id} needs seven explicit native alpha image slots"
+            )
         template["media"]["silhouettes"] = slots
     picture_variant = (
         contract.get("native_profile") == PICTURE_PROFILE
@@ -216,7 +220,7 @@ def compile_native_job(
     if len(placeholders) != len(set(placeholders)):
         raise ValueError("Duplicate recipe placeholder")
     native = word_bindings(beat, transcript, contract, set(asset_files))
-    if beat.group_id == SILHOUETTE_GROUP:
+    if beat.group_id in SILHOUETTE_GROUPS:
         silhouette_ids = {
             row["asset_id"]
             for row in native["media"]
@@ -356,6 +360,8 @@ def compile_native_job(
     dependencies = {**direct, **{rid: registered[rid] for rid in dependency_ids}}
     if question_variant and QUESTION_FONT not in dependencies:
         raise ValueError("Bind the original W-R18 question brush font")
+    if group["id"] == JUDGMENT_GROUP and JUDGMENT_BRUSH_FONT not in dependencies:
+        raise ValueError("Bind the original W-R14 editable brush font")
     for rid, declared_path in dependencies.items():
         identity = dependency_rows.get(rid, {})
         source = Path(declared_path).resolve()

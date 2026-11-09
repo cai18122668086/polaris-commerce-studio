@@ -9,11 +9,13 @@ from typing import Any
 from .motion_library import MOTION_SHA256, inside, read_json, sha256
 from .motion_library_validation import group_status
 from .motion_local_dependencies import dependency_state
+from .motion_parameter_contracts import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import LibraryChoiceSnapshot
 
 _MATTING_MODEL = "model-01eb6a29a5c4d8edb30b"
-_SCENE_ENGINE_DEPENDENCIES = {
+_NATIVE_ENGINE_DEPENDENCIES = {
+    JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     "CXBR01": ("font-43a890795ad133d7",),
     "LYO01": ("font-06e1a30f687ab7d3",),
     "LYO02": ("font-06e1a30f687ab7d3", _MATTING_MODEL),
@@ -184,10 +186,9 @@ def template_dependencies(
                 if external.get(rid, {}).get("kind") == "font":
                     native_aliases.setdefault(rid, []).append(path.removeprefix(prefix))
                     references.setdefault(rid, [])
-    if group.get("backend") == "scene":
-        for rid in _SCENE_ENGINE_DEPENDENCIES.get(group["id"], ()):
-            if rid in external:
-                references.setdefault(rid, [])
+    for rid in _NATIVE_ENGINE_DEPENDENCIES.get(group["id"], ()):
+        if rid in external:
+            references.setdefault(rid, [])
     return [
         {
             "id": rid,

@@ -35,8 +35,10 @@ from .video_editing_question_branch import (
     question_variant_template,
 )
 
-SILHOUETTE_GROUP = "W-R09"
+SILHOUETTE_GROUPS = frozenset(("W-R04", "W-R09"))
 SILHOUETTE_PATHS = tuple(f"/media/silhouettes/{i}/path" for i in range(7))
+JUDGMENT_GROUP = "W-R14"
+JUDGMENT_BRUSH_FONT = "font-06b2048c592b1dae"
 
 TEXT_NAMES = {
     "text",
@@ -252,7 +254,7 @@ def input_contract(
         ]
     if group["id"] in STAGGER_GROUPS:
         fields.extend(strip_fields(group["id"]))
-    if group["id"] == SILHOUETTE_GROUP:
+    if group["id"] in SILHOUETTE_GROUPS:
         fields.extend(
             {
                 "path": path,

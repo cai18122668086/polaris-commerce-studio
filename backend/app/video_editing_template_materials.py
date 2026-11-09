@@ -9,8 +9,10 @@ from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
 from .video_editing_judgment import JUDGMENT_GROUP, JUDGMENT_IMAGES
 from .video_editing_materials import project_image_digests
+from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
+    PACKAGE_TEMPLATE_ID,
     PICTURE_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
 )
@@ -19,6 +21,7 @@ _IMAGE_GROUPS = {
     PICTURE_TEMPLATE_ID: (CARD_GROUP, 3),
     ROTATION_TEMPLATE_ID: (ROTATION_GROUP, 3),
     JUDGMENT_TEMPLATE_ID: (JUDGMENT_GROUP, 2),
+    PACKAGE_TEMPLATE_ID: (PACKAGE_GROUP, 4),
 }
 
 

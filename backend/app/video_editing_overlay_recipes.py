@@ -42,6 +42,7 @@ from .video_editing_judgment import (
 )
 from .video_editing_materials import project_image_digests
 from .video_editing_native_compiler import set_native_field
+from .video_editing_native_content import PACKAGE_GROUP, live_package_template
 from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import (
     NativeMusicTrack,
@@ -114,6 +115,10 @@ _JUDGMENT_SOUNDS = dict(
     )
 )
 _OPENING_PRESENTER = "/media/presenter/path"
+_PACKAGE_LABELS = tuple(f"/content/items/{i}/label" for i in range(4))
+_PACKAGE_IMAGES = tuple(f"/media/product_images/{i}/path" for i in range(4))
+_PACKAGE_EVENTS = tuple(f"/timing/events/item{i}" for i in range(4))
+_PACKAGE_EXTRA = "/content/items/3/extra"
 _OPENING_ROLES = {
     "/content/caption": ("/events/text_frame", 14),
     "/content/theme": ("/events/text_frame", 8),
@@ -708,6 +713,107 @@ def _judgment_entry(
     ), anchors
 
 
+def _package_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group, live_package_presenter=True)
+    images = project_image_digests(cards)
+    presenters = {
+        row["id"]
+        for row in cards
+        if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
+    }
+    try:
+        anchors = word_bindings(beat, transcript, contract, presenters | images.keys())
+        text = {row["path"]: row for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        if (
+            beat.relation not in {"parallel", "explanation"}
+            or len(beat.relation_items) != 4
+            or set(text) != set(_PACKAGE_LABELS)
+            or set(events) != set(_PACKAGE_EVENTS)
+            or set(media) != {_OPENING_PRESENTER, *_PACKAGE_IMAGES}
+            or set(media.values()) != set(beat.asset_ids)
+            or media[_OPENING_PRESENTER] not in presenters
+            or len({images[media[path]] for path in _PACKAGE_IMAGES}) != 4
+        ):
+            raise ValueError(
+                "Z-M12 needs the current presenter and four distinct images"
+            )
+        for item, label, image, event in zip(
+            beat.relation_items,
+            _PACKAGE_LABELS,
+            _PACKAGE_IMAGES,
+            _PACKAGE_EVENTS,
+            strict=True,
+        ):
+            if (
+                item.asset_ids != [media[image]]
+                or item.native_text_paths != [label]
+                or item.native_media_paths != [image]
+                or events[event]["token_id"] != text[label]["token_ids"][0]
+                or events[event]["edge"] != "start"
+            ):
+                raise ValueError("Each package image follows its own spoken label")
+        times = [events[path]["value"] for path in _PACKAGE_EVENTS]
+        clock = anchors["clock"]
+        duration = (clock["end_ms"] - clock["start_ms"]) / 1000
+        if not 0 <= times[0] < times[1] < times[2] < times[3] <= duration - 0.4:
+            raise ValueError(
+                "Leave time for the final original package entry to settle"
+            )
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_PACKAGE_INPUTS_REQUIRED",
+            "纸面规格需要同期原片、四份不同项目图片和按顺序出现的四个实录标签。",
+        ) from error
+    config = live_package_template(read_json(inside(package, group["input_template"])))
+    if beat.relation == "explanation":
+        config["intent"]["relation"] = "example"
+    slots = [
+        *text,
+        *events,
+        *media,
+        _PACKAGE_EXTRA,
+        "/media/presenter/offset_seconds",
+        "/media/presenter/duration_seconds",
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(
+            layer="scene",
+            rect=[0, 0, 1, 1],
+            reason="保留原全幅纸面构图和同期讲述者圆窗。",
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": PACKAGE_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-package-specs-v1",
+            "design_reason": "保留原纸面造型和入场曲线，以本期实录和素材填充。",
+            "parameter_decisions": {
+                key: "使用原纸面模板与本期素材。" for key in config
+            },
+            "config": config,
+            "placeholders": slots,
+            "empty_text": {_PACKAGE_EXTRA: "原生可选补充字由统一主字幕承载。"},
+            "media_clocks": [
+                {"media_path": _OPENING_PRESENTER, "policy": "transcript_source_window"}
+            ],
+        },
+    ), anchors
+
+
 def _opening_entry(
     package: Path,
     group: dict,
@@ -868,6 +974,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = JUDGMENT_EVENTS[:5]
+        elif beat.group_id == PACKAGE_GROUP:
+            entries[beat.id], anchors = _package_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = _PACKAGE_EVENTS
         elif beat.group_id == QUESTION_CARD_GROUP:
             entries[beat.id], anchors = _question_card_entry(
                 package, group, beat, transcript
@@ -890,6 +1001,7 @@ def build_overlay_recipes(
     has_bottom_caption_lane = any(
         beat.group_id in {ROTATION_GROUP, JUDGMENT_GROUP} for beat in beats
     )
+    has_package = any(beat.group_id == PACKAGE_GROUP for beat in beats)
     return EpisodeRecipeBundle(
         version="tengli.episode-recipes/1",
         library_release=MOTION_SHA256,
@@ -931,7 +1043,7 @@ def build_overlay_recipes(
                 0.055,
                 0.255,
                 0.89,
-                0.735 if has_bottom_caption_lane else 0.625,
+                0.735 if has_bottom_caption_lane else 0.705 if has_package else 0.625,
             ],
         },
         protected_regions=[

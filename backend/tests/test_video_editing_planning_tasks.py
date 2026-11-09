@@ -102,6 +102,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "question-card-story-v1",
         "picture-compare-v2",
         "rotation-cards-v1",
+        "package-specs-v1",
         "presenter-openings-v1",
         "evidence-judgment-v1",
         "explainer-steps-v1",
@@ -542,11 +543,15 @@ def test_gateway_cannot_change_after_preparation_or_while_execution_is_queued(
 
 
 @pytest.mark.parametrize(
-    ("template_id", "group_id"),
-    [("picture-compare-v2", "CX-G07"), ("rotation-cards-v1", "CX-G04")],
+    ("template_id", "group_id", "required"),
+    [
+        ("picture-compare-v2", "CX-G07", 3),
+        ("rotation-cards-v1", "CX-G04", 3),
+        ("package-specs-v1", "Z-M12", 4),
+    ],
 )
 def test_template_prepares_distinct_verified_project_images(
-    video, tmp_path, monkeypatch, template_id, group_id
+    video, tmp_path, monkeypatch, template_id, group_id, required
 ):
     client, _, ws, settings, _, task, semantic = setup(video, tmp_path, monkeypatch)
     factory = client.app.state.session_factory
@@ -571,9 +576,10 @@ def test_template_prepares_distinct_verified_project_images(
             .json()["id"]
         )
 
-    ids = [upload(color) for color in ("red", "red", "blue", "green")]
+    colors = ("red", "red", "blue", "green", "yellow")
+    ids = [upload(color) for color in colors[: required + 1]]
     provider = Provider(semantic)
-    for selected, count in (([], 0), (ids[:3], 2), (ids, 3)):
+    for selected, count in (([], 0), (ids[:-1], required - 1), (ids, required)):
         new = (
             client.post(
                 route,
@@ -592,7 +598,7 @@ def test_template_prepares_distinct_verified_project_images(
         expected = [
             {
                 "group_id": group_id,
-                "required_distinct_images": 3,
+                "required_distinct_images": required,
                 "selected_distinct_images": count,
             }
         ]
@@ -606,12 +612,18 @@ def test_template_prepares_distinct_verified_project_images(
     assert provider.calls == 0
 
 
-def test_current_card_rejects_reused_project_bytes_and_presenter_slot():
-    template = overlay_template("picture-compare-v2")
+@pytest.mark.parametrize(
+    ("template_id", "group_id", "required"),
+    [("picture-compare-v2", "CX-G07", 3), ("package-specs-v1", "Z-M12", 4)],
+)
+def test_current_card_rejects_reused_project_bytes_and_presenter_slot(
+    template_id, group_id, required
+):
+    template = overlay_template(template_id)
     source = {"id": "source-one", "kind": "original_video", "sha256": "source"}
     images = [
         {"id": f"material-{i}", "kind": "image", "sha256": digest}
-        for i, digest in enumerate(("a", "a", "b", "c"))
+        for i, digest in enumerate(("a", "a", "b", "c", "d")[: required + 1])
     ]
 
     def runtime(cards):
@@ -619,7 +631,8 @@ def test_current_card_rejects_reused_project_bytes_and_presenter_slot():
             "project_image_requirements": template_image_requirements(template, cards)
         }
 
-    def plan(ids, group="CX-G07"):
+    def plan(ids, group=group_id):
+        tokens = "abcd"[:required]
         return SemanticPlan.model_validate(
             {
                 "audience_question": "用途",
@@ -629,10 +642,10 @@ def test_current_card_rejects_reused_project_bytes_and_presenter_slot():
                     {
                         "id": "cards",
                         "group_id": group,
-                        "reason": "并列三项",
+                        "reason": "逐项说明",
                         "relation": "parallel",
                         "first_token_id": "a",
-                        "last_token_id": "c",
+                        "last_token_id": tokens[-1],
                         "relation_items": [
                             {
                                 "id": token,
@@ -640,7 +653,7 @@ def test_current_card_rejects_reused_project_bytes_and_presenter_slot():
                                 "last_token_id": token,
                                 "asset_ids": [asset],
                             }
-                            for token, asset in zip("abc", ids, strict=True)
+                            for token, asset in zip(tokens, ids, strict=True)
                         ],
                     }
                 ],
@@ -648,11 +661,11 @@ def test_current_card_rejects_reused_project_bytes_and_presenter_slot():
         )
 
     cards = [source, *images]
-    good = ["material-0", "material-2", "material-3"]
+    good = ["material-0", *(f"material-{i}" for i in range(2, required + 1))]
     validate_template_images(plan(good), runtime(cards), cards)
     with pytest.raises(ValueError, match="lacks distinct project images"):
         validate_template_images(plan(good), runtime(cards[:-1]), cards[:-1])
-    for ids in (["material-0", "material-1", "material-3"], ["source-one", *good[1:]]):
+    for ids in (["material-0", "material-1", *good[2:]], ["source-one", *good[1:]]):
         with pytest.raises(ValueError, match="own project image"):
             validate_template_images(plan(ids), runtime(cards), cards)
     validate_template_images(plan(good, group="BG-S04"), runtime([source]), [source])

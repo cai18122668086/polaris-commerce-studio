@@ -6,6 +6,7 @@ from .video_editing_browser_clocks import CARD_GROUP, FRUIT_LIST_FONTS, SPLIT_TI
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
+from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
 
@@ -18,6 +19,7 @@ PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
 JUDGMENT_TEMPLATE_ID = "evidence-judgment-v1"
 QUESTION_CARD_TEMPLATE_ID = "question-card-story-v1"
 EXPLAINER_TEMPLATE_ID = "explainer-steps-v1"
+PACKAGE_TEMPLATE_ID = "package-specs-v1"
 _OPENING_PURPOSES = {
     "LYO01": (
         "用原放大与暗角强调一条口播短句",
@@ -147,6 +149,28 @@ _TEMPLATES = {
         "name": "滚动报价与规格对照",
         "slots": [*_ROLL_SLOTS, _ACTION_SLOT],
     },
+    PACKAGE_TEMPLATE_ID: {
+        "id": PACKAGE_TEMPLATE_ID,
+        "name": "纸面规格与口播重点",
+        "slots": [
+            {
+                "group_id": PACKAGE_GROUP,
+                "purpose": "用原纸面布局逐项说明四个实录要点，圆窗保留同期人物",
+                "layer": "scene",
+                "binding": (
+                    "只在口播有四项相连的规格或商品说明且各有对应项目图片时选择。"
+                    "presenter 绑定本期原片，四项标签保留实录数字和单位。"
+                    "每项使用一张不同图片，relation_items 按出场顺序绑定标签和图片，"
+                    "item0 至 item3 分别锚定其标签的首词。"
+                    "第四项之后留出阅读时间。可选补充字由主字幕承载。"
+                    "缺图或没有合适的四项时跳过该槽。"
+                ),
+            },
+            _QUESTION_SLOT,
+            *_ROLL_SLOTS,
+            _ACTION_SLOT,
+        ],
+    },
     JUDGMENT_TEMPLATE_ID: {
         "id": JUDGMENT_TEMPLATE_ID,
         "name": "证据判断与口播重点",
@@ -270,6 +294,7 @@ def overlay_templates() -> list[dict]:
             QUESTION_CARD_TEMPLATE_ID,
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
+            PACKAGE_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,

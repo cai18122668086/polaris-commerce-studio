@@ -32,12 +32,14 @@ from .video_editing_hypit_strips import (
 from .video_editing_image_edits import apply_image_edits
 from .video_editing_judgment import JUDGMENT_GROUP
 from .video_editing_native_compiler import compile_native_job
+from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
     LEGACY_PICTURE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
+    PACKAGE_TEMPLATE_ID,
     PICTURE_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
@@ -603,6 +605,11 @@ def compile_episode(
                 )
         episode["production"]["beats"].append(production_beat)
     caption_lane = {
+        PACKAGE_TEMPLATE_ID: (
+            (PACKAGE_GROUP,),
+            1208,
+            "将主字幕放在纸面规格场景的底部。",
+        ),
         JUDGMENT_TEMPLATE_ID: (
             (JUDGMENT_GROUP,),
             1244,

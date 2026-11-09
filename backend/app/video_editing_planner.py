@@ -19,8 +19,10 @@ from .video_assistance_provider import (
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_overlay_templates import (
     MIN_OVERLAY_TYPES,
+    PACKAGE_TEMPLATE_ID,
     PREFERRED_OVERLAY_TYPES,
     QUESTION_CARD_TEMPLATE_ID,
     overlay_template,
@@ -63,7 +65,7 @@ def rule_pack(package: Path) -> dict[str, Any]:
 
 
 def catalog_index(
-    package: Path, *, question_card: bool = False
+    package: Path, *, question_card: bool = False, live_package: bool = False
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -81,7 +83,12 @@ def catalog_index(
         )
         target = (contract or {}).get("target", {})
         question_a = question_card and group["id"] == QUESTION_CARD_GROUP
-        parameters = input_contract(package, group, original_input_a=question_a)
+        parameters = input_contract(
+            package,
+            group,
+            original_input_a=question_a,
+            live_package_presenter=live_package and group["id"] == PACKAGE_GROUP,
+        )
         if question_a:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
         rows.append(
@@ -186,7 +193,10 @@ def build_request(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rules = rule_pack(package)
     question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
-    catalog = catalog_index(package, question_card=question_card)
+    live_package = bool(template and template["id"] == PACKAGE_TEMPLATE_ID)
+    catalog = catalog_index(
+        package, question_card=question_card, live_package=live_package
+    )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
         # Saved requests for older templates must replay with their original schema.
@@ -298,7 +308,11 @@ def build_request(
             "图片数低于要求的槽不可选，用其他符合实录语义的同模板动效或自然留白，"
             "并在missing_materials记录需要补齐的用途图。"
             "图片数充足时也须逐项根据本期素材描述匹配。"
-            "同一张图片的重复上传和口播人物视频不能充当三张用途图。"
+        )
+        message += (
+            "Z-M12 的四项须各有一张不同的项目图，原片只用于讲述者圆窗。"
+            if live_package
+            else "同一张图片的重复上传和口播人物视频不能充当三张用途图。"
         )
     if runtime and any(
         "transparent_image_ids" in row

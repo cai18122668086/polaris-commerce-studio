@@ -42,7 +42,7 @@ assert (task/'font.ttf').read_bytes()==source.read_bytes()
     assert list((tmp_path / "task/compatibility").glob("copies-*.json"))
 
 
-def test_azl_worker_mattes_are_isolated_per_prepared_job(tmp_path):
+def test_worker_mattes_are_isolated_per_prepared_job(tmp_path):
     backend = Path(__file__).resolve().parents[1]
     package = tmp_path / "package"
     module = package / "commercial_runtime/paths.py"
@@ -64,10 +64,10 @@ def test_azl_worker_mattes_are_isolated_per_prepared_job(tmp_path):
     code = """
 import sys
 from pathlib import Path
-from app.video_editing_native_compat import isolate_azl_matte_cache
+from app.video_editing_native_compat import isolate_native_matte_cache
 package, task = map(Path, sys.argv[1:3])
 sys.path.insert(0, str(package))
-isolate_azl_matte_cache(package, task)
+isolate_native_matte_cache(package, task)
 from commercial_runtime.paths import cache_path
 print(cache_path('shared', 'cache/mattes').as_posix())
 assert cache_path('shared', 'unrelated').as_posix() == 'shared/unrelated'
@@ -97,4 +97,9 @@ assert cache_path('shared', 'unrelated').as_posix() == 'shared/unrelated'
     assert first_cache != cache_for(second)
     first.write_text('{"group_id":"AZL01","offset":3}', encoding="utf-8")
     assert cache_for(first) != first_cache
+    for group in ("YYO02", "YYO07", "YY6O04"):
+        first.write_text(f'{{"group_id":"{group}","offset":1}}', encoding="utf-8")
+        opening_cache = cache_for(first)
+        first.write_text(f'{{"group_id":"{group}","offset":2}}', encoding="utf-8")
+        assert cache_for(first) != opening_cache
     assert cache_for(unrelated) == "shared/cache/mattes"

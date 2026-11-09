@@ -112,6 +112,7 @@ def test_native_presenter_uses_measured_nonzero_source_window(tmp_path, monkeypa
         "different_source",
         "different_kind",
         "guessed_clock",
+        "holding",
         "tampered_engine",
     ],
 )
@@ -131,6 +132,11 @@ def test_media_clock_rejects_history_wrong_source_and_unaudited_sampling(
         assets["current-raw"]["kind"] = "image"
     elif change == "guessed_clock":
         recipe["media_clocks"][0]["offset_seconds"] = 1
+    elif change == "holding":
+        manifest = read_json(clocks.MANIFEST)
+        manifest["profiles"]["YYP01"]["require_source_end_error"] = True
+        atomic_json(clocks.MANIFEST, manifest)
+        recipe["config"]["media"]["presenter"]["end_policy"] = "hold"
     else:
         engine.write_text("# changed source expression\n")
     with pytest.raises(ValueError):

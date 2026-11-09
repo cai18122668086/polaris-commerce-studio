@@ -15,16 +15,23 @@ from uuid import uuid4
 
 from PIL import ImageFont
 
+_OFFSET_INSENSITIVE_MATTE_GROUPS = {
+    *(f"AZL{number:02}" for number in range(1, 8)),
+    "YYO02",
+    "YYO07",
+    *(f"YY6O{number:02}" for number in range(3, 7)),
+}
 
-def isolate_azl_matte_cache(package: Path, root: Path) -> None:
-    """Keep the original fixed-offset matte keys local to each native shot."""
+
+def isolate_native_matte_cache(package: Path, root: Path) -> None:
+    """Keep the original offset-insensitive matte keys local to each shot."""
     if "--job" not in sys.argv:
         return
     job_path = Path(sys.argv[sys.argv.index("--job") + 1]).resolve()
     if job_path.parent != root / "plans":
         return
     job = job_path.read_bytes()
-    if json.loads(job)["group_id"] not in {f"AZL{number:02}" for number in range(1, 8)}:
+    if json.loads(job)["group_id"] not in _OFFSET_INSENSITIVE_MATTE_GROUPS:
         return
     sys.path.insert(0, str(package))
     try:
@@ -36,7 +43,7 @@ def isolate_azl_matte_cache(package: Path, root: Path) -> None:
         source is None
         or Path(source).resolve() != package / "commercial_runtime/paths.py"
     ):
-        raise ValueError("AZL matte cache must use the pinned original runtime")
+        raise ValueError("Native matte cache must use the pinned original runtime")
     original_cache_path = paths.cache_path
     shot = hashlib.sha256(job).hexdigest()
 

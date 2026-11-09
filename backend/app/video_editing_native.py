@@ -36,14 +36,15 @@ def main() -> None:
     compatibility.mkdir(exist_ok=True)
     (compatibility / "sitecustomize.py").write_text(
         "import os\nfrom pathlib import Path\n"
-        "from app.video_editing_native_compat import install, isolate_azl_matte_cache\n"
+        "from app.video_editing_native_compat import install\n"
+        "from app.video_editing_native_compat import isolate_native_matte_cache\n"
         "package = Path(os.environ['TENGLI_NATIVE_PACKAGE'])\n"
         "root = Path(os.environ['TENGLI_NATIVE_INSTANCE'])\n"
         "install(package, root)\n"
         "try:\n"
-        "    isolate_azl_matte_cache(package, root)\n"
+        "    isolate_native_matte_cache(package, root)\n"
         "except Exception as error:\n"
-        "    raise SystemExit('Unable to isolate native AZL shot cache') from error\n",
+        "    raise SystemExit('Unable to isolate native shot cache') from error\n",
         encoding="utf-8",
     )
     os.environ["TENGLI_NATIVE_PACKAGE"] = str(package)

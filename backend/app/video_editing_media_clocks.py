@@ -163,10 +163,9 @@ def compile_media_clocks(
                 "Presenter source clock cannot be applied to unrelated project media"
             )
         prefix = path.rsplit("/", 1)[0]
-        if (
-            implicit_scene_clips
-            and config["media"][path.split("/")[2]].get("end_policy") != "error"
-        ):
+        if (implicit_scene_clips or profile.get("require_source_end_error")) and config[
+            "media"
+        ][path.split("/")[2]].get("end_policy") != "error":
             raise ValueError("Presenter must run without looping or holding")
         offset_path, duration_path = (
             prefix + "/offset_seconds",

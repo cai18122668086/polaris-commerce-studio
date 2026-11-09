@@ -32,6 +32,10 @@ from .video_editing_question_card import (
     question_card_entry_frame,
 )
 from .video_editing_render_edits import MUSIC_REDUCTION_DB
+from .video_editing_subtitle_sound_clock import (
+    SUBTITLE_ENTRY_SYNC,
+    subtitle_entry_clock,
+)
 from .video_studio_schemas import StrictVideoModel
 
 
@@ -120,6 +124,8 @@ def compile_sound(
     event_bindings: dict[tuple[str, str], tuple[int, dict]],
     choice_snapshot: dict[str, Any] | None,
     edits: NativeRenderEdits | None = None,
+    *,
+    sync_subtitle_entries: bool = False,
 ) -> dict[str, Any]:
     """Compile trusted sound choices without copying an old timeline."""
     duration = episode["source"]["duration_seconds"]
@@ -306,6 +312,14 @@ def compile_sound(
         event = cue.model_dump(mode="json", exclude={"beat_id", "event_path"})
         event.update(anchor_seconds=seconds, **native_ref)
         fx.append(event)
+        sync_entry = (
+            sync_subtitle_entries
+            and shot["layer"] == "subtitle"
+            and cue.phase == "entry"
+            and cue.onset_policy == "measured"
+            and "anchor_ref" in native_ref
+            and unit == "frames"
+        )
         cue_evidence.append(
             {
                 **event,
@@ -323,6 +337,7 @@ def compile_sound(
                 **({"package_entry": package_entry} if package_entry else {}),
                 **({"rotation_entry": rotation_entry} if rotation_entry else {}),
                 **({"judgment_entry": judgment_entry} if judgment_entry else {}),
+                **({"subtitle_entry_sync": SUBTITLE_ENTRY_SYNC} if sync_entry else {}),
             }
         )
 
@@ -409,8 +424,22 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
     episode = None
     for cue, actual in zip(plan["fx"], rendered, strict=True):
         anchor = actual["anchor_basis"]
+        subtitle_entry = None
+        if cue.get("subtitle_entry_sync"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            subtitle_entry = subtitle_entry_clock(root, episode, cue, native["shots"])
+            if subtitle_entry["aligned_to_frame"]:
+                cue = {
+                    **cue,
+                    "word_anchor_seconds": cue["anchor_seconds"],
+                    "anchor_seconds": subtitle_entry["output_frame"]
+                    / episode["output"]["fps"],
+                }
         onset_delta = actual["effective_onset_seconds"] - cue["anchor_seconds"]
-        if hypit_entry := cue.get("hypit_entry"):
+        if subtitle_entry and subtitle_entry["aligned_to_frame"]:
+            anchor_valid = anchor["kind"] == "explicit_current_clock"
+        elif hypit_entry := cue.get("hypit_entry"):
             verify_stagger_entry(root, hypit_entry)
             anchor_valid = anchor["kind"] == "explicit_current_clock"
         elif question_entry := cue.get("question_entry"):
@@ -502,6 +531,7 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
                 "effective_onset_seconds": actual["effective_onset_seconds"],
                 "lead_removed_seconds": actual["lead_removed_seconds"],
                 "processed_sha256": actual["processed_sha256"],
+                **({"subtitle_entry": subtitle_entry} if subtitle_entry else {}),
             }
         )
     stems = {}

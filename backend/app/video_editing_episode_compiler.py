@@ -45,6 +45,7 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
+    SUBTITLE_STORY_TEMPLATE_ID,
     overlay_template,
     validate_template_plan,
 )
@@ -696,6 +697,8 @@ def compile_episode(
                 sound_events,
                 choice_snapshot,
                 edits,
+                sync_subtitle_entries=authoring.overlay_template_id
+                == SUBTITLE_STORY_TEMPLATE_ID,
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})

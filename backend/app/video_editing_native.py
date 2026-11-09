@@ -16,6 +16,7 @@ from .motion_library import atomic_json
 from .video_editing_native_compat import install
 from .video_editing_native_layout import install_native_role_review
 from .video_editing_native_shot_recovery import install_shot_recovery
+from .video_editing_subtitle_sound_clock import install_subtitle_sound_clock
 
 
 def main() -> None:
@@ -89,6 +90,7 @@ def main() -> None:
         if args.command == "export":
             install_native_role_review(package, root)
             install_shot_recovery(package, root)
+            install_subtitle_sound_clock(package, root)
         runpy.run_path(str(package / "adapter.py"), run_name="__main__")
     finally:
         atomic_json(

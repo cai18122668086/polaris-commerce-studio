@@ -14,8 +14,9 @@ from sqlalchemy.orm import Session
 from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, read_json
-from .video_editing_contracts import EditingOptions, SemanticPlan
+from .video_editing_contracts import EditingOptions, SemanticPlan, Transcript
 from .video_editing_episode_compiler import EpisodeRecipeBundle
+from .video_editing_highlights import apply_highlight_edits, editable_highlight_roles
 from .video_editing_hypit import internal_hypit_available, requires_hypit
 from .video_editing_hypit_strips import FLOW_GROUP
 from .video_editing_library_choice_store import stored_choice_snapshot
@@ -113,6 +114,10 @@ def plan_response(
         "choice_snapshot_sha256": row.choice_snapshot["sha256"],
         "semantic_review": "unreviewed",
         "music_edit_available": has_music,
+        "highlight_edit_available": any(
+            editable_highlight_roles(beat, row.recipes)
+            for beat in row.semantic["beats"]
+        ),
         "continuous_preview_available": len(
             continuous_overlay_groups(
                 row.semantic,
@@ -477,6 +482,32 @@ def frozen_plan_snapshot(
     }
 
 
+def native_edit_transcript(
+    session: Session, settings: Settings, row: EditingNativePlanRecord
+) -> Transcript:
+    task = session.get(EditingTaskRecord, row.base_task_id)
+    artifact = session.get(EditingArtifactRecord, row.base_transcript_artifact_id)
+    if (
+        not task
+        or not artifact
+        or (task.project_id, task.workspace_id, task.owner_user_id, task.source_id)
+        != (row.project_id, row.workspace_id, row.owner_user_id, row.source_id)
+    ):
+        raise ApiError(409, "EDITING_PLAN_SOURCE_CHANGED", "编排的原转录暂不可用。")
+    try:
+        frozen_plan_snapshot(row, artifact)
+    except ValueError as error:
+        raise ApiError(
+            409, "EDITING_PLAN_SOURCE_CHANGED", "编排的原转录已变化。"
+        ) from error
+    transcript = read_transcript_artifact(
+        artifact, task, settings.video_editing_tasks_dir
+    )
+    if transcript.source_sha256 != row.details["source_sha256"]:
+        raise ApiError(409, "EDITING_PLAN_SOURCE_CHANGED", "编排的原片与转录不匹配。")
+    return transcript
+
+
 def admit_render_plan(
     session: Session,
     settings: Settings,
@@ -532,6 +563,28 @@ def admit_render_plan(
                 422,
                 "EDITING_NATIVE_EDITS_INVALID",
                 "所选段落或背景音乐不适用于这份编排。",
+            ) from error
+    if options.native_edits and options.native_edits.highlight_edits:
+        transcript = native_edit_transcript(session, settings, row)
+        try:
+            edited, _ = apply_highlight_edits(
+                options.native_edits.highlight_edits,
+                SemanticPlan.model_validate(row.semantic),
+                row.recipes,
+                transcript,
+            )
+            validate_plan(
+                edited,
+                transcript,
+                settings.video_editing_library_dir,
+                set(row.details["asset_snapshot"]),
+                current,
+            )
+        except ValueError as error:
+            raise ApiError(
+                422,
+                "EDITING_HIGHLIGHT_INVALID",
+                "请从这份编排列出的实录短语中重新选择。",
             ) from error
     if (
         options.delivery == "preview_first"

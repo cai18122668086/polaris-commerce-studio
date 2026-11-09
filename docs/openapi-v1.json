@@ -4820,6 +4820,72 @@
         "title": "EditingExportConfirmation",
         "type": "object"
       },
+      "EditingHighlightChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "first_token_id": {
+            "title": "First Token Id",
+            "type": "string"
+          },
+          "last_token_id": {
+            "title": "Last Token Id",
+            "type": "string"
+          },
+          "start_ms": {
+            "title": "Start Ms",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "first_token_id",
+          "last_token_id",
+          "text",
+          "start_ms"
+        ],
+        "title": "EditingHighlightChoice",
+        "type": "object"
+      },
+      "EditingHighlightTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "current_text": {
+            "title": "Current Text",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/EditingHighlightChoice"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beat_id",
+          "path",
+          "label",
+          "current_text",
+          "options"
+        ],
+        "title": "EditingHighlightTarget",
+        "type": "object"
+      },
       "EditingImageResultImport": {
         "additionalProperties": false,
         "properties": {
@@ -5256,6 +5322,11 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "highlight_edit_available": {
+            "default": false,
+            "title": "Highlight Edit Available",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -8473,6 +8544,43 @@
         "title": "NativeEventAnchor",
         "type": "object"
       },
+      "NativeHighlightEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "first_token_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "First Token Id",
+            "type": "string"
+          },
+          "last_token_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Last Token Id",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beat_id",
+          "path",
+          "first_token_id",
+          "last_token_id"
+        ],
+        "title": "NativeHighlightEdit",
+        "type": "object"
+      },
       "NativeMediaAnchor": {
         "additionalProperties": false,
         "properties": {
@@ -8499,6 +8607,14 @@
       "NativeRenderEdits": {
         "additionalProperties": false,
         "properties": {
+          "highlight_edits": {
+            "items": {
+              "$ref": "#/components/schemas/NativeHighlightEdit"
+            },
+            "maxItems": 120,
+            "title": "Highlight Edits",
+            "type": "array"
+          },
           "music": {
             "anyOf": [
               {
@@ -21760,6 +21876,77 @@
           }
         ],
         "summary": "List Native Plans",
+        "tags": [
+          "video-editing-native-plans"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/highlight-options": {
+      "get": {
+        "operationId": "native_highlight_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__highlight_options_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingHighlightTarget"
+                  },
+                  "title": "Response Native Highlight Options Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Native Plans  Plan Id  Highlight Options Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Native Highlight Options",
         "tags": [
           "video-editing-native-plans"
         ]

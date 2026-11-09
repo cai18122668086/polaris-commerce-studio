@@ -2450,6 +2450,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/highlight-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Native Highlight Options */
+        get: operations["native_highlight_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__highlight_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-planning-tasks": {
         parameters: {
             query?: never;
@@ -5554,6 +5571,30 @@ export interface components {
             /** Preview Sha256 */
             preview_sha256: string;
         };
+        /** EditingHighlightChoice */
+        EditingHighlightChoice: {
+            /** First Token Id */
+            first_token_id: string;
+            /** Last Token Id */
+            last_token_id: string;
+            /** Start Ms */
+            start_ms: number;
+            /** Text */
+            text: string;
+        };
+        /** EditingHighlightTarget */
+        EditingHighlightTarget: {
+            /** Beat Id */
+            beat_id: string;
+            /** Current Text */
+            current_text: string;
+            /** Label */
+            label: string;
+            /** Options */
+            options: components["schemas"]["EditingHighlightChoice"][];
+            /** Path */
+            path: string;
+        };
         /** EditingImageResultImport */
         EditingImageResultImport: {
             /** Asset Id */
@@ -5720,6 +5761,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Highlight Edit Available
+             * @default false
+             */
+            highlight_edit_available: boolean;
             /** Id */
             id: string;
             /** Library Release */
@@ -6923,6 +6969,17 @@ export interface components {
             /** Token Id */
             token_id: string;
         };
+        /** NativeHighlightEdit */
+        NativeHighlightEdit: {
+            /** Beat Id */
+            beat_id: string;
+            /** First Token Id */
+            first_token_id: string;
+            /** Last Token Id */
+            last_token_id: string;
+            /** Path */
+            path: string;
+        };
         /** NativeMediaAnchor */
         NativeMediaAnchor: {
             /** Asset Id */
@@ -6932,6 +6989,8 @@ export interface components {
         };
         /** NativeRenderEdits */
         NativeRenderEdits: {
+            /** Highlight Edits */
+            highlight_edits?: components["schemas"]["NativeHighlightEdit"][];
             /** Music */
             music?: ("lower" | "off") | null;
             /** Source Only Beat Ids */
@@ -13432,6 +13491,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingNativePlanResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    native_highlight_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__highlight_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                plan_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingHighlightTarget"][];
                 };
             };
             /** @description Validation Error */

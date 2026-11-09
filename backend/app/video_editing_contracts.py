@@ -9,19 +9,55 @@ from pydantic import Field, model_validator
 from .video_studio_schemas import StrictVideoModel
 
 
+class NativeHighlightEdit(StrictVideoModel):
+    beat_id: str = Field(min_length=1, max_length=120)
+    path: str = Field(min_length=2, max_length=160)
+    first_token_id: str = Field(min_length=1, max_length=120)
+    last_token_id: str = Field(min_length=1, max_length=120)
+
+
+class EditingHighlightChoice(StrictVideoModel):
+    first_token_id: str
+    last_token_id: str
+    text: str
+    start_ms: int
+
+
+class EditingHighlightTarget(StrictVideoModel):
+    beat_id: str
+    path: str
+    label: str
+    current_text: str
+    options: list[EditingHighlightChoice]
+
+
 class NativeRenderEdits(StrictVideoModel):
     music: Literal["lower", "off"] | None = None
     source_only_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
         Field(default_factory=list, max_length=120)
     )
 
+    highlight_edits: list[NativeHighlightEdit] = Field(
+        default_factory=list, max_length=120, exclude_if=lambda value: not value
+    )
+
     @model_validator(mode="after")
     def checked_selection(self) -> Self:
-        if not self.music and not self.source_only_beat_ids:
-            raise ValueError("Select a music or segment edit")
+        if (
+            not self.music
+            and not self.source_only_beat_ids
+            and not self.highlight_edits
+        ):
+            raise ValueError("Select a music, segment or highlight edit")
         if len(set(self.source_only_beat_ids)) != len(self.source_only_beat_ids):
             raise ValueError("Select each segment at most once")
+        keys = {(edit.beat_id, edit.path) for edit in self.highlight_edits}
+        if len(keys) != len(self.highlight_edits) or any(
+            beat_id in self.source_only_beat_ids for beat_id, _ in keys
+        ):
+            raise ValueError("Select each highlight once on an active segment")
         self.source_only_beat_ids = sorted(self.source_only_beat_ids)
+        self.highlight_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
         return self
 
 
@@ -319,6 +355,7 @@ class EditingNativePlanResponse(StrictVideoModel):
     render_available: bool
     continuous_preview_available: bool
     music_edit_available: bool
+    highlight_edit_available: bool = False
     overlay_template: EditingOverlayTemplate | None = Field(
         default=None, exclude_if=lambda value: value is None
     )

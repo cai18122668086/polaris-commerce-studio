@@ -31,6 +31,7 @@ from .video_editing_episode_compiler import (
     NativeEpisodeEntry,
     NativePlacement,
 )
+from .video_editing_highlights import AUTOMATIC_TEXT_PROFILE
 from .video_editing_judgment import (
     JUDGMENT_BACKGROUND,
     JUDGMENT_CONCLUSION,
@@ -62,7 +63,7 @@ from .video_editing_question_branch import (
 )
 from .video_editing_word_bindings import word_bindings
 
-PROFILE_ID = "tengli-overlay-recipe-v2"
+PROFILE_ID = AUTOMATIC_TEXT_PROFILE
 # Audited source slices: asset ID, slice start, slice duration, target peak dBFS.
 _TYPING = ("sfx-31fef1615e1ded4d", 0.44, 0.25, -27)
 _CLICK = ("sfx-caca4bd9dd717c9f", 0, 0.14, -26)

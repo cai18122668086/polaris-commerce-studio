@@ -21,6 +21,7 @@ from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
+from .video_editing_highlights import apply_highlight_edits
 from .video_editing_hypit import hypit_tools, internal_hypit_available, requires_hypit
 from .video_editing_hypit_strips import (
     STAGGER_GROUPS,
@@ -141,6 +142,7 @@ def compile_episode(
     """Prepare original episode/selection/bindings, without claiming a render."""
     root = root.resolve()
     package = settings.video_editing_library_dir
+    original_semantic = semantic
     semantic_hash = hashlib.sha256(semantic.model_dump_json().encode()).hexdigest()
     if (
         authoring.planning_origin == "tengli_gateway"
@@ -178,6 +180,20 @@ def compile_episode(
             )
         except ValueError as error:
             raise EditingFailure("EDITING_NATIVE_EDITS_INVALID") from error
+    highlights: list[dict[str, Any]] = []
+    if edits and edits.highlight_edits:
+        try:
+            semantic, highlights = apply_highlight_edits(
+                edits.highlight_edits,
+                semantic,
+                authoring.model_dump(mode="json"),
+                transcript,
+            )
+            validate_plan(
+                semantic, transcript, package, set(asset_files), choice_snapshot
+            )
+        except ValueError as error:
+            raise EditingFailure("EDITING_HIGHLIGHT_INVALID") from error
     groups = {g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]}
     relation_types = set(
         read_json(package / "params.schema.json")["properties"]["production"][
@@ -698,6 +714,16 @@ def compile_episode(
             if edits
             else {}
         ),
+        **(
+            {
+                "applied_highlight_edits": highlights,
+                "effective_semantic_sha256": hashlib.sha256(
+                    semantic.model_dump_json().encode()
+                ).hexdigest(),
+            }
+            if highlights
+            else {}
+        ),
         "episode_schema_validation": "passed" if not issues else "not_admitted",
         "issues": issues,
         "native_execution": "not_performed",
@@ -712,7 +738,7 @@ def compile_episode(
         raise EditingFailure("EDITING_NATIVE_INPUTS_REQUIRED")
     if sound_plan is not None:
         atomic_json(root / "audio-plan.json", sound_plan)
-    atomic_json(root / "semantic-plan.json", semantic.model_dump(mode="json"))
+    atomic_json(root / "semantic-plan.json", original_semantic.model_dump(mode="json"))
     atomic_json(root / "episode-recipes.json", authoring.model_dump(mode="json"))
     atomic_json(root / "caption-anchors.json", captions)
     atomic_json(

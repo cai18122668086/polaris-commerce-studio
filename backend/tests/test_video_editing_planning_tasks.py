@@ -106,6 +106,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "question-card-story-v1",
         "picture-compare-v2",
         "rotation-cards-v1",
+        "numbered-pictures-v1",
         "package-specs-v1",
         "line-story-v1",
         "presenter-openings-v1",

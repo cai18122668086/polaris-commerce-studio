@@ -12,10 +12,12 @@ from PIL import Image
 from .motion_library import read_json, sha256
 from .video_editing_browser_clocks import (
     CARD_ENGINE_SHA,
-    CARD_GROUP,
     FRUIT_LIST_GROUP,
+    LIVE_BROWSER_SOURCE_FIELDS,
+    NUMBERED_GROUP,
     SPLIT_WRAPPER_SHA,
     audit_card_family_engine,
+    audit_split_engine,
 )
 from .video_editing_contracts import Transcript
 
@@ -25,8 +27,12 @@ _ORIGINAL_DRAW = (
     'f=>{engine.draw(exportCanvas,f,"city",true);'
     'return exportCanvas.toDataURL("image/png").split(",")[1]}'
 )
+_SPLIT_DRAW = (
+    '([g,f])=>{engine.draw(exportCanvas,g,f/30,"B");'
+    'return exportCanvas.toDataURL("image/png").split(",")[1]}'
+)
 _ALPHA_DRAW = """
-f => {
+([frame, numbered]) => {
   const context = exportCanvas.getContext("2d");
   const fillRect = context.fillRect;
   let plates = 0;
@@ -37,12 +43,44 @@ f => {
     }
     fillRect.call(this, x, y, w, h);
   };
+  if (numbered) {
+    const images = engine.states[frame[0]].B.images;
+    for (const name of ["strokeText", "fillText"]) {
+      const paint = context[name];
+      context[name] = function (text, x, y, ...rest) {
+        // Fit two glyphs inside the pinned G03 title clip at x=302..452.
+        if (this.font === "italic 78px NativeSerif" && x === 0 && y === 0) {
+          return paint.call(this, text, x, y, 118);
+        }
+        return paint.call(this, text, x, y, ...rest);
+      };
+    }
+    const drawImage = context.drawImage;
+    context.drawImage = function (image, ...args) {
+      if (images.includes(image) && args.length === 4 && args[0] < 453) {
+        const [x, y, w, h] = args;
+        const scale = (x + w - 453) / w;
+        if (scale <= 0) throw Error("Original numbered image slot changed");
+        args = [453, y + h * (1 - scale), w * scale, h * scale];
+      }
+      return drawImage.call(this, image, ...args);
+    };
+  }
   try {
-    engine.draw(exportCanvas, f, "city", false);
+    if (numbered) {
+      engine.draw(exportCanvas, frame[0], frame[1] / 30, "B");
+    } else {
+      engine.draw(exportCanvas, frame, "city", false);
+    }
   } finally {
     delete context.fillRect;
+    if (numbered) {
+      delete context.strokeText;
+      delete context.fillText;
+      delete context.drawImage;
+    }
   }
-  if (plates !== 1) throw Error("Original three-card plate changed");
+  if (plates !== 1) throw Error("Original browser plate changed");
   return exportCanvas.toDataURL("image/png").split(",")[1];
 }
 """
@@ -57,7 +95,8 @@ def card_live_clock(
         if assets[row["asset_id"]].get("kind")
         in {"original_video", "video", "generated_video"}
     }
-    source_id = videos.get("/background", "")
+    field = LIVE_BROWSER_SOURCE_FIELDS[native["group_id"]]
+    source_id = videos.get(field, "")
     asset = assets.get(source_id, {})
     clock = native["clock"]
     if (
@@ -74,7 +113,7 @@ def card_live_clock(
         )
     return {
         "policy": "native_card_alpha_on_continuous_episode_source",
-        "media_path": "/background",
+        "media_path": field,
         "asset_id": source_id,
         "source_sha256": transcript.source_sha256,
         **clock,
@@ -88,13 +127,14 @@ def install_live_card_export(package: Path, root: Path) -> None:
     if job_path.parent != root / "plans":
         return
     job = read_json(job_path)
-    reference = job["config"].get("background")
+    group = job["group_id"]
+    field = LIVE_BROWSER_SOURCE_FIELDS.get(group)
+    if field is None:
+        return
+    numbered = group == NUMBERED_GROUP
+    reference = job["config"].get(field[1:])
     prefix = "input://" + CARD_LIVE_PREFIX
-    if (
-        job["group_id"] != CARD_GROUP
-        or not isinstance(reference, str)
-        or not reference.startswith(prefix)
-    ):
+    if not isinstance(reference, str) or not reference.startswith(prefix):
         return
     if sha256(package / "commercial_runtime/special.py") != SPLIT_WRAPPER_SHA:
         raise ValueError("Original browser export changed")
@@ -114,33 +154,39 @@ def install_live_card_export(package: Path, root: Path) -> None:
 
     def alpha_card(group_id: str) -> dict:
         card = load_card(group_id)
-        if group_id != CARD_GROUP:
+        if group_id != group:
             return card
-        if sha256(package / card["entry"]) != CARD_ENGINE_SHA:
+        if numbered:
+            audit_split_engine(package, card)
+        elif sha256(package / card["entry"]) != CARD_ENGINE_SHA:
             raise ValueError("Original three-card draw engine changed")
         # The original worker emits RGBA frame sequences for this export mode.
         return {**card, "kind": "subtitle"}
 
     def alpha_drawer(card: dict, config: dict) -> tuple[Any, dict]:
-        if card["id"] != CARD_GROUP:
+        if card["id"] != group:
             return browser_drawer(card, config)
-        if sha256(Path(config["background"]))[:24] != reference.removeprefix(prefix):
-            raise ValueError("Current three-card source binding changed")
+        if sha256(Path(config[field[1:]]))[:24] != reference.removeprefix(prefix):
+            raise ValueError("Current browser source binding changed")
         # The original browser initializes its image slot before drawing.
         # The compositor supplies the visible background from its original source track.
         boot = BytesIO()
         Image.new("RGBA", (1, 1)).save(boot, format="PNG")
         boot_uri = "data:image/png;base64," + base64.b64encode(boot.getvalue()).decode()
-        draw, meta = browser_drawer(card, {**config, "background": boot_uri})
+        alpha_config = {**config, "background": boot_uri}
+        if numbered:
+            alpha_config["presenter"] = boot_uri
+        draw, meta = browser_drawer(card, alpha_config)
+        original_draw = _SPLIT_DRAW if numbered else _ORIGINAL_DRAW
 
         def draw_alpha(frame: int) -> Image.Image:
             applied = False
 
             def evaluate_alpha(page: Page, expression: str, arg: Any = None) -> Any:
                 nonlocal applied
-                if expression == _ORIGINAL_DRAW:
+                if expression == original_draw:
                     applied = True
-                    expression = _ALPHA_DRAW
+                    return evaluate(page, _ALPHA_DRAW, [arg, numbered])
                 return evaluate(page, expression, arg)
 
             cast(Any, Page).evaluate = evaluate_alpha
@@ -149,12 +195,17 @@ def install_live_card_export(package: Path, root: Path) -> None:
             finally:
                 cast(Any, Page).evaluate = evaluate
             if not applied:
-                raise ValueError("Original three-card frame export did not run")
+                raise ValueError("Original browser frame export did not run")
             return image
 
         return draw_alpha, {
             **meta,
             "media_capability": "original card RGBA over continuous episode source",
+            **(
+                {"numbered_label_width": 118, "numbered_image_left": 453}
+                if numbered
+                else {}
+            ),
         }
 
     native.load_card = alpha_card

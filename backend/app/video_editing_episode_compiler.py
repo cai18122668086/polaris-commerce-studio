@@ -20,7 +20,7 @@ from pydantic import Field, model_validator
 from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
-from .video_editing_browser_clocks import CARD_GROUP
+from .video_editing_browser_clocks import CARD_GROUP, NUMBERED_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
@@ -44,6 +44,7 @@ from .video_editing_overlay_templates import (
     LEGACY_PICTURE_TEMPLATE_ID,
     LINE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
+    NUMBERED_TEMPLATE_ID,
     PACKAGE_TEMPLATE_ID,
     PICTURE_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
@@ -689,6 +690,11 @@ def compile_episode(
             "将主字幕放在原生三张图卡的上方。",
         ),
         PICTURE_TEMPLATE_ID: ((CARD_GROUP,), 732, "将主字幕放在原生三张图卡的上方。"),
+        NUMBERED_TEMPLATE_ID: (
+            (NUMBERED_GROUP,),
+            1240,
+            "将主字幕放在原生编号标签的下方。",
+        ),
         PRESENTER_TEMPLATE_ID: (
             ("LYO01", "LYO04"),
             1110,
@@ -852,12 +858,19 @@ def compile_episode(
     question_shots = [
         i for i, shot in enumerate(episode["shots"]) if question_card_a_shot(shot)
     ]
-    if backdrop_shots or question_shots:
+    numbered_shots = [
+        i
+        for i, shot in enumerate(episode["shots"])
+        if authoring.overlay_template_id == NUMBERED_TEMPLATE_ID
+        and shot["group_id"] == NUMBERED_GROUP
+    ]
+    if backdrop_shots or question_shots or numbered_shots:
         atomic_json(
             root / "layout-intent.json",
             {
                 "sg_s10_backdrop_shots": backdrop_shots,
                 "ah_s03_input_a_shots": question_shots,
+                **({"numbered_alpha_shots": numbered_shots} if numbered_shots else {}),
             },
         )
     if continuous_base:

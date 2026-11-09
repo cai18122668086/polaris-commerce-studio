@@ -2,7 +2,12 @@
 
 from copy import deepcopy
 
-from .video_editing_browser_clocks import CARD_GROUP, FRUIT_LIST_FONTS, SPLIT_TITLE_FONT
+from .video_editing_browser_clocks import (
+    CARD_GROUP,
+    FRUIT_LIST_FONTS,
+    NUMBERED_GROUP,
+    SPLIT_TITLE_FONT,
+)
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
@@ -23,6 +28,7 @@ EXPLAINER_TEMPLATE_ID = "explainer-steps-v1"
 PACKAGE_TEMPLATE_ID = "package-specs-v1"
 LINE_TEMPLATE_ID = "line-story-v1"
 SUBTITLE_STORY_TEMPLATE_ID = "subtitle-story-v1"
+NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
 PACKAGE_TEMPLATES = frozenset({PACKAGE_TEMPLATE_ID, LINE_TEMPLATE_ID})
 _OPENING_PURPOSES = {
     "LYO01": (
@@ -48,6 +54,7 @@ OPENING_GROUPS = frozenset(_OPENING_PURPOSES)
 _OPENING_FONT = "font-06e1a30f687ab7d3"
 AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     CARD_GROUP: (SPLIT_TITLE_FONT,),
+    NUMBERED_GROUP: (SPLIT_TITLE_FONT,),
     QUESTION_GROUP: (QUESTION_FONT,),
     QUESTION_CARD_GROUP: QUESTION_CARD_A_FONTS,
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
@@ -116,6 +123,26 @@ _EXPLAINER_SLOTS = [
     {"group_id": "AHG-S02", "purpose": "标记分类或行动的实录短语"},
 ]
 _TEMPLATES = {
+    NUMBERED_TEMPLATE_ID: {
+        "id": NUMBERED_TEMPLATE_ID,
+        "name": "三项编号图与口播重点",
+        "slots": [
+            {
+                "group_id": NUMBERED_GROUP,
+                "purpose": "依次累积三个实录要点的编号、短标签和对应配图",
+                "layer": "overlay",
+                "binding": (
+                    "只用于同一段中明确列出的三项，缺图就跳过。"
+                    "每项使用一张独立的本期图片。/presenter 绑定本期原片。"
+                    "items 中的 label 各取实录 1–2 字，spoken 绑定所属实录条目。"
+                    "at 分别绑定 label 的首词。原生卡片需要时间入场，"
+                    "末项结束后在同一片段保留可读时间。"
+                    "relation_items 每项绑定 label、spoken 和对应的 image。"
+                ),
+            },
+            *_EXPLAINER_SLOTS,
+        ],
+    },
     EXPLAINER_TEMPLATE_ID: {
         "id": EXPLAINER_TEMPLATE_ID,
         "name": "讲解步骤与口播重点",
@@ -349,6 +376,7 @@ def overlay_templates() -> list[dict]:
             QUESTION_CARD_TEMPLATE_ID,
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
+            NUMBERED_TEMPLATE_ID,
             PACKAGE_TEMPLATE_ID,
             LINE_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,

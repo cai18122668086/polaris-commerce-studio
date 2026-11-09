@@ -11,6 +11,12 @@ from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     CARD_LANDMARKS,
+    NUMBERED_EVENTS,
+    NUMBERED_GROUP,
+    NUMBERED_IMAGES,
+    NUMBERED_LABELS,
+    NUMBERED_LINES,
+    NUMBERED_PRESENTER,
 )
 from .video_editing_browser_rotation import (
     ROTATION_EVENTS,
@@ -547,6 +553,7 @@ def _entry_sound(
             QUESTION_GROUP: "整帧追问入场时给一次短提示，口播继续。",
             QUESTION_CARD_GROUP: "原问号首个可见帧给一次短提示，口播继续。",
             CARD_GROUP: "图卡进入时给一次短提示，口播继续。",
+            NUMBERED_GROUP: "各项原生编号标签进入时给一次短提示，口播继续。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
             JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
             LINE_GROUP: "线描手势入场时给一次原库提示音，口播继续。",
@@ -555,6 +562,105 @@ def _entry_sound(
         trim_duration_seconds=length,
         target_peak_dbfs=peak,
     )
+
+
+def _numbered_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    images = project_image_digests(cards)
+    presenters = {
+        row["id"]
+        for row in cards
+        if row["kind"] == "original_video"
+        and row["sha256"] == transcript.source_sha256
+        and row["id"].startswith("source-")
+    }
+    config = read_json(inside(package, group["input_template"]))
+    try:
+        anchors = word_bindings(beat, transcript, contract, presenters | images.keys())
+        text = {row["path"]: row for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        if (
+            beat.relation not in {"parallel", "sequence"}
+            or len(beat.relation_items) != 3
+            or set(text) != {*NUMBERED_LABELS, *NUMBERED_LINES}
+            or set(events) != set(NUMBERED_EVENTS)
+            or set(media) != {NUMBERED_PRESENTER, *NUMBERED_IMAGES}
+            or set(media.values()) != set(beat.asset_ids)
+            or media[NUMBERED_PRESENTER] not in presenters
+            or len({images[media[path]] for path in NUMBERED_IMAGES}) != 3
+        ):
+            raise ValueError("Numbered tags need the current source and three images")
+        for item, label, line, image, event in zip(
+            beat.relation_items,
+            NUMBERED_LABELS,
+            NUMBERED_LINES,
+            NUMBERED_IMAGES,
+            NUMBERED_EVENTS,
+            strict=True,
+        ):
+            line_tokens = text[line]["token_ids"]
+            if (
+                item.asset_ids != [media[image]]
+                or set(item.native_text_paths) != {label, line}
+                or item.native_media_paths != [image]
+                or item.first_token_id != line_tokens[0]
+                or item.last_token_id != line_tokens[-1]
+                or not 1 <= len(text[label]["text"]) <= 2
+                or events[event]["token_id"] != text[label]["token_ids"][0]
+                or events[event]["edge"] != "start"
+            ):
+                raise ValueError("Each numbered label follows its own spoken item")
+        starts = [events[path]["value"] for path in NUMBERED_EVENTS]
+        clock = anchors["clock"]
+        frames = round((clock["end_ms"] - clock["start_ms"]) * 30 / 1000)
+        if not (
+            0 <= starts[0] < starts[1] < starts[2]
+            and all(
+                start + item["enter"] <= (frames - 1) / 30
+                for start, item in zip(starts, config["items"], strict=True)
+            )
+        ):
+            raise ValueError("Leave time for the last numbered label to settle")
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_NUMBERED_INPUTS_REQUIRED",
+            "编号标签需绑定同期原片、三份不同的项目图片和三个依次出现的实录短词。",
+        ) from error
+    slots = [*text, *events, *media]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(
+            layer="overlay",
+            rect=[0, 0, 1, 1],
+            reason="原生编号和标签叠在同期口播画面上。",
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": NUMBERED_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-numbered-pictures-v1",
+            "design_reason": "保留原编号、标签、配图及入场曲线，主画面使用连续口播。",
+            "parameter_decisions": {
+                key: "沿用原生画幅、标签构图及入场机制。" for key in config
+            },
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[NUMBERED_GROUP]),
+            "browser_live_background": True,
+        },
+    ), anchors
 
 
 def _rotation_entry(
@@ -1113,6 +1219,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = ROTATION_EVENTS
+        elif beat.group_id == NUMBERED_GROUP:
+            entries[beat.id], anchors = _numbered_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = NUMBERED_EVENTS
         elif beat.group_id == JUDGMENT_GROUP:
             entries[beat.id], anchors = _judgment_entry(
                 package, group, beat, transcript, asset_cards or []
@@ -1148,7 +1259,8 @@ def build_overlay_recipes(
         )
     has_scene = any(entry.placement.layer == "scene" for entry in entries.values())
     has_bottom_caption_lane = any(
-        beat.group_id in {ROTATION_GROUP, JUDGMENT_GROUP} for beat in beats
+        beat.group_id in {ROTATION_GROUP, JUDGMENT_GROUP, NUMBERED_GROUP}
+        for beat in beats
     )
     has_lower_caption_lane = any(
         beat.group_id in {PACKAGE_GROUP, LINE_GROUP} for beat in beats

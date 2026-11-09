@@ -7,7 +7,7 @@ from app import video_editing_browser_rotation as rotation
 from app.errors import ApiError
 from app.motion_library import atomic_json
 from app.video_editing_contracts import SemanticBeat, TranscriptToken
-from app.video_editing_overlay_recipes import _rotation_entry
+from app.video_editing_overlay_recipes import _numbered_entry, _rotation_entry
 from tests.test_video_editing_native_compiler import inputs
 
 
@@ -266,3 +266,105 @@ def test_rotation_template_binds_each_current_item_before_worker_admission(tmp_p
     with pytest.raises(ApiError) as caught:
         _rotation_entry(package, group, beat, transcript, assets)
     assert caught.value.code == "EDITING_TEMPLATE_ROTATION_INPUTS_REQUIRED"
+
+
+def test_numbered_tags_require_distinct_images_and_each_label_first_word(tmp_path):
+    package, transcript, _, _ = inputs(tmp_path)
+    group = {
+        "id": cards.NUMBERED_GROUP,
+        "backend": "browser",
+        "input_template": "numbered.json",
+        "input_schema": "schema.json",
+    }
+    atomic_json(
+        package / "numbered.json",
+        {
+            "presenter": "pkg://presenter.svg",
+            "background": None,
+            "duration": 3,
+            "items": [
+                {
+                    "label": "旧图",
+                    "spoken": "原示例",
+                    "image": "pkg://sample.svg",
+                    "at": i,
+                    "enter": 0.38,
+                }
+                for i in range(3)
+            ],
+        },
+    )
+    transcript.tokens = [
+        TranscriptToken(
+            id=f"t{i}", text=word, start_ms=1000 + i * 600, end_ms=1550 + i * 600
+        )
+        for i, word in enumerate(("办公", "配件", "小物", "收好"))
+    ]
+    pictures = [f"material-{i}" for i in range(3)]
+    beat = SemanticBeat.model_validate(
+        {
+            "id": "items",
+            "group_id": cards.NUMBERED_GROUP,
+            "relation": "parallel",
+            "reason": "三种物品各用一图。",
+            "first_token_id": "t0",
+            "last_token_id": "t3",
+            "asset_ids": ["source-recorded", *pictures],
+            "native_text": [
+                {"path": path, "first_token_id": f"t{i}", "last_token_id": f"t{i}"}
+                for i, paths in enumerate(
+                    zip(cards.NUMBERED_LABELS, cards.NUMBERED_LINES, strict=True)
+                )
+                for path in paths
+            ],
+            "native_events": [
+                {"path": path, "token_id": f"t{i}", "edge": "start"}
+                for i, path in enumerate(cards.NUMBERED_EVENTS)
+            ],
+            "native_media": [
+                {"path": cards.NUMBERED_PRESENTER, "asset_id": "source-recorded"}
+            ]
+            + [
+                {"path": path, "asset_id": image}
+                for path, image in zip(cards.NUMBERED_IMAGES, pictures, strict=True)
+            ],
+            "relation_items": [
+                {
+                    "id": f"item-{i}",
+                    "first_token_id": f"t{i}",
+                    "last_token_id": f"t{i}",
+                    "asset_ids": [image],
+                    "native_text_paths": [
+                        cards.NUMBERED_LABELS[i],
+                        cards.NUMBERED_LINES[i],
+                    ],
+                    "native_media_paths": [cards.NUMBERED_IMAGES[i]],
+                }
+                for i, image in enumerate(pictures)
+            ],
+        }
+    )
+    assets = [
+        {
+            "id": "source-recorded",
+            "kind": "original_video",
+            "sha256": transcript.source_sha256,
+        },
+        *[
+            {"id": image, "kind": "image", "sha256": str(i) * 64}
+            for i, image in enumerate(pictures)
+        ],
+    ]
+    entry, anchors = _numbered_entry(package, group, beat, transcript, assets)
+    assert (
+        entry.placement.layer == "overlay" and entry.recipe["browser_live_background"]
+    )
+    assert [row["value"] for row in anchors["events"]] == [0, 0.6, 1.2]
+    incorrect = beat.model_copy(deep=True)
+    incorrect.native_events[1].token_id = "t2"
+    duplicate = deepcopy(assets)
+    duplicate[-1]["sha256"] = assets[-2]["sha256"]
+    for invalid_beat, invalid_assets in ((incorrect, assets), (beat, duplicate)):
+        with pytest.raises(ApiError) as caught:
+            _numbered_entry(package, group, invalid_beat, transcript, invalid_assets)
+        assert caught.value.code == "EDITING_TEMPLATE_NUMBERED_INPUTS_REQUIRED"

@@ -20,6 +20,16 @@ FRUIT_LIST_FONTS = (
 _FRUIT_LIST_ENGINE = "4baf10834bdffb26e50b541cd5f91803cbddf4c1267f7e393f67a47a1cb56eaa"
 _FRUIT_LIST_LEGACY = "c048cf200d0ebeb794017699c922cb92051a7c0096a63e6b95cf1c8882a02d51"
 SPLIT_GROUPS = frozenset(("CX-G01", "CX-G02", "CX-G03"))
+NUMBERED_GROUP = "CX-G03"
+NUMBERED_LABELS = tuple(f"/items/{i}/label" for i in range(3))
+NUMBERED_LINES = tuple(f"/items/{i}/spoken" for i in range(3))
+NUMBERED_IMAGES = tuple(f"/items/{i}/image" for i in range(3))
+NUMBERED_EVENTS = tuple(f"/items/{i}/at" for i in range(3))
+NUMBERED_PRESENTER = "/presenter"
+LIVE_BROWSER_SOURCE_FIELDS = {
+    CARD_GROUP: "/background",
+    NUMBERED_GROUP: NUMBERED_PRESENTER,
+}
 SPLIT_TITLE_FONT = "font-dab883d69fb71323"
 SPLIT_ENGINE_SHA = "a0bbc920f8efda7a49e4cf0690c9276787c37763fd64d5741433ba0a49b3d54d"
 SPLIT_HELPERS_SHA = "8acf164eab612f33b972e64047deb513d134b1d7d99707525358f44f106a6175"
@@ -35,10 +45,7 @@ CARD_LANDMARKS = {
 }
 
 
-def compile_split_clock(
-    package: Path, group: dict, config: dict, resources: dict[str, str]
-) -> dict[str, Any]:
-    """Preflight the original three-item browser entry before launching Chrome."""
+def audit_split_engine(package: Path, group: dict) -> None:
     entry = package / group["entry"]
     if (
         sha256(entry) != SPLIT_ENGINE_SHA
@@ -46,6 +53,13 @@ def compile_split_clock(
         or sha256(package / "commercial_runtime/special.py") != SPLIT_WRAPPER_SHA
     ):
         raise ValueError("Original browser split engine or export clock changed")
+
+
+def compile_split_clock(
+    package: Path, group: dict, config: dict, resources: dict[str, str]
+) -> dict[str, Any]:
+    """Preflight the original three-item browser entry before launching Chrome."""
+    audit_split_engine(package, group)
     if SPLIT_TITLE_FONT not in resources:
         raise ValueError("Bind the original browser split title font explicitly")
     duration, items = config["duration"], config["items"]

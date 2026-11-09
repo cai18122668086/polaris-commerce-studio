@@ -24,6 +24,7 @@ from .motion_parameter_contracts import (
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_GROUP,
+    LIVE_BROWSER_SOURCE_FIELDS,
     SPLIT_GROUPS,
     card_font_evidence,
     compile_card_clock,
@@ -367,9 +368,12 @@ def compile_native_job(
         raise ValueError("Word-bound scene geometry requires zero native shift_frames")
     live_cards = recipe.get("browser_live_background", False)
     if type(live_cards) is not bool or (
-        live_cards and (group["id"] != CARD_GROUP or recipe.get("media_clocks"))
+        live_cards
+        and (
+            group["id"] not in LIVE_BROWSER_SOURCE_FIELDS or recipe.get("media_clocks")
+        )
     ):
-        raise ValueError("Live browser background needs the original three-card group")
+        raise ValueError("Live browser background requires a supported original group")
     if live_cards:
         media_clocks: dict[str, float] = {}
         clock_receipts = [card_live_clock(package, native, asset_files, transcript)]
@@ -578,7 +582,7 @@ def compile_native_job(
             raise ValueError("Current project material is missing or changed")
         prefix = (
             CARD_LIVE_PREFIX
-            if live_cards and row["path"] == "/background"
+            if live_cards and row["path"] == clock_receipts[0]["media_path"]
             else "tengli-"
         )
         if group["id"] == FRUIT_LIST_GROUP and row["path"] == "/presenter":

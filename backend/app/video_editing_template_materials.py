@@ -4,7 +4,7 @@ from typing import Any
 
 from PIL import Image
 
-from .video_editing_browser_clocks import CARD_GROUP
+from .video_editing_browser_clocks import CARD_GROUP, NUMBERED_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
 from .video_editing_judgment import JUDGMENT_GROUP, JUDGMENT_IMAGES
@@ -21,6 +21,7 @@ from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
     LINE_TEMPLATE_ID,
+    NUMBERED_TEMPLATE_ID,
     PACKAGE_TEMPLATE_ID,
     PICTURE_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
@@ -32,6 +33,7 @@ _IMAGE_GROUPS = {
     JUDGMENT_TEMPLATE_ID: ((JUDGMENT_GROUP, 2),),
     PACKAGE_TEMPLATE_ID: ((PACKAGE_GROUP, 4),),
     LINE_TEMPLATE_ID: ((LINE_GROUP, 3), (PACKAGE_GROUP, 4)),
+    NUMBERED_TEMPLATE_ID: ((NUMBERED_GROUP, 3),),
 }
 
 

@@ -3,7 +3,7 @@
 import math
 from typing import Any
 
-from .video_editing_browser_clocks import CARD_GROUP
+from .video_editing_browser_clocks import LIVE_BROWSER_SOURCE_FIELDS
 from .video_editing_contracts import NativeRenderEdits, SemanticBeat
 from .video_editing_hypit_strips import (
     LIVE_STAGE_GROUPS,
@@ -148,7 +148,7 @@ def continuous_overlay_groups(
                 layer == "scene"
                 or (
                     layer == "overlay"
-                    and gid == CARD_GROUP
+                    and gid in LIVE_BROWSER_SOURCE_FIELDS
                     and recipe.get("browser_live_background") is True
                 )
             )

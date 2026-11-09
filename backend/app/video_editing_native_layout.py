@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from .motion_library import atomic_json, read_json, sha256
+from .video_editing_browser_clocks import NUMBERED_GROUP
+from .video_editing_browser_live import CARD_LIVE_PREFIX
 from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_shot
 from .video_editing_render_edits import NATIVE_PORTRAIT_INSETS, boxes_intersect
 
@@ -176,6 +178,7 @@ def install_native_role_review(package: Path, root: Path) -> None:
     spec = read_json(intent)
     backdrop = set(spec.get("sg_s10_backdrop_shots", []))
     question = set(spec.get("ah_s03_input_a_shots", []))
+    numbered = set(spec.get("numbered_alpha_shots", []))
     pinned = [_REVIEW]
     if backdrop:
         pinned.append(_RENDERER)
@@ -188,6 +191,23 @@ def install_native_role_review(package: Path, root: Path) -> None:
     original = layout.review
 
     def review(data: dict, instance: Path, receipts: list[dict] | None = None) -> dict:
+        if numbered:
+            # Use the original subtitle alpha/ink checks for the numbered labels.
+            # The exporter still composites the actual shot as a picture overlay.
+            shots = list(data["shots"])
+            for index in numbered:
+                shot = shots[index]
+                if (
+                    shot["group_id"] != NUMBERED_GROUP
+                    or shot["layer"] != "overlay"
+                    or shot["rect"] != [0, 0, 1, 1]
+                    or not shot["config"]["presenter"].startswith(
+                        "input://" + CARD_LIVE_PREFIX
+                    )
+                ):
+                    raise ValueError("Numbered labels need a live alpha overlay")
+                shots[index] = {**shot, "layer": "subtitle"}
+            data = {**data, "shots": shots}
         return review_with_native_roles(
             original, data, Path(instance), receipts, backdrop, question
         )

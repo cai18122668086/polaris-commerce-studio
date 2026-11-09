@@ -6,7 +6,12 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from .config import Settings
-from .video_editing_browser_clocks import CARD_GROUP
+from .video_editing_browser_clocks import (
+    CARD_GROUP,
+    NUMBERED_GROUP,
+    NUMBERED_IMAGES,
+    NUMBERED_LABELS,
+)
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_IMAGES
 from .video_editing_contracts import (
     EditingImageTarget,
@@ -28,6 +33,10 @@ _PROFILES = {
     ROTATION_GROUP: (
         "tengli-rotation-cards-v1",
         tuple((path,) for path in ROTATION_IMAGES),
+    ),
+    NUMBERED_GROUP: (
+        "tengli-numbered-pictures-v1",
+        tuple((path,) for path in NUMBERED_IMAGES),
     ),
     JUDGMENT_GROUP: (
         "tengli-evidence-judgment-v1",
@@ -81,7 +90,12 @@ def image_edit_targets(
             # Both original three-card branches carry the same visible label.
             if not item.native_text_paths:
                 continue
-            label_anchor = text.get(item.native_text_paths[0])
+            label_path = (
+                NUMBERED_LABELS[NUMBERED_IMAGES.index(key)]
+                if beat.group_id == NUMBERED_GROUP
+                else item.native_text_paths[0]
+            )
+            label_anchor = text.get(label_path)
             if (
                 label_anchor is None
                 or label_anchor.first_token_id not in positions

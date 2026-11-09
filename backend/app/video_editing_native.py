@@ -38,13 +38,15 @@ def main() -> None:
         "import os\nfrom pathlib import Path\n"
         "from app.video_editing_native_compat import install\n"
         "from app.video_editing_native_compat import isolate_native_matte_cache\n"
+        "from app.video_editing_hypit_strips import install_native_strips\n"
         "package = Path(os.environ['TENGLI_NATIVE_PACKAGE'])\n"
         "root = Path(os.environ['TENGLI_NATIVE_INSTANCE'])\n"
         "install(package, root)\n"
         "try:\n"
         "    isolate_native_matte_cache(package, root)\n"
+        "    install_native_strips(package, root)\n"
         "except Exception as error:\n"
-        "    raise SystemExit('Unable to isolate native shot cache') from error\n",
+        "    raise SystemExit('Unable to prepare native shot adapter') from error\n",
         encoding="utf-8",
     )
     os.environ["TENGLI_NATIVE_PACKAGE"] = str(package)

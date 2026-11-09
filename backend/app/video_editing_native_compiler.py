@@ -29,6 +29,12 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
+from .video_editing_hypit_strips import (
+    STRIP_PROFILE,
+    STRIP_SIDECAR,
+    compile_strips,
+    strip_config_sha256,
+)
 from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_native_content import (
     CHAPTER_PATH,
@@ -144,7 +150,12 @@ def compile_native_job(
         contract.get("native_profile") == PICTURE_PROFILE
         and config.get("profile") == PICTURE_PROFILE
     )
-    if group["backend"] == "hypit" and not picture_variant:
+    strip_variant = contract.get("website_sidecar_profile") == STRIP_PROFILE
+    if strip_variant and (
+        config.get("attributes") != {} or config.get("fonts") != template["fonts"]
+    ):
+        raise ValueError("Keep original Hypit fonts and schema-owned attributes")
+    if group["backend"] == "hypit" and not (picture_variant or strip_variant):
         raise ValueError(
             "The original classic Hypit schema rejects fresh attribute authoring"
         )
@@ -196,9 +207,23 @@ def compile_native_job(
             config,
         )
     native["media_clocks"] = clock_receipts
+    strip = (
+        compile_strips(package, group, native, asset_files) if strip_variant else None
+    )
+    website_paths = {
+        row["path"] for row in contract["fields"] if row.get("binding_surface")
+    }
     assignments = (
-        {row["path"]: row["text"] for row in native["text"]}
-        | {row["path"]: row["value"] for row in native["events"]}
+        {
+            row["path"]: row["text"]
+            for row in native["text"]
+            if row["path"] not in website_paths
+        }
+        | {
+            row["path"]: row["value"]
+            for row in native["events"]
+            if row["path"] not in website_paths
+        }
         | media_clocks
     )
     if "chapter_start_token_ids" in recipe:
@@ -229,6 +254,7 @@ def compile_native_job(
     for path, reason in omitted.items():
         if (
             path not in contract["text_paths"]
+            or path in website_paths
             or not isinstance(reason, str)
             or not reason
         ):
@@ -272,6 +298,8 @@ def compile_native_job(
         assignments[row["path"]] = "input://" + rid
     retained_glyphs = {}
     for field in contract["fields"]:
+        if field["path"] in website_paths:
+            continue
         if field.get("optional_parent") and field["optional_parent"] not in config:
             continue
         path, category = field["path"], field["category"]
@@ -387,7 +415,14 @@ def compile_native_job(
     }
     root.mkdir(parents=True, exist_ok=True)
     atomic_json(root / "job.json", job)
-    atomic_json(root / "bindings.json", {"resources": resources, "tools": {}})
+    bindings: dict[str, Any] = {"resources": resources, "tools": {}}
+    strip_digest = None
+    if strip is not None:
+        sidecar = root / STRIP_SIDECAR
+        atomic_json(sidecar, {**strip, "config_sha256": strip_config_sha256(config)})
+        strip_digest = sha256(sidecar)
+        bindings["tengli_hypit_strips"] = {"component": strip_digest}
+    atomic_json(root / "bindings.json", bindings)
     atomic_json(root / "word-bindings.json", native)
     atomic_json(root / "native-recipe.json", recipe)
     atomic_json(
@@ -418,6 +453,14 @@ def compile_native_job(
             ),
             **({"local_dependency_ids": dependency_ids} if dependency_ids else {}),
             **({"native_profile": PICTURE_PROFILE} if picture_variant else {}),
+            **(
+                {
+                    "website_sidecar_profile": STRIP_PROFILE,
+                    "sidecar_sha256": strip_digest,
+                }
+                if strip_digest
+                else {}
+            ),
             **({"browser_clock": browser_clock} if browser_clock else {}),
             "schema_validation": "passed",
             "native_execution": "not_performed",

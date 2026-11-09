@@ -20,6 +20,7 @@ from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_hypit import hypit_tools, requires_hypit
+from .video_editing_hypit_strips import STRIP_GROUPS, STRIP_SIDECAR
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
@@ -393,6 +394,21 @@ def compile_episode(
                     native_bindings_file=settings.video_editing_native_bindings_file,
                 )
                 part_bindings = read_json(directory / "bindings.json")
+                if beat.group_id in STRIP_GROUPS:
+                    stem = f"{len(episode['shots']):03}-{beat.group_id}"
+                    part = directory / STRIP_SIDECAR
+                    if (
+                        sha256(part)
+                        != part_bindings["tengli_hypit_strips"]["component"]
+                    ):
+                        raise ValueError(
+                            "Hypit strip receipt changed during compilation"
+                        )
+                    sidecar = root / "hypit-strips" / f"{stem}.json"
+                    atomic_json(sidecar, read_json(part))
+                    bindings.setdefault("tengli_hypit_strips", {})[stem] = sha256(
+                        sidecar
+                    )
                 for rid, value in part_bindings["resources"].items():
                     if (
                         rid in bindings["resources"]

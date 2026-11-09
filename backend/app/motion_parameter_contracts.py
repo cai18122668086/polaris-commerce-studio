@@ -20,6 +20,7 @@ from .video_editing_hypit import (
     PICTURE_PROFILE,
     picture_fields,
 )
+from .video_editing_hypit_strips import STRIP_GROUPS, STRIP_PROFILE, strip_fields
 from .video_editing_media_clocks import clock_profile
 
 SILHOUETTE_GROUP = "W-R09"
@@ -207,6 +208,8 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
         fps = PICTURE_FPS
     else:
         visit(template, [])
+    if group["id"] in STRIP_GROUPS:
+        fields.extend(strip_fields())
     if group["id"] == SILHOUETTE_GROUP:
         fields.extend(
             {
@@ -255,6 +258,11 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
             for keyword in ("oneOf", "anyOf")
             if keyword in schema
         },
+        **(
+            {"website_sidecar_profile": STRIP_PROFILE}
+            if group["id"] in STRIP_GROUPS
+            else {}
+        ),
         "fresh_recipe_required": True,
         "media_clock_profile": (
             {

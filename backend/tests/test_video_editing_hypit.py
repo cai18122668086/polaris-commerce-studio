@@ -1,9 +1,60 @@
 import pytest
 
 from app import video_editing_hypit as hypit
+from app import video_editing_hypit_strips as strips
 from app.config import Settings
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from app.video_editing_word_bindings import word_bindings
+
+
+def test_hypit_strips_keep_directions_and_bind_entrances_to_words(
+    tmp_path, monkeypatch
+):
+    entry = tmp_path / "scene.svml"
+    entry.write_text(
+        '<stagger:Entry id="a4m"\n'
+        '    items="旧@1,2,3,4>left; 旧@5,6,7,8>right; 旧@9,10,11,12>left"\n'
+        '    frames="1,20,30"/>',
+        encoding="utf-8",
+    )
+    special = tmp_path / "commercial_runtime/special.py"
+    special.parent.mkdir()
+    special.write_text("# Original materializer stand-in")
+    monkeypatch.setitem(
+        strips.NATIVE_FILES, "commercial_runtime/special.py", strips.sha256(special)
+    )
+    monkeypatch.setitem(strips.STRIP_GROUPS, "HY-A4", ("a4m", strips.sha256(entry)))
+    group = {"id": "HY-A4", "entry": entry.name}
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 5000},
+        "text": [
+            {"path": path, "text": word, "token_ids": [f"t{i}"]}
+            for i, (path, word) in enumerate(
+                zip(strips.STRIP_TEXT, ("甲", "乙", "丙"), strict=True)
+            )
+        ],
+        "events": [
+            {"path": path, "value": i * 25, "token_id": f"t{i}", "edge": "start"}
+            for i, path in enumerate(strips.STRIP_EVENTS)
+        ],
+        "media": [{"path": strips.STRIP_IMAGE, "asset_id": "stage"}],
+    }
+    assets = {"stage": {"kind": "image", "source": "project_upload"}}
+    data = strips.compile_strips(tmp_path, group, native, assets)
+    assert strips._native_attributes(tmp_path, group, data) == {
+        "a4m": {
+            "items": "甲@1,2,3,4>left; 乙@5,6,7,8>right; 丙@9,10,11,12>left",
+            "frames": "0,25,50",
+        },
+        "t": {"end": "120f"},
+    }
+    native["events"][1]["token_id"] = "t2"
+    with pytest.raises(ValueError, match="spoken label start"):
+        strips.compile_strips(tmp_path, group, native, assets)
+    native["events"][1]["token_id"] = "t1"
+    native["text"][1]["text"] = "乙;frame"
+    with pytest.raises(ValueError, match="short labels"):
+        strips.compile_strips(tmp_path, group, native, assets)
 
 
 def test_hypit_tools_only_for_the_configured_internal_workspace(tmp_path, monkeypatch):

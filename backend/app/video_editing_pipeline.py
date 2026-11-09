@@ -29,6 +29,7 @@ from .video_editing_captioning import (
     write_caption_receipt,
 )
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
+from .video_editing_hypit_strips import STRIP_GROUPS
 from .video_editing_native_sound import verify_rendered_sound
 
 
@@ -564,12 +565,17 @@ def stop_hypit_runtimes(root: Path, settings: Settings) -> None:
     module = settings.video_editing_hypit_local_module
     if module is None:
         return
-    for profile in (root / "hypit").glob(
-        "HY-A3-picture-parallel-3-*/hypit.runtime.json"
-    ):
+    profiles = list(
+        (root / "hypit").glob("HY-A3-picture-parallel-3-*/hypit.runtime.json")
+    )
+    strip_root = root / "hypit-strips/work"
+    for group in STRIP_GROUPS:
+        profiles.extend(strip_root.glob(f"*/hypit/{group}/hypit.runtime.json"))
+    allowed = (root.resolve() / "hypit", root.resolve() / "hypit-strips/work")
+    for profile in profiles:
         workspace = profile.parent.resolve()
         if (
-            not workspace.is_relative_to(root.resolve() / "hypit")
+            not any(workspace.is_relative_to(parent) for parent in allowed)
             or not (workspace / ".hypit").is_dir()
         ):
             continue

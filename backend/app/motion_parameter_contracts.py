@@ -27,7 +27,12 @@ from .video_editing_hypit_strips import (
     strip_fields,
 )
 from .video_editing_media_clocks import clock_profile
-from .video_editing_native_content import ROLE_CHAIN_GROUP, role_scene_contract
+from .video_editing_native_content import (
+    PACKAGE_GROUP,
+    ROLE_CHAIN_GROUP,
+    live_package_template,
+    role_scene_contract,
+)
 from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
     QUESTION_BRANCH,
@@ -108,6 +113,7 @@ def input_contract(
     branch: str | None = None,
     embedded_question_caption: bool = True,
     live_question_background: bool = False,
+    live_package_presenter: bool = True,
 ) -> dict[str, Any]:
     template = read_json(package / group["input_template"])
     question_group = group["id"] == QUESTION_GROUP
@@ -119,6 +125,8 @@ def input_contract(
             embedded_caption=embedded_question_caption,
             live_background=live_question_background,
         )
+    if group["id"] == PACKAGE_GROUP and live_package_presenter:
+        template = live_package_template(template)
     schema = read_json(package / group["input_schema"])
     Draft202012Validator.check_schema(schema)
     external = {
@@ -209,7 +217,9 @@ def input_contract(
                     else "native_keyframe_clock"
                 )
                 unit = "frames"
-            elif first == "content":
+            elif first == "content" and not (
+                group["id"] == PACKAGE_GROUP and names == ["content", "items", "color"]
+            ):
                 category = "numeric_content_requires_grounding"
         elif value is None and key in {"presenter", "background"}:
             category = "optional_media"

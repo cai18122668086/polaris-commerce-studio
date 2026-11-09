@@ -9,6 +9,7 @@ from pydantic import Field, model_validator
 from .motion_library import inside, read_json, sha256
 from .video_editing_contracts import NativeRenderEdits, Transcript
 from .video_editing_hypit_strips import verify_stagger_entry
+from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_question_branch import (
     QUESTION_BRANCH,
     QUESTION_ENTRY,
@@ -78,6 +79,22 @@ class NativeSoundDesign(StrictVideoModel):
         if not self.fx and not self.music:
             raise ValueError("Select an original sound cue or music track for this mix")
         return self
+
+
+def package_entry_frame(shot: dict, fps: int, event_path: str) -> int:
+    if (
+        shot["group_id"] != PACKAGE_GROUP
+        or shot["layer"] != "scene"
+        or fps != 30
+        or event_path not in {f"/timing/events/item{i}" for i in range(4)}
+    ):
+        raise ValueError("Package sound needs an original scene entry at 30 fps")
+    event = event_path.rsplit("/", 1)[1]
+    start_ms = round(shot["start_seconds"] * 1000)
+    local_ms = round(shot["config"]["timing"]["events"][event] * 1000)
+    # Native package easing is zero at its exact event. The compositor
+    # truncates the positive fractional shot origin in the output timebase.
+    return start_ms * fps // 1000 + local_ms * fps // 1000 + 1
 
 
 def compile_sound(
@@ -186,7 +203,7 @@ def compile_sound(
             value / fps if unit == "frames" else value
         )
         seconds = entry_seconds
-        question_entry = None
+        question_entry = package_entry = None
         if (
             shot["group_id"] == QUESTION_GROUP
             and shot["layer"] in {"overlay", "scene"}
@@ -199,6 +216,20 @@ def compile_sound(
             seconds = frame / output_fps
             native_ref = {}
             question_entry = {"shot_index": shot_index, "output_frame": frame}
+        if (
+            shot["group_id"] == PACKAGE_GROUP
+            and shot["config"]["media"]["presenter"]["kind"] == "video"
+            and cue.phase == "entry"
+        ):
+            output_fps = episode["output"]["fps"]
+            frame = package_entry_frame(shot, output_fps, cue.event_path)
+            seconds = frame / output_fps
+            native_ref = {}
+            package_entry = {
+                "shot_index": shot_index,
+                "output_frame": frame,
+                "event_path": cue.event_path,
+            }
         if hypit_entry:
             # The original compositor applies setpts in the output frame time
             # base. Its positive fractional shot origin truncates to a frame.
@@ -225,6 +256,7 @@ def compile_sound(
                 "group_id": shot["group_id"],
                 **({"hypit_entry": hypit_entry} if hypit_entry else {}),
                 **({"question_entry": question_entry} if question_entry else {}),
+                **({"package_entry": package_entry} if package_entry else {}),
             }
         )
 
@@ -324,6 +356,17 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
                 and question_entry["output_frame"] == frame
+                and cue["anchor_seconds"] == frame / fps
+            )
+        elif package_entry := cue.get("package_entry"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            fps = episode["output"]["fps"]
+            shot = episode["shots"][package_entry["shot_index"]]
+            frame = package_entry_frame(shot, fps, package_entry["event_path"])
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and package_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
         else:

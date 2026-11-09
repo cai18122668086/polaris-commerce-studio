@@ -4,10 +4,12 @@ from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToke
 from app.video_editing_native_content import (
     chapter_ordinal,
     number_glyphs,
+    package_entries,
     role_scene_chain,
     translation_labels,
     year_glyphs,
 )
+from app.video_editing_native_sound import package_entry_frame
 
 
 def test_chapter_ordinal_is_derived_from_ordered_source_starts():
@@ -173,3 +175,50 @@ def test_role_scene_chain_keeps_the_shared_original_clock():
     assets["image-7"]["kind"] = "video"
     with pytest.raises(ValueError, match="sixteen original"):
         role_scene_chain(native, assets)
+
+
+def test_package_entries_bind_each_project_image_to_its_own_label_start():
+    labels = ("14块9", "两大瓶", "1000克", "4斤")
+    native = {
+        "text": [
+            {"path": f"/content/items/{i}/label", "text": label, "token_ids": [f"t{i}"]}
+            for i, label in enumerate(labels)
+        ],
+        "events": [
+            {
+                "path": f"/timing/events/item{i}",
+                "token_id": f"t{i}",
+                "edge": "start",
+                "value": i * 0.5,
+            }
+            for i in range(4)
+        ],
+        "media": [
+            {"path": f"/media/product_images/{i}/path", "asset_id": f"image-{i}"}
+            for i in range(4)
+        ],
+    }
+    assets = {
+        f"image-{i}": {"kind": "image", "source": "project_upload"} for i in range(4)
+    }
+    assert [row["label"] for row in package_entries(native, assets)] == list(labels)
+    native["events"][2]["token_id"] = "t1"
+    with pytest.raises(ValueError, match="spoken label"):
+        package_entries(native, assets)
+    native["events"][2]["token_id"] = "t2"
+    assets["image-2"]["kind"] = "video"
+    with pytest.raises(ValueError, match="package image"):
+        package_entries(native, assets)
+
+
+def test_package_sound_starts_on_first_frame_after_zero_alpha():
+    shot = {
+        "group_id": "Z-M12",
+        "layer": "scene",
+        "start_seconds": 8.65,
+        "config": {"timing": {"events": {"item0": 1.36, "item1": 3.24}}},
+    }
+    assert package_entry_frame(shot, 30, "/timing/events/item0") == 300
+    assert package_entry_frame(shot, 30, "/timing/events/item1") == 357
+    with pytest.raises(ValueError, match="30 fps"):
+        package_entry_frame(shot, 25, "/timing/events/item1")

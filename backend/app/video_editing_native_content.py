@@ -13,6 +13,7 @@ YEAR_GROUP = "AH-S07"
 YEAR_PATH = "/content/year"
 TRANSLATION_GROUP = "W-R02"
 ROLE_CHAIN_GROUP = "W-R15"
+PACKAGE_GROUP = "Z-M12"
 _ROLE_SCENE_ORDER = (
     "scene0",
     "profile",
@@ -193,6 +194,58 @@ def translation_labels(native: dict[str, Any], authored: Any) -> list[dict[str, 
             }
         )
     return result
+
+
+def live_package_template(template: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **template,
+        "layout": {**template["layout"], "mode": "native", "overflow": "reject"},
+        "media": {
+            **template["media"],
+            "presenter": {
+                **template["media"]["presenter"],
+                "kind": "video",
+                "offset_seconds": 0,
+                "duration_seconds": 1,
+                "end_policy": "error",
+            },
+        },
+    }
+
+
+def package_entries(
+    native: dict[str, Any], assets: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    labels = {row["path"]: row for row in native["text"]}
+    events = {row["path"]: row for row in native["events"]}
+    media = {row["path"]: row["asset_id"] for row in native["media"]}
+    entries: list[dict[str, Any]] = []
+    for index in range(4):
+        asset_id = media.get(f"/media/product_images/{index}/path", "")
+        asset = assets.get(asset_id, {})
+        label = labels.get(f"/content/items/{index}/label")
+        event = events.get(f"/timing/events/item{index}")
+        if (
+            asset.get("kind") != "image"
+            or asset.get("source") != "project_upload"
+            or not label
+            or not event
+            or event["token_id"] != label["token_ids"][0]
+            or event["edge"] != "start"
+            or (entries and entries[-1]["local_seconds"] >= event["value"])
+        ):
+            raise ValueError(
+                "Each package image needs an ordered entry at its spoken label"
+            )
+        entries.append(
+            {
+                "asset_id": asset_id,
+                "label": label["text"],
+                "token_id": event["token_id"],
+                "local_seconds": event["value"],
+            }
+        )
+    return entries
 
 
 def role_scene_contract() -> dict[str, Any]:

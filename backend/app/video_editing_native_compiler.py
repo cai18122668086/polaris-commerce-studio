@@ -45,11 +45,14 @@ from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_native_content import (
     CHAPTER_PATH,
     NUMBER_GROUP,
+    PACKAGE_GROUP,
     ROLE_CHAIN_GROUP,
     YEAR_GROUP,
     YEAR_PATH,
     chapter_ordinal,
+    live_package_template,
     number_glyphs,
+    package_entries,
     role_scene_chain,
     translation_labels,
     year_glyphs,
@@ -154,12 +157,17 @@ def compile_native_job(
     live_question_background = (
         question_variant and QUESTION_BACKGROUND in config["media"]
     )
+    live_package_presenter = (
+        beat.group_id == PACKAGE_GROUP
+        and config.get("media", {}).get("presenter", {}).get("kind") == "video"
+    )
     contract = input_contract(
         package,
         group,
         branch=branch,
         embedded_question_caption=embedded_caption,
         live_question_background=live_question_background,
+        live_package_presenter=live_package_presenter,
     )
     if (
         recipe.get("version") != "tengli.native-recipe/1"
@@ -172,6 +180,10 @@ def compile_native_job(
     if not recipe.get("design_id") or not recipe.get("design_reason"):
         raise ValueError("A current episode design decision is required")
     template = read_json(package / group["input_template"])
+    if live_package_presenter:
+        template = live_package_template(template)
+        if config.get("layout", {}).get("mode") != "native":
+            raise ValueError("Keep the original single-line package label fit")
     if question_variant:
         if beat.relation != "question":
             raise ValueError("W-R18 question branch requires a spoken question beat")
@@ -225,6 +237,8 @@ def compile_native_job(
     native = word_bindings(beat, transcript, contract, set(asset_files))
     if beat.group_id == ROLE_CHAIN_GROUP:
         native["role_scene_chain"] = role_scene_chain(native, asset_files)
+    if live_package_presenter:
+        native["package_entries"] = package_entries(native, asset_files)
     if beat.group_id in SILHOUETTE_GROUPS:
         silhouette_ids = {
             row["asset_id"]
@@ -553,6 +567,7 @@ def compile_native_job(
                         "year_glyphs",
                         "translation_labels",
                         "role_scene_chain",
+                        "package_entries",
                     )
                     if key in native
                 }

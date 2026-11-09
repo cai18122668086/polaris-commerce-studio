@@ -20,6 +20,7 @@ from .video_editing_browser_clocks import (
     compile_card_clock,
 )
 from .video_editing_contracts import SemanticBeat, Transcript
+from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
 from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_word_bindings import word_bindings
 
@@ -61,6 +62,25 @@ def _same_shape(template: Any, current: Any) -> bool:
     return not isinstance(current, (dict, list))
 
 
+def _bundled_font(package: Path, value: Any) -> Path:
+    if not isinstance(value, str) or not value.startswith("pkg://"):
+        raise ValueError("Select an original bundled font explicitly")
+    font = next(
+        (
+            asset
+            for asset in read_json(package / "asset-manifest.json")["assets"]
+            if asset["kind"] == "font" and asset["path"] == value[6:]
+        ),
+        None,
+    )
+    if not font:
+        raise ValueError("Selected font is absent from the original bundle")
+    path = inside(package, font["path"])
+    if sha256(path) != font["sha256"]:
+        raise ValueError("Selected original font bytes changed")
+    return path
+
+
 def compile_native_job(
     package: Path,
     root: Path,
@@ -94,13 +114,17 @@ def compile_native_job(
         raise ValueError("Recipe does not match this exact original group release")
     if not recipe.get("design_id") or not recipe.get("design_reason"):
         raise ValueError("A current episode design decision is required")
-    if group["backend"] == "hypit":
-        # Compound caps/items and alternate picture-parallel profiles require
-        # their original authoring protocol, not JSON-to-DSL interpolation.
-        raise ValueError("Hypit requires an explicit original authoring recipe")
     config = copy.deepcopy(recipe["config"])
     template = read_json(package / group["input_template"])
-    if not _same_shape(template, config):
+    picture_variant = (
+        contract.get("native_profile") == PICTURE_PROFILE
+        and config.get("profile") == PICTURE_PROFILE
+    )
+    if group["backend"] == "hypit" and not picture_variant:
+        raise ValueError(
+            "The original classic Hypit schema rejects fresh attribute authoring"
+        )
+    if not picture_variant and not _same_shape(template, config):
         raise ValueError(
             "This recipe changes native field/array topology; "
             "an explicit variant authoring contract is required"
@@ -118,16 +142,23 @@ def compile_native_job(
         )
     ):
         raise ValueError("Word-bound scene geometry requires zero native shift_frames")
-    media_clocks, clock_receipts = compile_media_clocks(
-        package,
-        group,
-        contract,
-        native,
-        recipe.get("media_clocks", []),
-        asset_files,
-        transcript,
-        config,
-    )
+    if picture_variant:
+        if recipe.get("media_clocks"):
+            raise ValueError("Hypit tracks use the measured shot source window")
+        media_clocks, clock_receipts = compile_picture_clocks(
+            package, config, native, asset_files, transcript, beat
+        )
+    else:
+        media_clocks, clock_receipts = compile_media_clocks(
+            package,
+            group,
+            contract,
+            native,
+            recipe.get("media_clocks", []),
+            asset_files,
+            transcript,
+            config,
+        )
     native["media_clocks"] = clock_receipts
     assignments = (
         {row["path"]: row["text"] for row in native["text"]}
@@ -179,38 +210,32 @@ def compile_native_job(
         resources[rid] = str(source)
         assignments[row["path"]] = "input://" + rid
     for field in contract["fields"]:
+        if field.get("optional_parent") and field["optional_parent"] not in config:
+            continue
         path, category = field["path"], field["category"]
         value = _get(config, path)
-        if category in {"text", "event", "resource", "native_keyframe_clock"}:
+        if category in {
+            "text",
+            "event",
+            "resource",
+            "native_keyframe_clock",
+            "hypit_source_start",
+        }:
             if path not in assignments or path not in placeholders or value is not None:
                 raise ValueError(
                     "Fresh native content/event/media needs an empty bound slot: "
                     + path
                 )
+        elif category == "selected_bundled_font":
+            if not decisions.get("font") and not decisions.get(path):
+                raise ValueError("Record the native font choice: " + path)
+            _bundled_font(package, value)
         elif category == "native_dependency":
             if not decisions.get(path.split("/")[1]) and not decisions.get(path):
                 raise ValueError("Record the native font/model choice: " + path)
             is_card_font = group["id"] == CARD_GROUP and path == "/font"
             if is_card_font and isinstance(value, str) and value.startswith("pkg://"):
-                font = next(
-                    (
-                        asset
-                        for asset in read_json(package / "asset-manifest.json")[
-                            "assets"
-                        ]
-                        if asset["kind"] == "font" and asset["path"] == value[6:]
-                    ),
-                    None,
-                )
-                if not font:
-                    raise ValueError(
-                        "The selected browser card font must be an exact bundled font"
-                    )
-                browser_font = inside(package, font["path"])
-                if sha256(browser_font) != font["sha256"]:
-                    raise ValueError(
-                        "The selected browser card font must be an exact bundled font"
-                    )
+                browser_font = _bundled_font(package, value)
             elif (
                 not isinstance(value, str)
                 or not value.startswith("input://")
@@ -312,6 +337,7 @@ def compile_native_job(
             "job_sha256": sha256(root / "job.json"),
             "word_bindings_sha256": sha256(root / "word-bindings.json"),
             "media_clocks": clock_receipts,
+            **({"native_profile": PICTURE_PROFILE} if picture_variant else {}),
             **({"browser_clock": browser_clock} if browser_clock else {}),
             "schema_validation": "passed",
             "native_execution": "not_performed",

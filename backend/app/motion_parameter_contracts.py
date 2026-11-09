@@ -14,6 +14,12 @@ from jsonschema import Draft202012Validator
 
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .video_editing_browser_clocks import CARD_GROUP, CARD_LANDMARKS
+from .video_editing_hypit import (
+    PICTURE_FPS,
+    PICTURE_GROUP,
+    PICTURE_PROFILE,
+    picture_fields,
+)
 from .video_editing_media_clocks import clock_profile
 
 TEXT_NAMES = {
@@ -186,23 +192,12 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
         else:
             describe(parts, value)
 
-    visit(template, [])
-    if backend == "hypit":
-        # Only literal existing node attributes can become model text targets.
-        # Compound component strings such as caps/items require a native recipe,
-        # not arbitrary model-authored DSL or executable markup.
-        source = (package / group["entry"]).read_text(encoding="utf-8")
-        for match in re.finditer(r"<([\w:-]+)([^>]*\bid=\"([^\"]+)\"[^>]*)>", source):
-            for attr, value in re.findall(r'([\w-]+)="([^"]*)"', match.group(2)):
-                if attr in TEXT_NAMES and "{" not in value:
-                    fields.append(
-                        {
-                            "path": pointer(["attributes", match.group(3), attr]),
-                            "category": "text",
-                            "value_type": "str",
-                            "origin": "native_literal_attribute",
-                        }
-                    )
+    profile_id = PICTURE_PROFILE if group["id"] == PICTURE_GROUP else None
+    if profile_id:
+        fields = picture_fields(schema)
+        fps = PICTURE_FPS
+    else:
+        visit(template, [])
     return {
         "version": "tengli.native-input-contract/1",
         "release": MOTION_SHA256,
@@ -223,7 +218,19 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
             for f in fields
             if f["category"] in {"resource", "optional_media"}
         ],
-        "array_capacity_scope": "observed indices; schema controls capacity",
+        "array_capacity_scope": (
+            "three images in original picture-parallel-3; internal test workspace only"
+            if profile_id
+            else "observed indices; schema controls capacity"
+        ),
+        **(
+            {
+                "native_profile": profile_id,
+                "classic_authoring_status": "classic_attributes_schema_closed",
+            }
+            if backend == "hypit"
+            else {}
+        ),
         "schema_variants": {
             keyword: len(schema[keyword])
             for keyword in ("oneOf", "anyOf")

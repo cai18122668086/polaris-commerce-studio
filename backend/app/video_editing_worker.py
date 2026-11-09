@@ -587,6 +587,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 settings,
                 native_plan["choice_snapshot"],
                 verified_gateway_plan_hash=verified_plan_hash,
+                workspace_id=native_plan["workspace_id"],
             )
         else:
             transcript = load_transcript(

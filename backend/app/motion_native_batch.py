@@ -29,9 +29,10 @@ from .motion_library_validation import (
     record_native,
 )
 from .video_editing_contracts import SemanticBeat, Transcript
+from .video_editing_hypit import hypit_tools
 from .video_editing_materials import PREFIX, project_material_files
 from .video_editing_native_compiler import compile_native_job
-from .video_editing_pipeline import run
+from .video_editing_pipeline import run, stop_hypit_runtimes
 from .video_editing_task_models import EditingSourceRecord
 
 
@@ -125,7 +126,7 @@ def validate_manifest(data: dict, package: Path) -> list[dict]:
         or data["library_release"] != MOTION_SHA256
     ):
         raise ValueError("Native batch belongs to a different original release")
-    if data["backend"] not in {"subtitle", "scene", "unified", "browser"}:
+    if data["backend"] not in {"subtitle", "scene", "unified", "browser", "hypit"}:
         raise ValueError("Unsupported native cohort evidence backend")
     if data["backend"] != "subtitle" and not data.get("source_asset_id"):
         raise ValueError(
@@ -179,6 +180,10 @@ def batch_assets(
         }
     }
     materials = data.get("project_material_ids", [])
+    if data["backend"] == "hypit" and not materials:
+        raise ValueError(
+            "Hypit cohort requires current project media and workspace identity"
+        )
     if not materials:
         return assets
     if (
@@ -200,7 +205,14 @@ def batch_assets(
             registered = session.get(
                 EditingSourceRecord, source_id.removeprefix("source-")
             )
-            if not registered or registered.media_sha256 != transcript.source_sha256:
+            if (
+                not registered
+                or registered.media_sha256 != transcript.source_sha256
+                or (
+                    data["backend"] == "hypit"
+                    and registered.workspace_id != data.get("workspace_id")
+                )
+            ):
                 raise ValueError(
                     "Cohort materials must belong to the current registered source"
                 )
@@ -243,6 +255,12 @@ def execute(
     if sha256(source) != transcript.source_sha256:
         raise ValueError("Current source does not match the measured transcript")
     assets = batch_assets(data, settings, source, transcript)
+    tools = {}
+    if chrome:
+        tools = {"chrome": str(chrome.resolve())}
+    elif data["backend"] == "hypit":
+        workspace_id = data.get("workspace_id")
+        tools = hypit_tools(settings, workspace_id)
     root.mkdir(parents=True, exist_ok=False)
     atomic_json(root / "manifest.json", data)
     receipt: dict[str, Any] = {
@@ -260,7 +278,7 @@ def execute(
         "semantic_review": "unreviewed",
         "visual_acceptance": "unreviewed",
         "scope": "concrete native components from current words, not completed films",
-        **({"chrome_sha256": sha256(chrome)} if chrome else {}),
+        **({key + "_sha256": sha256(Path(path)) for key, path in tools.items()}),
     }
     for case in cases:
         gid = case["group_id"]
@@ -282,13 +300,13 @@ def execute(
                     case["recipe"],
                     assets,
                 )
-                if chrome:
+                if tools:
                     bindings = instance / "bindings.json"
                     atomic_json(
                         bindings,
                         {
                             **read_json(bindings),
-                            "tools": {"chrome": str(chrome.resolve())},
+                            "tools": tools,
                         },
                     )
                 result["status"] = "schema_admitted"
@@ -325,7 +343,10 @@ def execute(
                         "Native report does not address this instance's output"
                     )
                 measured = measure_encoded_output(output, job, settings)
-                if measured["format"] != report["encoding"]["format"]:
+                if (
+                    data["backend"] != "hypit"
+                    and measured["format"] != report["encoding"]["format"]
+                ):
                     raise ValueError(
                         "Independent decoding differs from native encoding receipt"
                     )
@@ -352,6 +373,11 @@ def execute(
                     evidence_id=evidence["id"],
                     output_sha256=report["sha256"],
                     measured=measured,
+                    **(
+                        {"build_id": report["build_id"]}
+                        if data["backend"] == "hypit"
+                        else {}
+                    ),
                     **frame_evidence,
                 )
             except Exception as error:
@@ -364,6 +390,9 @@ def execute(
                     exception_type=type(error).__name__,
                     error=str(error)[:1600],
                 )
+            finally:
+                if data["backend"] == "hypit":
+                    stop_hypit_runtimes(instance, settings)
         receipt["cases"].append(result)
         receipt["counts"] = dict(Counter(c["status"] for c in receipt["cases"]))
         atomic_json(root / "batch-receipt.json", receipt)

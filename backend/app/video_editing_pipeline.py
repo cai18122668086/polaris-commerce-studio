@@ -560,29 +560,74 @@ def compile_baseline(
     return plan
 
 
+def stop_hypit_runtimes(root: Path, settings: Settings) -> None:
+    module = settings.video_editing_hypit_local_module
+    if module is None:
+        return
+    for profile in (root / "hypit").glob(
+        "HY-A3-picture-parallel-3-*/hypit.runtime.json"
+    ):
+        workspace = profile.parent.resolve()
+        if (
+            not workspace.is_relative_to(root.resolve() / "hypit")
+            or not (workspace / ".hypit").is_dir()
+        ):
+            continue
+        log = workspace / "tengli-runtime-down.log"
+        with log.open("ab") as output:
+            try:
+                result = subprocess.run(
+                    [
+                        "node",
+                        str(module.resolve()),
+                        "runtime",
+                        "down",
+                        "--workspace",
+                        str(workspace),
+                        "--runtime",
+                        profile.name,
+                        "--json",
+                    ],
+                    cwd=workspace,
+                    env=environment(settings),
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    timeout=25,
+                    check=False,
+                    creationflags=creation_flags(),
+                )
+                output.write(f"\nexit={result.returncode}\n".encode())
+            except (OSError, subprocess.TimeoutExpired) as error:
+                output.write(f"\ncleanup_error={type(error).__name__}\n".encode())
+
+
 def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> Path:
     python = settings.video_editing_python or sys.executable
-    for command in ("check", "export"):
-        run(
-            [
-                python,
-                "-B",
-                "-X",
-                "utf8",
-                "-m",
-                "app.video_editing_native",
-                "--package",
-                str(settings.video_editing_library_dir),
-                "--command",
-                command,
-                "--instance",
-                str(root),
-            ],
-            root,
-            settings,
-            guard,
-            "native_" + command,
-        )
+    try:
+        for command in ("check", "export"):
+            run(
+                [
+                    python,
+                    "-B",
+                    "-X",
+                    "utf8",
+                    "-m",
+                    "app.video_editing_native",
+                    "--package",
+                    str(settings.video_editing_library_dir),
+                    "--command",
+                    command,
+                    "--instance",
+                    str(root),
+                ],
+                root,
+                settings,
+                guard,
+                "native_" + command,
+            )
+    finally:
+        stop_hypit_runtimes(root, settings)
     return root / "outputs/episode.mp4"
 
 

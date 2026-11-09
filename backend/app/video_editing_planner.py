@@ -94,6 +94,16 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
                     "event_paths": parameters["event_paths"],
                     "resource_paths": parameters["resource_paths"],
                     "scope": parameters["array_capacity_scope"],
+                    **(
+                        {
+                            "native_profile": parameters["native_profile"],
+                            "classic_authoring_status": parameters[
+                                "classic_authoring_status"
+                            ],
+                        }
+                        if group["backend"] == "hypit"
+                        else {}
+                    ),
                 },
                 "demo_pending": group.get("demo_pending"),
                 "website_runtime": "unverified",

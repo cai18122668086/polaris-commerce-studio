@@ -16,6 +16,7 @@ from .errors import ApiError
 from .motion_library import MOTION_SHA256
 from .video_editing_contracts import EditingOptions, SemanticPlan
 from .video_editing_episode_compiler import EpisodeRecipeBundle
+from .video_editing_hypit import internal_hypit_available, requires_hypit
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import project_material_files, verify_material_cards
 from .video_editing_planner import validate_plan
@@ -60,7 +61,11 @@ def plan_response(row: EditingNativePlanRecord, settings: Settings) -> dict[str,
         "caption_font_id": row.recipes["design"]["caption_font_id"],
         "choice_snapshot_sha256": row.choice_snapshot["sha256"],
         "semantic_review": "unreviewed",
-        "render_available": settings.video_editing_native_plan_enabled,
+        "render_available": settings.video_editing_native_plan_enabled
+        and (
+            not requires_hypit(row.semantic)
+            or internal_hypit_available(settings, row.workspace_id)
+        ),
         "created_at": row.created_at.replace(tzinfo=UTC)
         if row.created_at.tzinfo is None
         else row.created_at,
@@ -386,6 +391,14 @@ def admit_render_plan(
         or row.library_release != MOTION_SHA256
     ):
         raise ApiError(404, "EDITING_NATIVE_PLAN_NOT_FOUND", "未找到此原片的动效编排。")
+    if requires_hypit(row.semantic) and not internal_hypit_available(
+        settings, source.workspace_id
+    ):
+        raise ApiError(
+            503,
+            "EDITING_HYPIT_INTERNAL_ONLY",
+            "Hypit 原生出片仅在已配置的内部联调工作区开放。",
+        )
     current = stored_choice_snapshot(
         session, source.workspace_id, source.owner_user_id, source.project_id
     )

@@ -19,6 +19,7 @@ from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_hypit import hypit_tools, requires_hypit
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_pipeline import EditingFailure, baseline_documents, layout_captions
@@ -97,6 +98,7 @@ def compile_episode(
     settings: Settings,
     choice_snapshot: dict[str, Any] | None = None,
     verified_gateway_plan_hash: str | None = None,
+    workspace_id: str | None = None,
 ) -> dict[str, Any]:
     """Prepare original episode/selection/bindings, without claiming a render."""
     root = root.resolve()
@@ -147,7 +149,10 @@ def compile_episode(
     source_shot = copy.deepcopy(episode["shots"][0])
     episode["shots"] = []
     selection["decisions"] = []
-    bindings: dict[str, dict[str, str]] = {"resources": {}, "tools": authoring.tools}
+    bindings: dict[str, dict[str, str]] = {
+        "resources": {},
+        "tools": dict(authoring.tools),
+    }
     if set(authoring.tools) - {
         "chrome",
         "node",
@@ -160,6 +165,11 @@ def compile_episode(
     for value in authoring.tools.values():
         if not Path(value).is_file():
             raise EditingFailure("EDITING_NATIVE_TOOL_MISSING")
+    if requires_hypit(semantic.model_dump(mode="json")):
+        try:
+            bindings["tools"].update(hypit_tools(settings, workspace_id))
+        except (ValueError, OSError) as error:
+            raise EditingFailure("EDITING_HYPIT_INTERNAL_ONLY") from error
     episode.update(
         design=copy.deepcopy(authoring.design),
         typography=copy.deepcopy(authoring.typography),

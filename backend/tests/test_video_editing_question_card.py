@@ -7,12 +7,26 @@ import pytest
 
 from app.motion_library import atomic_json
 from app.video_editing_catalog import original_startup_assets
-from app.video_editing_contracts import Transcript, TranscriptToken
+from app.video_editing_contracts import (
+    SemanticBeat,
+    SemanticPlan,
+    Transcript,
+    TranscriptToken,
+)
+from app.video_editing_overlay_templates import (
+    QUESTION_CARD_TEMPLATE_ID,
+    overlay_template,
+    validate_template_plan,
+)
 from app.video_editing_question_card import (
     QUESTION_CARD_A_FONTS,
+    QUESTION_CARD_EVENTS,
+    QUESTION_CARD_LABELS,
+    automatic_question_card_gloss,
     question_card_entry_frame,
     question_card_gloss,
 )
+from app.video_editing_word_bindings import word_bindings
 
 
 def test_gloss_requires_adjacent_current_words():
@@ -100,3 +114,96 @@ def test_shared_browser_startup_assets_count_archived_files_and_external_referen
     ]
     assert result[2]["indexed_external_ids"] == ["media-original"]
     assert original_startup_assets(tmp_path, {"id": "CX-G04"}) == []
+
+
+def test_automatic_question_gloss_keeps_measured_roles_and_native_tail():
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=1500,
+        provider="fixture",
+        model="word-clocks",
+        language="zh",
+        utterances=[],
+        tokens=[
+            TranscriptToken(
+                id=str(i), text=text, start_ms=i * 200, end_ms=(i + 1) * 200
+            )
+            for i, text in enumerate(("你", "们", "谁", "之", "前", "买", "过"))
+        ],
+    )
+    beat = SemanticBeat.model_validate(
+        {
+            "id": "question",
+            "group_id": "AH-S03",
+            "reason": "实录追问",
+            "relation": "question",
+            "first_token_id": "0",
+            "last_token_id": "6",
+            "question_gloss": "WHO AMONG YOU",
+            "native_text": [
+                {"path": path, "first_token_id": first, "last_token_id": last}
+                for path, (first, last) in zip(
+                    QUESTION_CARD_LABELS, (("0", "1"), ("2", "2")), strict=True
+                )
+            ],
+            "native_events": [
+                {"path": path, "token_id": token, "edge": edge}
+                for path, (token, edge) in zip(
+                    QUESTION_CARD_EVENTS,
+                    (
+                        ("0", "start"),
+                        ("1", "start"),
+                        ("2", "start"),
+                        ("4", "start"),
+                        ("4", "end"),
+                    ),
+                    strict=True,
+                )
+            ],
+        }
+    )
+    contract = {
+        "group_id": "AH-S03",
+        "native_fps": 30,
+        "text_paths": list(QUESTION_CARD_LABELS),
+        "event_paths": [
+            {"path": path, "unit": "frames"} for path in QUESTION_CARD_EVENTS
+        ],
+    }
+    anchors = word_bindings(beat, transcript, contract, set())
+    assert automatic_question_card_gloss(beat, anchors, transcript) == {
+        "source_text": "你们谁",
+        "display_text": "WHO AMONG YOU",
+    }
+    plan = SemanticPlan(
+        audience_question="用途",
+        argument_outline=["追问"],
+        style_reason="用途",
+        beats=[beat],
+    )
+    template = overlay_template(QUESTION_CARD_TEMPLATE_ID)
+    validate_template_plan(plan, template, complete=False)
+    with pytest.raises(ValueError, match="selected AH-S03 A slot"):
+        validate_template_plan(
+            plan, overlay_template("question-story-v1"), complete=False
+        )
+    without_gloss = beat.model_copy(update={"question_gloss": None})
+    assert "question_gloss" not in without_gloss.model_dump(mode="json")
+    with pytest.raises(ValueError, match="selected AH-S03 A slot"):
+        validate_template_plan(
+            plan.model_copy(update={"beats": [without_gloss]}), template, complete=False
+        )
+
+    bad = deepcopy(anchors)
+    bad["events"][2]["token_id"] = "1"
+    with pytest.raises(ValueError, match="ordered spoken entrances"):
+        automatic_question_card_gloss(beat, bad, transcript)
+    bad = deepcopy(anchors)
+    bad["events"][3]["value"] = bad["events"][2]["value"] + 8
+    with pytest.raises(ValueError, match="settling time"):
+        automatic_question_card_gloss(beat, bad, transcript)
+    bad = deepcopy(anchors)
+    bad["events"][4]["value"] = 42
+    with pytest.raises(ValueError, match="settling time"):
+        automatic_question_card_gloss(beat, bad, transcript)

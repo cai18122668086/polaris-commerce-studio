@@ -22,8 +22,14 @@ from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_overlay_templates import (
     MIN_OVERLAY_TYPES,
     PREFERRED_OVERLAY_TYPES,
+    QUESTION_CARD_TEMPLATE_ID,
     overlay_template,
     validate_template_plan,
+)
+from .video_editing_question_card import (
+    QUESTION_CARD_ENGLISH,
+    QUESTION_CARD_GROUP,
+    automatic_question_card_gloss,
 )
 from .video_editing_template_materials import runtime_payload, validate_template_images
 from .video_editing_word_bindings import word_bindings
@@ -56,7 +62,9 @@ def rule_pack(package: Path) -> dict[str, Any]:
     }
 
 
-def catalog_index(package: Path) -> list[dict[str, Any]]:
+def catalog_index(
+    package: Path, *, question_card: bool = False
+) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
         for r in read_json(package / "catalog/relationship-capabilities.json")["groups"]
@@ -72,7 +80,10 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
             read_json(package / group["contract"]) if group.get("contract") else None
         )
         target = (contract or {}).get("target", {})
-        parameters = input_contract(package, group)
+        question_a = question_card and group["id"] == QUESTION_CARD_GROUP
+        parameters = input_contract(package, group, original_input_a=question_a)
+        if question_a:
+            parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
         rows.append(
             {
                 "id": group["id"],
@@ -174,7 +185,12 @@ def build_request(
     runtime: dict | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rules = rule_pack(package)
-    catalog = catalog_index(package)
+    question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
+    catalog = catalog_index(package, question_card=question_card)
+    schema = SemanticPlan.model_json_schema()
+    if not question_card:
+        # Saved requests for older templates must replay with their original schema.
+        del schema["$defs"]["SemanticBeat"]["properties"]["question_gloss"]
     if runtime is not None:
         if set(runtime["groups"]) != {row["id"] for row in catalog}:
             raise ValueError(
@@ -213,7 +229,7 @@ def build_request(
         "project_library_choices": choices,
         "full_library": catalog,
         "rules": rules["rules"],
-        "output_schema": SemanticPlan.model_json_schema(),
+        "output_schema": schema,
     }
     if template is not None:
         if template != overlay_template(template["id"]):
@@ -261,6 +277,12 @@ def build_request(
             f"优先 {PREFERRED_OVERLAY_TYPES} 种以上。"
             "同一动效可以在不同语义位置反复使用，重复出现不增加种类。"
             "素材或语义不足时记录原因，禁止凑项及全屏覆盖人物。"
+        )
+    if question_card:
+        message += (
+            "只有透明问号槽 AH-S03 可以给 question_gloss。"
+            "该字段是左右两个实录短语的英文释义，不能加新信息。"
+            "无需为英文释义或问号填写 native_text。"
         )
     if runtime is not None:
         message += (
@@ -440,7 +462,18 @@ def validate_plan(
                 raise ValueError(
                     "Relation picture item is not bound to its native slot"
                 )
-        if beat.native_text or beat.native_events or beat.native_media:
+        if beat.question_gloss is not None:
+            if beat.group_id != QUESTION_CARD_GROUP:
+                raise ValueError("English question gloss only belongs to AH-S03 A")
+            contract = input_contract(
+                package, group_rows[beat.group_id], original_input_a=True
+            )
+            automatic_question_card_gloss(
+                beat,
+                word_bindings(beat, transcript, contract, allowed_assets),
+                transcript,
+            )
+        elif beat.native_text or beat.native_events or beat.native_media:
             word_bindings(
                 beat,
                 transcript,
@@ -565,6 +598,10 @@ def generate(
         guard()
     content = response["content"]
     plan = SemanticPlan.model_validate_json(content)
+    if template is None and any(beat.question_gloss is not None for beat in plan.beats):
+        raise ValueError(
+            "English question gloss requires the selected AH-S03 A template"
+        )
     validate_plan(
         plan,
         transcript,

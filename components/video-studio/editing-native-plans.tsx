@@ -101,7 +101,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       <b>{plan.audience_question}</b>
       {plan.overlay_template && <p className={styles.note}>组合模板 · {plan.overlay_template.name}</p>}
       <p>{plan.origin === "operator_candidate" ? "人工工程候选 · 未经人工验收" : "腾力模型候选 · 待核对"}</p>
-      <ul>{plan.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.text}<br />{beat.reason}</li>)}</ul>
+      <ul>{plan.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.text}<br />{beat.reason}{beat.question_gloss && <p className={styles.note}>问号英文释义 · {beat.question_gloss} · 待核对</p>}</li>)}</ul>
       {(plan.warnings.length > 0 || plan.missing_materials.length > 0) && <p>{[...plan.warnings, ...plan.missing_materials].join("；")}</p>}
       {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available) && <details>
         <summary>调整本次出片</summary>

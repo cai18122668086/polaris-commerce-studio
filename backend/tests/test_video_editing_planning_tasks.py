@@ -99,6 +99,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "label-compare-v1",
         "roll-compare-v2",
         "question-story-v1",
+        "question-card-story-v1",
         "picture-compare-v2",
         "rotation-cards-v1",
         "presenter-openings-v1",
@@ -114,6 +115,9 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     template = next(row for row in options if row["id"] == "question-story-v1")
     scene = next(slot for slot in template["slots"] if slot["group_id"] == "W-R18")
     assert scene["layer"] == "scene" and scene["native_branch"] == "question"
+    card = next(row for row in options if row["id"] == "question-card-story-v1")
+    assert card["slots"][0]["group_id"] == "AH-S03"
+    assert card["slots"][0]["native_branch"] == "input-A"
     url = root + f"/editing-tasks/{task['id']}/planning-tasks"
     body = {"request_id": str(uuid4()), "template_id": template["id"]}
     saved = client.post(url, json=body)

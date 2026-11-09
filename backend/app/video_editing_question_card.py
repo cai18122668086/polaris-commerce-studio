@@ -1,11 +1,12 @@
 """Original AH-S03 input A and its recorded bilingual question binding."""
 
+import math
 import re
 from pathlib import Path
 from typing import Any
 
 from .motion_library import inside, sha256
-from .video_editing_contracts import Transcript
+from .video_editing_contracts import SemanticBeat, Transcript
 
 QUESTION_CARD_GROUP = "AH-S03"
 QUESTION_CARD_A_DESIGN = "original-ah-s03-input-a"
@@ -20,11 +21,13 @@ QUESTION_CARD_B_FONTS = (
 )
 QUESTION_CARD_GLYPH = "/content/question"
 QUESTION_CARD_ENGLISH = "/content/english"
-QUESTION_CARD_ENTRANCES = {
-    "/events/chinese_frame",
-    "/events/english_frame",
-    "/events/question_frame",
-}
+QUESTION_CARD_EVENTS = tuple(
+    f"/events/{name}_frame"
+    for name in ("chinese", "english", "question", "exit", "clear")
+)
+QUESTION_CARD_ENTRANCES = frozenset(QUESTION_CARD_EVENTS[:3])
+QUESTION_CARD_SOUND = QUESTION_CARD_EVENTS[2]
+QUESTION_CARD_LABELS = ("/content/left", "/content/right")
 
 
 def question_card_a_shot(shot: dict) -> bool:
@@ -68,8 +71,7 @@ def question_card_gloss(
 ) -> dict[str, Any]:
     spoken = {row["path"]: row for row in native["text"]}
     positions = {token.id: i for i, token in enumerate(transcript.tokens)}
-    left = spoken.get("/content/left")
-    right = spoken.get("/content/right")
+    left, right = (spoken.get(path) for path in QUESTION_CARD_LABELS)
     if (
         left is None
         or right is None
@@ -91,3 +93,59 @@ def question_card_gloss(
         "origin": "trusted_recipe",
         "semantic_review": "unreviewed",
     }
+
+
+def automatic_question_card_gloss(
+    beat: SemanticBeat, native: dict[str, Any], transcript: Transcript
+) -> dict[str, str]:
+    text = {row["path"]: row for row in native["text"]}
+    events = {row["path"]: row for row in native["events"]}
+    if (
+        beat.group_id != QUESTION_CARD_GROUP
+        or beat.relation != "question"
+        or beat.asset_ids
+        or beat.native_media
+        or beat.relation_items
+        or beat.question_gloss is None
+        or set(text) != set(QUESTION_CARD_LABELS)
+        or set(events) != set(QUESTION_CARD_EVENTS)
+    ):
+        raise ValueError(
+            "AH-S03 A needs two spoken question labels and all five events"
+        )
+    left, right = (text[path] for path in QUESTION_CARD_LABELS)
+    chinese, english, question, exit_event, clear = (
+        events[path] for path in QUESTION_CARD_EVENTS
+    )
+    positions = {token.id: i for i, token in enumerate(transcript.tokens)}
+    left_id, right_id = left["token_ids"][0], right["token_ids"][0]
+    first, english_at, question_at, exit_at, clear_at = (
+        events[path]["value"] for path in QUESTION_CARD_EVENTS
+    )
+    clock = native["clock"]
+    frames = math.ceil(
+        (clock["end_ms"] - clock["start_ms"]) * clock["native_fps"] / 1000
+    )
+    if (
+        (chinese["token_id"], chinese["edge"]) != (left_id, "start")
+        or (question["token_id"], question["edge"]) != (right_id, "start")
+        or english["edge"] != "start"
+        or not positions[left_id]
+        <= positions[english["token_id"]]
+        <= positions[right_id]
+        or exit_event["measured_anchor_ms"] <= question["measured_anchor_ms"]
+        or clear["measured_anchor_ms"] <= exit_event["measured_anchor_ms"]
+        or not first <= english_at <= question_at
+        or exit_at - question_at < 9
+        or clear_at - exit_at < 2
+        or clear_at >= frames
+    ):
+        raise ValueError(
+            "AH-S03 A needs ordered spoken entrances, settling time and a clear"
+        )
+    glossary = {
+        "source_text": left["text"] + right["text"],
+        "display_text": beat.question_gloss,
+    }
+    question_card_gloss(native, glossary, transcript)
+    return glossary

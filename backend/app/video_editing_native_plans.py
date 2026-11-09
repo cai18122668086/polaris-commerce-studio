@@ -106,6 +106,11 @@ def plan_response(
                 **detail,
                 "id": beat["id"],
                 "source_only_available": beat["id"] in editable,
+                **(
+                    {"question_gloss": beat["question_gloss"]}
+                    if beat.get("question_gloss")
+                    else {}
+                ),
             }
             for beat, detail in zip(
                 row.semantic["beats"], row.details["beats"], strict=True

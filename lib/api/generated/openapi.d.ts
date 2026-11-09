@@ -5764,6 +5764,8 @@ export interface components {
             group_id: string;
             /** Id */
             id: string;
+            /** Question Gloss */
+            question_gloss?: string | null;
             /** Reason */
             reason: string;
             /** Relation */
@@ -5888,7 +5890,7 @@ export interface components {
             /** Layer */
             layer?: ("scene" | "overlay") | null;
             /** Native Branch */
-            native_branch?: "question" | null;
+            native_branch?: ("question" | "input-A") | null;
             /** Purpose */
             purpose: string;
         };
@@ -7612,6 +7614,8 @@ export interface components {
             native_media?: components["schemas"]["NativeMediaAnchor"][];
             /** Native Text */
             native_text?: components["schemas"]["NativeTextAnchor"][];
+            /** Question Gloss */
+            question_gloss?: string | null;
             /** Reason */
             reason: string;
             /**

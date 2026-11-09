@@ -61,6 +61,15 @@ from .video_editing_question_branch import (
     QUESTION_GROUP,
     question_variant_template,
 )
+from .video_editing_question_card import (
+    QUESTION_CARD_A_DESIGN,
+    QUESTION_CARD_ENGLISH,
+    QUESTION_CARD_GLYPH,
+    QUESTION_CARD_GROUP,
+    QUESTION_CARD_SOUND,
+    automatic_question_card_gloss,
+    question_card_a_input,
+)
 from .video_editing_word_bindings import word_bindings
 
 PROFILE_ID = AUTOMATIC_TEXT_PROFILE
@@ -72,6 +81,7 @@ _SLIDE = ("sfx-22f661280569e8bc", 0.07, 0.32, -27)
 _IMPACT = ("sfx-69dba3f8f41f94e1", 0.03, 0.27, -25)
 _ENTRY_SOUNDS = {
     QUESTION_GROUP: (QUESTION_ENTRY, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
+    QUESTION_CARD_GROUP: (QUESTION_CARD_SOUND, ("sfx-6de45a8ba721db1b", 0.0, 0.5, -22)),
     "AH-S05": ("/events/type_frame", _TYPING),
     "AH-S09": ("/events/title_frame", _CLICK),
     "AHG-S02": ("/events/mark/0", _SELECT),
@@ -296,6 +306,47 @@ def _question_entry(
     ), anchors
 
 
+def _question_card_entry(
+    package: Path, group: dict, beat: SemanticBeat, transcript: Transcript
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group, original_input_a=True)
+    config = read_json(question_card_a_input(package, group))
+    anchors = word_bindings(beat, transcript, contract, set())
+    gloss = automatic_question_card_gloss(beat, anchors, transcript)
+    slots = [
+        *(row["path"] for row in anchors["text"]),
+        *(row["path"] for row in anchors["events"]),
+        QUESTION_CARD_ENGLISH,
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(
+            layer="subtitle",
+            rect=[0.10, 0.435, 0.80, 0.258],
+            reason="按原画幅放置左右短语与问号，给人物和主字幕留空间。",
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": beat.group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": QUESTION_CARD_A_DESIGN,
+            "design_reason": "沿用原 A 版字形与动画，绑定本期实录追问及短释义。",
+            "config": config,
+            "placeholders": slots,
+            "parameter_decisions": {
+                **{key: "沿用原生构图与参数。" for key in config},
+                QUESTION_CARD_GLYPH: "保留原设计问号。",
+            },
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
+            "question_card_gloss": gloss,
+        },
+    ), anchors
+
+
 def _card_entry(
     package: Path,
     group: dict,
@@ -431,6 +482,8 @@ def _entry_sound(
     remaining = (
         duration_ms - event["measured_anchor_ms"] - event["frame_quantization_ms"]
     ) / 1000
+    if beat.group_id == QUESTION_CARD_GROUP:
+        remaining -= 1 / 30
     length = min(length, remaining)
     if length < 0.06:
         raise ApiError(
@@ -445,6 +498,7 @@ def _entry_sound(
         phase="entry",
         purpose={
             QUESTION_GROUP: "整帧追问入场时给一次短提示，口播继续。",
+            QUESTION_CARD_GROUP: "原问号首个可见帧给一次短提示，口播继续。",
             CARD_GROUP: "图卡进入时给一次短提示，口播继续。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
             JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
@@ -814,6 +868,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = JUDGMENT_EVENTS[:5]
+        elif beat.group_id == QUESTION_CARD_GROUP:
+            entries[beat.id], anchors = _question_card_entry(
+                package, group, beat, transcript
+            )
+            paths = (None,)
         elif beat.group_id in OPENING_GROUPS:
             entries[beat.id], anchors = _opening_entry(
                 package, group, beat, transcript, asset_cards or []

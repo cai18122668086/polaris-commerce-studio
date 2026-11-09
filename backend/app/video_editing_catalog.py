@@ -18,7 +18,10 @@ from .video_editing_hypit_strips import SLANT_GROUP
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import WHY_FONT, WHY_GROUP, WHY_PROPS
-from .video_editing_overlay_templates import AUTOMATIC_TEMPLATE_DEPENDENCIES
+from .video_editing_overlay_templates import (
+    AUTOMATIC_TEMPLATE_DEPENDENCIES,
+    QUESTION_CARD_TEMPLATE_ID,
+)
 from .video_editing_question_card import (
     QUESTION_CARD_A_FONTS,
     QUESTION_CARD_B_FONTS,
@@ -31,7 +34,11 @@ _NATIVE_ENGINE_DEPENDENCIES = {
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     LINE_GROUP: (LINE_BRUSH_FONT,),
     WHY_GROUP: (WHY_FONT, *WHY_PROPS),
-    **AUTOMATIC_TEMPLATE_DEPENDENCIES,
+    **{
+        gid: dependencies
+        for gid, dependencies in AUTOMATIC_TEMPLATE_DEPENDENCIES.items()
+        if gid != QUESTION_CARD_GROUP
+    },
     SLANT_GROUP: (FOREGROUND_MATTE,),
     "CXBR01": ("font-43a890795ad133d7",),
     "YYP04": (_MATTING_MODEL,),
@@ -193,6 +200,8 @@ def _template_dependencies(
     external: dict[str, dict],
     aliases: dict[str, str],
     state_for: Callable[[str], DependencyState],
+    *,
+    original_input_a: bool = False,
 ) -> list[dict[str, Any]]:
     references: dict[str, list[str]] = {}
 
@@ -212,7 +221,12 @@ def _template_dependencies(
             # Output references in the historical template are not input media.
             references.setdefault(value[8:], []).append(path)
 
-    visit(read_json(package / group["input_template"]), "")
+    template_path = (
+        question_card_a_input(package, group)
+        if original_input_a
+        else package / group["input_template"]
+    )
+    visit(read_json(template_path), "")
     native_aliases: dict[str, list[str]] = {}
     if group.get("backend") == "browser":
         prefix = group["browser_directory"] + "/"
@@ -397,7 +411,16 @@ def planning_runtime_snapshot(
                         "state": row["local_dependency_state"],
                     }
                     for row in _template_dependencies(
-                        package, group, external, aliases, state_for
+                        package,
+                        group,
+                        external,
+                        aliases,
+                        state_for,
+                        original_input_a=bool(
+                            template
+                            and template["id"] == QUESTION_CARD_TEMPLATE_ID
+                            and group["id"] == QUESTION_CARD_GROUP
+                        ),
                     )
                     if row["kind"] in {"font", "model"}
                 ],

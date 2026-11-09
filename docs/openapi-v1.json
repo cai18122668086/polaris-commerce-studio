@@ -5291,6 +5291,17 @@
             "title": "Id",
             "type": "string"
           },
+          "question_gloss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Gloss"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
@@ -5597,7 +5608,10 @@
           "native_branch": {
             "anyOf": [
               {
-                "const": "question",
+                "enum": [
+                  "question",
+                  "input-A"
+                ],
                 "type": "string"
               },
               {
@@ -10118,6 +10132,20 @@
             "maxItems": 50,
             "title": "Native Text",
             "type": "array"
+          },
+          "question_gloss": {
+            "anyOf": [
+              {
+                "maxLength": 24,
+                "minLength": 1,
+                "pattern": "^[A-Z][A-Z '?-]{0,23}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Gloss"
           },
           "reason": {
             "maxLength": 1000,

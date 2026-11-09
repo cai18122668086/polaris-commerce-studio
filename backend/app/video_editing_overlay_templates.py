@@ -7,6 +7,7 @@ from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
+from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
 
 MIN_OVERLAY_TYPES = 5
 PREFERRED_OVERLAY_TYPES = 10
@@ -15,6 +16,7 @@ PICTURE_TEMPLATE_ID = "picture-compare-v2"
 ROTATION_TEMPLATE_ID = "rotation-cards-v1"
 PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
 JUDGMENT_TEMPLATE_ID = "evidence-judgment-v1"
+QUESTION_CARD_TEMPLATE_ID = "question-card-story-v1"
 _OPENING_PURPOSES = {
     "LYO01": (
         "用原放大与暗角强调一条口播短句",
@@ -40,6 +42,7 @@ _OPENING_FONT = "font-06e1a30f687ab7d3"
 AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     CARD_GROUP: (SPLIT_TITLE_FONT,),
     QUESTION_GROUP: (QUESTION_FONT,),
+    QUESTION_CARD_GROUP: QUESTION_CARD_A_FONTS,
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     ROTATION_GROUP: (*FRUIT_LIST_FONTS, ROTATION_MATTE),
     "LYO01": (_OPENING_FONT,),
@@ -96,6 +99,30 @@ _TEMPLATES = {
         "id": "question-story-v1",
         "name": "整帧追问与口播重点",
         "slots": [_QUESTION_SLOT, *_ROLL_SLOTS, _ACTION_SLOT],
+    },
+    QUESTION_CARD_TEMPLATE_ID: {
+        "id": QUESTION_CARD_TEMPLATE_ID,
+        "name": "透明问号与口播重点",
+        "slots": [
+            {
+                "group_id": QUESTION_CARD_GROUP,
+                "native_branch": "input-A",
+                "purpose": "用原版左右短语和中央问号标记实录追问，保留同期人物",
+                "layer": "overlay",
+                "binding": (
+                    "仅用于实际追问。/content/left 与 /content/right 各 1–2 字，"
+                    "必须是实录中相邻的两段词。question_gloss 只译这两个短语，"
+                    "用不超过 24 字符的简短大写英文。"
+                    "chinese_frame 和 question_frame 分别绑定左右短语首词起点，"
+                    "english_frame 绑定两处之间实录词的起点。"
+                    "exit_frame 与 clear_frame 按序绑定后续词的边界，"
+                    "给问号完成放大和淡出留时间。英文和问号图形无需 native_text。"
+                    "无法匹配时选择其他语义合适的槽或留白。"
+                ),
+            },
+            *_ROLL_SLOTS,
+            _ACTION_SLOT,
+        ],
     },
     "roll-compare-v2": {
         "id": "roll-compare-v2",
@@ -222,6 +249,7 @@ def overlay_templates() -> list[dict]:
             "label-compare-v1",
             "roll-compare-v2",
             "question-story-v1",
+            QUESTION_CARD_TEMPLATE_ID,
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,
@@ -241,6 +269,13 @@ def validate_template_plan(
 ) -> None:
     if template != overlay_template(template["id"]):
         raise ValueError("Overlay template version or slots changed")
+    allow_question_gloss = template["id"] == QUESTION_CARD_TEMPLATE_ID
+    if any(
+        (beat.question_gloss is not None)
+        != (allow_question_gloss and beat.group_id == QUESTION_CARD_GROUP)
+        for beat in plan.beats
+    ):
+        raise ValueError("English question gloss must match the selected AH-S03 A slot")
     groups = {slot["group_id"] for slot in template["slots"]}
     chosen = {beat.group_id for beat in plan.beats if beat.group_id != "Z-M00"}
     if not chosen <= groups or (complete and len(chosen) < MIN_OVERLAY_TYPES):

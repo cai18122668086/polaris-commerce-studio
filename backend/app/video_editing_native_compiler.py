@@ -103,6 +103,7 @@ from .video_editing_question_branch import (
 from .video_editing_question_card import (
     QUESTION_CARD_A_DESIGN,
     QUESTION_CARD_ENGLISH,
+    automatic_question_card_gloss,
     question_card_a_input,
     question_card_gloss,
 )
@@ -494,11 +495,19 @@ def compile_native_job(
         assignments.update({row["path"]: row["display_text"] for row in translations})
         native["translation_labels"] = translations
     if question_card_a:
-        gloss = question_card_gloss(
-            native, recipe.get("question_card_gloss"), transcript
-        )
+        authored = recipe.get("question_card_gloss")
+        if (
+            beat.question_gloss is not None
+            and authored != automatic_question_card_gloss(beat, native, transcript)
+        ):
+            raise ValueError("AH-S03 A recipe differs from the frozen planning gloss")
+        gloss = question_card_gloss(native, authored, transcript)
+        if beat.question_gloss is not None:
+            gloss["origin"] = "tengli_planner"
         assignments[QUESTION_CARD_ENGLISH] = gloss["display_text"]
         native["question_gloss"] = gloss
+    elif beat.question_gloss is not None:
+        raise ValueError("English question gloss requires the original AH-S03 A recipe")
     if why_props:
         question = why_word_bindings(native, asset_files)
         assignments[question["path"]] = question["display_text"]

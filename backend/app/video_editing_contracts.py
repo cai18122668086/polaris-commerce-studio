@@ -340,6 +340,9 @@ class EditingNativeBeatResponse(StrictVideoModel):
     text: str
     reason: str
     source_only_available: bool
+    question_gloss: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class EditingOverlaySlot(StrictVideoModel):
@@ -348,7 +351,7 @@ class EditingOverlaySlot(StrictVideoModel):
     layer: Literal["scene", "overlay"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
-    native_branch: Literal["question"] | None = Field(
+    native_branch: Literal["question", "input-A"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     binding: str | None = Field(default=None, exclude_if=lambda value: value is None)
@@ -568,6 +571,13 @@ class SemanticBeat(StrictVideoModel):
     native_media: list[NativeMediaAnchor] = Field(default_factory=list, max_length=30)
     relation_items: list[SemanticRelationItem] = Field(
         default_factory=list, max_length=20
+    )
+    question_gloss: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=24,
+        pattern=r"^[A-Z][A-Z '?-]{0,23}$",
+        exclude_if=lambda value: value is None,
     )
 
 

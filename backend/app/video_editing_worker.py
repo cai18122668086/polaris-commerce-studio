@@ -28,6 +28,12 @@ from .motion_library import (
     verify_package,
 )
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
+from .video_editing_delivery_checkpoint import (
+    checkpoint_for,
+    compiled_digest,
+    delivery_file,
+    restore_delivery,
+)
 from .video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
 from .video_editing_image_edits import apply_image_edits, resolve_image_edits
 from .video_editing_materials import PREFIX, project_material_files
@@ -437,6 +443,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         snapshot: dict[str, Any] = {
             "source_path": source.media_path,
             "source_sha256": source.media_sha256,
+            "request_hash": row.request_hash,
             "options": row.options,
             "checkpoint": row.checkpoint,
             "library_release": row.library_release,
@@ -680,88 +687,86 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 task_id, root, prepared, snapshot, settings, guard, stage
             )
             compile_baseline(root, prepared, transcript, snapshot["options"], settings)
-        stage("rendering", render_plan_sha256=sha256(root / "episode.json"))
-        final = native_export(root, settings, guard)
-        stage("validating")
-        validation = validate_result(final, prepared, root, settings, guard)
         review_first = snapshot["options"].get("delivery") == "preview_first"
         final_role = "staged_final" if review_first else "final"
-        media_validation = {final_role: validation}
-        artifacts = [
-            (final_role, final, "video/mp4"),
-            ("transcript", root / "transcript.json", "application/json"),
-            ("caption_anchors", root / "caption-anchors.json", "application/json"),
-            ("caption_receipt", root / "caption-segmentation.json", "application/json"),
-            (
-                "caption_layout",
-                root / "caption-adapter-layout.json",
-                "application/json",
-            ),
-            ("receipt", root / "validation.json", "application/json"),
-        ]
-        if review_first:
-            checks = read_json(root / "layout/review.json")["subtitle_checks"]
-            if (
-                any(check["visible_frames"] < 1 for check in checks)
-                or len({check["group_id"] for check in checks}) < MIN_OVERLAY_TYPES
-            ):
-                raise EditingFailure("EDITING_CONTINUOUS_COMBINATION_REQUIRED")
-            stage("building_preview")
-            preview, preview_receipt = build_preview(
-                final, root, validation, settings, guard
-            )
-            media_validation["preview"] = preview_receipt
-            artifacts.extend(
-                [
-                    ("preview", preview, "video/mp4"),
-                    (
-                        "preview_receipt",
-                        root / "preview-validation.json",
-                        "application/json",
-                    ),
-                ]
-            )
-        stage("storing")
+        receipts = {
+            "transcript": "transcript.json",
+            "caption_anchors": "caption-anchors.json",
+            "caption_receipt": "caption-segmentation.json",
+            "caption_layout": "caption-adapter-layout.json",
+            "receipt": "validation.json",
+        }
         if lineage:
-            artifacts.append(
-                ("source_receipt", root / "source-receipt.json", "application/json")
-            )
+            receipts["source_receipt"] = "source-receipt.json"
         if native_plan:
-            artifacts.extend(
-                [
-                    ("semantic_plan", root / "semantic-plan.json", "application/json"),
-                    (
-                        "compile_receipt",
-                        root / "compile-diagnostics.json",
-                        "application/json",
-                    ),
-                    (
-                        "plan_lineage",
-                        root / "native-plan-lineage.json",
-                        "application/json",
-                    ),
-                ]
-            )
-        if validation.get("native_mix_validation") == "passed":
-            artifacts.append(
-                ("audio_receipt", root / "audio-validation.json", "application/json")
-            )
-        if (root / "layout/adapter-review.json").is_file():
-            artifacts.append(
-                (
-                    "layout_receipt",
-                    root / "layout/adapter-review.json",
-                    "application/json",
-                )
+            receipts.update(
+                semantic_plan="semantic-plan.json",
+                compile_receipt="compile-diagnostics.json",
+                plan_lineage="native-plan-lineage.json",
             )
         if correction:
-            artifacts.append(
-                (
-                    "alignment_receipt",
-                    root / "alignment-receipt.json",
-                    "application/json",
-                )
+            receipts["alignment_receipt"] = "alignment-receipt.json"
+        compiled_sha = compiled_digest(root, snapshot["request_hash"])
+        restored = restore_delivery(
+            snapshot["checkpoint"].get("validated_delivery"),
+            root.parent,
+            compiled_sha,
+            prepared["source_sha256"],
+            final_role,
+            set(receipts),
+            guard,
+        )
+        reused = []
+        if restored is None:
+            stage("rendering", render_plan_sha256=sha256(root / "episode.json"))
+            final = native_export(root, settings, guard)
+            stage("validating")
+            validation = validate_result(final, prepared, root, settings, guard)
+            if review_first:
+                checks = read_json(root / "layout/review.json")["subtitle_checks"]
+                if (
+                    any(check["visible_frames"] < 1 for check in checks)
+                    or len({check["group_id"] for check in checks}) < MIN_OVERLAY_TYPES
+                ):
+                    raise EditingFailure("EDITING_CONTINUOUS_COMBINATION_REQUIRED")
+            if validation.get("native_mix_validation") == "passed":
+                receipts["audio_receipt"] = "audio-validation.json"
+            if (root / "layout/adapter-review.json").is_file():
+                receipts["layout_receipt"] = "layout/adapter-review.json"
+            files = {
+                final_role: delivery_file(final),
+                **{role: delivery_file(root / path) for role, path in receipts.items()},
+            }
+            if files[final_role].sha256 != validation["sha256"]:
+                raise EditingFailure("EDITING_PREVIEW_ARTIFACT_CHANGED")
+            media_validation = {final_role: validation}
+        else:
+            files, media_validation = restored
+            reused = list(media_validation)
+        if review_first and "preview" not in files:
+            stage(
+                "building_preview",
+                validated_delivery=checkpoint_for(root.parent, compiled_sha, files),
+                reused_delivery=reused,
             )
+            (root / "outputs").mkdir(exist_ok=True)
+            preview, preview_receipt = build_preview(
+                files[final_role].path,
+                root,
+                media_validation[final_role],
+                settings,
+                guard,
+            )
+            files["preview"] = delivery_file(preview)
+            if files["preview"].sha256 != preview_receipt["sha256"]:
+                raise EditingFailure("EDITING_PREVIEW_ARTIFACT_CHANGED")
+            files["preview_receipt"] = delivery_file(root / "preview-validation.json")
+            media_validation["preview"] = preview_receipt
+        stage(
+            "storing",
+            validated_delivery=checkpoint_for(root.parent, compiled_sha, files),
+            reused_delivery=reused,
+        )
         guard(True)
         with factory() as session:
             fenced = session.execute(
@@ -784,20 +789,17 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             )
             if not cast(CursorResult, fenced).rowcount:
                 raise EditingFailure("EDITING_LEASE_LOST")
-            for role, path, mime in artifacts:
-                identity = sha256(path)
+            for role, file in files.items():
                 media = media_validation.get(role, {})
-                if review_first and media and identity != media["sha256"]:
-                    raise EditingFailure("EDITING_PREVIEW_ARTIFACT_CHANGED")
                 session.add(
                     EditingArtifactRecord(
                         id=str(uuid4()),
                         task_id=task_id,
                         role=role,
-                        path=str(path),
-                        mime=mime,
-                        sha256=identity,
-                        bytes=path.stat().st_size,
+                        path=str(file.path),
+                        mime=file.mime,
+                        sha256=file.sha256,
+                        bytes=file.bytes,
                         duration_ms=media.get("duration_ms"),
                         validation=media,
                     )

@@ -7,7 +7,21 @@ from types import SimpleNamespace
 import pytest
 
 from app import video_editing_native_compat as compat
+from app.config import Settings
 from app.motion_library import atomic_json, sha256
+from app.video_editing_pipeline import environment
+
+
+def test_native_subprocess_keeps_worker_browser_path_without_provider_credentials(
+    monkeypatch, tmp_path
+):
+    browsers = str(tmp_path / "chromium")
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", browsers)
+    monkeypatch.setenv("POLARIS_VIDEO_SCRIPT_API_KEY", "test-only-provider-sentinel")
+
+    child = environment(Settings())
+    assert child["PLAYWRIGHT_BROWSERS_PATH"] == browsers
+    assert "POLARIS_VIDEO_SCRIPT_API_KEY" not in child
 
 
 def test_readonly_original_tree_stays_unchanged_but_task_copies_can_be_edited(tmp_path):

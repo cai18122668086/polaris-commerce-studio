@@ -61,6 +61,7 @@ def environment(settings: Settings) -> dict[str, str]:
         "TEMP",
         "TMP",
         "PATH",
+        "PLAYWRIGHT_BROWSERS_PATH",
     }
     env = {k: v for k, v in os.environ.items() if k.upper() in keep}
     tool_dirs = [

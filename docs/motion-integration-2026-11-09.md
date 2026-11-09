@@ -811,3 +811,15 @@ LYO02 使用本期口播 0.410 至 3.590 秒，沿用原圆窗、虚线边、前
 在独立数据库中用 Chrome 保存参考原文和分析，选取本期事实卡，分别提交两种模式。受控响应中，借鉴结构产出三行，逐句改编保持原两句并通过原包检查。页面切回三行版本后明确采用，编辑器此前保存的口播稿直到采用时才更新。再经原确认接口生成独立快照，核对新旧两份确认稿各自保留原文。浏览器联调证据为 `C:/tl/writing-modes/browser-evidence.json`，任务与回执均存于本机联调目录。使用封闭 HTTP 测试传输和原写稿 checker，真实供应商写稿、生成配音与数字人以及用户语义验收待完成。
 
 357 项视频和文稿回归、目标 Ruff、mypy、前端类型及 ESLint 通过。OpenAPI 仅增加可选写稿模式字段，无数据库迁移。原写稿包 33 项和 Motion 原包 1426 项摘要复核通过。本轮 Motion 目录仍登记 132 组，126 组有成功编码证据。
+
+## PostgreSQL 迁移与剪辑 worker 依赖
+
+在本机独立测试数据库使用与项目 Compose 同版本的 PostgreSQL 18.4。运行从空库到 `20261107_0041`、升级到 `20261109_0049`、回到 `0048` 再升级、回到 `0041` 再升到最新。升级前先通过原项目 API 保存确认稿。每次迁移后核对该项目、确认稿快照和旧任务的版本关联。另在 `0048` 保存一条旧上传素材，升至 `0049` 后旧标签和摘要仍可读取，新增来源字段均为 null。数据库验收覆盖剪辑、规划及写稿的 12 张新增表。运行记录 `C:/tl/pg18-motion/migration-evidence.json`。[PostgreSQL Windows 发行页](https://www.postgresql.org/download/windows/)
+
+原生剪辑子进程保留 worker 的 `PLAYWRIGHT_BROWSERS_PATH`，继续使用固定环境白名单。实际通过 worker 子进程入口从指定目录启动 Chromium 156.0.8078.4 并读取本地测试页。回归覆盖浏览器路径传入和文稿服务凭据隔离。
+
+额外需要原字体或原模型的本地 Compose 可合并 `compose.editing-dependencies.yaml`。将已校验且可供当前项目使用的原件和 `bindings.json` 放进同一私有目录，令 `POLARIS_MOTION_DEPENDENCIES_HOST` 指向该目录。清单的 `resources` 对象仍以原资源 ID 为键，值填写容器内绝对路径，例如 `/motion-dependencies/fonts/original.ttf`。用 `docker compose -f compose.yaml -f compose.editing.yaml -f compose.editing-dependencies.yaml config` 查看合并配置。API 和剪辑 worker 共用只读依赖目录和原有可写任务卷。文件进入运行时仍按原包登记核验字节数及 SHA256。Compose 合并实测通过，Linux 镜像构建和容器实跑待验证。
+
+18 项相关回归、Ruff 和目标 mypy 通过。原 Motion 1426 项及原写稿 33 项完整性复核通过。
+
+已迁移的 PostgreSQL 由实际 FastAPI 和独立 Celery worker 共用。通过 HTTP 上传本期原口播、重复提交同一请求并核对相同任务 ID，维护入口把持久任务交给独立的本机 Redis。任务 `12ca31bb-1886-4c1a-aceb-9fc9f1c182c3` 一次完成，FunASR 本次重识别得到 243 个词点，原引擎渲染 48.475 秒基础字幕成片。成片音视频全量解码通过，HTTP 范围读取返回 206，Chrome 从 API 实播超过两秒，readyState 为 4。下载摘要 `027037390749881fbe56e9f09280f9d9729df4835306cd138504d8e4ca6a6f18` 与登记相符。文件 `C:/tl/pg18-motion/website-postgres-oral.mp4`，证据同目录 `website-postgres-worker-evidence.json`。这条任务复用实录，覆盖 PostgreSQL 上的运行和基础字幕，语义组合与用户视觉验收另行核对。Motion 目录仍为 132 组，其中 126 组有成功编码证据。

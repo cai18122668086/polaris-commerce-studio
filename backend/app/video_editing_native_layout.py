@@ -1,12 +1,14 @@
 """Classify the pinned native SG-S10 backing title after the original review."""
 
 import importlib
+import math
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
 from .motion_library import atomic_json, read_json, sha256
+from .video_editing_render_edits import HY_PORTRAIT_INSETS, boxes_intersect
 
 BACKDROP_GROUP = "SG-S10"
 _RENDERER = (
@@ -17,6 +19,56 @@ _REVIEW = (
     "commercial_runtime/layout.py",
     "54dd2899595aeb68859d6c5e5e00cfd25a44e43e021df3639edf315d27ee1d88",
 )
+
+
+def verify_inset_layout(root: Path, review: dict) -> dict:
+    """Check opaque inset bounds against the native libass subtitle ink."""
+    data = read_json(root / "episode.json")
+    indices = read_json(root / "inset-layout-intent.json")["shots"]
+    if not indices or review.get("status") != "passed":
+        raise ValueError("Verified original layout is required for opaque insets")
+    width, height = data["output"]["width"], data["output"]["height"]
+    ink = review["caption_ink"]
+    if len(ink) != len(data["captions"]) or not all(
+        row["start"] == caption["start_seconds"]
+        and row["end"] == caption["end_seconds"]
+        and len(row["box"]) == 4
+        for row, caption in zip(ink, data["captions"], strict=True)
+    ):
+        raise ValueError("The original caption ink does not cover all main captions")
+    checks = []
+    for i in indices:
+        shot = data["shots"][i]
+        start, end = shot["start_seconds"], shot["end_seconds"]
+        if (
+            shot["group_id"] not in HY_PORTRAIT_INSETS
+            or shot["layer"] != "overlay"
+            or not any(
+                region["id"] == "centered-portrait"
+                and region["start_seconds"] <= start < end <= region["end_seconds"]
+                for region in data["protected_regions"]
+            )
+        ):
+            raise ValueError("Inset needs a declared speaker keepout for its duration")
+        x, y, w, h = shot["rect"]
+        box = (
+            math.floor(x * width),
+            math.floor(y * height),
+            math.ceil((x + w) * width) + 2,
+            math.ceil((y + h) * height) + 2,
+        )
+        captions = [row for row in ink if row["start"] < end and start < row["end"]]
+        if any(boxes_intersect(box, tuple(row["box"])) for row in captions):
+            raise ValueError("Opaque native inset overlaps measured main-caption ink")
+        checks.append(
+            {
+                "shot": i,
+                "group_id": shot["group_id"],
+                "bounds_px": box,
+                "caption_events_checked": len(captions),
+            }
+        )
+    return {"status": "passed", "source": "native libass ink", "insets": checks}
 
 
 def backdrop_role_overlaps(

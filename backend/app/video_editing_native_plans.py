@@ -97,7 +97,13 @@ def plan_response(
         "semantic_review": "unreviewed",
         "music_edit_available": has_music,
         "continuous_preview_available": len(
-            continuous_overlay_groups(row.semantic, row.recipes, transparent_groups)
+            continuous_overlay_groups(
+                row.semantic,
+                row.recipes,
+                transparent_groups,
+                allow_hypit_insets=row.details["source_subtitles"] == "none"
+                and internal_hypit_available(settings, row.workspace_id),
+            )
         )
         >= MIN_OVERLAY_TYPES,
         "overlay_template": overlay_template(row.recipes["overlay_template_id"])
@@ -512,6 +518,8 @@ def admit_render_plan(
                 set(options.native_edits.source_only_beat_ids)
                 if options.native_edits
                 else None,
+                allow_hypit_insets=options.source_subtitles == "none"
+                and internal_hypit_available(settings, row.workspace_id),
             )
         )
         < MIN_OVERLAY_TYPES

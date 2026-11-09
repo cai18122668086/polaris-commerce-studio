@@ -230,6 +230,32 @@ def test_continuous_combinations_count_types_allow_repetition_and_reject_scene_l
     assert not continuous_overlay_groups(semantic, recipes, groups)
 
 
+def test_continuous_hypit_inset_needs_internal_access_and_speaker_clearance():
+    from app.video_editing_hypit_strips import PRICE_CARD_INSET_TYPE
+    from app.video_editing_render_edits import continuous_overlay_groups
+
+    semantic = {"beats": [{"id": "card", "group_id": "HY-A6"}]}
+    entry = {
+        "placement": {"layer": "overlay", "rect": [0.13, 0.435, 0.74, 0.41]},
+        "recipe": {"group_id": "HY-A6", "price_card_layout": PRICE_CARD_INSET_TYPE},
+    }
+    portrait = {"id": "centered-portrait", "rect": [0.35, 0.09, 0.34, 0.34]}
+    recipes = {"entries": {"card": entry}, "protected_regions": [portrait]}
+    assert not continuous_overlay_groups(semantic, recipes, set())
+    assert continuous_overlay_groups(
+        semantic, recipes, set(), allow_hypit_insets=True
+    ) == {"HY-A6"}
+    portrait["rect"][3] = 0.42
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), allow_hypit_insets=True
+    )
+    portrait["rect"][3] = 0.34
+    entry["recipe"].pop("price_card_layout")
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), allow_hypit_insets=True
+    )
+
+
 def test_corrupt_frozen_plan_fails_without_asr_or_plain_subtitle_fallback(
     video, tmp_path, monkeypatch
 ):

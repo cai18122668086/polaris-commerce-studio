@@ -15,6 +15,7 @@ from .video_editing_hypit import NATIVE_FILES
 STRIP_PROFILE = "hypit-original-strips/1"
 PRICE_CARD_GROUP = "HY-A6"
 PRICE_CARD_PROFILE = "hypit-original-price-cards/1"
+PRICE_CARD_INSET_TYPE = "larger-inset-type-v1"
 STRIP_SIDECAR = "hypit-strips/component.json"
 STAGGER_GROUPS = {
     "HY-A4": (
@@ -123,6 +124,14 @@ def _native_attributes(package: Path, group: dict, data: dict) -> dict:
                 "Original Hypit cards need two short spoken lines per card"
             )
         slot = {"caps": "; ".join("|".join(row) for row in lines)}
+        if (type_profile := data.get("price_card_layout")) is not None:
+            if type_profile != PRICE_CARD_INSET_TYPE or any(
+                len(line) > 6 for row in lines for line in row
+            ):
+                raise ValueError("The larger price-card type needs short spoken lines")
+            # The 271 px original card can hold these two lines plus its 17 px
+            # gap. Keep the black original serif and the right-edge alignment.
+            slot.update({"cap-size": "96", "cap-en-size": "100", "cap-dy": "-8"})
     else:
         labels = data["labels"]
         if len(labels) != 3 or any(
@@ -142,12 +151,21 @@ def _native_attributes(package: Path, group: dict, data: dict) -> dict:
 
 
 def compile_strips(
-    package: Path, group: dict, native: dict, assets: dict[str, dict[str, Any]]
+    package: Path,
+    group: dict,
+    native: dict,
+    assets: dict[str, dict[str, Any]],
+    *,
+    price_card_layout: str | None = None,
 ) -> dict:
     text = {row["path"]: row for row in native["text"]}
     events = {row["path"]: row for row in native["events"]}
     media = {row["path"]: row["asset_id"] for row in native["media"]}
     price_cards = group["id"] == PRICE_CARD_GROUP
+    if price_card_layout is not None and (
+        not price_cards or price_card_layout != PRICE_CARD_INSET_TYPE
+    ):
+        raise ValueError("The larger price-card type requires its audited native group")
     titles = CARD_TITLES if price_cards else STRIP_TEXT
     detail = CARD_DETAILS if price_cards else ()
     anchors = stagger_events(group["id"])
@@ -189,6 +207,8 @@ def compile_strips(
             [text[title]["text"], text[line]["text"]]
             for title, line in zip(titles, detail, strict=True)
         ]
+        if price_card_layout:
+            data["price_card_layout"] = price_card_layout
     else:
         data["labels"] = [text[path]["text"] for path in titles]
     _native_attributes(package, group, data)

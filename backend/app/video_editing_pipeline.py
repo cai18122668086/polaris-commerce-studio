@@ -30,6 +30,7 @@ from .video_editing_captioning import (
 )
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
 from .video_editing_hypit_strips import STAGGER_GROUPS
+from .video_editing_native_layout import verify_inset_layout
 from .video_editing_native_sound import verify_rendered_sound
 
 
@@ -713,5 +714,14 @@ def validate_result(
             validation["caption_layout"] = verify_native_caption_layout(root)
         except CaptionFailure as error:
             raise EditingFailure(error.code) from None
+    if (root / "inset-layout-intent.json").is_file():
+        try:
+            if native["sha256"] != validation["sha256"]:
+                raise ValueError("Native inset output changed before validation")
+            validation["native_inset_layout"] = verify_inset_layout(
+                root, native["layout_review"]
+            )
+        except (ValueError, KeyError, IndexError, TypeError, OSError):
+            raise EditingFailure("EDITING_NATIVE_INSET_LAYOUT_INVALID") from None
     atomic_json(root / "validation.json", validation)
     return validation

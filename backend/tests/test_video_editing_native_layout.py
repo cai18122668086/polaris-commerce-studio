@@ -3,7 +3,11 @@ from copy import deepcopy
 import pytest
 
 from app.motion_library import atomic_json, read_json, sha256
-from app.video_editing_native_layout import backdrop_role_overlaps, review_with_backdrop
+from app.video_editing_native_layout import (
+    backdrop_role_overlaps,
+    review_with_backdrop,
+    verify_inset_layout,
+)
 
 
 def example():
@@ -74,3 +78,39 @@ def test_backdrop_requires_opt_in_exact_role_pair_and_foreground_phase():
     assert not backdrop_role_overlaps(episode, changed, {0})
     episode["shots"][0]["config"]["events"]["front_start"] = 43
     assert not backdrop_role_overlaps(episode, report, {0})
+
+
+def test_inset_layout_checks_native_caption_ink_and_portrait_duration(tmp_path):
+    episode = {
+        "output": {"width": 720, "height": 1280},
+        "shots": [
+            {
+                "group_id": "HY-A6",
+                "layer": "overlay",
+                "rect": [0.15, 0.44, 0.7, 0.40],
+                "start_seconds": 1,
+                "end_seconds": 3,
+            }
+        ],
+        "captions": [{"start_seconds": 2, "end_seconds": 3}],
+        "protected_regions": [
+            {"id": "centered-portrait", "start_seconds": 0, "end_seconds": 4}
+        ],
+    }
+    atomic_json(tmp_path / "episode.json", episode)
+    atomic_json(tmp_path / "inset-layout-intent.json", {"shots": [0]})
+    review = {
+        "status": "passed",
+        "caption_ink": [{"start": 2, "end": 3, "box": [200, 1100, 500, 1160]}],
+    }
+    assert (
+        verify_inset_layout(tmp_path, review)["insets"][0]["caption_events_checked"]
+        == 1
+    )
+    review["caption_ink"][0]["box"][1] = 1060
+    with pytest.raises(ValueError, match="overlaps measured main-caption ink"):
+        verify_inset_layout(tmp_path, review)
+    episode["protected_regions"][0]["end_seconds"] = 2
+    atomic_json(tmp_path / "episode.json", episode)
+    with pytest.raises(ValueError, match="speaker keepout for its duration"):
+        verify_inset_layout(tmp_path, review)

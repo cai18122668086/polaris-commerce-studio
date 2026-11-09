@@ -207,8 +207,18 @@ def compile_native_job(
             config,
         )
     native["media_clocks"] = clock_receipts
+    if "price_card_layout" in recipe and not strip_variant:
+        raise ValueError("Price-card typography needs the audited Hypit input contract")
     strip = (
-        compile_strips(package, group, native, asset_files) if strip_variant else None
+        compile_strips(
+            package,
+            group,
+            native,
+            asset_files,
+            price_card_layout=recipe.get("price_card_layout"),
+        )
+        if strip_variant
+        else None
     )
     website_paths = {
         row["path"] for row in contract["fields"] if row.get("binding_surface")

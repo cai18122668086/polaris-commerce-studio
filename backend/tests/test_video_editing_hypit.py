@@ -104,6 +104,16 @@ def test_hypit_price_cards_anchor_numbers_to_distinct_current_images(
         "caps": "链接|14块9; 每瓶|1000克; 两瓶|4斤",
         "frames": "0,25,50",
     }
+    bigger = strips.compile_strips(
+        tmp_path, group, native, assets, price_card_layout=strips.PRICE_CARD_INSET_TYPE
+    )
+    assert strips._native_attributes(tmp_path, group, bigger)["a6m"] == {
+        "caps": "链接|14块9; 每瓶|1000克; 两瓶|4斤",
+        "frames": "0,25,50",
+        "cap-size": "96",
+        "cap-en-size": "100",
+        "cap-dy": "-8",
+    }
     native["events"][0]["token_id"] = "t0"
     with pytest.raises(ValueError, match="spoken label start"):
         strips.compile_strips(tmp_path, group, native, assets)

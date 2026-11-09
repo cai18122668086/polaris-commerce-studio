@@ -19,7 +19,7 @@ from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
-from .video_editing_hypit import hypit_tools, requires_hypit
+from .video_editing_hypit import hypit_tools, internal_hypit_available, requires_hypit
 from .video_editing_hypit_strips import (
     STAGGER_GROUPS,
     STRIP_SIDECAR,
@@ -37,6 +37,7 @@ from .video_editing_overlay_templates import (
 from .video_editing_pipeline import EditingFailure, baseline_documents, layout_captions
 from .video_editing_planner import validate_plan
 from .video_editing_render_edits import (
+    HY_PORTRAIT_INSETS,
     continuous_overlay_groups,
     edited_segment_receipt,
     source_only,
@@ -197,6 +198,8 @@ def compile_episode(
                     and group.get("backend") == "subtitle"
                 },
                 set(edits.source_only_beat_ids) if edits else None,
+                allow_hypit_insets=options["source_subtitles"] == "none"
+                and internal_hypit_available(settings, workspace_id),
             )
         )
         < MIN_OVERLAY_TYPES
@@ -652,5 +655,13 @@ def compile_episode(
         atomic_json(
             root / "layout-intent.json", {"sg_s10_backdrop_shots": backdrop_shots}
         )
+    if continuous_base:
+        inset_shots = [
+            i
+            for i, shot in enumerate(episode["shots"])
+            if shot["group_id"] in HY_PORTRAIT_INSETS
+        ]
+        if inset_shots:
+            atomic_json(root / "inset-layout-intent.json", {"shots": inset_shots})
     atomic_json(root / "episode.json", episode)
     return episode

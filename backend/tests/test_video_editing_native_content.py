@@ -3,6 +3,7 @@ import pytest
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from app.video_editing_native_content import (
     chapter_ordinal,
+    film_feedback_entries,
     number_glyphs,
     package_entries,
     role_scene_chain,
@@ -222,3 +223,52 @@ def test_package_sound_starts_on_first_frame_after_zero_alpha():
     assert package_entry_frame(shot, 30, "/timing/events/item1") == 357
     with pytest.raises(ValueError, match="30 fps"):
         package_entry_frame(shot, 25, "/timing/events/item1")
+
+
+def test_film_feedback_counts_are_bound_to_dated_current_evidence():
+    native = {
+        "text": [
+            {
+                "path": f"/content/comments/{i}/text",
+                "text": "反馈",
+                "token_ids": [f"t{i}"],
+            }
+            for i in range(3)
+        ],
+        "events": [
+            {
+                "path": f"/timing/events/comments/{i}",
+                "token_id": f"t{i}",
+                "edge": "start",
+            }
+            for i in range(3)
+        ],
+        "media": [
+            {"path": f"/media/photos/{i}/path", "asset_id": f"evidence-{i}"}
+            for i in range(3)
+        ],
+    }
+    assets = {
+        f"evidence-{i}": {"kind": "image", "source": "project_upload", "sha256": str(i)}
+        for i in range(3)
+    }
+    observations = [
+        {
+            "asset_id": f"evidence-{i}",
+            "label": "反馈",
+            "likes": i,
+            "source_ref": "已登记反馈页",
+            "observed_at": "2026-11-09T08:50:00+00:00",
+        }
+        for i in range(3)
+    ]
+    proof = film_feedback_entries(native, assets, observations)
+    assert [row["likes"] for row in proof] == [0, 1, 2]
+    assert proof[1]["asset_sha256"] == "1"
+    observations[1]["asset_id"] = "evidence-2"
+    with pytest.raises(ValueError, match="matching project evidence"):
+        film_feedback_entries(native, assets, observations)
+    observations[1]["asset_id"] = "evidence-1"
+    observations[1]["observed_at"] = "2026-11-09T08:50:00"
+    with pytest.raises(ValueError, match="timezone"):
+        film_feedback_entries(native, assets, observations)

@@ -1,6 +1,7 @@
 """Compile original native labels from current source anchors."""
 
 import re
+from datetime import datetime
 from itertools import pairwise
 from typing import Any
 
@@ -14,6 +15,7 @@ YEAR_PATH = "/content/year"
 TRANSLATION_GROUP = "W-R02"
 ROLE_CHAIN_GROUP = "W-R15"
 PACKAGE_GROUP = "Z-M12"
+FILM_FEEDBACK_GROUP = "W-R01"
 _ROLE_SCENE_ORDER = (
     "scene0",
     "profile",
@@ -194,6 +196,58 @@ def translation_labels(native: dict[str, Any], authored: Any) -> list[dict[str, 
             }
         )
     return result
+
+
+def film_feedback_entries(
+    native: dict[str, Any],
+    assets: dict[str, dict[str, Any]],
+    observations: Any,
+) -> list[dict[str, Any]]:
+    """Bind each displayed reaction count to a current, dated evidence image."""
+    if not isinstance(observations, list) or len(observations) != 3:
+        raise ValueError("Film feedback requires three dated evidence records")
+    text = {row["path"]: row for row in native["text"]}
+    media = {row["path"]: row["asset_id"] for row in native["media"]}
+    events = {row["path"]: row for row in native["events"]}
+    entries = []
+    for index, observed in enumerate(observations):
+        asset_id = media.get(f"/media/photos/{index}/path", "")
+        asset = assets.get(asset_id, {})
+        label = text.get(f"/content/comments/{index}/text")
+        event = events.get(f"/timing/events/comments/{index}")
+        if (
+            not isinstance(observed, dict)
+            or set(observed)
+            != {"asset_id", "label", "likes", "source_ref", "observed_at"}
+            or asset.get("kind") != "image"
+            or asset.get("source") != "project_upload"
+            or not label
+            or not event
+            or observed["asset_id"] != asset_id
+            or observed["label"] != label["text"]
+            or type(observed["likes"]) is not int
+            or observed["likes"] < 0
+            or not isinstance(observed["source_ref"], str)
+            or not 1 <= len(observed["source_ref"].strip()) <= 400
+            or not isinstance(observed["observed_at"], str)
+            or event["edge"] != "start"
+            or event["token_id"] != label["token_ids"][0]
+        ):
+            raise ValueError(
+                "Film feedback count needs matching project evidence and words"
+            )
+        if datetime.fromisoformat(observed["observed_at"]).utcoffset() is None:
+            raise ValueError("Film feedback observation time needs a timezone")
+        entries.append(
+            {
+                **observed,
+                "path": f"/content/comments/{index}/likes",
+                "asset_sha256": asset["sha256"],
+                "token_id": event["token_id"],
+                "semantic_review": "unreviewed",
+            }
+        )
+    return entries
 
 
 def live_package_template(template: dict[str, Any]) -> dict[str, Any]:

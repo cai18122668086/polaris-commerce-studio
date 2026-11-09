@@ -28,6 +28,7 @@ from .video_editing_hypit_strips import (
 )
 from .video_editing_media_clocks import clock_profile
 from .video_editing_native_content import (
+    FILM_FEEDBACK_GROUP,
     PACKAGE_GROUP,
     ROLE_CHAIN_GROUP,
     live_package_template,
@@ -217,6 +218,22 @@ def input_contract(
                     else "native_keyframe_clock"
                 )
                 unit = "frames"
+            elif group["id"] == FILM_FEEDBACK_GROUP and names == [
+                "content",
+                "comments",
+                "likes",
+            ]:
+                category = "evidence_bound_comment_likes"
+            elif (
+                group["id"] == FILM_FEEDBACK_GROUP
+                and names[:2]
+                == [
+                    "content",
+                    "comments",
+                ]
+                and key in {"x", "y", "size"}
+            ):
+                category = "native_parameter"
             elif first == "content" and not (
                 group["id"] == PACKAGE_GROUP and names == ["content", "items", "color"]
             ):
@@ -352,6 +369,23 @@ def input_contract(
         **(
             {"native_scene_chain": role_scene_contract()}
             if group["id"] == ROLE_CHAIN_GROUP
+            else {}
+        ),
+        **(
+            {
+                "native_evidence_requirements": {
+                    "counts": [
+                        f["path"]
+                        for f in fields
+                        if f["category"] == "evidence_bound_comment_likes"
+                    ],
+                    "binding": (
+                        "点赞数由可信配方绑定本期对应证据图、记录来源和采集时间。"
+                        "规划只提供评论实录词点与素材 ID。缺少点赞记录时登记缺口。"
+                    ),
+                }
+            }
+            if group["id"] == FILM_FEEDBACK_GROUP
             else {}
         ),
         "fresh_recipe_required": True,

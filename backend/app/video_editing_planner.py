@@ -101,6 +101,15 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
                     "resource_paths": parameters["resource_paths"],
                     "scope": parameters["array_capacity_scope"],
                     **(
+                        {
+                            "native_evidence_requirements": parameters[
+                                "native_evidence_requirements"
+                            ]
+                        }
+                        if "native_evidence_requirements" in parameters
+                        else {}
+                    ),
+                    **(
                         {"native_scene_chain": parameters["native_scene_chain"]}
                         if "native_scene_chain" in parameters
                         else {}

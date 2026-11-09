@@ -44,12 +44,14 @@ from .video_editing_hypit_strips import (
 from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_native_content import (
     CHAPTER_PATH,
+    FILM_FEEDBACK_GROUP,
     NUMBER_GROUP,
     PACKAGE_GROUP,
     ROLE_CHAIN_GROUP,
     YEAR_GROUP,
     YEAR_PATH,
     chapter_ordinal,
+    film_feedback_entries,
     live_package_template,
     number_glyphs,
     package_entries,
@@ -324,6 +326,12 @@ def compile_native_job(
         }
         | media_clocks
     )
+    if beat.group_id == FILM_FEEDBACK_GROUP:
+        feedback = film_feedback_entries(
+            native, asset_files, recipe.get("film_feedback")
+        )
+        assignments.update({row["path"]: row["likes"] for row in feedback})
+        native["film_feedback"] = feedback
     if "chapter_start_token_ids" in recipe:
         if CHAPTER_PATH in assignments:
             raise ValueError(
@@ -424,6 +432,7 @@ def compile_native_job(
             "resource",
             "native_keyframe_clock",
             "hypit_source_start",
+            "evidence_bound_comment_likes",
         }:
             if path not in assignments or path not in placeholders or value is not None:
                 raise ValueError(
@@ -568,6 +577,7 @@ def compile_native_job(
                         "translation_labels",
                         "role_scene_chain",
                         "package_entries",
+                        "film_feedback",
                     )
                     if key in native
                 }

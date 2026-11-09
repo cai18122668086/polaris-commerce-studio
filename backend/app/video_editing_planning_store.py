@@ -106,7 +106,10 @@ def planning_response(
         "aligned_spans": row.result.get("aligned_spans", []),
         "semantic_origin": "tengli_gateway" if row.status == "completed" else None,
         "semantic_review": "unreviewed",
-        "native_render_state": "not_compiled",
+        "native_render_state": "preview_requested"
+        if row.result.get("preview_task_id")
+        else "not_compiled",
+        "preview_task_id": row.result.get("preview_task_id"),
         "overlay_template": row.snapshot.get("overlay_template"),
         "unavailable_template_group_ids": sorted(
             row.snapshot["planning_runtime"]["unavailable_template_groups"]

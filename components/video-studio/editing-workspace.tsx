@@ -32,10 +32,16 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
+  const [linkedPreview, setLinkedPreview] = useState<{ projectId: string; id: string }>();
   const reload = useCallback(async () => {
     const result = await apiClient.GET(`${root}/editing-tasks`, { ...options(), params: { path: { workspace_id: workspaceId }, query: { project_id: projectId } } });
-    return unwrapApiResponse(result) as EditingTask[];
-  }, [workspaceId, projectId, options]);
+    const rows = unwrapApiResponse(result);
+    if (linkedPreview?.projectId !== projectId || rows.some(row => row.id === linkedPreview.id)) return rows;
+    const detail = unwrapApiResponse(await apiClient.GET(`${root}/editing-tasks/{task_id}`, {
+      ...options(), params: { path: { workspace_id: workspaceId, task_id: linkedPreview.id } },
+    }));
+    return detail.project_id === projectId ? [detail, ...rows] : rows;
+  }, [workspaceId, projectId, options, linkedPreview]);
   useEffect(() => {
     let live = true;
     const update = () => { void reload().then(rows => { if (live) { setTasks(rows); setLoadError(""); } }).catch(() => { if (live) setLoadError("暂时无法读取剪辑任务，请稍后重试。"); }); };
@@ -92,7 +98,11 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
     {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion} onCreated={async () => { setTasks(await reload()); }} />}
-    {saved && <details onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} onNativePlan={() => setPlansVersion(value => value + 1)} />}</details>}
+    {saved && <details onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} onNativePlan={() => setPlansVersion(value => value + 1)} onPreview={task => {
+      setTasks(rows => [task, ...rows.filter(row => row.id !== task.id)]);
+      setLinkedPreview({ projectId, id: task.id });
+      setPlansVersion(value => value + 1);
+    }} />}</details>}
     <details onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>原库目录与项目选组备忘</summary>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
     <div className={styles.tasks}>{tasks.map(task => {
       const final = task.artifacts.find(a => a.role === "final");
@@ -101,7 +111,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
       const sourceReceipt = task.artifacts.find(a => a.role === "source_receipt");
       const layoutReceipt = task.artifacts.find(a => a.role === "layout_receipt");
       const editReceipt = task.options.native_edits && task.artifacts.find(a => a.role === "compile_receipt");
-      return <article key={task.id}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
+      return <article key={task.id} id={`editing-task-${task.id}`}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
           原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>
           {task.source_origin.confirmed_version_id && <> · 确认稿 <code title={task.source_origin.confirmed_version_id}>{task.source_origin.confirmed_version_id.slice(0, 8)}</code></>}

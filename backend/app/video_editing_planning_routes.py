@@ -8,8 +8,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
 from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.orm import Session
 
-from .auth import SessionDependency, require_workspace_write
+from .auth import SessionDependency, WorkspaceContext, require_workspace_write
+from .config import Settings
 from .errors import ApiError
 from .motion_library import sha256
 from .video_editing_contracts import (
@@ -17,6 +19,8 @@ from .video_editing_contracts import (
     EditingOverlayTemplate,
     EditingPlanningTaskCreate,
     EditingPlanningTaskResponse,
+    EditingTaskCreate,
+    EditingTaskResponse,
 )
 from .video_editing_native_plans import (
     plan_response,
@@ -32,8 +36,19 @@ from .video_editing_planning_store import (
     planning_response,
     planning_root,
 )
-from .video_editing_task_models import EditingPlanningTaskRecord
-from .video_editing_task_routes import enabled, own_project, own_task
+from .video_editing_task_models import (
+    EditingNativePlanRecord,
+    EditingPlanningTaskRecord,
+)
+from .video_editing_task_routes import (
+    enabled,
+    own_project,
+    own_task,
+    submit_editing_task,
+)
+from .video_editing_task_routes import (
+    response as editing_response,
+)
 from .video_studio_routes import VideoWorkspace
 
 router = APIRouter(
@@ -128,9 +143,19 @@ def create_native_candidate(
     settings = enabled(request)
     row = own_planning_task(session, workspace, str(task_id))
     own_project(session, workspace, row.project_id)
+    candidate = gateway_candidate(session, settings, workspace, row)
+    return plan_response(candidate, settings, transparent_original_groups(settings))
+
+
+def gateway_candidate(
+    session: Session,
+    settings: Settings,
+    workspace: WorkspaceContext,
+    row: EditingPlanningTaskRecord,
+) -> EditingNativePlanRecord:
     if not settings.video_editing_native_plan_enabled:
         raise ApiError(503, "EDITING_NATIVE_PLAN_DISABLED", "原生编排服务尚未开放。")
-    candidate = register_gateway_plan(
+    return register_gateway_plan(
         session,
         settings,
         workspace.workspace_id,
@@ -138,7 +163,49 @@ def create_native_candidate(
         row.id,
         str(uuid5(NAMESPACE_URL, f"tengli:{PROFILE_ID}:{row.id}")),
     )
-    return plan_response(candidate, settings, transparent_original_groups(settings))
+
+
+@router.post(
+    "/editing-planning-tasks/{task_id}/preview",
+    response_model=EditingTaskResponse,
+)
+def create_preview(
+    task_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict[str, Any]:
+    require_workspace_write(workspace)
+    settings = enabled(request)
+    row = own_planning_task(session, workspace, str(task_id))
+    own_project(session, workspace, row.project_id)
+    request_id = uuid5(NAMESPACE_URL, f"tengli:planning-preview-v1:{row.id}")
+    if saved := row.result.get("preview_task_id"):
+        previous = own_task(session, workspace, saved)
+        if (previous.request_id, previous.project_id, previous.source_id) != (
+            str(request_id),
+            row.project_id,
+            row.source_id,
+        ):
+            raise ApiError(
+                409, "EDITING_PREVIEW_LINK_CHANGED", "预览与已保存的规划不匹配。"
+            )
+        return editing_response(previous, session)
+    candidate = gateway_candidate(session, settings, workspace, row)
+    payload = EditingTaskCreate.model_validate(
+        {
+            "request_id": request_id,
+            "source_id": candidate.source_id,
+            "options": {
+                "mode": "native_plan",
+                "native_plan_id": candidate.id,
+                "source_subtitles": candidate.details["source_subtitles"],
+                "caption_font_id": candidate.recipes["design"]["caption_font_id"],
+                "delivery": "preview_first",
+            },
+        }
+    )
+    return submit_editing_task(payload, request, workspace, session, preview_for=row)
 
 
 @router.post(

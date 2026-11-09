@@ -5892,8 +5892,11 @@
             "type": "string"
           },
           "native_render_state": {
-            "const": "not_compiled",
             "default": "not_compiled",
+            "enum": [
+              "not_compiled",
+              "preview_requested"
+            ],
             "title": "Native Render State",
             "type": "string"
           },
@@ -5917,6 +5920,17 @@
               }
             ],
             "title": "Prepared Task Id"
+          },
+          "preview_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Task Id"
           },
           "project_id": {
             "title": "Project Id",
@@ -19781,6 +19795,63 @@
           }
         ],
         "summary": "Create Native Candidate",
+        "tags": [
+          "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/preview": {
+      "post": {
+        "operationId": "create_preview_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Preview",
         "tags": [
           "video-editing-planning"
         ]

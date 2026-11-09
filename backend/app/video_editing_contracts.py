@@ -529,7 +529,10 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     aligned_spans: list[EditingPlanningSpan] = Field(default_factory=list)
     semantic_origin: Literal["tengli_gateway"] | None
     semantic_review: Literal["unreviewed"] = "unreviewed"
-    native_render_state: Literal["not_compiled"] = "not_compiled"
+    native_render_state: Literal["not_compiled", "preview_requested"] = "not_compiled"
+    preview_task_id: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     unavailable_template_group_ids: list[str] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )

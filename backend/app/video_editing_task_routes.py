@@ -38,6 +38,7 @@ from .video_editing_source_lineage import freeze_generation_source, source_origi
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingNativePlanRecord,
+    EditingPlanningTaskRecord,
     EditingSourceRecord,
     EditingTaskRecord,
     EditingTranscriptRevisionRecord,
@@ -419,8 +420,27 @@ def create_task(
     workspace: VideoWorkspace,
     session: SessionDependency,
 ) -> dict[str, Any]:
+    return submit_editing_task(body, request, workspace, session)
+
+
+def submit_editing_task(
+    body: EditingTaskCreate,
+    request: Request,
+    workspace: WorkspaceContext,
+    session: Session,
+    *,
+    preview_for: EditingPlanningTaskRecord | None = None,
+) -> dict[str, Any]:
     require_workspace_write(workspace)
     settings = enabled(request)
+
+    def link_preview(task: EditingTaskRecord) -> bool:
+        if preview_for is None or preview_for.result.get("preview_task_id") == task.id:
+            return False
+        preview_for.result = {**preview_for.result, "preview_task_id": task.id}
+        preview_for.revision += 1
+        return True
+
     payload = body.model_dump(mode="json")
     if payload["options"]["transcript_revision_id"] is None:
         # Preserve replay identity of tasks submitted before correction support.
@@ -440,6 +460,8 @@ def create_task(
             raise ApiError(
                 409, "EDITING_REQUEST_REUSED", "此请求编号已用于不同的剪辑内容。"
             )
+        if link_preview(previous):
+            session.commit()
         return response(previous, session)
     source: EditingSourceRecord | None
     if body.options.native_plan_id and body.generation_task_id:
@@ -534,6 +556,7 @@ def create_task(
         options=body.options.model_dump(mode="json"),
     )
     session.add(row)
+    link_preview(row)
     try:
         session.commit()
     except IntegrityError:
@@ -546,6 +569,8 @@ def create_task(
             )
         )
         if concurrent and concurrent.request_hash == fingerprint:
+            if link_preview(concurrent):
+                session.commit()
             return response(concurrent, session)
         raise ApiError(
             409, "EDITING_TASK_CONFLICT", "剪辑请求发生冲突，请刷新任务后重试。"

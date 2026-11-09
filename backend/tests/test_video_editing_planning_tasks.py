@@ -7,6 +7,7 @@ import wave
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -16,7 +17,9 @@ from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy import create_engine, inspect, select, text
 
+from app import video_editing_planning_routes as planning_routes
 from app import video_editing_planning_worker as worker
+from app import video_editing_task_routes as task_routes
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_contracts import SemanticPlan
@@ -27,6 +30,7 @@ from app.video_editing_question_branch import QUESTION_FONT
 from app.video_editing_task_models import (
     EditingPlanningAttemptRecord,
     EditingPlanningTaskRecord,
+    EditingTaskRecord,
 )
 from app.video_editing_template_materials import (
     template_image_requirements,
@@ -307,6 +311,67 @@ def test_one_execution_per_prepared_request_and_valid_response_contract(
     )
     assert provider.calls == 1
     assert result["semantic"] == semantic.model_dump(mode="json")
+
+
+def test_completed_planning_preview_is_linked_before_dispatch_and_replayed(
+    video, tmp_path, monkeypatch
+):
+    client, _, ws, settings, source, task, semantic = setup(
+        video, tmp_path, monkeypatch
+    )
+    factory = client.app.state.session_factory
+    settings.video_editing_native_plan_enabled = True
+    prepared = prepare(client, ws, settings, task)
+    root = base(ws) + "/editing-planning-tasks/"
+    rejected = client.post(root + prepared["id"] + "/preview")
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "EDITING_PLANNING_RESULT_REQUIRED"
+    enable_fixture(settings)
+    pending = create(client, ws, task["id"], "generate", prepared["id"]).json()
+    provider = Provider(semantic)
+    worker.process(pending["id"], settings, factory, provider)
+    candidate = SimpleNamespace(
+        id=str(uuid4()),
+        source_id=source,
+        details={"source_subtitles": "none"},
+        recipes={"design": {"caption_font_id": "font-d1961be1161ea1be"}},
+    )
+    adopted = []
+
+    def gateway(_session, _settings, _workspace, row):
+        assert row.status == "completed"
+        adopted.append(row.id)
+        return candidate
+
+    def admit(_session, _settings, _plan, original, options):
+        assert original.id == source
+        assert str(options.native_plan_id) == candidate.id
+        assert options.delivery == "preview_first"
+
+    monkeypatch.setattr(planning_routes, "gateway_candidate", gateway)
+    monkeypatch.setattr(task_routes, "admit_render_plan", admit)
+    dispatched = []
+
+    def observe(preview_id):
+        with factory() as session:
+            row = session.get(EditingPlanningTaskRecord, pending["id"])
+            render = session.get(EditingTaskRecord, preview_id)
+            assert row.result["preview_task_id"] == render.id
+        dispatched.append(preview_id)
+
+    client.app.state.editing_dispatcher = observe
+    response = client.post(root + pending["id"] + "/preview")
+    assert response.status_code == 200, response.text
+    preview = response.json()
+    assert preview["status"] == "queued" and not preview["artifacts"]
+    replay = client.post(root + pending["id"] + "/preview").json()
+    assert replay["id"] == preview["id"]
+    assert adopted == [pending["id"]] and dispatched == [preview["id"]]
+    planning = client.get(root + pending["id"]).json()
+    assert planning["preview_task_id"] == preview["id"]
+    assert planning["native_render_state"] == "preview_requested"
+    assert planning["semantic"] == semantic.model_dump(mode="json")
+    assert provider.calls == 1
 
 
 @pytest.mark.parametrize("malformed", [False, True, "envelope"])

@@ -8,14 +8,16 @@ import { EditingProjectMaterials } from "./editing-project-materials";
 import styles from "./editing-workspace.module.css";
 
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
+type PreviewTask = components["schemas"]["EditingTaskResponse"];
 type OverlayTemplate = components["schemas"]["EditingOverlayTemplate"];
 type BaseTask = { id: string; status: string; created_at: string; artifacts: { role: string }[] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = { EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。", EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。", EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。", EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。", EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。", EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。", EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。" };
 
-export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan }: {
+export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, onPreview }: {
   workspaceId: string; projectId: string; tasks: BaseTask[]; onNativePlan: () => void;
+  onPreview: (task: PreviewTask) => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState("");
@@ -86,6 +88,24 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan }:
     } catch (caught) { setError(caught instanceof Error ? caught.message : "原生编排未确认，可重试此操作。"); }
     finally { setBusy(false); }
   };
+  const preview = async (job: Job) => {
+    setBusy(true); setError("");
+    try {
+      const task = unwrapApiResponse(job.preview_task_id
+        ? await apiClient.GET(`${root}/editing-tasks/{task_id}`, {
+          params: { path: { workspace_id: workspaceId, task_id: job.preview_task_id } }, signal: AbortSignal.timeout(12000),
+        })
+        : await apiClient.POST(`${root}/editing-planning-tasks/{task_id}/preview`, {
+          params: { path: { workspace_id: workspaceId, task_id: job.id } }, signal: AbortSignal.timeout(12000),
+        }));
+      if (task.project_id !== projectId) throw new Error("预览任务与当前项目不匹配。");
+      setJobs(rows => rows.map(row => row.id === job.id
+        ? { ...row, preview_task_id: task.id, native_render_state: "preview_requested" }
+        : row));
+      onPreview(task);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "预览提交未确认，再次点击会查询同一任务。"); }
+    finally { setBusy(false); }
+  };
   return <section aria-label="语义规划任务">
     <p className={styles.note}>先用已有成片的实际转录准备完整请求，再生成重点与选组候选。准备不会重新配音、识别或调用模型。</p>
     <label>使用哪条成片的实际转录？<select aria-label="使用哪条成片的实际转录？" value={selected} onChange={event => setSelected(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
@@ -125,10 +145,15 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan }:
         <button type="button" disabled={busy || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>生成重点与选组候选（付费）</button>
         {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
       </>}
-      {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}</li>)}</ul><p className={styles.note}>语义与事实待核对。原生编排生成后可进入候选预览。</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
-      {job.status === "completed" && job.overlay_template && (nativePlans[job.id]
-        ? <a href={`#editing-native-plan-${nativePlans[job.id]}`}>查看本次原生编排</a>
-        : <button type="button" disabled={busy} onClick={() => void adopt(job)}>生成原生编排</button>)}
+      {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}</li>)}</ul><p className={styles.note}>语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
+      {job.status === "completed" && job.overlay_template && <>
+        {job.preview_task_id && tasks.some(task => task.id === job.preview_task_id)
+          ? <a href={`#editing-task-${job.preview_task_id}`}>查看本次代理预览任务</a>
+          : <button type="button" disabled={busy} onClick={() => void preview(job)}>{job.preview_task_id ? "读取本次代理预览任务" : "按本次规划生成代理预览"}</button>}
+        {nativePlans[job.id]
+          ? <a href={`#editing-native-plan-${nativePlans[job.id]}`}>查看本次原生编排</a>
+          : <button type="button" disabled={busy} onClick={() => void adopt(job)}>保存编排后调整</button>}
+      </>}
       {job.status === "failed" && <p role="alert" className={styles.error}>{errors[job.error_code || ""] || "本次规划未完成，请核对输入或服务配置。"}</p>}
       {job.call_state === "intent_saved" && <p className={styles.note}>请求已登记提交，结果未确认；不能自动重发付费请求。取消只能停止后续处理。</p>}
       {["queued", "running"].includes(job.status) && <button type="button" disabled={busy || job.cancel_requested} onClick={() => void action(job, "cancel")}>{job.cancel_requested ? "正在取消" : job.call_state === "not_submitted" ? "取消" : "取消后续处理"}</button>}

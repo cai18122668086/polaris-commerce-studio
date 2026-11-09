@@ -260,6 +260,84 @@ def test_episode_uses_actual_word_bounds_and_original_selection_protocol(tmp_pat
     assert sha256(package / "effect.json") == source
 
 
+def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(tmp_path):
+    root, package, prepared, transcript, plan, authoring, settings, options = protocol(
+        tmp_path
+    )
+    old_recipe = authoring.model_dump(mode="json")
+    assert "sound" not in old_recipe
+    assets = read_json(package / "asset-manifest.json")
+    (package / "assets/sfx").mkdir(parents=True)
+    for asset_id, kind, relative in (
+        ("original-click", "sfx", "assets/sfx/click.wav"),
+        ("original-track", "music", "music.wav"),
+    ):
+        file = package / relative
+        file.write_bytes(b"protocol fixture for asset binding, never rendered")
+        assets["assets"].append(
+            {
+                "id": asset_id,
+                "kind": kind,
+                "path": relative,
+                "duration_seconds": 4,
+                "sha256": sha256(file),
+            }
+        )
+    click = assets["assets"][-2]
+    atomic_json(package / "asset-manifest.json", assets)
+    atomic_json(
+        package / "assets/sfx/runtime-assets.json",
+        {"assets": [{**click, "path": "click.wav"}]},
+    )
+    plan.beats[0].native_events[0].token_id = "t1"
+    mixed = EpisodeRecipeBundle.model_validate(
+        {
+            **old_recipe,
+            "sound_mode": "native_mix",
+            "sound": {
+                "fx": [
+                    {
+                        "asset_id": "original-click",
+                        "beat_id": "effect",
+                        "event_path": "/events/enter_start",
+                        "phase": "entry",
+                        "purpose": "actual cue fixture",
+                        "trim_duration_seconds": 0.15,
+                        "target_peak_dbfs": -26,
+                    }
+                ],
+                "music": [
+                    {
+                        "asset_id": "original-track",
+                        "start": {"token_id": "t0", "edge": "start"},
+                        "end": {"token_id": "t3", "edge": "end"},
+                        "gain_db": -30,
+                        "fade_seconds": 0.2,
+                        "reason": "current track fixture",
+                        "envelope": [
+                            {"at": {"token_id": "t1", "edge": "start"}, "gain_db": -4}
+                        ],
+                    }
+                ],
+            },
+        }
+    )
+    episode = compile_episode(
+        root, prepared, transcript, plan, mixed, {}, options, settings
+    )
+    assert episode["fx"][0]["anchor_seconds"] == 0.6
+    assert episode["fx"][0]["anchor_ref"] == {
+        "shot_index": 0,
+        "config_path": ["events", "enter_start"],
+        "unit": "frames",
+    }
+    assert episode["music"][0]["start_seconds"] == 0.1
+    assert episode["music"][0]["envelope"] == [{"seconds": 0.5, "gain_db": -4}]
+    assert (
+        read_json(root / "audio-plan.json")["fx"][0]["asset_sha256"] == click["sha256"]
+    )
+
+
 @pytest.mark.parametrize(
     "problem", ["missing_recipe", "missing_relation", "wrong_layer"]
 )

@@ -29,6 +29,7 @@ from .video_editing_captioning import (
     write_caption_receipt,
 )
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
+from .video_editing_native_sound import verify_rendered_sound
 
 
 class EditingFailure(Exception):
@@ -639,6 +640,17 @@ def validate_result(
     }
     if validation["native_source_sha256"] != prepared["source_sha256"]:
         raise EditingFailure("EDITING_OUTPUT_SOURCE_MISMATCH")
+    if (root / "audio-plan.json").is_file():
+        try:
+            if native["sha256"] != validation["sha256"]:
+                raise ValueError("Native mix output changed")
+            audio = verify_rendered_sound(
+                root, native, read_json(root / "audio-plan.json")
+            )
+            atomic_json(root / "audio-validation.json", audio)
+            validation["native_mix_validation"] = "passed"
+        except (ValueError, KeyError, TypeError, OSError):
+            raise EditingFailure("EDITING_SOUND_OUTPUT_INVALID") from None
     if (root / "caption-adapter-layout.json").is_file():
         try:
             validation["caption_layout"] = verify_native_caption_layout(root)

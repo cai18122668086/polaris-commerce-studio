@@ -20,6 +20,7 @@ from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_native_compiler import compile_native_job
+from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_pipeline import EditingFailure, baseline_documents, layout_captions
 from .video_editing_planner import validate_plan
 from .video_studio_schemas import StrictVideoModel
@@ -63,7 +64,16 @@ class EpisodeRecipeBundle(StrictVideoModel):
     protected_regions: list[dict[str, Any]] = Field(default_factory=list)
     entries: dict[str, NativeEpisodeEntry]
     tools: dict[str, str] = Field(default_factory=dict)
-    sound_mode: Literal["original_voice_only"]
+    sound_mode: Literal["original_voice_only", "native_mix"]
+    sound: NativeSoundDesign | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+
+    @model_validator(mode="after")
+    def sound_mode_matches_design(self) -> Self:
+        if (self.sound_mode == "native_mix") != (self.sound is not None):
+            raise ValueError("Native mix requires a current sound design")
+        return self
 
 
 RELATION_MAPPING = {
@@ -175,6 +185,7 @@ def compile_episode(
     positions = {t.id: i for i, t in enumerate(tokens)}
     issues: list[dict[str, Any]] = []
     compiled: list[dict[str, Any]] = []
+    sound_events: dict[tuple[str, str], tuple[int, dict]] = {}
     prior_end = 0
     for index, beat in enumerate(semantic.beats):
         first, last = positions[beat.first_token_id], positions[beat.last_token_id]
@@ -298,6 +309,12 @@ def compile_episode(
                     ):
                         raise ValueError("Conflicting instance resource binding")
                     bindings["resources"][rid] = value
+                if authoring.sound:
+                    for event in read_json(directory / "word-bindings.json")["events"]:
+                        sound_events[beat.id, event["path"]] = (
+                            len(episode["shots"]),
+                            event,
+                        )
                 shot_indices.append(len(episode["shots"]))
                 episode["shots"].append(
                     {
@@ -417,6 +434,19 @@ def compile_episode(
                 "license": asset.get("license"),
             }
         )
+    sound_plan = None
+    if authoring.sound and not issues:
+        try:
+            sound_plan = compile_sound(
+                package,
+                transcript,
+                episode,
+                authoring.sound,
+                sound_events,
+                choice_snapshot,
+            )
+        except (ValueError, KeyError, IndexError, TypeError, OSError):
+            issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})
     try:
         Draft202012Validator(read_json(package / "params.schema.json")).validate(
             episode
@@ -447,7 +477,11 @@ def compile_episode(
     }
     atomic_json(root / "compile-diagnostics.json", diagnostic)
     if issues:
+        if any(row["code"] == "EDITING_SOUND_INPUTS_REQUIRED" for row in issues):
+            raise EditingFailure("EDITING_SOUND_INPUTS_REQUIRED")
         raise EditingFailure("EDITING_NATIVE_INPUTS_REQUIRED")
+    if sound_plan is not None:
+        atomic_json(root / "audio-plan.json", sound_plan)
     atomic_json(root / "semantic-plan.json", semantic.model_dump(mode="json"))
     atomic_json(root / "episode-recipes.json", authoring.model_dump(mode="json"))
     atomic_json(root / "caption-anchors.json", captions)

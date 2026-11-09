@@ -563,6 +563,10 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     ),
                 ]
             )
+        if validation.get("native_mix_validation") == "passed":
+            artifacts.append(
+                ("audio_receipt", root / "audio-validation.json", "application/json")
+            )
         if correction:
             artifacts.append(
                 (

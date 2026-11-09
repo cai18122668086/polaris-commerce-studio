@@ -84,10 +84,12 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     <details onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>原库目录与项目选组备忘</summary>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
     <div className={styles.tasks}>{tasks.map(task => {
       const final = task.artifacts.find(a => a.role === "final");
+      const audioReceipt = task.artifacts.find(a => a.role === "audio_receipt");
       return <article key={task.id}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}
         {task.status === "failed" && <p role="alert">{errorLabel[task.error_code || ""] || "本次剪辑未完成，可以重试；已完成的配音不会重新生成。"}</p>}
         {final && <><video id={`editing-film-${task.id}`} controls preload="metadata" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
+          {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查，听感待验收。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}
           {task.artifacts.some(a => a.role === "transcript") && <button type="button" onClick={() => setCorrectionTask(correctionTask === task.id ? "" : task.id)}>{correctionTask === task.id ? "收起校对" : "校对字幕"}</button>}
           {correctionTask === task.id && <TranscriptEditor key={task.id} workspaceId={workspaceId} taskId={task.id} options={task.options} onCreated={async () => { setTasks(await reload()); }} />}</>}
         {["queued", "running"].includes(task.status) && <button type="button" disabled={busy || task.cancel_requested} onClick={() => void action(task, "cancel")}>{task.cancel_requested ? "正在取消" : "取消"}</button>}

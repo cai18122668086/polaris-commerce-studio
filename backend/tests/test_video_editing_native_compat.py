@@ -2,6 +2,12 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from app import video_editing_native_compat as compat
+from app.motion_library import atomic_json, sha256
 
 
 def test_readonly_original_tree_stays_unchanged_but_task_copies_can_be_edited(tmp_path):
@@ -103,3 +109,54 @@ assert cache_path('shared', 'unrelated').as_posix() == 'shared/unrelated'
         first.write_text(f'{{"group_id":"{group}","offset":2}}', encoding="utf-8")
         assert cache_for(first) != opening_cache
     assert cache_for(unrelated) == "shared/cache/mattes"
+
+
+def test_opening_shared_validator_receives_style_only_during_validation(
+    tmp_path, monkeypatch
+):
+    package = tmp_path / "package"
+    root = tmp_path / "task"
+    entry = package / compat._LYO_SHARED_ENTRY
+    loader = package / "commercial_runtime/native.py"
+    template = package / compat._LYO_CIRCLE_INPUT
+    for path in (entry, loader):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# validator scope fixture\n", encoding="utf-8")
+    style = {"background": {"mode": "solid"}, "geometry": {}}
+    atomic_json(template, {"style": style})
+    job = root / "plans/opening.json"
+    atomic_json(job, {"group_id": "LYO01"})
+    monkeypatch.setattr(sys, "argv", ["worker", "--job", str(job)])
+    monkeypatch.setattr(compat, "_LYO_CIRCLE_INPUT_SHA", sha256(template))
+    monkeypatch.setattr(
+        compat,
+        "clock_profile",
+        lambda _: {
+            "source_files": {
+                path.relative_to(package).as_posix(): sha256(path)
+                for path in (entry, loader)
+            }
+        },
+    )
+
+    def original_validate(config):
+        if config["content"] != {"caption": "本期词点"}:
+            raise ValueError("Original text role validation")
+        return config["style"]
+
+    def original_draw(config):
+        return set(config)
+
+    def original_module(path, name):
+        return SimpleNamespace(validate=original_validate, draw=original_draw)
+
+    native = SimpleNamespace(__file__=str(loader), module=original_module)
+    monkeypatch.setattr(compat.importlib, "import_module", lambda _: native)
+    compat.install_native_opening_validator(package, root)
+    config = {"group_id": "LYO01", "content": {"caption": "本期词点"}}
+    loaded = native.module(entry)
+    assert loaded.validate(config) == style
+    assert "style" not in loaded.draw(config)
+    with pytest.raises(ValueError, match="Original text role validation"):
+        loaded.validate({**config, "content": {"unknown": "本期词点"}})
+    assert native.module(loader).validate is original_validate

@@ -15,12 +15,72 @@ from uuid import uuid4
 
 from PIL import ImageFont
 
+from .motion_library import read_json, sha256
+from .video_editing_media_clocks import clock_profile
+
 _OFFSET_INSENSITIVE_MATTE_GROUPS = {
     *(f"AZL{number:02}" for number in range(1, 8)),
     "YYO02",
     "YYO07",
     *(f"YY6O{number:02}" for number in range(1, 7)),
 }
+_LYO_PLAIN_GROUPS = frozenset(("LYO01", "LYO03", "LYO04"))
+_LYO_SHARED_ENTRY = Path(
+    "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/"
+    "老于_4种口播开场_20261105/render.py"
+)
+_LYO_CIRCLE_INPUT = Path("catalog/inputs/LYO02.json")
+_LYO_CIRCLE_INPUT_SHA = (
+    "70565a2ea6733159d30dd838c59e3e288d98976c9d28a67574fde9db902c1b79"
+)
+
+
+def install_native_opening_validator(package: Path, root: Path) -> None:
+    """Give the shared validator its circle style only for its validation call."""
+    if "--job" not in sys.argv:
+        return
+    job_path = Path(sys.argv[sys.argv.index("--job") + 1]).resolve()
+    if job_path.parent != root / "plans":
+        return
+    group_id = read_json(job_path)["group_id"]
+    if group_id not in _LYO_PLAIN_GROUPS:
+        return
+    profile = clock_profile(group_id)
+    entry, template = package / _LYO_SHARED_ENTRY, package / _LYO_CIRCLE_INPUT
+    loader = Path("commercial_runtime/native.py")
+    if (
+        not profile
+        or sha256(entry) != profile["source_files"][_LYO_SHARED_ENTRY.as_posix()]
+        or sha256(package / loader) != profile["source_files"][loader.as_posix()]
+        or sha256(template) != _LYO_CIRCLE_INPUT_SHA
+    ):
+        raise ValueError("Original opening validator or reference style changed")
+    validation_style = read_json(template)["style"]
+    sys.path.insert(0, str(package))
+    try:
+        native: Any = importlib.import_module("commercial_runtime.native")
+    finally:
+        sys.path.pop(0)
+    if Path(native.__file__).resolve() != package / loader:
+        raise ValueError("Opening validation needs the pinned native loader")
+    load_module = native.module
+
+    def load_opening(path: str | Path, name: str = "motion_native") -> Any:
+        module = load_module(path, name)
+        if Path(path).resolve() == entry:
+            validate = module.validate
+
+            def validate_opening(config: dict) -> Any:
+                if config.get("group_id") == group_id and "style" not in config:
+                    # The original schema excludes style for these three groups.
+                    # The native draw still receives the original admitted input.
+                    return validate({**config, "style": validation_style})
+                return validate(config)
+
+            module.validate = validate_opening
+        return module
+
+    native.module = load_opening
 
 
 def isolate_native_matte_cache(package: Path, root: Path) -> None:

@@ -5,10 +5,12 @@ import copy
 import pytest
 
 from app import video_editing_media_clocks as clocks
+from app.errors import ApiError
 from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from app.motion_parameter_contracts import input_contract
-from app.video_editing_contracts import NativeMediaAnchor
+from app.video_editing_contracts import NativeMediaAnchor, SemanticBeat, TranscriptToken
 from app.video_editing_native_compiler import compile_native_job
+from app.video_editing_overlay_recipes import _opening_entry
 from tests.test_video_editing_native_compiler import inputs
 
 
@@ -412,3 +414,83 @@ def test_audited_source_cut_uses_both_measured_edges(tmp_path, monkeypatch):
         clocks.compile_media_clocks(
             package, group, contract, native, declaration, assets, transcript, {}
         )
+
+
+def test_opening_template_requires_synchronized_presenter_and_word_entrances(tmp_path):
+    package, transcript, _, _ = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="LYO03", backend="scene")
+    atomic_json(
+        package / "template.json",
+        {
+            "group_id": group["id"],
+            "frames": 98,
+            "content": {"title": "旧题", "subtitle": "旧说明"},
+            "events": {"shift_frames": -3, "title_frame": 15, "subtitle_frame": 66},
+            "media": {
+                "presenter": {
+                    "path": "input://previous-presenter",
+                    "offset_seconds": 9,
+                    "duration_seconds": 5,
+                    "end_policy": "hold",
+                }
+            },
+            "output": "input://historical-output",
+        },
+    )
+    transcript.tokens = [
+        TranscriptToken(id="t0", text="先看", start_ms=1000, end_ms=1220),
+        TranscriptToken(id="t1", text="规格", start_ms=1400, end_ms=1800),
+    ]
+    candidate = {
+        "id": "opening",
+        "group_id": group["id"],
+        "first_token_id": "t0",
+        "last_token_id": "t1",
+        "relation": "explanation",
+        "reason": "两处实际词点分别引出原生标题和说明。",
+        "asset_ids": ["source-current"],
+        "native_media": [
+            {"path": "/media/presenter/path", "asset_id": "source-current"}
+        ],
+        "native_text": [
+            {"path": "/content/title", "first_token_id": "t0", "last_token_id": "t0"},
+            {
+                "path": "/content/subtitle",
+                "first_token_id": "t1",
+                "last_token_id": "t1",
+            },
+        ],
+        "native_events": [
+            {"path": "/events/title_frame", "token_id": "t0", "edge": "start"},
+            {"path": "/events/subtitle_frame", "token_id": "t1", "edge": "start"},
+        ],
+    }
+    beat = SemanticBeat.model_validate(candidate)
+    assets = [
+        {
+            "id": "source-current",
+            "kind": "original_video",
+            "sha256": transcript.source_sha256,
+        }
+    ]
+    entry, anchors = _opening_entry(package, group, beat, transcript, assets)
+    assert entry.placement.layer == "scene"
+    assert entry.recipe["config"]["content"] == {"title": None, "subtitle": None}
+    assert entry.recipe["config"]["media"]["presenter"] == {
+        "path": None,
+        "offset_seconds": None,
+        "duration_seconds": None,
+        "end_policy": "error",
+    }
+    assert [event["value"] for event in anchors["events"]] == [0, 12]
+    beat.native_events[-1].token_id = "t0"
+    with pytest.raises(ApiError) as caught:
+        _opening_entry(package, group, beat, transcript, assets)
+    assert caught.value.code == "EDITING_TEMPLATE_OPENING_INPUTS_REQUIRED"
+    beat = SemanticBeat.model_validate(candidate)
+    with pytest.raises(ApiError) as caught:
+        _opening_entry(
+            package, group, beat, transcript, [{**assets[0], "sha256": "c" * 64}]
+        )
+    assert caught.value.code == "EDITING_TEMPLATE_OPENING_INPUTS_REQUIRED"

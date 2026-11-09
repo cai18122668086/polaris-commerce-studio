@@ -10,6 +10,28 @@ PREFERRED_OVERLAY_TYPES = 10
 LEGACY_PICTURE_TEMPLATE_ID = "picture-compare-v1"
 PICTURE_TEMPLATE_ID = "picture-compare-v2"
 ROTATION_TEMPLATE_ID = "rotation-cards-v1"
+PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
+_OPENING_PURPOSES = {
+    "LYO01": (
+        "用原放大与暗角强调一条口播短句",
+        "caption 最多 14 字，text_frame 锚定其首词。",
+    ),
+    "LYO02": (
+        "把同期人物缩入原圆窗，显示主题词",
+        "theme 最多 8 字。先绑定圆窗开始和完成的两个词点，"
+        "再将 text_frame 锚定主题首词。",
+    ),
+    "LYO03": (
+        "将主标题放在人物身后，随后显示口播说明",
+        "title 最多 4 字，subtitle 最多 12 字，各自的入场事件锚定首词。"
+        "主标题和说明要有足够间隔。",
+    ),
+    "LYO04": (
+        "用原变形人物窗引出一条口播短句",
+        "caption 最多 14 字，text_frame 锚定其首词。",
+    ),
+}
+OPENING_GROUPS = frozenset(_OPENING_PURPOSES)
 _SHARED_SLOTS = [
     {"group_id": "SG-S09", "purpose": "分别表达单件规格和到手总量"},
     {"group_id": "SG-S03", "purpose": "强调真实的使用时长或体验短句"},
@@ -64,6 +86,28 @@ _TEMPLATES = {
         "id": "roll-compare-v2",
         "name": "滚动报价与规格对照",
         "slots": [*_ROLL_SLOTS, _ACTION_SLOT],
+    },
+    PRESENTER_TEMPLATE_ID: {
+        "id": PRESENTER_TEMPLATE_ID,
+        "name": "人物开场与口播重点",
+        "slots": [
+            *(
+                {
+                    "group_id": group,
+                    "purpose": purpose,
+                    "layer": "scene",
+                    "binding": (
+                        "用本期原片绑定 /media/presenter/path，"
+                        "人物和声音继续按原时钟播放。"
+                        + instructions
+                        + "文本入场后保留实录阅读区间。"
+                    ),
+                }
+                for group, (purpose, instructions) in _OPENING_PURPOSES.items()
+            ),
+            *_ROLL_SLOTS,
+            _ACTION_SLOT,
+        ],
     },
     ROTATION_TEMPLATE_ID: {
         "id": ROTATION_TEMPLATE_ID,
@@ -143,6 +187,7 @@ def overlay_templates() -> list[dict]:
             "question-story-v1",
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
+            PRESENTER_TEMPLATE_ID,
         )
     ]
 

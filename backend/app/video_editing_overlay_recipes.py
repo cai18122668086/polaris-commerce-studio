@@ -1,5 +1,6 @@
 """Build trusted composition recipes from original inputs and measured word IDs."""
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ from .video_editing_native_sound import (
     NativeSoundDesign,
 )
 from .video_editing_overlay_templates import (
+    OPENING_GROUPS,
     PICTURE_TEMPLATE_ID,
     validate_template_plan,
 )
@@ -70,6 +72,10 @@ _ENTRY_SOUNDS = {
     "BG-S06": ("/events/upper_start", _SLIDE),
     "JJ-S01": ("/events/main/0", _CLICK),
     "JJ-S03": ("/events/line/0", _IMPACT),
+    "LYO01": ("/events/text_frame", _SLIDE),
+    "LYO02": ("/events/text_frame", _SELECT),
+    "LYO03": ("/events/subtitle_frame", _CLICK),
+    "LYO04": ("/events/text_frame", _SLIDE),
     "SG-S02": ("/events/drop_frame", _SELECT),
     "SG-S03": ("/events/enter_start", _IMPACT),
     "SG-S06": ("/events/upper_start", _SLIDE),
@@ -77,6 +83,14 @@ _ENTRY_SOUNDS = {
     "SG-S10": ("/events/enter_start", _SLIDE),
 }
 _CARD_ENTRY_PATHS = tuple(CARD_LANDMARKS)[:3]
+_OPENING_PRESENTER = "/media/presenter/path"
+_OPENING_FONT = "font-06e1a30f687ab7d3"
+_OPENING_ROLES = {
+    "/content/caption": ("/events/text_frame", 14),
+    "/content/theme": ("/events/text_frame", 8),
+    "/content/title": ("/events/title_frame", 4),
+    "/content/subtitle": ("/events/subtitle_frame", 12),
+}
 _MUSIC = ("bgm-b5035a43098ee293", "bgm-f318d21e6b2d98bb")
 _FONT_SIZES = {
     "BG-S06": {"upper": 42, "lower": 62},
@@ -503,6 +517,113 @@ def _rotation_entry(
     ), anchors
 
 
+def _opening_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    config = read_json(inside(package, group["input_template"]))
+    presenter_ids = {
+        row["id"]
+        for row in asset_cards
+        if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
+    }
+    try:
+        anchors = word_bindings(beat, transcript, contract, presenter_ids)
+        (presenter,) = anchors["media"]
+        text = {row["path"]: row for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        clock = anchors["clock"]
+        frames = math.ceil(
+            (clock["end_ms"] - clock["start_ms"]) / 1000 * clock["native_fps"]
+        )
+        if (
+            presenter["path"] != _OPENING_PRESENTER
+            or beat.asset_ids != [presenter["asset_id"]]
+            or set(text) != set(contract["text_paths"])
+            or set(events) != {row["path"] for row in contract["event_paths"]}
+        ):
+            raise ValueError("Missing current source, text or measured opening event")
+        for path, row in text.items():
+            event_path, capacity = _OPENING_ROLES[path]
+            event = events[event_path]
+            reading_frames = max(
+                6, math.ceil(len(row["text"]) * clock["native_fps"] / 8)
+            )
+            if (
+                not 1 <= len(row["text"]) <= capacity
+                or "\n" in row["text"]
+                or event["token_id"] != row["token_ids"][0]
+                or event["edge"] != "start"
+                or event["value"] + reading_frames > frames
+            ):
+                raise ValueError("Opening text needs capacity, its first word and time")
+        if beat.group_id == "LYO02" and not (
+            events["/style/geometry/mask_start_frame"]["value"]
+            < events["/style/geometry/mask_end_frame"]["value"]
+            < events["/events/text_frame"]["value"]
+        ):
+            raise ValueError("Opening round window must settle before its theme")
+        if beat.group_id == "LYO03" and (
+            events["/events/title_frame"]["value"] + 10
+            > events["/events/subtitle_frame"]["value"]
+        ):
+            raise ValueError("Opening title must finish its slide before the subtitle")
+    except ValueError as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_OPENING_INPUTS_REQUIRED",
+            f"{beat.group_id} 需绑定同期原片、各项实录文字和词点，"
+            "并留出入场及阅读时间。",
+        ) from error
+
+    slots = [
+        *text,
+        *events,
+        _OPENING_PRESENTER,
+        *(
+            field["path"]
+            for field in contract["fields"]
+            if field["category"] == "clock_owned_by_compiler"
+            and field["path"].startswith("/media/")
+        ),
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    config["events"]["shift_frames"] = 0
+    config["media"]["presenter"]["end_policy"] = "error"
+    dependencies = [_OPENING_FONT]
+    if beat.group_id in {"LYO02", "LYO03"}:
+        dependencies.append(ROTATION_MATTE)
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(
+            layer="scene", rect=[0, 0, 1, 1], reason="按原景别播放同期口播人物。"
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": beat.group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-presenter-openings-v1",
+            "design_reason": "沿用原景别、字型与轨迹，绑定当前人物和实录文字。",
+            "parameter_decisions": {
+                key: "沿用原生构图，人物时钟与文字按本期实录编译。" for key in config
+            },
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": dependencies,
+            "media_clocks": [
+                {"media_path": _OPENING_PRESENTER, "policy": "transcript_source_window"}
+            ],
+        },
+    ), anchors
+
+
 def build_overlay_recipes(
     package: Path,
     semantic: SemanticPlan,
@@ -554,6 +675,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = ROTATION_EVENTS
+        elif beat.group_id in OPENING_GROUPS:
+            entries[beat.id], anchors = _opening_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = (None,)
         else:
             make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
             entries[beat.id], anchors = make_entry(package, group, beat, transcript)

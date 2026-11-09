@@ -35,6 +35,7 @@ from .video_editing_overlay_templates import (
     LEGACY_PICTURE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
     PICTURE_TEMPLATE_ID,
+    PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
     overlay_template,
     validate_template_plan,
@@ -568,25 +569,30 @@ def compile_episode(
         episode["production"]["beats"].append(production_beat)
     caption_lane = {
         LEGACY_PICTURE_TEMPLATE_ID: (
-            CARD_GROUP,
+            (CARD_GROUP,),
             732,
             "将主字幕放在原生三张图卡的上方。",
         ),
-        PICTURE_TEMPLATE_ID: (CARD_GROUP, 732, "将主字幕放在原生三张图卡的上方。"),
+        PICTURE_TEMPLATE_ID: ((CARD_GROUP,), 732, "将主字幕放在原生三张图卡的上方。"),
+        PRESENTER_TEMPLATE_ID: (
+            ("LYO01", "LYO04"),
+            1110,
+            "将主字幕放在原生强调词的下方。",
+        ),
         ROTATION_TEMPLATE_ID: (
-            ROTATION_GROUP,
+            (ROTATION_GROUP,),
             1257,
             "将主字幕放在原生轮换图卡的下方。",
         ),
     }.get(authoring.overlay_template_id or "")
     if caption_lane:
-        caption_group, baseline, lane_reason = caption_lane
-        card_windows = [
+        caption_groups, baseline, lane_reason = caption_lane
+        effect_windows = [
             (shot["start_seconds"], shot["end_seconds"])
             for shot in episode["shots"]
-            if shot["group_id"] == caption_group
+            if shot["group_id"] in caption_groups
         ]
-        if card_windows:
+        if effect_windows:
             caption_role = episode["typography"]["caption"]
             overrides = caption_role.setdefault("layout_overrides", [])
             overrides.extend(
@@ -601,7 +607,7 @@ def compile_episode(
                 for caption in episode["captions"]
                 if any(
                     caption["start_seconds"] < end and start < caption["end_seconds"]
-                    for start, end in card_windows
+                    for start, end in effect_windows
                 )
             )
     for aid, asset in asset_files.items():

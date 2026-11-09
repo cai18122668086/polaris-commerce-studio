@@ -162,6 +162,73 @@ def test_hypit_flow_keeps_original_rearrangement_and_checks_source_duration():
         strips.compile_flow_plate(native, assets, transcript)
 
 
+def test_hypit_slant_cards_keep_three_image_slots_and_native_arrivals(
+    tmp_path, monkeypatch
+):
+    entry = tmp_path / "slant.svml"
+    entry.write_text(
+        '<stagger:Entry id="a2m" fg="mkfg1@483,1014,597,906"\n'
+        ' items="mkpic1@1,2,3,4,7.3>left; mkpic2@5,6,7,8,-4.1>left; '
+        'mkpic3@9,10,11,12,5.3>left" caps="旧字" frames="1,20,39"/>',
+        encoding="utf-8",
+    )
+    for name in ("commercial_runtime/special.py", "packages/stagger/dist/render.js"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# fixture\n", encoding="utf-8")
+        mapping = (
+            strips.NATIVE_FILES
+            if name.startswith("commercial")
+            else strips._FLOW_COMPONENTS
+        )
+        monkeypatch.setitem(mapping, name, strips.sha256(path))
+    monkeypatch.setitem(
+        strips.STAGGER_GROUPS, strips.SLANT_GROUP, ("a2m", strips.sha256(entry))
+    )
+    group = {"id": strips.SLANT_GROUP, "entry": entry.name}
+    paths = (strips.SLANT_BACKGROUND, strips.SLANT_FOREGROUND, *strips.SLANT_IMAGES)
+    names = ("洗碗", "刷锅", "洗水果")
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 5000},
+        "text": [
+            {"path": path, "text": label, "token_ids": [f"t{i}"]}
+            for i, (path, label) in enumerate(
+                zip(strips.STRIP_TEXT, names, strict=True)
+            )
+        ],
+        "events": [
+            {"path": path, "value": frame, "token_id": f"t{i}", "edge": "start"}
+            for i, (path, frame) in enumerate(
+                zip(strips.STRIP_EVENTS, (20, 32, 50), strict=True)
+            )
+        ],
+        "media": [{"path": path, "asset_id": path} for path in paths],
+        "media_clocks": [{"media_path": strips.SLANT_FOREGROUND, "frames": 120}],
+    }
+    assets = {
+        path: {"kind": "image", "source": "project_upload", "sha256": str(i)}
+        for i, path in enumerate(paths)
+    }
+    assets[strips.SLANT_FOREGROUND]["kind"] = "original_video"
+    glosses = [
+        {"source_text": a, "display_text": b}
+        for a, b in zip(names, ("DISHES", "PANS", "FRUIT"), strict=True)
+    ]
+    data = strips.compile_strips(tmp_path, group, native, assets, slant_glosses=glosses)
+    assert strips._native_attributes(tmp_path, group, data)["a2m"] == {
+        "caps": "洗碗|DISHES; 刷锅|PANS; 洗水果|FRUIT",
+        "fg": "",
+        "frames": "20,32,50",
+    }
+    assert strips.stagger_audio_frame(strips.SLANT_GROUP, 20) == 21
+    glosses[0]["source_text"] = "刷锅"
+    with pytest.raises(ValueError, match="its own spoken title"):
+        strips.compile_strips(tmp_path, group, native, assets, slant_glosses=glosses)
+    assets[strips.SLANT_IMAGES[0]]["sha256"] = assets[strips.SLANT_IMAGES[1]]["sha256"]
+    with pytest.raises(ValueError, match="distinct current image bytes"):
+        strips.compile_strips(tmp_path, group, native, assets)
+
+
 def test_hypit_sound_anchor_requires_the_rendered_scene_entry(tmp_path):
     stem = "001-HY-A6"
     sidecar = tmp_path / "hypit-strips" / f"{stem}.json"

@@ -13,6 +13,8 @@ from .motion_parameter_contracts import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import LibraryChoiceSnapshot
+from .video_editing_hypit_foreground import FOREGROUND_MATTE
+from .video_editing_hypit_strips import SLANT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import WHY_FONT, WHY_GROUP, WHY_PROPS
 
@@ -22,6 +24,7 @@ _NATIVE_ENGINE_DEPENDENCIES = {
     LINE_GROUP: (LINE_BRUSH_FONT,),
     WHY_GROUP: (WHY_FONT, *WHY_PROPS),
     ROTATION_GROUP: (ROTATION_MATTE,),
+    SLANT_GROUP: (FOREGROUND_MATTE,),
     "CXBR01": ("font-43a890795ad133d7",),
     "LYO01": ("font-06e1a30f687ab7d3",),
     "LYO02": ("font-06e1a30f687ab7d3", _MATTING_MODEL),

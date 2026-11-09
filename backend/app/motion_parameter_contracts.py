@@ -23,6 +23,10 @@ from .video_editing_hypit import (
 )
 from .video_editing_hypit_strips import (
     FLOW_GROUP,
+    SLANT_BACKGROUND,
+    SLANT_FOREGROUND,
+    SLANT_GROUP,
+    SLANT_IMAGES,
     STAGGER_GROUPS,
     stagger_profile,
     strip_fields,
@@ -257,6 +261,12 @@ def input_contract(
                 category = "numeric_content_requires_grounding"
         elif value is None and key in {"presenter", "background"}:
             category = "optional_media"
+        if group["id"] == SLANT_GROUP:
+            slot = pointer(parts)
+            if slot == SLANT_FOREGROUND:
+                resource_kind = "original_video"
+            elif slot in (SLANT_BACKGROUND, *SLANT_IMAGES):
+                resource_kind = "image"
         fields.append(
             {
                 "path": pointer(parts),

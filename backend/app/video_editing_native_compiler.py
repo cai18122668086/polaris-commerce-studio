@@ -44,11 +44,17 @@ from .video_editing_browser_rotation import (
 )
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
+from .video_editing_hypit_foreground import FOREGROUND_MATTE
 from .video_editing_hypit_strips import (
     FLOW_GROUP,
     LIVE_STAGE_GROUPS,
+    SLANT_FOREGROUND,
+    SLANT_GROUP,
+    SLANT_IMAGES,
+    SLANT_PROFILE,
     STAGGER_GROUPS,
     STRIP_SIDECAR,
+    STRIP_TEXT,
     compile_flow_plate,
     compile_strips,
     strip_config_sha256,
@@ -336,6 +342,36 @@ def compile_native_job(
         media_clocks, clock_receipts = compile_picture_clocks(
             package, config, native, asset_files, transcript, beat
         )
+    elif group["id"] == SLANT_GROUP:
+        selected = {row["path"]: row["asset_id"] for row in native["media"]}
+        first_words = {row["path"]: row["token_ids"][0] for row in native["text"]}
+        if (
+            beat.relation != "parallel"
+            or recipe.get("media_clocks")
+            or len(beat.relation_items) != 3
+            or any(
+                item.native_text_paths != [text_path]
+                or item.native_media_paths != [image_path]
+                or item.asset_ids != [selected.get(image_path)]
+                or item.first_token_id != first_words.get(text_path)
+                for item, text_path, image_path in zip(
+                    beat.relation_items, STRIP_TEXT, SLANT_IMAGES, strict=True
+                )
+            )
+        ):
+            raise ValueError(
+                "Slant cards use three spoken items and the original presenter"
+            )
+        media_clocks = {}
+        clock_receipts = [
+            compile_flow_plate(
+                native,
+                asset_files,
+                transcript,
+                media_path=SLANT_FOREGROUND,
+                profile_id=SLANT_PROFILE,
+            )
+        ]
     elif group["id"] == FLOW_GROUP or live_stage:
         if group["id"] == FLOW_GROUP and not component_validation:
             raise ValueError("Hypit flow labels still require fact-grounded chart data")
@@ -359,6 +395,8 @@ def compile_native_job(
     native["media_clocks"] = clock_receipts
     if "price_card_layout" in recipe and not strip_variant:
         raise ValueError("Price-card typography needs the audited Hypit input contract")
+    if "hypit_slant_glosses" in recipe and group["id"] != SLANT_GROUP:
+        raise ValueError("Slant card glosses need the original slant card group")
     strip = (
         compile_strips(
             package,
@@ -367,6 +405,7 @@ def compile_native_job(
             asset_files,
             price_card_layout=recipe.get("price_card_layout"),
             live_stage=live_stage,
+            slant_glosses=recipe.get("hypit_slant_glosses"),
         )
         if strip_variant
         else None
@@ -458,6 +497,8 @@ def compile_native_job(
     if set(dependency_ids) - set(registered):
         raise ValueError("Selected original dependency is not registered on this host")
     dependencies = {**direct, **{rid: registered[rid] for rid in dependency_ids}}
+    if group["id"] == SLANT_GROUP and FOREGROUND_MATTE not in dependencies:
+        raise ValueError("Bind the original slant card presenter matte")
     if question_variant and QUESTION_FONT not in dependencies:
         raise ValueError("Bind the original W-R18 question brush font")
     if group["id"] == JUDGMENT_GROUP and JUDGMENT_BRUSH_FONT not in dependencies:

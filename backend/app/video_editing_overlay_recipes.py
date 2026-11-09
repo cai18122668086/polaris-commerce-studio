@@ -1,6 +1,7 @@
 """Build trusted text-layer recipes from original inputs and measured word IDs."""
 
 from pathlib import Path
+from typing import Any
 
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, inside, read_json
@@ -19,10 +20,36 @@ from .video_editing_episode_compiler import (
 )
 from .video_editing_native_compiler import set_native_field
 from .video_editing_native_layout import BACKDROP_GROUP
+from .video_editing_native_sound import (
+    NativeMusicTrack,
+    NativeSoundCue,
+    NativeSoundDesign,
+)
 from .video_editing_overlay_templates import validate_template_plan
 from .video_editing_word_bindings import word_bindings
 
-PROFILE_ID = "tengli-overlay-recipe-v1"
+PROFILE_ID = "tengli-overlay-recipe-v2"
+# Audited source slices: asset ID, slice start, slice duration, target peak dBFS.
+_TYPING = ("sfx-31fef1615e1ded4d", 0.44, 0.25, -27)
+_CLICK = ("sfx-caca4bd9dd717c9f", 0, 0.14, -26)
+_SELECT = ("sfx-dbafeebc3f7297da", 0.04, 0.16, -25)
+_SLIDE = ("sfx-22f661280569e8bc", 0.07, 0.32, -27)
+_IMPACT = ("sfx-69dba3f8f41f94e1", 0.03, 0.27, -25)
+_ENTRY_SOUNDS = {
+    "AH-S05": ("/events/type_frame", _TYPING),
+    "AH-S09": ("/events/title_frame", _CLICK),
+    "AHG-S02": ("/events/mark/0", _SELECT),
+    "BG-S04": ("/events/body_frame", _SLIDE),
+    "BG-S06": ("/events/upper_start", _SLIDE),
+    "JJ-S01": ("/events/main/0", _CLICK),
+    "JJ-S03": ("/events/line/0", _IMPACT),
+    "SG-S02": ("/events/drop_frame", _SELECT),
+    "SG-S03": ("/events/enter_start", _IMPACT),
+    "SG-S06": ("/events/upper_start", _SLIDE),
+    "SG-S09": ("/events/enter_start", _TYPING),
+    "SG-S10": ("/events/enter_start", _SLIDE),
+}
+_MUSIC = ("bgm-b5035a43098ee293", "bgm-f318d21e6b2d98bb")
 _FONT_SIZES = {
     "BG-S06": {"upper": 42, "lower": 62},
     "SG-S03": {"prefix": 59, "keyword": 59},
@@ -43,7 +70,7 @@ _TEXT_RECIPE_FIELDS = {
 
 def _entry(
     package: Path, group: dict, beat: SemanticBeat, transcript: Transcript
-) -> NativeEpisodeEntry:
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
     if beat.relation in RELATION_MAPPING and not beat.relation_items:
         raise ApiError(
             422,
@@ -103,7 +130,7 @@ def _entry(
     for path in slots:
         set_native_field(config, path, None)
     vertical = beat.group_id == "BG-S04"
-    return NativeEpisodeEntry(
+    entry = NativeEpisodeEntry(
         carrier="text",
         placement=NativePlacement(
             layer="subtitle",
@@ -128,6 +155,43 @@ def _entry(
             "dependency_bindings": {},
         },
     )
+    return entry, anchors
+
+
+def _entry_sound(
+    beat: SemanticBeat, anchors: dict[str, Any], duration_ms: int, avoided: set[str]
+) -> NativeSoundCue:
+    path, selection = _ENTRY_SOUNDS[beat.group_id]
+    event = next(row for row in anchors["events"] if row["path"] == path)
+    asset_id, source_start, length, peak = (
+        selection if selection[0] not in avoided else _CLICK
+    )
+    if asset_id in avoided:
+        asset_id, source_start, length, peak = _SELECT
+    if asset_id in avoided:
+        raise ApiError(
+            422, "EDITING_TEMPLATE_SOUND_UNAVAILABLE", "入场候选音效均已被避用。"
+        )
+    remaining = (
+        duration_ms - event["measured_anchor_ms"] - event["frame_quantization_ms"]
+    ) / 1000
+    length = min(length, remaining)
+    if length < 0.06:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_SOUND_TOO_LATE",
+            f"{beat.group_id} 的入场词点距离片尾太近，无法保留可听音效。",
+        )
+    return NativeSoundCue(
+        asset_id=asset_id,
+        beat_id=beat.id,
+        event_path=path,
+        phase="entry",
+        purpose="原生文字动效入场时给一次短提示，口播继续。",
+        source_start_seconds=source_start,
+        trim_duration_seconds=length,
+        target_peak_dbfs=peak,
+    )
 
 
 def build_overlay_recipes(
@@ -136,6 +200,7 @@ def build_overlay_recipes(
     transcript: Transcript,
     transcript_sha256: str,
     template: dict,
+    choice_snapshot: dict,
 ) -> EpisodeRecipeBundle:
     try:
         validate_template_plan(semantic, template, complete=True)
@@ -149,10 +214,22 @@ def build_overlay_recipes(
         row["id"]: row for row in read_json(package / "catalog/groups.json")["groups"]
     }
     beats = [beat for beat in semantic.beats if beat.group_id != "Z-M00"]
-    entries = {
-        beat.id: _entry(package, groups[beat.group_id], beat, transcript)
-        for beat in beats
+    avoided = {
+        row["target_id"]
+        for row in choice_snapshot.get("notes", [])
+        if row["target_kind"] == "bundled_asset" and row["choice"] == "avoid"
     }
+    music_id = next((asset_id for asset_id in _MUSIC if asset_id not in avoided), None)
+    if music_id is None:
+        raise ApiError(
+            422, "EDITING_TEMPLATE_MUSIC_UNAVAILABLE", "候选背景音乐均已被避用。"
+        )
+    entries, cues = {}, []
+    for beat in beats:
+        entries[beat.id], anchors = _entry(
+            package, groups[beat.group_id], beat, transcript
+        )
+        cues.append(_entry_sound(beat, anchors, transcript.duration_ms, avoided))
     return EpisodeRecipeBundle(
         version="tengli.episode-recipes/1",
         library_release=MOTION_SHA256,
@@ -169,7 +246,9 @@ def build_overlay_recipes(
             "tone": "清晰",
             "background_strategy": "保留连续人物原片。",
             "motion_direction": "按实录词点在人物周围叠加原生动效。",
-            "sound_direction": "保留实际口播音轨。",
+            "sound_direction": (
+                "保留实际口播电平，每次原生动效入场加短音效。全程以低位原库背景乐铺底。"
+            ),
             "reason": "沿用已保存的模板版本与模型候选。",
             "caption_font_id": EditingOptions().caption_font_id,
         },
@@ -192,5 +271,19 @@ def build_overlay_recipes(
         intentional_backdrop_beat_ids=[
             beat.id for beat in beats if beat.group_id == BACKDROP_GROUP
         ],
-        sound_mode="original_voice_only",
+        sound_mode="native_mix",
+        sound=NativeSoundDesign(
+            fx=cues,
+            music=[
+                NativeMusicTrack(
+                    asset_id=music_id,
+                    start="episode_start",
+                    end="episode_end",
+                    gain_db=-33,
+                    fade_seconds=min(0.8, transcript.duration_ms / 2000),
+                    reason="让原库背景乐在连续口播下低位铺底，片头片尾淡入淡出。",
+                    loop=True,
+                )
+            ],
+        ),
     )

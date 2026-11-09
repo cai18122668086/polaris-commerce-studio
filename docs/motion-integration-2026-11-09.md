@@ -495,3 +495,17 @@ API 与 worker 可通过 `POLARIS_VIDEO_EDITING_NATIVE_BINDINGS_FILE` 读取同�
 原包绑定工具在本机已安装字体及既存本机素材中核验了 Georgia Bold、Georgia Italic、Impact、Segoe Print、Segoe Script、Consolas 和 u2net 抠像模型。28 项外部字体有 6 项本机已核验、22 项待登记。CXBR01 的 Times New Roman 和 AZL01–07 的黑体已找到本机同名字体，但其字节数与摘要不同。优设标题黑官方发布页需要登录下载，已有两份公开候选摘要均不同。此轮保持这些依赖待登记，库内原件身份不变。
 
 以清单 ID 重编并实际渲染 CXBR02、YYP04、YYP06，三份编码样本与原路径绑定的样本 SHA256 逐一相等。Chrome 核对 AZL01 的模型已核验与黑体未登记，以及外部字体页的 6 项已核验和 22 项未登记。真实 API 与独立比较证据见 `C:/tl/dependency-binding/website-dependency-registry-evidence.json`。原包完整性通过，运行覆盖统计沿用上一阶段，未据此增加视觉验收。
+
+扩大本机字体检索后，找到符合原摘要的黑体 `font-aa4560dd8fe56457`，以本机文件明确绑定，系统同名字体保留。下载并核对江西拙楷 2.0、优设标题黑、庞门正道标题体和庞门正道粗书体的字节数与 SHA256，再安装到当前 Windows 用户。江西拙楷取自公开 npm 包 `@fontpkg/jiangxizhuokai@1.0.0`，其余三份取自公开字体库 `dxinef/freefonts`。所有下载文件均与原包登记逐字节身份相符，二进制文件保留在本机。Chrome 与 API 实测外部字体 11 项已核验、17 项待登记。AZL01 同时列出已核验的黑体与原抠像模型，实景素材和采样时钟仍需单独验证。Times New Roman 仍待精确原件。最终证据 `C:/tl/dependency-binding/website-dependency-registry-fonts-v3-evidence.json`。
+
+BG-S10 与 BG-S11 使用已恢复的原庞门正道粗书体和同一实际口播词点，分别渲染“终于／等到／两大瓶”与“柠檬精华／冷水去污”原生透明组件。原生入口检查、全量解码、90 与 104 帧以及透明像素变化均通过，网站各登记 1 份样本。它们是当前实录组件，仍待带人物的组合版式与语义验收。AH-S07 的字体依赖已具备，本期实录缺少该组要求的四位年份词。批次见 `C:/tl/dependency-binding/brush-native-v1/batch-receipt.json`。
+
+## 组合模板入场音效与背景乐
+
+自动原生编排升级为 `tengli-overlay-recipe-v2`，以原组入场事件为锚。价签和滚动模板的每处实际动效生成一条原库短音效，同组重复出现时保留各自的词点和音效。使用原声源片的电平，背景乐以 −33 dB 增益低位铺底，首尾淡入淡出。避用备忘参与候选选择，保留现有背景乐降低、关闭及段落恢复原景的功能。原生引擎测量音效起声并去除前导留白。旧候选按冻结配方重放，新候选按版本去重。
+
+同一价签实录以已保存的本地协议规划生成候选 `f7899057-ad05-455e-8756-a034997d5cb9`。Chrome 经网站提交任务 `51f1c780-a059-4162-a33c-57c482b64f1f`，独立 worker 一次完成，真实付费规划、转录和对齐调用均为零。48.475 秒视频保留 11 种、11 次原生叠加动效与片尾 SG-S10 的 55 帧设计叠字。新增 11 个原生入场声点，使用 5 份原库音效与一条原库背景乐。独立解码 11 处音效的首个有效 1 ms 窗均与原生事件同位。原口播声轨样本与旧版逐样本相等，画面编码流 SHA256 与旧版一致。背景乐在有词区间平均比口播低 10.435 dB，编码混音峰值 −20.106 dBFS，未过载。
+
+Chrome 已验证网站代理与高清实际播放并解码声音，代理与高清的 AAC 流相同。确认前隐藏高清，错误代理摘要被拒绝，确认后发布同一高清文件，重放确认仍只有一次 worker 尝试。高清 `C:/tl/auto-overlay/website-label-with-sound-hd.mp4` SHA256 `3ce6da668fc1c46cff267ecdba1685f2084e27fb2756c1b3dfc6799305d79d1d`。代理 `C:/tl/auto-overlay/website-label-with-sound-proxy.mp4` SHA256 `8663ac0a6db2fe03c3d292772a1f2434e36a26f0ba7211866cd0fa33667898d4`。声音分轨和浏览器证据见 `C:/tl/auto-overlay/website-label-with-sound-evidence.json`。实际听感、语义及画面继续待用户验收。
+
+本轮剪辑回归 126 项全部通过。恢复测试的本地请求替身已接收模板参数，覆盖中断后避免重复调用的原断言。Windows mypy、Ruff、前端类型检查与目标 ESLint 通过。主目录 81 项既存改动隔离，无迁移、付费调用、推送或部署。

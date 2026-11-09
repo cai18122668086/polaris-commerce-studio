@@ -186,6 +186,7 @@ def register_gateway_plan(
             verified.transcript,
             verified.task.base_transcript_sha256,
             template,
+            verified.task.snapshot["choice_snapshot"],
         )
     if recipes.planning_origin != "tengli_gateway":
         raise ApiError(

@@ -48,12 +48,28 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
     if template:
         package = settings.video_editing_library_dir
         catalog = read_json(package / "catalog/groups.json")
-        groups = ["AHG-S02", "SG-S09", "SG-S02", "SG-S06", "BG-S04"]
-        for row, gid in zip(catalog["groups"][1:6], groups, strict=True):
+        events = {
+            "AHG-S02": ("mark", "/events/mark/0", "/events/mark/1"),
+            "SG-S09": ("enter_start", "/events/enter_start", "/events/enter_end"),
+            "SG-S02": ("drop_frame", "/events/drop_frame", "/events/enter_end"),
+            "SG-S06": ("upper_start", "/events/upper_start", "/events/enter_end"),
+            "BG-S04": ("body_frame", "/events/body_frame", "/events/enter_end"),
+        }
+        for row, (gid, (name, _, _)) in zip(
+            catalog["groups"][1:6], events.items(), strict=True
+        ):
             row.update(id=gid, input_template=f"{gid}.json")
             atomic_json(
                 package / row["input_template"],
-                {**read_json(package / "effect.json"), "group_id": gid},
+                {
+                    **read_json(package / "effect.json"),
+                    "group_id": gid,
+                    "events": (
+                        {"mark": [2, 10]}
+                        if gid == "AHG-S02"
+                        else {name: 2, "enter_end": 10}
+                    ),
+                },
             )
         atomic_json(package / "catalog/groups.json", catalog)
         with client.app.state.session_factory() as session:
@@ -71,7 +87,7 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
                 TranscriptToken(
                     id=f"v{i}", text=gid, start_ms=i * 500, end_ms=(i + 1) * 500
                 )
-                for i, gid in enumerate([*groups, groups[0]])
+                for i, gid in enumerate([*events, next(iter(events))])
             ]
             atomic_json(Path(artifact.path), transcript.model_dump(mode="json"))
             artifact.sha256, artifact.bytes = (
@@ -99,9 +115,8 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
                         ],
                         "native_events": [
                             {"path": path, "token_id": token.id, "edge": edge}
-                            for path, edge in (
-                                ("/events/enter_start", "start"),
-                                ("/events/enter_end", "end"),
+                            for path, edge in zip(
+                                events[token.text][1:], ("start", "end"), strict=True
                             )
                         ][1 if missing_event and i == 0 else 0 :],
                     }
@@ -196,6 +211,7 @@ def test_overlay_candidate_endpoint_uses_frozen_words_and_replays_without_model(
     candidate = response.json()
     assert candidate["overlay_template"]["id"] == "label-compare-v1"
     assert candidate["continuous_preview_available"] and len(candidate["beats"]) == 6
+    assert candidate["music_edit_available"]
     assert "recipes" not in candidate
     assert client.post(path.format(job)).json()["id"] == candidate["id"]
     with client.app.state.session_factory() as session:
@@ -205,6 +221,16 @@ def test_overlay_candidate_endpoint_uses_frozen_words_and_replays_without_model(
             "text": None
         }
         assert native.details["planning_provenance"]["base_task_id"] == task["id"]
+        assert native.recipes["sound_mode"] == "native_mix"
+        sound = native.recipes["sound"]
+        assert sound["voice_gain_db"] == 0 and len(sound["music"]) == 1
+        assert [cue["beat_id"] for cue in sound["fx"]] == [b.id for b in semantic.beats]
+        assert (
+            sound["fx"][0]["event_path"]
+            == sound["fx"][-1]["event_path"]
+            == "/events/mark/0"
+        )
+        assert sound["fx"][0]["asset_id"] == sound["fx"][-1]["asset_id"]
 
 
 def register(client, ws, settings, task, recipes, planning_id, request_id=None):

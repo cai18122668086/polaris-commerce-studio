@@ -29,8 +29,10 @@ def setup_request(tmp_path, monkeypatch):
         video_editing_planning_enabled=True,
     )
 
-    def request(t, p, m, assets, choices=None):
+    def request(t, p, m, assets, choices=None, template=None):
         body = {"transcript": t.model_dump(), "model": m, "assets": assets}
+        if template is not None:
+            body["overlay_template"] = template
         fingerprint = hashlib.sha256(
             json.dumps(body, sort_keys=True).encode()
         ).hexdigest()

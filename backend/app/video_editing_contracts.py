@@ -364,6 +364,14 @@ class EditingPlanningSpan(StrictVideoModel):
     timing_review: Literal["unreviewed"] = "unreviewed"
 
 
+class EditingImageResultImport(StrictVideoModel):
+    request_id: UUID
+    job_id: str = Field(min_length=1, max_length=40)
+    asset_id: str = Field(min_length=1, max_length=40)
+    label: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=400)
+
+
 class EditingMaterialResponse(StrictVideoModel):
     id: str
     asset_id: str
@@ -376,6 +384,8 @@ class EditingMaterialResponse(StrictVideoModel):
     width: int
     height: int
     duration_ms: int | None
+    source_job_id: str | None
+    source_asset_id: str | None
     url: str
 
 

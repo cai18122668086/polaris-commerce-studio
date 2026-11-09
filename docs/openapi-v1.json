@@ -4751,6 +4751,49 @@
         "title": "EditingExportConfirmation",
         "type": "object"
       },
+      "EditingImageResultImport": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "job_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Job Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "job_id",
+          "asset_id",
+          "label",
+          "description"
+        ],
+        "title": "EditingImageResultImport",
+        "type": "object"
+      },
       "EditingLibraryNoteCreate": {
         "additionalProperties": false,
         "properties": {
@@ -4988,6 +5031,28 @@
             "title": "Sha256",
             "type": "string"
           },
+          "source_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Asset Id"
+          },
+          "source_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Job Id"
+          },
           "url": {
             "title": "Url",
             "type": "string"
@@ -5009,6 +5074,8 @@
           "width",
           "height",
           "duration_ms",
+          "source_job_id",
+          "source_asset_id",
           "url"
         ],
         "title": "EditingMaterialResponse",
@@ -21189,6 +21256,73 @@
           }
         ],
         "summary": "Upload Material",
+        "tags": [
+          "video-editing-materials"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/image-results": {
+      "post": {
+        "operationId": "import_image_result_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_image_results_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingImageResultImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingMaterialResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Import Image Result",
         "tags": [
           "video-editing-materials"
         ]

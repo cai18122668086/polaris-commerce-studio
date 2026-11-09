@@ -265,6 +265,15 @@ def test_film_feedback_counts_are_bound_to_dated_current_evidence():
     proof = film_feedback_entries(native, assets, observations)
     assert [row["likes"] for row in proof] == [0, 1, 2]
     assert proof[1]["asset_sha256"] == "1"
+    generated = {
+        **assets,
+        "evidence-1": {
+            **assets["evidence-1"],
+            "source_image_result": {"job_id": "job", "asset_id": "asset"},
+        },
+    }
+    with pytest.raises(ValueError, match="matching project evidence"):
+        film_feedback_entries(native, generated, observations)
     observations[1]["asset_id"] = "evidence-2"
     with pytest.raises(ValueError, match="matching project evidence"):
         film_feedback_entries(native, assets, observations)

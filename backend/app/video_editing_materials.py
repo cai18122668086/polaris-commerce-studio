@@ -86,6 +86,16 @@ def project_material_files(
             "duration_ms": row.duration_ms,
             "source": "project_upload",
             "license": "project owner supplied; rights and facts unreviewed",
+            **(
+                {
+                    "source_image_result": {
+                        "job_id": row.source_job_id,
+                        "asset_id": row.source_asset_id,
+                    }
+                }
+                if row.source_job_id
+                else {}
+            ),
         }
         for row in rows
     }
@@ -100,7 +110,13 @@ def material_cards(assets: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
                 for key in ("kind", "sha256", "semantic_use", "viewed_identity")
             },
             **(
-                {"scope": "owner description; visual evidence and facts unreviewed"}
+                {
+                    "scope": (
+                        "generated illustration; not product or factual evidence"
+                        if asset.get("source_image_result")
+                        else "owner description; visual evidence and facts unreviewed"
+                    )
+                }
                 if asset_id.startswith(PREFIX)
                 else {}
             ),

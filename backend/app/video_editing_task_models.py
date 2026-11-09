@@ -58,6 +58,8 @@ class EditingMaterialRecord(TimestampMixin, Base):
     width: Mapped[int] = mapped_column()
     height: Mapped[int] = mapped_column()
     duration_ms: Mapped[int | None] = mapped_column()
+    source_job_id: Mapped[str | None] = mapped_column(String(40))
+    source_asset_id: Mapped[str | None] = mapped_column(String(40))
 
 
 class EditingTaskRecord(TimestampMixin, Base):

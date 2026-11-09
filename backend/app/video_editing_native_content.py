@@ -221,6 +221,7 @@ def film_feedback_entries(
             != {"asset_id", "label", "likes", "source_ref", "observed_at"}
             or asset.get("kind") != "image"
             or asset.get("source") != "project_upload"
+            or asset.get("source_image_result")
             or not label
             or not event
             or observed["asset_id"] != asset_id

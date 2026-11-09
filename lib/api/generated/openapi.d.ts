@@ -2348,6 +2348,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/image-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Image Result */
+        post: operations["import_image_result_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_image_results_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/file": {
         parameters: {
             query?: never;
@@ -5452,6 +5469,22 @@ export interface components {
             /** Preview Sha256 */
             preview_sha256: string;
         };
+        /** EditingImageResultImport */
+        EditingImageResultImport: {
+            /** Asset Id */
+            asset_id: string;
+            /** Description */
+            description: string;
+            /** Job Id */
+            job_id: string;
+            /** Label */
+            label: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
         /** EditingLibraryNoteCreate */
         EditingLibraryNoteCreate: {
             /**
@@ -5550,6 +5583,10 @@ export interface components {
             mime: string;
             /** Sha256 */
             sha256: string;
+            /** Source Asset Id */
+            source_asset_id: string | null;
+            /** Source Job Id */
+            source_job_id: string | null;
             /** Url */
             url: string;
             /** Width */
@@ -13084,6 +13121,42 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_upload_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingMaterialResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_image_result_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_image_results_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingImageResultImport"];
             };
         };
         responses: {

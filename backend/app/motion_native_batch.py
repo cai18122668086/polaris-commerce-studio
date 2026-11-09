@@ -72,14 +72,63 @@ def verify_rgba_sequence(root: Path, report: dict, expected_frames: int) -> dict
     }
 
 
+def verify_scene_motion(
+    root: Path, output: Path, expected_frames: int, settings: Settings
+) -> dict:
+    frame_log = run(
+        [
+            settings.video_editing_ffmpeg,
+            "-nostdin",
+            "-v",
+            "error",
+            "-xerror",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-i",
+            str(output),
+            "-map",
+            "0:v:0",
+            "-an",
+            "-f",
+            "framemd5",
+            "-",
+        ],
+        root,
+        settings,
+        lambda: None,
+        "decoded_frame_hashes",
+    )
+    hashes = [
+        line.rsplit(",", 1)[1].strip()
+        for line in frame_log.read_text(encoding="ascii").splitlines()
+        if line and not line.startswith("#")
+    ]
+    if len(hashes) != expected_frames or len(set(hashes)) < 2:
+        raise ValueError(
+            "Scene must have the expected decoded frames and real variation"
+        )
+    return {
+        "frames_checked": len(hashes),
+        "distinct_decoded_frames": len(set(hashes)),
+        "frame_hash_log_sha256": sha256(frame_log),
+        "visual_acceptance": "unreviewed",
+    }
+
+
 def validate_manifest(data: dict, package: Path) -> list[dict]:
     if (
         data["version"] != "tengli.native-validation-batch/1"
         or data["library_release"] != MOTION_SHA256
     ):
         raise ValueError("Native batch belongs to a different original release")
-    if data["backend"] != "subtitle":
-        raise ValueError("This batch requires original subtitle RGBA components")
+    if data["backend"] not in {"subtitle", "scene"}:
+        raise ValueError(
+            "Only original subtitle and scene cohort evidence is supported"
+        )
+    if data["backend"] == "scene" and not data.get("source_asset_id"):
+        raise ValueError(
+            "Scene cohort needs the current recorded source asset identity"
+        )
     groups = read_json(package / "catalog/groups.json")["groups"]
     expected = {g["id"] for g in groups if g["backend"] == data["backend"]}
     actual = [c["group_id"] for c in data["cases"]]
@@ -139,8 +188,16 @@ def execute(
     if sha256(transcript_file) != data["transcript"]["sha256"]:
         raise ValueError("Current measured transcript bytes changed")
     transcript = Transcript.model_validate(read_json(transcript_file))
-    if sha256(Path(data["source_path"])) != transcript.source_sha256:
+    source = Path(data["source_path"]).resolve()
+    if sha256(source) != transcript.source_sha256:
         raise ValueError("Current source does not match the measured transcript")
+    assets = {}
+    if data["backend"] == "scene":
+        assets[data["source_asset_id"]] = {
+            "path": str(source),
+            "sha256": transcript.source_sha256,
+            "kind": "original_video",
+        }
     root.mkdir(parents=True, exist_ok=False)
     atomic_json(root / "manifest.json", data)
     receipt: dict[str, Any] = {
@@ -177,7 +234,7 @@ def execute(
                     SemanticBeat.model_validate(case["beat"]),
                     transcript,
                     case["recipe"],
-                    {},
+                    assets,
                 )
                 result["status"] = "schema_admitted"
                 for command in ("check", "render-group"):
@@ -213,10 +270,24 @@ def execute(
                         "Native report does not address this instance's output"
                     )
                 measured = measure_encoded_output(output, job, settings)
-                alpha = verify_rgba_sequence(instance, report, job["config"]["frames"])
+                if measured["format"] != report["encoding"]["format"]:
+                    raise ValueError(
+                        "Independent decoding differs from native encoding receipt"
+                    )
+                frame_count = measured["frames_written"]
+                if data["backend"] == "subtitle":
+                    frame_evidence = {
+                        "rgba": verify_rgba_sequence(instance, report, frame_count)
+                    }
+                else:
+                    frame_evidence = {
+                        "scene_motion": verify_scene_motion(
+                            instance, output, frame_count, settings
+                        )
+                    }
                 atomic_json(
                     instance / "independent-validation.json",
-                    {"encoded": measured, "rgba": alpha},
+                    {"encoded": measured, **frame_evidence},
                 )
                 evidence = record_native(
                     package, state, instance, report_path, settings
@@ -226,7 +297,7 @@ def execute(
                     evidence_id=evidence["id"],
                     output_sha256=report["sha256"],
                     measured=measured,
-                    rgba=alpha,
+                    **frame_evidence,
                 )
             except Exception as error:
                 failure = native_failure(instance)

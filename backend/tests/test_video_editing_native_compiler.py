@@ -132,3 +132,35 @@ def test_incomplete_or_old_recipe_cannot_silently_fill_native_inputs(tmp_path):
                 package, tmp_path / f"rejected-{index}", beat, transcript, candidate, {}
             )
         assert not (tmp_path / f"rejected-{index}" / "job.json").exists()
+
+
+def test_scene_camera_events_are_measured_on_the_unshifted_local_clock(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="YYP06", backend="scene")
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    template = read_json(package / "template.json")
+    template["events"] = {"shift_frames": -5}
+    template["style"]["geometry"] = {"camera_start_frame": 15}
+    atomic_json(package / "template.json", template)
+    contract = input_contract(package, group)
+    path = "/style/geometry/camera_start_frame"
+    assert contract["event_paths"] == [{"path": path, "unit": "frames"}]
+    beat.group_id = "YYP06"
+    beat.native_events[0].path = path
+    template["content"]["text"] = None
+    template["style"]["geometry"]["camera_start_frame"] = None
+    recipe.update(
+        group_id="YYP06",
+        template_sha256=contract["template_sha256"],
+        config=template,
+        placeholders=["/content/text", path],
+    )
+    recipe["parameter_decisions"]["events"] = "Scene choreography shift selected"
+    with pytest.raises(ValueError, match="zero native shift_frames"):
+        compile_native_job(package, tmp_path / "shifted", beat, transcript, recipe, {})
+    template["events"]["shift_frames"] = 0
+    job = compile_native_job(
+        package, tmp_path / "measured", beat, transcript, recipe, {}
+    )
+    assert job["config"]["style"]["geometry"]["camera_start_frame"] == 9

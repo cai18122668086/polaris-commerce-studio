@@ -45,6 +45,13 @@ def test_batch_cannot_drop_or_double_count_an_original_group(tmp_path):
     ):
         with pytest.raises(ValueError):
             validate_manifest({**batch, "cases": cases}, tmp_path)
+    scene = {**batch, "backend": "scene", "cases": [{**missing, "group_id": "V1"}]}
+    with pytest.raises(ValueError, match="current recorded source"):
+        validate_manifest(scene, tmp_path)
+    assert (
+        validate_manifest({**scene, "source_asset_id": "source-current"}, tmp_path)
+        == scene["cases"]
+    )
 
 
 def test_native_alpha_guard_rejects_blank_corrupt_and_foreign_frames(tmp_path):

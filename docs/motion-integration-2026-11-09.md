@@ -335,3 +335,19 @@ W-R05 `C:/tl/subtitle-batch/unified-w-r05-v1` 使用 26510–31050 ms 的本片�
 实际网页提交任务 `956c076a-8c19-4999-bd17-6bc4adb21ea7`，配方 `dfeea6dc-6e56-440b-8633-3f406852b73e`，经 Redis 与独立 worker 一次完成。整片 48.475 秒，2,326,800 个音频采样帧，编码峰值 -22.08 dBFS、无过载；原生布局通过。与原声任务 `99cfba5f-7af4-495c-a2aa-8cefcfcb921f` 的视频码流和口播分轨逐样本一致。独立解码对比，成片 AAC 与三个原生分轨叠加的误差信号相对为 -35.29 dB，实测有词区间音乐 RMS 比口播低约 13.63 dB。浏览器实播至 2.754487 秒、readyState=4、无媒体错误，Range 206。下载成片 `C:/tl/native-audio/website-sound-mix-v1.mp4` 的 SHA256 为 `9e06036b6d41d5887329f025fc82676ba2d7a95f6ec23a0b91ee4193a2fed437`，声音回执 `C:/tl/native-audio/website-sound-receipt-v1.json` 摘要为 `46a927a469a4f0b2cc6bb8985b8a0619c60373ef0ad9aba6c49a7a0ffc1a1d55`，均与网站产物登记一致。独立证据见同目录 `website-sound-evidence-v1.json`。听感、完整视觉与商品事实仍待验收，本片记作声音 A/B 版本。
 
 30 项相关回归、变更后端 Ruff、363 个 app 文件 Windows/Linux mypy、前端类型检查和剪辑组件 ESLint 通过。无数据库迁移，原包 1426 项完整性通过。全库仍为 43 组有编码样本、2 组有失败样本、87 组待实测、0 组用户验收。本次沿用冻结的实录转录和人工画面编排，新增识别、对齐和模型调用均为 0。主目录仍为 `22fc356`、保留 81 项既存未提交改动。未推送、部署或发布。
+
+## 实景动效批次与人物镜头整片
+
+扩展可信批次工具支持全部 37 个实景组的名册。运行只登记与冻结转录摘要一致的本期说话人素材。通过原 schema、原生 `check` 和 `render-group` 后，再独立核对编码尺寸、时钟、全解码、逐帧像素摘要及画面变化。原生组件不另画示例字幕，整片仍由原 episode 输出完整主字幕。YYP06 的运镜和出框四个时点、LYO02 的圆蒙版时点加入实测词点字段合同，`/content/theme` 标记为 LYO02 的可绑定文字。原几何函数按 `local_frame - shift_frames` 运行，明确绑定这些几何词点时要求 shift 为 0，避免再次偏移。固定编舞留在原引擎。
+
+本机从公开发行源恢复 `u2net_human_seg.onnx`，175,997,641 字节，SHA256 `01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c`，均与原包外部资源登记完全一致。以原来的资源 ID 显式绑定到原生进程，使用本机 ONNX Runtime CPU。YYP04 与 YYP06 分别检查 30 张和 22 张实际有效且各不相同的人像 alpha 蒙版。权重与私有本机素材只在实例中使用。[发行源代码与下载地址](https://github.com/danielgatis/rembg/blob/main/rembg/sessions/u2net_human_seg.py)
+
+全名册 `C:/tl/scene-batch/scene-current-manifest-v1.json`，摘要 `281dabde070c8f7f0383ce7be1d2c9947f67c2beeecfbf3197c36b45b689775e`。YYP01、YYP02、YYP03、YYP04、YYP06、YYP07 实际通过，6 份 1080×1920/30 fps 组件累计独立验证 657 帧。YYP01 增一份已有组的记录，其余 5 组首次登记。YYP02 前段 f20 / f68 的实际源窗像素误差为 1.5563 / 1.5573，片头错窗为 7.8939 / 7.4466，重复偏移错窗为 6.9328 / 10.7390。批次回执 `C:/tl/scene-batch/native-v1/batch-receipt.json`，证据 `website-scene-cohort-evidence.json`。浏览器 YYP06 详情显示已有一份编码记录且未验收，更新后的本机 API 显示四个新绑定时点。原包 1426 项完整性复验通过。
+
+31 组本轮未运行，按实际入口与素材槽保留阻塞。YYP05 等缺本期独立画面素材，CXBR / AZL 多素材槽仍需按原始采样式适配。YYO、YY6O 及 LYO02 原生文字需精确原字体，当前主机同名黑体或微软雅黑粗体与原摘要不符。LYO01、LYO03、LYO04 的原 schema 禁止 style，三者共用的原入口校验却要求 style.background 和 style.geometry。LYO01 已有早期实测失败，LYO03、LYO04 只登记静态冲突。本轮全库为 48 组有编码样本、2 组有失败记录、82 组待实测、0 组用户验收，目录仍含 132 组、197 项内置资源及 699 个外部引用。
+
+人工整片候选 `d7ac1a99-eeb0-4203-a9d9-d6909a78b035` 保留 BG-S06 报价与既有原声、按钮声及低位背景乐。实际数量从单瓶转到两瓶时使用 YYP02（13.890–19.050 秒，缩景 89→119 帧），实际列举用途时使用 YYP06（39.110–43.110 秒，运镜 20→50 帧、出框 93→106 帧）。二者是人物视觉强调，逐项用途和数量关系由原主字幕承载。已查看浏览器四处抽帧，缩景留出背景、前景人物确实越过圆角窗底，主字幕在两个实际动作后的抽查帧可读。商品事实、语义、连续视觉与听感仍待验收。
+
+从网站提交 `de259dbb-282e-4b2b-998a-4097205710cd`，Redis 与独立 worker 1 次完成。两段组件与批次成片字节一致，原生布局 0 错误、0 过渡豁免，原字幕宽度复核、原生混音与整片解码通过，编码峰值 -22.08 dBFS、无过载。浏览器在 16.5 秒与 41.3 秒分别开始播放，两次到 17.863847 与 42.663857 秒，readyState=4，无媒体错误；Range 206，48.475 秒的下载成片 `C:/tl/scene-batch/website-scene-trial-v1.mp4`，SHA256 `fbc5877f1046b9cede699c28dcdafb5d3961d1eb00fae424e39f0e5078d8472b`。同目录 `website-scene-trial-evidence-v1.json` 记录验证，`website-scene-*.png` 保留抽帧。
+
+20 项相关回归、变更后端 Ruff、363 个文件 Windows/Linux mypy 通过。GitHub main 本轮 fetch 仍为 `106d1e3eb17a87b89576d3f97c7ec8c9edf05e5a`，主目录 81 项既存改动保持隔离。本轮新增识别、对齐和远端规划调用均为 0。本机 API 与 worker 已更新到当前分支，无数据库迁移、推送或正式部署。

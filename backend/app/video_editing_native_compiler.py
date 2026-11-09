@@ -13,7 +13,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
-from .motion_parameter_contracts import input_contract
+from .motion_parameter_contracts import SHIFTED_GEOMETRY_EVENTS, input_contract
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_word_bindings import word_bindings
@@ -104,6 +104,14 @@ def compile_native_job(
     if len(placeholders) != len(set(placeholders)):
         raise ValueError("Duplicate recipe placeholder")
     native = word_bindings(beat, transcript, contract, set(asset_files))
+    if (
+        group["id"] in SHIFTED_GEOMETRY_EVENTS
+        and config.get("events", {}).get("shift_frames", 0) != 0
+        and any(
+            event["path"].startswith("/style/geometry/") for event in native["events"]
+        )
+    ):
+        raise ValueError("Word-bound scene geometry requires zero native shift_frames")
     media_clocks, clock_receipts = compile_media_clocks(
         package,
         group,

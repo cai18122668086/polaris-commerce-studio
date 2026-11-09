@@ -38,6 +38,19 @@ STYLE_NAMES = {
     "theme",
 }
 
+# These branches evaluate geometry at local frame minus events.shift_frames.
+SHIFTED_GEOMETRY_EVENTS = {
+    "YYP01": {"start_frame", "end_frame"},
+    "YYP02": {"start_frame", "end_frame"},
+    "YYP06": {
+        "camera_start_frame",
+        "camera_end_frame",
+        "reveal_start_frame",
+        "reveal_end_frame",
+    },
+    "LYO02": {"mask_start_frame", "mask_end_frame"},
+}
+
 
 def clock_category(backend: str, names: list[str]) -> str | None:
     """Distinguish native offsets/rates/lengths from absolute event positions.
@@ -97,6 +110,7 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
                 resource_kind = "media"
         elif isinstance(value, str) and (
             (first == "content" and key not in STYLE_NAMES)
+            or (group["id"] == "LYO02" and parts == ["content", "theme"])
             or (backend == "browser" and key in TEXT_NAMES)
         ):
             category = "text"
@@ -121,12 +135,10 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
                 unit = "seconds" if backend == "unified" else "frames"
             elif backend == "browser" and key == "at":
                 category, unit = "event", "seconds"
-            elif (
-                group["id"] in {"YYP01", "YYP02"}
-                and first == "style"
-                and names[-2:]
-                in [["geometry", "start_frame"], ["geometry", "end_frame"]]
-            ):
+            elif names[:-1] == [
+                "style",
+                "geometry",
+            ] and key in SHIFTED_GEOMETRY_EVENTS.get(group["id"], ()):
                 category, unit = "event", "frames"
             elif backend == "browser" and "keys" in names and parts[-1] == 0:
                 category, unit = "native_keyframe_clock", "frames"

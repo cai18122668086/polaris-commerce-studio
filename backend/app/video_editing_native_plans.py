@@ -20,6 +20,7 @@ from .video_editing_hypit import internal_hypit_available, requires_hypit
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import project_material_files, verify_material_cards
 from .video_editing_planner import validate_plan
+from .video_editing_render_edits import available_render_edits, validate_render_edits
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingNativePlanRecord,
@@ -43,6 +44,9 @@ def content_digest(value: dict[str, Any]) -> str:
 
 
 def plan_response(row: EditingNativePlanRecord, settings: Settings) -> dict[str, Any]:
+    editable, has_music = available_render_edits(
+        row.semantic, row.recipes, row.choice_snapshot
+    )
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -53,7 +57,16 @@ def plan_response(row: EditingNativePlanRecord, settings: Settings) -> dict[str,
         "origin": row.origin,
         "state": "semantic_contract_validated",
         "audience_question": row.semantic["audience_question"],
-        "beats": row.details["beats"],
+        "beats": [
+            {
+                **detail,
+                "id": beat["id"],
+                "source_only_available": beat["id"] in editable,
+            }
+            for beat, detail in zip(
+                row.semantic["beats"], row.details["beats"], strict=True
+            )
+        ],
         "warnings": row.semantic.get("warnings", []),
         "missing_materials": row.semantic.get("missing_materials", []),
         "text_status": row.details["text_status"],
@@ -61,6 +74,7 @@ def plan_response(row: EditingNativePlanRecord, settings: Settings) -> dict[str,
         "caption_font_id": row.recipes["design"]["caption_font_id"],
         "choice_snapshot_sha256": row.choice_snapshot["sha256"],
         "semantic_review": "unreviewed",
+        "music_edit_available": has_music,
         "render_available": settings.video_editing_native_plan_enabled
         and (
             not requires_hypit(row.semantic)
@@ -416,3 +430,14 @@ def admit_render_plan(
         raise ApiError(
             409, "EDITING_NATIVE_OPTIONS_CHANGED", "请使用该编排保存的字幕及字体设置。"
         )
+    if options.native_edits:
+        try:
+            validate_render_edits(
+                options.native_edits, row.semantic, row.recipes, current
+            )
+        except ValueError as error:
+            raise ApiError(
+                422,
+                "EDITING_NATIVE_EDITS_INVALID",
+                "所选段落或背景音乐不适用于这份编排。",
+            ) from error

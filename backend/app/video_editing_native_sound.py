@@ -7,7 +7,8 @@ from typing import Any, Literal, Self
 from pydantic import Field, model_validator
 
 from .motion_library import inside, read_json, sha256
-from .video_editing_contracts import Transcript
+from .video_editing_contracts import NativeRenderEdits, Transcript
+from .video_editing_render_edits import MUSIC_REDUCTION_DB
 from .video_studio_schemas import StrictVideoModel
 
 
@@ -79,6 +80,7 @@ def compile_sound(
     design: NativeSoundDesign,
     event_bindings: dict[tuple[str, str], tuple[int, dict]],
     choice_snapshot: dict[str, Any] | None,
+    edits: NativeRenderEdits | None = None,
 ) -> dict[str, Any]:
     """Compile trusted sound choices without copying an old timeline."""
     duration = episode["source"]["duration_seconds"]
@@ -117,7 +119,18 @@ def compile_sound(
 
     fx, music, cue_evidence, music_evidence = [], [], [], []
     used_events = set()
+    excluded_beats = set(edits.source_only_beat_ids) if edits else set()
+    removed_cues = []
     for cue in design.fx:
+        if cue.beat_id in excluded_beats:
+            removed_cues.append(
+                {
+                    "beat_id": cue.beat_id,
+                    "asset_id": cue.asset_id,
+                    "event_path": cue.event_path,
+                }
+            )
+            continue
         row = asset(cue.asset_id, {"sfx", "sfx-processed"})
         runtime = runtime_fx[cue.asset_id]
         if (
@@ -173,7 +186,8 @@ def compile_sound(
             }
         )
 
-    for track in design.music:
+    music_choice = edits.music if edits else None
+    for track in design.music if music_choice != "off" else []:
         row = asset(track.asset_id, {"music"})
         start, end = boundary(track.start), boundary(track.end)
         length = end - start
@@ -205,15 +219,37 @@ def compile_sound(
             "end_seconds": end,
             "envelope": envelope,
         }
+        if music_choice == "lower":
+            event["gain_db"] = track.gain_db - MUSIC_REDUCTION_DB
         music.append(event)
         music_evidence.append(
-            {**event, "asset_sha256": row["sha256"], "loop_allowed": track.loop}
+            {
+                **event,
+                "asset_sha256": row["sha256"],
+                "loop_allowed": track.loop,
+                **(
+                    {"original_gain_db": track.gain_db}
+                    if music_choice == "lower"
+                    else {}
+                ),
+            }
         )
     episode.update(fx=fx, music=music, mix={"voice_gain_db": design.voice_gain_db})
     return {
         "fx": cue_evidence,
         "music": music_evidence,
         "voice_gain_db": design.voice_gain_db,
+        **({"removed_segment_cues": removed_cues} if removed_cues else {}),
+        **(
+            {
+                "music_edit": {
+                    "mode": music_choice,
+                    "original_track_ids": [track.asset_id for track in design.music],
+                }
+            }
+            if music_choice
+            else {}
+        ),
     }
 
 
@@ -263,6 +299,8 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
             }
         )
     stems = {}
+    if not plan["music"] and (root / "audio/bgm.wav").exists():
+        raise ValueError("Unplanned native BGM stem exists")
     for name in ("voice", "fx", "bgm") if plan["music"] else ("voice", "fx"):
         stem = inside(root, f"audio/{name}.wav")
         if stem.stat().st_size <= 44:

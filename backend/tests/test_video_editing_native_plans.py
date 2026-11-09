@@ -122,6 +122,8 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
     assert view.status_code == 200, view.text
     assert view.json()[0]["origin"] == "operator_candidate"
     assert view.json()[0]["semantic_review"] == "unreviewed"
+    assert view.json()[0]["beats"][0]["source_only_available"]
+    assert not view.json()[0]["music_edit_available"]
     assert str(tmp_path) not in view.text and "recipes" not in view.text
     body = {
         "request_id": str(uuid4()),
@@ -138,6 +140,36 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
     result = client.post(url, json=body)
     assert result.status_code == 200, result.text
     assert client.post(url, json=body).json()["id"] == result.json()["id"]
+    assert "native_edits" not in result.json()["options"]
+    edited = {
+        **body,
+        "request_id": str(uuid4()),
+        "options": {
+            **body["options"],
+            "native_edits": {"source_only_beat_ids": [semantic.beats[0].id]},
+        },
+    }
+    accepted = client.post(url, json=edited)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["options"]["native_edits"]["source_only_beat_ids"] == [
+        semantic.beats[0].id
+    ]
+    assert client.post(url, json=edited).json()["id"] == accepted.json()["id"]
+    for change in ({"music": "off"}, {"source_only_beat_ids": ["other-plan-beat"]}):
+        invalid = client.post(
+            url,
+            json={
+                **edited,
+                "request_id": str(uuid4()),
+                "options": {**body["options"], "native_edits": change},
+            },
+        )
+        assert invalid.status_code == 422
+        assert invalid.json()["error"]["code"] == "EDITING_NATIVE_EDITS_INVALID"
+        conflict = client.post(
+            url, json={**edited, "options": {**body["options"], "native_edits": change}}
+        )
+        assert conflict.json()["error"]["code"] == "EDITING_REQUEST_REUSED"
     assert (
         client.post(
             url,

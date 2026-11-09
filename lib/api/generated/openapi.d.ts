@@ -5501,6 +5501,21 @@ export interface components {
             /** Next Offset */
             next_offset: number | null;
         };
+        /** EditingNativeBeatResponse */
+        EditingNativeBeatResponse: {
+            /** Group Id */
+            group_id: string;
+            /** Id */
+            id: string;
+            /** Reason */
+            reason: string;
+            /** Relation */
+            relation: string;
+            /** Source Only Available */
+            source_only_available: boolean;
+            /** Text */
+            text: string;
+        };
         /** EditingNativePlanResponse */
         EditingNativePlanResponse: {
             /** Audience Question */
@@ -5510,9 +5525,7 @@ export interface components {
             /** Base Transcript Artifact Id */
             base_transcript_artifact_id: string;
             /** Beats */
-            beats: {
-                [key: string]: unknown;
-            }[];
+            beats: components["schemas"]["EditingNativeBeatResponse"][];
             /** Caption Font Id */
             caption_font_id: string;
             /** Choice Snapshot Sha256 */
@@ -5528,6 +5541,8 @@ export interface components {
             library_release: string;
             /** Missing Materials */
             missing_materials: string[];
+            /** Music Edit Available */
+            music_edit_available: boolean;
             /**
              * Origin
              * @enum {string}
@@ -5580,6 +5595,7 @@ export interface components {
              * @enum {string}
              */
             mode: "subtitles" | "native_plan";
+            native_edits?: components["schemas"]["NativeRenderEdits"] | null;
             /** Native Plan Id */
             native_plan_id?: string | null;
             /**
@@ -6685,6 +6701,13 @@ export interface components {
             asset_id: string;
             /** Path */
             path: string;
+        };
+        /** NativeRenderEdits */
+        NativeRenderEdits: {
+            /** Music */
+            music?: ("lower" | "off") | null;
+            /** Source Only Beat Ids */
+            source_only_beat_ids?: string[];
         };
         /** NativeTextAnchor */
         NativeTextAnchor: {

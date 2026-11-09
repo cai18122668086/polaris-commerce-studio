@@ -73,3 +73,12 @@ def test_original_replay_project_access_and_frozen_material_bytes(video, tmp_pat
             stage_plan_materials(
                 session, tmp_path / "tampered", plan, settings, lambda: None
             )
+        original_only = tmp_path / "original-only"
+        plan["semantic"] = {"beats": [{"id": "picture", "asset_ids": [aid]}]}
+        assert (
+            stage_plan_materials(
+                session, original_only, plan, settings, lambda: None, {"picture"}
+            )
+            == assets
+        )
+        assert not original_only.exists()

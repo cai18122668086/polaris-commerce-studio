@@ -260,7 +260,10 @@ def test_episode_uses_actual_word_bounds_and_original_selection_protocol(tmp_pat
     assert sha256(package / "effect.json") == source
 
 
-def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(tmp_path):
+@pytest.mark.parametrize("music_edit", [None, "lower", "off"])
+def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(
+    tmp_path, music_edit
+):
     root, package, prepared, transcript, plan, authoring, settings, options = protocol(
         tmp_path
     )
@@ -322,9 +325,39 @@ def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(tmp_p
             },
         }
     )
+    if music_edit:
+        options["native_edits"] = {
+            "music": music_edit,
+            "source_only_beat_ids": ["effect"] if music_edit == "off" else [],
+        }
+    frozen_mix = mixed.model_dump(mode="json")
+    frozen_semantic = plan.model_dump(mode="json")
     episode = compile_episode(
         root, prepared, transcript, plan, mixed, {}, options, settings
     )
+    assert mixed.model_dump(mode="json") == frozen_mix
+    assert read_json(root / "episode-recipes.json") == frozen_mix
+    assert read_json(root / "semantic-plan.json") == frozen_semantic
+    evidence = read_json(root / "audio-plan.json")
+    if music_edit == "off":
+        assert not episode["music"] and not episode["fx"]
+        assert evidence["removed_segment_cues"] == [
+            {
+                "beat_id": "effect",
+                "asset_id": "original-click",
+                "event_path": "/events/enter_start",
+            }
+        ]
+        assert episode["shots"][0]["group_id"] == "Z-M00"
+        assert (
+            episode["shots"][0]["config"]["media"]["presenter"]["offset_seconds"] == 0.1
+        )
+        (applied,) = read_json(root / "compile-diagnostics.json")[
+            "applied_source_only_segments"
+        ]
+        assert applied["original_group_id"] == "T001" and applied["locked_by_user"]
+        assert (applied["start_ms"], applied["end_ms"]) == (100, 2900)
+        return
     assert episode["fx"][0]["anchor_seconds"] == 0.6
     assert episode["fx"][0]["anchor_ref"] == {
         "shot_index": 0,
@@ -333,9 +366,8 @@ def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(tmp_p
     }
     assert episode["music"][0]["start_seconds"] == 0.1
     assert episode["music"][0]["envelope"] == [{"seconds": 0.5, "gain_db": -4}]
-    assert (
-        read_json(root / "audio-plan.json")["fx"][0]["asset_sha256"] == click["sha256"]
-    )
+    assert episode["music"][0]["gain_db"] == (-36 if music_edit else -30)
+    assert evidence["fx"][0]["asset_sha256"] == click["sha256"]
 
 
 @pytest.mark.parametrize(

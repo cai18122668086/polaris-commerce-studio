@@ -18,12 +18,17 @@ from pydantic import Field, model_validator
 from .config import Settings
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_captioning import write_caption_receipt
-from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_hypit import hypit_tools, requires_hypit
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_pipeline import EditingFailure, baseline_documents, layout_captions
 from .video_editing_planner import validate_plan
+from .video_editing_render_edits import (
+    edited_segment_receipt,
+    source_only,
+    validate_render_edits,
+)
 from .video_studio_schemas import StrictVideoModel
 
 
@@ -128,6 +133,18 @@ def compile_episode(
     ):
         raise EditingFailure("EDITING_PLAN_SOURCE_CHANGED")
     validate_plan(semantic, transcript, package, set(asset_files), choice_snapshot)
+    edits = None
+    if options.get("native_edits") is not None:
+        try:
+            edits = NativeRenderEdits.model_validate(options["native_edits"])
+            validate_render_edits(
+                edits,
+                semantic.model_dump(mode="json"),
+                authoring.model_dump(mode="json"),
+                choice_snapshot,
+            )
+        except ValueError as error:
+            raise EditingFailure("EDITING_NATIVE_EDITS_INVALID") from error
     groups = {g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]}
     relation_types = set(
         read_json(package / "params.schema.json")["properties"]["production"][
@@ -196,6 +213,8 @@ def compile_episode(
     issues: list[dict[str, Any]] = []
     compiled: list[dict[str, Any]] = []
     sound_events: dict[tuple[str, str], tuple[int, dict]] = {}
+    excluded_beats = set(edits.source_only_beat_ids) if edits else set()
+    applied_edits = []
     prior_end = 0
     for index, beat in enumerate(semantic.beats):
         first, last = positions[beat.first_token_id], positions[beat.last_token_id]
@@ -214,6 +233,10 @@ def compile_episode(
         item_text = "".join(t.text for t in tokens[first : last + 1])
         shot_indices = []
         entry = authoring.entries.get(beat.id)
+        if beat.id in excluded_beats:
+            applied_edits.append(edited_segment_receipt(beat, start_ms, end_ms))
+            beat = source_only(beat)
+            entry = None
         if beat.group_id != "Z-M00" and entry is None:
             issues.append(
                 {
@@ -426,7 +449,9 @@ def compile_episode(
                 )
         episode["production"]["beats"].append(production_beat)
     for aid, asset in asset_files.items():
-        if not any(aid in b.asset_ids for b in semantic.beats):
+        if not any(
+            aid in b.asset_ids for b in semantic.beats if b.id not in excluded_beats
+        ):
             continue
         path = Path(asset["path"]).resolve()
         if not path.is_file() or sha256(path) != asset["sha256"]:
@@ -454,6 +479,7 @@ def compile_episode(
                 authoring.sound,
                 sound_events,
                 choice_snapshot,
+                edits,
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})
@@ -478,6 +504,14 @@ def compile_episode(
         "semantic_sha256": semantic_hash,
         "choice_snapshot_sha256": (choice_snapshot or {}).get("sha256"),
         "compiled_native_jobs": compiled,
+        **(
+            {
+                "native_edits": edits.model_dump(mode="json"),
+                "applied_source_only_segments": applied_edits,
+            }
+            if edits
+            else {}
+        ),
         "episode_schema_validation": "passed" if not issues else "not_admitted",
         "issues": issues,
         "native_execution": "not_performed",

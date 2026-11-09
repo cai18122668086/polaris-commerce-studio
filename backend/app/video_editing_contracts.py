@@ -1,12 +1,28 @@
 """Versioned contracts: models refer to word IDs; only the compiler owns time."""
 
 from datetime import datetime
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from pydantic import Field, model_validator
 
 from .video_studio_schemas import StrictVideoModel
+
+
+class NativeRenderEdits(StrictVideoModel):
+    music: Literal["lower", "off"] | None = None
+    source_only_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
+        Field(default_factory=list, max_length=120)
+    )
+
+    @model_validator(mode="after")
+    def checked_selection(self) -> Self:
+        if not self.music and not self.source_only_beat_ids:
+            raise ValueError("Select a music or segment edit")
+        if len(set(self.source_only_beat_ids)) != len(self.source_only_beat_ids):
+            raise ValueError("Select each segment at most once")
+        self.source_only_beat_ids = sorted(self.source_only_beat_ids)
+        return self
 
 
 class EditingOptions(StrictVideoModel):
@@ -17,6 +33,9 @@ class EditingOptions(StrictVideoModel):
     source_subtitles: Literal["none", "present", "unknown"] = "unknown"
     transcript_revision_id: UUID | None = None
     native_plan_id: UUID | None = None
+    native_edits: NativeRenderEdits | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def matching_plan_mode(self) -> Self:
@@ -24,6 +43,8 @@ class EditingOptions(StrictVideoModel):
             raise ValueError("Native mode needs exactly one saved native plan")
         if self.native_plan_id and self.transcript_revision_id:
             raise ValueError("Saved native plans use their own frozen transcript")
+        if self.native_edits and not self.native_plan_id:
+            raise ValueError("User edits require a frozen native plan")
         return self
 
 
@@ -238,6 +259,15 @@ class LibraryChoiceSnapshot(StrictVideoModel):
     sha256: str = Field(pattern="^[a-f0-9]{64}$")
 
 
+class EditingNativeBeatResponse(StrictVideoModel):
+    id: str
+    group_id: str
+    relation: str
+    text: str
+    reason: str
+    source_only_available: bool
+
+
 class EditingNativePlanResponse(StrictVideoModel):
     id: str
     project_id: str
@@ -248,7 +278,7 @@ class EditingNativePlanResponse(StrictVideoModel):
     origin: Literal["operator_candidate", "tengli_gateway"]
     state: Literal["semantic_contract_validated"]
     audience_question: str
-    beats: list[dict]
+    beats: list[EditingNativeBeatResponse]
     warnings: list[str]
     missing_materials: list[str]
     text_status: str
@@ -257,6 +287,7 @@ class EditingNativePlanResponse(StrictVideoModel):
     choice_snapshot_sha256: str
     semantic_review: Literal["unreviewed"] = "unreviewed"
     render_available: bool
+    music_edit_available: bool
     created_at: datetime
 
 

@@ -5022,6 +5022,45 @@
         "title": "EditingMaterialsResponse",
         "type": "object"
       },
+      "EditingNativeBeatResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "relation": {
+            "title": "Relation",
+            "type": "string"
+          },
+          "source_only_available": {
+            "title": "Source Only Available",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "group_id",
+          "relation",
+          "text",
+          "reason",
+          "source_only_available"
+        ],
+        "title": "EditingNativeBeatResponse",
+        "type": "object"
+      },
       "EditingNativePlanResponse": {
         "additionalProperties": false,
         "properties": {
@@ -5039,8 +5078,7 @@
           },
           "beats": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/EditingNativeBeatResponse"
             },
             "title": "Beats",
             "type": "array"
@@ -5072,6 +5110,10 @@
             },
             "title": "Missing Materials",
             "type": "array"
+          },
+          "music_edit_available": {
+            "title": "Music Edit Available",
+            "type": "boolean"
           },
           "origin": {
             "enum": [
@@ -5142,6 +5184,7 @@
           "caption_font_id",
           "choice_snapshot_sha256",
           "render_available",
+          "music_edit_available",
           "created_at"
         ],
         "title": "EditingNativePlanResponse",
@@ -5174,6 +5217,16 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "native_edits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NativeRenderEdits"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "native_plan_id": {
             "anyOf": [
@@ -8083,6 +8136,38 @@
           "asset_id"
         ],
         "title": "NativeMediaAnchor",
+        "type": "object"
+      },
+      "NativeRenderEdits": {
+        "additionalProperties": false,
+        "properties": {
+          "music": {
+            "anyOf": [
+              {
+                "enum": [
+                  "lower",
+                  "off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Music"
+          },
+          "source_only_beat_ids": {
+            "items": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 120,
+            "title": "Source Only Beat Ids",
+            "type": "array"
+          }
+        },
+        "title": "NativeRenderEdits",
         "type": "object"
       },
       "NativeTextAnchor": {

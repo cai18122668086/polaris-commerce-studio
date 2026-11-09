@@ -329,9 +329,20 @@ def stage_plan_materials(
     plan: dict,
     settings: Settings,
     guard: Callable[[], None],
+    source_only_beats: set[str] | None = None,
 ) -> dict:
     assets = plan["asset_files"]
-    frozen = {aid: asset for aid, asset in assets.items() if aid.startswith(PREFIX)}
+    used = {
+        aid
+        for beat in plan["semantic"]["beats"]
+        if not source_only_beats or beat["id"] not in source_only_beats
+        for aid in beat["asset_ids"]
+    }
+    frozen = {
+        aid: asset
+        for aid, asset in assets.items()
+        if aid.startswith(PREFIX) and (not source_only_beats or aid in used)
+    }
     if not frozen:
         return assets
     source = session.get(EditingSourceRecord, plan["source_id"])
@@ -345,7 +356,6 @@ def stage_plan_materials(
         if project_material_files(session, settings, source, set(frozen)) != frozen:
             raise EditingFailure("EDITING_MATERIAL_CHANGED")
         session.rollback()
-        used = {aid for beat in plan["semantic"]["beats"] for aid in beat["asset_ids"]}
         staged = dict(assets)
         for aid in frozen.keys() & used:
             asset = frozen[aid]
@@ -574,7 +584,16 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             stage("compiling", native_plan_id=native_plan["id"])
             with factory() as session:
                 assets = stage_plan_materials(
-                    session, root, native_plan, settings, guard
+                    session,
+                    root,
+                    native_plan,
+                    settings,
+                    guard,
+                    set(
+                        (snapshot["options"].get("native_edits") or {}).get(
+                            "source_only_beat_ids", []
+                        )
+                    ),
                 )
             compile_episode(
                 root,

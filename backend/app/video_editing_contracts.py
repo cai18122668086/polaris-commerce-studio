@@ -445,6 +445,23 @@ class EditingPlanningTaskCreate(StrictVideoModel):
         return self
 
 
+class EditingPlanningPreviewBatchCreate(StrictVideoModel):
+    planning_task_ids: list[UUID] = Field(min_length=2, max_length=5)
+
+    @model_validator(mode="after")
+    def distinct_tasks(self) -> Self:
+        if len(set(self.planning_task_ids)) != len(self.planning_task_ids):
+            raise ValueError("Batch preview requires distinct planning tasks")
+        return self
+
+
+class EditingPlanningPreviewBatchItem(StrictVideoModel):
+    planning_task_id: UUID
+    task: EditingTaskResponse | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 class EditingPlanningSpan(StrictVideoModel):
     beat_id: str
     group_id: str

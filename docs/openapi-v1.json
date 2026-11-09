@@ -5767,6 +5767,73 @@
         "title": "EditingOverlayTemplate",
         "type": "object"
       },
+      "EditingPlanningPreviewBatchCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "planning_task_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 2,
+            "title": "Planning Task Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "planning_task_ids"
+        ],
+        "title": "EditingPlanningPreviewBatchCreate",
+        "type": "object"
+      },
+      "EditingPlanningPreviewBatchItem": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "planning_task_id": {
+            "format": "uuid",
+            "title": "Planning Task Id",
+            "type": "string"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingTaskResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "planning_task_id"
+        ],
+        "title": "EditingPlanningPreviewBatchItem",
+        "type": "object"
+      },
       "EditingPlanningSpan": {
         "additionalProperties": false,
         "properties": {
@@ -22616,6 +22683,77 @@
         "summary": "Native Image Targets",
         "tags": [
           "video-editing-native-plans"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-planning-preview-batch": {
+      "post": {
+        "operationId": "create_preview_batch_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_planning_preview_batch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingPlanningPreviewBatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingPlanningPreviewBatchItem"
+                  },
+                  "title": "Response Create Preview Batch Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Planning Preview Batch Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Preview Batch",
+        "tags": [
+          "video-editing-planning"
         ]
       }
     },

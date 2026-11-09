@@ -17,6 +17,8 @@ from .motion_library import sha256
 from .video_editing_contracts import (
     EditingNativePlanResponse,
     EditingOverlayTemplate,
+    EditingPlanningPreviewBatchCreate,
+    EditingPlanningPreviewBatchItem,
     EditingPlanningTaskCreate,
     EditingPlanningTaskResponse,
     EditingTaskCreate,
@@ -179,6 +181,63 @@ def create_preview(
     settings = enabled(request)
     row = own_planning_task(session, workspace, str(task_id))
     own_project(session, workspace, row.project_id)
+    return submit_planning_preview(row, request, workspace, session, settings)
+
+
+@router.post(
+    "/projects/{project_id}/editing-planning-preview-batch",
+    response_model=list[EditingPlanningPreviewBatchItem],
+)
+def create_preview_batch(
+    project_id: UUID,
+    body: EditingPlanningPreviewBatchCreate,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> list[dict[str, Any]]:
+    require_workspace_write(workspace)
+    settings = enabled(request)
+    own_project(session, workspace, str(project_id))
+    ids = [str(task_id) for task_id in body.planning_task_ids]
+    scoped_ids = set(
+        session.scalars(
+            select(EditingPlanningTaskRecord.id).where(
+                EditingPlanningTaskRecord.id.in_(ids),
+                EditingPlanningTaskRecord.workspace_id == workspace.workspace_id,
+                EditingPlanningTaskRecord.owner_user_id == workspace.principal.user_id,
+                EditingPlanningTaskRecord.project_id == str(project_id),
+            )
+        )
+    )
+    if scoped_ids != set(ids):
+        raise ApiError(404, "EDITING_PLANNING_NOT_FOUND", "未找到本项目的规划任务。")
+
+    # Each successful submission commits its task and planning link together.
+    results = []
+    for task_id in ids:
+        try:
+            row = own_planning_task(session, workspace, task_id)
+            task = submit_planning_preview(row, request, workspace, session, settings)
+            results.append({"planning_task_id": task_id, "task": task})
+        except ApiError as error:
+            session.rollback()
+            results.append(
+                {
+                    "planning_task_id": task_id,
+                    "error_code": error.code,
+                    "error_message": error.message,
+                }
+            )
+    return results
+
+
+def submit_planning_preview(
+    row: EditingPlanningTaskRecord,
+    request: Request,
+    workspace: WorkspaceContext,
+    session: Session,
+    settings: Settings,
+) -> dict[str, Any]:
     request_id = uuid5(NAMESPACE_URL, f"tengli:planning-preview-v1:{row.id}")
     if saved := row.result.get("preview_task_id"):
         previous = own_task(session, workspace, saved)

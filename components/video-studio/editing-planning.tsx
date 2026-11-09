@@ -12,12 +12,13 @@ type PreviewTask = components["schemas"]["EditingTaskResponse"];
 type OverlayTemplate = components["schemas"]["EditingOverlayTemplate"];
 type BaseTask = { id: string; status: string; created_at: string; artifacts: { role: string }[] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
+const maxPreviewBatch = 5;
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = { EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。", EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。", EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。", EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。", EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。", EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。", EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。" };
 
 export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, onPreview }: {
   workspaceId: string; projectId: string; tasks: BaseTask[]; onNativePlan: () => void;
-  onPreview: (task: PreviewTask) => void;
+  onPreview: (tasks: PreviewTask[]) => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState("");
@@ -29,8 +30,14 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [nativePlans, setNativePlans] = useState<Record<string, string>>({});
+  const [batchSelection, setBatchSelection] = useState<string[]>([]);
+  const [batchErrors, setBatchErrors] = useState<Record<string, string>>({});
+  const [batchCount, setBatchCount] = useState(0);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const candidates = tasks.filter(task => task.status === "completed" && task.artifacts.some(a => a.role === "transcript"));
+  const eligible = jobs.filter(job => job.status === "completed" && job.overlay_template && !job.preview_task_id);
+  const batchIds = batchSelection.filter(id => eligible.some(job => job.id === id));
+  const showBatch = eligible.length >= 2 || batchIds.length > 0;
   const refresh = useCallback(async () => unwrapApiResponse(await apiClient.GET(`${root}/projects/{project_id}/editing-planning-tasks`, {
     params: { path: { workspace_id: workspaceId, project_id: projectId } }, signal: AbortSignal.timeout(12000),
   })), [workspaceId, projectId]);
@@ -88,6 +95,16 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
     } catch (caught) { setError(caught instanceof Error ? caught.message : "原生编排未确认，可重试此操作。"); }
     finally { setBusy(false); }
   };
+  const linkPreviews = (linked: Map<string, PreviewTask>) => {
+    const previews = [...linked.values()];
+    if (previews.some(task => task.project_id !== projectId)) throw new Error("预览任务与当前项目不匹配。");
+    setJobs(rows => rows.map(row => {
+      const task = linked.get(row.id);
+      return task ? { ...row, preview_task_id: task.id, native_render_state: "preview_requested" } : row;
+    }));
+    setBatchSelection(ids => ids.filter(id => !linked.has(id)));
+    onPreview(previews);
+  };
   const preview = async (job: Job) => {
     setBusy(true); setError("");
     try {
@@ -98,12 +115,28 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
         : await apiClient.POST(`${root}/editing-planning-tasks/{task_id}/preview`, {
           params: { path: { workspace_id: workspaceId, task_id: job.id } }, signal: AbortSignal.timeout(12000),
         }));
-      if (task.project_id !== projectId) throw new Error("预览任务与当前项目不匹配。");
-      setJobs(rows => rows.map(row => row.id === job.id
-        ? { ...row, preview_task_id: task.id, native_render_state: "preview_requested" }
-        : row));
-      onPreview(task);
+      linkPreviews(new Map([[job.id, task]]));
+      setBatchErrors(current => ({ ...current, [job.id]: "" }));
     } catch (caught) { setError(caught instanceof Error ? caught.message : "预览提交未确认，再次点击会查询同一任务。"); }
+    finally { setBusy(false); }
+  };
+  const batchPreview = async () => {
+    setBusy(true); setError(""); setBatchCount(0); setBatchErrors({});
+    try {
+      const results = unwrapApiResponse(await apiClient.POST(`${root}/projects/{project_id}/editing-planning-preview-batch`, {
+        params: { path: { workspace_id: workspaceId, project_id: projectId } },
+        body: { planning_task_ids: batchIds }, signal: AbortSignal.timeout(60000),
+      }));
+      const linked = new Map<string, PreviewTask>();
+      const failed: Record<string, string> = {};
+      for (const result of results) {
+        if (result.task) linked.set(result.planning_task_id, result.task);
+        else failed[result.planning_task_id] = result.error_message || "此条预览未提交，请核对规划后重试。";
+      }
+      if (linked.size) linkPreviews(linked);
+      setBatchCount(linked.size);
+      setBatchErrors(failed);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "批量提交暂未确认，请刷新核对后重试。"); }
     finally { setBusy(false); }
   };
   return <section aria-label="语义规划任务">
@@ -123,10 +156,18 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
     <button type="button" disabled={busy || !selected || !templateId} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {loadError && <p role="alert" className={styles.error}>{loadError}</p>}
+    {showBatch && <div>
+      <p className={styles.note}>可勾选 2 至 {maxPreviewBatch} 条规划生成代理。每条独立剪辑，高清逐条确认。</p>
+      <button type="button" disabled={busy || batchIds.length < 2} onClick={() => void batchPreview()}>批量生成代理预览（{batchIds.length} 条）</button>
+    </div>}
+    {batchCount > 0 && <p role="status">已关联 {batchCount} 条代理预览任务。</p>}
     <div className={styles.tasks}>{jobs.map(job => <article key={job.id} data-planning-job={job.id}>
       <div className={styles.taskHeading}><b>{labels[job.status === "running" ? job.stage : job.status] || "正在处理规划"}</b><time>{new Date(job.created_at).toLocaleString("zh-CN")}</time></div>
       <p className={styles.note}>模型：{job.model} · 网关：{job.gateway_host || "尚未固定"} · 转录版本 {job.base_transcript_sha256.slice(0, 12)}{job.text_status && ` · ${job.text_status === "user_corrected" ? "用户已校对文字，词点待验" : "转录文字待核对"}`}</p>
       {job.overlay_template && <p className={styles.note}>组合模板 · {job.overlay_template.name}</p>}
+      {showBatch && job.status === "completed" && job.overlay_template && !job.preview_task_id && <label className={styles.reviewCheck}>
+        <input type="checkbox" checked={batchIds.includes(job.id)} disabled={busy || (!batchIds.includes(job.id) && batchIds.length >= maxPreviewBatch)} onChange={event => setBatchSelection(event.target.checked ? [...batchIds, job.id] : batchIds.filter(id => id !== job.id))} />加入批量预览
+      </label>}
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>当前运行条件未满足的动效 · {job.unavailable_template_group_ids.join("、")}</p>}
       {job.unavailable_template_group_ids?.includes("HY-A5") && <p className={styles.note}>斜切标签需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。</p>}
       {job.project_image_requirements?.map(requirement => requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
@@ -148,6 +189,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
       </>}
       {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}</li>)}</ul><p className={styles.note}>语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
       {job.status === "completed" && job.overlay_template && <>
+        {batchErrors[job.id] && <p role="alert" className={styles.error}>{batchErrors[job.id]}</p>}
         {job.preview_task_id && tasks.some(task => task.id === job.preview_task_id)
           ? <a href={`#editing-task-${job.preview_task_id}`}>查看本次代理预览任务</a>
           : <button type="button" disabled={busy} onClick={() => void preview(job)}>{job.preview_task_id ? "读取本次代理预览任务" : "按本次规划生成代理预览"}</button>}

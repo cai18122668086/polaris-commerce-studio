@@ -39,7 +39,7 @@ from app.video_editing_template_materials import (
     validate_template_images,
 )
 from tests.test_video_editing_native_plans import saved_plan
-from tests.test_video_projects import base
+from tests.test_video_projects import base, payload, put
 
 pytest_plugins = ["tests.test_video_projects"]
 
@@ -412,6 +412,79 @@ def test_completed_planning_preview_is_linked_before_dispatch_and_replayed(
     assert planning["native_render_state"] == "preview_requested"
     assert planning["semantic"] == semantic.model_dump(mode="json")
     assert provider.calls == 1
+
+
+def test_batch_previews_commit_independently_and_replay_single_ids(
+    video, tmp_path, monkeypatch
+):
+    client, _, ws, settings, source, task, semantic = setup(
+        video, tmp_path, monkeypatch
+    )
+    factory = client.app.state.session_factory
+    prepared = prepare(client, ws, settings, task)
+    enable_fixture(settings)
+    provider = Provider(semantic)
+    plans = []
+    for _ in range(2):
+        ready = prepare(client, ws, settings, task)
+        pending = create(client, ws, task["id"], "generate", ready["id"]).json()
+        worker.process(pending["id"], settings, factory, provider)
+        plans.append(pending["id"])
+
+    def gateway(_session, _settings, _workspace, row):
+        if row.status != "completed":
+            raise ApiError(409, "EDITING_PLANNING_RESULT_REQUIRED", "规划候选未就绪。")
+        return SimpleNamespace(
+            id=str(uuid4()),
+            source_id=source,
+            details={"source_subtitles": "none"},
+            recipes={"design": {"caption_font_id": "font-d1961be1161ea1be"}},
+        )
+
+    monkeypatch.setattr(planning_routes, "gateway_candidate", gateway)
+    monkeypatch.setattr(task_routes, "admit_render_plan", lambda *args: None)
+    dispatched = []
+    client.app.state.editing_dispatcher = dispatched.append
+    batch = base(ws) + f"/projects/{task['project_id']}/editing-planning-preview-batch"
+
+    def submit(ids):
+        return client.post(batch, json={"planning_task_ids": ids})
+
+    assert submit([plans[0]]).status_code == 422
+    assert submit([str(uuid4()) for _ in range(6)]).status_code == 422
+    assert submit([plans[0], plans[0]]).status_code == 422
+    assert submit([plans[0], str(uuid4())]).status_code == 404
+    other_project = str(uuid4())
+    put(client, ws, other_project, payload())
+    with factory() as session:
+        row = session.get(EditingPlanningTaskRecord, prepared["id"])
+        row.project_id = other_project
+        session.commit()
+    assert submit([plans[0], prepared["id"]]).status_code == 404
+    assert dispatched == []
+    with factory() as session:
+        row = session.get(EditingPlanningTaskRecord, prepared["id"])
+        row.project_id = task["project_id"]
+        session.commit()
+
+    requested = [plans[0], prepared["id"], plans[1]]
+    response = submit(requested)
+    assert response.status_code == 200, response.text
+    first, rejected, last = response.json()
+    assert [item["planning_task_id"] for item in response.json()] == requested
+    assert rejected["error_code"] == "EDITING_PLANNING_RESULT_REQUIRED"
+    assert rejected["task"] is None
+    for item in (first, last):
+        preview = item["task"]
+        assert preview["status"] == "queued" and not preview["artifacts"]
+        assert preview["options"]["delivery"] == "preview_first"
+        route = base(ws) + f"/editing-planning-tasks/{item['planning_task_id']}"
+        assert client.get(route).json()["preview_task_id"] == preview["id"]
+        assert client.post(route + "/preview").json()["id"] == preview["id"]
+    assert submit(requested).json() == response.json()
+    assert dispatched == [first["task"]["id"], last["task"]["id"]]
+    assert len(set(dispatched)) == 2
+    assert provider.calls == 2
 
 
 @pytest.mark.parametrize("malformed", [False, True, "envelope"])

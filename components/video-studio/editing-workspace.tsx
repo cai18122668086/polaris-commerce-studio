@@ -32,16 +32,17 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
-  const [linkedPreview, setLinkedPreview] = useState<{ projectId: string; id: string }>();
+  const [linkedPreviews, setLinkedPreviews] = useState<{ projectId: string; ids: string[] }>();
   const reload = useCallback(async () => {
     const result = await apiClient.GET(`${root}/editing-tasks`, { ...options(), params: { path: { workspace_id: workspaceId }, query: { project_id: projectId } } });
     const rows = unwrapApiResponse(result);
-    if (linkedPreview?.projectId !== projectId || rows.some(row => row.id === linkedPreview.id)) return rows;
-    const detail = unwrapApiResponse(await apiClient.GET(`${root}/editing-tasks/{task_id}`, {
-      ...options(), params: { path: { workspace_id: workspaceId, task_id: linkedPreview.id } },
-    }));
-    return detail.project_id === projectId ? [detail, ...rows] : rows;
-  }, [workspaceId, projectId, options, linkedPreview]);
+    if (linkedPreviews?.projectId !== projectId) return rows;
+    const missing = linkedPreviews.ids.filter(id => !rows.some(row => row.id === id));
+    const details = await Promise.allSettled(missing.map(async id => unwrapApiResponse(await apiClient.GET(`${root}/editing-tasks/{task_id}`, {
+      ...options(), params: { path: { workspace_id: workspaceId, task_id: id } },
+    }))));
+    return [...details.flatMap(detail => detail.status === "fulfilled" && detail.value.project_id === projectId ? [detail.value] : []), ...rows];
+  }, [workspaceId, projectId, options, linkedPreviews]);
   useEffect(() => {
     let live = true;
     const update = () => { void reload().then(rows => { if (live) { setTasks(rows); setLoadError(""); } }).catch(() => { if (live) setLoadError("暂时无法读取剪辑任务，请稍后重试。"); }); };
@@ -98,9 +99,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
     {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion} onCreated={async () => { setTasks(await reload()); }} />}
-    {saved && <details onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} onNativePlan={() => setPlansVersion(value => value + 1)} onPreview={task => {
-      setTasks(rows => [task, ...rows.filter(row => row.id !== task.id)]);
-      setLinkedPreview({ projectId, id: task.id });
+    {saved && <details onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} onNativePlan={() => setPlansVersion(value => value + 1)} onPreview={previews => {
+      const ids = previews.map(task => task.id);
+      setTasks(rows => [...previews, ...rows.filter(row => !ids.includes(row.id))]);
+      setLinkedPreviews({ projectId, ids });
       setPlansVersion(value => value + 1);
     }} />}</details>}
     <details onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>原库目录与项目选组备忘</summary>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>

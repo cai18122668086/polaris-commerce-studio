@@ -2535,6 +2535,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-planning-preview-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Preview Batch */
+        post: operations["create_preview_batch_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_planning_preview_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-planning-tasks": {
         parameters: {
             query?: never;
@@ -6016,6 +6033,24 @@ export interface components {
             name: string;
             /** Slots */
             slots: components["schemas"]["EditingOverlaySlot"][];
+        };
+        /** EditingPlanningPreviewBatchCreate */
+        EditingPlanningPreviewBatchCreate: {
+            /** Planning Task Ids */
+            planning_task_ids: string[];
+        };
+        /** EditingPlanningPreviewBatchItem */
+        EditingPlanningPreviewBatchItem: {
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /**
+             * Planning Task Id
+             * Format: uuid
+             */
+            planning_task_id: string;
+            task?: components["schemas"]["EditingTaskResponse"] | null;
         };
         /** EditingPlanningSpan */
         EditingPlanningSpan: {
@@ -13881,6 +13916,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingImageTarget"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_preview_batch_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_planning_preview_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingPlanningPreviewBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingPlanningPreviewBatchItem"][];
                 };
             };
             /** @description Validation Error */

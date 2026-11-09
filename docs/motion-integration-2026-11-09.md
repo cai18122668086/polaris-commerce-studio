@@ -1005,3 +1005,11 @@ worker 在高清校验通过后、生成代理之前保存检查点，代理校�
 版面检查与原库混音重新执行，整片通过解码和原声、字幕、时钟及交付检查。代理与高清均返回 206。430 像素宽 Chrome 实播 40.123 秒试片并下载同一摘要。试片 C:/tl/motion-shot-recovery/website-shot-resumed-hd.mp4，SHA256 为 1f3e318aed55982d162072e539f5ca1bbd8346d9637f8bf32fa269f9e7fc59cd。记录在同目录 recovery-evidence.json、relocated-native-receipts.json、native-shot-clock-check.json 和 browser-shot-resumed-playback.json。本次为续跑验证，使用受控规划并复用该编排，整体观感和听感仍待验收。
 
 加入片段时长检查后，再用真实基础字幕任务 9a3549f6-8a6b-48c5-bcd8-e7d44bf0350d 验证一次取消和重试。新 worker 复用首段 Z-M00，最终三段均封存，输出与此前基础字幕对照摘要相同。证据为 C:/tl/motion-shot-recovery/final-clock-control/recovery-evidence.json。274 项相关回归、Ruff、目标 mypy 及原包 1426 项摘要复核通过。
+
+## 剪辑 worker 运行依赖自检
+
+`python scripts/run_editing_worker.py --check-runtime` 使用当前配置验证任务目录写入、口播媒体目录、原包字节、原生 Python 依赖、FFmpeg 滤镜与交付编码器、无头浏览器画布、离线转录模型及启用时的对齐模型。命令输出独立的 JSON 回执，失败返回 1。它不领取队列任务，不进行转录或原生成片渲染。启用剪辑探测的 API 镜像与 worker 镜像均在切换到 UID 10001 前建立共享任务挂载点。
+
+在 Windows 本机使用原包、实际 FunASR 和 fa-zh 模型、原媒体目录执行自检，七项均通过，原包核验 1426 项并注册 132 组。将口播媒体和 ASR 分别指向不存在的路径后，两项明确失败并返回 1。其他检查仍各自完成。回执位于 C:/tl/motion-container-runtime/windows-runtime-check.json 与同目录 windows-runtime-negative.json。
+
+274 项相关回归、目标 Ruff、mypy 及 Compose 四层配置校验通过。本机 Docker Desktop 初次启动在两个旧通信端点处遇到 Windows 错误 1920。保留两个端点目录的备份后，启动进入 WSL 阶段，仍在创建其内部发行版目录时失败。Docker 数据盘留在原位，Linux 镜像构建与容器内真实出片均待验证。

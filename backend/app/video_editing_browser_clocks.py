@@ -11,6 +11,16 @@ from fontTools.ttLib import TTFont
 from .motion_library import sha256
 
 CARD_GROUP = "CX-G07"
+FRUIT_LIST_GROUP = "CX-G06"
+FRUIT_LIST_FONTS = (
+    "font-346c3d9c8c827faa",
+    "font-e4b3b9d058750fb8",
+    "font-aa4560dd8fe56457",
+    "font-b24aa49a4bcb99a0ffc6",
+    "font-91046862e08fbade0bdd",
+)
+_FRUIT_LIST_ENGINE = "4baf10834bdffb26e50b541cd5f91803cbddf4c1267f7e393f67a47a1cb56eaa"
+_FRUIT_LIST_LEGACY = "c048cf200d0ebeb794017699c922cb92051a7c0096a63e6b95cf1c8882a02d51"
 SPLIT_GROUPS = frozenset(("CX-G01", "CX-G02", "CX-G03"))
 SPLIT_TITLE_FONT = "font-dab883d69fb71323"
 SPLIT_ENGINE_SHA = "a0bbc920f8efda7a49e4cf0690c9276787c37763fd64d5741433ba0a49b3d54d"
@@ -87,6 +97,87 @@ def card_font_evidence(font: Path, config: dict) -> dict[str, Any]:
                 "The selected browser card font cannot draw every bound label"
             )
     return {"font_sha256": sha256(font), "label_codepoints": len(characters)}
+
+
+def audit_fruit_list_engine(package: Path, group: dict) -> None:
+    entry = package / group["entry"]
+    if (
+        sha256(entry) != _FRUIT_LIST_ENGINE
+        or sha256(entry.parent / "legacy/src/renderer.html") != _FRUIT_LIST_LEGACY
+        or sha256(package / "commercial_runtime/special.py") != SPLIT_WRAPPER_SHA
+    ):
+        raise ValueError("Original fruit list engine or export clock changed")
+
+
+def compile_fruit_list_clock(
+    package: Path,
+    group: dict,
+    config: dict,
+    resources: dict[str, str],
+    native: dict,
+    assets: dict[str, dict],
+) -> dict[str, Any]:
+    audit_fruit_list_engine(package, group)
+    if set(FRUIT_LIST_FONTS) - resources.keys():
+        raise ValueError("Bind the five original fruit list fonts explicitly")
+    frames = round(config["duration"] * 30)
+    items = config["items"]
+    starts = [item["at"] for item in items]
+    text = {row["path"]: row for row in native["text"]}
+    events = {row["path"]: row for row in native["events"]}
+    media = {row["path"]: row["asset_id"] for row in native["media"]}
+    paths = ["/presenter", *(f"/items/{i}/image" for i in range(3))]
+    if (
+        len(items) != 3
+        or config["background"] is not None
+        or any(left >= right for left, right in pairwise(starts))
+        or any(
+            not math.isfinite(start) or start < 0 or start * 30 + 16 > frames - 1
+            for start in starts
+        )
+        or set(media) != set(paths)
+        or any(
+            assets[media[path]].get("kind") != "image"
+            or assets[media[path]].get("source") != "project_upload"
+            for path in paths
+        )
+        or len({assets[media[path]]["sha256"] for path in paths}) != 4
+        or assets[media["/presenter"]].get("width", 0) < 1006
+        or assets[media["/presenter"]].get("height", 0) < 814
+    ):
+        raise ValueError(
+            "The fruit list needs four distinct current images and time to settle"
+        )
+    for i, item in enumerate(items):
+        prefix = f"/items/{i}/"
+        label, description, arrival = (
+            text.get(prefix + "label"),
+            text.get(prefix + "description"),
+            events.get(prefix + "at"),
+        )
+        if (
+            not label
+            or not description
+            or not arrival
+            or arrival["edge"] != "start"
+            or arrival["token_id"] != label["token_ids"][0]
+            or not 1 <= len(item["label"]) <= 3
+            or not 1 <= len(item["description"]) <= 12
+            or any(mark in item["description"] for mark in "|\n\r")
+        ):
+            raise ValueError(
+                "Each fruit list entry needs its own spoken label and description"
+            )
+    return {
+        "policy": "original_fruit_list_word_entries",
+        "engine_sha256": _FRUIT_LIST_ENGINE,
+        "fixed_title": "水果介绍",
+        "background": "original_solid_mode",
+        "frames": frames,
+        "entry_seconds": starts,
+        "assets": media,
+        "timing_review": "unreviewed",
+    }
 
 
 def compile_card_clock(

@@ -16,6 +16,7 @@ from .video_assistance_provider import (
     planner_configured,
     planner_endpoint,
 )
+from .video_editing_browser_clocks import FRUIT_LIST_GROUP
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_overlay_templates import (
@@ -84,6 +85,14 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
                 "input_keys": list(schema.get("properties", {})),
                 "contract_present": bool(contract),
                 "selection_contract": contract.get("selection") if contract else None,
+                **(
+                    {
+                        "fixed_native_title": "水果介绍 · Fruit Introduction。"
+                        "只用于三项水果介绍。"
+                    }
+                    if group["id"] == FRUIT_LIST_GROUP
+                    else {}
+                ),
                 "content_slots": target.get("content_keys")
                 or (contract or {}).get("content_keys")
                 or list(
@@ -112,6 +121,11 @@ def catalog_index(package: Path) -> list[dict[str, Any]]:
                     **(
                         {"native_scene_chain": parameters["native_scene_chain"]}
                         if "native_scene_chain" in parameters
+                        else {}
+                    ),
+                    **(
+                        {"native_question_gloss": parameters["native_question_gloss"]}
+                        if "native_question_gloss" in parameters
                         else {}
                     ),
                     **(

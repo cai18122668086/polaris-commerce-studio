@@ -1,4 +1,5 @@
 import pytest
+from PIL import Image
 
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from app.video_editing_native_content import (
@@ -8,6 +9,7 @@ from app.video_editing_native_content import (
     package_entries,
     role_scene_chain,
     translation_labels,
+    why_word_bindings,
     year_glyphs,
 )
 from app.video_editing_native_sound import package_entry_frame
@@ -281,3 +283,49 @@ def test_film_feedback_counts_are_bound_to_dated_current_evidence():
     observations[1]["observed_at"] = "2026-11-09T08:50:00"
     with pytest.raises(ValueError, match="timezone"):
         film_feedback_entries(native, assets, observations)
+
+
+def test_short_question_gloss_preserves_spoken_anchor_and_original_clock(tmp_path):
+    props = {}
+    bindings = []
+    for index in range(2):
+        path = tmp_path / f"prop-{index}.png"
+        image = Image.new("RGBA", (540, 960))
+        image.putpixel((index, 0), (255, 255, 255, 255))
+        image.save(path)
+        aid = f"prop-{index}"
+        props[aid] = {
+            "kind": "image",
+            "source": "project_upload",
+            "path": path,
+            "sha256": str(index),
+        }
+        bindings.append(
+            {"path": f"/media/question_props/{index}/path", "asset_id": aid}
+        )
+    native = {
+        "clock": {"start_ms": 0, "end_ms": 3000},
+        "text": [
+            {"path": "/content/english_question", "text": "谁", "token_ids": ["who"]}
+        ],
+        "events": [
+            {
+                "path": f"/timing/events/{key}",
+                "value": at,
+                "token_id": token,
+                "edge": "start",
+            }
+            for key, at, token in (
+                ("props_in/0", 0.1, "first"),
+                ("props_in/1", 0.4, "second"),
+                ("english_in", 0.8, "who"),
+                ("blur_exit", 2.4, "tail"),
+            )
+        ],
+        "media": bindings,
+    }
+    gloss = why_word_bindings(native, props)
+    assert (gloss["source_token_ids"], gloss["display_text"]) == (["who"], "Who?")
+    native["events"][0]["value"] = 0
+    with pytest.raises(ValueError, match="four ordered W-R17 events"):
+        why_word_bindings(native, props)

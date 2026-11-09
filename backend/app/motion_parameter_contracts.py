@@ -32,8 +32,11 @@ from .video_editing_native_content import (
     FILM_FEEDBACK_GROUP,
     PACKAGE_GROUP,
     ROLE_CHAIN_GROUP,
+    WHY_GROUP,
+    WHY_TEXT,
     live_package_template,
     role_scene_contract,
+    why_template,
 )
 from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
@@ -118,6 +121,8 @@ def input_contract(
     live_package_presenter: bool = True,
     current_line_art: bool = True,
     embedded_line_caption: bool = True,
+    current_why_props: bool = True,
+    embedded_why_caption: bool = True,
 ) -> dict[str, Any]:
     template = read_json(package / group["input_template"])
     question_group = group["id"] == QUESTION_GROUP
@@ -133,6 +138,8 @@ def input_contract(
         template = live_package_template(template)
     if group["id"] == LINE_GROUP and current_line_art:
         template = line_template(template, embedded_caption=embedded_line_caption)
+    if group["id"] == WHY_GROUP and current_why_props:
+        template = why_template(template, embedded_caption=embedded_why_caption)
     schema = read_json(package / group["input_schema"])
     Draft202012Validator.check_schema(schema)
     external = {
@@ -378,6 +385,17 @@ def input_contract(
         **(
             {"native_scene_chain": role_scene_contract()}
             if group["id"] == ROLE_CHAIN_GROUP
+            else {}
+        ),
+        **(
+            {
+                "native_question_gloss": {
+                    "path": WHY_TEXT,
+                    "source": "锚定原话中完整的短问词，例如为什么、怎么、谁。",
+                    "binding": "英文由编译器映射。两个问号道具须分别引用本期透明图片。",
+                }
+            }
+            if group["id"] == WHY_GROUP and current_why_props
             else {}
         ),
         **(

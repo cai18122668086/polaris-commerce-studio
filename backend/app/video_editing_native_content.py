@@ -3,7 +3,10 @@
 import re
 from datetime import datetime
 from itertools import pairwise
+from pathlib import Path
 from typing import Any
+
+from PIL import Image
 
 from .video_editing_contracts import SemanticBeat, Transcript
 
@@ -16,6 +19,19 @@ TRANSLATION_GROUP = "W-R02"
 ROLE_CHAIN_GROUP = "W-R15"
 PACKAGE_GROUP = "Z-M12"
 FILM_FEEDBACK_GROUP = "W-R01"
+WHY_GROUP = "W-R17"
+WHY_FONT = "font-baa251526d686271"
+WHY_TEXT = "/content/english_question"
+WHY_PROPS = ("media-33e4cf54d9f6175ef4cd", "media-4eba1bafe09821cb8a23")
+WHY_PROP_PATHS = tuple(f"/media/question_props/{i}/path" for i in range(2))
+_WHY_GLOSSES = {
+    "为什么": "Why?",
+    "为何": "Why?",
+    "为啥": "Why?",
+    "怎么": "How?",
+    "如何": "How?",
+    "谁": "Who?",
+}
 _ROLE_SCENE_ORDER = (
     "scene0",
     "profile",
@@ -249,6 +265,72 @@ def film_feedback_entries(
             }
         )
     return entries
+
+
+def why_template(template: dict, *, embedded_caption: bool = True) -> dict:
+    return {
+        **template,
+        "content": {
+            **template["content"],
+            "captions": template["content"]["captions"] if embedded_caption else [],
+        },
+        "media": {
+            **template["media"],
+            "question_props": [
+                {"kind": "image", "path": f"input://{rid}", "alpha": True}
+                for rid in WHY_PROPS
+            ],
+        },
+    }
+
+
+def why_word_bindings(native: dict, assets: dict[str, dict]) -> dict:
+    source = next((row for row in native["text"] if row["path"] == WHY_TEXT), None)
+    events = {row["path"]: row for row in native["events"]}
+    keys = tuple(
+        "/timing/events/" + key
+        for key in ("props_in/0", "props_in/1", "english_in", "blur_exit")
+    )
+    duration = (native["clock"]["end_ms"] - native["clock"]["start_ms"]) / 1000
+    if not source or not all(key in events for key in keys):
+        raise ValueError("Anchor both props, the spoken question and the blur exit")
+    display = _WHY_GLOSSES.get(source["text"].rstrip("?？"), source["text"])
+    times = [events[key]["value"] for key in keys]
+    english = events[keys[2]]
+    if (
+        not re.fullmatch(r"[A-Za-z]{1,3}\?", display)
+        or english["edge"] != "start"
+        or english["token_id"] != source["token_ids"][0]
+        or not 0 < times[0] < times[1] < times[2] < times[3] < duration
+    ):
+        raise ValueError("Use a short spoken question and four ordered W-R17 events")
+
+    media = {row["path"]: row["asset_id"] for row in native["media"]}
+    props = []
+    for path in WHY_PROP_PATHS:
+        aid = media.get(path, "")
+        asset = assets.get(aid, {})
+        if asset.get("kind") != "image" or asset.get("source") != "project_upload":
+            raise ValueError("Select two registered transparent question props")
+        with Image.open(Path(asset["path"])) as image:
+            if (
+                image.format != "PNG"
+                or image.size != (540, 960)
+                or "A" not in image.getbands()
+                or image.getchannel("A").getextrema() != (0, 255)
+            ):
+                raise ValueError("Question props need the native 540×960 alpha canvas")
+        props.append({"path": path, "asset_id": aid, "sha256": asset["sha256"]})
+    if len({row["sha256"] for row in props}) != 2:
+        raise ValueError("Select two distinct question prop images")
+    return {
+        "path": WHY_TEXT,
+        "source_text": source["text"],
+        "source_token_ids": source["token_ids"],
+        "display_text": display,
+        "props": props,
+        "semantic_review": "unreviewed",
+    }
 
 
 def live_package_template(template: dict[str, Any]) -> dict[str, Any]:

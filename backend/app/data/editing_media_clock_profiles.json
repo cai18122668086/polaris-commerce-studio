@@ -455,6 +455,21 @@
       },
       "native_fps": 30
     },
+    "W-R17": {
+      "id": "wr17-question-live-portrait/1",
+      "backend": "unified",
+      "media_paths": ["/media/presenter/path"],
+      "require_source_end_error": true,
+      "scope": "original presenter keeps the source clock through both question props, lettering and blur",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/final-three-rework/build.py": "2d0d58ca90ddb14c1353604a5d891ee8fea3c69e07120cf25fb1d6dcba737777"
+      },
+      "native_fps": 30
+    },
     "W-R18": {
       "id": "unified-build12-live-frame-clock/1",
       "backend": "unified",

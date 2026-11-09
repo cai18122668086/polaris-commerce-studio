@@ -25,12 +25,18 @@ from .motion_parameter_contracts import (
 )
 from .video_editing_browser_clocks import (
     CARD_GROUP,
+    FRUIT_LIST_GROUP,
     SPLIT_GROUPS,
     card_font_evidence,
     compile_card_clock,
+    compile_fruit_list_clock,
     compile_split_clock,
 )
-from .video_editing_browser_live import CARD_LIVE_PREFIX, card_live_clock
+from .video_editing_browser_live import (
+    CARD_LIVE_PREFIX,
+    FRUIT_LIST_PREFIX,
+    card_live_clock,
+)
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import PICTURE_PROFILE, compile_picture_clocks
 from .video_editing_hypit_strips import (
@@ -58,6 +64,8 @@ from .video_editing_native_content import (
     NUMBER_GROUP,
     PACKAGE_GROUP,
     ROLE_CHAIN_GROUP,
+    WHY_FONT,
+    WHY_GROUP,
     YEAR_GROUP,
     YEAR_PATH,
     chapter_ordinal,
@@ -67,6 +75,8 @@ from .video_editing_native_content import (
     package_entries,
     role_scene_chain,
     translation_labels,
+    why_template,
+    why_word_bindings,
     year_glyphs,
 )
 from .video_editing_question_branch import (
@@ -175,6 +185,8 @@ def compile_native_job(
     )
     line_art = beat.group_id == LINE_GROUP and "hand_sequence" in config["media"]
     embedded_line_caption = not line_art or config["content"].get("captions") != []
+    why_props = beat.group_id == WHY_GROUP and "question_props" in config["media"]
+    embedded_why_caption = not why_props or config["content"].get("captions") != []
     contract = input_contract(
         package,
         group,
@@ -184,6 +196,8 @@ def compile_native_job(
         live_package_presenter=live_package_presenter,
         current_line_art=line_art,
         embedded_line_caption=embedded_line_caption,
+        current_why_props=why_props,
+        embedded_why_caption=embedded_why_caption,
     )
     if (
         recipe.get("version") != "tengli.native-recipe/1"
@@ -207,6 +221,22 @@ def compile_native_job(
             raise ValueError(
                 "Preserve the original 24-frame transparent line hand clock"
             )
+    if why_props:
+        template = why_template(template, embedded_caption=embedded_why_caption)
+        if (
+            beat.relation != "question"
+            or config["media"]["presenter"]["end_policy"] != "error"
+            or recipe.get("media_clocks")
+            != [
+                {
+                    "media_path": "/media/presenter/path",
+                    "policy": "transcript_source_window",
+                }
+            ]
+            or config["media"]["question_props"]
+            != [{"kind": "image", "path": None, "alpha": True}] * 2
+        ):
+            raise ValueError("W-R17 needs a spoken question, two props and live source")
     if question_variant:
         if beat.relation != "question":
             raise ValueError("W-R18 question branch requires a spoken question beat")
@@ -373,6 +403,10 @@ def compile_native_job(
         translations = translation_labels(native, recipe["translation_labels"])
         assignments.update({row["path"]: row["display_text"] for row in translations})
         native["translation_labels"] = translations
+    if why_props:
+        question = why_word_bindings(native, asset_files)
+        assignments[question["path"]] = question["display_text"]
+        native["question_gloss"] = question
     browser_clock = None
     browser_font = None
     if group["id"] == CARD_GROUP:
@@ -420,6 +454,8 @@ def compile_native_job(
         raise ValueError("Bind the original W-R14 editable brush font")
     if group["id"] == LINE_GROUP and LINE_BRUSH_FONT not in dependencies:
         raise ValueError("Bind the original W-R11 editable brush font")
+    if why_props and WHY_FONT not in dependencies:
+        raise ValueError("Bind the original W-R17 Arial dependency")
     for rid, declared_path in dependencies.items():
         identity = dependency_rows.get(rid, {})
         source = Path(declared_path).resolve()
@@ -438,6 +474,8 @@ def compile_native_job(
             if live_cards and row["path"] == "/background"
             else "tengli-"
         )
+        if group["id"] == FRUIT_LIST_GROUP and row["path"] == "/presenter":
+            prefix = FRUIT_LIST_PREFIX
         rid = prefix + asset["sha256"][:24]
         if line_art and row["path"] == LINE_HAND_PATH:
             if asset.get("kind") != "image" or asset.get("source") != "project_upload":
@@ -565,6 +603,13 @@ def compile_native_job(
     elif group["id"] in SPLIT_GROUPS:
         browser_clock = compile_split_clock(package, group, config, resources)
         native["browser_clock"] = browser_clock
+    elif group["id"] == FRUIT_LIST_GROUP:
+        if beat.relation != "parallel":
+            raise ValueError("Use the original fruit list for three parallel items")
+        browser_clock = compile_fruit_list_clock(
+            package, group, config, resources, native, asset_files
+        )
+        native["browser_clock"] = browser_clock
     schema = read_json(package / group["input_schema"])
     Draft202012Validator(schema).validate(config)
     job = {
@@ -616,6 +661,7 @@ def compile_native_job(
                         "package_entries",
                         "film_feedback",
                         "line_hand_sequence",
+                        "question_gloss",
                     )
                     if key in native
                 }

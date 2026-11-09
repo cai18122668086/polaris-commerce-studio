@@ -97,6 +97,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
       const final = task.artifacts.find(a => a.role === "final");
       const preview = task.artifacts.find(a => a.role === "preview");
       const audioReceipt = task.artifacts.find(a => a.role === "audio_receipt");
+      const layoutReceipt = task.artifacts.find(a => a.role === "layout_receipt");
       const editReceipt = task.options.native_edits && task.artifacts.find(a => a.role === "compile_receipt");
       return <article key={task.id}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}
@@ -104,6 +105,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           本次设置 · {task.options.native_edits.music === "off" ? "关闭背景音乐。" : task.options.native_edits.music === "lower" ? "背景音乐降低 6 dB。" : ""}
           {!!task.options.native_edits.source_only_beat_ids?.length && `保留原景 ${task.options.native_edits.source_only_beat_ids.length} 段。`}
         </p>}
+        {layoutReceipt && <p className={styles.note}>本次保留了原组设计里的前后叠字。 <a href={layoutReceipt.url} download>下载叠字版式记录</a></p>}
         {task.status === "failed" && <p role="alert">{errorLabel[task.error_code || ""] || "本次剪辑未完成，可以重试；已完成的配音不会重新生成。"}</p>}
         {task.status === "awaiting_review" && preview && <>
           <video id={`editing-preview-${task.id}`} controls preload="metadata" src={preview.url} aria-label="剪辑代理预览" />

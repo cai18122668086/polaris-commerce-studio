@@ -21,6 +21,7 @@ from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_hypit import hypit_tools, requires_hypit
 from .video_editing_native_compiler import compile_native_job
+from .video_editing_native_layout import BACKDROP_GROUP
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
     MIN_OVERLAY_TYPES,
@@ -77,6 +78,9 @@ class EpisodeRecipeBundle(StrictVideoModel):
     entries: dict[str, NativeEpisodeEntry]
     overlay_template_id: str | None = Field(
         default=None, exclude_if=lambda v: v is None
+    )
+    intentional_backdrop_beat_ids: list[str] = Field(
+        default_factory=list, max_length=60, exclude_if=lambda value: not value
     )
     tools: dict[str, str] = Field(default_factory=dict)
     sound_mode: Literal["original_voice_only", "native_mix"]
@@ -195,6 +199,14 @@ def compile_episode(
     expected = {b.id for b in semantic.beats if b.group_id != "Z-M00"}
     if set(authoring.entries) - expected:
         raise EditingFailure("EDITING_UNUSED_NATIVE_RECIPE")
+    backdrop_beats = set(authoring.intentional_backdrop_beat_ids)
+    if backdrop_beats and (
+        not continuous_base
+        or not backdrop_beats
+        <= {b.id for b in semantic.beats if b.group_id == BACKDROP_GROUP}
+    ):
+        raise EditingFailure("EDITING_NATIVE_BACKDROP_INTENT_INVALID")
+    backdrop_shots = []
     episode, selection, captions = baseline_documents(
         root, prepared, transcript, options, settings
     )
@@ -384,6 +396,8 @@ def compile_episode(
                             event,
                         )
                 shot_indices.append(len(episode["shots"]))
+                if beat.id in backdrop_beats:
+                    backdrop_shots.append(shot_indices[-1])
                 episode["shots"].append(
                     {
                         "group_id": beat.group_id,
@@ -582,5 +596,9 @@ def compile_episode(
     )
     atomic_json(root / "bindings.json", bindings)
     atomic_json(root / "selection.json", selection)
+    if backdrop_shots:
+        atomic_json(
+            root / "layout-intent.json", {"sg_s10_backdrop_shots": backdrop_shots}
+        )
     atomic_json(root / "episode.json", episode)
     return episode

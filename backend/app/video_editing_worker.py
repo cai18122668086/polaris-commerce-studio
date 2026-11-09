@@ -677,6 +677,14 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             artifacts.append(
                 ("audio_receipt", root / "audio-validation.json", "application/json")
             )
+        if (root / "layout/adapter-review.json").is_file():
+            artifacts.append(
+                (
+                    "layout_receipt",
+                    root / "layout/adapter-review.json",
+                    "application/json",
+                )
+            )
         if correction:
             artifacts.append(
                 (

@@ -1,7 +1,11 @@
 import pytest
 
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
-from app.video_editing_native_content import chapter_ordinal, number_glyphs
+from app.video_editing_native_content import (
+    chapter_ordinal,
+    number_glyphs,
+    translation_labels,
+)
 
 
 def test_chapter_ordinal_is_derived_from_ordered_source_starts():
@@ -74,3 +78,31 @@ def test_original_number_glyphs_preserve_each_spoken_unit_and_its_reveal():
     native["text"][4]["token_ids"] = ["t4", "t6", "t5"]
     with pytest.raises(ValueError, match="within its own caption"):
         number_glyphs(native)
+
+
+def test_translation_labels_require_matching_spoken_occurrences():
+    native = {
+        "group_id": "W-R02",
+        "text": [
+            {"path": "/content/before", "text": "每瓶", "token_ids": ["t0", "t1"]},
+            {"path": "/content/after", "text": "到手", "token_ids": ["t3", "t4"]},
+            {"path": "/content/caption_before", "token_ids": ["t0", "t1", "t2"]},
+            {"path": "/content/caption_after", "token_ids": ["t3", "t4", "t5"]},
+        ],
+    }
+    labels = {
+        "before": {"source_text": "每瓶", "display_text": "PER BOTTLE"},
+        "after": {"source_text": "到手", "display_text": "TOTAL"},
+    }
+    result = translation_labels(native, labels)
+    assert [r["display_text"] for r in result] == ["PER BOTTLE", "TOTAL"]
+    assert result[0]["source_token_ids"] == ["t0", "t1"]
+    assert result[1]["semantic_review"] == "unreviewed"
+    assert result[1]["origin"] == "trusted_recipe"
+    labels["after"]["display_text"] = "<script>"
+    with pytest.raises(ValueError, match="short uppercase English"):
+        translation_labels(native, labels)
+    labels["after"]["display_text"] = "TOTAL"
+    native["text"][3]["token_ids"] = ["t6", "t7"]
+    with pytest.raises(ValueError, match="its own spoken label and caption"):
+        translation_labels(native, labels)

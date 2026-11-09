@@ -98,6 +98,38 @@ def inputs(tmp_path):
     return package, transcript, beat, recipe
 
 
+def test_opening_keeps_only_original_question_glyph(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="YY6O01", backend="scene")
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    template = read_json(package / "template.json")
+    template["content"]["question"] = "?"
+    atomic_json(package / "template.json", template)
+    contract = input_contract(package, group)
+    beat.group_id = "YY6O01"
+    recipe.update(group_id=beat.group_id, template_sha256=contract["template_sha256"])
+    recipe["config"]["content"]["question"] = "?"
+    path = "/content/question"
+    assert path not in contract["text_paths"]
+    with pytest.raises(ValueError, match="original design glyph"):
+        compile_native_job(
+            package, tmp_path / "missing_reason", beat, transcript, recipe, {}
+        )
+    recipe["parameter_decisions"][path] = "Keep the original decoration."
+    root = tmp_path / "kept"
+    job = compile_native_job(package, root, beat, transcript, recipe, {})
+    assert job["config"]["content"]["question"] == "?"
+    assert read_json(root / "compile-receipt.json")["retained_design_glyphs"] == {
+        path: "?"
+    }
+    recipe["config"]["content"]["question"] = "改"
+    with pytest.raises(ValueError, match="original design glyph"):
+        compile_native_job(
+            package, tmp_path / "substituted", beat, transcript, recipe, {}
+        )
+
+
 def test_current_bound_content_and_clock_replace_history_without_mutating_library(
     tmp_path,
 ):

@@ -131,6 +131,12 @@ def input_contract(package: Path, group: dict[str, Any]) -> dict[str, Any]:
             or (group["id"] == "Z-M08" and names == ["content", "items", "image"])
         ):
             category = "native_media_key"
+        elif (
+            group["id"] == "YY6O01"
+            and parts == ["content", "question"]
+            and value == "?"
+        ):
+            category = "original_design_glyph"
         elif isinstance(value, str) and (
             (first == "content" and key not in STYLE_NAMES)
             or (group["id"] == "LYO02" and parts == ["content", "theme"])

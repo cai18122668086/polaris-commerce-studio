@@ -19,7 +19,7 @@ _OFFSET_INSENSITIVE_MATTE_GROUPS = {
     *(f"AZL{number:02}" for number in range(1, 8)),
     "YYO02",
     "YYO07",
-    *(f"YY6O{number:02}" for number in range(3, 7)),
+    *(f"YY6O{number:02}" for number in range(1, 7)),
 }
 
 

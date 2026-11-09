@@ -1,4 +1,4 @@
-"""Compile original chapter labels and integer glyphs from current source anchors."""
+"""Compile original native labels from current source anchors."""
 
 import re
 from typing import Any
@@ -8,6 +8,7 @@ from .video_editing_contracts import SemanticBeat, Transcript
 CHAPTER_GROUPS = frozenset(("Z-M05", "Z-M15"))
 CHAPTER_PATH = "/content/ordinal"
 NUMBER_GROUP = "W-R07"
+TRANSLATION_GROUP = "W-R02"
 _ORDINALS = (
     "First",
     "Second",
@@ -25,6 +26,7 @@ _NUMBER = re.compile(
     r"([0-9]{1,3}|[零一二两三四五六七八九十])"
     r"(千克|公斤|毫升|斤|克|升|瓶|件|个|包|盒|元|块|条|天)?"
 )
+_ENGLISH_LABEL = re.compile(r"[A-Z]+(?:[ -][A-Z]+)*")
 
 
 def chapter_ordinal(
@@ -94,3 +96,57 @@ def number_glyphs(native: dict[str, Any]) -> list[dict[str, Any]]:
     if first["unit"] != second["unit"] or (first["unit"] and label != first["unit"]):
         raise ValueError("Native comparison must preserve the same spoken unit")
     return readings
+
+
+def translation_labels(native: dict[str, Any], authored: Any) -> list[dict[str, Any]]:
+    """Keep the trusted recipe's English glosses separate from spoken words."""
+    sides = ("before", "after")
+    if (
+        native["group_id"] != TRANSLATION_GROUP
+        or not isinstance(authored, dict)
+        or set(authored) != set(sides)
+    ):
+        raise ValueError(
+            "Native translation requires the original two-sided label group"
+        )
+    spoken = {row["path"]: row for row in native["text"]}
+    result = []
+    for side in sides:
+        path = f"/content/english_{side}"
+        source_path = f"/content/{side}"
+        source = spoken.get(source_path)
+        caption = spoken.get(f"/content/caption_{side}")
+        row = authored[side]
+        if (
+            path in spoken
+            or not source
+            or not caption
+            or not isinstance(row, dict)
+            or set(row) != {"source_text", "display_text"}
+            or row["source_text"] != source["text"]
+            or not set(source["token_ids"]) <= set(caption["token_ids"])
+        ):
+            raise ValueError(
+                "Each translation must reference its own spoken label and caption"
+            )
+        display = row["display_text"]
+        if (
+            not isinstance(display, str)
+            or len(display) > 24
+            or not _ENGLISH_LABEL.fullmatch(display)
+        ):
+            raise ValueError(
+                "Use a short uppercase English label in the native translation"
+            )
+        result.append(
+            {
+                "path": path,
+                "source_path": source_path,
+                "source_text": source["text"],
+                "source_token_ids": source["token_ids"],
+                "display_text": display,
+                "origin": "trusted_recipe",
+                "semantic_review": "unreviewed",
+            }
+        )
+    return result

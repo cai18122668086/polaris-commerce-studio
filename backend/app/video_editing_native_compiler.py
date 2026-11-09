@@ -35,6 +35,7 @@ from .video_editing_native_content import (
     NUMBER_GROUP,
     chapter_ordinal,
     number_glyphs,
+    translation_labels,
 )
 from .video_editing_word_bindings import word_bindings
 
@@ -212,6 +213,10 @@ def compile_native_job(
         readings = number_glyphs(native)
         assignments.update({row["path"]: row["display_text"] for row in readings})
         native["number_glyphs"] = readings
+    if "translation_labels" in recipe:
+        translations = translation_labels(native, recipe["translation_labels"])
+        assignments.update({row["path"]: row["display_text"] for row in translations})
+        native["translation_labels"] = translations
     browser_clock = None
     browser_font = None
     if group["id"] == CARD_GROUP:
@@ -265,6 +270,7 @@ def compile_native_job(
         rid = "tengli-" + asset["sha256"][:24]
         resources[rid] = str(source)
         assignments[row["path"]] = "input://" + rid
+    retained_glyphs = {}
     for field in contract["fields"]:
         if field.get("optional_parent") and field["optional_parent"] not in config:
             continue
@@ -315,6 +321,12 @@ def compile_native_job(
                 raise ValueError(
                     "Preserve the original named media slot mapping: " + path
                 )
+        elif category == "original_design_glyph":
+            if value != _get(template, path) or not decisions.get(path):
+                raise ValueError(
+                    "Preserve and document the original design glyph: " + path
+                )
+            retained_glyphs[path] = value
         elif category == "output_owned_by_compiler":
             set_native_field(config, path, str(root / "renders/component.mp4"))
         elif category == "clock_owned_by_compiler":
@@ -396,10 +408,11 @@ def compile_native_job(
             "job_sha256": sha256(root / "job.json"),
             "word_bindings_sha256": sha256(root / "word-bindings.json"),
             "media_clocks": clock_receipts,
+            **({"retained_design_glyphs": retained_glyphs} if retained_glyphs else {}),
             **(
                 {
                     key: native[key]
-                    for key in ("chapter", "number_glyphs")
+                    for key in ("chapter", "number_glyphs", "translation_labels")
                     if key in native
                 }
             ),

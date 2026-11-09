@@ -1373,6 +1373,75 @@
         "title": "AvatarResponse",
         "type": "object"
       },
+      "BenchmarkSearchConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "BenchmarkSearchConfig",
+        "type": "object"
+      },
+      "BenchmarkSearchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "keyword": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Keyword",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "publish_time": {
+            "default": "unlimited",
+            "enum": [
+              "unlimited",
+              "one_day",
+              "one_week",
+              "half_year"
+            ],
+            "title": "Publish Time",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "sort": {
+            "default": "relevance",
+            "enum": [
+              "relevance",
+              "newest",
+              "most_liked"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "project_id",
+          "expected_revision",
+          "keyword"
+        ],
+        "title": "BenchmarkSearchRequest",
+        "type": "object"
+      },
       "Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post": {
         "properties": {
           "consent": {
@@ -18587,6 +18656,167 @@
         "summary": "Avatar Media",
         "tags": [
           "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-config": {
+      "get": {
+        "operationId": "search_config_api_v1_video_studio_workspaces__workspace_id__benchmark_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkSearchConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Search Config",
+        "tags": [
+          "video-assistance"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-searches": {
+      "post": {
+        "operationId": "submit_search_api_v1_video_studio_workspaces__workspace_id__benchmark_searches_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Submit Search",
+        "tags": [
+          "video-assistance"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-searches/{task_id}/next": {
+      "post": {
+        "operationId": "next_page_api_v1_video_studio_workspaces__workspace_id__benchmark_searches__task_id__next_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Next Page",
+        "tags": [
+          "video-assistance"
         ]
       }
     },

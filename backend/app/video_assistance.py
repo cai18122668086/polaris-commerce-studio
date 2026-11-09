@@ -24,6 +24,7 @@ from .video_assistance_provider import (
     transcript_result,
     video_source_url,
 )
+from .video_benchmark import BENCHMARK_KIND, benchmark_page
 from .video_stage_timing import transition
 from .video_studio_models import VideoProjectRecord
 from .video_studio_routes import VideoWorkspace, scope
@@ -116,7 +117,15 @@ def process(
         session.commit()
         checkpoint(session, row, "extracting" if row.provider_task_id else row.stage)
         try:
-            if row.kind != "extract":
+            if row.kind == BENCHMARK_KIND:
+                checkpoint(session, row, "submitting")
+                captured_at = utc_now()
+                data = service.benchmark_search(row.inputs["search_params"])
+                result, receipt = benchmark_page(data, row.id, row.inputs, captured_at)
+                row.status = "completed"
+                checkpoint(session, row, "completed", result=result, receipt=receipt)
+                return
+            elif row.kind != "extract":
                 checkpoint(session, row, "submitting")
                 result, receipt = service.plan(row.kind, row.inputs)
                 checkpoint(session, row, "received", result=result, receipt=receipt)

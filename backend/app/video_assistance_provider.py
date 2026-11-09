@@ -54,6 +54,14 @@ def planner_configured(settings: Settings) -> bool:
     )
 
 
+def benchmark_search_configured(settings: Settings) -> bool:
+    return bool(
+        settings.video_benchmark_search_enabled
+        and settings.video_extract_enabled
+        and settings.video_extract_api_key.get_secret_value()
+    )
+
+
 def video_source_url(url: str) -> str:
     try:
         p = urlsplit(url)
@@ -219,6 +227,16 @@ class VideoAssistanceProvider:
             return result.model_dump(), receipt
         except (ValueError, TypeError, KeyError, IndexError):
             return {"validation_error": "VIDEO_SCRIPT_INVALID"}, receipt
+
+    def benchmark_search(self, params: dict[str, Any]) -> dict[str, Any]:
+        if not benchmark_search_configured(self.settings):
+            raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "对标搜索尚未配置。")
+        return self.request(
+            "extract",
+            "POST",
+            "/api/v1/social",
+            json={"platform": "douyin", "action": "search", "params": params},
+        )
 
     def extract(self, inputs: dict[str, Any]) -> dict[str, Any]:
         return self.request(

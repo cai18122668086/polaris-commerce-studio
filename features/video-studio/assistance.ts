@@ -6,7 +6,43 @@ import { ApiError } from "@/lib/api/api-error";
 import { unwrapApiResponse } from "@/lib/api/request";
 
 export type AssistanceKind = "create" | "rewrite" | "extract";
+export type AssistantMode = AssistanceKind | "benchmark";
+export type BenchmarkSort = "relevance" | "newest" | "most_liked";
+export type BenchmarkWindow = "unlimited" | "one_day" | "one_week" | "half_year";
+export type BenchmarkCriteria = { keyword: string; sort: BenchmarkSort; publish_time: BenchmarkWindow };
+export type BenchmarkItem = {
+  platform_id: string;
+  source_url: string;
+  description: string;
+  author_name: string | null;
+  author_id: string | null;
+  posted_at: string | null;
+  duration_seconds: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  collect_count: number | null;
+  share_count: number | null;
+  collect_like_ratio: number | null;
+  share_like_ratio: number | null;
+  media_status: "link_reported" | "unverified";
+};
+type BenchmarkPage = BenchmarkCriteria & {
+  page: number;
+  root_task_id: string;
+  items?: BenchmarkItem[];
+  has_more?: boolean;
+  next_page_expires_at?: string;
+  captured_at?: string;
+  received_count?: number;
+  duplicate_count?: number;
+  skipped_count?: number;
+  author_count?: number;
+  top_author_item_count?: number;
+  unknown_author_count?: number;
+};
 export type AssistanceJob = { id: string; request_id: string; project_id: string; kind: string; status: string; stage: string; error_code: string | null; source_revision: number; can_resume: boolean; result: { title?: string; script?: string; warnings?: string[]; text?: string; source_url?: string; segments?: { start: number; end: number; text: string }[] } };
+export type BenchmarkJob = AssistanceJob & { kind: "benchmark_search"; result: BenchmarkPage };
+type BenchmarkSubmission = BenchmarkCriteria & { request_id: string; project_id: string; expected_revision: number };
 type Submission = { request_id: string; project_id: string; expected_revision: number; kind: AssistanceKind; brief: string; style: "产品介绍" | "好物种草" | "知识分享" | "品牌故事"; reference_id?: string };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
@@ -23,15 +59,20 @@ export function useVideoAssistance(userId: string, workspaceId: string, projectI
   useEffect(() => { let active = true; void Promise.resolve().then(() => { if (active) void reload().catch(() => undefined); }); return () => { active = false; }; }, [reload]);
   const running = current.some(j => ["queued", "running"].includes(j.status));
   useEffect(() => { if (!running) return; const timer = setInterval(() => { void reload().catch(() => undefined); }, 3000); return () => clearInterval(timer); }, [running, reload]);
-  const submit = async (body: Omit<Submission, "request_id">) => {
-    const key = `polaris-video-assistance:${userId}:${workspaceId}:${body.project_id}:${body.kind}`;
-    let pending: Submission = { ...body, request_id: crypto.randomUUID() };
-    try { const saved = sessionStorage.getItem(key); if (saved) pending = JSON.parse(saved) as Submission; } catch {}
+  const remember = (job: AssistanceJob) => setJobs(previous => [job, ...previous.filter(j => j.id !== job.id)]);
+  const submitOnce = async <Body extends { request_id: string; project_id: string }>(
+    keyPart: string,
+    body: Body,
+    send: (pending: Body) => Promise<AssistanceJob>,
+  ) => {
+    const key = `polaris-video-assistance:${userId}:${workspaceId}:${body.project_id}:${keyPart}`;
+    let pending = body;
+    try { const saved = sessionStorage.getItem(key); if (saved) pending = JSON.parse(saved) as Body; } catch {}
     try { sessionStorage.setItem(key, JSON.stringify(pending)); } catch {}
     try {
-      const result = unwrapApiResponse(await apiClient.POST(`${root}/assistance-tasks`, { ...options(), body: pending })) as AssistanceJob;
+      const result = await send(pending);
       try { sessionStorage.removeItem(key); } catch {}
-      setJobs(previous => [result, ...previous.filter(j => j.id !== result.id)]);
+      remember(result);
       return result;
     } catch (error) {
       if (error instanceof ApiError && error.status && error.status >= 400 && error.status < 500) {
@@ -43,10 +84,23 @@ export function useVideoAssistance(userId: string, workspaceId: string, projectI
       throw error;
     }
   };
+  const submit = (body: Omit<Submission, "request_id">) =>
+    submitOnce(body.kind, { ...body, request_id: crypto.randomUUID() }, async pending =>
+      unwrapApiResponse(await apiClient.POST(`${root}/assistance-tasks`, { ...options(), body: pending })) as AssistanceJob);
+  const submitBenchmark = (body: Omit<BenchmarkSubmission, "request_id">) =>
+    submitOnce("benchmark_search", { ...body, request_id: crypto.randomUUID() }, async pending =>
+      unwrapApiResponse(await apiClient.POST(`${root}/benchmark-searches`, { ...options(), body: pending })) as AssistanceJob);
+  const nextBenchmarkPage = async (id: string) => {
+    const job = unwrapApiResponse(await apiClient.POST(`${root}/benchmark-searches/{task_id}/next`, {
+      ...options(), params: { path: { workspace_id: workspaceId, task_id: id } },
+    })) as AssistanceJob;
+    remember(job);
+  };
   const resume = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/assistance-tasks/{task_id}/resume`, { ...options(), params: { path: { workspace_id: workspaceId, task_id: id } } })); await reload(); };
   const latest = (kind: AssistanceKind) => current.find(j => j.kind === kind);
   const busy = (kind: AssistanceKind) => ["queued", "running", "unknown"].includes(latest(kind)?.status || "");
-  return { latest, busy, submit, reload, resume };
+  const benchmarkJobs = current.filter((job): job is BenchmarkJob => job.kind === "benchmark_search");
+  return { latest, busy, submit, reload, resume, benchmarkJobs, submitBenchmark, nextBenchmarkPage };
 }
 
 export function assistanceMessage(job: AssistanceJob | undefined) {

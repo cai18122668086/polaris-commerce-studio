@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     video_script_base_url: str = "https://api.tengliapi.xyz"
     video_script_model: str = "gpt-5.6-sol"
     video_extract_enabled: bool = False
+    video_benchmark_search_enabled: bool = False
     video_extract_api_key: SecretStr = SecretStr("")
     quanyu_api_key: SecretStr = SecretStr("")
     skyhuman_api_key: SecretStr = SecretStr("")

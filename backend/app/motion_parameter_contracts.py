@@ -26,6 +26,7 @@ from .video_editing_hypit_strips import (
     stagger_profile,
     strip_fields,
 )
+from .video_editing_line_branch import LINE_GROUP, LINE_HAND_PATH, line_template
 from .video_editing_media_clocks import clock_profile
 from .video_editing_native_content import (
     FILM_FEEDBACK_GROUP,
@@ -115,6 +116,8 @@ def input_contract(
     embedded_question_caption: bool = True,
     live_question_background: bool = False,
     live_package_presenter: bool = True,
+    current_line_art: bool = True,
+    embedded_line_caption: bool = True,
 ) -> dict[str, Any]:
     template = read_json(package / group["input_template"])
     question_group = group["id"] == QUESTION_GROUP
@@ -128,6 +131,8 @@ def input_contract(
         )
     if group["id"] == PACKAGE_GROUP and live_package_presenter:
         template = live_package_template(template)
+    if group["id"] == LINE_GROUP and current_line_art:
+        template = line_template(template, embedded_caption=embedded_line_caption)
     schema = read_json(package / group["input_schema"])
     Draft202012Validator.check_schema(schema)
     external = {
@@ -153,6 +158,8 @@ def input_contract(
         elif isinstance(value, str) and value.startswith("input://"):
             record = external.get(value[8:], {})
             category, resource_kind = "resource", record.get("kind", "unresolved")
+            if group["id"] == LINE_GROUP and pointer(parts) == LINE_HAND_PATH:
+                resource_kind = "transparent_png_sheet"
             if resource_kind in {"font", "model"}:
                 category = "native_dependency"
         elif isinstance(value, str) and value.startswith("pkg://"):
@@ -186,7 +193,9 @@ def input_contract(
         ):
             category = "text"
         elif type(value) in {int, float}:
-            if key in {
+            if group["id"] == LINE_GROUP and names[:2] == ["media", "hand_sequence"]:
+                category = "native_parameter"
+            elif key in {
                 "frames",
                 "fps",
                 "duration",

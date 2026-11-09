@@ -6,6 +6,7 @@ invent a universal renderer or silently replace an unsupported original group.
 """
 
 import copy
+import hashlib
 import math
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,15 @@ from .video_editing_hypit_strips import (
     compile_flow_plate,
     compile_strips,
     strip_config_sha256,
+)
+from .video_editing_line_branch import (
+    LINE_BRUSH_FONT,
+    LINE_GROUP,
+    LINE_HAND_PATH,
+    LINE_HAND_PREFIX,
+    LINE_SHEET_FRAMES,
+    line_template,
+    stage_line_sheet,
 )
 from .video_editing_media_clocks import compile_media_clocks
 from .video_editing_native_content import (
@@ -163,6 +173,8 @@ def compile_native_job(
         beat.group_id == PACKAGE_GROUP
         and config.get("media", {}).get("presenter", {}).get("kind") == "video"
     )
+    line_art = beat.group_id == LINE_GROUP and "hand_sequence" in config["media"]
+    embedded_line_caption = not line_art or config["content"].get("captions") != []
     contract = input_contract(
         package,
         group,
@@ -170,6 +182,8 @@ def compile_native_job(
         embedded_question_caption=embedded_caption,
         live_question_background=live_question_background,
         live_package_presenter=live_package_presenter,
+        current_line_art=line_art,
+        embedded_line_caption=embedded_line_caption,
     )
     if (
         recipe.get("version") != "tengli.native-recipe/1"
@@ -186,6 +200,13 @@ def compile_native_job(
         template = live_package_template(template)
         if config.get("layout", {}).get("mode") != "native":
             raise ValueError("Keep the original single-line package label fit")
+    if line_art:
+        template = line_template(template, embedded_caption=embedded_line_caption)
+        hand = config["media"]["hand_sequence"]
+        if hand != {**template["media"]["hand_sequence"], "path": None}:
+            raise ValueError(
+                "Preserve the original 24-frame transparent line hand clock"
+            )
     if question_variant:
         if beat.relation != "question":
             raise ValueError("W-R18 question branch requires a spoken question beat")
@@ -397,6 +418,8 @@ def compile_native_job(
         raise ValueError("Bind the original W-R18 question brush font")
     if group["id"] == JUDGMENT_GROUP and JUDGMENT_BRUSH_FONT not in dependencies:
         raise ValueError("Bind the original W-R14 editable brush font")
+    if group["id"] == LINE_GROUP and LINE_BRUSH_FONT not in dependencies:
+        raise ValueError("Bind the original W-R11 editable brush font")
     for rid, declared_path in dependencies.items():
         identity = dependency_rows.get(rid, {})
         source = Path(declared_path).resolve()
@@ -416,6 +439,20 @@ def compile_native_job(
             else "tengli-"
         )
         rid = prefix + asset["sha256"][:24]
+        if line_art and row["path"] == LINE_HAND_PATH:
+            if asset.get("kind") != "image" or asset.get("source") != "project_upload":
+                raise ValueError("Bind a current registered hand sheet image")
+            sequence, digest = stage_line_sheet(root, source, asset["sha256"])
+            shot_key = hashlib.sha256(beat.id.encode()).hexdigest()[:12]
+            rid = f"{LINE_HAND_PREFIX}{digest[:24]}-{shot_key}"
+            resources[rid + "-frames"] = str(sequence)
+            native["line_hand_sequence"] = {
+                "sheet_asset_id": row["asset_id"],
+                "sheet_sha256": asset["sha256"],
+                "sequence_binding_sha256": digest,
+                "frames": LINE_SHEET_FRAMES,
+                "fps": 30,
+            }
         resources[rid] = str(source)
         assignments[row["path"]] = "input://" + rid
     retained_glyphs = {}
@@ -578,6 +615,7 @@ def compile_native_job(
                         "role_scene_chain",
                         "package_entries",
                         "film_feedback",
+                        "line_hand_sequence",
                     )
                     if key in native
                 }

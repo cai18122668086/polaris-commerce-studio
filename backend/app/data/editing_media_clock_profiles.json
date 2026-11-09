@@ -414,6 +414,27 @@
       },
       "native_fps": 30
     },
+    "W-R11": {
+      "id": "wr11-line-live-portrait/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "original W-R11 line portrait uses actual source frames; selected line art is separate",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/pending-three-rework/build.py": "321a1235b2d47b2e1b9435b734ca4d2973d34571f9fbef9980b501ef016eeeb8",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80"
+      },
+      "native_fps": 30
+    },
     "W-R13": {
       "id": "unified-build12-live-frame-clock/1",
       "backend": "unified",

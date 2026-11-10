@@ -24,6 +24,7 @@ from .video_editing_overlay_templates import (
     CXBR_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
     PRESENTER_MOTION_TEMPLATE_ID,
+    motion_counts,
     overlay_template,
 )
 from .video_editing_story_panels import PANEL_TEMPLATE_ID
@@ -122,6 +123,7 @@ def planning_response(
         else "not_submitted"
     )
     available, excluded = _template_availability(row.snapshot)
+    semantic = row.result.get("semantic")
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -151,7 +153,10 @@ def planning_response(
         "catalog_group_count": row.result.get("catalog_group_count"),
         "max_output_tokens": 5000,
         "text_status": row.result.get("text_status"),
-        "semantic": row.result.get("semantic"),
+        "semantic": semantic,
+        "motion_counts": motion_counts(beat["group_id"] for beat in semantic["beats"])
+        if semantic
+        else None,
         "aligned_spans": row.result.get("aligned_spans", []),
         "semantic_origin": "tengli_gateway" if row.status == "completed" else None,
         "semantic_review": "unreviewed",

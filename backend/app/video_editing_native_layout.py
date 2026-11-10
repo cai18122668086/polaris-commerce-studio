@@ -184,7 +184,7 @@ def verify_inset_layout(root: Path, review: dict) -> dict:
     return {"status": "passed", "source": "native libass ink", "insets": checks}
 
 
-def verified_effect_groups(episode: dict, delivery: dict) -> set[str]:
+def verified_effect_occurrences(episode: dict, delivery: dict) -> list[str]:
     """Count visible native effects using the actual original export receipts."""
     shots, receipts = episode["shots"], delivery["shots"]
     layout = delivery["layout_review"]
@@ -201,7 +201,7 @@ def verified_effect_groups(episode: dict, delivery: dict) -> set[str]:
         raise ValueError("Native alpha checks must identify one existing shot each")
 
     fps = episode["output"]["fps"]
-    visible = set()
+    visible = []
     for index, (shot, receipt) in enumerate(zip(shots, receipts, strict=True)):
         group = shot["group_id"]
         if (
@@ -224,7 +224,7 @@ def verified_effect_groups(episode: dict, delivery: dict) -> set[str]:
         ):
             continue
         if group != "Z-M00":
-            visible.add(group)
+            visible.append(group)
     return visible
 
 

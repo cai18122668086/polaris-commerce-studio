@@ -5925,6 +5925,13 @@ export interface components {
             /** Next Offset */
             next_offset: number | null;
         };
+        /** EditingMotionCounts */
+        EditingMotionCounts: {
+            /** Distinct Groups */
+            distinct_groups: number;
+            /** Occurrences */
+            occurrences: number;
+        };
         /** EditingNativeBeatResponse */
         EditingNativeBeatResponse: {
             /** Group Id */
@@ -6188,6 +6195,7 @@ export interface components {
             mode: "prepare" | "generate";
             /** Model */
             model: string;
+            motion_counts?: components["schemas"]["EditingMotionCounts"] | null;
             /**
              * Native Render State
              * @default not_compiled
@@ -6296,6 +6304,7 @@ export interface components {
             id: string;
             /** Library Release */
             library_release: string;
+            motion_counts?: components["schemas"]["EditingMotionCounts"] | null;
             options: components["schemas"]["EditingOptions"];
             /** Project Id */
             project_id: string;

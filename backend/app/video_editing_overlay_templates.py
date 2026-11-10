@@ -1,5 +1,6 @@
 """Versioned composition slots built from the preserved Motion catalog."""
 
+from collections.abc import Iterable
 from copy import deepcopy
 
 from .video_editing_azl_panels import AZL_DEPENDENCIES, AZL_GROUPS, azl_binding
@@ -1077,6 +1078,11 @@ def overlay_templates() -> list[dict]:
             SUBTITLE_FOREGROUND_TEMPLATE_ID,
         )
     ]
+
+
+def motion_counts(group_ids: Iterable[str]) -> dict[str, int]:
+    occurrences = [group_id for group_id in group_ids if group_id != "Z-M00"]
+    return {"distinct_groups": len(set(occurrences)), "occurrences": len(occurrences)}
 
 
 def overlay_template(template_id: str) -> dict:

@@ -37,9 +37,9 @@ from .video_editing_delivery_checkpoint import (
 from .video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
 from .video_editing_image_edits import apply_image_edits, resolve_image_edits
 from .video_editing_materials import PREFIX, project_material_files
-from .video_editing_native_layout import verified_effect_groups
+from .video_editing_native_layout import verified_effect_occurrences
 from .video_editing_native_plans import frozen_plan_snapshot
-from .video_editing_overlay_templates import MIN_OVERLAY_TYPES
+from .video_editing_overlay_templates import MIN_OVERLAY_TYPES, motion_counts
 from .video_editing_pipeline import (
     EditingFailure,
     compile_baseline,
@@ -750,16 +750,18 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     delivery = read_json(final.with_suffix(".delivery.json"))
                     if delivery["sha256"] != validation["sha256"]:
                         raise ValueError("Original composition identity changed")
-                    groups = verified_effect_groups(
+                    occurrences = verified_effect_occurrences(
                         read_json(root / "episode.json"), delivery
                     )
-                    if len(groups) < MIN_OVERLAY_TYPES:
+                    counts = motion_counts(occurrences)
+                    if counts["distinct_groups"] < MIN_OVERLAY_TYPES:
                         raise ValueError("Insufficient distinct visible native effects")
                 except (ValueError, KeyError, TypeError, OSError):
                     raise EditingFailure(
                         "EDITING_CONTINUOUS_COMBINATION_REQUIRED"
                     ) from None
-                validation["visible_effect_groups"] = sorted(groups)
+                validation["visible_effect_groups"] = sorted(set(occurrences))
+                validation["motion_counts"] = counts
                 atomic_json(root / "validation.json", validation)
             if validation.get("native_mix_validation") == "passed":
                 receipts["audio_receipt"] = "audio-validation.json"

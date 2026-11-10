@@ -5496,6 +5496,27 @@
         "title": "EditingMaterialsResponse",
         "type": "object"
       },
+      "EditingMotionCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "distinct_groups": {
+            "minimum": 0.0,
+            "title": "Distinct Groups",
+            "type": "integer"
+          },
+          "occurrences": {
+            "minimum": 0.0,
+            "title": "Occurrences",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "distinct_groups",
+          "occurrences"
+        ],
+        "title": "EditingMotionCounts",
+        "type": "object"
+      },
       "EditingNativeBeatResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6210,6 +6231,16 @@
             "title": "Model",
             "type": "string"
           },
+          "motion_counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingMotionCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "native_render_state": {
             "default": "not_compiled",
             "enum": [
@@ -6581,6 +6612,16 @@
           "library_release": {
             "title": "Library Release",
             "type": "string"
+          },
+          "motion_counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingMotionCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "options": {
             "$ref": "#/components/schemas/EditingOptions"

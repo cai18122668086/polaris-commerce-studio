@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { minDistinctMotionGroups, repeatedEffectsForReduction } from "@/features/video-studio/editing-density";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
@@ -107,6 +108,9 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       const editable = plan.beats.filter(beat => beat.source_only_available);
       const activeEffects = plan.beats.filter(beat => beat.group_id !== "Z-M00" && !selected.segments.includes(beat.id));
       const activeGroups = new Set(activeEffects.map(beat => beat.group_id));
+      const repeated = repeatedEffectsForReduction(activeEffects, new Set([
+        ...selected.highlights.map(edit => edit.beat_id), ...selected.images.map(edit => edit.beat_id),
+      ]));
       const available = plan.render_available && plan.continuous_preview_available;
       return <article key={plan.id} id={`editing-native-plan-${plan.id}`}>
       <b>{plan.audience_question}</b>
@@ -121,6 +125,9 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available) && <details key={key} open={earlier ? true : undefined}>
         <summary>调整本次出片</summary>
         <p className={styles.note}>调整随这次出片保存。勾选保留原景的段落仍显示主字幕，该段动效和绑定音效会关闭。</p>
+        {repeated.length > 0 && <button type="button" disabled={!!busy}
+          onClick={() => change({ segments: [...selected.segments, ...repeated] })}>精简 {repeated.length} 段重复动效</button>}
+        {repeated.length > 0 && <p className={styles.note}>预选部分重复入场为原景，保留每种动效的首次出现和已手动调整的段落。提交前可逐段取消勾选。</p>}
         {plan.music_edit_available && <label>本次背景音乐
           <select value={selected.music} disabled={!!busy} onChange={event => change({ music: event.target.value as Controls["music"] })}>
             <option value="keep">沿用编排</option><option value="lower">降低 6 dB</option><option value="off">关闭背景音乐</option>
@@ -167,8 +174,8 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
           selected={selected.images} sourceOnly={selected.segments} disabled={!!busy} onChange={images => change({ images })} />}
       </details>}
       {available ? <>
-        <p className={styles.note}>本次使用 {activeGroups.size} 种动效，共出现 {activeEffects.length} 次。{activeGroups.size < 5 && "请保留至少五种不同动效。"}</p>
-        <button type="button" onClick={() => void render(plan, selected, earlier)} disabled={!!busy || activeGroups.size < 5}>{busy === plan.id ? "正在提交…" : earlier ? "生成新版代理预览" : "生成代理预览"}</button>
+        <p className={styles.note}>本次计划使用 {activeGroups.size} 种动效，共出现 {activeEffects.length} 次。{activeGroups.size < minDistinctMotionGroups && "请保留至少五种不同动效。"}</p>
+        <button type="button" onClick={() => void render(plan, selected, earlier)} disabled={!!busy || activeGroups.size < minDistinctMotionGroups}>{busy === plan.id ? "正在提交…" : earlier ? "生成新版代理预览" : "生成代理预览"}</button>
       </> : <p className={styles.note}>历史验证候选 · 待适配连续人物底片与组合动效</p>}
     </article>})}
     {error && <p role="alert" className={styles.error}>{error} <button type="button" onClick={() => setReload(n => n + 1)}>重新读取编排</button></p>}

@@ -29,6 +29,7 @@ from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import project_material_files, verify_material_cards
 from .video_editing_overlay_templates import (
     MIN_OVERLAY_TYPES,
+    motion_counts,
     overlay_template,
     validate_template_plan,
 )
@@ -242,6 +243,17 @@ def register_gateway_plan(
         session, settings, workspace_id, owner_user_id, planning_task_id
     )
     template = verified.task.snapshot.get("overlay_template")
+    if template is not None and (
+        motion_counts(beat.group_id for beat in verified.semantic.beats)[
+            "distinct_groups"
+        ]
+        < MIN_OVERLAY_TYPES
+    ):
+        raise ApiError(
+            422,
+            "EDITING_PLAN_GROUPS_INSUFFICIENT",
+            f"候选少于 {MIN_OVERLAY_TYPES} 种不同原生动效，暂不能生成代理。",
+        )
     if recipes is None:
         from .video_editing_overlay_recipes import build_overlay_recipes
 

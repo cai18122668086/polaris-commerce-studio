@@ -222,6 +222,11 @@ class Transcript(StrictVideoModel):
         return self
 
 
+class EditingMotionCounts(StrictVideoModel):
+    distinct_groups: int = Field(ge=0)
+    occurrences: int = Field(ge=0)
+
+
 class EditingArtifactResponse(StrictVideoModel):
     id: str
     role: str
@@ -275,6 +280,9 @@ class EditingTaskResponse(StrictVideoModel):
     review: dict[str, str]
     artifacts: list[EditingArtifactResponse]
     source_origin: EditingSourceOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    motion_counts: EditingMotionCounts | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 
@@ -599,6 +607,9 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     max_output_tokens: int = 5000
     text_status: str | None
     semantic: "SemanticPlan | None"
+    motion_counts: EditingMotionCounts | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     aligned_spans: list[EditingPlanningSpan] = Field(default_factory=list)
     semantic_origin: Literal["tengli_gateway"] | None
     semantic_review: Literal["unreviewed"] = "unreviewed"

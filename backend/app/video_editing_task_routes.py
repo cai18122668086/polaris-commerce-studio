@@ -132,6 +132,15 @@ def response(
     artifacts = session.scalars(
         select(EditingArtifactRecord).where(EditingArtifactRecord.task_id == row.id)
     ).all()
+    counts = next(
+        (
+            item.validation.get("motion_counts")
+            for item in artifacts
+            if (row.status, item.role)
+            in {("awaiting_review", "staged_final"), ("completed", "final")}
+        ),
+        None,
+    )
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -148,6 +157,7 @@ def response(
         else row.created_at,
         "library_release": row.library_release,
         "options": row.options,
+        "motion_counts": counts,
         "review": {
             "semantic": "unreviewed",
             "visual": "unreviewed",

@@ -21,7 +21,7 @@ from app.video_editing_native_layout import (
     intentional_role_overlaps,
     projected_scene_end,
     review_with_native_roles,
-    verified_effect_groups,
+    verified_effect_occurrences,
     verify_inset_layout,
 )
 from app.video_editing_presenter_motion import motion_entry_frame
@@ -541,10 +541,14 @@ def test_preview_counts_decoded_opaque_scenes_and_visible_subtitles():
             ],
         },
     }
-    assert verified_effect_groups(episode, delivery) == {*subtitles, "YYO01"}
+    assert verified_effect_occurrences(episode, delivery) == [
+        *subtitles,
+        "YYO01",
+        "YYO01",
+    ]
     delivery["shots"][4]["rgba_sequence"] = "unchecked"
     delivery["shots"][5]["rgba_sequence"] = "unchecked"
-    assert verified_effect_groups(episode, delivery) == set(subtitles)
+    assert verified_effect_occurrences(episode, delivery) == list(subtitles)
     delivery["layout_review"]["subtitle_checks"][0]["visible_frames"] = 0
     with pytest.raises(ValueError, match="no visible effect"):
-        verified_effect_groups(episode, delivery)
+        verified_effect_occurrences(episode, delivery)

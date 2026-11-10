@@ -39,7 +39,9 @@ from tests.test_video_projects import base
 pytest_plugins = ["tests.test_video_projects"]
 
 
-def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=False):
+def captured_job(
+    video, tmp_path, monkeypatch, template=False, missing_event=False, fewer_types=False
+):
     client, auth, ws, settings, source, task, semantic, recipes = saved_plan(
         video, tmp_path, monkeypatch
     )
@@ -124,6 +126,14 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
                 ],
             }
         )
+        if fewer_types:
+            semantic.beats[4] = semantic.beats[4].model_copy(
+                update={
+                    "group_id": "Z-M00",
+                    "native_text": [],
+                    "native_events": [],
+                }
+            )
 
     def protocol_request(
         transcript,
@@ -211,6 +221,25 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
         job["id"],
         parent["id"],
     )
+
+
+def test_repeated_effects_do_not_admit_an_undersized_candidate(
+    video, tmp_path, monkeypatch
+):
+    client, ws, settings, _, _, _, _, job, _ = captured_job(
+        video, tmp_path, monkeypatch, template=True, fewer_types=True
+    )
+    settings.video_editing_native_plan_enabled = True
+    url = base(ws) + f"/editing-planning-tasks/{job}"
+    result = client.get(url).raise_for_status().json()
+    assert result["status"] == "completed"
+    assert result["motion_counts"] == {"distinct_groups": 4, "occurrences": 5}
+    for suffix in ("/native-candidate", "/preview"):
+        denied = client.post(url + suffix)
+        assert denied.status_code == 422, denied.text
+        assert denied.json()["error"]["code"] == "EDITING_PLAN_GROUPS_INSUFFICIENT"
+    with client.app.state.session_factory() as session:
+        assert session.scalar(select(EditingNativePlanRecord)) is None
 
 
 @pytest.mark.parametrize("missing_event", [False, True])

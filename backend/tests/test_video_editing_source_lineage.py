@@ -10,6 +10,7 @@ import pytest
 from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import sha256
+from app.video_editing_native_frame_clock import variable_frame_clock
 from app.video_editing_pipeline import EditingFailure, prepare
 from app.video_editing_source_lineage import (
     audio_clock,
@@ -20,6 +21,20 @@ from app.video_editing_source_lineage import (
 from app.video_generation_models import VideoGenerationRecord
 from app.video_studio_models import VideoScriptVersionRecord
 from app.video_writing_provenance import matching_writing_origin, script_digest
+
+
+def test_frame_clock_detects_drift_even_when_the_average_rate_matches():
+    def measured(*values: int) -> list[dict[str, int]]:
+        return [{"best_effort_timestamp": value} for value in values]
+
+    assert variable_frame_clock(measured(0, 33, 67, 100), "1/1000", "30/1") == (
+        4,
+        False,
+    )
+    assert variable_frame_clock(measured(0, 20, 60, 100), "1/1000", "30/1") == (4, True)
+    assert variable_frame_clock(measured(0, 33, 67, 100), "1/1000", "24/1") == (4, True)
+    with pytest.raises(ValueError, match="must increase"):
+        variable_frame_clock(measured(0, 33, 33, 100), "1/1000", "30/1")
 
 
 def test_generation_snapshot_must_match_the_original_project_confirmation(tmp_path):

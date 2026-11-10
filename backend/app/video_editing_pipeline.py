@@ -37,6 +37,13 @@ from .video_editing_captioning import (
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
 from .video_editing_cxbr import CXBR_CAPTION_INTENT, verify_cxbr_captions
 from .video_editing_hypit_strips import HYPIT_SIDECAR_GROUPS
+from .video_editing_native_frame_clock import (
+    FRAME_CLOCK_FPS,
+    FRAME_CLOCK_PLATE,
+    FRAME_CLOCK_RECEIPT,
+    FRAME_CLOCK_VERSION,
+    variable_frame_clock,
+)
 from .video_editing_native_layout import verify_inset_layout
 from .video_editing_native_sound import verify_rendered_sound
 from .video_editing_unified_scenes import (
@@ -364,6 +371,128 @@ def prepare(
     }
     atomic_json(root / "prepared.json", receipt)
     return receipt
+
+
+def prepare_presenter_frame_clock(
+    root: Path, prepared: dict, settings: Settings, guard: Callable[[], None]
+) -> None:
+    source = root / "input/source.mp4"
+    video = next(
+        row for row in prepared["probe"]["streams"] if row["codec_type"] == "video"
+    )
+    arguments = [
+        "-v",
+        "error",
+        "-protocol_whitelist",
+        "file,pipe",
+        "-format_whitelist",
+        "mov,matroska,webm",
+    ]
+    measured = run(
+        [
+            settings.video_editing_ffprobe,
+            *arguments,
+            "-select_streams",
+            "v:0",
+            "-show_frames",
+            "-show_entries",
+            "frame=best_effort_timestamp",
+            "-of",
+            "json",
+            str(source),
+        ],
+        root,
+        settings,
+        guard,
+        "measure_video_frame_clock",
+    )
+    try:
+        decoded_frames, variable = variable_frame_clock(
+            read_json(measured)["frames"], video["time_base"], video["avg_frame_rate"]
+        )
+    except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError) as error:
+        raise EditingFailure("EDITING_VIDEO_FRAME_CLOCK_INVALID") from error
+    if not variable:
+        return
+    plate = root / FRAME_CLOCK_PLATE
+    pending = plate.with_name("presenter-cfr.pending.mp4")
+    width, height = video["width"], video["height"]
+    try:
+        run(
+            [
+                settings.video_editing_ffmpeg,
+                "-nostdin",
+                *arguments,
+                "-noautorotate",
+                "-i",
+                str(source),
+                "-map",
+                "0:v:0",
+                "-an",
+                "-sn",
+                "-dn",
+                "-vf",
+                f"setpts=PTS-STARTPTS,fps={FRAME_CLOCK_FPS}:round=up:eof_action=pass",
+                "-fps_mode",
+                "passthrough",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "14",
+                "-pix_fmt",
+                "yuv444p" if width % 2 or height % 2 else "yuv420p",
+                "-threads",
+                "2",
+                "-n",
+                str(pending),
+            ],
+            root,
+            settings,
+            guard,
+            "normalize_video_frame_clock",
+        )
+        (stream,) = probe(pending, settings)["streams"]
+        frames = int(stream["nb_frames"])
+        span = frames / FRAME_CLOCK_FPS
+        source_span = float(video.get("duration", prepared["duration_ms"] / 1000))
+        if (
+            stream["codec_type"] != "video"
+            or (stream["width"], stream["height"]) != (width, height)
+            or Fraction(stream["avg_frame_rate"]) != FRAME_CLOCK_FPS
+            or Fraction(stream["r_frame_rate"]) != FRAME_CLOCK_FPS
+            or float(stream["start_time"]) != 0
+            or frames <= 0
+            or abs(source_span - span) > 1 / FRAME_CLOCK_FPS + 0.002
+            or span + 1 / FRAME_CLOCK_FPS + 0.002 < prepared["duration_ms"] / 1000
+        ):
+            raise ValueError("CFR plate differs from the measured presenter window")
+        digest = sha256(pending)
+        pending.replace(plate)
+        atomic_json(
+            root / FRAME_CLOCK_RECEIPT,
+            {
+                "version": FRAME_CLOCK_VERSION,
+                "source_sha256": prepared["source_sha256"],
+                "plate_sha256": digest,
+                "source_frames": decoded_frames,
+                "plate_frames": frames,
+                "plate_fps": FRAME_CLOCK_FPS,
+                "sampler": "original_unified_media",
+                "source_audio_used_for_mix": True,
+            },
+        )
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        subprocess.SubprocessError,
+    ) as error:
+        raise EditingFailure("EDITING_VIDEO_FRAME_CLOCK_INVALID") from error
+    finally:
+        pending.unlink(missing_ok=True)
 
 
 def transcribe(
@@ -866,6 +995,8 @@ def validate_result(
     }
     if silent_tail := prepared.get("clock", {}).get("silent_tail"):
         validation["source_silent_tail"] = silent_tail
+    if (root / FRAME_CLOCK_RECEIPT).is_file():
+        validation["presenter_frame_clock"] = read_json(root / FRAME_CLOCK_RECEIPT)
     if validation["native_source_sha256"] != prepared["source_sha256"]:
         raise EditingFailure("EDITING_OUTPUT_SOURCE_MISMATCH")
     if (root / "audio-plan.json").is_file():

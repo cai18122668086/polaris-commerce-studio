@@ -32,7 +32,7 @@ function Candidate({ item, onSelect, blocked, singleBusy, checked, onCheck, batc
     {batch ? <>
       {batch.status === "completed" ? <>
         <details><summary>查看本条提取原文</summary><p className={styles.document}>{batch.result.text}</p></details>
-        {saved ? <small>已保存到参考原文</small> : onSave && <button type="button" disabled={blocked} onClick={() => onSave(batch.id)}>保存到参考原文</button>}
+        {saved || batch.writing_document_saved ? <small>已保存到参考原文</small> : onSave && <button type="button" disabled={blocked} onClick={() => onSave(batch.id)}>保存到参考原文</button>}
       </> : <small>{assistanceMessage(batch)}</small>}
       {batch.can_resume && <button type="button" disabled={blocked} onClick={() => onResume(batch.id)}>继续本条提取任务</button>}
     </> : <>
@@ -42,8 +42,8 @@ function Candidate({ item, onSelect, blocked, singleBusy, checked, onCheck, batc
   </li>;
 }
 
-export function BenchmarkSearch({ workspaceId, projectId, jobs, extractions, extractBusy, onSearch, onNext, onResume, onUse, onExtract }: {
-  workspaceId: string; projectId: string;
+export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, onSearch, onNext, onResume, onUse, onExtract }: {
+  workspaceId: string;
   jobs: BenchmarkJob[];
   extractions: BenchmarkExtractionJob[];
   extractBusy: boolean;
@@ -72,20 +72,6 @@ export function BenchmarkSearch({ workspaceId, projectId, jobs, extractions, ext
     });
     return () => abort.abort();
   }, [workspaceId]);
-  useEffect(() => {
-    if (!config?.can_save_reference || !projectId) return;
-    const abort = new AbortController();
-    void apiClient.GET("/api/v1/video-studio/workspaces/{workspace_id}/writing-documents", {
-      params: { path: { workspace_id: workspaceId }, query: { project_id: projectId } }, signal: abort.signal, cache: "no-store",
-    }).then(response => {
-      if (abort.signal.aborted) return;
-      const documents = unwrapApiResponse(response) as { kind: string; assistance_task_id?: string | null }[];
-      const ids = documents.filter(doc => doc.kind === "reference" && doc.assistance_task_id).map(doc => doc.assistance_task_id!);
-      setSavedReferences(previous => [...new Set([...previous, ...ids])]);
-    }).catch(() => undefined);
-    return () => abort.abort();
-  }, [config?.can_save_reference, projectId, workspaceId]);
-
   const roots = jobs.filter(job => job.result.page === 1);
   const root = roots.find(job => job.id === selected) || roots[0];
   const pages = jobs.filter(job => job.result.root_task_id === root?.id)

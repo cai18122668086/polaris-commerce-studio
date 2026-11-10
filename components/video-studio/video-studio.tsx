@@ -305,7 +305,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   </>;
 
   const assistantJob = assistantMode === "create" ? createJob : assistantMode === "extract" ? extractJob : assistantMode === "rewrite" ? rewriteJob : undefined;
-  const assistant = <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} workspaceId={workspaceId} projectId={projectId} jobs={assistance.benchmarkJobs} extractions={assistance.benchmarkExtractions}
+  const assistant = <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} workspaceId={workspaceId} jobs={assistance.benchmarkJobs} extractions={assistance.benchmarkExtractions}
     extractBusy={assistance.busy("extract")}
     onSearch={async criteria => {
       const target = session.state.projectId;

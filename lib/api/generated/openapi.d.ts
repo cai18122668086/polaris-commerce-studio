@@ -2860,6 +2860,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Document Page */
+        get: operations["document_page_api_v1_video_studio_workspaces__workspace_id__writing_documents_page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/reference": {
         parameters: {
             query?: never;
@@ -4465,6 +4482,8 @@ export interface components {
             }[];
             /** Status */
             status: string;
+            /** Writing Document Saved */
+            writing_document_saved?: boolean | null;
         };
         /** AvatarResponse */
         AvatarResponse: {
@@ -8901,6 +8920,59 @@ export interface components {
              * @constant
              */
             visual_review: "not_provided";
+        };
+        /** WritingDocumentPage */
+        WritingDocumentPage: {
+            /** Items */
+            items: components["schemas"]["WritingDocumentResponse"][];
+            /** Linked Documents */
+            linked_documents: components["schemas"]["WritingDocumentResponse"][];
+            /** Next Before Id */
+            next_before_id: string | null;
+        };
+        /** WritingDocumentResponse */
+        WritingDocumentResponse: {
+            /** Analysis Document Id */
+            analysis_document_id: string | null;
+            /** Assistance Task Id */
+            assistance_task_id: string | null;
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /** Body Sha256 */
+            body_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Facts Document Id */
+            facts_document_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reference" | "analysis" | "facts" | "draft";
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Reference Document Id */
+            reference_document_id: string | null;
+            /**
+             * Review
+             * @constant
+             */
+            review: "unreviewed";
+            /** Rules Release */
+            rules_release: string;
         };
         /** WritingDraft */
         WritingDraft: {
@@ -15219,6 +15291,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    document_page_api_v1_video_studio_workspaces__workspace_id__writing_documents_page_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                before_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritingDocumentPage"];
                 };
             };
             /** @description Validation Error */

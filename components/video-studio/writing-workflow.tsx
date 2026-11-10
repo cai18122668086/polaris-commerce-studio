@@ -20,10 +20,16 @@ type Draft = {
 const draftModeName = (draft: Draft["draft"]) => draft.schema_version === "tengli.structure-draft/1" ? "借鉴结构创作" : "按原结构改编";
 type CommonDocument = { id: string; created_at: string; reference_document_id: string | null; analysis_document_id: string | null; facts_document_id: string | null; assistance_task_id: string | null };
 type Document = CommonDocument & ({ kind: "reference"; body: { original_text: string; source_note?: string; sentences: { id: string; text: string }[] } } | { kind: "analysis"; body: Analysis } | { kind: "facts"; body: Facts } | { kind: "draft"; body: Draft });
-type Job = { id: string; request_id: string; kind: string; status: string; error_code: string | null; result: { analysis?: Analysis; draft?: Draft["draft"]; text?: string; shape_check?: Draft["shape_check"] } };
+type Job = { id: string; request_id: string; kind: string; status: string; error_code: string | null; writing_document_saved?: boolean | null; result: { analysis?: Analysis; draft?: Draft["draft"]; text?: string; shape_check?: Draft["shape_check"] } };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const stamp = (date: string) => new Date(date).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const blankFact = (): Fact => ({ id: crypto.randomUUID(), category: "product", label: "产品信息", value: null, status: "unknown", source_note: "" });
+
+function mergeDocuments(previous: Document[], added: Document[]) {
+  const byId = new Map([...previous, ...added].map(doc => [doc.id, doc]));
+  return [...byId.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)
+    || b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+}
 
 export function WritingWorkflow({ workspaceId, projectId, revision, saved, references, productFacts, onApplied }: {
   workspaceId: string; projectId: string; revision: number; saved: boolean;
@@ -32,6 +38,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const [config, setConfig] = useState<{ enabled: boolean; can_generate: boolean }>();
   const [open, setOpen] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [beforeId, setBeforeId] = useState<string | null>();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [source, setSource] = useState("");
   const [referenceId, setReferenceId] = useState("");
@@ -48,16 +55,33 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const freeIntents = useRef(new Map<string, string>());
-  const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
+  const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000), cache: "no-store" as const }), [workspaceId]);
   useEffect(() => { let live = true; void apiClient.GET(`${root}/writing-config`, options()).then(result => { if (live) setConfig(unwrapApiResponse(result) as { enabled: boolean; can_generate: boolean }); }).catch(() => undefined); return () => { live = false; }; }, [options]);
-  const reload = useCallback(async () => {
+  const loadPage = useCallback(async (before?: string, refreshHead = false) => {
+    const page = unwrapApiResponse(await apiClient.GET(`${root}/writing-documents/page`, {
+      ...options(), params: { path: { workspace_id: workspaceId }, query: { project_id: projectId, before_id: before } },
+    }));
+    const loaded = [...page.items, ...page.linked_documents] as unknown as Document[];
+    setDocuments(rows => mergeDocuments(rows, loaded));
+    setBeforeId(current => refreshHead && current !== undefined ? current : page.next_before_id);
+  }, [options, workspaceId, projectId]);
+  const reloadJobs = useCallback(async () => {
     const opts = { ...options(), params: { path: { workspace_id: workspaceId }, query: { project_id: projectId } } };
-    const [docs, tasks] = await Promise.all([apiClient.GET(`${root}/writing-documents`, opts), apiClient.GET(`${root}/assistance-tasks`, opts)]);
-    const rows = unwrapApiResponse(tasks) as Job[];
-    setDocuments(unwrapApiResponse(docs) as Document[]); setJobs(rows.filter(j => ["ref_analysis", "fact_draft"].includes(j.kind)));
+    const rows = unwrapApiResponse(await apiClient.GET(`${root}/assistance-tasks`, opts)) as Job[];
+    setJobs(rows.filter(j => ["ref_analysis", "fact_draft"].includes(j.kind)));
     return rows;
   }, [options, workspaceId, projectId]);
-  useEffect(() => { if (!open || !revision) return; let live = true; const update = () => { if (live) void reload().catch(() => { if (live) setError("文稿资料暂时无法读取，请刷新重试。"); }); }; update(); const timer = setInterval(update, 4000); return () => { live = false; clearInterval(timer); }; }, [open, revision, reload]);
+  const reload = useCallback(async () => { await Promise.all([loadPage(), reloadJobs()]); }, [loadPage, reloadJobs]);
+  useEffect(() => {
+    if (!open || !revision) return;
+    let live = true;
+    const reportFailure = () => { if (live) setError("文稿资料或任务暂时无法读取，请刷新重试。"); };
+    void Promise.resolve().then(() => { if (live) return reload(); }).catch(reportFailure);
+    const timer = setInterval(() => {
+      void Promise.all([loadPage(undefined, true), reloadJobs()]).catch(reportFailure);
+    }, 4000);
+    return () => { live = false; clearInterval(timer); };
+  }, [open, revision, reload, loadPage, reloadJobs]);
   const attempt = async (run: () => Promise<void>) => { setBusy(true); setError(""); try { await run(); } catch (caught) { setError(caught instanceof Error ? caught.message : "本次操作尚未确认，请刷新原任务。"); } finally { setBusy(false); } };
   const freeIntent = (action: string, payload: unknown) => { const key = JSON.stringify([action, payload]); let id = freeIntents.current.get(key); if (!id) { id = crypto.randomUUID(); freeIntents.current.set(key, id); } return id; };
   const refDocs = documents.filter((d): d is Document & { kind: "reference" } => d.kind === "reference");
@@ -76,18 +100,18 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
     ? selectedReference?.body.sentences.find(s => s.id === line.reference_sentence_id)?.text
     : draftAnalysis?.body.sections.find(s => s.id === line.analysis_section_id)?.function;
   const running = jobs.some(j => ["queued", "running", "unknown"].includes(j.status));
-  const unsavedResults = jobs.filter(j => j.status === "completed" && !documents.some(d => d.assistance_task_id === j.id));
+  const unsavedResults = jobs.filter(j => j.status === "completed" && !j.writing_document_saved && !documents.some(d => d.assistance_task_id === j.id));
   const saveReference = () => attempt(async () => {
     const reference = references.find(r => r.id === source);
     if (!reference) throw new Error("请先在参考文案工具中保存原文。");
     const body = { project_id: projectId, expected_revision: revision, reference_id: reference.id };
     const doc = unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/reference`, { ...options(), body: { ...body, request_id: freeIntent("reference", body) } })) as Document;
-    setReferenceId(doc.id); await reload();
+    setDocuments(rows => mergeDocuments(rows, [doc])); setReferenceId(doc.id);
   });
   const saveFacts = () => attempt(async () => {
     const body = { project_id: projectId, body: { facts, forbidden_terms: forbidden.split(/\n/).map(s => s.trim()).filter(Boolean), restricted_claims: restrictions } };
     const doc = unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/facts`, { ...options(), body: { ...body, request_id: freeIntent("facts", body) } })) as Document;
-    setFactsId(doc.id); await reload();
+    setDocuments(rows => mergeDocuments(rows, [doc])); setFactsId(doc.id);
   });
   const generate = (kind: "ref_analysis" | "fact_draft") => attempt(async () => {
     if (!selectedReference) throw new Error("请先保存参考原文。");
@@ -104,9 +128,9 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
     sessionStorage.setItem(key, JSON.stringify(intent));
     try {
       unwrapApiResponse(await apiClient.POST(`${root}/writing-tasks`, { ...options(), body: { ...submission, request_id: intent.request_id } }));
-      sessionStorage.removeItem(key); await reload();
+      sessionStorage.removeItem(key); await reloadJobs();
     } catch (caught) {
-      const rows = await reload().catch(() => []);
+      const rows = await reloadJobs().catch(() => []);
       if (rows.some(j => j.request_id === intent.request_id)) { sessionStorage.removeItem(key); return; }
       if (caught instanceof ApiError && caught.status && caught.status >= 400 && caught.status < 500) sessionStorage.removeItem(key);
       throw caught;
@@ -114,8 +138,11 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   });
   const keepResult = (job: Job) => attempt(async () => {
     const doc = unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/result`, { ...options(), body: { request_id: freeIntent("result", job.id), task_id: job.id } })) as Document;
+    setDocuments(rows => mergeDocuments(rows, [doc]));
+    if (doc.reference_document_id) setReferenceId(doc.reference_document_id);
     if (doc.kind === "draft") setDraftId(doc.id);
-    await reload();
+    if (doc.kind === "analysis") setAnalysisId(doc.id);
+    await loadPage();
   });
   const saveRevision = (title: string, sentences: DraftLine[]) => attempt(async () => {
     if (!selectedDraft || selectedDraft.id !== editingDraftId) return;
@@ -125,7 +152,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
       params: { path: { workspace_id: workspaceId, document_id: selectedDraft.id } },
       body: { ...payload, request_id: freeIntent("revise", [selectedDraft.id, payload]) },
     })) as Document;
-    setDocuments(rows => [revised, ...rows.filter(row => row.id !== revised.id)]);
+    setDocuments(rows => mergeDocuments(rows, [revised]));
     setDraftId(revised.id);
     setEditingDraftId("");
   });
@@ -138,6 +165,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   if (!config?.enabled) return null;
   return <details className={styles.workflow} open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>拆解与事实写稿</summary>
     <p>原文、拆解、事实卡与草稿分别留档。生成结果需要核对后采用，现有确认稿由原流程保留。</p>
+    {beforeId && <button type="button" disabled={busy} onClick={() => void attempt(() => loadPage(beforeId))}>加载更早的文稿资料</button>}
     {!saved && <p role="status">请先保存当前项目，再开始拆解或采用新稿。</p>}
     <fieldset disabled={busy || !saved || !!editingDraftId}><legend>1. 保存参考原文</legend>
       <select aria-label="选择项目参考原文" value={source} onChange={e => setSource(e.target.value)}><option value="">选择已保存的参考文案</option>{references.filter(r => r.original_text.trim()).map(r => <option key={r.id} value={r.id}>{r.original_text.slice(0, 35)}</option>)}</select>

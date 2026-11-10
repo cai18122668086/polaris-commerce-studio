@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
@@ -49,6 +49,7 @@ from .video_writing_contracts import (
     SaveWritingReference,
     SaveWritingResult,
     WritingAnalysis,
+    WritingDocumentPage,
     WritingDraft,
     WritingFacts,
     WritingReference,
@@ -99,7 +100,9 @@ def document_response(row: VideoWritingDocument) -> dict[str, Any]:
         "analysis_document_id": row.analysis_document_id,
         "facts_document_id": row.facts_document_id,
         "assistance_task_id": row.assistance_task_id,
-        "created_at": created if created.tzinfo else created.replace(tzinfo=UTC),
+        "created_at": created.astimezone(UTC)
+        if created.tzinfo
+        else created.replace(tzinfo=UTC),
         "review": "unreviewed",
     }
 
@@ -197,6 +200,72 @@ def documents(
         .limit(200)
     )
     return [document_response(row) for row in rows]
+
+
+@router.get("/writing-documents/page", response_model=WritingDocumentPage)
+def document_page(
+    project_id: UUID,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+    before_id: UUID | None = None,
+    limit: int = Query(25, ge=1, le=50),
+) -> dict:
+    own_project(session, workspace, str(project_id))
+    scope = (
+        VideoWritingDocument.project_id == str(project_id),
+        VideoWritingDocument.workspace_id == workspace.workspace_id,
+        VideoWritingDocument.owner_user_id == workspace.principal.user_id,
+    )
+    query = select(VideoWritingDocument).where(*scope)
+    if before_id is not None:
+        anchor = own_document(session, workspace, str(before_id))
+        if anchor.project_id != str(project_id):
+            raise ApiError(
+                404, "VIDEO_WRITING_DOCUMENT_NOT_FOUND", "未找到这份文稿资料。"
+            )
+        created = VideoWritingDocument.created_at
+        # Compare stored timestamps in the database to preserve ties on all engines.
+        anchor_time = (
+            select(created)
+            .where(VideoWritingDocument.id == anchor.id)
+            .scalar_subquery()
+        )
+        query = query.where(
+            (created < anchor_time)
+            | ((created == anchor_time) & (VideoWritingDocument.id < anchor.id))
+        )
+    rows = session.scalars(
+        query.order_by(
+            VideoWritingDocument.created_at.desc(), VideoWritingDocument.id.desc()
+        ).limit(limit + 1)
+    ).all()
+    items = rows[:limit]
+    linked_ids = {
+        ident
+        for row in items
+        for ident in (
+            row.reference_document_id,
+            row.analysis_document_id,
+            row.facts_document_id,
+        )
+        if ident is not None
+    } - {row.id for row in items}
+    linked = (
+        session.scalars(
+            select(VideoWritingDocument)
+            .where(*scope, VideoWritingDocument.id.in_(linked_ids))
+            .order_by(
+                VideoWritingDocument.created_at.desc(), VideoWritingDocument.id.desc()
+            )
+        ).all()
+        if linked_ids
+        else []
+    )
+    return {
+        "items": [document_response(row) for row in items],
+        "linked_documents": [document_response(row) for row in linked],
+        "next_before_id": items[-1].id if len(rows) > limit else None,
+    }
 
 
 @router.post("/writing-documents/reference")

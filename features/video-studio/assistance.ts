@@ -41,7 +41,7 @@ type BenchmarkPage = BenchmarkCriteria & {
   top_author_item_count?: number;
   unknown_author_count?: number;
 };
-export type AssistanceJob = { id: string; request_id: string; project_id: string; kind: string; status: string; stage: string; error_code: string | null; source_revision: number; can_resume: boolean; benchmark_source?: components["schemas"]["BenchmarkExtractionSource"] | null; result: { title?: string; script?: string; warnings?: string[]; text?: string; source_url?: string; segments?: { start: number; end: number; text: string }[] } };
+export type AssistanceJob = { id: string; request_id: string; project_id: string; kind: string; status: string; stage: string; error_code: string | null; source_revision: number; can_resume: boolean; benchmark_source?: components["schemas"]["BenchmarkExtractionSource"] | null; writing_document_saved?: boolean | null; result: { title?: string; script?: string; warnings?: string[]; text?: string; source_url?: string; segments?: { start: number; end: number; text: string }[] } };
 export type BenchmarkJob = AssistanceJob & { kind: "benchmark_search"; result: BenchmarkPage };
 export type BenchmarkExtractionPick = components["schemas"]["BenchmarkExtractionPick"];
 export type BenchmarkExtractionJob = AssistanceJob & { benchmark_source: NonNullable<AssistanceJob["benchmark_source"]> };

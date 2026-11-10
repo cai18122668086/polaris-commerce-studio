@@ -1,6 +1,6 @@
 import importlib.util
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from alembic.migration import MigrationContext
@@ -254,6 +254,93 @@ def test_manual_revision_keeps_original_replacement_constraints():
         )
 
 
+def test_writing_document_pages_keep_tied_rows_and_exact_draft_sources(video):
+    client, _, ws, user, _ = video
+    pid, other = str(uuid4()), str(uuid4())
+    url = base(ws)
+    for project in (pid, other):
+        assert (
+            client.put(url + "/projects/" + project, json=payload()).status_code == 200
+        )
+
+    ref_id, facts_id, analysis_id, draft_id, foreign_id = (
+        str(UUID(int=i)) for i in range(1, 6)
+    )
+    with client.app.state.session_factory() as session:
+        for ident, project, kind, body, parents in (
+            (ref_id, pid, "reference", reference().model_dump(mode="json"), {}),
+            (facts_id, pid, "facts", facts().model_dump(mode="json"), {}),
+            (
+                analysis_id,
+                pid,
+                "analysis",
+                analysis().model_dump(mode="json"),
+                {"reference_document_id": ref_id},
+            ),
+            (
+                draft_id,
+                pid,
+                "draft",
+                {"draft": draft().model_dump(mode="json")},
+                {
+                    "reference_document_id": ref_id,
+                    "analysis_document_id": analysis_id,
+                    "facts_document_id": facts_id,
+                },
+            ),
+            (foreign_id, other, "facts", facts().model_dump(mode="json"), {}),
+        ):
+            session.add(
+                VideoWritingDocument(
+                    id=ident,
+                    project_id=project,
+                    workspace_id=ws,
+                    owner_user_id=user,
+                    kind=kind,
+                    body=body,
+                    body_sha256=digest(body),
+                    rules_release="a" * 64,
+                    request_id=str(uuid4()),
+                    request_hash="b" * 64,
+                    **parents,
+                )
+            )
+        session.flush()
+        # Some older SQLite rows can have server-default timestamps without fractions.
+        session.execute(
+            text("UPDATE video_writing_documents SET created_at='2026-11-01 00:00:00'")
+        )
+        session.commit()
+
+    endpoint = url + "/writing-documents/page"
+    query = {"project_id": pid, "limit": 1}
+    first = client.get(endpoint, params=query)
+    assert first.status_code == 200, first.text
+    page = first.json()
+    assert [row["id"] for row in page["items"]] == [draft_id]
+    assert {row["id"] for row in page["linked_documents"]} == {
+        ref_id,
+        analysis_id,
+        facts_id,
+    }
+    assert page["next_before_id"] == draft_id
+
+    seen = [draft_id]
+    while page["next_before_id"] is not None:
+        page = client.get(
+            endpoint, params={**query, "before_id": page["next_before_id"]}
+        ).json()
+        assert len(page["items"]) == 1
+        seen.extend(row["id"] for row in page["items"])
+        assert len(seen) <= 4
+    assert seen == [draft_id, analysis_id, facts_id, ref_id]
+    assert (
+        client.get(endpoint, params={**query, "before_id": foreign_id}).status_code
+        == 404
+    )
+    assert client.get(endpoint, params={**query, "limit": 51}).status_code == 422
+
+
 def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_separate(
     video, tmp_path, monkeypatch
 ):
@@ -315,6 +402,9 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
     }
     task = client.post(url + "/writing-tasks", json=request)
     assert task.status_code == 200, task.text
+    assert not client.get(url + "/assistance-tasks", params={"project_id": pid}).json()[
+        0
+    ]["writing_document_saved"]
     assert (
         client.post(url + "/writing-tasks", json=request).json()["id"]
         == task.json()["id"]
@@ -338,6 +428,8 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
         json={"request_id": str(uuid4()), "task_id": task.json()["id"]},
     )
     assert saved_draft.status_code == 200, saved_draft.text
+    jobs = client.get(url + "/assistance-tasks", params={"project_id": pid}).json()
+    assert len(jobs) == 2 and all(job["writing_document_saved"] for job in jobs)
     assert (
         client.get(url + "/projects/" + pid).json()["content"]["draft"]["text"]
         == "原草稿仍在"

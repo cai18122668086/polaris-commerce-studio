@@ -1,5 +1,6 @@
 """Reference evidence, editorial analysis and declared facts are different objects."""
 
+from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID
 
@@ -133,6 +134,27 @@ class WritingVersionSources(StrictVideoModel):
     analysis: WritingAnalysis
     facts: WritingFacts
     draft: WritingDraft | WritingStructureDraft
+
+
+class WritingDocumentResponse(StrictVideoModel):
+    id: UUID
+    project_id: UUID
+    kind: Literal["reference", "analysis", "facts", "draft"]
+    body: dict
+    body_sha256: str
+    rules_release: str
+    reference_document_id: UUID | None
+    analysis_document_id: UUID | None
+    facts_document_id: UUID | None
+    assistance_task_id: UUID | None
+    created_at: datetime
+    review: Literal["unreviewed"]
+
+
+class WritingDocumentPage(StrictVideoModel):
+    items: list[WritingDocumentResponse]
+    linked_documents: list[WritingDocumentResponse]
+    next_before_id: UUID | None
 
 
 class SaveWritingReference(StrictVideoModel):

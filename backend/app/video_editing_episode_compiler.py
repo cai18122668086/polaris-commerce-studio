@@ -18,6 +18,10 @@ from jsonschema.exceptions import ValidationError as SchemaViolation
 from pydantic import Field, model_validator
 
 from .config import Settings
+from .motion_browser_originals import (
+    BROWSER_ORIGINALS_REQUIRED,
+    BrowserOriginalsMissing,
+)
 from .motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from .video_editing_azl_panels import (
     AZL_CAPTION_BASELINE,
@@ -709,6 +713,16 @@ def compile_episode(
                         **({"readability": readability} if readability else {}),
                     }
                 )
+            except BrowserOriginalsMissing as error:
+                issues.append(
+                    {
+                        "beat_id": beat.id,
+                        "group_id": beat.group_id,
+                        "code": BROWSER_ORIGINALS_REQUIRED,
+                        "missing_original_images": error.missing,
+                    }
+                )
+                continue
             except (
                 ValueError,
                 KeyError,
@@ -1083,6 +1097,8 @@ def compile_episode(
     }
     atomic_json(root / "compile-diagnostics.json", diagnostic)
     if issues:
+        if any(row["code"] == BROWSER_ORIGINALS_REQUIRED for row in issues):
+            raise EditingFailure(BROWSER_ORIGINALS_REQUIRED)
         if any(row["code"] == "EDITING_SOUND_INPUTS_REQUIRED" for row in issues):
             raise EditingFailure("EDITING_SOUND_INPUTS_REQUIRED")
         raise EditingFailure("EDITING_NATIVE_INPUTS_REQUIRED")

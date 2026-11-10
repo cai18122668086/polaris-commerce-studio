@@ -12,7 +12,8 @@ import runpy
 import sys
 from pathlib import Path
 
-from .motion_library import atomic_json
+from .motion_browser_originals import RENDER_GROUPS, require_browser_originals
+from .motion_library import atomic_json, read_json
 from .video_editing_native_compat import install
 from .video_editing_native_layout import install_native_role_review
 from .video_editing_native_shot_recovery import install_shot_recovery
@@ -35,6 +36,20 @@ def main() -> None:
     package, root = args.package.resolve(), args.instance.resolve()
     if root.is_relative_to(package):
         raise ValueError("Task outputs must be outside the original library")
+    input_file = root / ("episode.json" if args.kind == "episode" else "job.json")
+    if args.command != "plan":
+        native_input = read_json(input_file)
+        shots = native_input["shots"] if args.kind == "episode" else [native_input]
+        original_shots = [shot for shot in shots if shot["group_id"] in RENDER_GROUPS]
+        if original_shots:
+            groups = {
+                group["id"]: group
+                for group in read_json(package / "catalog/groups.json")["groups"]
+            }
+            for shot in original_shots:
+                require_browser_originals(
+                    package, groups[shot["group_id"]], shot["config"]
+                )
     install(package, root)
     # Original adapter launches original Python workers. Apply the same narrow
     # copy-mode rule at Python startup there, without editing their source.
@@ -82,7 +97,7 @@ def main() -> None:
         str(package / "adapter.py"),
         args.command,
         "--input",
-        str(root / ("episode.json" if args.kind == "episode" else "job.json")),
+        str(input_file),
         "--instance",
         str(root),
         "--bindings",

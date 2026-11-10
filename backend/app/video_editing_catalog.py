@@ -8,6 +8,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
+from .motion_browser_originals import STARTUP_ASSETS
 from .motion_library import MOTION_SHA256, inside, read_json, sha256
 from .motion_library_validation import group_status
 from .motion_local_dependencies import DependencyState, dependency_state
@@ -328,21 +329,8 @@ def original_input_variants(
 # Both browser entries eagerly read these assets before accepting current inputs.
 # A catalog alias identifies an external original and does not mean it is present.
 def original_startup_assets(package: Path, group: dict) -> list[dict[str, Any]]:
-    gid = group["id"]
-    if gid == "CX-G05":
-        paths = [
-            ("g05-assets/base-{i:03d}.jpg", 69),
-            ("g05-assets/actor-{i:03d}.png", 69),
-            ("g05-assets/photo-{i}.jpg", 3),
-        ]
-    elif gid in {"CX-G08", "CX-G09", "CX-G10"}:
-        paths = [
-            ("assets/material-{i}.png", 3),
-            ("assets/g09-bg/{i:03d}.jpg", 66),
-            ("assets/G10-background-clean.jpg", 1),
-            ("assets/G10-person-clean.png", 1),
-        ]
-    else:
+    paths = STARTUP_ASSETS.get(group["id"])
+    if not paths:
         return []
     aliases = read_json(package / "catalog/native-relative-assets.json")
     archived = read_json(package / "integrity.json")["files"]

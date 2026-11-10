@@ -5,6 +5,10 @@ import copy
 import pytest
 
 from app.config import Settings
+from app.motion_browser_originals import (
+    BROWSER_ORIGINALS_REQUIRED,
+    BrowserOriginalsMissing,
+)
 from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from app.motion_parameter_contracts import input_contract
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
@@ -417,6 +421,36 @@ def test_missing_native_inputs_are_not_silently_replaced_with_plain_speech(
     assert (
         read_json(root / "compile-diagnostics.json")["issues"][0]["group_id"] == "T001"
     )
+
+
+def test_missing_original_browser_images_stop_the_episode_with_a_specific_diagnostic(
+    tmp_path, monkeypatch
+):
+    root, _, prepared, transcript, plan, authoring, settings, options = protocol(
+        tmp_path
+    )
+    missing = {"g05-assets/base-{i:03d}.jpg": 69}
+
+    def missing_originals(*args, **kwargs):
+        raise BrowserOriginalsMissing(plan.beats[0].group_id, missing)
+
+    monkeypatch.setattr(
+        "app.video_editing_episode_compiler.compile_native_job", missing_originals
+    )
+    with pytest.raises(EditingFailure) as error:
+        compile_episode(
+            root, prepared, transcript, plan, authoring, {}, options, settings
+        )
+    assert error.value.code == BROWSER_ORIGINALS_REQUIRED
+    assert not (root / "episode.json").exists()
+    assert read_json(root / "compile-diagnostics.json")["issues"] == [
+        {
+            "beat_id": plan.beats[0].id,
+            "group_id": plan.beats[0].group_id,
+            "code": BROWSER_ORIGINALS_REQUIRED,
+            "missing_original_images": missing,
+        }
+    ]
 
 
 def test_operator_cannot_be_presented_as_gateway_and_stale_transcript_is_rejected(

@@ -13,6 +13,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from .motion_browser_originals import require_browser_originals
 from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
 from .motion_local_dependencies import dependency_state, local_dependencies
 from .motion_parameter_contracts import (
@@ -943,6 +944,7 @@ def compile_native_job(
         native["browser_clock"] = browser_clock
     schema = read_json(package / group["input_schema"])
     Draft202012Validator(schema).validate(config)
+    require_browser_originals(package, group, config)
     job = {
         "schema": "commercial-talk-job/1",
         "group_id": beat.group_id,

@@ -7,11 +7,15 @@ import re
 import subprocess
 import sys
 from itertools import groupby
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .config import Settings
 from .motion_library import atomic_json, inside, read_json
 from .video_editing_pipeline import environment
 from .video_writing_contracts import (
+    FactReplacement,
+    ReviseWritingDraft,
     WritingAnalysis,
     WritingDraft,
     WritingFacts,
@@ -152,6 +156,43 @@ def validate_draft(
     return text
 
 
+def revised_draft(
+    previous: WritingDraft | WritingStructureDraft,
+    change: ReviseWritingDraft,
+    replacements: list[FactReplacement],
+    reference: WritingReference,
+    facts: WritingFacts,
+    analysis: WritingAnalysis,
+) -> tuple[WritingDraft | WritingStructureDraft, str]:
+    if not change.title.strip() or any(
+        not line.text.strip() for line in change.sentences
+    ):
+        raise ValueError("A revised draft needs a title and actual spoken lines")
+    draft = type(previous).model_validate(
+        {
+            **previous.model_dump(mode="json"),
+            "title": change.title,
+            "sentences": [line.model_dump(mode="json") for line in change.sentences],
+            "replacements": [],
+        }
+    )
+    for replacement in replacements:
+        uses = [
+            line for line in draft.sentences if replacement.replacement in line.text
+        ]
+        if any(replacement.fact_id not in line.fact_ids for line in uses):
+            raise ValueError("A retained replacement requires its mapped fact")
+        if uses:
+            draft.replacements.append(replacement)
+    validate_analysis(analysis, reference)
+    text = validate_draft(draft, reference, facts, analysis)
+    if any(
+        row.original != row.replacement and row.original in text for row in replacements
+    ):
+        raise ValueError("An original source fact was restored in the revision")
+    return draft, text
+
+
 def structure_check(inputs: dict, text: str) -> dict:
     result: dict[str, Any] = {
         "verdict": "PASS",
@@ -178,17 +219,13 @@ def structure_check(inputs: dict, text: str) -> dict:
 
 
 def shape_check(
-    service: VideoAssistanceProvider,
+    settings: Settings,
+    root: Path,
     inputs: dict,
     draft: WritingDraft,
     reference: WritingReference,
     facts: WritingFacts,
 ) -> dict:
-    root = (
-        service.settings.video_editing_tasks_dir
-        / "_writing"
-        / inputs["writing_task_id"]
-    )
     root.mkdir(parents=True, exist_ok=True)
     (root / "origin.txt").write_text(reference.original_text, encoding="utf-8")
     (root / "draft.txt").write_text(
@@ -206,11 +243,11 @@ def shape_check(
         "\n".join(facts.forbidden_terms), encoding="utf-8"
     )
     script = inside(
-        service.settings.video_writing_library_dir,
+        settings.video_writing_library_dir,
         "对标拆解写稿_skill包_20261108/skills/benchmark-shadow-script/scripts/shadow_check.py",
     )
     command = [
-        service.settings.video_editing_python or sys.executable,
+        settings.video_editing_python or sys.executable,
         "-B",
         str(script),
         "--origin",
@@ -238,7 +275,7 @@ def shape_check(
         command,
         capture_output=True,
         timeout=30,
-        env=environment(service.settings),
+        env=environment(settings),
     )
     result = read_json(root / "shape-check.json")
     if completed.returncode and result.get("verdict") != "FAIL":
@@ -319,7 +356,16 @@ def plan_writing(
         else:
             text = validate_draft(parsed, reference, facts, analysis)
             shape = (
-                shape_check(service, inputs, parsed, reference, facts)
+                shape_check(
+                    service.settings,
+                    service.settings.video_editing_tasks_dir
+                    / "_writing"
+                    / inputs["writing_task_id"],
+                    inputs,
+                    parsed,
+                    reference,
+                    facts,
+                )
                 if isinstance(parsed, WritingDraft)
                 else structure_check(inputs, text)
             )

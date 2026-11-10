@@ -2894,6 +2894,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/{document_id}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revise Draft */
+        post: operations["revise_draft_api_v1_video_studio_workspaces__workspace_id__writing_documents__document_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/writing-tasks": {
         parameters: {
             query?: never;
@@ -5697,6 +5714,20 @@ export interface components {
             /** Display Name */
             display_name?: string | null;
         };
+        /** DraftSentence */
+        DraftSentence: {
+            /** Fact Ids */
+            fact_ids?: string[];
+            /** Reference Sentence Id */
+            reference_sentence_id: string;
+            /**
+             * Rewritten For
+             * @enum {string}
+             */
+            rewritten_for: "fact_replacement" | "must_replace" | "unchanged_structure";
+            /** Text */
+            text: string;
+        };
         /** EcommerceAccountCreateRequest */
         EcommerceAccountCreateRequest: {
             /** Account Key */
@@ -7919,6 +7950,18 @@ export interface components {
          * @enum {string}
          */
         RetryScope: "full" | "failed" | "missing" | "selected";
+        /** ReviseWritingDraft */
+        ReviseWritingDraft: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Sentences */
+            sentences: (components["schemas"]["DraftSentence"] | components["schemas"]["StructureDraftLine"])[];
+            /** Title */
+            title: string;
+        };
         /** RuntimeCapabilities */
         RuntimeCapabilities: {
             /** @description Asset upload, listing, and private access URL workflow. */
@@ -8138,6 +8181,15 @@ export interface components {
             platform: "auto" | "taobao" | "tmall" | "alibaba1688" | "1688" | "jd" | "pinduoduo";
             /** Url */
             url?: string | null;
+        };
+        /** StructureDraftLine */
+        StructureDraftLine: {
+            /** Analysis Section Id */
+            analysis_section_id: string;
+            /** Fact Ids */
+            fact_ids?: string[];
+            /** Text */
+            text: string;
         };
         /** SupportCreate */
         SupportCreate: {
@@ -14957,6 +15009,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoWriteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_draft_api_v1_video_studio_workspaces__workspace_id__writing_documents__document_id__revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseWritingDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

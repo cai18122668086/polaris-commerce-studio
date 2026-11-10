@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, inspect, select, text
 
 from app.video_studio_models import VideoScriptVersionRecord
 from app.video_writing_contracts import (
+    ReviseWritingDraft,
     WritingAnalysis,
     WritingDraft,
     WritingFacts,
@@ -16,6 +17,7 @@ from app.video_writing_contracts import (
 )
 from app.video_writing_models import VideoWritingAdoption
 from app.video_writing_provider import (
+    revised_draft,
     structure_check,
     validate_analysis,
     validate_draft,
@@ -208,6 +210,46 @@ def test_writing_contract_rejects_invented_evidence_unknown_facts_and_old_claims
         changed_facts = f.model_copy(update={"restricted_claims": [restriction]})
         with pytest.raises(ValueError):
             validate_draft(d, ref, changed_facts, a)
+
+
+def test_manual_revision_keeps_original_replacement_constraints():
+    ref, a, f, parent = reference(), analysis(), facts(), draft()
+    payload = {
+        "request_id": str(uuid4()),
+        "title": parent.title,
+        "sentences": [line.model_dump(mode="json") for line in parent.sentences],
+    }
+    payload["sentences"][0].update(text="只要39元。", fact_ids=["price"])
+    revised, text = revised_draft(
+        parent,
+        ReviseWritingDraft.model_validate(payload),
+        parent.replacements,
+        ref,
+        f,
+        a,
+    )
+    assert text == "只要39元。它是250毫升装。"
+    assert [row.fact_id for row in revised.replacements] == ["price", "volume"]
+    payload["sentences"][0]["text"] = "这款旧款只要39元。"
+    with pytest.raises(ValueError, match="original source fact"):
+        revised_draft(
+            revised,
+            ReviseWritingDraft.model_validate(payload),
+            parent.replacements,
+            ref,
+            f,
+            a,
+        )
+    payload["sentences"][0]["text"] = "这款新款只要39元。"
+    with pytest.raises(ValueError, match="retained replacement"):
+        revised_draft(
+            revised,
+            ReviseWritingDraft.model_validate(payload),
+            parent.replacements,
+            ref,
+            f,
+            a,
+        )
 
 
 def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_separate(
@@ -480,6 +522,71 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
         ).json()
     }
     assert kinds == {"reference", "analysis", "facts", "draft"}
+
+    revise_url = url + f"/writing-documents/{new_draft['id']}/revise"
+    revised_request = {
+        "request_id": str(uuid4()),
+        "title": "修订后的产品文案",
+        "sentences": [
+            {
+                "analysis_section_id": "a",
+                "text": "新款目前售价39元。",
+                "fact_ids": ["name", "price"],
+            },
+            {
+                "analysis_section_id": "b",
+                "text": "它是250毫升装。",
+                "fact_ids": ["volume"],
+            },
+        ],
+    }
+    assert (
+        client.post(
+            revise_url,
+            json={**revised_request, "sentences": revised_request["sentences"][:1]},
+        ).status_code
+        == 422
+    )
+    revision = client.post(revise_url, json=revised_request).raise_for_status().json()
+    assert revision["body"]["revision"]["parent_document_id"] == new_draft["id"]
+    assert (
+        revision["body"]["revision"]["parent_document_sha256"]
+        == new_draft["body_sha256"]
+    )
+    assert revision["facts_document_id"] == new_draft["facts_document_id"]
+    assert revision["assistance_task_id"] is None
+    assert client.post(revise_url, json=revised_request).json() == revision
+    assert (
+        client.post(
+            revise_url, json={**revised_request, "title": "不同的修订标题"}
+        ).status_code
+        == 409
+    )
+    assert client.get(project_url).json() == recovered["project"]
+    all_docs = (
+        client.get(url + "/writing-documents", params={"project_id": pid})
+        .raise_for_status()
+        .json()
+    )
+    assert next(row for row in all_docs if row["id"] == new_draft["id"]) == new_draft
+    accepted = (
+        client.post(
+            url + f"/writing-documents/{revision['id']}/apply",
+            json={
+                "request_id": str(uuid4()),
+                "expected_revision": recovered["project"]["revision"],
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert accepted["version"]["writing_origin"]["draft_document_id"] == revision["id"]
+    assert (
+        accepted["version"]["writing_origin"]["facts_document_id"]
+        == origin["facts_document_id"]
+    )
+    assert accepted["version"]["snapshot"]["draft"]["text"] == revision["body"]["text"]
+    assert len(fake.calls) == 3
 
 
 def test_writing_migration_roundtrip_preserves_existing_project_tables(tmp_path):

@@ -10,11 +10,12 @@ type Fact = { id: string; category: "identity" | "product" | "story"; label: str
 type Facts = { facts: Fact[]; forbidden_terms: string[]; restricted_claims: ("price" | "net_quantity" | "health_effect")[] };
 type Analysis = { topic: string; sections: { id: string; first_sentence_id: string; last_sentence_id: string; function: string; explanation: string }[]; source_claims: { sentence_id: string; quote: string; handling: string; reason: string }[]; limitations: string[] };
 type DraftMode = "structure" | "shadow";
-type DraftLine = { text: string; fact_ids: string[] } & ({ reference_sentence_id: string } | { analysis_section_id: string });
+type DraftLine = { text: string; fact_ids: string[] } & ({ reference_sentence_id: string; rewritten_for: "fact_replacement" | "must_replace" | "unchanged_structure" } | { analysis_section_id: string });
 type Draft = {
   text: string;
   draft: { schema_version?: string; title: string; sentences: DraftLine[]; missing_facts: string[]; warnings: string[] };
   shape_check: { verdict: string; failures?: string[]; warnings?: string[] };
+  revision?: { parent_document_id: string };
 };
 const draftModeName = (draft: Draft["draft"]) => draft.schema_version === "tengli.structure-draft/1" ? "借鉴结构创作" : "按原结构改编";
 type CommonDocument = { id: string; created_at: string; reference_document_id: string | null; analysis_document_id: string | null; facts_document_id: string | null; assistance_task_id: string | null };
@@ -37,6 +38,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const [factsId, setFactsId] = useState("");
   const [analysisId, setAnalysisId] = useState("");
   const [draftId, setDraftId] = useState("");
+  const [editingDraftId, setEditingDraftId] = useState("");
   const [draftMode, setDraftMode] = useState<DraftMode>("structure");
   const [facts, setFacts] = useState<Fact[]>(() => productFacts.trim() && productFacts.length <= 1000 ? [{ ...blankFact(), label: "现有产品资料", value: productFacts, status: "user_declared", source_note: "沿用项目资料，请核对后保存" }] : [blankFact()]);
   const [forbidden, setForbidden] = useState("");
@@ -70,6 +72,9 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const selectedDraft = draftDocs.find(d => d.id === draftId) || draftDocs[0];
   const draftAnalysis = analysisDocs.find(d => d.id === selectedDraft?.analysis_document_id);
   const draftFacts = factDocs.find(d => d.id === selectedDraft?.facts_document_id);
+  const draftContext = (line: DraftLine) => "reference_sentence_id" in line
+    ? selectedReference?.body.sentences.find(s => s.id === line.reference_sentence_id)?.text
+    : draftAnalysis?.body.sections.find(s => s.id === line.analysis_section_id)?.function;
   const running = jobs.some(j => ["queued", "running", "unknown"].includes(j.status));
   const unsavedResults = jobs.filter(j => j.status === "completed" && !documents.some(d => d.assistance_task_id === j.id));
   const saveReference = () => attempt(async () => {
@@ -112,6 +117,18 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
     if (doc.kind === "draft") setDraftId(doc.id);
     await reload();
   });
+  const saveRevision = (title: string, sentences: DraftLine[]) => attempt(async () => {
+    if (!selectedDraft || selectedDraft.id !== editingDraftId) return;
+    const payload = { title, sentences };
+    const revised = unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/{document_id}/revise`, {
+      ...options(),
+      params: { path: { workspace_id: workspaceId, document_id: selectedDraft.id } },
+      body: { ...payload, request_id: freeIntent("revise", [selectedDraft.id, payload]) },
+    })) as Document;
+    setDocuments(rows => [revised, ...rows.filter(row => row.id !== revised.id)]);
+    setDraftId(revised.id);
+    setEditingDraftId("");
+  });
   const apply = () => attempt(async () => {
     if (!selectedDraft) return;
     unwrapApiResponse(await apiClient.POST(`${root}/writing-documents/{document_id}/apply`, { ...options(), params: { path: { workspace_id: workspaceId, document_id: selectedDraft.id } }, body: { request_id: freeIntent("apply", [selectedDraft.id, revision]), expected_revision: revision } }));
@@ -122,10 +139,10 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   return <details className={styles.workflow} open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>拆解与事实写稿</summary>
     <p>原文、拆解、事实卡与草稿分别留档。生成结果需要核对后采用，现有确认稿由原流程保留。</p>
     {!saved && <p role="status">请先保存当前项目，再开始拆解或采用新稿。</p>}
-    <fieldset disabled={busy || !saved}><legend>1. 保存参考原文</legend>
+    <fieldset disabled={busy || !saved || !!editingDraftId}><legend>1. 保存参考原文</legend>
       <select aria-label="选择项目参考原文" value={source} onChange={e => setSource(e.target.value)}><option value="">选择已保存的参考文案</option>{references.filter(r => r.original_text.trim()).map(r => <option key={r.id} value={r.id}>{r.original_text.slice(0, 35)}</option>)}</select>
       <button type="button" disabled={!source} onClick={() => void saveReference()}>保存原文版本</button>
-      {refDocs.length > 0 && <label>使用原文版本<select aria-label="使用原文版本" value={selectedReference?.id || ""} onChange={e => setReferenceId(e.target.value)}>{refDocs.map(d => <option key={d.id} value={d.id}>{stamp(d.created_at)} · {d.body.original_text.slice(0, 22)}</option>)}</select></label>}
+      {refDocs.length > 0 && <label>使用原文版本<select aria-label="使用原文版本" disabled={!!editingDraftId} value={selectedReference?.id || ""} onChange={e => setReferenceId(e.target.value)}>{refDocs.map(d => <option key={d.id} value={d.id}>{stamp(d.created_at)} · {d.body.original_text.slice(0, 22)}</option>)}</select></label>}
       {selectedReference && <details><summary>查看原文</summary>{selectedReference.body.source_note && <small>{selectedReference.body.source_note}</small>}<p className={styles.document}>{selectedReference.body.original_text}</p></details>}
     </fieldset>
     <fieldset disabled={busy}><legend>2. 核对用户事实</legend>
@@ -155,27 +172,72 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
       {!config.can_generate && <small>文稿模型暂未配置，可以先保存原文与事实卡。</small>}
     </fieldset>
     {jobs.filter(j => ["queued", "running", "unknown", "failed"].includes(j.status)).slice(0, 3).map(j => <p key={j.id} role="status">{j.status === "unknown" ? "原提交结果待核对，请勿再次调用。" : j.status === "failed" ? "本次结果未通过检查，请查看原任务并核对事实。" : "文稿模型正在处理…"}</p>)}
-    {unsavedResults.map(job => <div key={job.id} className={styles.result}><b>{job.kind === "ref_analysis" ? "拆解结果待保存" : "新稿结果待保存"}</b><p className={styles.document}>{job.result.analysis?.topic || job.result.text}</p><button type="button" disabled={busy} onClick={() => void keepResult(job)}>保存这份{job.kind === "ref_analysis" ? "拆解" : "草稿"}</button></div>)}
+    {unsavedResults.map(job => <div key={job.id} className={styles.result}><b>{job.kind === "ref_analysis" ? "拆解结果待保存" : "新稿结果待保存"}</b><p className={styles.document}>{job.result.analysis?.topic || job.result.text}</p><button type="button" disabled={busy || !!editingDraftId} onClick={() => void keepResult(job)}>保存这份{job.kind === "ref_analysis" ? "拆解" : "草稿"}</button></div>)}
     {selectedDraft && <section className={styles.result}>
       <b>核对新稿及事实映射</b>
-      <label>使用草稿版本<select aria-label="使用草稿版本" value={selectedDraft.id} onChange={e => setDraftId(e.target.value)}>
-        {draftDocs.map(d => <option key={d.id} value={d.id}>{stamp(d.created_at)} · {draftModeName(d.body.draft)} · {d.body.draft.title}</option>)}
+      <label>使用草稿版本<select aria-label="使用草稿版本" disabled={busy || !!editingDraftId} value={selectedDraft.id} onChange={e => setDraftId(e.target.value)}>
+        {draftDocs.map(d => <option key={d.id} value={d.id}>{stamp(d.created_at)} · {d.body.revision ? "人工修订 · " : ""}{draftModeName(d.body.draft)} · {d.body.draft.title}</option>)}
       </select></label>
-      <ol>{selectedDraft.body.draft.sentences.map((line, index) => {
-        const context = "reference_sentence_id" in line
-          ? selectedReference?.body.sentences.find(s => s.id === line.reference_sentence_id)?.text
-          : draftAnalysis?.body.sections.find(s => s.id === line.analysis_section_id)?.function;
-        return <li key={index}>
-          <small>{"reference_sentence_id" in line ? "原句" : "段落功能"} · {context}</small>
+      {selectedDraft.body.revision && <p>修订自草稿 <code>{selectedDraft.body.revision.parent_document_id.slice(0, 8)}</code></p>}
+      {editingDraftId === selectedDraft.id && draftFacts
+        ? <DraftRevisionEditor key={selectedDraft.id} draft={selectedDraft.body.draft} facts={draftFacts.body.facts}
+            context={draftContext} busy={busy} onSave={saveRevision} onCancel={() => setEditingDraftId("")} />
+        : <ol>{selectedDraft.body.draft.sentences.map((line, index) => <li key={index}>
+          <small>{"reference_sentence_id" in line ? "原句" : "段落功能"} · {draftContext(line)}</small>
           <p>{line.text}</p>
           <small>映射事实 · {line.fact_ids.map(id => draftFacts?.body.facts.find(f => f.id === id)?.label || "需核对").join("、") || "未引用产品事实"}</small>
-        </li>;
-      })}</ol>
+        </li>)}</ol>}
       <p>{draftModeName(selectedDraft.body.draft)} · 检查结果 {selectedDraft.body.shape_check.verdict}，请核对内容和事实。</p>
       {[...selectedDraft.body.draft.missing_facts, ...selectedDraft.body.draft.warnings, ...(selectedDraft.body.shape_check.warnings || [])].map((text, i) => <p key={i}>{text}</p>)}
-      <button type="button" disabled={busy || !saved || selectedDraft.body.draft.missing_facts.length > 0 || selectedDraft.body.shape_check.verdict === "FAIL"} onClick={() => void apply()}>采用为编辑器草稿</button>
+      {!editingDraftId && <button type="button" disabled={busy || !draftFacts} onClick={() => setEditingDraftId(selectedDraft.id)}>修订这份草稿</button>}
+      <button type="button" disabled={busy || !!editingDraftId || !saved || selectedDraft.body.draft.missing_facts.length > 0 || selectedDraft.body.shape_check.verdict === "FAIL"} onClick={() => void apply()}>采用为编辑器草稿</button>
     </section>}
     <button type="button" disabled={busy || !revision} onClick={() => void attempt(async () => { await reload(); })}>刷新资料与原任务</button>
     {error && <p role="alert" className={styles.error}>{error}</p>}
   </details>;
+}
+
+function DraftRevisionEditor({ draft, facts, context, busy, onSave, onCancel }: {
+  draft: Draft["draft"];
+  facts: Fact[];
+  context: (line: DraftLine) => string | undefined;
+  busy: boolean;
+  onSave: (title: string, sentences: DraftLine[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState(draft.title);
+  const [rows, setRows] = useState(() => draft.sentences.map(line => ({ key: crypto.randomUUID(), line })));
+  const knownFacts = facts.filter(fact => fact.status === "user_declared");
+  const lines = rows.map(row => row.line);
+  const changed = title !== draft.title || JSON.stringify(lines) !== JSON.stringify(draft.sentences);
+  const edit = (key: string, change: Partial<Pick<DraftLine, "text" | "fact_ids">>) =>
+    setRows(current => current.map(row => row.key === key ? { ...row, line: { ...row.line, ...change } } : row));
+
+  return <fieldset disabled={busy}>
+    <legend>修订草稿与逐句事实</legend>
+    <small>修订另存为新版本，继续使用本稿绑定的原文、拆解和事实卡。</small>
+    <label>修订标题<input value={title} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
+    <ol>{rows.map(({ key, line }, index) => <li key={key}>
+      <small>{"reference_sentence_id" in line ? "原句" : "段落功能"} · {context(line)}</small>
+      <label>第 {index + 1} 句<textarea value={line.text} maxLength={1500} rows={2} onChange={event => edit(key, { text: event.target.value })} /></label>
+      <details>
+        <summary>第 {index + 1} 句引用事实（{line.fact_ids.length}）</summary>
+        <div className={styles.restrictions}>{knownFacts.map(fact => <label key={fact.id}>
+          <input type="checkbox" checked={line.fact_ids.includes(fact.id)} onChange={event => edit(key, {
+            fact_ids: event.target.checked ? [...line.fact_ids, fact.id] : line.fact_ids.filter(id => id !== fact.id),
+          })} />{fact.label} · {fact.value}
+        </label>)}</div>
+      </details>
+      {"analysis_section_id" in line && <>
+        <button type="button" disabled={rows.length >= 100} onClick={() => {
+          const newRow = { key: crypto.randomUUID(), line: { analysis_section_id: line.analysis_section_id, text: "", fact_ids: [] } };
+          setRows(current => [...current.slice(0, index + 1), newRow, ...current.slice(index + 1)]);
+        }}>在本段加一句</button>
+        <button type="button" disabled={!lines.some(other => other !== line && "analysis_section_id" in other && other.analysis_section_id === line.analysis_section_id)}
+          onClick={() => setRows(current => current.filter(row => row.key !== key))}>移除本句</button>
+      </>}
+    </li>)}</ol>
+    <button type="button" disabled={!changed || !title.trim() || lines.some(line => !line.text.trim())} onClick={() => void onSave(title, lines)}>保存修订草稿</button>
+    <button type="button" onClick={onCancel}>取消修订</button>
+  </fieldset>;
 }

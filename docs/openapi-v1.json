@@ -4695,6 +4695,45 @@
         "title": "DraftJobUpdate",
         "type": "object"
       },
+      "DraftSentence": {
+        "additionalProperties": false,
+        "properties": {
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 60,
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "reference_sentence_id": {
+            "title": "Reference Sentence Id",
+            "type": "string"
+          },
+          "rewritten_for": {
+            "enum": [
+              "fact_replacement",
+              "must_replace",
+              "unchanged_structure"
+            ],
+            "title": "Rewritten For",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "reference_sentence_id",
+          "rewritten_for"
+        ],
+        "title": "DraftSentence",
+        "type": "object"
+      },
       "EcommerceAccountCreateRequest": {
         "properties": {
           "account_key": {
@@ -10803,6 +10842,45 @@
         "title": "RetryScope",
         "type": "string"
       },
+      "ReviseWritingDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "sentences": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DraftSentence"
+                },
+                {
+                  "$ref": "#/components/schemas/StructureDraftLine"
+                }
+              ]
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Sentences",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "title",
+          "sentences"
+        ],
+        "title": "ReviseWritingDraft",
+        "type": "object"
+      },
       "RuntimeCapabilities": {
         "properties": {
           "asset_management": {
@@ -11450,6 +11528,35 @@
           }
         },
         "title": "SessionStartRequest",
+        "type": "object"
+      },
+      "StructureDraftLine": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_section_id": {
+            "title": "Analysis Section Id",
+            "type": "string"
+          },
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 60,
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "analysis_section_id"
+        ],
+        "title": "StructureDraftLine",
         "type": "object"
       },
       "SupportCreate": {
@@ -24761,6 +24868,75 @@
           }
         ],
         "summary": "Apply Draft",
+        "tags": [
+          "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/writing-documents/{document_id}/revise": {
+      "post": {
+        "operationId": "revise_draft_api_v1_video_studio_workspaces__workspace_id__writing_documents__document_id__revise_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseWritingDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revise Draft Api V1 Video Studio Workspaces  Workspace Id  Writing Documents  Document Id  Revise Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Revise Draft",
         "tags": [
           "video-writing-workflow"
         ]

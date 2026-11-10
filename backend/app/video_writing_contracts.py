@@ -174,6 +174,14 @@ class SaveWritingResult(StrictVideoModel):
     task_id: UUID
 
 
+class ReviseWritingDraft(StrictVideoModel):
+    request_id: UUID
+    title: str = Field(min_length=1, max_length=80)
+    sentences: list[DraftSentence | StructureDraftLine] = Field(
+        min_length=1, max_length=100
+    )
+
+
 class ApplyWritingDraft(StrictVideoModel):
     request_id: UUID
     expected_revision: int = Field(ge=1)

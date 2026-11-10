@@ -1,6 +1,10 @@
 """Owned immutable writing documents; explicit draft adoption uses existing history."""
 
 import copy
+import subprocess
+from datetime import UTC
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -39,6 +43,8 @@ from .video_studio_routes import (
 from .video_studio_schemas import VideoWriteResponse, VideoWritingOrigin
 from .video_writing_contracts import (
     ApplyWritingDraft,
+    FactReplacement,
+    ReviseWritingDraft,
     SaveWritingFacts,
     SaveWritingReference,
     SaveWritingResult,
@@ -51,7 +57,13 @@ from .video_writing_contracts import (
 )
 from .video_writing_models import VideoWritingAdoption, VideoWritingDocument
 from .video_writing_provenance import script_digest
-from .video_writing_provider import validate_analysis, validate_draft
+from .video_writing_provider import (
+    revised_draft,
+    shape_check,
+    structure_check,
+    validate_analysis,
+    validate_draft,
+)
 from .video_writing_rules import reference_from_project, verify_writing_package
 
 router = APIRouter(
@@ -74,6 +86,7 @@ def enabled(request: Request) -> Settings:
 
 
 def document_response(row: VideoWritingDocument) -> dict[str, Any]:
+    created = row.created_at
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -85,7 +98,7 @@ def document_response(row: VideoWritingDocument) -> dict[str, Any]:
         "analysis_document_id": row.analysis_document_id,
         "facts_document_id": row.facts_document_id,
         "assistance_task_id": row.assistance_task_id,
-        "created_at": row.created_at,
+        "created_at": created if created.tzinfo else created.replace(tzinfo=UTC),
         "review": "unreviewed",
     }
 
@@ -494,6 +507,149 @@ def save_result(
             content,
             assistance_task_id=task.id,
             **parents,
+        )
+    )
+
+
+def revision_basis(
+    session: Session, workspace: WorkspaceContext, parent: VideoWritingDocument
+) -> tuple[dict, dict[str, VideoWritingDocument]]:
+    def changed() -> ApiError:
+        return ApiError(
+            409, "VIDEO_WRITING_INPUTS_CHANGED", "修订所用的原资料版本不一致。"
+        )
+
+    if (
+        parent.rules_release != WRITING_SHA256
+        or digest(parent.body) != parent.body_sha256
+    ):
+        raise changed()
+    sources = {}
+    for kind, ident in (
+        ("reference", parent.reference_document_id),
+        ("analysis", parent.analysis_document_id),
+        ("facts", parent.facts_document_id),
+    ):
+        if ident is None:
+            raise changed()
+        source = own_document(session, workspace, ident, kind)
+        if (
+            source.project_id != parent.project_id
+            or digest(source.body) != source.body_sha256
+        ):
+            raise changed()
+        sources[kind] = source
+    if sources["analysis"].reference_document_id != sources["reference"].id:
+        raise changed()
+    if parent.assistance_task_id:
+        task = session.get(VideoAssistanceRecord, parent.assistance_task_id)
+        if not task or (
+            task.workspace_id,
+            task.owner_user_id,
+            task.project_id,
+            task.kind,
+            task.status,
+        ) != (
+            parent.workspace_id,
+            parent.owner_user_id,
+            parent.project_id,
+            "fact_draft",
+            "completed",
+        ):
+            raise changed()
+        basis = task.inputs
+    else:
+        basis = parent.body.get("revision", {})
+    if basis.get("document_hashes") != {
+        source.id: source.body_sha256 for source in sources.values()
+    }:
+        raise changed()
+    return basis, sources
+
+
+@router.post("/writing-documents/{document_id}/revise")
+def revise_draft(
+    document_id: UUID,
+    body: ReviseWritingDraft,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict:
+    require_workspace_write(workspace)
+    settings = enabled(request)
+    parent = own_document(session, workspace, str(document_id), "draft")
+    own_project(session, workspace, parent.project_id)
+    basis, sources = revision_basis(session, workspace, parent)
+    try:
+        stored = parent.body["draft"]
+        model = (
+            WritingStructureDraft
+            if stored.get("schema_version") == "tengli.structure-draft/1"
+            else WritingDraft
+        )
+        previous = model.model_validate(stored)
+        replacements = [
+            FactReplacement.model_validate(row)
+            for row in basis.get(
+                "source_replacements",
+                [row.model_dump(mode="json") for row in previous.replacements],
+            )
+        ]
+        reference = WritingReference.model_validate(sources["reference"].body)
+        analysis = WritingAnalysis.model_validate(sources["analysis"].body)
+        facts = WritingFacts.model_validate(sources["facts"].body)
+        draft, text = revised_draft(
+            previous, body, replacements, reference, facts, analysis
+        )
+        budget = {
+            "target_duration_seconds": basis.get("target_duration_seconds"),
+            "presentation": basis.get("presentation", "unspecified"),
+        }
+        if isinstance(draft, WritingDraft):
+            with TemporaryDirectory(prefix="tengli-writing-review-") as work:
+                check = shape_check(
+                    settings, Path(work), budget, draft, reference, facts
+                )
+        else:
+            check = structure_check(budget, text)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ApiError(
+            503, "VIDEO_WRITING_METHODS_MISSING", "原写稿检查暂不可用。"
+        ) from error
+    except (KeyError, TypeError, ValueError) as error:
+        raise ApiError(
+            422,
+            "VIDEO_WRITING_REVISION_INVALID",
+            "修订未通过检查，请核对新增文字、每句的事实勾选和原段落。",
+        ) from error
+    if check["verdict"] == "FAIL":
+        raise ApiError(
+            422,
+            "VIDEO_WRITING_SHAPE_INVALID",
+            "修订未通过原逐句结构检查，请核对句数和对应原句。",
+        )
+    return document_response(
+        create_document(
+            session,
+            workspace,
+            parent.project_id,
+            body.request_id,
+            "draft",
+            {
+                "draft": draft.model_dump(mode="json"),
+                "text": text,
+                "shape_check": check,
+                "revision": {
+                    "parent_document_id": parent.id,
+                    "parent_document_sha256": parent.body_sha256,
+                    "document_hashes": basis["document_hashes"],
+                    "source_replacements": [
+                        row.model_dump(mode="json") for row in replacements
+                    ],
+                    **budget,
+                },
+            },
+            **{kind + "_document_id": source.id for kind, source in sources.items()},
         )
     )
 

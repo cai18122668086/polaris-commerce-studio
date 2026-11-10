@@ -43,6 +43,7 @@ from .video_editing_subtitle_sound_clock import (
     SUBTITLE_ENTRY_SYNC,
     subtitle_entry_clock,
 )
+from .video_editing_yy6_scenes import YY6_SOUND_EVENTS
 from .video_editing_yy_openings import (
     YY_OPENING_COMPOSITOR_SHA256,
     YY_OPENING_ENTRY_EVENTS,
@@ -287,11 +288,14 @@ def compile_sound(
         if (
             sync_yy_opening_entries
             and shot["group_id"] in YY_OPENING_ENTRY_EVENTS
-            and cue.event_path == YY_OPENING_ENTRY_EVENTS[shot["group_id"]]
+            and (
+                cue.event_path == YY_OPENING_ENTRY_EVENTS[shot["group_id"]]
+                or cue.event_path in YY6_SOUND_EVENTS.get(shot["group_id"], {})
+            )
             and cue.phase == "entry"
         ):
             output_fps = episode["output"]["fps"]
-            frame = yy_opening_entry_frame(shot, output_fps)
+            frame = yy_opening_entry_frame(shot, output_fps, cue.event_path)
             seconds = frame / output_fps
             native_ref = {}
             yy_opening_entry = {"shot_index": shot_index, "output_frame": frame}
@@ -584,11 +588,14 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
             shot = episode["shots"][yy_entry["shot_index"]]
-            frame = yy_opening_entry_frame(shot, fps)
+            path = cue["word_binding"]["path"]
+            frame = yy_opening_entry_frame(shot, fps, path)
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
-                and cue["word_binding"]["path"]
-                == YY_OPENING_ENTRY_EVENTS[shot["group_id"]]
+                and (
+                    path == YY_OPENING_ENTRY_EVENTS[shot["group_id"]]
+                    or path in YY6_SOUND_EVENTS.get(shot["group_id"], {})
+                )
                 and yy_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )

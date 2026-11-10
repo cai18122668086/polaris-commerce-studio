@@ -25,7 +25,7 @@ from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_azl_panels import azl_blockers
-from app.video_editing_contracts import SemanticPlan
+from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
 from app.video_editing_cxbr import CXBR_PAPER_GROUPS, CXBR_PURPOSES, cxbr_blockers
 from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
 from app.video_editing_native_sound import verify_rendered_sound
@@ -42,6 +42,7 @@ from app.video_editing_template_materials import (
     template_image_requirements,
     validate_template_images,
 )
+from app.video_editing_yy6_scenes import YY6_GROUPS, yy6_scene_inputs
 from app.video_editing_yy_openings import require_clean_yy_source
 from tests.test_video_editing_native_plans import saved_plan
 from tests.test_video_projects import base, payload, put
@@ -118,7 +119,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "package-specs-v1",
         "line-story-v1",
         "presenter-openings-v1",
-        "yy-presenter-openings-v2",
+        "yy-presenter-openings-v3",
         "presenter-reframing-v1",
         "azl-panels-v1",
         "chenxi-broll-v1",
@@ -143,13 +144,20 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     assert {
         slot["group_id"] for slot in openings["slots"] if slot.get("layer") == "scene"
     } == {"LYO01", "LYO02", "LYO03", "LYO04"}
-    yy = next(row for row in options if row["id"] == "yy-presenter-openings-v2")
+    yy = next(row for row in options if row["id"] == "yy-presenter-openings-v3")
     yy_groups = {
         slot["group_id"] for slot in yy["slots"] if slot.get("layer") == "scene"
     }
-    assert yy_groups == {*(f"YYO{i:02}" for i in range(1, 9)), "YY6O04"}
+    assert yy_groups == {
+        *(f"YYO{i:02}" for i in range(1, 9)),
+        *(f"YY6O{i:02}" for i in range(1, 7)),
+    }
+    expanded = overlay_template("yy-presenter-openings-v2")
+    assert [
+        slot for slot in yy["slots"] if slot["group_id"] not in YY6_GROUPS
+    ] == expanded["slots"]
     frozen = overlay_template("yy-presenter-openings-v1")
-    assert yy["slots"][:6] + yy["slots"][9:] == frozen["slots"]
+    assert expanded["slots"][:6] + expanded["slots"][9:] == frozen["slots"]
     unavailable = {"YYO02": ["missing-original"]}
     require_clean_yy_source(yy, "present", unavailable)
     assert set(unavailable) == yy_groups
@@ -1092,3 +1100,45 @@ def test_chenxi_preflight_preserves_native_video_and_paper_roles():
     unavailable = {}
     cxbr_blockers(template, "none", [source, paper], "source", unavailable)
     assert unavailable == dict.fromkeys(CXBR_PURPOSES, ["independent_video_required"])
+
+
+def test_yy6_preparation_requires_measured_quantity_pairs_and_distinct_stills():
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=3000,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        tokens=[
+            TranscriptToken(id=f"t{i}", text=text, start_ms=ms, end_ms=ms + 100)
+            for i, (text, ms) in enumerate(
+                [
+                    ("谁", 100),
+                    ("两", 200),
+                    ("大", 300),
+                    ("瓶，", 400),
+                    ("三", 800),
+                    ("斤", 1400),
+                    ("一，", 1500),
+                    ("件", 1600),
+                ]
+            )
+        ],
+        utterances=[],
+    )
+    image = {"id": "material-a", "kind": "image", "sha256": "a"}
+    another = {**image, "id": "material-b"}
+    template = overlay_template("yy-presenter-openings-v3")
+    unavailable = {}
+    inputs = yy6_scene_inputs(template, transcript, [image, another], unavailable)
+    assert inputs["quantity_pairs"] == [{"count_token_id": "t1", "unit_token_id": "t3"}]
+    assert unavailable == {"YY6O02": ["distinct_opening_backgrounds_required"]}
+    unavailable = {}
+    another["sha256"] = "b"
+    no_quantity = transcript.model_copy(update={"tokens": transcript.tokens[4:]})
+    yy6_scene_inputs(template, no_quantity, [image, another], unavailable)
+    assert all(
+        "measured_quantity_required" in unavailable[group] for group in YY6_GROUPS
+    )
+    assert "measured_question_required" in unavailable["YY6O01"]

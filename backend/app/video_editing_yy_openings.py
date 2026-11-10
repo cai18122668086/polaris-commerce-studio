@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .motion_library import read_json
 from .video_editing_contracts import Transcript
+from .video_editing_yy6_scenes import YY6_GROUPS, YY6_NUMBER_UNITS, YY6_SOUND_EVENTS
 
 YY_OPENING_GROUPS = {
     "YYO01": "从缩小的人物画面展开，保留原生放大及标题。",
@@ -20,11 +21,14 @@ YY_OPENING_EXPANDED_GROUPS = {
     "YYO08": "用原生推近镜头把画面重点从上方标题转到下方实录短句。",
     "YY6O04": "把同期人物从矩形转成圆窗，再突出实录明确说出的数量和单位。",
 }
+YY_OPENING_ALL_GROUPS = {**YY_OPENING_EXPANDED_GROUPS, **YY6_GROUPS}
 YY_OPENING_DEPENDENCIES = ("font-aa4560dd8fe56457", "model-01eb6a29a5c4d8edb30b")
 YY_OPENING_CAPTION_INTENT = "yy-opening-caption-intent.json"
 YY_OPENING_CAPTION_BASELINE = 1230
+YY_OPENING_LOWER_CAPTION_BASELINE = 1266
 YY_OPENING_ENTRY_EVENTS = {
     **dict.fromkeys(YY_OPENING_EXPANDED_GROUPS, "/events/image_in"),
+    **{group: next(iter(events)) for group, events in YY6_SOUND_EVENTS.items()},
     "YYO08": "/events/title_in",
     "YY6O04": "/events/rectangle/0",
 }
@@ -32,12 +36,9 @@ YY_OPENING_SOURCE_EVENTS = {**YY_OPENING_ENTRY_EVENTS, "YYO08": "/events/image_i
 YY_OPENING_COMPOSITOR_SHA256 = (
     "ec5115f41bbb44c034bccc66b06169f92a389d4a270eea8c6c6cd1d2e3472038"
 )
-# The latest visible native text uses the upper 560 px of the original canvas.
+# In the 360x640 originals, the tear and flash layouts carry lower number text.
 _TEXT_BAND_END = 560
-_NUMBER_UNITS = (
-    "个瓶罐盒包袋件份套杯张只条根把单双次遍步种类层款档点"
-    "斤克吨升秒分刻时天周月年米寸元块折度成"
-)
+YY_OPENING_LOWER_TEXT_BANDS = {"YY6O02": 582, "YY6O05": 590}
 _FIXED_TEXT_WINDOWS = {
     "YYO01": (("subtitle", 5, 15),),
     "YYO02": (("topic", 3, 12),),
@@ -186,7 +187,7 @@ def _validate_number_opening(
     count, unit = text["count"], text["unit"]
     if (
         count["text"] not in "0123456789零一二两三四五六七八九十"
-        or unit["text"] not in _NUMBER_UNITS
+        or unit["text"] not in YY6_NUMBER_UNITS
         or ids.index(count["token_ids"][-1]) + 1 != ids.index(unit["token_ids"][0])
     ):
         raise ValueError("Original number needs a single spoken quantity and its unit")
@@ -227,19 +228,31 @@ def require_clean_yy_source(
     if template and source_subtitles != "none":
         for slot in template["slots"]:
             group = slot["group_id"]
-            if group in YY_OPENING_EXPANDED_GROUPS:
+            if group in YY_OPENING_ALL_GROUPS:
                 unavailable.setdefault(group, []).append("clean_source_required")
 
 
-def yy_opening_entry_frame(shot: dict, fps: int) -> int:
+def yy_opening_entry_frame(shot: dict, fps: int, path: str | None = None) -> int:
     group = shot["group_id"]
     if (
-        group not in YY_OPENING_EXPANDED_GROUPS
+        group not in YY_OPENING_ALL_GROUPS
         or shot["layer"] != "scene"
         or shot["rect"] != [0, 0, 1, 1]
     ):
         raise ValueError("Expected the original YYO scene starting on the source clock")
     events = shot["config"]["events"]
+    if group in YY6_GROUPS:
+        actions = YY6_SOUND_EVENTS[group]
+        entry = YY_OPENING_ENTRY_EVENTS[group]
+        path = path or entry
+        if fps != 30 or path not in actions or events[entry.split("/")[2]][0] != 0:
+            raise ValueError("Original YY6 sound needs a measured visible entrance")
+        local = events[path.split("/")[2]][0] + actions[path]
+        origin = shot["start_seconds"] / (1 / fps)
+        frame = max(math.ceil(origin - 1e-6), math.floor(origin) + local)
+        if frame >= math.ceil(shot["end_seconds"] * fps - 1e-6):
+            raise ValueError("Original YY6 action starts after the rendered scene")
+        return frame
     source_start = events["rectangle"][0] if group == "YY6O04" else events["image_in"]
     if source_start != 0:
         raise ValueError("Original YYO picture must start at its scene boundary")
@@ -273,17 +286,23 @@ def verify_yy_opening_captions(root: Path, report: dict) -> dict:
         for caption, row in zip(captions, ink, strict=True)
     ):
         raise ValueError("The caption ink does not match the actual episode timeline")
-    text_bottom = math.ceil(episode["output"]["height"] * _TEXT_BAND_END / 640)
+    text_bands = []
     checks = []
     for index in indices:
         shot = episode["shots"][index]
         group = shot["group_id"]
         if (
-            group not in YY_OPENING_EXPANDED_GROUPS
+            group not in YY_OPENING_ALL_GROUPS
             or shot["layer"] != "scene"
             or shot["rect"] != [0, 0, 1, 1]
         ):
             raise ValueError("Expected an audited full-frame original YYO opening")
+        text_bottom = math.ceil(
+            episode["output"]["height"]
+            * YY_OPENING_LOWER_TEXT_BANDS.get(group, _TEXT_BAND_END)
+            / 640
+        )
+        text_bands.append(text_bottom)
         active = [
             row
             for row in ink
@@ -299,4 +318,8 @@ def verify_yy_opening_captions(root: Path, report: dict) -> dict:
                 "smallest_gap_px": min(row["box"][1] for row in active) - text_bottom,
             }
         )
-    return {"status": "passed", "native_text_band_end_px": text_bottom, "shots": checks}
+    return {
+        "status": "passed",
+        "native_text_band_end_px": max(text_bands),
+        "shots": checks,
+    }

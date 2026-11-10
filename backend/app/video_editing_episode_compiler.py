@@ -90,10 +90,13 @@ from .video_editing_render_edits import (
     source_only,
     validate_render_edits,
 )
+from .video_editing_yy6_scenes import YY6_GROUPS
 from .video_editing_yy_openings import (
+    YY_OPENING_ALL_GROUPS,
     YY_OPENING_CAPTION_BASELINE,
     YY_OPENING_CAPTION_INTENT,
-    YY_OPENING_EXPANDED_GROUPS,
+    YY_OPENING_LOWER_CAPTION_BASELINE,
+    YY_OPENING_LOWER_TEXT_BANDS,
 )
 from .video_studio_schemas import StrictVideoModel
 
@@ -614,6 +617,10 @@ def compile_episode(
                                 authoring.overlay_template_id == CXBR_TEMPLATE_ID
                                 and beat.group_id in CXBR_PURPOSES
                             )
+                            or (
+                                authoring.overlay_template_id in YY_OPENING_TEMPLATES
+                                and beat.group_id in YY6_GROUPS
+                            )
                             else end
                         ),
                         "layer": entry.placement.layer,
@@ -765,7 +772,7 @@ def compile_episode(
         **dict.fromkeys(
             YY_OPENING_TEMPLATES,
             (
-                tuple(YY_OPENING_EXPANDED_GROUPS),
+                tuple(YY_OPENING_ALL_GROUPS),
                 YY_OPENING_CAPTION_BASELINE,
                 "月云川整帧开场在下方保留统一主字幕阅读区。",
             ),
@@ -779,28 +786,38 @@ def compile_episode(
     if caption_lane:
         caption_groups, baseline, lane_reason = caption_lane
         effect_windows = [
-            (shot["start_seconds"], shot["end_seconds"])
+            (
+                shot["start_seconds"],
+                shot["end_seconds"],
+                YY_OPENING_LOWER_CAPTION_BASELINE
+                if authoring.overlay_template_id in YY_OPENING_TEMPLATES
+                and shot["group_id"] in YY_OPENING_LOWER_TEXT_BANDS
+                else baseline,
+            )
             for shot in episode["shots"]
             if shot["group_id"] in caption_groups
         ]
         if effect_windows:
             caption_role = episode["typography"]["caption"]
             overrides = caption_role.setdefault("layout_overrides", [])
-            overrides.extend(
-                {
-                    "start_seconds": caption["start_seconds"],
-                    "end_seconds": caption["end_seconds"],
-                    "baseline_y_px": round(
-                        episode["output"]["height"] * baseline / 1280
-                    ),
-                    "reason": lane_reason,
-                }
-                for caption in episode["captions"]
-                if any(
-                    caption["start_seconds"] < end and start < caption["end_seconds"]
-                    for start, end in effect_windows
+            for caption in episode["captions"]:
+                caption_baselines = [
+                    y
+                    for start, end, y in effect_windows
+                    if caption["start_seconds"] < end and start < caption["end_seconds"]
+                ]
+                if not caption_baselines:
+                    continue
+                overrides.append(
+                    {
+                        "start_seconds": caption["start_seconds"],
+                        "end_seconds": caption["end_seconds"],
+                        "baseline_y_px": round(
+                            episode["output"]["height"] * max(caption_baselines) / 1280
+                        ),
+                        "reason": lane_reason,
+                    }
                 )
-            )
     for aid, asset in asset_files.items():
         if not any(
             aid in b.asset_ids for b in semantic.beats if b.id not in excluded_beats
@@ -1011,7 +1028,7 @@ def compile_episode(
         yy_openings = [
             i
             for i, shot in enumerate(episode["shots"])
-            if shot["group_id"] in YY_OPENING_EXPANDED_GROUPS
+            if shot["group_id"] in YY_OPENING_ALL_GROUPS
         ]
         if yy_openings:
             atomic_json(root / YY_OPENING_CAPTION_INTENT, {"shots": yy_openings})

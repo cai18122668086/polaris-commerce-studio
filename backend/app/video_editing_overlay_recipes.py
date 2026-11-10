@@ -133,9 +133,15 @@ from .video_editing_question_card import (
 )
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_word_bindings import word_bindings
+from .video_editing_yy6_scenes import (
+    YY6_GROUPS,
+    YY6_SOUND_EVENTS,
+    validate_yy6_opening,
+    yy6_slots,
+)
 from .video_editing_yy_openings import (
+    YY_OPENING_ALL_GROUPS,
     YY_OPENING_ENTRY_EVENTS,
-    YY_OPENING_EXPANDED_GROUPS,
     YY_OPENING_SOURCE_EVENTS,
     validate_yy_opening,
 )
@@ -1737,10 +1743,16 @@ def _opening_entry(
         for row in asset_cards
         if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
     }
-    yy_opening = beat.group_id in YY_OPENING_EXPANDED_GROUPS
+    yy_opening = beat.group_id in YY_OPENING_ALL_GROUPS
+    yy6 = beat.group_id in YY6_GROUPS
+    backgrounds = yy6_slots(beat.group_id) if yy6 else ()
+    images = project_image_digests(asset_cards) if yy6 else {}
+    media_paths = {_OPENING_PRESENTER, *backgrounds}
     try:
-        anchors = word_bindings(beat, transcript, contract, presenter_ids)
-        (presenter,) = anchors["media"]
+        anchors = word_bindings(
+            beat, transcript, contract, presenter_ids | images.keys()
+        )
+        bound = {row["path"]: row["asset_id"] for row in anchors["media"]}
         text = {row["path"]: row for row in anchors["text"]}
         events = {row["path"]: row for row in anchors["events"]}
         clock = anchors["clock"]
@@ -1748,8 +1760,10 @@ def _opening_entry(
             (clock["end_ms"] - clock["start_ms"]) / 1000 * clock["native_fps"]
         )
         if (
-            presenter["path"] != _OPENING_PRESENTER
-            or beat.asset_ids != [presenter["asset_id"]]
+            set(bound) != media_paths
+            or bound[_OPENING_PRESENTER] not in presenter_ids
+            or set(beat.asset_ids) != set(bound.values())
+            or len({images[bound[path]] for path in backgrounds}) != len(backgrounds)
             or set(text) != set(contract["text_paths"])
             or set(events) != {row["path"] for row in contract["event_paths"]}
         ):
@@ -1762,7 +1776,16 @@ def _opening_entry(
                 raise ValueError(
                     "The original picture entry needs this beat's first word"
                 )
-            validate_yy_opening(beat.group_id, anchors, frames, transcript)
+            if yy6:
+                if beat.relation in RELATION_MAPPING and not beat.relation_items:
+                    raise ValueError(
+                        "Original opening needs its measured relation items"
+                    )
+                validate_yy6_opening(
+                    beat.group_id, anchors, frames, transcript, config["capacity"]
+                )
+            else:
+                validate_yy_opening(beat.group_id, anchors, frames, transcript)
         else:
             for path, row in text.items():
                 event_path, capacity = _OPENING_ROLES[path]
@@ -1793,18 +1816,19 @@ def _opening_entry(
                 raise ValueError(
                     "Opening title must finish its slide before the subtitle"
                 )
-    except ValueError as error:
+    except (ValueError, KeyError) as error:
         raise ApiError(
             422,
             "EDITING_TEMPLATE_OPENING_INPUTS_REQUIRED",
             f"{beat.group_id} 需绑定同期原片、各项实录文字和词点，"
-            "并留出入场及阅读时间。",
+            "并留出入场及阅读时间。需要背景的场景须使用不同的本期图片。",
         ) from error
 
     slots = [
         *text,
         *events,
         _OPENING_PRESENTER,
+        *backgrounds,
         *(
             field["path"]
             for field in contract["fields"]
@@ -1835,7 +1859,15 @@ def _opening_entry(
             ),
             "design_reason": "沿用原景别、字型与轨迹，绑定当前人物和实录文字。",
             "parameter_decisions": {
-                key: "沿用原生构图，人物时钟与文字按本期实录编译。" for key in config
+                **{
+                    key: "沿用原生构图，人物时钟与文字按本期实录编译。"
+                    for key in config
+                },
+                **(
+                    {"/content/question": "保留原问号图形，实际疑问词驱动它的入场。"}
+                    if beat.group_id == "YY6O01"
+                    else {}
+                ),
             },
             "config": config,
             "placeholders": slots,
@@ -1932,7 +1964,11 @@ def build_overlay_recipes(
             entries[beat.id], anchors = _opening_entry(
                 package, group, beat, transcript, asset_cards or []
             )
-            paths = (None,)
+            paths = (
+                tuple(YY6_SOUND_EVENTS[beat.group_id])
+                if beat.group_id in YY6_GROUPS
+                else (None,)
+            )
         elif beat.group_id in PRESENTER_MOTION_GROUPS:
             entries[beat.id], anchors = _presenter_motion_entry(
                 package, group, beat, transcript, asset_cards or []
@@ -1964,7 +2000,7 @@ def build_overlay_recipes(
             JUDGMENT_GROUP,
             NUMBERED_GROUP,
             LIVE_STRIP_GROUP,
-            *YY_OPENING_EXPANDED_GROUPS,
+            *YY_OPENING_ALL_GROUPS,
             *PRESENTER_MOTION_GROUPS,
             *AZL_GROUPS,
             *CXBR_PURPOSES,

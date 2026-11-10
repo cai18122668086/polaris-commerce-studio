@@ -284,6 +284,36 @@ def test_yy_opening_sound_waits_for_the_first_motion_frame(
     assert yy_opening_entry_frame(shot, 30) == expected
 
 
+def test_yy6_sound_and_lower_text_use_original_scene_rules(tmp_path):
+    shot = {
+        "group_id": "YY6O05",
+        "layer": "scene",
+        "rect": [0, 0, 1, 1],
+        "start_seconds": 0.41,
+        "end_seconds": 4.79,
+        "config": {"events": {"flash": [0, 15], "focus": [15, 30]}},
+    }
+    assert yy_opening_entry_frame(shot, 30, "/events/flash/0") == 13
+    assert yy_opening_entry_frame(shot, 30, "/events/focus/0") == 28
+    atomic_json(
+        tmp_path / "episode.json",
+        {
+            "output": {"height": 1280},
+            "shots": [shot],
+            "captions": [{"start_seconds": 0.41, "end_seconds": 2.10}],
+        },
+    )
+    atomic_json(tmp_path / YY_OPENING_CAPTION_INTENT, {"shots": [0]})
+    ink = {"start": 0.41, "end": 2.10, "box": [30, 1184, 400, 1264]}
+    report = {"status": "passed", "caption_ink": [ink]}
+    assert (
+        verify_yy_opening_captions(tmp_path, report)["shots"][0]["smallest_gap_px"] == 4
+    )
+    ink["box"][1] = 1179
+    with pytest.raises(ValueError, match="ink enters"):
+        verify_yy_opening_captions(tmp_path, report)
+
+
 def test_presenter_motion_sound_uses_fixed_and_measured_native_frames():
     shot = {"layer": "scene", "rect": [0, 0, 1, 1]}
     dual = {

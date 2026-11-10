@@ -361,6 +361,13 @@ def build_request(
             "调整首词时一并调整相应动作事件。独立视频应能说明口播内容，"
             "不能把普通头像或无关近景当成用途或实物证据。"
         )
+    if runtime and runtime.get("yy6_scene_inputs"):
+        message += (
+            "yy6_scene_inputs给出已登记的静态背景与实录数量、单位词对。"
+            "这五组只能在同段实录确有对应数量且有读时的情况下使用，"
+            "count和unit从同一词对绑定，撕纸的两个背景须用不同图片。"
+            "选择与场景相符的素材与完整短语。"
+        )
     body = {
         "model": model,
         "stream": False,

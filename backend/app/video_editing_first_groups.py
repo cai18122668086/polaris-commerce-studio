@@ -16,6 +16,7 @@ from .video_editing_captioning import (
     text_boundaries,
 )
 from .video_editing_contracts import SemanticBeat, SemanticPlan, Transcript
+from .video_editing_quantity_anchors import SpokenQuantity
 from .video_editing_word_bindings import emphasis_text
 from .video_studio_schemas import StrictVideoModel
 
@@ -187,7 +188,9 @@ def _image_refs(cards: list[dict]) -> dict[str, dict]:
     return {f"i{i}": card for i, card in enumerate(images, 1)}
 
 
-def _fit_examples(transcript: Transcript, available: set[str]) -> dict:
+def _fit_examples(
+    transcript: Transcript, available: set[str], quantities: list[SpokenQuantity] | None
+) -> dict:
     """Offer model-readable ranges on lexical and measured word boundaries."""
     tokens = transcript.tokens
     if not tokens or not available:
@@ -207,11 +210,20 @@ def _fit_examples(transcript: Transcript, available: set[str]) -> dict:
     for first, start in enumerate(boundaries):
         for stop in boundaries[first + 1 : first + 9]:
             phrase = text[offsets[start] : offsets[stop]]
-            spoken = emphasis_text(phrase, "omit_sentence_punctuation")
+            spoken = emphasis_text(
+                phrase,
+                "omit_sentence_punctuation",
+                preserve_numeric_colon=quantities is not None,
+            )
             if len(spoken) > 12:
                 break
-            if spoken and spoken not in {"的", "了", "是", "这", "和", "呀", "啊"}:
-                by_length.setdefault(len(spoken), []).append((start, stop - 1))
+            span = (start, stop - 1)
+            if (
+                spoken
+                and spoken not in {"的", "了", "是", "这", "和", "呀", "啊"}
+                and not any(quantity.cut_by(span) for quantity in quantities or ())
+            ):
+                by_length.setdefault(len(spoken), []).append(span)
             if CLAUSE_END.search(phrase) or phrase.endswith("、"):
                 break
     result = {}
@@ -373,6 +385,7 @@ def compact_payload(
     opening_policy: bool = False,
     density_policy: bool = False,
     preflight_policy: bool = False,
+    quantities: list[SpokenQuantity] | None = None,
 ) -> dict:
     selected = {slot["group_id"] for slot in template["slots"]}
     catalog = [
@@ -427,6 +440,7 @@ def compact_payload(
             selected
             - avoided
             - payload["template_runtime"]["unavailable_groups"].keys(),
+            quantities,
         )
         preflight["image_refs"] = {
             ref: {key: card.get(key) for key in ("viewed_identity", "semantic_use")}

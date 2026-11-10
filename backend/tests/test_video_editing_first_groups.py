@@ -124,7 +124,9 @@ def test_compact_fit_examples_use_only_selectable_slots(monkeypatch):
         },
         "available_project_materials": [],
     }
-    monkeypatch.setattr(first_groups, "_fit_examples", lambda _, groups: sorted(groups))
+    monkeypatch.setattr(
+        first_groups, "_fit_examples", lambda _, groups, _q: sorted(groups)
+    )
     compact = first_groups.compact_payload(
         payload, transcript, template, preflight_policy=True
     )

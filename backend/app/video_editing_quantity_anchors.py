@@ -20,6 +20,30 @@ _QUANTITY = re.compile(
     r"|[+＋−-]?(?:\d{1,3}(?:[,，]\d{3})+|\d+)(?:[.．点]\d+)?(?![A-Za-z\d]))",
     re.I,
 )
+_PERCENT = rf"百分之\s*{_SIGNED_NUMBER}"
+_RATIO = (
+    rf"{_SIGNED_NUMBER}(?:(?:\s*[:：]\s*{_SIGNED_NUMBER})+|\s*比\s*{_SIGNED_NUMBER})"
+)
+_SCALAR = (
+    rf"(?:{_PERCENT}|{_RATIO}|(?:[¥￥]\s*)?{_SIGNED_NUMBER}"
+    rf"(?:\s*(?:[块元角毛](?:{_PRICE_MINOR})?|分|{_UNITS}))?)"
+)
+_RANGE_END = rf"\s*(?:到|至|[-~～–—])\s*{_SCALAR}"
+_LIMIT = (
+    r"(?:最多|至少|最少|至多|不超过|不多于|不低于|不高于|不少于|不到|"
+    r"低于|高于|超过|低至|高达|大约|大概|约莫|将近|接近|足足|(?<!预|邀|相|签|如)约)"
+)
+_SUFFIX = r"(?:以上|以下|以内|以外|左右|上下|起(?:订|售|购)?(?![司来身火飞点]))"
+_COMPOUND = re.compile(
+    rf"(?<![A-Za-z{_NUMERAL}])(?:"
+    rf"{_LIMIT}\s*{_SCALAR}(?:{_RANGE_END})?(?:\s*{_SUFFIX})?"
+    rf"|{_SCALAR}{_RANGE_END}(?:\s*{_SUFFIX})?"
+    rf"|{_SCALAR}\s*{_SUFFIX}|{_PERCENT}|{_RATIO})(?![A-Za-z{_NUMERAL}])",
+    re.I,
+)
+NUMERIC_COLON = re.compile(
+    rf"(?<=[{_NUMERAL}])\s*(?P<separator>[:：])\s*(?=[+＋−-]?[{_NUMERAL}])"
+)
 _COUNT_UNIT_GROUPS = frozenset(f"YY6O{i:02}" for i in range(1, 7))
 _COUNT_PATH, _UNIT_PATH = "/content/count", "/content/unit"
 
@@ -41,6 +65,24 @@ class SpokenQuantity:
         return span[0] <= self.last and self.first <= span[1] and not self.covers(span)
 
 
+def _compound_quantities(text: str, offsets: list[int]) -> list[SpokenQuantity]:
+    quantities = []
+    for match in _COMPOUND.finditer(text):
+        first = bisect_right(offsets, match.start()) - 1
+        last = bisect_left(offsets, match.end()) - 1
+        if first < last:
+            # A paired count/unit slot may split an exact amount, never its qualifier.
+            quantities.append(SpokenQuantity(first, last, None))
+    return quantities
+
+
+def measured_compound_quantities(tokens: list[TranscriptToken]) -> list[SpokenQuantity]:
+    return _compound_quantities(
+        "".join(token.text for token in tokens),
+        list(accumulate((len(token.text) for token in tokens), initial=0)),
+    )
+
+
 def measured_quantities(tokens: list[TranscriptToken]) -> list[SpokenQuantity]:
     text = "".join(token.text for token in tokens)
     offsets = list(accumulate((len(token.text) for token in tokens), initial=0))
@@ -57,7 +99,7 @@ def measured_quantities(tokens: list[TranscriptToken]) -> list[SpokenQuantity]:
         quantities.append(
             SpokenQuantity(first, last, unit if offsets[unit] == unit_offset else None)
         )
-    return quantities
+    return quantities + _compound_quantities(text, offsets)
 
 
 def _original_paired_slot(

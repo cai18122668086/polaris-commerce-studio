@@ -139,6 +139,18 @@ def test_original_native_text_keeps_explicit_denial_even_across_beat_boundaries(
         (["14", ".", "9"], (0, 0)),
         (["￥", "14", ".9"], (1, 2)),
         (["两", "大", "瓶"], (0, 0)),
+        (["不到", "14", "块", "9"], (1, 3)),
+        (["至少", "3", "瓶"], (1, 2)),
+        (["14", "块", "9", "起"], (0, 2)),
+        (["4", "斤", "左右"], (0, 1)),
+        (["一千", "克", "以下"], (0, 1)),
+        (["10", "到", "20", "元"], (2, 3)),
+        (["3", "～", "5", "%"], (0, 0)),
+        (["约", "10", "到", "20", "元"], (1, 4)),
+        (["百分", "之", "二十"], (2, 2)),
+        (["二", " ： ", "一"], (2, 2)),
+        (["二", "比", "一"], (0, 0)),
+        (["1", ":", "2", ":", "3"], (0, 2)),
     ],
 )
 def test_native_text_uses_the_entire_measured_amount(words, bad):
@@ -189,6 +201,19 @@ def test_original_number_slots_require_the_same_spoken_occurrence():
         measured_transcript(["14", "块", "9", "瓶"]).tokens
     )
     assert [(row.first, row.last) for row in independent] == [(0, 1), (2, 3)]
+
+
+def test_only_the_original_exact_amount_can_use_split_count_and_unit():
+    source = measured_transcript(["至少", "4", "斤，", "预约", "3", "天"]).tokens
+    quantities = measured_quantities(source)
+    assert [(row.first, row.last) for row in quantities] == [(1, 2), (4, 5), (0, 2)]
+    with pytest.raises(IncompleteQuantity):
+        validate_quantity_slots(
+            "YY6O04", {"/content/count": (1, 1), "/content/unit": (2, 2)}, quantities
+        )
+    validate_quantity_slots(
+        "YY6O04", {"/content/count": (4, 4), "/content/unit": (5, 5)}, quantities
+    )
 
 
 @pytest.mark.parametrize(

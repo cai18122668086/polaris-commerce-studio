@@ -33,7 +33,7 @@ const errors: Record<string, string> = {
   EDITING_CONDITION_ANCHOR_INCOMPLETE: "候选中的动效文字遗漏了实录适用条件。请核对转录并保留完整前提。",
   EDITING_ROLE_ACTION_ANCHOR_INVALID: "角色场景的关门、交接或禁行切点没有对应实录词首。请选择对应的动作词或其他动效。",
   EDITING_NEGATION_ANCHOR_INCOMPLETE: "候选中的动效文字遗漏了实录的否定表达。请核对转录或使用保留完整否定的编排。",
-  EDITING_QUANTITY_ANCHOR_INCOMPLETE: "候选中的动效文字截断了实录数量或单位。请核对转录并保留完整表达。",
+  EDITING_QUANTITY_ANCHOR_INCOMPLETE: "候选中的动效文字截断了实录数量或单位。请核对转录，保留完整范围、比例或限制词。",
   EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片，请选择符合画幅的转录。",
   EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。",
   EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。",

@@ -551,6 +551,7 @@ def process(
                 ).append("fruit-topic-missing-from-recorded-speech")
             if template and template["id"] in FIRST_MOTION_GROUPS:
                 runtime["first_groups_policy"] = SCOPED_POOL_POLICY
+            runtime["protect_compound_quantities"] = True
             snapshot = {**snapshot, "planning_runtime": runtime}
         prepared_request = None
         if mode == "generate":

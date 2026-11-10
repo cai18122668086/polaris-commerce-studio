@@ -11,7 +11,11 @@ from .video_editing_condition_anchors import (
     validate_condition_coverage,
 )
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
-from .video_editing_quantity_anchors import measured_quantities, validate_quantity_slots
+from .video_editing_quantity_anchors import (
+    NUMERIC_COLON,
+    measured_quantities,
+    validate_quantity_slots,
+)
 
 _DENIAL_OR_CLAUSE_END = re.compile(
     r"(?P<denial>(?<!是)不是|并非|绝非|不等于|不代表|不意味着|不表示)"
@@ -72,12 +76,19 @@ def measured_clause_windows(transcript: Transcript) -> Iterator[list[TranscriptT
             yield tokens[first:stop]
 
 
-def emphasis_text(text: str, policy: str) -> str:
+def emphasis_text(
+    text: str, policy: str, *, preserve_numeric_colon: bool = True
+) -> str:
     if policy == "preserve":
         return text.strip()
     if policy != "omit_sentence_punctuation":
         raise ValueError("Unknown native punctuation policy")
     # Retain decimal/thousands/ratio punctuation and unit symbols (%, /, ±...).
+    colons = (
+        {match.start("separator") for match in NUMERIC_COLON.finditer(text)}
+        if preserve_numeric_colon
+        else set()
+    )
     output = []
     for i, char in enumerate(text):
         internal_number = (
@@ -86,7 +97,7 @@ def emphasis_text(text: str, policy: str) -> str:
             and text[i + 1].isdigit()
             and char in ".,，:："
         )
-        if char not in "，。！？、；：,.!?;:" or internal_number:
+        if char not in "，。！？、；：,.!?;:" or internal_number or i in colons:
             output.append(char)
     return "".join(output).strip()
 

@@ -11,9 +11,13 @@ import re
 import subprocess
 import sys
 import time
+import wave
 from collections.abc import Callable
+from fractions import Fraction
 from itertools import pairwise
 from pathlib import Path
+from struct import iter_unpack
+from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import uuid4
 
@@ -164,6 +168,104 @@ def probe(
     return json.loads(result.stdout)
 
 
+_MAX_SILENT_TAIL_SECONDS = 0.5
+_MAX_SILENT_TAIL_PCM16_PEAK = 4  # About -78 dBFS; permits codec residue only.
+
+
+def _verified_silent_tail(
+    target: Path,
+    duration: float,
+    video: dict,
+    audio: dict,
+    offset: float,
+    root: Path,
+    settings: Settings,
+    guard: Callable[[], None],
+) -> dict | None:
+    try:
+        video_duration = float(video["duration"])
+        frame_interval = float(1 / Fraction(video["avg_frame_rate"]))
+    except (KeyError, ValueError, TypeError, ZeroDivisionError):
+        # Containers without a separately measured video duration keep their
+        # existing clock. In particular, do not infer one from the audio.
+        return None
+    gap = duration - video_duration
+    if (
+        not math.isfinite(video_duration)
+        or not math.isfinite(frame_interval)
+        or frame_interval <= 0
+        or gap <= frame_interval + 0.001
+    ):
+        return None
+    error = "EDITING_SOURCE_AUDIO_TAIL_REVIEW_REQUIRED"
+    if video_duration < 0.5 or gap > _MAX_SILENT_TAIL_SECONDS:
+        raise EditingFailure(error)
+    try:
+        sample_rate, channels = int(audio["sample_rate"]), int(audio["channels"])
+    except (KeyError, TypeError, ValueError):
+        raise EditingFailure(error) from None
+    if not 8000 <= sample_rate <= 192000 or not 1 <= channels <= 8:
+        raise EditingFailure(error)
+    end_ms = math.floor(video_duration * 1000)
+    cutoff = end_ms / 1000 - offset
+    # Inspect every channel, since stereo can cancel in the recognition downmix.
+    with TemporaryDirectory(prefix="tail-", dir=target.parent) as work:
+        decoded = Path(work) / "audio.s16le"
+        run(
+            [
+                settings.video_editing_ffmpeg,
+                "-nostdin",
+                "-v",
+                "error",
+                "-protocol_whitelist",
+                "file,pipe",
+                "-format_whitelist",
+                "mov,matroska,webm",
+                "-i",
+                str(target),
+                "-map",
+                "0:a:0",
+                "-vn",
+                "-af",
+                f"asetpts=PTS-STARTPTS,atrim=start={cutoff:.6f},asetpts=PTS-STARTPTS",
+                "-t",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                "-f",
+                "s16le",
+                str(decoded),
+            ],
+            root,
+            settings,
+            guard,
+            "inspect_audio_tail",
+        )
+        samples = decoded.read_bytes()
+    bytes_per_frame = 2 * channels
+    if len(samples) % bytes_per_frame or len(samples) >= sample_rate * bytes_per_frame:
+        raise EditingFailure(error)
+    peak = max((abs(value) for (value,) in iter_unpack("<h", samples)), default=0)
+    if peak > _MAX_SILENT_TAIL_PCM16_PEAK:
+        raise EditingFailure(error)
+    return {
+        "container_end_ms": round(duration * 1000),
+        "video_end_ms": end_ms,
+        "audio_tail_frames": len(samples) // bytes_per_frame,
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "pcm16_peak": peak,
+    }
+
+
+def word_timestamp_end_limit(prepared: dict) -> int:
+    # The analysis file retains the original audio even when the render clock
+    # ends at the picture boundary of a verified silent tail.
+    tail = prepared["clock"].get("silent_tail")
+    end = prepared["duration_ms"] if tail is None else tail["analysis_audio_end_ms"]
+    return end + 30
+
+
 def prepare(
     source: Path,
     expected: str,
@@ -193,13 +295,17 @@ def prepare(
     duration = float(info["format"]["duration"])
     if not math.isfinite(duration) or not 0.5 <= duration <= 600:
         raise EditingFailure("EDITING_DURATION_UNSUPPORTED")
-    offset = float(audio.get("start_time", 0)) - float(video.get("start_time", 0))
-    if abs(offset) > 0.02 or abs(float(video.get("start_time", 0))) > 0.02:
+    video_start = float(video.get("start_time", 0))
+    offset = float(audio.get("start_time", 0)) - video_start
+    if not math.isfinite(offset) or abs(offset) > 0.02 or abs(video_start) > 0.02:
         raise EditingFailure("EDITING_CLOCK_REVIEW_REQUIRED")
     rotation = [s.get("rotation", 0) for s in video.get("side_data_list", [])]
     if any(rotation) or int(video.get("tags", {}).get("rotate", 0)):
         raise EditingFailure("EDITING_ROTATION_REVIEW_REQUIRED")
-    # Preserve the entire source audio, including tail and pauses.
+    silent_tail = _verified_silent_tail(
+        target, duration, video, audio, offset, root, settings, guard
+    )
+    # Preserve the entire source audio, including tail and pauses, for analysis.
     audio_path = root / "input" / "speech.wav"
     if not audio_path.exists():
         run(
@@ -231,15 +337,23 @@ def prepare(
             guard,
             "extract_audio",
         )
+    if silent_tail is not None:
+        with wave.open(str(audio_path), "rb") as stream:
+            silent_tail["analysis_audio_end_ms"] = round(
+                stream.getnframes() * 1000 / stream.getframerate() + offset * 1000
+            )
     receipt = {
         "source_sha256": expected,
         "audio_sha256": sha256(audio_path),
-        "duration_ms": round(duration * 1000),
+        "duration_ms": silent_tail["video_end_ms"]
+        if silent_tail
+        else round(duration * 1000),
         "probe": info,
         "clock": {
             "policy": "original_video_audio",
             "audio_offset_ms": round(offset * 1000),
             "speech_stretched": False,
+            **({"silent_tail": silent_tail} if silent_tail is not None else {}),
         },
     }
     atomic_json(root / "prepared.json", receipt)
@@ -266,8 +380,6 @@ def transcribe(
             settings.video_editing_asr_device,
             reference,
         )
-    import wave
-
     import numpy as np
     from faster_whisper import WhisperModel
 
@@ -306,6 +418,8 @@ def transcribe(
     tokens: list[TranscriptToken] = []
     utterances: list[TranscriptUtterance] = []
     offset = prepared["clock"]["audio_offset_ms"]
+    duration = prepared["duration_ms"]
+    end_limit = word_timestamp_end_limit(prepared)
     for segment in segments:
         ids = []
         for word in segment.words or []:
@@ -315,13 +429,13 @@ def transcribe(
             )
             if not word.word.strip():
                 continue
-            if not 0 <= start < end <= prepared["duration_ms"] + 30:
+            if not (0 <= start < duration and start < end <= end_limit):
                 raise EditingFailure("EDITING_ASR_TIMING_INVALID")
             token = TranscriptToken(
                 id=f"t{len(tokens):06}",
                 text=word.word,
                 start_ms=start,
-                end_ms=min(end, prepared["duration_ms"]),
+                end_ms=min(end, duration),
                 confidence=word.probability,
             )
             tokens.append(token)
@@ -720,6 +834,8 @@ def validate_result(
         "visual_review": "unreviewed",
         "listening_review": "unreviewed",
     }
+    if silent_tail := prepared.get("clock", {}).get("silent_tail"):
+        validation["source_silent_tail"] = silent_tail
     if validation["native_source_sha256"] != prepared["source_sha256"]:
         raise EditingFailure("EDITING_OUTPUT_SOURCE_MISMATCH")
     if (root / "audio-plan.json").is_file():

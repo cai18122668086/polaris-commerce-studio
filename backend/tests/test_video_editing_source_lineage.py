@@ -1,10 +1,15 @@
 """Verified handoff references and diagnostics are separate from the audio used."""
 
+from pathlib import Path
+from struct import pack
+from wave import open as open_wave
+
 import pytest
 
 from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import sha256
+from app.video_editing_pipeline import EditingFailure, prepare
 from app.video_editing_source_lineage import (
     audio_clock,
     freeze_generation_source,
@@ -100,3 +105,79 @@ def test_only_wav_clock_uses_its_implicit_zero_start():
         "start_ms": 0,
         "duration_ms": 2000,
     }
+
+
+@pytest.mark.parametrize(
+    "container, peak, allowed, inspect_tail",
+    [
+        (2.02, 0, True, False),
+        (2.08, 0, True, True),
+        (2.08, 1200, False, True),
+        (2.60, 0, False, False),
+    ],
+)
+def test_prepare_excludes_only_a_short_verified_silent_tail(
+    tmp_path, monkeypatch, container, peak, allowed, inspect_tail
+):
+    source = tmp_path / "original.mp4"
+    source.write_bytes(b"unchanged-input")
+    attempt = tmp_path / "attempt"
+    digest = sha256(source)
+    calls = []
+    monkeypatch.setattr(
+        "app.video_editing_pipeline.probe",
+        lambda *_: {
+            "format": {"duration": str(container)},
+            "streams": [
+                {"codec_type": "video", "duration": "2.000", "avg_frame_rate": "30/1"},
+                {
+                    "codec_type": "audio",
+                    "start_time": "0.010",
+                    "channels": 2,
+                    "sample_rate": "48000",
+                },
+            ],
+        },
+    )
+
+    def run(argv, root, settings, guard, name):
+        calls.append(name)
+        output = Path(argv[-1])
+        if name == "inspect_audio_tail":
+            assert (
+                "-ac" not in argv
+                and "atrim=start=1.990000" in argv[argv.index("-af") + 1]
+            )
+            output.write_bytes(pack("<hh", peak, -peak) * 4000)
+        else:
+            with open_wave(str(output), "wb") as wav:
+                wav.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                wav.writeframes(bytes(32000 * 2 + 2560))
+        return output
+
+    monkeypatch.setattr("app.video_editing_pipeline.run", run)
+    if allowed:
+        report = prepare(source, digest, attempt, Settings(), lambda: None)
+        assert report["source_sha256"] == digest
+        assert report["duration_ms"] == (2000 if inspect_tail else 2020)
+        tail = report["clock"].get("silent_tail")
+        if inspect_tail:
+            assert tail == {
+                "container_end_ms": 2080,
+                "video_end_ms": 2000,
+                "audio_tail_frames": 4000,
+                "sample_rate": 48000,
+                "channels": 2,
+                "pcm16_peak": 0,
+                "analysis_audio_end_ms": 2090,
+            }
+        else:
+            assert tail is None
+    else:
+        with pytest.raises(
+            EditingFailure, match="EDITING_SOURCE_AUDIO_TAIL_REVIEW_REQUIRED"
+        ):
+            prepare(source, digest, attempt, Settings(), lambda: None)
+    assert ("inspect_audio_tail" in calls) == inspect_tail
+    assert ("extract_audio" in calls) == allowed
+    assert sha256(source) == digest == sha256(attempt / "input/source.mp4")

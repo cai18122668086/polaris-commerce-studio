@@ -15,7 +15,11 @@ from typing import Any
 
 from .motion_library import atomic_json, inside, read_json, sha256
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
-from .video_editing_pipeline import EditingFailure, reference_differences
+from .video_editing_pipeline import (
+    EditingFailure,
+    reference_differences,
+    word_timestamp_end_limit,
+)
 
 PROCESSING_VERSION = "funasr-word-clock/1"
 MANIFEST = Path(__file__).parent / "data/editing_funasr_models.json"
@@ -64,13 +68,14 @@ def normalize_result(
     adjustments = []
     offset = prepared["clock"]["audio_offset_ms"]
     duration = prepared["duration_ms"]
+    end_limit = word_timestamp_end_limit(prepared)
     for i, (unit, stamp, match) in enumerate(
         zip(raw_units, stamps, matches, strict=True)
     ):
         if len(stamp) != 2 or any(type(v) is not int for v in stamp):
             raise EditingFailure("EDITING_ASR_TIMING_INVALID")
         start, end = stamp[0] + offset, stamp[1] + offset
-        if not 0 <= start < duration or not start < end <= duration + 30:
+        if not 0 <= start < duration or not start < end <= end_limit:
             raise EditingFailure("EDITING_ASR_TIMING_INVALID")
         if end > duration:
             adjustments.append(
@@ -78,7 +83,9 @@ def normalize_result(
                     "token_id": f"t{i:06}",
                     "native_end_ms": end,
                     "end_ms": duration,
-                    "reason": "clip_model_quantization_to_actual_audio_end",
+                    "reason": "clip_verified_silent_tail_to_picture_end"
+                    if prepared["clock"].get("silent_tail")
+                    else "clip_model_quantization_to_actual_audio_end",
                 }
             )
             end = duration

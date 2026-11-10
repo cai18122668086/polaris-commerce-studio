@@ -181,6 +181,7 @@ def load_transcript(
         if (
             candidate.source_sha256 == prepared["source_sha256"]
             and candidate.audio_sha256 == prepared["audio_sha256"]
+            and candidate.duration_ms == prepared["duration_ms"]
             and candidate.model == expected_model
             and candidate.provider == expected_provider
             and candidate.text_revision_id

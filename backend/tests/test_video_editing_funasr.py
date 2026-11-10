@@ -61,6 +61,25 @@ def test_small_model_tail_quantization_is_clipped_and_recorded():
     assert raw[0]["timestamp"][-1][1] == 3024
 
 
+def test_verified_silent_tail_keeps_analysis_clock_and_clamps_a_measured_end():
+    prepared = {
+        **PREPARED,
+        "clock": {"audio_offset_ms": 0, "silent_tail": {"analysis_audio_end_ms": 3100}},
+    }
+    raw = fixture()
+    raw[0]["timestamp"][-1][1] = 3080
+    raw[0]["sentence_info"][-1]["timestamp"][-1][1] = 3080
+    transcript = normalize_result(raw, prepared, "local-model", "c" * 64, "1.4.24")
+    assert transcript.tokens[-1].end_ms == 3000
+    assert (
+        transcript.timing_adjustments[0]["reason"]
+        == "clip_verified_silent_tail_to_picture_end"
+    )
+    raw[0]["timestamp"][-1][0] = 3010
+    with pytest.raises(EditingFailure, match="EDITING_ASR_TIMING_INVALID"):
+        normalize_result(raw, prepared, "local-model", "c" * 64, "1.4.24")
+
+
 @pytest.mark.parametrize(
     "variant", ["count", "surface", "sentence", "zero", "overlap", "outside"]
 )

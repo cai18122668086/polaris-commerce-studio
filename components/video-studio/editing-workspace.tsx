@@ -16,6 +16,8 @@ type EditingTask = components["schemas"]["EditingTaskResponse"];
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", building_preview: "生成代理预览", storing: "保存产物", transcript_ready: "口播转录已就绪", preview_ready: "代理预览已就绪", completed: "成片已生成" };
 const errorLabel: Record<string, string> = {
+  EDITING_SOURCE_AUDIO_HEAD_REVIEW_REQUIRED: "画面开始前已有可听的原声，暂时无法安全接入。请核对原片开头的音画。",
+  EDITING_MEASURE_SOURCE_AUDIO_CLOCK_FAILED: "无法读取原片口播的实际起点，请检查原片或联系管理员。",
   EDITING_SOUND_OUTPUT_INVALID: "成片声音与原始口播或已选音效、背景乐不一致。请重试剪辑后复核。",
   EDITING_DECODE_SOUND_CHECK_FAILED: "暂时无法核对成片声音。请重试剪辑。",
   EDITING_CONDITION_ANCHOR_INCOMPLETE: "本次动效文字遗漏了实录适用条件。请核对原转录和动效强调词。",

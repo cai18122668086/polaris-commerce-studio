@@ -71,6 +71,11 @@ def compiled_digest(root: Path, request_hash: str) -> str:
         )
     }
     inputs["audio_validation_version"] = AUDIO_VALIDATION_VERSION
+    prepared = root / "prepared.json"
+    if prepared.is_file():
+        inputs["source_audio_offset_samples"] = read_json(prepared)["clock"].get(
+            "audio_offset_samples", 0
+        )
     for name in (
         "audio-plan.json",
         "layout-intent.json",

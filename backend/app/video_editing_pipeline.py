@@ -23,7 +23,12 @@ from uuid import uuid4
 
 from .config import Settings
 from .motion_library import atomic_json, read_json, sha256
-from .video_editing_audio_verification import CHANNELS, RATE, compare_audio_samples
+from .video_editing_audio_verification import (
+    CHANNELS,
+    MAX_SOURCE_AUDIO_OFFSET_SAMPLES,
+    RATE,
+    compare_audio_samples,
+)
 from .video_editing_azl_panels import AZL_LAYOUT_INTENT, verify_azl_layout
 from .video_editing_caption_layout import (
     layout_main_captions,
@@ -193,48 +198,62 @@ def probe(
 
 
 _MAX_SILENT_TAIL_SECONDS = 0.5
-_MAX_SILENT_TAIL_PCM16_PEAK = 4  # About -78 dBFS; permits codec residue only.
+_SILENT_PCM16_PEAK = 4  # About -78 dBFS; permits codec residue only.
 ASR_TIMESTAMP_TOLERANCE_MS = 30
 
 
-def _verified_silent_tail(
+def _measure_audio_start(
+    target: Path, root: Path, settings: Settings, guard: Callable[[], None]
+) -> float:
+    result = run(
+        [
+            settings.video_editing_ffprobe,
+            "-v",
+            "error",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-format_whitelist",
+            "mov,matroska,webm",
+            "-select_streams",
+            "a:0",
+            "-read_intervals",
+            "%+1",
+            "-show_frames",
+            "-show_entries",
+            "frame=best_effort_timestamp_time",
+            "-of",
+            "json",
+            str(target),
+        ],
+        root,
+        settings,
+        guard,
+        "measure_source_audio_clock",
+    )
+    try:
+        return float(read_json(result)["frames"][0]["best_effort_timestamp_time"])
+    except (OSError, ValueError, IndexError, KeyError, TypeError):
+        raise EditingFailure("EDITING_CLOCK_REVIEW_REQUIRED") from None
+
+
+def _verified_silent_edge(
     target: Path,
-    duration: float,
-    video: dict,
     audio: dict,
-    offset: float,
+    trim: str,
+    edge: str,
     root: Path,
     settings: Settings,
     guard: Callable[[], None],
-) -> dict | None:
-    try:
-        video_duration = float(video["duration"])
-        frame_interval = float(1 / Fraction(video["avg_frame_rate"]))
-    except (KeyError, ValueError, TypeError, ZeroDivisionError):
-        # Containers without a separately measured video duration keep their
-        # existing clock. In particular, do not infer one from the audio.
-        return None
-    gap = duration - video_duration
-    if (
-        not math.isfinite(video_duration)
-        or not math.isfinite(frame_interval)
-        or frame_interval <= 0
-        or gap <= frame_interval + 0.001
-    ):
-        return None
-    error = "EDITING_SOURCE_AUDIO_TAIL_REVIEW_REQUIRED"
-    if video_duration < 0.5 or gap > _MAX_SILENT_TAIL_SECONDS:
-        raise EditingFailure(error)
+) -> dict:
+    error = f"EDITING_SOURCE_AUDIO_{edge.upper()}_REVIEW_REQUIRED"
     try:
         sample_rate, channels = int(audio["sample_rate"]), int(audio["channels"])
     except (KeyError, TypeError, ValueError):
         raise EditingFailure(error) from None
     if not 8000 <= sample_rate <= 192000 or not 1 <= channels <= 8:
         raise EditingFailure(error)
-    end_ms = math.floor(video_duration * 1000)
-    cutoff = end_ms / 1000 - offset
-    # Inspect every channel, since stereo can cancel in the recognition downmix.
-    with TemporaryDirectory(prefix="tail-", dir=target.parent) as work:
+    # Inspect each source channel separately. A downmix can hide active speech.
+    with TemporaryDirectory(prefix=f"{edge}-", dir=target.parent) as work:
         decoded = Path(work) / "audio.s16le"
         run(
             [
@@ -252,7 +271,7 @@ def _verified_silent_tail(
                 "0:a:0",
                 "-vn",
                 "-af",
-                f"asetpts=PTS-STARTPTS,atrim=start={cutoff:.6f},asetpts=PTS-STARTPTS",
+                f"asetpts=PTS-STARTPTS,atrim={trim},asetpts=PTS-STARTPTS",
                 "-t",
                 "1",
                 "-c:a",
@@ -264,22 +283,64 @@ def _verified_silent_tail(
             root,
             settings,
             guard,
-            "inspect_audio_tail",
+            f"inspect_audio_{edge}",
         )
         samples = decoded.read_bytes()
     bytes_per_frame = 2 * channels
-    if len(samples) % bytes_per_frame or len(samples) >= sample_rate * bytes_per_frame:
+    frames, remainder = divmod(len(samples), bytes_per_frame)
+    if remainder or frames >= sample_rate:
         raise EditingFailure(error)
     peak = max((abs(value) for (value,) in iter_unpack("<h", samples)), default=0)
-    if peak > _MAX_SILENT_TAIL_PCM16_PEAK:
+    if peak > _SILENT_PCM16_PEAK:
         raise EditingFailure(error)
     return {
-        "container_end_ms": round(duration * 1000),
-        "video_end_ms": end_ms,
-        "audio_tail_frames": len(samples) // bytes_per_frame,
+        f"audio_{edge}_frames": frames,
         "sample_rate": sample_rate,
         "channels": channels,
         "pcm16_peak": peak,
+    }
+
+
+def _verified_silent_tail(
+    target: Path,
+    duration: float,
+    video: dict,
+    audio: dict,
+    offset: float,
+    root: Path,
+    settings: Settings,
+    guard: Callable[[], None],
+    require_picture_clock: bool = False,
+) -> dict | None:
+    try:
+        video_duration = float(video["duration"])
+        frame_interval = float(1 / Fraction(video["avg_frame_rate"]))
+        if (
+            not math.isfinite(video_duration)
+            or not math.isfinite(frame_interval)
+            or frame_interval <= 0
+        ):
+            raise ValueError("Invalid picture clock")
+    except (KeyError, ValueError, TypeError, ZeroDivisionError):
+        # Containers without a separately measured video duration keep their
+        # existing small-offset policy; a larger shift needs a measured end.
+        if require_picture_clock:
+            raise EditingFailure("EDITING_CLOCK_REVIEW_REQUIRED") from None
+        return None
+    gap = duration - video_duration
+    if gap <= frame_interval + 0.001:
+        return None
+    error = "EDITING_SOURCE_AUDIO_TAIL_REVIEW_REQUIRED"
+    if video_duration < 0.5 or gap > _MAX_SILENT_TAIL_SECONDS:
+        raise EditingFailure(error)
+    end_ms = math.floor(video_duration * 1000)
+    cutoff = end_ms / 1000 - offset
+    return {
+        "container_end_ms": round(duration * 1000),
+        "video_end_ms": end_ms,
+        **_verified_silent_edge(
+            target, audio, f"start={cutoff:.6f}", "tail", root, settings, guard
+        ),
     }
 
 
@@ -320,15 +381,49 @@ def prepare(
     duration = float(info["format"]["duration"])
     if not math.isfinite(duration) or not 0.5 <= duration <= 600:
         raise EditingFailure("EDITING_DURATION_UNSUPPORTED")
-    video_start = float(video.get("start_time", 0))
-    offset = float(audio.get("start_time", 0)) - video_start
-    if not math.isfinite(offset) or abs(offset) > 0.02 or abs(video_start) > 0.02:
+    try:
+        video_start = float(video.get("start_time", 0))
+        stream_start = float(audio.get("start_time", 0))
+    except (TypeError, ValueError):
+        raise EditingFailure("EDITING_CLOCK_REVIEW_REQUIRED") from None
+    if (
+        not all(map(math.isfinite, (video_start, stream_start)))
+        or abs(video_start) > 0.02
+    ):
         raise EditingFailure("EDITING_CLOCK_REVIEW_REQUIRED")
     rotation = [s.get("rotation", 0) for s in video.get("side_data_list", [])]
     if any(rotation) or int(video.get("tags", {}).get("rotate", 0)):
         raise EditingFailure("EDITING_ROTATION_REVIEW_REQUIRED")
+    inspect_start = stream_start != video_start
+    measured_start = (
+        _measure_audio_start(target, root, settings, guard)
+        if inspect_start
+        else stream_start
+    )
+    offset = measured_start - video_start
+    if (
+        not math.isfinite(offset)
+        or abs(offset) > MAX_SOURCE_AUDIO_OFFSET_SAMPLES / RATE
+    ):
+        raise EditingFailure("EDITING_CLOCK_REVIEW_REQUIRED")
+    samples_offset = round(offset * RATE)
+    silent_head = None
+    if samples_offset < 0:
+        silent_head = _verified_silent_edge(
+            target, audio, f"end={-offset:.6f}", "head", root, settings, guard
+        )
+        if not silent_head["audio_head_frames"]:
+            raise EditingFailure("EDITING_SOURCE_AUDIO_HEAD_REVIEW_REQUIRED")
     silent_tail = _verified_silent_tail(
-        target, duration, video, audio, offset, root, settings, guard
+        target,
+        duration,
+        video,
+        audio,
+        offset,
+        root,
+        settings,
+        guard,
+        require_picture_clock=abs(offset) > 0.02,
     )
     # Preserve the entire source audio, including tail and pauses, for analysis.
     audio_path = root / "input" / "speech.wav"
@@ -378,8 +473,13 @@ def prepare(
         "clock": {
             "policy": "original_video_audio",
             "audio_offset_ms": round(offset * 1000),
+            "audio_offset_samples": samples_offset,
+            "audio_offset_basis": "first_decoded_frame"
+            if inspect_start
+            else "coincident_streams",
             "analysis_audio_end_ms": analysis_audio_end_ms,
             "speech_stretched": False,
+            **({"silent_head": silent_head} if silent_head is not None else {}),
             **({"silent_tail": silent_tail} if silent_tail is not None else {}),
         },
     }
@@ -1074,6 +1174,7 @@ def verify_delivery_audio(
     audio: dict,
     settings: Settings,
     guard: Callable[[], None],
+    source_offset_samples: int = 0,
 ) -> dict:
     duration = float(episode["source"]["duration_seconds"])
     start = float(episode["source"].get("start_seconds", 0))
@@ -1103,10 +1204,12 @@ def verify_delivery_audio(
         or abs(audio_duration - duration) > 0.002
     ):
         raise ValueError("Master audio clock differs from the native episode")
-    source_filter = (
-        f"atrim=start=0:duration={duration},asetpts=PTS-STARTPTS,aresample={RATE},"
-        f"volume={gain}dB,apad,atrim=duration={duration}"
-    )
+    source_filter = f"aresample={RATE},volume={gain}dB"
+    if not source_offset_samples:
+        source_filter = (
+            f"atrim=start=0:duration={duration},asetpts=PTS-STARTPTS,"
+            f"{source_filter},apad,atrim=duration={duration}"
+        )
     paths = {
         "source": root / "input/source.mp4",
         "voice": root / "audio/voice.wav",
@@ -1151,7 +1254,9 @@ def verify_delivery_audio(
                 guard,
                 "decode_sound_check",
             )
-        return compare_audio_samples(decoded, round(duration * RATE), required, guard)
+        return compare_audio_samples(
+            decoded, round(duration * RATE), required, guard, source_offset_samples
+        )
 
 
 def validate_result(
@@ -1190,6 +1295,8 @@ def validate_result(
     }
     if silent_tail := prepared.get("clock", {}).get("silent_tail"):
         validation["source_silent_tail"] = silent_tail
+    if silent_head := prepared.get("clock", {}).get("silent_head"):
+        validation["source_silent_head"] = silent_head
     if (root / FRAME_CLOCK_RECEIPT).is_file():
         validation["presenter_frame_clock"] = read_json(root / FRAME_CLOCK_RECEIPT)
     if (root / MATERIAL_CLOCK_RECEIPT).is_file():
@@ -1201,7 +1308,14 @@ def validate_result(
         raise EditingFailure("EDITING_OUTPUT_SOURCE_MISMATCH")
     try:
         validation["decoded_audio_mix"] = verify_delivery_audio(
-            path, root, episode, video, audio_tracks[0], settings, guard
+            path,
+            root,
+            episode,
+            video,
+            audio_tracks[0],
+            settings,
+            guard,
+            prepared.get("clock", {}).get("audio_offset_samples", 0),
         )
     except (ValueError, KeyError, TypeError, OSError):
         raise EditingFailure("EDITING_SOUND_OUTPUT_INVALID") from None

@@ -11,7 +11,8 @@ import numpy.typing as npt
 
 RATE = 48_000
 CHANNELS = 2
-AUDIO_VALIDATION_VERSION = "tengli.decoded-mix/1"
+MAX_SOURCE_AUDIO_OFFSET_SAMPLES = RATE // 2
+AUDIO_VALIDATION_VERSION = "tengli.decoded-mix/2"
 _SAMPLE_BYTES = CHANNELS * 4
 _WINDOW = RATE // 4
 _VOICE_TOLERANCE = 2e-5
@@ -33,11 +34,25 @@ def _db(level: float) -> float:
     return round(20 * math.log10(max(level, 1e-10)), 3)
 
 
+def _mapped_voice(
+    source: BinaryIO, start: int, width: int, offset: int, frames: int
+) -> npt.NDArray[np.float64]:
+    begin = max(0, start - offset)
+    padding = min(width, max(0, offset - start))
+    count = min(width - padding, max(0, frames - begin))
+    block = np.zeros(width * CHANNELS, dtype=np.float64)
+    if count:
+        source.seek(begin * _SAMPLE_BYTES)
+        block[padding * CHANNELS : (padding + count) * CHANNELS] = _read(source, count)
+    return block
+
+
 def compare_audio_samples(
     decoded: dict[str, Path],
     frames: int,
     required_stems: set[str],
     guard: Callable[[], None],
+    source_offset_samples: int = 0,
 ) -> dict:
     """Verify stream content in bounded windows on the rendered sample clock."""
     lengths = {}
@@ -46,7 +61,9 @@ def compare_audio_samples(
         # Some AAC muxers expose final encoder padding. The requested sample
         # interval and both container clocks are checked independently.
         padding = _AAC_FRAME_SAMPLES if name == "master" else 0
-        if tail or not frames <= length <= frames + padding:
+        unaligned_source = name == "source" and source_offset_samples
+        valid = length > 0 if unaligned_source else frames <= length <= frames + padding
+        if tail or not valid:
             raise ValueError("Decoded audio length differs from the episode clock")
         lengths[name] = length
 
@@ -63,8 +80,19 @@ def compare_audio_samples(
         for start in range(0, frames, _WINDOW):
             guard()
             width = min(_WINDOW, frames - start)
-            block = {name: _read(stream, width) for name, stream in streams.items()}
-            voice_error = float(np.max(np.abs(block["source"] - block["voice"])))
+            block = {
+                name: _read(stream, width)
+                for name, stream in streams.items()
+                if name != "source"
+            }
+            source = _mapped_voice(
+                streams["source"],
+                start,
+                width,
+                source_offset_samples,
+                lengths["source"],
+            )
+            voice_error = float(np.max(np.abs(source - block["voice"])))
             peak_voice_error = max(voice_error, peak_voice_error)
             if peak_voice_error > _VOICE_TOLERANCE:
                 raise ValueError(
@@ -119,6 +147,7 @@ def compare_audio_samples(
     return {
         "version": AUDIO_VALIDATION_VERSION,
         "sample_rate": RATE,
+        "source_audio_offset_samples": source_offset_samples,
         "frames_compared": frames,
         "aac_padding_samples": lengths["master"] - frames,
         "source_voice_peak_error_dbfs": _db(peak_voice_error),

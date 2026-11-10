@@ -261,7 +261,10 @@ def test_prepare_excludes_only_a_short_verified_silent_tail(
     def run(argv, root, settings, guard, name):
         calls.append(name)
         output = Path(argv[-1])
-        if name == "inspect_audio_tail":
+        if name == "measure_source_audio_clock":
+            output = root / "initial-audio.json"
+            atomic_json(output, {"frames": [{"best_effort_timestamp_time": "0.010"}]})
+        elif name == "inspect_audio_tail":
             assert (
                 "-ac" not in argv
                 and "atrim=start=1.990000" in argv[argv.index("-af") + 1]
@@ -279,6 +282,7 @@ def test_prepare_excludes_only_a_short_verified_silent_tail(
         assert report["source_sha256"] == digest
         assert report["duration_ms"] == (2000 if inspect_tail else 2020)
         assert report["clock"]["analysis_audio_end_ms"] == 2090
+        assert report["clock"]["audio_offset_samples"] == 480
         tail = report["clock"].get("silent_tail")
         if inspect_tail:
             assert tail == {

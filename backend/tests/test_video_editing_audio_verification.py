@@ -25,6 +25,27 @@ def test_stereo_adaptation_is_limited_to_native_audio_split_and_mix():
         stereo_composition_graph(video + output)
 
 
+@pytest.mark.parametrize(
+    ("offset", "expected"),
+    [
+        (11520, "adelay=11520S:all=1"),
+        (-720, "atrim=start_sample=720,asetpts=PTS-STARTPTS"),
+    ],
+)
+def test_native_voice_uses_the_measured_sample_origin(offset, expected):
+    graph = (
+        "[0:a]atrim=start=0:duration=4.5,asetpts=PTS-STARTPTS,aresample=48000,"
+        "volume=0dB,apad,atrim=duration=4.5,asplit=2[voice][voice_stem];\n"
+        "[voice][1:a]amix=inputs=2:normalize=0,atrim=duration=4.5[mixed]"
+    )
+    applied = stereo_composition_graph(graph, offset)
+    assert applied.startswith(f"[0:a]asetpts=PTS-STARTPTS,aresample=48000,{expected},")
+    assert ",volume=0dB,apad,atrim=duration=4.5," in applied
+    assert applied.endswith(
+        "amix=inputs=2:normalize=0,atrim=duration=4.5,aformat=channel_layouts=stereo[mixed]"
+    )
+
+
 def samples(tmp_path, change=None):
     frames = RATE * 2
     t = np.arange(frames * 2) / (2 * RATE)
@@ -45,6 +66,24 @@ def samples(tmp_path, change=None):
         paths[role] = tmp_path / (role + ".f32")
         audio.astype("<f4").tofile(paths[role])
     return paths, frames
+
+
+@pytest.mark.parametrize("offset", [RATE // 3, -720])
+def test_reference_voice_mapping_catches_a_render_at_the_wrong_origin(tmp_path, offset):
+    def move(block):
+        raw = block["source"]
+        if offset > 0:
+            block["voice"] = np.concatenate([np.zeros(2 * offset), raw[: -2 * offset]])
+            block["source"] = raw[: -2 * offset]
+        else:
+            block["voice"] = np.concatenate([raw[-2 * offset :], np.zeros(-2 * offset)])
+        block["master"] = block["voice"] + block["fx"] + block["bgm"]
+
+    paths, frames = samples(tmp_path, move)
+    report = compare_audio_samples(paths, frames, {"bgm", "fx"}, lambda: None, offset)
+    assert report["source_audio_offset_samples"] == offset
+    with pytest.raises(ValueError, match="voice stem differs"):
+        compare_audio_samples(paths, frames, {"bgm", "fx"}, lambda: None, offset + 17)
 
 
 def test_mix_check_allows_aac_padding_and_accepts_a_quiet_selected_stem(tmp_path):

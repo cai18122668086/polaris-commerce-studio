@@ -24,6 +24,7 @@ from .video_editing_contracts import (
     EditingPreviewBase,
     EditingTaskResponse,
 )
+from .video_editing_hypit import hypit_runtime_blocker, requires_hypit
 from .video_editing_native_plans import (
     plan_response,
     transparent_original_groups,
@@ -146,7 +147,14 @@ def create_native_candidate(
     row = own_planning_task(session, workspace, str(task_id))
     own_project(session, workspace, row.project_id)
     candidate = gateway_candidate(session, settings, workspace, row)
-    return plan_response(candidate, settings, transparent_original_groups(settings))
+    blocker = (
+        hypit_runtime_blocker(settings, workspace.workspace_id)
+        if requires_hypit(candidate.semantic)
+        else None
+    )
+    return plan_response(
+        candidate, settings, transparent_original_groups(settings), blocker
+    )
 
 
 @router.post(

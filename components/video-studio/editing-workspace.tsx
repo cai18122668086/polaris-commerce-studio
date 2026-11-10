@@ -25,6 +25,8 @@ function subscribeToHash(listener: () => void) {
 const readTaskHash = () => taskHash.exec(window.location.hash)?.[1].toLowerCase();
 const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", building_preview: "生成代理预览", storing: "保存产物", transcript_ready: "口播转录已就绪", preview_ready: "代理预览已就绪", completed: "成片已生成" };
 const errorLabel: Record<string, string> = {
+  EDITING_HYPIT_INTERNAL_ONLY: "Hypit 原生出片仅在已配置的内部联调工作区开放。",
+  EDITING_HYPIT_RUNTIME_UNAVAILABLE: "原 Hypit 运行环境未通过预检，请在环境恢复后重试。",
   EDITING_TASK_STORAGE_UNAVAILABLE: "剪辑服务暂时无法写入工作目录。请在存储恢复后重试此任务。",
   EDITING_SOURCE_AUDIO_HEAD_REVIEW_REQUIRED: "画面开始前已有可听的原声，暂时无法安全接入。请核对原片开头的音画。",
   EDITING_MEASURE_SOURCE_AUDIO_CLOCK_FAILED: "无法读取原片口播的实际起点，请检查原片或联系管理员。",

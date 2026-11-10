@@ -35,6 +35,18 @@ NATIVE_FILES = {
 }
 CLI_SHA256 = "1d962a229df2429fca2364e16a718b22ab0032851ed33e230ad68589eeb52f81"
 _HYPERFRAMES_VERSION = "0.7.101"
+HYPIT_INTERNAL_ONLY = "EDITING_HYPIT_INTERNAL_ONLY"
+HYPIT_RUNTIME_UNAVAILABLE = "EDITING_HYPIT_RUNTIME_UNAVAILABLE"
+HYPIT_BLOCKER_MESSAGES = {
+    HYPIT_INTERNAL_ONLY: "Hypit 原生出片仅在已配置的内部联调工作区开放。",
+    HYPIT_RUNTIME_UNAVAILABLE: "原 Hypit 未通过预检，请核对 CLI、Node.js 和渲染包。",
+}
+
+
+class HypitToolchainError(ValueError):
+    def __init__(self, code: str, message: str):
+        self.code = code
+        super().__init__(message)
 
 
 def audit_picture_entry(package: Path, group: dict) -> None:
@@ -97,21 +109,11 @@ def picture_entry_frame(config: dict, path: str) -> int:
     return item["entry_frame"] + 2
 
 
-def requires_hypit(semantic: dict[str, Any]) -> bool:
-    return any(beat["group_id"].startswith("HY-A") for beat in semantic["beats"])
-
-
-def internal_hypit_available(settings: Settings, workspace_id: str | None) -> bool:
-    return bool(
-        settings.environment in {"development", "test"}
-        and settings.auth_mode == "development"
-        and workspace_id
-        and workspace_id == settings.video_editing_hypit_internal_workspace
-        and settings.video_editing_hypit_local_module
-        and settings.video_editing_hypit_local_module.is_file()
-        and settings.video_editing_hypit_local_chrome
-        and settings.video_editing_hypit_local_chrome.is_file()
-        and shutil.which("node")
+def requires_hypit(semantic: dict[str, Any], excluded: set[str] | None = None) -> bool:
+    return any(
+        beat["group_id"].startswith("HY-A")
+        and not (excluded and beat["id"] in excluded)
+        for beat in semantic["beats"]
     )
 
 
@@ -179,20 +181,46 @@ def _check_hyperframes(module: Path) -> None:
 
 
 def hypit_tools(settings: Settings, workspace_id: str | None) -> dict[str, str]:
-    if not internal_hypit_available(settings, workspace_id):
-        raise ValueError("Hypit requires the configured internal development workspace")
+    if (
+        settings.environment not in {"development", "test"}
+        or settings.auth_mode != "development"
+        or not workspace_id
+        or workspace_id != settings.video_editing_hypit_internal_workspace
+    ):
+        raise HypitToolchainError(
+            HYPIT_INTERNAL_ONLY,
+            "Hypit requires the configured internal development workspace",
+        )
     module = settings.video_editing_hypit_local_module
     chrome = settings.video_editing_hypit_local_chrome
-    assert module is not None and chrome is not None
-    module = module.resolve()
-    if (
-        sha256(module) != CLI_SHA256
-        or read_json(module.parent.parent / "package.json").get("version") != "0.2.12"
-    ):
-        raise ValueError("The audited Hypit CLI version or module bytes changed")
-    hypit_node_version()
-    _check_hyperframes(module)
-    return {"hypit_module": str(module), "chrome": str(chrome.resolve())}
+    try:
+        if module is None or chrome is None or not chrome.is_file():
+            raise ValueError("Hypit requires the configured CLI and browser")
+        module = module.resolve()
+        manifest = read_json(module.parent.parent / "package.json")
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("version") != "0.2.12"
+            or sha256(module) != CLI_SHA256
+        ):
+            raise ValueError("The audited Hypit CLI version or module bytes changed")
+        hypit_node_version()
+        _check_hyperframes(module)
+        return {"hypit_module": str(module), "chrome": str(chrome.resolve())}
+    except OSError as error:
+        raise HypitToolchainError(
+            HYPIT_RUNTIME_UNAVAILABLE, "The local Hypit toolchain could not be read"
+        ) from error
+    except ValueError as error:
+        raise HypitToolchainError(HYPIT_RUNTIME_UNAVAILABLE, str(error)) from error
+
+
+def hypit_runtime_blocker(settings: Settings, workspace_id: str | None) -> str | None:
+    try:
+        hypit_tools(settings, workspace_id)
+    except HypitToolchainError as error:
+        return error.code
+    return None
 
 
 def picture_fields(schema: dict) -> list[dict[str, Any]]:

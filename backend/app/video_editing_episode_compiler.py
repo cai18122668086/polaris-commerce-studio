@@ -50,8 +50,8 @@ from .video_editing_highlights import apply_highlight_edits
 from .video_editing_hypit import (
     PICTURE_CAPTION_BASELINE,
     PICTURE_GROUP,
+    HypitToolchainError,
     hypit_tools,
-    internal_hypit_available,
     requires_hypit,
 )
 from .video_editing_hypit_chart import FLOW_CHART_CAPTION_BASELINE
@@ -329,11 +329,19 @@ def compile_episode(
         validate_template_plan(
             semantic, overlay_template(authoring.overlay_template_id), complete=True
         )
+    excluded_beats = set(edits.source_only_beat_ids) if edits else set()
+    semantic_data = semantic.model_dump(mode="json")
+    hypit_bindings = {}
+    if requires_hypit(semantic_data, excluded_beats):
+        try:
+            hypit_bindings = hypit_tools(settings, workspace_id)
+        except HypitToolchainError as error:
+            raise EditingFailure(error.code) from error
     if (
         continuous_base
         and len(
             continuous_overlay_groups(
-                semantic.model_dump(mode="json"),
+                semantic_data,
                 authoring.model_dump(mode="json"),
                 {
                     gid
@@ -341,9 +349,9 @@ def compile_episode(
                     if group.get("kind") == "subtitle"
                     and group.get("backend") == "subtitle"
                 },
-                set(edits.source_only_beat_ids) if edits else None,
+                excluded_beats,
                 allow_hypit_insets=options["source_subtitles"] == "none"
-                and internal_hypit_available(settings, workspace_id),
+                and bool(hypit_bindings),
                 allow_question_insets=options["source_subtitles"] == "none",
                 scene_groups={
                     gid
@@ -394,11 +402,7 @@ def compile_episode(
     for value in authoring.tools.values():
         if not Path(value).is_file():
             raise EditingFailure("EDITING_NATIVE_TOOL_MISSING")
-    if requires_hypit(semantic.model_dump(mode="json")):
-        try:
-            bindings["tools"].update(hypit_tools(settings, workspace_id))
-        except (ValueError, OSError) as error:
-            raise EditingFailure("EDITING_HYPIT_INTERNAL_ONLY") from error
+    bindings["tools"].update(hypit_bindings)
     episode.update(
         design=copy.deepcopy(authoring.design),
         layout_policy=copy.deepcopy(authoring.layout_policy),
@@ -426,7 +430,6 @@ def compile_episode(
     issues: list[dict[str, Any]] = []
     compiled: list[dict[str, Any]] = []
     sound_events: dict[tuple[str, str], tuple[int, dict]] = {}
-    excluded_beats = set(edits.source_only_beat_ids) if edits else set()
     applied_edits = []
     prior_end = 0
     for index, beat in enumerate(semantic.beats):

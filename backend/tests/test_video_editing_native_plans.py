@@ -19,6 +19,7 @@ from app.video_editing_pipeline import EditingFailure, native_export
 from app.video_editing_preview_base import preview_base_attempt
 from app.video_editing_task_models import (
     EditingArtifactRecord,
+    EditingNativePlanRecord,
     EditingSourceRecord,
     EditingTaskRecord,
 )
@@ -297,8 +298,6 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
         ).json()["error"]["code"]
         == "EDITING_NATIVE_OPTIONS_CHANGED"
     )
-    from app.video_editing_task_models import EditingNativePlanRecord
-
     with client.app.state.session_factory() as session:
         row = session.get(EditingNativePlanRecord, plan_id)
         original_choices = row.choice_snapshot
@@ -332,6 +331,65 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
         ]
         == "EDITING_TEMPLATE_CHANGED"
     )
+
+
+def test_hypit_preflight_controls_saved_plan_and_submission(
+    video, tmp_path, monkeypatch
+):
+    from app import video_editing_hypit as hypit
+
+    client, _, ws, settings, source, task, semantic, recipe = saved_plan(
+        video, tmp_path, monkeypatch
+    )
+    settings.video_editing_native_plan_enabled = True
+    with client.app.state.session_factory() as session:
+        row = register_operator_plan(
+            session,
+            settings,
+            ws,
+            task_owner(session, task["id"]),
+            task["id"],
+            str(uuid4()),
+            semantic,
+            recipe,
+        )
+        plan_id, project_id = row.id, row.project_id
+        # This protocol fixture only tests admission and never reaches the renderer.
+        beats = row.semantic["beats"]
+        row.semantic = {
+            **row.semantic,
+            "beats": [{**beats[0], "group_id": "HY-A2"}, *beats[1:]],
+        }
+        session.commit()
+
+    def unavailable(*_):
+        raise hypit.HypitToolchainError(hypit.HYPIT_RUNTIME_UNAVAILABLE, "changed")
+
+    monkeypatch.setattr(hypit, "hypit_tools", unavailable)
+    view = (
+        client.get(base(ws) + f"/projects/{project_id}/editing-native-plans")
+        .raise_for_status()
+        .json()[0]
+    )
+    assert not view["render_available"]
+    assert (
+        hypit.HYPIT_BLOCKER_MESSAGES[hypit.HYPIT_RUNTIME_UNAVAILABLE]
+        in view["warnings"]
+    )
+    body = {
+        "request_id": str(uuid4()),
+        "source_id": source,
+        "options": {
+            "mode": "native_plan",
+            "native_plan_id": plan_id,
+            "source_subtitles": "none",
+        },
+    }
+    rejected = client.post(base(ws) + "/editing-tasks", json=body)
+    assert rejected.status_code == 503
+    assert rejected.json()["error"]["code"] == hypit.HYPIT_RUNTIME_UNAVAILABLE
+    body["options"]["native_edits"] = {"source_only_beat_ids": [semantic.beats[0].id]}
+    assert client.post(base(ws) + "/editing-tasks", json=body).status_code == 200
 
 
 def task_owner(session, task_id):

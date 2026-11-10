@@ -19,6 +19,7 @@ from .video_editing_contracts import (
 from .video_editing_effect_edits import effect_edit_targets
 from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_highlights import highlight_targets
+from .video_editing_hypit import hypit_runtime_blocker, requires_hypit
 from .video_editing_image_edits import image_edit_targets
 from .video_editing_native_plans import (
     native_edit_transcript,
@@ -59,7 +60,12 @@ def list_native_plans(
     if include_plan_id and not any(row.id == str(include_plan_id) for row in rows):
         rows = [own_native_plan(session, workspace, project_id, include_plan_id), *rows]
     groups = transparent_original_groups(settings)
-    return [plan_response(r, settings, groups) for r in rows]
+    blocker = (
+        hypit_runtime_blocker(settings, workspace.workspace_id)
+        if any(requires_hypit(row.semantic) for row in rows)
+        else None
+    )
+    return [plan_response(row, settings, groups, blocker) for row in rows]
 
 
 @router.get(

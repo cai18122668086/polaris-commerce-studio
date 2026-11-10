@@ -279,7 +279,9 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       {available ? <>
         <p className={styles.note}>本次计划使用 {activeGroups.size} 种动效，共出现 {activeEffects.length} 次。{activeGroups.size < minDistinctMotionGroups && "请保留至少五种不同动效。"}</p>
         <button type="button" onClick={() => void render(plan, selected, earlier)} disabled={!!busy || activeGroups.size < minDistinctMotionGroups}>{busy === plan.id ? "正在提交…" : earlier ? "生成新版代理预览" : "生成代理预览"}</button>
-      </> : <p className={styles.note}>历史验证候选 · 待适配连续人物底片与组合动效</p>}
+      </> : <p className={styles.note}>{plan.render_available
+        ? "历史验证候选 · 待适配连续人物底片与组合动效"
+        : "该编排当前不可出片。"}</p>}
     </article>})}
     {error && <p role="alert" className={styles.error}>{error} <button type="button" onClick={() => setReload(n => n + 1)}>重新读取编排</button></p>}
   </section>;

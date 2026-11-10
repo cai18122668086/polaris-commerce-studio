@@ -18,7 +18,11 @@ from .video_editing_contracts import EditingOptions, SemanticPlan, Transcript
 from .video_editing_effect_edits import apply_effect_edits
 from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_highlights import apply_highlight_edits, editable_highlight_roles
-from .video_editing_hypit import internal_hypit_available, requires_hypit
+from .video_editing_hypit import (
+    HYPIT_BLOCKER_MESSAGES,
+    hypit_runtime_blocker,
+    requires_hypit,
+)
 from .video_editing_hypit_chart import FLOW_CHART_DESIGN, FLOW_CHART_TEMPLATE_ID
 from .video_editing_hypit_strips import FLOW_GROUP
 from .video_editing_image_edits import (
@@ -108,13 +112,19 @@ def _saved_template(template_id: str | None) -> dict | None:
 
 
 def plan_response(
-    row: EditingNativePlanRecord, settings: Settings, transparent_groups: set[str]
+    row: EditingNativePlanRecord,
+    settings: Settings,
+    transparent_groups: set[str],
+    hypit_blocker: str | None,
 ) -> dict[str, Any]:
     editable, has_music = available_render_edits(
         row.semantic, row.recipes, row.choice_snapshot
     )
     needs_chart = requires_flow_chart(row.semantic, row.recipes)
     warnings = row.semantic.get("warnings", [])
+    needs_hypit = requires_hypit(row.semantic)
+    if needs_hypit and hypit_blocker:
+        warnings = [*warnings, HYPIT_BLOCKER_MESSAGES[hypit_blocker]]
     if needs_chart:
         warnings = [*warnings, FLOW_CHART_WARNING]
     template_id = row.recipes.get("overlay_template_id")
@@ -168,7 +178,8 @@ def plan_response(
                 row.recipes,
                 transparent_groups,
                 allow_hypit_insets=row.details["source_subtitles"] == "none"
-                and internal_hypit_available(settings, row.workspace_id),
+                and needs_hypit
+                and hypit_blocker is None,
                 allow_question_insets=row.details["source_subtitles"] == "none",
                 scene_groups=original_scene_groups(settings)
                 if row.details["source_subtitles"] == "none"
@@ -180,10 +191,7 @@ def plan_response(
         "render_available": settings.video_editing_native_plan_enabled
         and not template_unavailable
         and not needs_chart
-        and (
-            not requires_hypit(row.semantic)
-            or internal_hypit_available(settings, row.workspace_id)
-        ),
+        and (not needs_hypit or hypit_blocker is None),
         "created_at": row.created_at.replace(tzinfo=UTC)
         if row.created_at.tzinfo is None
         else row.created_at,
@@ -588,14 +596,6 @@ def admit_render_plan(
         raise ApiError(
             409, "EDITING_TEMPLATE_CHANGED", "原编排使用的模板在当前版本不可用。"
         )
-    if requires_hypit(row.semantic) and not internal_hypit_available(
-        settings, source.workspace_id
-    ):
-        raise ApiError(
-            503,
-            "EDITING_HYPIT_INTERNAL_ONLY",
-            "Hypit 原生出片仅在已配置的内部联调工作区开放。",
-        )
     current = stored_choice_snapshot(
         session, source.workspace_id, source.owner_user_id, source.project_id
     )
@@ -716,6 +716,12 @@ def admit_render_plan(
             ) from error
         effective_semantic = semantic.model_dump(mode="json")
         effective_recipes = revised.model_dump(mode="json")
+    excluded = set(edits.source_only_beat_ids) if edits else None
+    needs_hypit = requires_hypit(effective_semantic, excluded)
+    if needs_hypit and (
+        blocker := hypit_runtime_blocker(settings, source.workspace_id)
+    ):
+        raise ApiError(503, blocker, HYPIT_BLOCKER_MESSAGES[blocker])
     if (
         options.delivery == "preview_first"
         and len(
@@ -723,11 +729,8 @@ def admit_render_plan(
                 effective_semantic,
                 effective_recipes,
                 transparent_original_groups(settings),
-                set(options.native_edits.source_only_beat_ids)
-                if options.native_edits
-                else None,
-                allow_hypit_insets=options.source_subtitles == "none"
-                and internal_hypit_available(settings, row.workspace_id),
+                excluded,
+                allow_hypit_insets=options.source_subtitles == "none" and needs_hypit,
                 allow_question_insets=options.source_subtitles == "none",
                 scene_groups=original_scene_groups(settings)
                 if options.source_subtitles == "none"

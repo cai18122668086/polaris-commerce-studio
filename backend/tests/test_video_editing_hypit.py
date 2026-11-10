@@ -504,6 +504,7 @@ def test_hypit_tools_only_for_the_configured_internal_workspace(tmp_path, monkey
     monkeypatch.setattr(hypit, "hypit_node_version", lambda: "v24.13.0")
     monkeypatch.setattr(hypit, "_check_hyperframes", lambda _: None)
     assert hypit.hypit_tools(settings, "internal")["hypit_module"] == str(module)
+    assert hypit.hypit_runtime_blocker(settings, "internal") is None
     for unavailable, workspace in (
         (settings, "external-workspace"),
         (settings.model_copy(update={"environment": "production"}), "internal"),
@@ -512,9 +513,22 @@ def test_hypit_tools_only_for_the_configured_internal_workspace(tmp_path, monkey
     ):
         with pytest.raises(ValueError, match="internal development workspace"):
             hypit.hypit_tools(unavailable, workspace)
+        assert (
+            hypit.hypit_runtime_blocker(unavailable, workspace)
+            == hypit.HYPIT_INTERNAL_ONLY
+        )
     module.write_bytes(b"changed")
     with pytest.raises(ValueError, match="bytes changed"):
         hypit.hypit_tools(settings, "internal")
+    assert (
+        hypit.hypit_runtime_blocker(settings, "internal")
+        == hypit.HYPIT_RUNTIME_UNAVAILABLE
+    )
+    (module.parent.parent / "package.json").write_text("[]")
+    assert (
+        hypit.hypit_runtime_blocker(settings, "internal")
+        == hypit.HYPIT_RUNTIME_UNAVAILABLE
+    )
 
 
 @pytest.mark.parametrize("version,supported", [("v22.14.0", False), ("v22.15.0", True)])

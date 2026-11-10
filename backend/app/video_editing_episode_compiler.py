@@ -49,6 +49,7 @@ from .video_editing_hypit import (
 )
 from .video_editing_hypit_strips import (
     LIVE_STRIP_GROUP,
+    PRESENTER_LABEL_GROUP,
     PRICE_CARD_GROUP,
     SLANT_CAPTION_BASELINE,
     SLANT_GROUP,
@@ -80,6 +81,7 @@ from .video_editing_overlay_templates import (
     NUMBERED_TEMPLATE_ID,
     PACKAGE_TEMPLATE_ID,
     PICTURE_TEMPLATE_ID,
+    PRESENTER_LABEL_TEMPLATE_ID,
     PRESENTER_MOTION_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
@@ -806,6 +808,11 @@ def compile_episode(
             (LIVE_STRIP_GROUP,),
             1240,
             "将主字幕放在原生斜切标签的下方。",
+        ),
+        PRESENTER_LABEL_TEMPLATE_ID: (
+            (PRESENTER_LABEL_GROUP,),
+            1240,
+            "将主字幕放在原生人物标签的下方。",
         ),
         PRESENTER_TEMPLATE_ID: (
             ("LYO01", "LYO04"),

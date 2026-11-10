@@ -34,7 +34,7 @@ from .video_editing_overlay_templates import (
     PACKAGE_TEMPLATES,
     PREFERRED_OVERLAY_TYPES,
     QUESTION_CARD_TEMPLATE_ID,
-    overlay_template,
+    template_snapshot_matches,
     validate_template_plan,
 )
 from .video_editing_question_card import (
@@ -300,7 +300,7 @@ def build_request(
         "output_schema": schema,
     }
     if template is not None:
-        if template != overlay_template(template["id"]):
+        if not template_snapshot_matches(template):
             raise ValueError("Selected overlay template changed")
         payload["overlay_template"] = template
     if runtime is not None:

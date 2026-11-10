@@ -96,6 +96,16 @@ def test_hypit_strips_keep_directions_and_bind_entrances_to_words(
         },
         "t": {"end": "120f"},
     }
+    native["media_clocks"] = [{"media_path": strips.STRIP_IMAGE, "frames": 120}]
+    moving = strips.compile_strips(
+        tmp_path, group, native, {"stage": {"kind": "original_video"}}, live_stage=True
+    )
+    assert strips._native_attributes(tmp_path, group, moving)["a4m"] == {
+        "items": "甲@1,2,3,4>left; 乙@5,6,7,8>right; 丙@9,10,11,12>left",
+        "frames": "0,25,50",
+        "bg": "",
+    }
+    assert strips.stagger_audio_frame(strips.PRESENTER_LABEL_GROUP, 25) == 26
     native["events"][1]["token_id"] = "t2"
     with pytest.raises(ValueError, match="spoken label start"):
         strips.compile_strips(tmp_path, group, native, assets)

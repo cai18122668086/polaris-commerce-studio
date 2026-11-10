@@ -97,6 +97,7 @@ from .video_editing_hypit_strips import (
     CARD_TITLES,
     DETAIL_CARDS_TEMPLATE_ID,
     LIVE_STRIP_GROUP,
+    PRESENTER_LABEL_GROUP,
     PRICE_CARD_GROUP,
     PRICE_CARD_INSET_TYPE,
     SLANT_BACKGROUND,
@@ -145,8 +146,10 @@ from .video_editing_native_sound import (
 )
 from .video_editing_overlay_templates import (
     AUTOMATIC_TEMPLATE_DEPENDENCIES,
+    LIVE_STRIP_TEMPLATE_ID,
     OPENING_GROUPS,
     PICTURE_TEMPLATE_ID,
+    PRESENTER_LABEL_TEMPLATE_ID,
     validate_template_plan,
 )
 from .video_editing_presenter_motion import (
@@ -956,6 +959,7 @@ def _entry_sound(
             CARD_GROUP: "图卡进入时给一次短提示，口播继续。",
             NUMBERED_GROUP: "各项原生编号标签进入时给一次短提示，口播继续。",
             LIVE_STRIP_GROUP: "每道斜切标签开始出现时给一次短提示，口播继续。",
+            PRESENTER_LABEL_GROUP: "每项人物标签开始出现时给一次短提示，口播继续。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
             JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
             LINE_GROUP: "线描手势入场时给一次原库提示音，口播继续。",
@@ -1452,6 +1456,7 @@ def _live_strip_entry(
     transcript: Transcript,
     cards: list[dict],
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    presenter_labels = beat.group_id == PRESENTER_LABEL_GROUP
     contract = input_contract(package, group)
     assets = {
         row["id"]: row
@@ -1487,7 +1492,7 @@ def _live_strip_entry(
         raise ApiError(
             422,
             "EDITING_TEMPLATE_STRIP_INPUTS_REQUIRED",
-            "斜切标签需绑定同期原片及三个按首词触发的实录短词，末项须留出入场时间。",
+            "标签需绑定同期原片及三个按首词触发的实录短词，末项须留出入场时间。",
         ) from error
     config = read_json(inside(package, group["input_template"]))
     set_native_field(config, STRIP_IMAGE, None)
@@ -1496,16 +1501,27 @@ def _live_strip_entry(
         placement=NativePlacement(
             layer="overlay",
             rect=[0, 0, 1, 1],
-            reason="原生斜切标签使用本期同期活动画面，主字幕单独排在下方。",
+            reason=(
+                "原生人物标签叠在同期口播上，保留人物比例与原标签位置。"
+                if presenter_labels
+                else "原生斜切标签使用本期同期活动画面，主字幕单独排在下方。"
+            ),
         ),
         recipe={
             "version": "tengli.native-recipe/1",
             "release": MOTION_SHA256,
-            "group_id": LIVE_STRIP_GROUP,
+            "group_id": beat.group_id,
             "template_sha256": contract["template_sha256"],
             "schema_sha256": contract["schema_sha256"],
-            "design_id": "tengli-live-strip-story-v1",
-            "design_reason": "按实录词点沿用原斜切、擦入、字体与大小，标签让出脸部。",
+            "design_id": "tengli-"
+            + (
+                PRESENTER_LABEL_TEMPLATE_ID
+                if presenter_labels
+                else LIVE_STRIP_TEMPLATE_ID
+            ),
+            "design_reason": "按实录词点保留原标签的滑入、底片、刻度和字号。"
+            if presenter_labels
+            else "按实录词点沿用原斜切、擦入、字体与大小，标签让出脸部。",
             "parameter_decisions": {"fonts": "沿用原思源宋体 Heavy。"},
             "config": config,
             "placeholders": [STRIP_IMAGE],
@@ -2555,7 +2571,7 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = CARD_EVENTS
-        elif beat.group_id == LIVE_STRIP_GROUP:
+        elif beat.group_id in {LIVE_STRIP_GROUP, PRESENTER_LABEL_GROUP}:
             entries[beat.id], anchors = _live_strip_entry(
                 package, group, beat, transcript, asset_cards or []
             )
@@ -2625,6 +2641,7 @@ def build_overlay_recipes(
             JUDGMENT_GROUP,
             NUMBERED_GROUP,
             LIVE_STRIP_GROUP,
+            PRESENTER_LABEL_GROUP,
             *YY_OPENING_ALL_GROUPS,
             *PRESENTER_MOTION_GROUPS,
             *AZL_GROUPS,

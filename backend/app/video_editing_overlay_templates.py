@@ -27,6 +27,7 @@ from .video_editing_hypit_foreground import FOREGROUND_MATTE
 from .video_editing_hypit_strips import (
     DETAIL_CARDS_TEMPLATE_ID,
     LIVE_STRIP_GROUP,
+    PRESENTER_LABEL_GROUP,
     PRICE_CARD_GROUP,
     SLANT_GROUP,
 )
@@ -109,6 +110,8 @@ SYNC_SUBTITLE_TEMPLATES = frozenset(
 )
 NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
 LIVE_STRIP_TEMPLATE_ID = "live-strip-story-v1"
+PRESENTER_LABEL_TEMPLATE_ID = "hypit-presenter-labels-v1"
+_PRIOR_SLANT_PURPOSE = "使用原生斜卡、独立底图及右下同期人物呈现三项内容。"
 PACKAGE_TEMPLATES = frozenset({PACKAGE_TEMPLATE_ID, LINE_TEMPLATE_ID})
 _OPENING_PURPOSES = {
     "LYO01": (
@@ -255,6 +258,21 @@ _EXPLAINER_SLOTS = [
     {"group_id": "AHG-S02", "purpose": "标记分类或行动的实录短语"},
 ]
 _TEMPLATES = {
+    PRESENTER_LABEL_TEMPLATE_ID: {
+        "id": PRESENTER_LABEL_TEMPLATE_ID,
+        "name": "人物身上标签与口播重点",
+        "slots": [
+            {
+                "group_id": PRESENTER_LABEL_GROUP,
+                "purpose": "在保持原片人物构图的同时，用三个原生标签强调口播并列项。",
+                "layer": "overlay",
+                "binding": "三个标签分别取实录一至三个汉字，按顺序绑定各自首词。"
+                "stagger#mkstage1 绑定本期同期原片，末项留出入场及阅读时间。",
+            },
+            *_ROLL_SLOTS,
+            _ACTION_SLOT,
+        ],
+    },
     LIVE_STRIP_TEMPLATE_ID: {
         "id": LIVE_STRIP_TEMPLATE_ID,
         "name": "斜切标签与口播重点",
@@ -819,6 +837,7 @@ def overlay_templates() -> list[dict]:
             ROTATION_TEMPLATE_ID,
             NUMBERED_TEMPLATE_ID,
             LIVE_STRIP_TEMPLATE_ID,
+            PRESENTER_LABEL_TEMPLATE_ID,
             PACKAGE_TEMPLATE_ID,
             LINE_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,
@@ -850,10 +869,21 @@ def overlay_template(template_id: str) -> dict:
     return deepcopy(_TEMPLATES[template_id])
 
 
+def template_snapshot_matches(template: dict) -> bool:
+    current = overlay_template(template["id"])
+    if template == current:
+        return True
+    if template["id"] != HY_PICTURE_TEMPLATE_ID:
+        return False
+    # The original copy is part of the request digest of existing slant plans.
+    current["slots"][0]["purpose"] = _PRIOR_SLANT_PURPOSE
+    return template == current
+
+
 def validate_template_plan(
     plan: SemanticPlan, template: dict, *, complete: bool
 ) -> None:
-    if template != overlay_template(template["id"]):
+    if not template_snapshot_matches(template):
         raise ValueError("Overlay template version or slots changed")
     allow_question_gloss = template["id"] == QUESTION_CARD_TEMPLATE_ID
     if any(

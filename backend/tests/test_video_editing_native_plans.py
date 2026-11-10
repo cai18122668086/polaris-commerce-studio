@@ -498,6 +498,30 @@ def test_full_frame_requires_the_audited_moving_backdrop():
     assert full_native_canvas_allowed("W-R18", entry)
 
 
+def test_hypit_presenter_labels_accept_only_the_full_audited_canvas():
+    from app.video_editing_hypit_strips import PRESENTER_LABEL_GROUP
+    from app.video_editing_render_edits import continuous_overlay_groups
+
+    group = PRESENTER_LABEL_GROUP
+    semantic = {"beats": [{"id": "labels", "group_id": group}]}
+    entry = {
+        "placement": {"layer": "overlay", "rect": [0, 0, 1, 1]},
+        "recipe": {"group_id": group, "hypit_live_stage": True},
+    }
+    recipes = {
+        "entries": {"labels": entry},
+        "protected_regions": [{"id": "centered-portrait", "rect": [0.1, 0, 0.8, 0.4]}],
+    }
+    assert not continuous_overlay_groups(semantic, recipes, set())
+    assert continuous_overlay_groups(
+        semantic, recipes, set(), allow_hypit_insets=True
+    ) == {group}
+    entry["placement"]["rect"] = [0.1, 0.5, 0.8, 0.2]
+    assert not continuous_overlay_groups(
+        semantic, recipes, set(), allow_hypit_insets=True
+    )
+
+
 def test_continuous_narration_accepts_an_explicit_full_original_scene():
     from app.video_editing_render_edits import continuous_overlay_groups
 

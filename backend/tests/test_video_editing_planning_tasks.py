@@ -149,6 +149,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "rotation-cards-v1",
         "numbered-pictures-v1",
         "live-strip-story-v1",
+        "hypit-presenter-labels-v1",
         "package-specs-v1",
         "line-story-v1",
         "presenter-openings-v1",
@@ -411,10 +412,26 @@ def test_missing_original_after_preparation_stops_before_model_submission(
     assert fonts[removed] not in json.dumps(frozen)
 
 
+def test_saved_slant_template_accepts_only_the_previous_exact_copy():
+    from app.video_editing_hypit import HY_PICTURE_TEMPLATE_ID
+    from app.video_editing_overlay_templates import (
+        overlay_template,
+        template_snapshot_matches,
+    )
+
+    saved = overlay_template(HY_PICTURE_TEMPLATE_ID)
+    assert template_snapshot_matches(saved)
+    saved["slots"][0]["purpose"] = "使用原生斜卡、独立底图及右下同期人物呈现三项内容。"
+    assert template_snapshot_matches(saved)
+    saved["slots"][0]["binding"] = "改动绑定合同"
+    assert not template_snapshot_matches(saved)
+
+
 @pytest.mark.parametrize(
     ("template_id", "group_ids"),
     [
         ("live-strip-story-v1", ("HY-A5",)),
+        ("hypit-presenter-labels-v1", ("HY-A4",)),
         ("hypit-picture-scenes-v1", ("HY-A2", "HY-A3")),
         ("hypit-detail-cards-v1", ("HY-A6",)),
     ],

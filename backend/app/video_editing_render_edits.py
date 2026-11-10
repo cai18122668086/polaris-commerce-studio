@@ -169,11 +169,11 @@ def continuous_overlay_groups(
         transparent = gid in transparent_groups and (
             entry.get("placement", {}).get("layer") == "subtitle"
         )
-        allow_inset = (allow_hypit_insets and gid in HY_PORTRAIT_INSETS) or (
-            allow_question_insets and gid == QUESTION_GROUP
-        )
+        allow_native_overlay = (
+            allow_hypit_insets and gid in HY_PORTRAIT_INSETS | LIVE_STAGE_GROUPS
+        ) or (allow_question_insets and gid == QUESTION_GROUP)
         if not (transparent or native_canvas) and not (
-            allow_inset
+            allow_native_overlay
             and (
                 full_native_canvas_allowed(gid, entry)
                 or portrait_inset_allowed(

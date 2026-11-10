@@ -27,7 +27,10 @@ PRICE_CARD_PROFILE = "hypit-original-price-cards/1"
 DETAIL_CARDS_TEMPLATE_ID = "hypit-detail-cards-v1"
 PRICE_CARD_INSET_TYPE = "larger-inset-type-v1"
 LIVE_STRIP_GROUP = "HY-A5"
-LIVE_STAGE_GROUPS = frozenset((LIVE_STRIP_GROUP, PRICE_CARD_GROUP))
+PRESENTER_LABEL_GROUP = "HY-A4"
+LIVE_STAGE_GROUPS = frozenset(
+    (PRESENTER_LABEL_GROUP, LIVE_STRIP_GROUP, PRICE_CARD_GROUP)
+)
 LIVE_STAGE_PROFILE = "hypit-live-stage/1"
 FLOW_GROUP = "HY-A7"
 FLOW_PROFILE = "hypit-original-flow-labels/1"
@@ -46,7 +49,7 @@ STAGGER_GROUPS = {
         "a2m",
         "b98b222286255520885ece7059ff2d9fbf3cd0bea6c26c8d12ba521365d29938",
     ),
-    "HY-A4": (
+    PRESENTER_LABEL_GROUP: (
         "a4m",
         "b02ffa4c994e697eb3af1405483df2fd2d2e42d02fa035bdfb4663b49c416ddb",
     ),
@@ -90,9 +93,7 @@ def stagger_events(group_id: str) -> tuple[str, ...]:
 def stagger_audio_frame(group_id: str, entry_frame: int) -> int:
     # In the pinned wipe and zoom profiles, the entry marker still has zero
     # visibility. The original component first changes pixels on the next frame.
-    return entry_frame + int(
-        group_id in {SLANT_GROUP, LIVE_STRIP_GROUP, PRICE_CARD_GROUP, FLOW_GROUP}
-    )
+    return entry_frame + int(group_id in STAGGER_GROUPS)
 
 
 def strip_fields(group_id: str) -> list[dict[str, str]]:
@@ -304,9 +305,10 @@ def _native_attributes(package: Path, group: dict, data: dict) -> dict:
                 "Live stage requires the original strip or price-card canvas"
             )
         slot["bg"] = ""
-        slot["items"] = _live_stage_items(
-            slot.get("items", tag[1]), price_cards=group["id"] == PRICE_CARD_GROUP
-        )
+        if group["id"] != PRESENTER_LABEL_GROUP:
+            slot["items"] = _live_stage_items(
+                slot.get("items", tag[1]), price_cards=group["id"] == PRICE_CARD_GROUP
+            )
     return {
         node: {**slot, "frames": ",".join(map(str, starts))},
         "t": {"end": f"{frames}f"},

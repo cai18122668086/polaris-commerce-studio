@@ -171,7 +171,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
         <input type="checkbox" checked={batchIds.includes(job.id)} disabled={busy || (!batchIds.includes(job.id) && batchIds.length >= maxPreviewBatch)} onChange={event => setBatchSelection(event.target.checked ? [...batchIds, job.id] : batchIds.filter(id => id !== job.id))} />加入批量预览
       </label>}
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>当前运行条件未满足的动效 · {job.unavailable_template_group_ids.join("、")}</p>}
-      {job.unavailable_template_group_ids?.includes("HY-A5") && <p className={styles.note}>斜切标签需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。</p>}
+      {job.unavailable_template_group_ids?.some(id => id === "HY-A4" || id === "HY-A5") && <p className={styles.note}>原生人物标签和斜切标签需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。</p>}
       {job.unavailable_template_group_ids?.some(id => id === "HY-A2" || id === "HY-A3") && <p className={styles.note}>原生三图卡需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。斜卡还需要原字体和抠像模型。</p>}
       {job.unavailable_template_group_ids?.includes("HY-A6") && <p className={styles.note}>原生双行三卡需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。</p>}
       {job.unavailable_template_group_ids?.includes("YYP05") && <p className={styles.note}>双素材接力需要无内嵌字幕的原片，以及两段不同且足够长的本期补充视频。</p>}

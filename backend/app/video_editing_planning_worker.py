@@ -30,7 +30,7 @@ from .video_editing_cut_scenes import cut_scene_blockers
 from .video_editing_cxbr import cxbr_blockers, cxbr_windows
 from .video_editing_handoff_scenes import handoff_blockers
 from .video_editing_hypit import PICTURE_GROUP, hypit_tools
-from .video_editing_hypit_strips import LIVE_STRIP_GROUP, PRICE_CARD_GROUP, SLANT_GROUP
+from .video_editing_hypit_strips import LIVE_STAGE_GROUPS, SLANT_GROUP
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest
@@ -60,8 +60,7 @@ def hypit_template_blockers(
     groups = {
         slot["group_id"]
         for slot in (template or {}).get("slots", [])
-        if slot["group_id"]
-        in {LIVE_STRIP_GROUP, SLANT_GROUP, PICTURE_GROUP, PRICE_CARD_GROUP}
+        if slot["group_id"] in LIVE_STAGE_GROUPS | {SLANT_GROUP, PICTURE_GROUP}
     }
     if not groups:
         return {}

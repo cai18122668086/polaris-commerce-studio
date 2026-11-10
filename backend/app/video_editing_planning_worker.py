@@ -54,6 +54,7 @@ from .video_editing_native_content import (
     WHY_GROUP,
 )
 from .video_editing_native_plans import content_digest
+from .video_editing_planning_preview import pending_auto_preview, resume_auto_preview
 from .video_editing_planning_store import (
     FILES,
     execution_available,
@@ -193,6 +194,7 @@ def process(
         )
         if not cast(CursorResult, claimed).rowcount:
             session.rollback()
+            resume_auto_preview(task_id, settings, factory)
             return
         row = session.get(EditingPlanningTaskRecord, task_id)
         assert row is not None
@@ -748,6 +750,9 @@ def process(
             attempt / "failure.json",
             {"code": code, "exception_type": type(error).__name__},
         )
+    else:
+        if status == "completed":
+            resume_auto_preview(task_id, settings, factory)
 
 
 def recover(factory: sessionmaker[Session]) -> int:
@@ -757,7 +762,10 @@ def recover(factory: sessionmaker[Session]) -> int:
         ids = list(
             session.scalars(
                 select(EditingPlanningTaskRecord.id)
-                .where(eligible(), or_(due.is_(None), due <= now))
+                .where(
+                    or_(eligible(), pending_auto_preview()),
+                    or_(due.is_(None), due <= now),
+                )
                 .order_by(EditingPlanningTaskRecord.created_at)
                 .limit(100)
             )
@@ -776,7 +784,7 @@ def enqueue(task_id: str, factory: sessionmaker[Session]) -> bool:
             .where(
                 EditingPlanningTaskRecord.id == task_id,
                 EditingPlanningTaskRecord.revision == row.revision,
-                eligible(),
+                or_(eligible(), pending_auto_preview()),
             )
             .values(
                 checkpoint={**row.checkpoint, "dispatch_not_before": now + 300},

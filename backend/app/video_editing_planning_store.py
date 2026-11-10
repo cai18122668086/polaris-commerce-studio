@@ -164,6 +164,17 @@ def planning_response(
         if row.result.get("preview_task_id")
         else "not_compiled",
         "preview_task_id": row.result.get("preview_task_id"),
+        "auto_preview": row.checkpoint.get("auto_preview", False),
+        "auto_preview_available": (
+            row.status == "prepared"
+            and settings.video_editing_native_plan_enabled
+            and bool(row.snapshot.get("overlay_template"))
+        ),
+        "auto_preview_error_code": (
+            None
+            if row.result.get("preview_task_id")
+            else row.result.get("auto_preview_error_code")
+        ),
         "overlay_template": row.snapshot.get("overlay_template"),
         "available_template_group_count": available,
         "excluded_template_group_ids": excluded or None,
@@ -330,6 +341,15 @@ def create_planning_task(
                 "选组或模型已变化，请重新准备请求后核对。",
             )
         require_template_group_capacity(prepared.snapshot)
+        if body.auto_preview and (
+            not settings.video_editing_native_plan_enabled
+            or not prepared.snapshot.get("overlay_template")
+        ):
+            raise ApiError(
+                409,
+                "EDITING_AUTO_PREVIEW_UNAVAILABLE",
+                "自动生成代理需要可运行的组合模板。请重新准备或单独提交语义规划。",
+            )
         snapshot = {
             **prepared.snapshot,
             "expected_request_sha256": prepared.result["request_sha256"],
@@ -351,6 +371,7 @@ def create_planning_task(
         mode=body.mode,
         model=model,
         snapshot=snapshot,
+        checkpoint={"auto_preview": True} if body.auto_preview else {},
     )
     session.add(row)
     try:

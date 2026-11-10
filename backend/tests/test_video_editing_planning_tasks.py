@@ -18,7 +18,7 @@ from pydantic import SecretStr
 from sqlalchemy import create_engine, inspect, select, text
 
 from app import video_editing_hypit as hypit
-from app import video_editing_planning_routes as planning_routes
+from app import video_editing_planning_preview as planning_preview
 from app import video_editing_planning_worker as worker
 from app import video_editing_task_routes as task_routes
 from app.config import Settings
@@ -623,7 +623,7 @@ def test_completed_planning_preview_is_linked_before_dispatch_and_replayed(
         assert str(options.native_plan_id) == candidate.id
         assert options.delivery == "preview_first"
 
-    monkeypatch.setattr(planning_routes, "gateway_candidate", gateway)
+    monkeypatch.setattr(planning_preview, "gateway_candidate", gateway)
     monkeypatch.setattr(task_routes, "admit_render_plan", admit)
     dispatched = []
 
@@ -647,6 +647,92 @@ def test_completed_planning_preview_is_linked_before_dispatch_and_replayed(
     assert planning["native_render_state"] == "preview_requested"
     assert planning["semantic"] == semantic.model_dump(mode="json")
     assert provider.calls == 1
+
+
+@pytest.mark.parametrize("outcome", ["immediate", "recover", "blocked"])
+def test_auto_preview_continues_one_saved_model_submission(
+    video, tmp_path, monkeypatch, outcome
+):
+    client, _, ws, settings, source, task, semantic = setup(
+        video, tmp_path, monkeypatch
+    )
+    factory = client.app.state.session_factory
+    settings.video_editing_native_plan_enabled = True
+    enable_fixture(settings)
+    url = base(ws) + f"/editing-tasks/{task['id']}/planning-tasks"
+    prepared = client.post(
+        url, json={"request_id": str(uuid4()), "template_id": "label-compare-v1"}
+    ).json()
+    worker.process(prepared["id"], settings, factory)
+    task_url = base(ws) + "/editing-planning-tasks/"
+    prepared = client.get(task_url + prepared["id"]).json()
+    assert prepared["status"] == "prepared" and prepared["auto_preview_available"]
+    assert (
+        client.post(
+            url, json={"request_id": str(uuid4()), "auto_preview": True}
+        ).status_code
+        == 422
+    )
+    body = {
+        "request_id": str(uuid4()),
+        "mode": "generate",
+        "prepared_task_id": prepared["id"],
+        "auto_preview": True,
+    }
+    submitted = client.post(url, json=body)
+    assert submitted.status_code == 200, submitted.text
+    planning = submitted.json()["id"]
+    assert client.post(url, json=body).json()["id"] == planning
+
+    # This fixture isolates queue handoff from the native catalog and recipes.
+    monkeypatch.setattr(worker.planner, "validate_template_plan", lambda *a, **k: None)
+    candidate = SimpleNamespace(
+        id=str(uuid4()),
+        source_id=source,
+        details={"source_subtitles": "none"},
+        recipes={"design": {"caption_font_id": "font-d1961be1161ea1be"}},
+    )
+    adopted = []
+
+    def gateway(_session, _settings, _workspace, row):
+        adopted.append(row.id)
+        if outcome == "blocked":
+            raise ApiError(422, "EDITING_PLAN_GROUPS_INSUFFICIENT", "Fixture")
+        return candidate
+
+    monkeypatch.setattr(planning_preview, "gateway_candidate", gateway)
+    monkeypatch.setattr(task_routes, "admit_render_plan", lambda *args: None)
+    resume = worker.resume_auto_preview
+    if outcome == "recover":
+        monkeypatch.setattr(worker, "resume_auto_preview", lambda *args: None)
+    provider = Provider(semantic)
+    worker.process(planning, settings, factory, provider)
+    if outcome == "recover":
+        monkeypatch.setattr(worker, "resume_auto_preview", resume)
+        queue = []
+
+        def enqueue(task_id, _factory):
+            queue.append(task_id)
+            return True
+
+        monkeypatch.setattr(worker, "enqueue", enqueue)
+        assert worker.recover(factory) == 1
+        assert queue == [planning]
+        worker.process(queue[0], settings, factory, provider)
+
+    worker.process(planning, settings, factory, provider)
+    result = client.get(task_url + planning).json()
+    assert result["status"] == "completed" and result["call_state"] == "response_saved"
+    assert result["auto_preview"] and result["semantic"]
+    assert provider.calls == 1 and adopted == [planning]
+    if outcome == "blocked":
+        assert result["auto_preview_error_code"] == "EDITING_PLAN_GROUPS_INSUFFICIENT"
+        assert "preview_task_id" not in result
+    else:
+        assert result["preview_task_id"]
+        replay = client.post(task_url + planning + "/preview")
+        assert replay.json()["id"] == result["preview_task_id"]
+        assert replay.json()["options"]["delivery"] == "preview_first"
 
 
 def test_batch_previews_commit_independently_and_replay_single_ids(
@@ -676,7 +762,7 @@ def test_batch_previews_commit_independently_and_replay_single_ids(
             recipes={"design": {"caption_font_id": "font-d1961be1161ea1be"}},
         )
 
-    monkeypatch.setattr(planning_routes, "gateway_candidate", gateway)
+    monkeypatch.setattr(planning_preview, "gateway_candidate", gateway)
     monkeypatch.setattr(task_routes, "admit_render_plan", lambda *args: None)
     dispatched = []
     client.app.state.editing_dispatcher = dispatched.append

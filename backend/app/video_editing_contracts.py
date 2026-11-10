@@ -487,6 +487,7 @@ class EditingPlanningTaskCreate(StrictVideoModel):
     request_id: UUID
     mode: Literal["prepare", "generate"] = "prepare"
     prepared_task_id: UUID | None = None
+    auto_preview: bool = Field(default=False, exclude_if=lambda value: not value)
     material_ids: list[UUID] | None = Field(
         default=None, max_length=24, exclude_if=lambda value: value is None
     )
@@ -501,6 +502,8 @@ class EditingPlanningTaskCreate(StrictVideoModel):
     def prepared_execution(self) -> Self:
         if (self.mode == "generate") != (self.prepared_task_id is not None):
             raise ValueError("Model execution needs exactly one prepared request")
+        if self.auto_preview and self.mode != "generate":
+            raise ValueError("Automatic preview requires an explicit model submission")
         if self.template_id is not None and self.mode != "prepare":
             raise ValueError("Template is frozen when preparing the planning request")
         if self.material_ids is not None and (
@@ -662,6 +665,13 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     native_render_state: Literal["not_compiled", "preview_requested"] = "not_compiled"
     preview_task_id: str | None = Field(
         default=None, exclude_if=lambda value: value is None
+    )
+    auto_preview: bool = Field(default=False, exclude_if=lambda value: not value)
+    auto_preview_error_code: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    auto_preview_available: bool = Field(
+        default=False, exclude_if=lambda value: not value
     )
     unavailable_template_group_ids: list[str] | None = Field(
         default=None, exclude_if=lambda value: value is None

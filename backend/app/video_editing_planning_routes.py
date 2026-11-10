@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from typing import Any, cast
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import UUID
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
@@ -21,16 +21,14 @@ from .video_editing_contracts import (
     EditingPlanningPreviewBatchItem,
     EditingPlanningTaskCreate,
     EditingPlanningTaskResponse,
-    EditingTaskCreate,
     EditingTaskResponse,
 )
 from .video_editing_native_plans import (
     plan_response,
-    register_gateway_plan,
     transparent_original_groups,
 )
-from .video_editing_overlay_recipes import PROFILE_ID
 from .video_editing_overlay_templates import overlay_templates
+from .video_editing_planning_preview import gateway_candidate, persist_planning_preview
 from .video_editing_planning_store import (
     create_planning_task,
     execution_available,
@@ -39,15 +37,14 @@ from .video_editing_planning_store import (
     planning_root,
     require_active_planning_template,
 )
-from .video_editing_task_models import (
-    EditingNativePlanRecord,
-    EditingPlanningTaskRecord,
+from .video_editing_task_models import EditingPlanningTaskRecord
+from .video_editing_task_routes import (
+    dispatch as dispatch_editing,
 )
 from .video_editing_task_routes import (
     enabled,
     own_project,
     own_task,
-    submit_editing_task,
 )
 from .video_editing_task_routes import (
     response as editing_response,
@@ -150,25 +147,6 @@ def create_native_candidate(
     return plan_response(candidate, settings, transparent_original_groups(settings))
 
 
-def gateway_candidate(
-    session: Session,
-    settings: Settings,
-    workspace: WorkspaceContext,
-    row: EditingPlanningTaskRecord,
-) -> EditingNativePlanRecord:
-    require_active_planning_template(row.snapshot.get("overlay_template", {}).get("id"))
-    if not settings.video_editing_native_plan_enabled:
-        raise ApiError(503, "EDITING_NATIVE_PLAN_DISABLED", "原生编排服务尚未开放。")
-    return register_gateway_plan(
-        session,
-        settings,
-        workspace.workspace_id,
-        workspace.principal.user_id,
-        row.id,
-        str(uuid5(NAMESPACE_URL, f"tengli:{PROFILE_ID}:{row.id}")),
-    )
-
-
 @router.post(
     "/editing-planning-tasks/{task_id}/preview",
     response_model=EditingTaskResponse,
@@ -240,33 +218,10 @@ def submit_planning_preview(
     session: Session,
     settings: Settings,
 ) -> dict[str, Any]:
-    request_id = uuid5(NAMESPACE_URL, f"tengli:planning-preview-v1:{row.id}")
-    if saved := row.result.get("preview_task_id"):
-        previous = own_task(session, workspace, saved)
-        if (previous.request_id, previous.project_id, previous.source_id) != (
-            str(request_id),
-            row.project_id,
-            row.source_id,
-        ):
-            raise ApiError(
-                409, "EDITING_PREVIEW_LINK_CHANGED", "预览与已保存的规划不匹配。"
-            )
-        return editing_response(previous, session)
-    candidate = gateway_candidate(session, settings, workspace, row)
-    payload = EditingTaskCreate.model_validate(
-        {
-            "request_id": request_id,
-            "source_id": candidate.source_id,
-            "options": {
-                "mode": "native_plan",
-                "native_plan_id": candidate.id,
-                "source_subtitles": candidate.details["source_subtitles"],
-                "caption_font_id": candidate.recipes["design"]["caption_font_id"],
-                "delivery": "preview_first",
-            },
-        }
-    )
-    return submit_editing_task(payload, request, workspace, session, preview_for=row)
+    task, created = persist_planning_preview(row, workspace, session, settings)
+    if created:
+        dispatch_editing(request, task.id)
+    return editing_response(task, session)
 
 
 @router.post(

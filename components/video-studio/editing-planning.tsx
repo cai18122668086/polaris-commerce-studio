@@ -16,7 +16,13 @@ const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const maxPreviewBatch = 5;
 const retiredTemplate = (job: Job) => job.overlay_template?.id === "fruit-introduction-v1";
 const belowMinimum = (job: Job) => (job.motion_counts?.distinct_groups ?? minDistinctMotionGroups) < minDistinctMotionGroups;
-const canBatchPreview = (job: Job) => job.status === "completed" && job.overlay_template && !retiredTemplate(job) && !job.preview_task_id && !belowMinimum(job);
+const pendingAutoPreview = (job: Job) => job.auto_preview && !job.preview_task_id && !job.auto_preview_error_code;
+const canBatchPreview = (job: Job) => job.status === "completed" && job.overlay_template && !retiredTemplate(job) && !job.preview_task_id && !pendingAutoPreview(job) && !belowMinimum(job);
+const autoPreviewErrors: Record<string, string> = {
+  EDITING_PLAN_GROUPS_INSUFFICIENT: "候选少于五种不同动效，代理未提交。已保存本次候选。",
+  EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已变化，代理未提交。已保存本次候选。",
+  EDITING_PLANNING_PROVENANCE_CHANGED: "无法核对已保存的规划来源，代理未提交。",
+};
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = { EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。", EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。", EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。", EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。", EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。", EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "可选动效少于五种。请核对项目备忘、素材或模板后重新准备。", EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。", EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。" };
 
@@ -30,6 +36,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
   const [templates, setTemplates] = useState<OverlayTemplate[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateError, setTemplateError] = useState(false);
+  const [manualPreviewIds, setManualPreviewIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -67,11 +74,12 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
     try {
       const currentMaterials = mode === "prepare" ? [...materialIds].sort() : [];
       const selectedTemplate = mode === "prepare" ? templateId : undefined;
-      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials, selectedTemplate]);
+      const shouldPreview = Boolean(prepared?.auto_preview_available && !manualPreviewIds.includes(prepared.id));
+      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials, selectedTemplate, shouldPreview]);
       if (!intent.current || intent.current.key !== key) intent.current = { key, id: crypto.randomUUID() };
       unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/planning-tasks`, {
         params: { path: { workspace_id: workspaceId, task_id: taskId } }, signal: AbortSignal.timeout(12000),
-        body: { request_id: intent.current.id, mode, template_id: selectedTemplate, ...(prepared ? { prepared_task_id: prepared.id } : {}), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
+        body: { request_id: intent.current.id, mode, template_id: selectedTemplate, auto_preview: shouldPreview, ...(prepared ? { prepared_task_id: prepared.id } : {}), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
       }));
       intent.current = undefined; setJobs(await refresh());
     } catch (caught) { setError(caught instanceof Error ? caught.message : "提交暂未确认，再次点击会查询同一请求。"); }
@@ -235,6 +243,13 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
         <p className={styles.note}>尚未调用模型，没有规划结果。执行时最大输出 5000 token，输入另计，实际费用按腾力网关账单。</p>
         {job.artifacts.filter(a => a.role === "request").map(a => <a key={a.id} href={a.url} download>下载已准备请求</a>)}
         {!retiredTemplate(job) && <>
+          {job.auto_preview_available && <label>
+            <input type="checkbox" checked={!manualPreviewIds.includes(job.id)} disabled={busy || jobs.some(j => j.prepared_task_id === job.id)} onChange={event => {
+              const checked = event.target.checked;
+              setManualPreviewIds(ids => checked ? ids.filter(id => id !== job.id) : [...ids, job.id]);
+            }} />
+            候选通过后自动生成代理预览
+          </label>}
           <button type="button" disabled={busy || insufficient || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>生成重点与选组候选（付费）</button>
           {insufficient && <p className={styles.note}>可选动效少于五种，请核对项目备忘、素材或更换模板后重新准备。</p>}
           {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
@@ -246,9 +261,11 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
       </li>)}</ul><p className={styles.note}>{belowMinimumForPreview ? "可先核对候选语义和事实。" : "语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。"}</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
       {job.status === "completed" && job.overlay_template && <>
         {batchErrors[job.id] && <p role="alert" className={styles.error}>{batchErrors[job.id]}</p>}
+        {pendingAutoPreview(job) && <p role="status" className={styles.note}>候选已保存，正在提交代理预览。</p>}
+        {job.auto_preview_error_code && <p role="alert" className={styles.error}>{autoPreviewErrors[job.auto_preview_error_code] || "自动代理未提交。已保存本次候选，可用同一份规划再次提交代理。"}</p>}
         {job.preview_task_id && tasks.some(task => task.id === job.preview_task_id)
           ? <a href={`#editing-task-${job.preview_task_id}`}>查看本次代理预览任务</a>
-          : (job.preview_task_id || !retiredTemplate(job)) && <button type="button" disabled={busy || (!job.preview_task_id && belowMinimumForPreview)} onClick={() => void preview(job)}>{job.preview_task_id ? "读取本次代理预览任务" : "按本次规划生成代理预览"}</button>}
+          : (job.preview_task_id || (!retiredTemplate(job) && !pendingAutoPreview(job))) && <button type="button" disabled={busy || (!job.preview_task_id && belowMinimumForPreview)} onClick={() => void preview(job)}>{job.preview_task_id ? "读取本次代理预览任务" : "按本次规划生成代理预览"}</button>}
         {nativePlans[job.id]
           ? <a href={`#editing-native-plan-${nativePlans[job.id]}`}>查看本次原生编排</a>
           : !retiredTemplate(job) && <button type="button" disabled={busy || belowMinimumForPreview} onClick={() => void adopt(job)}>保存编排后调整</button>}

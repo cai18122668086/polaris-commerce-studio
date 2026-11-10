@@ -6184,6 +6184,11 @@ export interface components {
         };
         /** EditingPlanningTaskCreate */
         EditingPlanningTaskCreate: {
+            /**
+             * Auto Preview
+             * @default false
+             */
+            auto_preview: boolean;
             /** Material Ids */
             material_ids?: string[] | null;
             /**
@@ -6210,6 +6215,18 @@ export interface components {
             artifacts: components["schemas"]["EditingArtifactResponse"][];
             /** Attempts */
             attempts: number;
+            /**
+             * Auto Preview
+             * @default false
+             */
+            auto_preview: boolean;
+            /**
+             * Auto Preview Available
+             * @default false
+             */
+            auto_preview_available: boolean;
+            /** Auto Preview Error Code */
+            auto_preview_error_code?: string | null;
             /** Available Template Group Count */
             available_template_group_count?: number | null;
             /** Base Task Id */

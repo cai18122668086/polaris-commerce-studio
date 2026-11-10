@@ -6112,6 +6112,11 @@
       "EditingPlanningTaskCreate": {
         "additionalProperties": false,
         "properties": {
+          "auto_preview": {
+            "default": false,
+            "title": "Auto Preview",
+            "type": "boolean"
+          },
           "material_ids": {
             "anyOf": [
               {
@@ -6194,6 +6199,27 @@
           "attempts": {
             "title": "Attempts",
             "type": "integer"
+          },
+          "auto_preview": {
+            "default": false,
+            "title": "Auto Preview",
+            "type": "boolean"
+          },
+          "auto_preview_available": {
+            "default": false,
+            "title": "Auto Preview Available",
+            "type": "boolean"
+          },
+          "auto_preview_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Preview Error Code"
           },
           "available_template_group_count": {
             "anyOf": [

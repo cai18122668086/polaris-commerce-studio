@@ -441,17 +441,61 @@ def submit_editing_task(
     request: Request,
     workspace: WorkspaceContext,
     session: Session,
-    *,
-    preview_for: EditingPlanningTaskRecord | None = None,
 ) -> dict[str, Any]:
     require_workspace_write(workspace)
-    settings = enabled(request)
+    row, created = persist_editing_task(body, enabled(request), workspace, session)
+    if created:
+        dispatch(request, row.id)
+    return response(row, session)
+
+
+def persist_editing_task(
+    body: EditingTaskCreate,
+    settings: Settings,
+    workspace: WorkspaceContext,
+    session: Session,
+    *,
+    preview_for: EditingPlanningTaskRecord | None = None,
+) -> tuple[EditingTaskRecord, bool]:
+    require_workspace_write(workspace)
+
+    def lock_planning_row() -> EditingPlanningTaskRecord | None:
+        if preview_for is None:
+            return None
+        planning = session.scalar(
+            select(EditingPlanningTaskRecord)
+            .where(
+                EditingPlanningTaskRecord.id == preview_for.id,
+                EditingPlanningTaskRecord.workspace_id == workspace.workspace_id,
+                EditingPlanningTaskRecord.owner_user_id == workspace.principal.user_id,
+                EditingPlanningTaskRecord.status == "completed",
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if planning is None:
+            raise ApiError(
+                409, "EDITING_PREVIEW_LINK_CHANGED", "已保存的规划暂不可用。"
+            )
+        return planning
+
+    planning = lock_planning_row()
 
     def link_preview(task: EditingTaskRecord) -> bool:
-        if preview_for is None or preview_for.result.get("preview_task_id") == task.id:
+        if planning is None:
             return False
-        preview_for.result = {**preview_for.result, "preview_task_id": task.id}
-        preview_for.revision += 1
+        previous_result = planning.result
+        if previous_result.get("preview_task_id") == task.id:
+            return False
+        if previous_result.get("preview_task_id"):
+            raise ApiError(
+                409, "EDITING_PREVIEW_LINK_CHANGED", "预览与已保存的规划不匹配。"
+            )
+        planning.result = {
+            **previous_result,
+            "preview_task_id": task.id,
+        }
+        planning.revision += 1
         return True
 
     payload = body.model_dump(mode="json")
@@ -475,7 +519,7 @@ def submit_editing_task(
             )
         if link_preview(previous):
             session.commit()
-        return response(previous, session)
+        return previous, False
     source: EditingSourceRecord | None
     if body.options.native_plan_id and body.generation_task_id:
         raise ApiError(
@@ -583,6 +627,7 @@ def submit_editing_task(
         session.commit()
     except IntegrityError:
         session.rollback()
+        planning = lock_planning_row()
         concurrent = session.scalar(
             select(EditingTaskRecord).where(
                 EditingTaskRecord.workspace_id == workspace.workspace_id,
@@ -593,12 +638,11 @@ def submit_editing_task(
         if concurrent and concurrent.request_hash == fingerprint:
             if link_preview(concurrent):
                 session.commit()
-            return response(concurrent, session)
+            return concurrent, False
         raise ApiError(
             409, "EDITING_TASK_CONFLICT", "剪辑请求发生冲突，请刷新任务后重试。"
         ) from None
-    dispatch(request, row.id)
-    return response(row, session, source)
+    return row, True
 
 
 @router.get("/editing-tasks", response_model=list[EditingTaskResponse])

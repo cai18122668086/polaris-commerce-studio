@@ -35,10 +35,13 @@ from .video_editing_browser_clocks import (
     SPLIT_VERTICAL,
 )
 from .video_editing_browser_rotation import (
+    BROWSER_CARD_GROUPS,
     ROTATION_EVENTS,
     ROTATION_GROUP,
     ROTATION_IMAGES,
     ROTATION_LABELS,
+    STRIP_CARD_DESIGN,
+    STRIP_CARD_GROUP,
     rotation_card_clock,
     rotation_source_clock,
 )
@@ -986,6 +989,8 @@ def _entry_sound(
     )
     if beat.group_id == COMMENT and path == "/timing/events/submitted_in":
         selection = _CLICK
+    if beat.group_id == STRIP_CARD_GROUP:
+        selection = _CLICK
     if beat.group_id == WHY_GROUP and path is not None:
         selection = _WHY_SOUNDS[path]
     if beat.group_id == ROLE_CHAIN_GROUP and path is not None:
@@ -1036,6 +1041,7 @@ def _entry_sound(
             LIVE_STRIP_GROUP: "每道斜切标签开始出现时给一次短提示，口播继续。",
             PRESENTER_LABEL_GROUP: "每项人物标签开始出现时给一次短提示，口播继续。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
+            STRIP_CARD_GROUP: "原生特写条首次可见时给一次短提示，口播继续。",
             JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
             LINE_GROUP: "线描手势入场时给一次原库提示音，口播继续。",
         }.get(
@@ -1628,6 +1634,7 @@ def _rotation_entry(
     transcript: Transcript,
     asset_cards: list[dict],
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    strip = group["id"] == STRIP_CARD_GROUP
     contract = input_contract(package, group)
     assets = {
         card["id"]: {
@@ -1671,12 +1678,17 @@ def _rotation_entry(
             set_native_field(config, path, row["text"])
         for path, row in events.items():
             set_native_field(config, path, row["value"])
-        rotation_card_clock(config, anchors, assets)
+        rotation_card_clock(config, anchors, assets, strip=strip)
     except ValueError as error:
         raise ApiError(
             422,
             "EDITING_TEMPLATE_ROTATION_INPUTS_REQUIRED",
-            "轮换图卡需绑定本期原片与三个各自配图的实录短词，首项开场，后两项留足切换时间。",
+            "堆叠图卡需要本期原片、三个分别配图的实录短词和足够的入场时间。"
+            if strip
+            else (
+                "轮换图卡需绑定本期原片与三个各自配图的实录短词，"
+                "首项开场，后两项留足切换时间。"
+            ),
         ) from error
     slots = [*text, *events, *media]
     for path in slots:
@@ -1684,16 +1696,22 @@ def _rotation_entry(
     return NativeEpisodeEntry(
         carrier="picture",
         placement=NativePlacement(
-            layer="scene", rect=[0, 0, 1, 1], reason="按原生暖色构图轮换同期图卡。"
+            layer="scene",
+            rect=[0, 0, 1, 1],
+            reason="按原生轨迹堆叠本期特写条，人物同期等比入画。"
+            if strip
+            else "按原生暖色构图轮换同期图卡。",
         ),
         recipe={
             "version": "tengli.native-recipe/1",
             "release": MOTION_SHA256,
-            "group_id": ROTATION_GROUP,
+            "group_id": group["id"],
             "template_sha256": contract["template_sha256"],
             "schema_sha256": contract["schema_sha256"],
-            "design_id": "tengli-rotation-cards-v1",
-            "design_reason": "保留三张原卡的重叠位置和切换曲线，按本期词点轮换。",
+            "design_id": STRIP_CARD_DESIGN if strip else "tengli-rotation-cards-v1",
+            "design_reason": "按实录三项使用原活动底板、特写条堆叠轨迹和人物窗口。"
+            if strip
+            else "保留三张原卡的重叠位置和切换曲线，按本期词点轮换。",
             "parameter_decisions": {
                 key: "沿用原生构图、画幅和卡片切换机制。" for key in config
             },
@@ -2709,7 +2727,7 @@ def _overlay_entry(
             live_background=template_id == PICTURE_TEMPLATE_ID,
         )
         paths = _CARD_ENTRY_PATHS
-    elif beat.group_id == ROTATION_GROUP:
+    elif beat.group_id in BROWSER_CARD_GROUPS:
         entry, anchors = _rotation_entry(
             package, group, beat, transcript, asset_cards or []
         )
@@ -2889,7 +2907,7 @@ def build_overlay_recipes(
     has_bottom_caption_lane = any(
         beat.group_id
         in {
-            ROTATION_GROUP,
+            *BROWSER_CARD_GROUPS,
             JUDGMENT_GROUP,
             NUMBERED_GROUP,
             LIVE_STRIP_GROUP,

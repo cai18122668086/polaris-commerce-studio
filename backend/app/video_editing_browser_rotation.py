@@ -25,6 +25,7 @@ from .video_editing_contracts import Transcript
 
 ROTATION_GROUP = "CX-G04"
 STRIP_CARD_GROUP = "CX-G05"
+STRIP_CARD_DESIGN = "tengli-strip-cards-v1"
 BROWSER_CARD_GROUPS = (ROTATION_GROUP, STRIP_CARD_GROUP)
 ROTATION_MATTE = "model-01eb6a29a5c4d8edb30b"
 ROTATION_EVENTS = tuple(f"/items/{i}/at" for i in range(3))

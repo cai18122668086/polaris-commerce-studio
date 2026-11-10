@@ -216,10 +216,13 @@ def test_strip_card_rejects_same_frame_entries_and_keeps_presenter_ratio():
     assert left > 0 and right < 500
 
 
-def test_rotation_template_binds_each_current_item_before_worker_admission(tmp_path):
+@pytest.mark.parametrize("group_id", rotation.BROWSER_CARD_GROUPS)
+def test_rotation_template_binds_each_current_item_before_worker_admission(
+    tmp_path, group_id
+):
     package, transcript, _, _ = inputs(tmp_path)
     group = {
-        "id": rotation.ROTATION_GROUP,
+        "id": group_id,
         "backend": "browser",
         "input_template": "rotation.json",
         "input_schema": "schema.json",
@@ -298,6 +301,9 @@ def test_rotation_template_binds_each_current_item_before_worker_admission(tmp_p
     assert entry.recipe["config"]["duration"] == 2
     assert all(item["at"] is None for item in entry.recipe["config"]["items"])
     assert [e["value"] for e in anchors["events"]] == [0, 0.42, 1]
+    assert entry.recipe["group_id"] == group_id
+    if group_id == rotation.STRIP_CARD_GROUP:
+        assert entry.recipe["design_id"] == rotation.STRIP_CARD_DESIGN
     assets[-1]["sha256"] = assets[-2]["sha256"]
     with pytest.raises(ApiError) as caught:
         _rotation_entry(package, group, beat, transcript, assets)

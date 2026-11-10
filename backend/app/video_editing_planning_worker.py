@@ -17,6 +17,7 @@ from .celery_app import celery_app
 from .config import Settings
 from .database import build_database
 from .errors import ApiError
+from .motion_browser_originals import require_drawn_browser_assets
 from .motion_library import (
     MOTION_SHA256,
     atomic_json,
@@ -29,6 +30,7 @@ from .motion_local_dependencies import dependency_state, local_dependencies
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
 from .video_editing_azl_panels import azl_blockers, azl_panel_windows
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP, FRUIT_LIST_TEMPLATE_ID
+from .video_editing_browser_rotation import STRIP_CARD_GROUP
 from .video_editing_catalog import (
     external_dependencies,
     planning_runtime_snapshot,
@@ -119,6 +121,39 @@ def hypit_template_blockers(
         ):
             result.setdefault(FLOW_GROUP, []).append(FLOW_FONT)
     return result
+
+
+def mark_strip_card_blockers(
+    settings: Settings,
+    template: dict | None,
+    source_subtitles: str,
+    image_requirements: list[dict],
+    unavailable: dict[str, list[str]],
+) -> None:
+    if not any(
+        slot["group_id"] == STRIP_CARD_GROUP
+        for slot in (template or {}).get("slots", [])
+    ):
+        return
+    reasons = []
+    if source_subtitles != "none":
+        reasons.append("clean_source_required")
+    if not any(
+        row["group_id"] == STRIP_CARD_GROUP
+        and row["selected_distinct_images"] >= row["required_distinct_images"]
+        for row in image_requirements
+    ):
+        reasons.append("current_strip_card_images_required")
+    try:
+        require_drawn_browser_assets(
+            settings.video_editing_library_dir,
+            STRIP_CARD_GROUP,
+            settings.video_editing_native_bindings_file,
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        reasons.append("original_browser_assets_required")
+    if reasons:
+        unavailable.setdefault(STRIP_CARD_GROUP, []).extend(reasons)
 
 
 def eligible() -> ColumnElement[bool]:
@@ -495,6 +530,13 @@ def process(
             )
             if image_requirements:
                 runtime["project_image_requirements"] = image_requirements
+            mark_strip_card_blockers(
+                settings,
+                template,
+                snapshot["source_subtitles"],
+                image_requirements,
+                runtime["unavailable_template_groups"],
+            )
             if (
                 template
                 and template["id"] == FLOW_CHART_TEMPLATE_ID
@@ -661,6 +703,13 @@ def process(
                     snapshot["source_subtitles"],
                     snapshot["asset_cards"],
                     snapshot["source_sha256"],
+                    current,
+                )
+                mark_strip_card_blockers(
+                    settings,
+                    template,
+                    snapshot["source_subtitles"],
+                    runtime.get("project_image_requirements", []),
                     current,
                 )
                 if current.keys() - runtime["unavailable_template_groups"].keys():

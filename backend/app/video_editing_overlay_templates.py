@@ -17,7 +17,12 @@ from .video_editing_browser_clocks import (
     SPLIT_TITLE_FONT,
     SPLIT_VERTICAL,
 )
-from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
+from .video_editing_browser_rotation import (
+    BROWSER_CARD_GROUPS,
+    ROTATION_GROUP,
+    ROTATION_MATTE,
+    STRIP_CARD_GROUP,
+)
 from .video_editing_collage_scene import COLLAGE_GROUP, COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import SemanticPlan
 from .video_editing_crowd_scene import CROWD_GROUP, CROWD_TEMPLATE_ID
@@ -99,6 +104,7 @@ PREFERRED_OVERLAY_TYPES = 10
 LEGACY_PICTURE_TEMPLATE_ID = "picture-compare-v1"
 PICTURE_TEMPLATE_ID = "picture-compare-v2"
 ROTATION_TEMPLATE_ID = "rotation-cards-v1"
+STRIP_CARD_TEMPLATE_ID = "strip-and-rotation-cards-v1"
 PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
 PRESENTER_MOTION_TEMPLATE_ID = "presenter-reframing-v1"
 YY_OPENING_TEMPLATE_ID = "yy-presenter-openings-v1"
@@ -188,7 +194,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     **dict.fromkeys(ALPHA_GROUPS, (FOREGROUND_MATTE,)),
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     LINE_GROUP: (LINE_BRUSH_FONT,),
-    ROTATION_GROUP: (*FRUIT_LIST_FONTS, ROTATION_MATTE),
+    **dict.fromkeys(BROWSER_CARD_GROUPS, (*FRUIT_LIST_FONTS, ROTATION_MATTE)),
     "LYO01": (_OPENING_FONT,),
     "LYO02": (_OPENING_FONT, ROTATION_MATTE),
     "LYO03": (_OPENING_FONT, ROTATION_MATTE),
@@ -511,6 +517,25 @@ _TEMPLATES: dict[str, dict] = {
             _ACTION_SLOT,
         ],
     },
+}
+
+_TEMPLATES[STRIP_CARD_TEMPLATE_ID] = {
+    "id": STRIP_CARD_TEMPLATE_ID,
+    "name": "三图堆叠与轮换",
+    "slots": [
+        {
+            "group_id": STRIP_CARD_GROUP,
+            "purpose": "用原生三条特写图卡呈现三个并列细节，保留同期人物",
+            "layer": "scene",
+            "binding": (
+                "用本期原片作 presenter，使用三个不同的本期图对应三项实录。"
+                "每项以自己的短标题和首词绑定 label 与 at。"
+                "relation_items 按口播顺序逐项绑定文字及图片。"
+                "第三张卡需要有入场和阅读时间。"
+            ),
+        },
+        *_TEMPLATES[ROTATION_TEMPLATE_ID]["slots"],
+    ],
 }
 
 _TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID] = {
@@ -1119,6 +1144,7 @@ def overlay_templates() -> list[dict]:
             QUESTION_CARD_TEMPLATE_ID,
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
+            STRIP_CARD_TEMPLATE_ID,
             NUMBERED_TEMPLATE_ID,
             LIVE_STRIP_TEMPLATE_ID,
             PRESENTER_LABEL_TEMPLATE_ID,

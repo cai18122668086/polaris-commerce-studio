@@ -42,7 +42,11 @@ from .video_editing_browser_clocks import (
     SPLIT_HORIZONTAL,
     SPLIT_HORIZONTAL_CAPTION_BASELINE,
 )
-from .video_editing_browser_rotation import ROTATION_GROUP
+from .video_editing_browser_rotation import (
+    BROWSER_CARD_GROUPS,
+    ROTATION_GROUP,
+    STRIP_CARD_GROUP,
+)
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_collage_scene import COLLAGE_GROUP, COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
@@ -98,6 +102,7 @@ from .video_editing_overlay_templates import (
     PRESENTER_MOTION_TEMPLATE_ID,
     PRESENTER_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
+    STRIP_CARD_TEMPLATE_ID,
     SYNC_SUBTITLE_TEMPLATES,
     TEXT_HANDOFF_TEMPLATES,
     YY_OPENING_TEMPLATES,
@@ -334,6 +339,11 @@ def compile_episode(
             semantic, overlay_template(authoring.overlay_template_id), complete=True
         )
     excluded_beats = set(edits.source_only_beat_ids) if edits else set()
+    if options["source_subtitles"] != "none" and any(
+        beat.group_id == STRIP_CARD_GROUP and beat.id not in excluded_beats
+        for beat in semantic.beats
+    ):
+        raise EditingFailure("EDITING_SOURCE_SUBTITLES_REVIEW_REQUIRED")
     semantic_data = semantic.model_dump(mode="json")
     hypit_bindings = {}
     if requires_hypit(semantic_data, excluded_beats):
@@ -927,6 +937,11 @@ def compile_episode(
             (ROTATION_GROUP,),
             1257,
             "将主字幕放在原生轮换图卡的下方。",
+        ),
+        STRIP_CARD_TEMPLATE_ID: (
+            BROWSER_CARD_GROUPS,
+            1257,
+            "将主字幕放入原生图卡下方的读区。",
         ),
     }.get(authoring.overlay_template_id or "")
     if caption_lane:

@@ -12,7 +12,12 @@ from .video_editing_browser_clocks import (
     NUMBERED_IMAGES,
     NUMBERED_LABELS,
 )
-from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_IMAGES
+from .video_editing_browser_rotation import (
+    ROTATION_GROUP,
+    ROTATION_IMAGES,
+    STRIP_CARD_DESIGN,
+    STRIP_CARD_GROUP,
+)
 from .video_editing_contracts import (
     EditingImageTarget,
     NativeImageEdit,
@@ -32,6 +37,10 @@ _PROFILES = {
     ),
     ROTATION_GROUP: (
         "tengli-rotation-cards-v1",
+        tuple((path,) for path in ROTATION_IMAGES),
+    ),
+    STRIP_CARD_GROUP: (
+        STRIP_CARD_DESIGN,
         tuple((path,) for path in ROTATION_IMAGES),
     ),
     NUMBERED_GROUP: (

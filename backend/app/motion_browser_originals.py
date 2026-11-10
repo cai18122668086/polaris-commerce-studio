@@ -504,6 +504,35 @@ def compile_browser_originals(
     )
 
 
+def require_drawn_browser_assets(
+    package: Path, group_id: str, manifest: Path | None
+) -> None:
+    """Check originals used with a current presenter and current project images."""
+    needed = {
+        pattern: list(range(count))
+        for pattern, count in _ALWAYS_DRAWN.get(group_id, ())
+    }
+    if needed:
+        group = next(
+            (
+                row
+                for row in read_json(package / "catalog/groups.json")["groups"]
+                if row["id"] == group_id
+            ),
+            None,
+        )
+        if group is None:
+            raise ValueError("Original browser group is unavailable")
+        _selection(
+            package,
+            group,
+            needed,
+            _registered_originals(manifest),
+            None,
+            allow_diagnostic=False,
+        )
+
+
 def require_browser_originals(
     package: Path,
     group: dict,

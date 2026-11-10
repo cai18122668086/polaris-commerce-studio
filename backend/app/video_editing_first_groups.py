@@ -18,6 +18,7 @@ from .video_editing_captioning import (
 from .video_editing_contracts import SemanticBeat, SemanticPlan, Transcript
 from .video_editing_quantity_anchors import SpokenQuantity, measured_quantities
 from .video_editing_word_bindings import emphasis_text
+from .video_editing_yy_openings import YY08_QUESTION_REQUIRED, yy08_spoken_question
 from .video_studio_schemas import StrictVideoModel
 
 PRODUCT_GROUP_ID = "product-explainer-v1"
@@ -99,7 +100,7 @@ DENSITY_PROMPT = (
 )
 DENSITY_GUIDES = {
     "SG-S09": (("单件", "规格", "到手", "总量"), ((2, 2),) * 4),
-    "YYO08": (("主题", "推近后的短句"), ((1, 6), (1, 5))),
+    "YYO08": (("主题", "推近后的实录短问句"), ((1, 6), (1, 5))),
     "Z-M03": (
         ("主题", "并列一", "并列二", "并列三", "总结"),
         ((1, 12), (1, 5), (1, 5), (1, 5), (1, 7)),
@@ -238,6 +239,10 @@ def _fit_examples(
         second_ranges = sorted(
             span for size in range(lo2, hi2 + 1) for span in by_length.get(size, [])
         )
+        if group == "YYO08":
+            second_ranges = [
+                span for span in second_ranges if yy08_spoken_question(tokens, *span)
+            ]
         by_window: dict[int, list[tuple[int, tuple[int, ...]]]] = {}
         for a, b in first_ranges:
             for index in range(
@@ -780,6 +785,7 @@ def _dense_words(
                     title = span
                     break
         return NativeChoice(
+            relation="question",
             text={
                 "/content/topic": topic,
                 "/content/title": title,
@@ -1180,6 +1186,10 @@ def _expand(
                 }
             )
             check_overlay_beat(package, group_rows[shot.group], beat, transcript, cards)
+            if shot.group == "YYO08" and not yy08_spoken_question(
+                tokens, *native.text["/content/question"]
+            ):
+                raise ValueError(YY08_QUESTION_REQUIRED)
         except (ValueError, KeyError) as error:
             outcome = "候选未采用" if density else "保留原画"
             warnings.append(

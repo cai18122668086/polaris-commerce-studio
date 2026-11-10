@@ -5,6 +5,7 @@ from app.video_editing_first_groups import (
     _Candidate,
     _dense_words,
     _find_dense_target,
+    _fit_examples,
     _pair,
     _select_dense,
     _shorten_phrase,
@@ -13,6 +14,7 @@ from app.video_editing_quantity_anchors import (
     measured_quantities,
     validate_quantity_slots,
 )
+from app.video_editing_yy_openings import yy08_spoken_question
 
 
 def _transcript(words: list[str]) -> Transcript:
@@ -102,12 +104,13 @@ def test_shorter_native_text_keeps_the_spoken_quantity_and_condition():
 
 
 def test_yy08_inactive_title_can_reuse_a_complete_spoken_phrase():
-    transcript = _transcript(["14", "块", "9", "两", "大", "瓶"])
+    transcript = _transcript(["14", "块", "9", "合", "适", "吗？"])
     shot = ShotChoice(
         group="YYO08", span=(0, 5), words=[(0, 2), (3, 5)], why="价格与规格"
     )
     binding = _dense_words(shot, transcript, "source")
 
+    assert binding.relation == "question"
     assert binding.text["/content/topic"] == (0, 2)
     assert binding.text["/content/question"] == (3, 5)
     assert binding.text["/content/title"] == (3, 5)
@@ -116,6 +119,21 @@ def test_yy08_inactive_title_can_reuse_a_complete_spoken_phrase():
     validate_quantity_slots(
         "YYO08", binding.text, measured_quantities(transcript.tokens)
     )
+
+
+def test_yy08_preflight_offers_questions_at_the_original_push_in():
+    transcript = _transcript(["上新，", "哪张图？", "接下来"])
+    assert _fit_examples(transcript, {"YYO08"}, None)["YYO08"] == [(0, 0, 1, 1, 2)]
+
+    statement = _transcript(["到手，", "两大瓶，", "接下来"])
+    assert "YYO08" not in _fit_examples(statement, {"YYO08"}, None)
+
+
+def test_yy08_question_evidence_keeps_ratios_and_stays_in_one_clause():
+    transcript = _transcript(["3:2吗？！", "可以吗", "两瓶，", "合适？"])
+    assert yy08_spoken_question(transcript.tokens, 0, 0)
+    assert yy08_spoken_question(transcript.tokens, 1, 1)
+    assert not yy08_spoken_question(transcript.tokens, 2, 3)
 
 
 def test_line_entrance_can_settle_at_a_measured_edge_during_a_spoken_pause():

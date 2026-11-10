@@ -97,6 +97,7 @@ from .video_editing_word_bindings import (
     validate_parallel_items,
     word_bindings,
 )
+from .video_editing_yy_openings import YY08_QUESTION_REQUIRED, yy08_spoken_question
 
 RULES_VERSION = "tengli-editorial-rules/1"
 RULES = [
@@ -663,6 +664,15 @@ def build_request(
             message += PREFLIGHT_PROMPT
         if readable_policy:
             message += READABLE_PROMPT
+    if template is None or any(
+        slot["group_id"] == "YYO08" for slot in template["slots"]
+    ):
+        message += (
+            "YYO08 原生画面自带问号。question 槽（简表的第二组 words）"
+            "必须对应实录短问句，"
+            "使用实录里带问号的短句或在分句结尾明确说出的「吗」问句。"
+            "价格、规格和其他陈述不能用作这个问句槽，没有相符实录就跳过 YYO08。"
+        )
     if compound_quantities:
         compact = template and template["id"] in FIRST_MOTION_GROUPS
         payload["protected_quantity_spans"] = [
@@ -722,6 +732,8 @@ def validate_plan(
     allowed_assets: set[str],
     choice_snapshot: dict[str, Any] | None = None,
     unavailable_template_groups: dict[str, list[str]] | None = None,
+    *,
+    require_yy08_question: bool = False,
 ) -> None:
     ids = {t.id: i for i, t in enumerate(transcript.tokens)}
     denials = explicit_denial_spans(transcript.tokens)
@@ -763,6 +775,21 @@ def validate_plan(
                 "Semantic spans must cover the real transcript once in order"
             )
         position = end + 1
+        if require_yy08_question and beat.group_id == "YYO08":
+            question = next(
+                (
+                    anchor
+                    for anchor in beat.native_text
+                    if anchor.path == "/content/question"
+                ),
+                None,
+            )
+            if question is None or not yy08_spoken_question(
+                transcript.tokens,
+                ids.get(question.first_token_id, -1),
+                ids.get(question.last_token_id, -1),
+            ):
+                raise ValueError(YY08_QUESTION_REQUIRED)
         emphasis = [ids[t] for t in beat.emphasis_token_ids if t in ids]
         if len(emphasis) != len(beat.emphasis_token_ids) or (
             emphasis and emphasis != list(range(emphasis[0], emphasis[-1] + 1))
@@ -1029,6 +1056,7 @@ def generate(
         {a["id"] for a in asset_cards or []},
         choice_snapshot,
         (runtime or {}).get("unavailable_template_groups"),
+        require_yy08_question=True,
     )
     validate_template_images(plan, runtime, asset_cards or [])
     if template is not None:

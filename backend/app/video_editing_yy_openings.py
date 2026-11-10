@@ -1,11 +1,15 @@
 """Word timing and caption clearance for original YY opening scenes."""
 
 import math
+import re
 from pathlib import Path
 
 from .motion_library import read_json
-from .video_editing_contracts import Transcript
+from .video_editing_contracts import Transcript, TranscriptToken
 from .video_editing_yy6_scenes import YY6_GROUPS, YY6_NUMBER_UNITS, YY6_SOUND_EVENTS
+
+YY08_QUESTION_REQUIRED = "YYO08 原生问号须绑定实录中的明确短问句。"
+_YY08_CLAUSE_BREAK = re.compile(r"[。！？!?；;、]|(?<!\d)[.,，:：]|[.,，:：](?!\d)")
 
 YY_OPENING_GROUPS = {
     "YYO01": "从缩小的人物画面展开，保留原生放大及标题。",
@@ -75,6 +79,28 @@ _SPECIAL_BINDINGS = {
         "若为规格对照，在 relation_items 分别绑定前后两项的实录和各自文字槽。"
     ),
 }
+
+
+def yy08_spoken_question(tokens: list[TranscriptToken], first: int, last: int) -> bool:
+    """Check evidence for the native question mark before choosing the scene."""
+    if not 0 <= first <= last < len(tokens):
+        return False
+    raw = "".join(token.text for token in tokens[first : last + 1]).rstrip()
+    raw = raw.rstrip("\"'”’」』）)] ")
+    phrase = raw.rstrip("?？!！，,。. ")
+    if not phrase or _YY08_CLAUSE_BREAK.search(phrase):
+        return False
+    if any(mark in raw[len(phrase) :] for mark in "?？"):
+        return True
+    return (
+        len(phrase) >= 2
+        and phrase.endswith("吗")
+        and (
+            phrase != raw
+            or last == len(tokens) - 1
+            or tokens[last + 1].start_ms - tokens[last].end_ms >= 250
+        )
+    )
 
 
 def yy_opening_binding(group: str) -> str:

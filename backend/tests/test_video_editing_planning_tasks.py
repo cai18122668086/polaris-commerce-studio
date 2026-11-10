@@ -26,7 +26,7 @@ from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_azl_panels import azl_blockers
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
-from app.video_editing_cut_scenes import CUT_GROUPS, CUT_TEMPLATE_ID, cut_scene_blockers
+from app.video_editing_cut_scenes import CUT_TEMPLATE_ID, cut_scene_blockers
 from app.video_editing_cxbr import CXBR_PAPER_GROUPS, CXBR_PURPOSES, cxbr_blockers
 from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
 from app.video_editing_native_sound import verify_rendered_sound
@@ -49,9 +49,11 @@ from app.video_editing_template_materials import (
     validate_template_images,
 )
 from app.video_editing_unified_scenes import (
+    UNIFIED_EXPANDED_GROUPS,
     UNIFIED_EXPANDED_TEMPLATE_ID,
+    UNIFIED_EXPLANATION_GROUPS,
+    UNIFIED_EXPLANATION_TEMPLATE_ID,
     UNIFIED_GROUPS,
-    UNIFIED_SCENE_GROUPS,
     UNIFIED_TEMPLATE_ID,
     require_clean_unified_source,
     require_spoken_year,
@@ -138,6 +140,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "azl-panels-v1",
         "chenxi-broll-v1",
         UNIFIED_EXPANDED_TEMPLATE_ID,
+        UNIFIED_EXPLANATION_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         "evidence-judgment-v1",
@@ -158,11 +161,16 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     } == set(UNIFIED_GROUPS)
     assert {
         row["group_id"] for row in unified["slots"] if row.get("layer") == "scene"
-    } == UNIFIED_SCENE_GROUPS - CUT_GROUPS.keys() - PANEL_GROUPS.keys()
+    } == UNIFIED_GROUPS.keys() | UNIFIED_EXPANDED_GROUPS.keys()
+    explanation = overlay_template(UNIFIED_EXPLANATION_TEMPLATE_ID)
+    assert [row["group_id"] for row in explanation["slots"][:2]] == list(
+        UNIFIED_EXPLANATION_GROUPS
+    )
+    assert explanation["slots"][2:] == previous_unified["slots"]
     unified_blocked = {}
     require_clean_unified_source(unified, "present", unified_blocked)
     assert unified_blocked == dict.fromkeys(
-        UNIFIED_SCENE_GROUPS - CUT_GROUPS.keys() - PANEL_GROUPS.keys(),
+        UNIFIED_GROUPS.keys() | UNIFIED_EXPANDED_GROUPS.keys(),
         ["clean_source_required"],
     )
     progress = next(row for row in options if row["id"] == "subtitle-progress-v1")

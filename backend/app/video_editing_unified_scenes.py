@@ -1,6 +1,7 @@
 """Measured narration for original unified statement and comparison scenes."""
 
 import math
+from itertools import pairwise
 from pathlib import Path
 
 from .motion_library import read_json
@@ -30,10 +31,12 @@ from .video_editing_word_bindings import emphasis_text
 
 UNIFIED_TEMPLATE_ID = "unified-argument-v1"
 UNIFIED_EXPANDED_TEMPLATE_ID = "unified-argument-v2"
+UNIFIED_EXPLANATION_TEMPLATE_ID = "unified-explanation-v1"
 UNIFIED_TEMPLATES = frozenset(
     {
         UNIFIED_TEMPLATE_ID,
         UNIFIED_EXPANDED_TEMPLATE_ID,
+        UNIFIED_EXPLANATION_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
     }
@@ -46,7 +49,10 @@ UNIFIED_PRESENTER = "/media/presenter/path"
 UNIFIED_VIDEO_VARIANTS = frozenset({"Z-M02", "Z-M03", "Z-M04"})
 PRESENTER_VIDEO_GROUPS = UNIFIED_VIDEO_VARIANTS | PANEL_BOARDS
 UNIFIED_MEDIA_PATHS = {
-    **dict.fromkeys(("Z-M01", "Z-M14", *UNIFIED_VIDEO_VARIANTS), UNIFIED_PRESENTER),
+    **dict.fromkeys(
+        ("Z-M01", "Z-M13", "Z-M14", "Z-M16", *UNIFIED_VIDEO_VARIANTS),
+        UNIFIED_PRESENTER,
+    ),
     "W-R05": "/media/background/path",
     NUMBER_GROUP: "/media/source/path",
     **PANEL_SOURCE,
@@ -60,6 +66,21 @@ UNIFIED_EXPANDED_GROUPS = {
         "用同一实录画面镂空显示前后两个同单位数值。",
         "每项绑定完整短句和其中的数值及单位。black_in、second_number 各锚定数值首词，"
         "label 使用同一单位的实录词。先留出原黑场渐变，再进入第二个数字。",
+    ),
+}
+UNIFIED_EXPLANATION_GROUPS = {
+    "Z-M13": (
+        "讲述者同期原景上方先出现主题，随后放大本期四行资料。",
+        "title 绑定主题首词，table 绑定四项都说完后的下一实录首词。"
+        "每个 relation_item 独立绑定一整行的两个实录文字槽。"
+        "原中文短字幕绑定自己的起止词，当前纯中文入口留空英文。",
+    ),
+    "Z-M16": (
+        "先在模糊原景提出实际问句，再切到同期人物圆窗并列呈现三个回答项。",
+        "question 取含疑问词的实录开头，最多四字，完整问句留在主字幕。"
+        "question、prompt、item0 至 item2、summary 绑定各自首词。"
+        "questionmark 跟实际问词，circle 与第一项同步。"
+        "三项用 relation_items 逐项绑定。",
     ),
 }
 YEAR_FONT = "font-06b2048c592b1dae"
@@ -115,6 +136,15 @@ UNIFIED_SOUNDS = {
     "Z-M10": {"number_in": "ease", "action_in": "ease"},
     "Z-M14": {"item0": "ease", "item1": "ease", "item2": "ease"},
     "W-R05": {"first_in": "ease", "second_in": "ease"},
+    "Z-M13": {"table": "ease"},
+    "Z-M16": {
+        "questionmark": "ease",
+        "circle": "visible",
+        "item0": "ease",
+        "item1": "ease",
+        "item2": "ease",
+        "summary": "ease",
+    },
     NUMBER_GROUP: {"black_in": "ease", "second_number": "ease"},
     **CUT_SOUND_MODES,
     **PANEL_SOUNDS,
@@ -153,6 +183,7 @@ _REQUIRED_RELATIONS = {
 UNIFIED_SCENE_GROUPS = (
     UNIFIED_GROUPS.keys()
     | UNIFIED_EXPANDED_GROUPS.keys()
+    | UNIFIED_EXPLANATION_GROUPS.keys()
     | CUT_GROUPS.keys()
     | PANEL_GROUPS.keys()
 )
@@ -160,7 +191,9 @@ _CAPTION_BANDS = {
     "Z-M02": (800, 960),
     UNIFIED_WINDOW_GROUP: (530, 745),
     "Z-M10": (825, 960),
+    "Z-M13": (835, 960),
     "Z-M14": (850, 960),
+    "Z-M16": (850, 960),
     NUMBER_GROUP: (850, 960),
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
@@ -176,7 +209,9 @@ def unified_binding(group: str) -> str:
             if media
             else "沿用原整帧底板，口播继续。"
         )
-        + (UNIFIED_GROUPS | UNIFIED_EXPANDED_GROUPS)[group][1]
+        + (UNIFIED_GROUPS | UNIFIED_EXPANDED_GROUPS | UNIFIED_EXPLANATION_GROUPS)[
+            group
+        ][1]
         + (
             "用 relation_items 按实录顺序绑定每项及对应文字槽。"
             if group in _REQUIRED_RELATIONS
@@ -324,7 +359,107 @@ def _validate_relation(beat: SemanticBeat) -> None:
         )
 
 
-def validate_unified_anchors(beat: SemanticBeat, anchors: dict) -> None:
+def _validate_explanation(
+    beat: SemanticBeat,
+    text: dict,
+    events: dict,
+    transcript: Transcript,
+    duration: float,
+) -> None:
+    is_table = beat.group_id == "Z-M13"
+    fields = (
+        [(f"rows/{i}/0", f"rows/{i}/1") for i in range(4)]
+        if is_table
+        else [(f"items/{i}",) for i in range(3)]
+    )
+    positions = {t.id: i for i, t in enumerate(transcript.tokens)}
+    if (
+        beat.relation != ("parallel" if is_table else "question")
+        or len(beat.relation_items) != len(fields)
+        or any(
+            set(item.native_text_paths) != {f"/content/{key}" for key in keys}
+            or item.asset_ids
+            or item.native_media_paths
+            or any(
+                not positions[item.first_token_id]
+                <= positions[text[key]["token_ids"][0]]
+                <= positions[text[key]["token_ids"][-1]]
+                <= positions[item.last_token_id]
+                for key in keys
+            )
+            for item, keys in zip(beat.relation_items, fields, strict=True)
+        )
+        or any(
+            positions[a.last_token_id] >= positions[b.first_token_id]
+            for a, b in pairwise(beat.relation_items)
+        )
+    ):
+        raise ValueError("Each original explanation item needs its own spoken range")
+    action = {path.removeprefix(_EVENT_PREFIX): event for path, event in events.items()}
+    if is_table:
+        a, b = (events[f"/content/captions/0/{edge}"] for edge in ("start", "end"))
+        caption = text["captions/0/text"]
+        table, title = action["table"], action["title"]
+        valid = (
+            _starts(title, text["title"])
+            and _starts(a, caption)
+            and (b["edge"], b["token_id"]) == ("end", caption["token_ids"][-1])
+            and b["value"] - a["value"] >= _reading_time(caption)
+            and title["value"] + 0.35 <= table["value"] <= duration - 1.4
+            and positions[table["token_id"]]
+            > positions[beat.relation_items[-1].last_token_id]
+            and all(
+                len(row["text"]) <= (18 if key == "captions/0/text" else 12)
+                for key, row in text.items()
+            )
+        )
+    else:
+        if len(text["question"]["text"]) > 4:
+            raise ValueError("Question exceeds the original single-line glow capacity")
+        roles = {"question": "question", "prompt": "prompt", "summary": "summary"}
+        roles.update({f"item{i}": f"items/{i}" for i in range(3)})
+        q, mark, prompt, circle = (
+            action[key] for key in ("question", "questionmark", "prompt", "circle")
+        )
+        times = [action[f"item{i}"]["value"] for i in range(3)]
+        summary = action["summary"]["value"]
+        mark_index = positions[mark["token_id"]]
+        question_end = positions[text["question"]["token_ids"][-1]]
+        mark_text = "".join(
+            t.text for t in transcript.tokens[mark_index : question_end + 1]
+        )
+        valid = (
+            q["token_id"] == beat.first_token_id
+            and mark["token_id"] in text["question"]["token_ids"]
+            and (
+                mark_text.startswith(("谁", "哪", "怎么", "什么", "为何", "吗", "是否"))
+                or transcript.tokens[mark_index].text.endswith(("？", "?"))
+            )
+            and question_end < positions[prompt["token_id"]]
+            and positions[text["prompt"]["token_ids"][-1]]
+            < positions[beat.relation_items[0].first_token_id]
+            and positions[beat.relation_items[-1].last_token_id]
+            < positions[action["summary"]["token_id"]]
+            and all(_starts(action[event], text[key]) for event, key in roles.items())
+            and _starts(circle, text["items/0"])
+            and q["value"] + 0.12 <= mark["value"] <= prompt["value"] - 0.12
+            and prompt["value"] + _reading_time(text["prompt"]) <= times[0]
+            and all(a + 0.24 <= b for a, b in pairwise([*times, summary]))
+            and summary + 0.55 <= duration
+            and all(
+                len(row["text"]) <= (12 if key == "prompt" else 7)
+                for key, row in text.items()
+            )
+        )
+    if not valid or any("\n" in row["text"] for row in text.values()):
+        raise ValueError(
+            "Original explanation needs measured entrances and reading time"
+        )
+
+
+def validate_unified_anchors(
+    beat: SemanticBeat, anchors: dict, transcript: Transcript
+) -> None:
     group = beat.group_id
     text = {row["path"].removeprefix("/content/"): row for row in anchors["text"]}
     events = {row["path"]: row for row in anchors["events"]}
@@ -337,6 +472,9 @@ def validate_unified_anchors(beat: SemanticBeat, anchors: dict) -> None:
         raise ValueError("Original unified scene needs measured motion entrances")
     if group == "Z-M02":
         _validate_judgment(text, events, duration)
+        return
+    if group in UNIFIED_EXPLANATION_GROUPS:
+        _validate_explanation(beat, text, events, transcript, duration)
         return
     _validate_relation(beat)
     times = {

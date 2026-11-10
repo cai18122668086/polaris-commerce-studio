@@ -1814,7 +1814,7 @@ def _unified_entry(
     omitted = {
         path: "本期中文口播没有对应英文实录，原中文字幕和主字幕继续使用。"
         for path in text_paths
-        if group_id in {"Z-M06", "Z-M08"} and path.endswith("/en")
+        if group_id in {"Z-M06", "Z-M08", "Z-M13"} and path.endswith("/en")
     }
     media_path = UNIFIED_MEDIA_PATHS.get(group_id)
     source_paths = (
@@ -1857,7 +1857,7 @@ def _unified_entry(
         elif is_panel:
             validate_panel_anchors(beat, anchors, transcript, images, videos)
         else:
-            validate_unified_anchors(beat, anchors)
+            validate_unified_anchors(beat, anchors, transcript)
     except (ValueError, KeyError) as error:
         raise ApiError(
             422,

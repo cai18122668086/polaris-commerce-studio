@@ -38,7 +38,11 @@ from .video_editing_question_card import (
 )
 from .video_editing_story_panels import PANEL_BOARDS, PANEL_TEMPLATE_ID
 from .video_editing_template_materials import runtime_payload, validate_template_images
-from .video_editing_unified_scenes import UNIFIED_TEMPLATES, UNIFIED_VIDEO_VARIANTS
+from .video_editing_unified_scenes import (
+    UNIFIED_EXPLANATION_TEMPLATE_ID,
+    UNIFIED_TEMPLATES,
+    UNIFIED_VIDEO_VARIANTS,
+)
 from .video_editing_word_bindings import word_bindings
 
 RULES_VERSION = "tengli-editorial-rules/1"
@@ -78,6 +82,7 @@ def catalog_index(
     unified_scene: bool = False,
     cut_scene: bool = False,
     panel_scene: bool = False,
+    explanation_scene: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -108,8 +113,10 @@ def catalog_index(
         )
         if question_a:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
-        if (cut_scene and group["id"] == "Z-M06") or (
-            panel_scene and group["id"] == "Z-M08"
+        if (
+            (cut_scene and group["id"] == "Z-M06")
+            or (panel_scene and group["id"] == "Z-M08")
+            or (explanation_scene and group["id"] == "Z-M13")
         ):
             parameters["text_paths"] = [
                 path for path in parameters["text_paths"] if not path.endswith("/en")
@@ -228,6 +235,9 @@ def build_request(
             template and template["id"] in {CUT_TEMPLATE_ID, PANEL_TEMPLATE_ID}
         ),
         panel_scene=bool(template and template["id"] == PANEL_TEMPLATE_ID),
+        explanation_scene=bool(
+            template and template["id"] == UNIFIED_EXPLANATION_TEMPLATE_ID
+        ),
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:

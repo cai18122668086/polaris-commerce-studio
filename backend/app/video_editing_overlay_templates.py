@@ -32,6 +32,8 @@ from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_unified_scenes import (
     UNIFIED_EXPANDED_GROUPS,
     UNIFIED_EXPANDED_TEMPLATE_ID,
+    UNIFIED_EXPLANATION_GROUPS,
+    UNIFIED_EXPLANATION_TEMPLATE_ID,
     UNIFIED_GROUPS,
     UNIFIED_TEMPLATES,
     YEAR_BINDING,
@@ -557,6 +559,22 @@ _TEMPLATES[UNIFIED_EXPANDED_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[UNIFIED_EXPLANATION_TEMPLATE_ID] = {
+    "id": UNIFIED_EXPLANATION_TEMPLATE_ID,
+    "name": "资料说明与口播问答",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": unified_binding(group),
+            }
+            for group, (purpose, _) in UNIFIED_EXPLANATION_GROUPS.items()
+        ),
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[CUT_TEMPLATE_ID] = {
     "id": CUT_TEMPLATE_ID,
     "name": "实拍与项目素材接力",
@@ -694,6 +712,7 @@ def overlay_templates() -> list[dict]:
             AZL_TEMPLATE_ID,
             CXBR_TEMPLATE_ID,
             UNIFIED_EXPANDED_TEMPLATE_ID,
+            UNIFIED_EXPLANATION_TEMPLATE_ID,
             CUT_TEMPLATE_ID,
             PANEL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,

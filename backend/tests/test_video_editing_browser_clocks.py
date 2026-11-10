@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import pytest
+from PIL import Image
 
 from app import video_editing_browser_clocks as cards
 from app import video_editing_browser_rotation as rotation
@@ -160,6 +161,19 @@ def test_rotation_binds_spoken_focuses_and_a_moving_presenter(tmp_path, monkeypa
     )
     assert result["first_motion_frames"] == [0, 13, 31]
     assert result["frames"] == 100
+    strip_group = {"id": rotation.STRIP_CARD_GROUP}
+    strip = rotation.compile_rotation_clock(
+        package, strip_group, config, resources, native, assets
+    )
+    assert strip["first_visible_frames"] == [1, 13, 30]
+    strip_source = rotation.rotation_source_clock(
+        {**native, "group_id": rotation.STRIP_CARD_GROUP}, assets, transcript
+    )
+    assert strip_source["binding_id"].startswith("tengli-strip-card-")
+    assert (
+        strip_source["source_start_ms"] == 1000
+        and strip_source["source_end_ms"] == 4340
+    )
     shot = {
         "group_id": rotation.ROTATION_GROUP,
         "layer": "scene",
@@ -184,6 +198,17 @@ def test_rotation_binds_spoken_focuses_and_a_moving_presenter(tmp_path, monkeypa
     assets["source"]["sha256"] = "c" * 64
     with pytest.raises(ValueError, match="current, measured presenter"):
         rotation.rotation_source_clock(native, assets, transcript)
+
+
+def test_strip_card_rejects_same_frame_entries_and_keeps_presenter_ratio():
+    with pytest.raises(ValueError, match="separate output frames"):
+        rotation._strip_card_entries([0, 0.01, 0.02], 100)
+    source = Image.new("RGBA", (720, 1280), (0, 0, 0, 255))
+    plate = rotation._presenter_in_slot(source, (500, 780))
+    left, top, right, bottom = plate.getbbox()
+    assert plate.size == (500, 780)
+    assert abs((right - left) / (bottom - top) - 720 / 1280) < 0.001
+    assert left > 0 and right < 500
 
 
 def test_rotation_template_binds_each_current_item_before_worker_admission(tmp_path):

@@ -54,6 +54,7 @@ from .video_editing_browser_live import (
 from .video_editing_browser_rotation import (
     ROTATION_GROUP,
     ROTATION_MATTE,
+    STRIP_CARD_GROUP,
     compile_rotation_clock,
     rotation_source_clock,
 )
@@ -511,6 +512,12 @@ def compile_native_job(
         raise ValueError("Word-bound scene geometry requires zero native shift_frames")
     live_cards = recipe.get("browser_live_background", False)
     split_live = recipe.get("browser_split_live_presenter", False)
+    strip_cards = group["id"] == STRIP_CARD_GROUP and any(
+        row["path"] == "/presenter"
+        and asset_files[row["asset_id"]].get("kind") == "original_video"
+        for row in native["media"]
+    )
+    live_browser_presenter = group["id"] == ROTATION_GROUP or split_live or strip_cards
     if type(split_live) is not bool or (
         split_live and (group["id"] not in LIVE_SPLIT_GROUPS or live_cards)
     ):
@@ -525,7 +532,7 @@ def compile_native_job(
     if live_cards:
         media_clocks: dict[str, float] = {}
         clock_receipts = [card_live_clock(package, native, asset_files, transcript)]
-    elif group["id"] == ROTATION_GROUP or split_live:
+    elif live_browser_presenter:
         if recipe.get("media_clocks"):
             raise ValueError(
                 "Original browser scene uses its measured presenter window"
@@ -800,9 +807,7 @@ def compile_native_job(
         if group["id"] == FRUIT_LIST_GROUP and row["path"] == "/presenter":
             prefix = FRUIT_LIST_PREFIX
         rid = prefix + asset["sha256"][:24]
-        if (group["id"] == ROTATION_GROUP or split_live) and row[
-            "path"
-        ] == "/presenter":
+        if live_browser_presenter and row["path"] == "/presenter":
             rid = clock_receipts[0]["binding_id"]
         if live_alpha and row["path"] == ALPHA_PRESENTER:
             rid = clock_receipts[0]["binding_id"]
@@ -968,7 +973,7 @@ def compile_native_job(
             package, group, config, resources, native, asset_files
         )
         native["browser_clock"] = browser_clock
-    elif group["id"] == ROTATION_GROUP:
+    elif group["id"] == ROTATION_GROUP or strip_cards:
         if beat.relation != "parallel":
             raise ValueError("Use the original rotating cards for three parallel items")
         browser_clock = compile_rotation_clock(

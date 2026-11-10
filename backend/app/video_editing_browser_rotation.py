@@ -1,11 +1,13 @@
-"""Supply a measured live presenter to the original G04 image slot."""
+"""Supply a measured live presenter to the original browser layouts."""
 
 import base64
 import importlib
 import importlib.util
+import math
 import re
 import sys
 from io import BytesIO
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, cast
 
@@ -22,11 +24,13 @@ from .video_editing_browser_clocks import (
 from .video_editing_contracts import Transcript
 
 ROTATION_GROUP = "CX-G04"
+STRIP_CARD_GROUP = "CX-G05"
 ROTATION_MATTE = "model-01eb6a29a5c4d8edb30b"
 ROTATION_EVENTS = tuple(f"/items/{i}/at" for i in range(3))
 ROTATION_IMAGES = tuple(f"/items/{i}/image" for i in range(3))
 ROTATION_LABELS = tuple(f"/items/{i}/label" for i in range(3))
 _ROTATION_REF = "tengli-card-rotation-"
+_STRIP_CARD_REF = "tengli-strip-card-"
 _SPLIT_REF = "tengli-browser-split-"
 _FPS = 30
 _OWNER = Path("src/engines/workspace/商业口播_可编辑改造_20261104")
@@ -36,6 +40,10 @@ _MATTE = (
 )
 _MEDIA_SHA = "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf"
 _MATTE_SHA = "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12"
+_STRIP_TIMELINE_SHA = "b3d9bf69f9f11a8a1b699eacede74baad1bb379cb0b3d3d9fc71e4593a0e1194"
+_STRIP_ENTRIES = (9, 26, 48)
+# Native G05 draws the presenter at (130, 500) with this size.
+_STRIP_PRESENTER_SIZE = (500, 780)
 _SPECIAL = Path("commercial_runtime/special.py")
 _DRAW = (
     '([g,f])=>{engine.draw(exportCanvas,g,f/30,"B");'
@@ -60,6 +68,10 @@ def _audit(package: Path, group: dict) -> None:
         audit_split_engine(package, group)
     else:
         audit_card_family_engine(package, group)
+    if group["id"] == STRIP_CARD_GROUP:
+        timeline = (package / group["entry"]).with_name("g05-timeline.json")
+        if sha256(timeline) != _STRIP_TIMELINE_SHA:
+            raise ValueError("Original G05 strip-card timeline changed")
     if sha256(package / _MEDIA) != _MEDIA_SHA or (
         group["id"] != SPLIT_VERTICAL and sha256(package / _MATTE) != _MATTE_SHA
     ):
@@ -104,11 +116,17 @@ def rotation_source_clock(
             if split
             else "Rotating cards require their current, measured presenter"
         )
-    prefix = _SPLIT_REF if split else _ROTATION_REF
-    return {
-        "policy": "native_split_presenter_window"
+    strip = native.get("group_id") == STRIP_CARD_GROUP
+    prefix = _SPLIT_REF if split else _STRIP_CARD_REF if strip else _ROTATION_REF
+    policy = (
+        "native_split_presenter_window"
         if split
-        else "native_rotation_presenter_window",
+        else "native_strip_card_presenter_window"
+        if strip
+        else "native_rotation_presenter_window"
+    )
+    return {
+        "policy": policy,
         "media_path": "/presenter",
         "asset_id": source_id,
         "source_sha256": transcript.source_sha256,
@@ -134,11 +152,13 @@ def compile_rotation_clock(
     _audit(package, group)
     if set((*FRUIT_LIST_FONTS, ROTATION_MATTE)) - resources.keys():
         raise ValueError("Bind the original card fonts and presenter matte explicitly")
-    return rotation_card_clock(config, native, assets)
+    return rotation_card_clock(
+        config, native, assets, strip=group["id"] == STRIP_CARD_GROUP
+    )
 
 
 def rotation_card_clock(
-    config: dict, native: dict, assets: dict[str, dict]
+    config: dict, native: dict, assets: dict[str, dict], *, strip: bool = False
 ) -> dict[str, Any]:
     """Validate the card geometry's current image and measured focus inputs."""
     duration = config["duration"]
@@ -175,6 +195,24 @@ def rotation_card_clock(
             raise ValueError(
                 "Each rotating card needs a short spoken label at its focus"
             )
+    if strip:
+        starts = [item["at"] for item in items]
+        if (
+            starts[0] < 0
+            or any(a >= b for a, b in pairwise(starts))
+            or starts[-1] + items[-1]["enter"] > (frames - 1) / _FPS
+        ):
+            raise ValueError(
+                "The three original G05 cards need ordered, visible entries"
+            )
+        return {
+            "policy": "original_g05_strip_card_clock",
+            "timeline_sha256": _STRIP_TIMELINE_SHA,
+            "frames": frames,
+            "entry_seconds": starts,
+            "first_visible_frames": _strip_card_entries(starts, frames),
+            "timing_review": "unreviewed",
+        }
     if (
         items[0]["at"] != 0
         or items[1]["at"] <= 0
@@ -195,6 +233,32 @@ def rotation_card_clock(
         ],
         "timing_review": "unreviewed",
     }
+
+
+def _strip_card_entries(starts: list[float], frames: int) -> list[int]:
+    # G05 mapClock maps measured word times to the original 9, 26, 48 frames.
+    # The original browser rounds the source time to its nearest frame.
+    keys = [(0.0, 0.0), *zip(starts, (n / _FPS for n in _STRIP_ENTRIES), strict=True)]
+    visible: list[int] = []
+    for frame in range(frames):
+        time = frame / _FPS
+        source = keys[-1][1] + time - keys[-1][0]
+        for (previous_at, previous), (at, entry) in pairwise(keys):
+            if time <= at:
+                source = previous + (entry - previous) * (
+                    (time - previous_at) / (at - previous_at or 1)
+                )
+                break
+        source_frame = math.floor(source * _FPS + 0.5)
+        while len(visible) < len(_STRIP_ENTRIES) and (
+            source_frame >= _STRIP_ENTRIES[len(visible)]
+        ):
+            visible.append(frame)
+    if len(set(visible)) != len(_STRIP_ENTRIES):
+        raise ValueError(
+            "Original G05 card entrances must occupy separate output frames"
+        )
+    return visible
 
 
 def _png_uri(image: Image.Image) -> str:
@@ -224,9 +288,14 @@ def _split_presenter(image: Image.Image, group: str) -> Image.Image:
     if group == SPLIT_VERTICAL:
         return ImageOps.fit(image, (540, 960), Image.Resampling.LANCZOS)
     # The original outlined person occupies a 346 x 559 input rectangle.
-    fitted = ImageOps.contain(image, (346, 559), Image.Resampling.LANCZOS)
-    plate = Image.new("RGBA", (346, 559))
-    plate.paste(fitted, ((346 - fitted.width) // 2, (559 - fitted.height) // 2))
+    return _presenter_in_slot(image, (346, 559))
+
+
+def _presenter_in_slot(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    width, height = size
+    fitted = ImageOps.contain(image, size, Image.Resampling.LANCZOS)
+    plate = Image.new("RGBA", size)
+    plate.paste(fitted, ((width - fitted.width) // 2, (height - fitted.height) // 2))
     return plate
 
 
@@ -239,9 +308,10 @@ def install_rotation_export(package: Path, root: Path) -> None:
     job = read_json(path)
     group = job["group_id"]
     split = group in LIVE_SPLIT_GROUPS
-    if not split and group != ROTATION_GROUP:
+    strip = group == STRIP_CARD_GROUP
+    if not split and group not in {ROTATION_GROUP, STRIP_CARD_GROUP}:
         return
-    prefix = _SPLIT_REF if split else _ROTATION_REF
+    prefix = _SPLIT_REF if split else _STRIP_CARD_REF if strip else _ROTATION_REF
     reference = job["config"].get("presenter", "")
     if not isinstance(reference, str) or not reference.startswith("input://" + prefix):
         return
@@ -309,6 +379,8 @@ def install_rotation_export(package: Path, root: Path) -> None:
             plate = (
                 _split_presenter(source_frame, group)
                 if split
+                else _presenter_in_slot(source_frame, _STRIP_PRESENTER_SIZE)
+                if strip
                 else _presenter_plate(source_frame)
             )
             uri = _png_uri(plate)
@@ -343,6 +415,8 @@ def install_rotation_export(package: Path, root: Path) -> None:
             **meta,
             "media_capability": "original split draw with current presenter frames"
             if split
+            else "original G05 draw with current matte frames"
+            if strip
             else "original G04 draw with current matte frames",
         }
 

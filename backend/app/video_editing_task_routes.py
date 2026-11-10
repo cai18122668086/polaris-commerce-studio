@@ -21,7 +21,7 @@ from .config import Settings
 from .errors import ApiError
 from .motion_browser_originals import original_startup_assets
 from .motion_library import MOTION_SHA256, read_json, sha256
-from .motion_library_validation import group_status
+from .motion_library_validation import group_status, motion_evidence_directory
 from .motion_local_dependencies import local_dependencies
 from .motion_parameter_contracts import input_contract
 from .video_editing_catalog import (
@@ -216,6 +216,7 @@ def library(
 ) -> dict[str, Any]:
     settings = enabled(request)
     package = settings.video_editing_library_dir
+    evidence = motion_evidence_directory(settings)
     catalog = read_json(package / "catalog/groups.json")
     return {
         "release": MOTION_SHA256,
@@ -225,26 +226,13 @@ def library(
             read_json(package / "catalog/external-resources.json")["resources"]
         ),
         "groups": [
-            {
-                **g,
-                **group_status(
-                    settings.video_editing_tasks_dir
-                    / "_library-validation"
-                    / MOTION_SHA256[:12],
-                    g["id"],
-                ),
-            }
+            {**g, **group_status(evidence, g["id"])}
             for g in catalog["groups"][offset : offset + limit]
         ],
         "next_offset": offset + limit
         if offset + limit < len(catalog["groups"])
         else None,
-        "summary": catalog_summary(
-            package,
-            settings.video_editing_tasks_dir
-            / "_library-validation"
-            / MOTION_SHA256[:12],
-        ),
+        "summary": catalog_summary(package, evidence),
     }
 
 
@@ -392,10 +380,7 @@ def describe_group(
     if not group:
         raise ApiError(404, "EDITING_GROUP_NOT_FOUND", "未找到原库动效。")
     bindings = local_dependencies(settings.video_editing_native_bindings_file)
-    runtime = group_status(
-        settings.video_editing_tasks_dir / "_library-validation" / MOTION_SHA256[:12],
-        group["id"],
-    )
+    runtime = group_status(motion_evidence_directory(settings), group["id"])
     return {
         "release": MOTION_SHA256,
         "group": group,

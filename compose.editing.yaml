@@ -1,6 +1,7 @@
 # Explicit local opt-in overlay. No changes to production compose or provider keys.
 # docker compose -f compose.yaml -f compose.editing.yaml config (review only)
 x-editing-planner-environment: &editing-planner-environment
+  POLARIS_VIDEO_EDITING_LIBRARY_EVIDENCE_DIR:
   POLARIS_VIDEO_EDITING_PLANNING_ENABLED: ${POLARIS_VIDEO_EDITING_PLANNING_ENABLED:-false}
   POLARIS_VIDEO_EDITING_PLAN_MODEL: ${POLARIS_VIDEO_EDITING_PLAN_MODEL:-gpt-6.1-sol}
   POLARIS_VIDEO_SCRIPT_PLANNING_ENABLED: ${POLARIS_VIDEO_SCRIPT_PLANNING_ENABLED:-false}

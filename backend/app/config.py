@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     video_editing_handoff_secret: SecretStr = SecretStr("")
     video_editing_enabled: bool = False
     video_editing_library_dir: Path = Path(".data/motion-library/c10429057a86/motion")
+    video_editing_library_evidence_dir: Path | None = None
     video_editing_native_bindings_file: Path | None = None
     video_editing_tasks_dir: Path = Path(".data/editing-tasks")
     video_editing_python: str = "python"

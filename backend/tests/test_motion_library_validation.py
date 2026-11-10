@@ -1,12 +1,45 @@
 import pytest
 
-from app.motion_library import atomic_json, sha256, verify_package
+from app.config import Settings
+from app.motion_library import MOTION_SHA256, atomic_json, sha256, verify_package
 from app.motion_library_validation import (
     canonical_hash,
     group_status,
+    motion_evidence_directory,
     record_failure,
     record_native,
 )
+
+
+def test_library_evidence_is_shared_across_task_volumes_when_configured(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("POLARIS_VIDEO_EDITING_LIBRARY_EVIDENCE_DIR", raising=False)
+    first, second = tmp_path / "first", tmp_path / "second"
+    original = Settings(_env_file=None, video_editing_tasks_dir=first)
+    assert motion_evidence_directory(original) == (
+        first / "_library-validation" / MOTION_SHA256[:12]
+    )
+    shared = tmp_path / "library-evidence"
+    atomic_json(
+        shared / MOTION_SHA256[:12] / "HY-A2/sample.json",
+        {
+            "release": MOTION_SHA256,
+            "group_id": "HY-A2",
+            "recorded_at": "2026-11-11T00:00:00+00:00",
+            "runtime_validation": "sample_rendered",
+        },
+    )
+    monkeypatch.setenv("POLARIS_VIDEO_EDITING_LIBRARY_EVIDENCE_DIR", str(shared))
+    for tasks in (first, second):
+        settings = Settings(_env_file=None, video_editing_tasks_dir=tasks)
+        status = group_status(motion_evidence_directory(settings), "HY-A2")
+        assert status["runtime_validation"] == "sample_rendered"
+        assert status["visual_acceptance"] == "unreviewed"
+    assert (
+        group_status(motion_evidence_directory(original), "HY-A2")["runtime_validation"]
+        == "unverified"
+    )
 
 
 def test_installed_motion_cannot_supply_its_own_integrity_manifest(tmp_path):

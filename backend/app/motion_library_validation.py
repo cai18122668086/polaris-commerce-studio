@@ -24,6 +24,14 @@ from .video_editing_question_branch import QUESTION_BRANCH, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_input
 
 
+def motion_evidence_directory(settings: Settings) -> Path:
+    """Resolve the evidence for the installed release, outside the original package."""
+    root = settings.video_editing_library_evidence_dir
+    if root is None:
+        root = settings.video_editing_tasks_dir / "_library-validation"
+    return root / MOTION_SHA256[:12]
+
+
 def audit(package: Path) -> dict[str, Any]:
     integrity = verify_package(package)
     groups = []

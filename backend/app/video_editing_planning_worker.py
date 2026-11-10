@@ -23,6 +23,7 @@ from .motion_library import (
     sha256,
     verify_package,
 )
+from .motion_library_validation import motion_evidence_directory
 from .motion_local_dependencies import dependency_state, local_dependencies
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
 from .video_editing_azl_panels import azl_blockers, azl_panel_windows
@@ -383,9 +384,7 @@ def process(
         if mode == "prepare":
             runtime = planning_runtime_snapshot(
                 settings.video_editing_library_dir,
-                settings.video_editing_tasks_dir
-                / "_library-validation"
-                / MOTION_SHA256[:12],
+                motion_evidence_directory(settings),
                 local_dependencies(settings.video_editing_native_bindings_file),
                 template,
             )

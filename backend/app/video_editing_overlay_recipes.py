@@ -163,6 +163,7 @@ from .video_editing_overlay_templates import (
     PRESENTER_LABEL_TEMPLATE_ID,
     validate_template_plan,
 )
+from .video_editing_paper_typewriter import PAPER_GROUP
 from .video_editing_presenter_motion import (
     MOTION_CAPTION,
     MOTION_CLIPS,
@@ -941,6 +942,8 @@ def _entry_sound(
         selection = _CLICK
     if beat.group_id == WHY_GROUP and path is not None:
         selection = _WHY_SOUNDS[path]
+    if beat.group_id == PAPER_GROUP:
+        selection = _TYPING
     event = next(row for row in anchors["events"] if row["path"] == path)
     asset_id, source_start, length, peak = (
         selection if selection[0] not in avoided else _CLICK
@@ -2235,6 +2238,7 @@ def _unified_entry(
     is_handoff = group_id in HANDOFF_IMAGE
     is_why = group_id == WHY_GROUP
     is_translation = group_id == TRANSLATION_GROUP
+    is_paper = group_id == PAPER_GROUP
     videos = (
         project_panel_videos(asset_cards, transcript.source_sha256)
         if group_id == TRIPTYCH
@@ -2273,6 +2277,7 @@ def _unified_entry(
     source_paths = (
         cut_source_paths(group_id) if is_cut else (media_path,) if media_path else ()
     )
+    media_clock_paths = () if is_paper else source_paths
     images = (
         project_image_digests(asset_cards)
         if is_cut or is_panel or is_handoff or is_why
@@ -2352,7 +2357,7 @@ def _unified_entry(
     for path in slots:
         set_native_field(config, path, None)
     config["layout"]["overflow"] = "reject"
-    for path in source_paths:
+    for path in media_clock_paths:
         set_native_field(config, path.removesuffix("/path") + "/end_policy", "error")
     if group_id == TRIPTYCH:
         anchors["events"].append(
@@ -2376,6 +2381,16 @@ def _unified_entry(
             **({"empty_text": omitted} if omitted else {}),
             **({"dependency_ids": [WHY_FONT]} if is_why else {}),
             **(
+                {
+                    "paper_typewriter_live": True,
+                    "dependency_ids": list(
+                        AUTOMATIC_TEMPLATE_DEPENDENCIES[PAPER_GROUP]
+                    ),
+                }
+                if is_paper
+                else {}
+            ),
+            **(
                 {"translation_labels": translations} if translations is not None else {}
             ),
             **(
@@ -2390,7 +2405,7 @@ def _unified_entry(
                     if is_cut
                     else "transcript_source_window",
                 }
-                for path in source_paths
+                for path in media_clock_paths
             ]
             + [
                 {

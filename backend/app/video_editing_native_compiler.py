@@ -102,6 +102,12 @@ from .video_editing_native_content import (
     why_word_bindings,
     year_glyphs,
 )
+from .video_editing_paper_typewriter import (
+    PAPER_GROUP,
+    PAPER_PRESENTER,
+    paper_character_times,
+    paper_source_clock,
+)
 from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
     QUESTION_BRANCH,
@@ -223,6 +229,17 @@ def compile_native_job(
         beat.group_id in PRESENTER_VIDEO_GROUPS
         and config.get("media", {}).get("presenter", {}).get("kind") == "video"
     )
+    live_paper = recipe.get("paper_typewriter_live", False)
+    if type(live_paper) is not bool or (
+        live_paper
+        and (
+            beat.group_id != PAPER_GROUP
+            or config["layout"]["mode"] != "adaptive"
+            or config["media"]["presenter"].get("alpha") is not True
+            or recipe.get("media_clocks")
+        )
+    ):
+        raise ValueError("Paper typewriter needs its original adaptive alpha slot")
     triptych_slots = (
         {
             i
@@ -472,6 +489,12 @@ def compile_native_job(
         clock_receipts = [
             compile_flow_plate(native, asset_files, transcript, live_stage=live_stage)
         ]
+    elif live_paper:
+        media_clocks = {}
+        clock_receipts = [paper_source_clock(beat, native, transcript, asset_files)]
+        native["paper_character_times"] = paper_character_times(
+            beat, native, transcript
+        )
     else:
         media_clocks, clock_receipts = compile_media_clocks(
             package,
@@ -619,6 +642,8 @@ def compile_native_job(
     dependencies = {**direct, **{rid: registered[rid] for rid in dependency_ids}}
     if group["id"] == SLANT_GROUP and FOREGROUND_MATTE not in dependencies:
         raise ValueError("Bind the original slant card presenter matte")
+    if live_paper and FOREGROUND_MATTE not in dependencies:
+        raise ValueError("Bind the original paper presenter matte")
     if question_variant and QUESTION_FONT not in dependencies:
         raise ValueError("Bind the original W-R18 question brush font")
     if group["id"] == JUDGMENT_GROUP and JUDGMENT_BRUSH_FONT not in dependencies:
@@ -652,6 +677,10 @@ def compile_native_job(
             "path"
         ] == "/presenter":
             rid = clock_receipts[0]["binding_id"]
+        if live_paper and row["path"] == PAPER_PRESENTER:
+            rid = clock_receipts[0]["binding_id"]
+            resources[rid + "-source"] = str(source)
+            source = root / "paper-foreground"
         if line_art and row["path"] == LINE_HAND_PATH:
             if asset.get("kind") != "image" or asset.get("source") != "project_upload":
                 raise ValueError("Bind a current registered hand sheet image")
@@ -771,6 +800,18 @@ def compile_native_job(
         if _get(config, path) is not None:
             raise ValueError("A binding would overwrite existing native content")
         set_native_field(config, path, value)
+    if live_paper:
+        clock = clock_receipts[0]
+        config["media"]["presenter"].update(
+            kind="frame_sequence",
+            fps=clock["fps"],
+            frames=clock["frames"],
+            end_policy="error",
+        )
+        for row, times in zip(
+            config["content"]["rows"], native["paper_character_times"], strict=True
+        ):
+            row["char_times"] = times
     if browser_clock is not None:
         if browser_font is None:
             raise ValueError("Browser card font is not bound")
@@ -857,6 +898,7 @@ def compile_native_job(
                         "package_entries",
                         "film_feedback",
                         "line_hand_sequence",
+                        "paper_character_times",
                         "question_gloss",
                     )
                     if key in native

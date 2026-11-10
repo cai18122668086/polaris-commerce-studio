@@ -29,6 +29,31 @@ _STYLE = """
 """
 
 
+def _foreground_profile(package: Path) -> dict[str, Any]:
+    profile = clock_profile("CXBR02")
+    if not profile or any(
+        sha256(package / path) != profile["source_files"][path.as_posix()]
+        for path in (_MATTE, _SAMPLER, _NATIVE)
+    ):
+        raise ValueError("Original presenter sampler or matte changed")
+    return profile
+
+
+def load_foreground_source(package: Path, model: Path, cache: Path) -> tuple[Any, Any]:
+    _foreground_profile(package)
+    sys.path[:0] = [str(package), str(package / _OWNER)]
+    try:
+        native = importlib.import_module("commercial_runtime.native")
+        media = importlib.import_module("unified.core.media")
+    finally:
+        del sys.path[:2]
+    for module, expected in ((native, _NATIVE), (media, _SAMPLER)):
+        if not module.__file__ or Path(module.__file__).resolve() != package / expected:
+            raise ValueError("Foreground requires its original native modules")
+    matte_module = native.module(package / _MATTE, "tengli_original_foreground_matte")
+    return media, matte_module.HumanMatte(model, cache)
+
+
 def attach_foreground_track(
     scene: str, style_file: Path, *, full_source: bool = False
 ) -> str:
@@ -81,12 +106,7 @@ def render_foreground(
     model = Path(original.resolve("input://" + FOREGROUND_MATTE, True))
     if sha256(source) != window["source_sha256"]:
         raise ValueError("Slant card presenter differs from the compiled source window")
-    profile = clock_profile("CXBR02")
-    if not profile or any(
-        sha256(package / path) != profile["source_files"][path.as_posix()]
-        for path in (_MATTE, _SAMPLER, _NATIVE)
-    ):
-        raise ValueError("Original presenter sampler or matte changed")
+    profile = _foreground_profile(package)
     size = _SOURCE_SIZE if full_source else _FOREGROUND_SIZE
     identity = {
         "source_window": window,
@@ -102,17 +122,9 @@ def render_foreground(
         if existing["identity"] == identity and existing["sha256"] == sha256(clip):
             return existing
 
-    sys.path[:0] = [str(package), str(package / _OWNER)]
-    try:
-        native = importlib.import_module("commercial_runtime.native")
-        media = importlib.import_module("unified.core.media")
-    finally:
-        del sys.path[:2]
-    for module, expected in ((native, _NATIVE), (media, _SAMPLER)):
-        if not module.__file__ or Path(module.__file__).resolve() != package / expected:
-            raise ValueError("Hypit foreground requires its original native modules")
-    matte_module = native.module(package / _MATTE, "tengli_hypit_foreground_matte")
-    matte = matte_module.HumanMatte(model, clip.parent.parent / "matte-cache")
+    media, matte = load_foreground_source(
+        package, model, clip.parent.parent / "matte-cache"
+    )
     frames = window["frames"]
     asset = media.inspect_asset(
         {

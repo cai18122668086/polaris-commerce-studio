@@ -54,6 +54,11 @@ from .video_editing_native_content import (
     year_display,
     year_glyphs,
 )
+from .video_editing_paper_typewriter import (
+    PAPER_GROUP,
+    PAPER_TEMPLATE_ID,
+    paper_character_times,
+)
 from .video_editing_story_panels import (
     PANEL_BOARDS,
     PANEL_CAPTION_BANDS,
@@ -79,6 +84,7 @@ UNIFIED_TEMPLATES = frozenset(
         CHAPTER_TEMPLATE_ID,
         WHY_TEMPLATE_ID,
         TRANSLATION_TEMPLATE_ID,
+        PAPER_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
@@ -106,6 +112,7 @@ UNIFIED_MEDIA_PATHS = {
             CHAPTER_SCENE_GROUP,
             WHY_GROUP,
             TRANSLATION_GROUP,
+            PAPER_GROUP,
             *UNIFIED_VIDEO_VARIANTS,
         ),
         UNIFIED_PRESENTER,
@@ -199,6 +206,7 @@ UNIFIED_SOUNDS = {
         "swap_first": "visible",
         "swap_second": "ease",
     },
+    PAPER_GROUP: {"row0": "visible", "row1": "visible"},
     WHY_GROUP: dict(
         zip(
             (path.removeprefix("/timing/events/") for path in WHY_EVENTS),
@@ -269,6 +277,7 @@ UNIFIED_SCENE_GROUPS = (
         CHAPTER_SCENE_GROUP,
         WHY_GROUP,
         TRANSLATION_GROUP,
+        PAPER_GROUP,
     }
 )
 _CAPTION_BANDS = {
@@ -280,6 +289,7 @@ _CAPTION_BANDS = {
     "Z-M16": (850, 960),
     NUMBER_GROUP: (850, 960),
     TRANSLATION_GROUP: (880, 960),
+    PAPER_GROUP: (855, 960),
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
     **HANDOFF_CAPTION_BANDS,
@@ -568,6 +578,9 @@ def validate_unified_anchors(
         raise ValueError("Original unified scene needs measured motion entrances")
     if group == "Z-M02":
         _validate_judgment(text, events, duration)
+        return
+    if group == PAPER_GROUP:
+        paper_character_times(beat, anchors, transcript)
         return
     if group == WHY_GROUP:
         why_question_gloss(anchors)

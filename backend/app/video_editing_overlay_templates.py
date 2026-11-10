@@ -40,6 +40,7 @@ from .video_editing_native_content import (
     WHY_GROUP,
     YEAR_GROUP,
 )
+from .video_editing_paper_typewriter import PAPER_GROUP, PAPER_TEMPLATE_ID
 from .video_editing_presenter_motion import (
     MOTION_FONT,
     MOTION_MATTE,
@@ -162,6 +163,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     QUESTION_GROUP: (QUESTION_FONT,),
     QUESTION_CARD_GROUP: QUESTION_CARD_A_FONTS,
     WHY_GROUP: (WHY_FONT,),
+    PAPER_GROUP: (FOREGROUND_MATTE,),
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     LINE_GROUP: (LINE_BRUSH_FONT,),
     ROTATION_GROUP: (*FRUIT_LIST_FONTS, ROTATION_MATTE),
@@ -671,6 +673,21 @@ _TEMPLATES[TRANSLATION_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[PAPER_TEMPLATE_ID] = {
+    "id": PAPER_TEMPLATE_ID,
+    "name": "方格纸逐字说明",
+    "slots": [
+        {
+            "group_id": PAPER_GROUP,
+            "purpose": "用原生方格纸、两行逐字动画和同期描边人物说明两个实录要点。",
+            "layer": "scene",
+            "binding": "按实录顺序分别绑定两行的 label 和 text。"
+            "每行标签一至三字，正文一至十二字，标签的首词触发对应 row。"
+            "正文每个字按其所在实录词点出现，人物绑定同期口播原片。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[HANDOFF_TEMPLATE_ID] = {
     "id": HANDOFF_TEMPLATE_ID,
     "name": "转场与评论引导",
@@ -910,6 +927,7 @@ def overlay_templates() -> list[dict]:
             CHAPTER_TEMPLATE_ID,
             WHY_TEMPLATE_ID,
             TRANSLATION_TEMPLATE_ID,
+            PAPER_TEMPLATE_ID,
             HANDOFF_TEMPLATE_ID,
             LIVE_SPLIT_TEMPLATE_ID,
             HY_PICTURE_TEMPLATE_ID,

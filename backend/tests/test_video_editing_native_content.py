@@ -5,6 +5,7 @@ from app.video_editing_contracts import (
     BilingualContrastGloss,
     SemanticBeat,
     SemanticPlan,
+    SemanticRelationItem,
     Transcript,
     TranscriptToken,
 )
@@ -21,6 +22,7 @@ from app.video_editing_native_content import (
 )
 from app.video_editing_native_sound import package_entry_frame
 from app.video_editing_overlay_templates import overlay_template, validate_template_plan
+from app.video_editing_paper_typewriter import paper_character_times
 from app.video_editing_unified_scenes import CHAPTER_TEMPLATE_ID, UNIFIED_TEMPLATE_ID
 
 
@@ -190,6 +192,69 @@ def test_translation_labels_require_matching_spoken_occurrences():
     native["text"][3]["token_ids"] = ["t6", "t7"]
     with pytest.raises(ValueError, match="its own spoken label and caption"):
         translation_labels(native, labels)
+
+
+def test_paper_typewriter_uses_measured_words_for_every_glyph():
+    tokens = [
+        TranscriptToken(id=f"t{i}", text=word, start_ms=500 * i, end_ms=500 * (i + 1))
+        for i, word in enumerate(("每瓶", "1000", "克", "到手", "4", "斤", "囤一次"))
+    ]
+    transcript = Transcript(
+        source_sha256="a" * 64,
+        audio_sha256="b" * 64,
+        duration_ms=3500,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        tokens=tokens,
+        utterances=[],
+    )
+    paths = [f"/content/rows/{i}/{key}" for i in range(2) for key in ("label", "text")]
+    beat = SemanticBeat(
+        id="paper",
+        group_id="Z-M11",
+        first_token_id="t0",
+        last_token_id="t6",
+        relation="parallel",
+        reason="分行规格",
+        relation_items=[
+            SemanticRelationItem(
+                id=f"row{i}",
+                first_token_id=f"t{i * 3}",
+                last_token_id=f"t{i * 3 + 2}",
+                native_text_paths=paths[2 * i : 2 * i + 2],
+            )
+            for i in range(2)
+        ],
+    )
+    native = {
+        "clock": {"start_ms": 0, "end_ms": 3500},
+        "events": [
+            {
+                "path": f"/timing/events/row{i}",
+                "value": 1.5 * i,
+                "token_id": f"t{i * 3}",
+                "edge": "start",
+            }
+            for i in range(2)
+        ],
+        "text": [
+            {
+                "path": path,
+                "text": "".join(tokens[j].text for j in indexes),
+                "token_ids": [f"t{j}" for j in indexes],
+                "punctuation_policy": "preserve",
+            }
+            for path, indexes in zip(paths, ((0,), (1, 2), (3,), (4, 5)), strict=True)
+        ],
+    }
+    assert paper_character_times(beat, native, transcript) == [
+        [0.5, 0.5, 0.5, 0.5, 1],
+        [2, 2.5],
+    ]
+    native["events"][1]["token_id"] = "t4"
+    with pytest.raises(ValueError, match="their own measured word range"):
+        paper_character_times(beat, native, transcript)
 
 
 def test_role_scene_chain_keeps_the_shared_original_clock():

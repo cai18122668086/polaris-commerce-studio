@@ -36,6 +36,7 @@ from .video_editing_question_card import (
     automatic_question_card_gloss,
 )
 from .video_editing_template_materials import runtime_payload, validate_template_images
+from .video_editing_unified_scenes import UNIFIED_TEMPLATE_ID, UNIFIED_VIDEO_VARIANTS
 from .video_editing_word_bindings import word_bindings
 
 RULES_VERSION = "tengli-editorial-rules/1"
@@ -72,6 +73,7 @@ def catalog_index(
     question_card: bool = False,
     live_package: bool = False,
     line_scene: bool = False,
+    unified_scene: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -95,6 +97,8 @@ def catalog_index(
             original_input_a=question_a,
             live_package_presenter=live_package and group["id"] == PACKAGE_GROUP,
             embedded_line_caption=not (line_scene and group["id"] == LINE_GROUP),
+            current_unified_presenter=unified_scene
+            and group["id"] in UNIFIED_VIDEO_VARIANTS,
         )
         if question_a:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
@@ -207,6 +211,7 @@ def build_request(
         question_card=question_card,
         live_package=live_package,
         line_scene=line_scene,
+        unified_scene=bool(template and template["id"] == UNIFIED_TEMPLATE_ID),
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:

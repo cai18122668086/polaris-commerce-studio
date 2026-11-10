@@ -90,6 +90,14 @@ from .video_editing_render_edits import (
     source_only,
     validate_render_edits,
 )
+from .video_editing_unified_scenes import (
+    UNIFIED_CAPTION_INTENT,
+    UNIFIED_GROUPS,
+    UNIFIED_TEMPLATE_ID,
+    UNIFIED_WINDOW_CAPTION_BASELINE,
+    UNIFIED_WINDOW_GROUP,
+    split_unified_caption_lanes,
+)
 from .video_editing_yy6_scenes import YY6_GROUPS
 from .video_editing_yy_openings import (
     YY_OPENING_ALL_GROUPS,
@@ -597,6 +605,18 @@ def compile_episode(
                 shot_indices.append(len(episode["shots"]))
                 if beat.id in backdrop_beats:
                     backdrop_shots.append(shot_indices[-1])
+                picture_end = end
+                if (
+                    authoring.overlay_template_id == UNIFIED_TEMPLATE_ID
+                    and beat.group_id in UNIFIED_GROUPS
+                ):
+                    fps = episode["output"]["fps"]
+                    picture_end = projected_scene_end(
+                        start,
+                        end,
+                        round(job["config"]["timing"]["duration_seconds"] * fps),
+                        fps,
+                    )
                 episode["shots"].append(
                     {
                         "group_id": beat.group_id,
@@ -621,7 +641,7 @@ def compile_episode(
                                 authoring.overlay_template_id in YY_OPENING_TEMPLATES
                                 and beat.group_id in YY6_GROUPS
                             )
-                            else end
+                            else picture_end
                         ),
                         "layer": entry.placement.layer,
                         "rect": entry.placement.rect,
@@ -769,6 +789,11 @@ def compile_episode(
             1230,
             "主字幕放在原实景标题和纸条下方。",
         ),
+        UNIFIED_TEMPLATE_ID: (
+            tuple(UNIFIED_GROUPS),
+            1257,
+            "主字幕放在原生论点、人物窗与数量文字的下方。",
+        ),
         **dict.fromkeys(
             YY_OPENING_TEMPLATES,
             (
@@ -792,12 +817,20 @@ def compile_episode(
                 YY_OPENING_LOWER_CAPTION_BASELINE
                 if authoring.overlay_template_id in YY_OPENING_TEMPLATES
                 and shot["group_id"] in YY_OPENING_LOWER_TEXT_BANDS
+                else UNIFIED_WINDOW_CAPTION_BASELINE
+                if authoring.overlay_template_id == UNIFIED_TEMPLATE_ID
+                and shot["group_id"] == UNIFIED_WINDOW_GROUP
                 else baseline,
             )
             for shot in episode["shots"]
             if shot["group_id"] in caption_groups
         ]
         if effect_windows:
+            unified = authoring.overlay_template_id == UNIFIED_TEMPLATE_ID
+            if unified:
+                episode["captions"] = split_unified_caption_lanes(
+                    episode["captions"], effect_windows
+                )
             caption_role = episode["typography"]["caption"]
             overrides = caption_role.setdefault("layout_overrides", [])
             for caption in episode["captions"]:
@@ -808,14 +841,15 @@ def compile_episode(
                 ]
                 if not caption_baselines:
                     continue
+                y = max(caption_baselines)
                 overrides.append(
                     {
                         "start_seconds": caption["start_seconds"],
                         "end_seconds": caption["end_seconds"],
-                        "baseline_y_px": round(
-                            episode["output"]["height"] * max(caption_baselines) / 1280
-                        ),
-                        "reason": lane_reason,
+                        "baseline_y_px": round(episode["output"]["height"] * y / 1280),
+                        "reason": "主字幕进入人物窗下缘，避开原生标签和结论。"
+                        if unified and y == UNIFIED_WINDOW_CAPTION_BASELINE
+                        else lane_reason,
                     }
                 )
     for aid, asset in asset_files.items():
@@ -884,6 +918,8 @@ def compile_episode(
                 == PRESENTER_MOTION_TEMPLATE_ID,
                 sync_azl_entries=authoring.overlay_template_id == AZL_TEMPLATE_ID,
                 sync_cxbr_entries=authoring.overlay_template_id == CXBR_TEMPLATE_ID,
+                sync_unified_entries=authoring.overlay_template_id
+                == UNIFIED_TEMPLATE_ID,
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})
@@ -1042,5 +1078,13 @@ def compile_episode(
         ]
         if cxbr_shots:
             atomic_json(root / CXBR_CAPTION_INTENT, {"shots": cxbr_shots})
+    if authoring.overlay_template_id == UNIFIED_TEMPLATE_ID:
+        unified_shots = [
+            i
+            for i, shot in enumerate(episode["shots"])
+            if shot["group_id"] in UNIFIED_GROUPS
+        ]
+        if unified_shots:
+            atomic_json(root / UNIFIED_CAPTION_INTENT, {"shots": unified_shots})
     atomic_json(root / "episode.json", episode)
     return episode

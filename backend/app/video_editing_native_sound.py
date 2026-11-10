@@ -43,6 +43,7 @@ from .video_editing_subtitle_sound_clock import (
     SUBTITLE_ENTRY_SYNC,
     subtitle_entry_clock,
 )
+from .video_editing_unified_scenes import unified_action_frame, unified_sound_paths
 from .video_editing_yy6_scenes import YY6_SOUND_EVENTS
 from .video_editing_yy_openings import (
     YY_OPENING_COMPOSITOR_SHA256,
@@ -143,6 +144,7 @@ def compile_sound(
     sync_presenter_motion_entries: bool = False,
     sync_azl_entries: bool = False,
     sync_cxbr_entries: bool = False,
+    sync_unified_entries: bool = False,
 ) -> dict[str, Any]:
     """Compile trusted sound choices without copying an old timeline."""
     duration = episode["source"]["duration_seconds"]
@@ -151,7 +153,9 @@ def compile_sound(
         != YY_OPENING_COMPOSITOR_SHA256
     ):
         raise ValueError("Original scene compositor clock changed")
-    if (sync_presenter_motion_entries or sync_cxbr_entries) and (
+    if (
+        sync_presenter_motion_entries or sync_cxbr_entries or sync_unified_entries
+    ) and (
         sha256(package / "commercial_runtime/episode.py") != MOTION_COMPOSITOR_SHA256
     ):
         raise ValueError("Original motion compositor clock changed")
@@ -254,6 +258,17 @@ def compile_sound(
         question_card_entry = yy_opening_entry = presenter_motion_entry = azl_entry = (
             cxbr_entry
         ) = None
+        unified_entry = None
+        if (
+            sync_unified_entries
+            and cue.phase == "entry"
+            and cue.event_path in unified_sound_paths(shot["group_id"])
+        ):
+            fps = episode["output"]["fps"]
+            frame = unified_action_frame(shot, fps, cue.event_path)
+            seconds = frame / fps
+            native_ref = {}
+            unified_entry = {"shot_index": shot_index, "output_frame": frame}
         if (
             sync_azl_entries
             and shot["group_id"] in AZL_GROUPS
@@ -413,6 +428,7 @@ def compile_sound(
                 **({"yy_opening_entry": yy_opening_entry} if yy_opening_entry else {}),
                 **({"azl_entry": azl_entry} if azl_entry else {}),
                 **({"cxbr_entry": cxbr_entry} if cxbr_entry else {}),
+                **({"unified_entry": unified_entry} if unified_entry else {}),
                 **(
                     {"presenter_motion_entry": presenter_motion_entry}
                     if presenter_motion_entry
@@ -631,6 +647,17 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
                 and cxbr_entry["output_frame"] == frame
+                and cue["anchor_seconds"] == frame / fps
+            )
+        elif unified_entry := cue.get("unified_entry"):
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            fps = episode["output"]["fps"]
+            shot = episode["shots"][unified_entry["shot_index"]]
+            frame = unified_action_frame(shot, fps, cue["word_binding"]["path"])
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and unified_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
         else:

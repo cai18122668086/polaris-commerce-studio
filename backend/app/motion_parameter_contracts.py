@@ -52,6 +52,10 @@ from .video_editing_question_branch import (
     question_variant_template,
 )
 from .video_editing_question_card import QUESTION_CARD_GLYPH, question_card_a_input
+from .video_editing_unified_scenes import (
+    UNIFIED_VIDEO_VARIANTS,
+    unified_presenter_template,
+)
 
 SILHOUETTE_GROUPS = frozenset(("W-R04", "W-R09"))
 SILHOUETTE_PATHS = tuple(f"/media/silhouettes/{i}/path" for i in range(7))
@@ -130,6 +134,7 @@ def input_contract(
     current_why_props: bool = True,
     embedded_why_caption: bool = True,
     original_input_a: bool = False,
+    current_unified_presenter: bool = False,
 ) -> dict[str, Any]:
     template_path = (
         question_card_a_input(package, group)
@@ -148,6 +153,8 @@ def input_contract(
         )
     if group["id"] == PACKAGE_GROUP and live_package_presenter:
         template = live_package_template(template)
+    if group["id"] in UNIFIED_VIDEO_VARIANTS and current_unified_presenter:
+        template = unified_presenter_template(template)
     if group["id"] == LINE_GROUP and current_line_art:
         template = line_template(template, embedded_caption=embedded_line_caption)
     if group["id"] == JUDGMENT_GROUP and not embedded_judgment_caption:

@@ -21,6 +21,72 @@
       },
       "native_fps": 30
     },
+    "Z-M02": {
+      "id": "unified-z-m02-measured-presenter/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited native video alternative to the original sample still; retain existing geometry and continuous source sampling",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/typography.py": "5fbf8fff517ff0d9fd551d9d661356499950a2cd246258e0eef1d2ed07b83333",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/frozen/runtime.py": "f176a05795075c8a47f93fc5219c4713d01388b834b367b6f043736c111c1133",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/adapter.py": "c13662347510845861aaee2049fafaaab7792867758c6664e1a7a92ab429a18e"
+      },
+      "native_fps": 30
+    },
+    "Z-M03": {
+      "id": "unified-z-m03-measured-presenter/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited native video alternative to the original sample still; retain existing geometry and continuous source sampling",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/typography.py": "5fbf8fff517ff0d9fd551d9d661356499950a2cd246258e0eef1d2ed07b83333",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/frozen/runtime.py": "f176a05795075c8a47f93fc5219c4713d01388b834b367b6f043736c111c1133",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/adapter.py": "c13662347510845861aaee2049fafaaab7792867758c6664e1a7a92ab429a18e"
+      },
+      "native_fps": 30
+    },
+    "Z-M04": {
+      "id": "unified-z-m04-measured-presenter/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited native video alternative to the original sample still; retain existing geometry and continuous source sampling",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/typography.py": "5fbf8fff517ff0d9fd551d9d661356499950a2cd246258e0eef1d2ed07b83333",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M04-M06/frozen/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M04-M06/adapter.py": "a34ab525ae6310ee7cc782c026e2c6ad79c45ed0ebe4572a382eea7618a51b86"
+      },
+      "native_fps": 30
+    },
     "Z-M12": {
       "id": "unified-package-window-source-clock/1",
       "backend": "unified",

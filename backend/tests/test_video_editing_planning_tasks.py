@@ -42,6 +42,10 @@ from app.video_editing_template_materials import (
     template_image_requirements,
     validate_template_images,
 )
+from app.video_editing_unified_scenes import (
+    UNIFIED_GROUPS,
+    require_clean_unified_source,
+)
 from app.video_editing_yy6_scenes import YY6_GROUPS, yy6_scene_inputs
 from app.video_editing_yy_openings import require_clean_yy_source
 from tests.test_video_editing_native_plans import saved_plan
@@ -123,6 +127,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "presenter-reframing-v1",
         "azl-panels-v1",
         "chenxi-broll-v1",
+        "unified-argument-v1",
         "evidence-judgment-v1",
         "explainer-steps-v1",
         "subtitle-story-v1",
@@ -131,6 +136,13 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "subtitle-foreground-v1",
     }
     assert all(len(row["slots"]) >= 10 for row in options)
+    unified = next(row for row in options if row["id"] == "unified-argument-v1")
+    assert {
+        row["group_id"] for row in unified["slots"] if row.get("layer") == "scene"
+    } == set(UNIFIED_GROUPS)
+    unified_blocked = {}
+    require_clean_unified_source(unified, "present", unified_blocked)
+    assert unified_blocked == dict.fromkeys(UNIFIED_GROUPS, ["clean_source_required"])
     progress = next(row for row in options if row["id"] == "subtitle-progress-v1")
     relay = next(row for row in options if row["id"] == "subtitle-relay-v1")
     assert len(progress["slots"]) == len(relay["slots"]) + 8

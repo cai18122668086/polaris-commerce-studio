@@ -27,6 +27,8 @@ from .video_editing_presenter_motion import (
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
+from .video_editing_unified_scenes import UNIFIED_GROUPS, unified_binding
+from .video_editing_unified_scenes import UNIFIED_TEMPLATE_ID as UNIFIED_TEMPLATE_ID
 from .video_editing_yy6_scenes import YY6_GROUPS, yy6_binding
 from .video_editing_yy_openings import (
     YY_OPENING_ALL_GROUPS,
@@ -74,6 +76,7 @@ SYNC_SUBTITLE_TEMPLATES = frozenset(
         PRESENTER_MOTION_TEMPLATE_ID,
         AZL_TEMPLATE_ID,
         CXBR_TEMPLATE_ID,
+        UNIFIED_TEMPLATE_ID,
         *YY_OPENING_TEMPLATES,
         *TEXT_HANDOFF_TEMPLATES,
     }
@@ -506,6 +509,22 @@ _TEMPLATES[CXBR_TEMPLATE_ID] = {
         *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[UNIFIED_TEMPLATE_ID] = {
+    "id": UNIFIED_TEMPLATE_ID,
+    "name": "论点与数量对照",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": unified_binding(group),
+            }
+            for group, (purpose, _) in UNIFIED_GROUPS.items()
+        ),
+        *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
     "id": SUBTITLE_RELAY_TEMPLATE_ID,
     "name": "双层字幕接力",
@@ -607,6 +626,7 @@ def overlay_templates() -> list[dict]:
             PRESENTER_MOTION_TEMPLATE_ID,
             AZL_TEMPLATE_ID,
             CXBR_TEMPLATE_ID,
+            UNIFIED_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,

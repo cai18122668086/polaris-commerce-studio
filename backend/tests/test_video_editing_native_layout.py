@@ -24,6 +24,12 @@ from app.video_editing_native_layout import (
 )
 from app.video_editing_presenter_motion import motion_entry_frame
 from app.video_editing_question_card import QUESTION_CARD_A_FONTS
+from app.video_editing_unified_scenes import (
+    UNIFIED_CAPTION_INTENT,
+    split_unified_caption_lanes,
+    unified_action_frame,
+    verify_unified_captions,
+)
 from app.video_editing_yy_openings import (
     YY_OPENING_CAPTION_INTENT,
     verify_yy_opening_captions,
@@ -312,6 +318,41 @@ def test_yy6_sound_and_lower_text_use_original_scene_rules(tmp_path):
     ink["box"][1] = 1179
     with pytest.raises(ValueError, match="ink enters"):
         verify_yy_opening_captions(tmp_path, report)
+
+
+def test_original_unified_easing_and_text_band_use_real_output_frames(tmp_path):
+    shot = {
+        "group_id": "Z-M03",
+        "layer": "scene",
+        "rect": [0, 0, 1, 1],
+        "start_seconds": 0.41,
+        "end_seconds": 4.79,
+        "config": {"timing": {"events": {"title": 0, "item0": 0.30}}},
+    }
+    assert unified_action_frame(shot, 30, "/timing/events/title") == 13
+    assert unified_action_frame(shot, 30, "/timing/events/item0") == 22
+    atomic_json(
+        tmp_path / "episode.json",
+        {
+            "output": {"height": 1280},
+            "shots": [shot],
+            "captions": [{"start_seconds": 0.41, "end_seconds": 2.10}],
+        },
+    )
+    atomic_json(tmp_path / UNIFIED_CAPTION_INTENT, {"shots": [0]})
+    ink = {"start": 0.41, "end": 2.10, "box": [30, 880, 400, 989]}
+    report = {"status": "passed", "caption_ink": [ink]}
+    assert verify_unified_captions(tmp_path, report)["shots"][0]["smallest_gap_px"] == 4
+    ink["box"][3] = 994
+    with pytest.raises(ValueError, match="ink enters"):
+        verify_unified_captions(tmp_path, report)
+    caption = {"start_seconds": 4.31, "end_seconds": 5.42, "text": "实录字幕"}
+    assert split_unified_caption_lanes(
+        [caption], [(0.41, 4.79, 980), (4.79, 6, 1257)]
+    ) == [
+        {**caption, "end_seconds": 4.79},
+        {**caption, "start_seconds": 4.79},
+    ]
 
 
 def test_presenter_motion_sound_uses_fixed_and_measured_native_frames():

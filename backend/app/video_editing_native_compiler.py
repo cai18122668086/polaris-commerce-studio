@@ -108,6 +108,10 @@ from .video_editing_question_card import (
     question_card_a_input,
     question_card_gloss,
 )
+from .video_editing_unified_scenes import (
+    UNIFIED_VIDEO_VARIANTS,
+    unified_presenter_template,
+)
 from .video_editing_word_bindings import word_bindings
 
 
@@ -206,6 +210,10 @@ def compile_native_job(
         beat.group_id == PACKAGE_GROUP
         and config.get("media", {}).get("presenter", {}).get("kind") == "video"
     )
+    current_unified_presenter = (
+        beat.group_id in UNIFIED_VIDEO_VARIANTS
+        and config.get("media", {}).get("presenter", {}).get("kind") == "video"
+    )
     line_art = beat.group_id == LINE_GROUP and "hand_sequence" in config["media"]
     embedded_line_caption = not line_art or config["content"].get("captions") != []
     website_judgment = (
@@ -226,6 +234,7 @@ def compile_native_job(
         current_why_props=why_props,
         embedded_why_caption=embedded_why_caption,
         original_input_a=question_card_a,
+        current_unified_presenter=current_unified_presenter,
     )
     if (
         recipe.get("version") != "tengli.native-recipe/1"
@@ -252,6 +261,12 @@ def compile_native_job(
         template = live_package_template(template)
         if config.get("layout", {}).get("mode") != "native":
             raise ValueError("Keep the original single-line package label fit")
+    if current_unified_presenter:
+        template = unified_presenter_template(template)
+        if config["media"]["presenter"]["end_policy"] != "error":
+            raise ValueError(
+                "Keep the measured presenter moving throughout the original scene"
+            )
     if line_art:
         template = line_template(template, embedded_caption=embedded_line_caption)
         hand = config["media"]["hand_sequence"]

@@ -132,6 +132,16 @@ from .video_editing_question_card import (
     question_card_a_input,
 )
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
+from .video_editing_unified_scenes import (
+    UNIFIED_DESIGN_ID,
+    UNIFIED_GROUPS,
+    UNIFIED_LIVE_GROUPS,
+    UNIFIED_PRESENTER,
+    UNIFIED_VIDEO_VARIANTS,
+    unified_presenter_template,
+    unified_sound_paths,
+    validate_unified_anchors,
+)
 from .video_editing_word_bindings import word_bindings
 from .video_editing_yy6_scenes import (
     YY6_GROUPS,
@@ -432,6 +442,26 @@ def _entry(
         "SG-S08",
     }:
         _foreground_anchors(beat.group_id, anchors, text, config)
+    contract_path = group.get("contract")
+    original_limits = (
+        read_json(inside(package, contract_path)).get("content_capacity", {})
+        if contract_path
+        else {}
+    )
+    if any(
+        type(limit) is int
+        and (
+            not 1 <= len(text["/content/" + role]) <= limit
+            or "\n" in text["/content/" + role]
+        )
+        for role, limit in original_limits.items()
+        if "/content/" + role in text
+    ):
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_ROLE_LENGTH",
+            f"{beat.group_id} 的实录词组超出原生单行角色字数范围。",
+        )
     if entry_words := _TEXT_ENTRY_WORDS.get(beat.group_id):
         text_starts = {row["path"]: row["token_ids"][0] for row in anchors["text"]}
         events = {row["path"]: row for row in anchors["events"]}
@@ -456,18 +486,6 @@ def _entry(
                 422,
                 "EDITING_TEMPLATE_TEXT_HANDOFF_REQUIRED",
                 f"{beat.group_id} 的各层文字须依次出画，留足原生入场时间。",
-            )
-        original_limits = read_json(inside(package, group["contract"])).get(
-            "content_capacity", {}
-        )
-        if any(
-            type(limit) is int and not 1 <= len(text["/content/" + role]) <= limit
-            for role, limit in original_limits.items()
-        ):
-            raise ApiError(
-                422,
-                "EDITING_TEMPLATE_ROLE_LENGTH",
-                f"{beat.group_id} 的实录词组超出原生角色字数范围。",
             )
         first_role = _SIMULTANEOUS_TEXT_START.get(beat.group_id)
         if first_role and text_starts["/content/" + first_role] != beat.first_token_id:
@@ -878,6 +896,7 @@ def _entry_sound(
             if beat.group_id in PRESENTER_MOTION_GROUPS
             or beat.group_id in AZL_GROUPS
             or beat.group_id in CXBR_PURPOSES
+            or beat.group_id in UNIFIED_GROUPS
             else "原生文字动效入场时给一次短提示，口播继续。",
         ),
         source_start_seconds=source_start,
@@ -1729,6 +1748,90 @@ def _presenter_motion_entry(
     ), anchors
 
 
+def _unified_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    group_id = beat.group_id
+    contract = input_contract(package, group, current_unified_presenter=True)
+    config = read_json(inside(package, group["input_template"]))
+    if group_id in UNIFIED_VIDEO_VARIANTS:
+        config = unified_presenter_template(config)
+    live = group_id in UNIFIED_LIVE_GROUPS
+    presenters = (
+        {
+            row["id"]
+            for row in asset_cards
+            if row["kind"] == "original_video"
+            and row["sha256"] == transcript.source_sha256
+        }
+        if live
+        else set()
+    )
+    try:
+        anchors = word_bindings(beat, transcript, contract, presenters)
+        bound = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        if (
+            set(bound) != ({UNIFIED_PRESENTER} if live else set())
+            or set(beat.asset_ids) != set(bound.values())
+            or {row["path"] for row in anchors["text"]} != set(contract["text_paths"])
+            or {row["path"] for row in anchors["events"]}
+            != {row["path"] for row in contract["event_paths"]}
+            or beat.relation in RELATION_MAPPING
+            and not beat.relation_items
+        ):
+            raise ValueError(
+                "Original scene requires its actual media, words, events and relations"
+            )
+        validate_unified_anchors(beat, anchors)
+    except (ValueError, KeyError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_UNIFIED_INPUTS_REQUIRED",
+            f"{group_id} 需要原文字槽对应的实录短语、词点及关系。"
+            "使用人物的场景需绑定同期原片。",
+        ) from error
+    slots = [
+        *(row["path"] for key in ("text", "events", "media") for row in anchors[key]),
+        *(
+            field["path"]
+            for field in contract["fields"]
+            if field["path"].startswith("/media/")
+            and field["category"] == "clock_owned_by_compiler"
+        ),
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    config["layout"]["overflow"] = "reject"
+    if live:
+        config["media"]["presenter"]["end_policy"] = "error"
+    reason = "沿用原生文字、人物窗或整帧底板，主字幕和原声使用整片时钟。"
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": UNIFIED_DESIGN_ID,
+            "design_reason": reason,
+            "parameter_decisions": {key: reason for key in config},
+            "config": config,
+            "placeholders": slots,
+            "media_clocks": [
+                {"media_path": UNIFIED_PRESENTER, "policy": "transcript_source_window"}
+            ]
+            if live
+            else [],
+        },
+    ), anchors
+
+
 def _opening_entry(
     package: Path,
     group: dict,
@@ -1984,6 +2087,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = tuple(CXBR_SOUNDS[beat.group_id])
+        elif beat.group_id in UNIFIED_GROUPS:
+            entries[beat.id], anchors = _unified_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = unified_sound_paths(beat.group_id)
         else:
             make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
             entries[beat.id], anchors = make_entry(package, group, beat, transcript)
@@ -2004,6 +2112,7 @@ def build_overlay_recipes(
             *PRESENTER_MOTION_GROUPS,
             *AZL_GROUPS,
             *CXBR_PURPOSES,
+            *UNIFIED_GROUPS,
         }
         for beat in beats
     )

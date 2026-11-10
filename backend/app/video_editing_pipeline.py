@@ -34,6 +34,10 @@ from .video_editing_cxbr import CXBR_CAPTION_INTENT, verify_cxbr_captions
 from .video_editing_hypit_strips import STAGGER_GROUPS
 from .video_editing_native_layout import verify_inset_layout
 from .video_editing_native_sound import verify_rendered_sound
+from .video_editing_unified_scenes import (
+    UNIFIED_CAPTION_INTENT,
+    verify_unified_captions,
+)
 from .video_editing_yy_openings import (
     YY_OPENING_CAPTION_INTENT,
     verify_yy_opening_captions,
@@ -762,6 +766,17 @@ def validate_result(
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             raise EditingFailure(
                 "EDITING_NATIVE_CHENXI_CAPTION_LAYOUT_INVALID"
+            ) from None
+    if (root / UNIFIED_CAPTION_INTENT).is_file():
+        try:
+            if native["sha256"] != validation["sha256"]:
+                raise ValueError("Original unified output changed before validation")
+            validation["native_unified_captions"] = verify_unified_captions(
+                root, native["layout_review"]
+            )
+        except (ValueError, KeyError, IndexError, TypeError, OSError):
+            raise EditingFailure(
+                "EDITING_NATIVE_UNIFIED_CAPTION_LAYOUT_INVALID"
             ) from None
     atomic_json(root / "validation.json", validation)
     return validation

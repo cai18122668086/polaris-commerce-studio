@@ -13,6 +13,12 @@ from uuid import uuid4
 from jsonschema import Draft202012Validator
 
 from .config import Settings
+from .motion_browser_originals import (
+    BROWSER_ORIGINALS_KEY,
+    RENDER_GROUPS,
+    browser_original_evidence,
+    require_browser_originals,
+)
 from .motion_library import (
     MOTION_SHA256,
     atomic_json,
@@ -102,6 +108,7 @@ def record_native(
     settings: Settings | None = None,
 ) -> dict[str, Any]:
     """Import a real native render receipt, bound to input/output/library bytes."""
+    package, instance = package.resolve(), instance.resolve()
     verify_package(package)
     report = read_json(report_path)
     group_id = report["group_id"]
@@ -121,6 +128,21 @@ def record_native(
         or report.get("sha256") != sha256(output)
     ):
         raise ValueError("Native receipt, input, library and decoded output disagree")
+    if group_id in RENDER_GROUPS:
+        bindings = instance / "bindings.json"
+        selected = require_browser_originals(
+            package,
+            groups[group_id],
+            job["config"],
+            read_json(bindings).get(BROWSER_ORIGINALS_KEY)
+            if bindings.is_file()
+            else None,
+            instance / "browser-originals",
+        )
+        if report.get("native", {}).get(
+            BROWSER_ORIGINALS_KEY, {}
+        ) != browser_original_evidence(selected):
+            raise ValueError("Native receipt lacks matching original browser images")
     encoding = report.get("encoding")
     if groups[group_id].get("backend") == "hypit" and not encoding:
         if not report.get("build_id") or settings is None:
@@ -148,6 +170,8 @@ def record_native(
         "semantic_review": "unreviewed",
         "listening_review": "unreviewed",
     }
+    if group_id in RENDER_GROUPS:
+        evidence["browser_originals_checked"] = True
     branch = job.get("config", {}).get("branch")
     if job["group_id"] == QUESTION_GROUP and branch in (QUESTION_BRANCH, "smoke"):
         evidence["native_branch"] = branch
@@ -257,6 +281,13 @@ def _validate_evidence(record: Any, group_id: str, evidence_id: str) -> None:
         raise ValueError("Invalid native evidence identity")
     hashes = ["input_sha256", "receipt_sha256"]
     if record["runtime_validation"] == "sample_rendered":
+        if (
+            group_id in RENDER_GROUPS
+            and record.get("browser_originals_checked") is not True
+        ):
+            raise ValueError(
+                "Browser evidence needs its active original images checked"
+            )
         hashes.append("output_sha256")
         format_info = record.get("format")
         if not isinstance(format_info, dict) or any(

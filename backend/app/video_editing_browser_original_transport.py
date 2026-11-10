@@ -53,7 +53,9 @@ def _server_with_originals(
     return BrowserOriginalServer
 
 
-def install_browser_originals(package: Path, root: Path) -> None:
+def install_browser_originals(
+    package: Path, root: Path, *, allow_diagnostic: bool = False
+) -> None:
     if "--job" not in sys.argv:
         return
     job = Path(sys.argv[sys.argv.index("--job") + 1]).resolve()
@@ -81,7 +83,12 @@ def install_browser_originals(package: Path, root: Path) -> None:
         if card["id"] != group_id:
             return original_drawer(card, config)
         selected = require_browser_originals(
-            package, card, config, frozen, root / "browser-originals"
+            package,
+            card,
+            config,
+            frozen,
+            root / "browser-originals",
+            allow_diagnostic=allow_diagnostic,
         )
         if not selected:
             return original_drawer(card, config)

@@ -39,7 +39,13 @@ def main() -> None:
         "--command", choices=["check", "export", "render-group", "plan"], required=True
     )
     parser.add_argument("--kind", choices=["episode", "group"], default="episode")
+    parser.add_argument("--diagnostic-browser-images", action="store_true")
     args = parser.parse_args()
+    diagnostic = args.diagnostic_browser_images
+    if diagnostic and (args.kind != "group" or args.command == "plan"):
+        parser.error(
+            "Diagnostic browser images are only for single-group checks and renders"
+        )
     package, root = args.package.resolve(), args.instance.resolve()
     if root.is_relative_to(package):
         raise ValueError("Task outputs must be outside the original library")
@@ -70,6 +76,7 @@ def main() -> None:
                     shot["config"],
                     frozen,
                     root / "browser-originals",
+                    allow_diagnostic=diagnostic,
                 )
                 if selected and args.command in {"export", "render-group"}:
                     output = (
@@ -123,7 +130,8 @@ def main() -> None:
         "    install_live_card_export(package, root)\n"
         "    install_fruit_list_export(package, root)\n"
         "    install_rotation_export(package, root)\n"
-        "    install_browser_originals(package, root)\n"
+        "    install_browser_originals("
+        f"package, root, allow_diagnostic={diagnostic!r})\n"
         "    install_native_line_branch(package, root)\n"
         "except Exception as error:\n"
         "    raise SystemExit('Unable to prepare native shot adapter') from error\n",

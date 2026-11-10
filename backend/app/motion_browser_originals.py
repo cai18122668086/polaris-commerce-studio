@@ -6,6 +6,7 @@ import re
 from collections import Counter
 from io import BytesIO
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from PIL import Image
@@ -49,6 +50,7 @@ RENDER_GROUPS = frozenset(_ALWAYS_DRAWN | _DRAWN_WITHOUT_PRESENTER)
 BROWSER_ORIGINALS_REQUIRED = "EDITING_ORIGINAL_BROWSER_ASSETS_REQUIRED"
 BROWSER_ORIGINALS_KEY = "tengli_browser_originals"
 _IMAGE_LIMIT = 16 * 1024 * 1024
+DeliveryScope = Literal["original_delivery", "diagnostic"]
 
 
 class BrowserOriginalsMissing(ValueError):
@@ -93,6 +95,8 @@ def _original_image(
     index: tuple[dict, dict, dict],
     supplied: dict,
     stage: Path | None,
+    *,
+    allow_diagnostic: bool = False,
 ) -> dict[str, str] | None:
     archived, aliases, identities = index
     expected = archived.get(relative)
@@ -104,7 +108,9 @@ def _original_image(
     if alias and not alias.startswith("input://"):
         raise ValueError("Unsupported original browser image alias")
     identity = identities[alias[8:]] if alias else None
-    return _verified_supplement(relative, supplied[relative], identity, stage)
+    return _verified_supplement(
+        relative, supplied[relative], identity, stage, allow_diagnostic=allow_diagnostic
+    )
 
 
 _IMAGE_ERRORS = (
@@ -123,6 +129,8 @@ def _selection(
     needed: dict[str, list[int]],
     supplied: dict,
     stage: Path | None,
+    *,
+    allow_diagnostic: bool,
 ) -> dict[str, dict[str, str]]:
     index = (
         _original_index(package)
@@ -136,7 +144,14 @@ def _selection(
         for i in indices:
             relative = f"{group['browser_directory']}/{pattern.format(i=i)}"
             try:
-                original = _original_image(package, relative, index, supplied, stage)
+                original = _original_image(
+                    package,
+                    relative,
+                    index,
+                    supplied,
+                    stage,
+                    allow_diagnostic=allow_diagnostic,
+                )
                 if original is not None:
                     selected[relative] = original
             except _IMAGE_ERRORS:
@@ -149,8 +164,22 @@ def _selection(
 
 
 def _verified_supplement(
-    relative: str, row: dict, identity: dict | None, stage: Path | None
+    relative: str,
+    row: dict,
+    identity: dict | None,
+    stage: Path | None,
+    *,
+    allow_diagnostic: bool,
 ) -> dict[str, str]:
+    if not isinstance(row, dict):
+        raise ValueError("Invalid supplemental browser image registration")
+    scope = row.get("use_scope")
+    if scope == "diagnostic":
+        if not allow_diagnostic:
+            raise ValueError("Diagnostic browser images cannot be used as originals")
+    elif scope != "original_delivery" and (scope is not None or identity is None):
+        # Legacy entries can still prove their origin with a pinned catalog digest.
+        raise ValueError("Unindexed browser images need an explicit delivery scope")
     digest, origin = row["sha256"], row["original_source"]
     source = Path(row["path"])
     if (
@@ -190,7 +219,14 @@ def _verified_supplement(
         "path": str(source.resolve()),
         "sha256": digest,
         "original_source": origin,
-        "identity": "catalog_sha256" if identity else "operator_attested",
+        "identity": (
+            "catalog_sha256"
+            if identity
+            else "diagnostic"
+            if scope == "diagnostic"
+            else "operator_attested"
+        ),
+        **({"use_scope": scope} if scope is not None else {}),
     }
 
 
@@ -219,13 +255,20 @@ def _registered_originals(manifest: Path | None) -> dict:
     return _registry_files(read_dependency_manifest(manifest))
 
 
-def _incoming_image(source: Path, relative: str, origin: str) -> dict | None:
+def _incoming_image(
+    source: Path, relative: str, origin: str, scope: DeliveryScope
+) -> dict | None:
     path = inside(source, relative)
     if not path.exists():
         return None
     if not path.is_file() or path.stat().st_size > _IMAGE_LIMIT:
         raise ValueError("Invalid supplemental browser image file")
-    return {"path": str(path), "sha256": sha256(path), "original_source": origin}
+    return {
+        "path": str(path),
+        "sha256": sha256(path),
+        "original_source": origin,
+        "use_scope": scope,
+    }
 
 
 def _save_intake(manifest: Path, previous: dict, files: dict) -> None:
@@ -246,6 +289,7 @@ def intake_browser_originals(
     *,
     source: Path | None = None,
     origin: str = "",
+    scope: DeliveryScope | None = None,
     apply: bool = False,
 ) -> dict:
     """Check a private delivery tree at the package-relative native paths."""
@@ -260,6 +304,8 @@ def intake_browser_originals(
         or not 0 < len(origin) <= 240
     ):
         raise ValueError("Supply an external delivery directory and its provenance")
+    if source is not None and scope not in ("original_delivery", "diagnostic"):
+        raise ValueError("Classify the delivery as original or diagnostic")
     if apply and source is None:
         raise ValueError("Registering originals requires a delivery directory")
     verify_package(package)
@@ -290,35 +336,56 @@ def intake_browser_originals(
             }
         if relative in registered:
             try:
-                checked = _original_image(package, relative, index, registered, None)
+                checked = _original_image(
+                    package, relative, index, registered, None, allow_diagnostic=True
+                )
             except _IMAGE_ERRORS:
                 row["status"] = "invalid_registration"
             else:
                 assert checked is not None
+                diagnostic = checked.get("use_scope") == "diagnostic"
                 row.update(
-                    status="verified_registered",
+                    status="diagnostic_registered"
+                    if diagnostic
+                    else "verified_registered",
                     identity=checked["identity"],
                     sha256=checked["sha256"],
                 )
-                continue
-        if source is None:
+                if not diagnostic or scope != "original_delivery":
+                    continue
+        if source is None or scope is None:
             continue
         try:
-            candidate = _incoming_image(source, relative, origin)
+            candidate = _incoming_image(source, relative, origin, scope)
             if candidate is None:
                 continue
             checked = _original_image(
-                package, relative, index, {relative: candidate}, None
+                package,
+                relative,
+                index,
+                {relative: candidate},
+                None,
+                allow_diagnostic=True,
             )
         except _IMAGE_ERRORS:
             row["status"] = "rejected_candidate"
         else:
             assert checked is not None
+            prior = registered.get(relative)
+            if (
+                isinstance(prior, dict)
+                and prior.get("use_scope") == "diagnostic"
+                and checked["identity"] == "operator_attested"
+                and prior.get("sha256") == checked["sha256"]
+            ):
+                row["status"] = "rejected_diagnostic_candidate"
+                continue
             accepted[relative] = candidate
             row.update(
                 status="registered" if apply else "ready_to_register",
                 identity=checked["identity"],
                 sha256=checked["sha256"],
+                use_scope=scope,
             )
     if apply and accepted:
         _save_intake(manifest, document, {**registered, **accepted})
@@ -392,7 +459,13 @@ def original_startup_assets(
 
 
 def compile_browser_originals(
-    package: Path, group: dict, config: dict, manifest: Path | None, stage: Path
+    package: Path,
+    group: dict,
+    config: dict,
+    manifest: Path | None,
+    stage: Path,
+    *,
+    allow_diagnostic: bool = False,
 ) -> dict[str, dict[str, str]]:
     needed = _needed(group["id"], config)
     if not needed:
@@ -400,7 +473,9 @@ def compile_browser_originals(
     supplied = _registered_originals(manifest)
     if supplied and (stage.resolve() != stage or stage.is_relative_to(package)):
         raise ValueError("Frozen browser images must remain inside the task")
-    return _selection(package, group, needed, supplied, stage)
+    return _selection(
+        package, group, needed, supplied, stage, allow_diagnostic=allow_diagnostic
+    )
 
 
 def require_browser_originals(
@@ -409,6 +484,8 @@ def require_browser_originals(
     config: dict,
     frozen: dict | None = None,
     stage: Path | None = None,
+    *,
+    allow_diagnostic: bool = False,
 ) -> dict[str, dict[str, str]]:
     needed = _needed(group["id"], config)
     if not needed:
@@ -423,7 +500,9 @@ def require_browser_originals(
                 stage, digest + Path(name).suffix
             ):
                 supplied[name] = row
-    return _selection(package, group, needed, supplied, None)
+    return _selection(
+        package, group, needed, supplied, None, allow_diagnostic=allow_diagnostic
+    )
 
 
 def browser_original_evidence(selected: dict[str, dict[str, str]]) -> dict:

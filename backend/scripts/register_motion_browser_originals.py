@@ -13,6 +13,16 @@ def main() -> None:
     parser.add_argument("--bindings", type=Path, required=True)
     parser.add_argument("--source", type=Path)
     parser.add_argument("--provenance", default="")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument(
+        "--original-delivery",
+        dest="scope",
+        action="store_const",
+        const="original_delivery",
+    )
+    scope.add_argument(
+        "--diagnostic", dest="scope", action="store_const", const="diagnostic"
+    )
     parser.add_argument("--apply", action="store_true", help="Register verified files")
     args = parser.parse_args()
     try:
@@ -21,6 +31,7 @@ def main() -> None:
             args.bindings,
             source=args.source,
             origin=args.provenance,
+            scope=args.scope,
             apply=args.apply,
         )
     except (OSError, ValueError) as exc:

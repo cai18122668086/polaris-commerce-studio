@@ -33,6 +33,7 @@ from .video_editing_catalog import (
     unavailable_template_groups,
 )
 from .video_editing_collage_scene import COLLAGE_GROUP
+from .video_editing_condition_anchors import IncompleteCondition
 from .video_editing_crowd_scene import CROWD_GROUP
 from .video_editing_cut_scenes import cut_scene_blockers
 from .video_editing_cxbr import cxbr_blockers, cxbr_windows
@@ -725,7 +726,10 @@ def process(
     except Exception as error:
         code = (
             error.code
-            if isinstance(error, (ApiError, IncompleteDenial, IncompleteQuantity))
+            if isinstance(
+                error,
+                (ApiError, IncompleteCondition, IncompleteDenial, IncompleteQuantity),
+            )
             else "EDITING_PLAN_CONTRACT_INVALID"
             if isinstance(error, (ValueError, KeyError, TypeError))
             else "EDITING_PLANNING_INTERNAL_ERROR"

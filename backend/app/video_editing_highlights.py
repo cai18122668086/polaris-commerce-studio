@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .video_editing_condition_anchors import measured_conditions, omits_spoken_condition
 from .video_editing_contracts import (
     EditingHighlightChoice,
     EditingHighlightTarget,
@@ -73,6 +74,7 @@ def highlight_targets(
     tokens = transcript.tokens
     positions = {token.id: index for index, token in enumerate(tokens)}
     denials = explicit_denial_spans(tokens)
+    conditions = measured_conditions(tokens)
     quantities = measured_quantities(tokens)
     result = []
     for beat in plan.beats:
@@ -95,10 +97,12 @@ def highlight_targets(
             if _PROTECTED.search(current):
                 continue
             lower, upper = first, last
+            other_spans = []
             for other in beat.native_text:
                 if other.path == anchor.path:
                     continue
                 a, b = positions[other.first_token_id], positions[other.last_token_id]
+                other_spans.append((a, b))
                 if b < old_first:
                     lower = max(lower, b + 1)
                 elif a > old_last:
@@ -143,6 +147,9 @@ def highlight_targets(
                         len(visible) >= 2
                         and visible != current
                         and not drops_explicit_denial(a, b, denials)
+                        and not omits_spoken_condition(
+                            [*other_spans, (a, b)], conditions
+                        )
                         and not any(quantity.cut_by((a, b)) for quantity in quantities)
                         and tokens[b].end_ms <= cutoff
                         and cutoff - tokens[a].start_ms >= max(250, len(visible) * 60)

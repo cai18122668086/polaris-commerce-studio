@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.motion_parameter_contracts import clock_category
+from app.video_editing_condition_anchors import IncompleteCondition
 from app.video_editing_contracts import (
     NativeEventAnchor,
     NativeMediaAnchor,
@@ -188,6 +189,60 @@ def test_original_number_slots_require_the_same_spoken_occurrence():
         measured_transcript(["14", "块", "9", "瓶"]).tokens
     )
     assert [(row.first, row.last) for row in independent] == [(0, 1), (2, 3)]
+
+
+@pytest.mark.parametrize(
+    ("words", "spans", "allowed"),
+    [
+        (["如", "果", "还能", "下单", "的，", "赶紧", "抢两瓶。"], [(5, 6)], False),
+        (
+            ["如", "果", "还能", "下单", "的，", "赶紧", "抢两瓶。"],
+            [(0, 1), (2, 3), (5, 6)],
+            True,
+        ),
+        (
+            ["如", "果", "还能", "下单", "的，", "赶紧", "抢两瓶。"],
+            [(0, 2), (5, 6)],
+            False,
+        ),
+        (["只有", "满", "99", "元", "才", "包邮"], [(0, 3), (5, 5)], False),
+        (["只有", "满", "99", "元", "才", "包邮"], [(0, 3), (4, 5)], True),
+        (["除非", "有券，", "否则", "不能", "退款"], [(0, 2), (4, 4)], False),
+        (["仅限", "会员", "使用"], [(1, 2)], False),
+        (["如果", "你想少些杂乱，", "可以考虑", "集中整理。"], [(3, 3)], True),
+        (["如果", "现在", "就业", "困难。"], [(2, 3)], True),
+        (["只有", "天", "才", "知道。"], [(1, 3)], True),
+    ],
+)
+def test_native_condition_can_span_fields_but_must_keep_its_scope(
+    words, spans, allowed
+):
+    source = measured_transcript(words)
+    fields = [
+        NativeTextAnchor(
+            path=f"/content/text{i}",
+            first_token_id=f"t{first}",
+            last_token_id=f"t{last}",
+        )
+        for i, (first, last) in enumerate(spans)
+    ]
+    chosen = beat().model_copy(
+        update={
+            "first_token_id": fields[0].first_token_id,
+            "last_token_id": fields[-1].last_token_id,
+            "native_text": fields,
+            "native_events": [],
+        }
+    )
+    contract = {**CONTRACT, "text_paths": [field.path for field in fields]}
+    if not allowed:
+        with pytest.raises(IncompleteCondition):
+            word_bindings(chosen, source, contract, set())
+    else:
+        compiled = word_bindings(chosen, source, contract, set())
+        assert [field["text"] for field in compiled["text"]] == [
+            "".join(words[first : last + 1]) for first, last in spans
+        ]
 
 
 def test_model_cannot_use_arbitrary_native_paths_assets_times_or_wrong_occurrences():

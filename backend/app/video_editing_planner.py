@@ -24,6 +24,10 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_collage_scene import COLLAGE_TEMPLATE_ID
+from .video_editing_condition_anchors import (
+    measured_conditions,
+    validate_condition_coverage,
+)
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_crowd_scene import CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
@@ -689,6 +693,7 @@ def validate_plan(
 ) -> None:
     ids = {t.id: i for i, t in enumerate(transcript.tokens)}
     denials = explicit_denial_spans(transcript.tokens)
+    conditions = measured_conditions(transcript.tokens)
     quantities = measured_quantities(transcript.tokens)
     group_rows = {
         g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]
@@ -735,6 +740,8 @@ def validate_plan(
             raise ValueError("Emphasis falls outside its meaning span")
         if emphasis and drops_explicit_denial(emphasis[0], emphasis[-1], denials):
             raise IncompleteDenial("强调词须保留同一实录分句的否定标记")
+        if emphasis:
+            validate_condition_coverage([(emphasis[0], emphasis[-1])], conditions)
         if emphasis and any(
             quantity.cut_by((emphasis[0], emphasis[-1])) for quantity in quantities
         ):

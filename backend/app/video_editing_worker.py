@@ -27,6 +27,7 @@ from .motion_library import (
     sha256,
     verify_package,
 )
+from .video_editing_condition_anchors import IncompleteCondition
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_delivery_checkpoint import (
     DeliveryFile,
@@ -916,7 +917,15 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
     except Exception as error:
         code = (
             error.code
-            if isinstance(error, (EditingFailure, IncompleteDenial, IncompleteQuantity))
+            if isinstance(
+                error,
+                (
+                    EditingFailure,
+                    IncompleteCondition,
+                    IncompleteDenial,
+                    IncompleteQuantity,
+                ),
+            )
             else "EDITING_INTERNAL_ERROR"
         )
         status = "cancelled" if code == "EDITING_CANCELLED" else "failed"

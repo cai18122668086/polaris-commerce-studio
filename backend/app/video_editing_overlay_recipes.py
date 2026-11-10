@@ -48,6 +48,7 @@ from .video_editing_collage_scene import (
     validate_collage_anchors,
     validate_collage_images,
 )
+from .video_editing_condition_anchors import IncompleteCondition
 from .video_editing_contracts import (
     EditingOptions,
     SemanticBeat,
@@ -2805,7 +2806,9 @@ def check_overlay_beat(
     try:
         _overlay_entry(package, group, beat, transcript, asset_cards, "")
     except ApiError as error:
-        if isinstance(error.__cause__, (IncompleteDenial, IncompleteQuantity)):
+        if isinstance(
+            error.__cause__, (IncompleteCondition, IncompleteDenial, IncompleteQuantity)
+        ):
             raise error.__cause__ from None
         raise ValueError(error.message) from error
 

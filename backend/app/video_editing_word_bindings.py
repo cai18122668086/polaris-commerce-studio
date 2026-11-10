@@ -6,6 +6,10 @@ from collections.abc import Iterator
 from itertools import accumulate
 from typing import Any
 
+from .video_editing_condition_anchors import (
+    measured_conditions,
+    validate_condition_coverage,
+)
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from .video_editing_quantity_anchors import measured_quantities, validate_quantity_slots
 
@@ -142,6 +146,9 @@ def word_bindings(
             }
         )
     if text_spans:
+        validate_condition_coverage(
+            text_spans.values(), measured_conditions(transcript.tokens)
+        )
         validate_quantity_slots(
             beat.group_id, text_spans, measured_quantities(transcript.tokens)
         )

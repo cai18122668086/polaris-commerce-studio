@@ -16,12 +16,15 @@ from typing import Any
 from .motion_library import atomic_json, inside, read_json, sha256
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
 from .video_editing_pipeline import (
+    ASR_TIMESTAMP_TOLERANCE_MS,
     EditingFailure,
     reference_differences,
     word_timestamp_end_limit,
 )
 
-PROCESSING_VERSION = "funasr-word-clock/1"
+PROCESSING_VERSION = "funasr-word-clock/2"
+# The pinned Paraformer stacks six 10 ms steps and can pad the final frame.
+_PARAFORMER_FINAL_FRAME_MS = 60
 MANIFEST = Path(__file__).parent / "data/editing_funasr_models.json"
 UNIT = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]|[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*")
 
@@ -51,6 +54,8 @@ def normalize_result(
     identity: str,
     version: str,
     reference: str | None = None,
+    *,
+    paraformer: bool = True,
 ) -> Transcript:
     """One raw token ↔ one actual model interval. Fail closed on disagreement."""
     if len(result) != 1 or not result[0].get("timestamp"):
@@ -69,26 +74,44 @@ def normalize_result(
     offset = prepared["clock"]["audio_offset_ms"]
     duration = prepared["duration_ms"]
     end_limit = word_timestamp_end_limit(prepared)
+    sample_end = prepared["clock"].get("analysis_audio_end_ms") if paraformer else None
+    anchor_end = duration
+    if sample_end is not None:
+        anchor_end = min(duration, sample_end)
+        end_limit = sample_end + ASR_TIMESTAMP_TOLERANCE_MS
     for i, (unit, stamp, match) in enumerate(
         zip(raw_units, stamps, matches, strict=True)
     ):
         if len(stamp) != 2 or any(type(v) is not int for v in stamp):
             raise EditingFailure("EDITING_ASR_TIMING_INVALID")
         start, end = stamp[0] + offset, stamp[1] + offset
-        if not 0 <= start < duration or not start < end <= end_limit:
+        padded_end = (
+            sample_end is not None
+            and i == len(stamps) - 1
+            and end_limit < end <= sample_end + _PARAFORMER_FINAL_FRAME_MS
+        )
+        if not (0 <= start < anchor_end and start < end) or (
+            end > end_limit and not padded_end
+        ):
             raise EditingFailure("EDITING_ASR_TIMING_INVALID")
-        if end > duration:
+        if end > anchor_end:
+            reason = (
+                "clip_verified_silent_tail_to_picture_end"
+                if anchor_end == duration and prepared["clock"].get("silent_tail")
+                else "clip_model_quantization_to_actual_audio_end"
+            )
+            if padded_end:
+                reason = "clip_paraformer_final_padding_to_media_end"
             adjustments.append(
                 {
                     "token_id": f"t{i:06}",
                     "native_end_ms": end,
-                    "end_ms": duration,
-                    "reason": "clip_verified_silent_tail_to_picture_end"
-                    if prepared["clock"].get("silent_tail")
-                    else "clip_model_quantization_to_actual_audio_end",
+                    "end_ms": anchor_end,
+                    "reason": reason,
+                    **({"analysis_audio_end_ms": sample_end} if padded_end else {}),
                 }
             )
-            end = duration
+            end = anchor_end
         if tokens and start < tokens[-1].end_ms:
             raise EditingFailure("EDITING_ASR_TIMING_INVALID")
         suffix = surface[

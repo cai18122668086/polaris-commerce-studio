@@ -160,6 +160,7 @@ def test_prepare_excludes_only_a_short_verified_silent_tail(
         report = prepare(source, digest, attempt, Settings(), lambda: None)
         assert report["source_sha256"] == digest
         assert report["duration_ms"] == (2000 if inspect_tail else 2020)
+        assert report["clock"]["analysis_audio_end_ms"] == 2090
         tail = report["clock"].get("silent_tail")
         if inspect_tail:
             assert tail == {

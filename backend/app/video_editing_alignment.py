@@ -116,6 +116,7 @@ def normalize_alignment(
         model_identity,
         version,
         parent.reference_text,
+        paraformer=False,
     )
     data = transcript.model_dump()
     data["timing_adjustments"].extend(token_map)

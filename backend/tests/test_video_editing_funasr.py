@@ -80,6 +80,68 @@ def test_verified_silent_tail_keeps_analysis_clock_and_clamps_a_measured_end():
         normalize_result(raw, prepared, "local-model", "c" * 64, "1.4.24")
 
 
+@pytest.mark.parametrize("picture_end", [2930, 3500])
+def test_only_final_paraformer_padding_can_cross_the_decoded_audio_end(picture_end):
+    sample_end = 3000
+    media_end = min(picture_end, sample_end)
+    prepared = {
+        **PREPARED,
+        "duration_ms": picture_end,
+        "clock": {
+            **PREPARED["clock"],
+            "analysis_audio_end_ms": sample_end,
+            **(
+                {"silent_tail": {"analysis_audio_end_ms": sample_end}}
+                if picture_end < sample_end
+                else {}
+            ),
+        },
+    }
+    raw = fixture()
+    stamps = raw[0]["timestamp"]
+    stamps[-1] = [2850, 3039]
+    raw[0]["sentence_info"][-1]["timestamp"][-1] = stamps[-1]
+    result = normalize_result(raw, prepared, "local-model", "c" * 64, "1.4.24")
+    assert result.duration_ms == picture_end
+    assert result.tokens[-1].start_ms == 2850
+    assert result.tokens[-1].end_ms == result.utterances[-1].end_ms == media_end
+    assert result.timing_adjustments == [
+        {
+            "token_id": "t000008",
+            "native_end_ms": 3039,
+            "end_ms": media_end,
+            "reason": "clip_paraformer_final_padding_to_media_end",
+            "analysis_audio_end_ms": sample_end,
+        }
+    ]
+    assert stamps[-1] == [2850, 3039]
+
+
+@pytest.mark.parametrize(
+    ("position", "stamp", "measured_clock", "paraformer"),
+    [
+        (-2, [2700, 3039], True, True),
+        (-1, [2850, 3061], True, True),
+        (-1, [3000, 3039], True, True),
+        (-1, [2850, 3039], False, True),
+        (-1, [2850, 3039], True, False),
+    ],
+)
+def test_unsupported_overshoot_keeps_fail_closed_timing(
+    position, stamp, measured_clock, paraformer
+):
+    prepared = copy.deepcopy(PREPARED)
+    if measured_clock:
+        prepared["clock"]["analysis_audio_end_ms"] = 3000
+    raw = fixture()
+    raw[0]["timestamp"][position] = stamp
+    raw[0]["sentence_info"][-1]["timestamp"][position] = stamp
+    with pytest.raises(EditingFailure, match="EDITING_ASR_TIMING_INVALID"):
+        normalize_result(
+            raw, prepared, "local-model", "c" * 64, "1.4.24", paraformer=paraformer
+        )
+
+
 @pytest.mark.parametrize(
     "variant", ["count", "surface", "sentence", "zero", "overlap", "outside"]
 )

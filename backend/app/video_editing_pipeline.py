@@ -170,6 +170,7 @@ def probe(
 
 _MAX_SILENT_TAIL_SECONDS = 0.5
 _MAX_SILENT_TAIL_PCM16_PEAK = 4  # About -78 dBFS; permits codec residue only.
+ASR_TIMESTAMP_TOLERANCE_MS = 30
 
 
 def _verified_silent_tail(
@@ -263,7 +264,7 @@ def word_timestamp_end_limit(prepared: dict) -> int:
     # ends at the picture boundary of a verified silent tail.
     tail = prepared["clock"].get("silent_tail")
     end = prepared["duration_ms"] if tail is None else tail["analysis_audio_end_ms"]
-    return end + 30
+    return end + ASR_TIMESTAMP_TOLERANCE_MS
 
 
 def prepare(
@@ -337,11 +338,12 @@ def prepare(
             guard,
             "extract_audio",
         )
+    with wave.open(str(audio_path), "rb") as stream:
+        analysis_audio_end_ms = round(
+            stream.getnframes() * 1000 / stream.getframerate() + offset * 1000
+        )
     if silent_tail is not None:
-        with wave.open(str(audio_path), "rb") as stream:
-            silent_tail["analysis_audio_end_ms"] = round(
-                stream.getnframes() * 1000 / stream.getframerate() + offset * 1000
-            )
+        silent_tail["analysis_audio_end_ms"] = analysis_audio_end_ms
     receipt = {
         "source_sha256": expected,
         "audio_sha256": sha256(audio_path),
@@ -352,6 +354,7 @@ def prepare(
         "clock": {
             "policy": "original_video_audio",
             "audio_offset_ms": round(offset * 1000),
+            "analysis_audio_end_ms": analysis_audio_end_ms,
             "speech_stretched": False,
             **({"silent_tail": silent_tail} if silent_tail is not None else {}),
         },

@@ -66,6 +66,8 @@ def verify_gateway_planning(
     workspace_id: str,
     owner_user_id: str,
     planning_task_id: str,
+    *,
+    revalidate: bool = False,
 ) -> VerifiedPlanning:
     row = session.get(EditingPlanningTaskRecord, planning_task_id)
     if (
@@ -86,7 +88,7 @@ def verify_gateway_planning(
             "仅已完成合同校验的服务器规划结果可以绑定原生配方。",
         )
     try:
-        return _verify(session, settings, row)
+        return _verify(session, settings, row, revalidate=revalidate)
     except (ValueError, KeyError, IndexError, TypeError, OSError) as error:
         raise ApiError(
             409,
@@ -96,7 +98,11 @@ def verify_gateway_planning(
 
 
 def _verify(
-    session: Session, settings: Settings, row: EditingPlanningTaskRecord
+    session: Session,
+    settings: Settings,
+    row: EditingPlanningTaskRecord,
+    *,
+    revalidate: bool = False,
 ) -> VerifiedPlanning:
     prepared = session.get(EditingPlanningTaskRecord, row.prepared_task_id)
     base = session.get(EditingTaskRecord, row.base_task_id)
@@ -239,8 +245,15 @@ def _verify(
         or payload.get("overlay_template") != row.snapshot.get("overlay_template")
     ):
         raise ValueError("Captured full-library request does not match scoped inputs")
+    saved_semantic = data["semantic_plan"]
+    saved_digest = content_digest(saved_semantic)
+    if (
+        saved_semantic != row.result["semantic"]
+        or saved_digest != row.result["semantic_content_sha256"]
+    ):
+        raise ValueError("Captured semantic result no longer matches its record")
     content = data["response"]["content"]
-    if template and template["id"] in FIRST_MOTION_GROUPS:
+    if template and compact:
         semantic = expand_group_plan(
             content,
             transcript,
@@ -253,12 +266,18 @@ def _verify(
     else:
         semantic = SemanticPlan.model_validate_json(content)
     value = semantic.model_dump(mode="json")
-    if (
-        value != data["semantic_plan"]
-        or value != row.result["semantic"]
-        or content_digest(value) != row.result["semantic_content_sha256"]
-    ):
-        raise ValueError("Native adoption would change the captured semantic result")
+    changed = value != saved_semantic
+    if changed:
+        if not compact:
+            raise ValueError(
+                "Native adoption would change the captured semantic result"
+            )
+        if not revalidate:
+            raise ApiError(
+                409,
+                "EDITING_PLANNING_RULES_CHANGED",
+                "现行词点规则改变了已保存的候选。可重核响应并另存编排。",
+            )
     validate_plan(
         semantic,
         transcript,
@@ -290,6 +309,7 @@ def _verify(
             "intent_sha256": sha256(intent_path),
             "semantic_content_sha256": content_digest(value),
             "semantic_review": "unreviewed",
+            **({"revalidated_from_semantic_sha256": saved_digest} if changed else {}),
         },
     )
 
@@ -312,6 +332,7 @@ def verify_render_provenance(
         native["workspace_id"],
         native["owner_user_id"],
         captured["planning_task_id"],
+        revalidate="revalidated_from_semantic_sha256" in captured,
     )
     source = session.get(EditingSourceRecord, verified.task.source_id)
     if not source:

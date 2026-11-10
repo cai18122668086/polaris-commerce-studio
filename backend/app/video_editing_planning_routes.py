@@ -141,12 +141,15 @@ def create_native_candidate(
     request: Request,
     workspace: VideoWorkspace,
     session: SessionDependency,
+    revalidate: bool = False,
 ) -> dict[str, Any]:
     require_workspace_write(workspace)
     settings = enabled(request)
     row = own_planning_task(session, workspace, str(task_id))
     own_project(session, workspace, row.project_id)
-    candidate = gateway_candidate(session, settings, workspace, row)
+    candidate = gateway_candidate(
+        session, settings, workspace, row, revalidate=revalidate
+    )
     blocker = (
         hypit_runtime_blocker(settings, workspace.workspace_id)
         if requires_hypit(candidate.semantic)

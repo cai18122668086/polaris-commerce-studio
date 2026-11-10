@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
+from app import video_editing_planning_provenance as provenance
 from app import video_editing_planning_worker as planning_worker
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
@@ -152,6 +153,10 @@ def captured_job(
             "transcript": {
                 "tokens": [{"id": t.id, "text": t.text} for t in transcript.tokens]
             },
+            "word_clock": [
+                [i, t.text, t.start_ms, t.end_ms]
+                for i, t in enumerate(transcript.tokens)
+            ],
             "full_library": read_json(package / "catalog/groups.json")["groups"],
             "available_project_materials": cards,
             "project_library_choices": choices,
@@ -287,7 +292,83 @@ def test_overlay_candidate_endpoint_uses_frozen_words_and_replays_without_model(
         assert sound["fx"][0]["asset_id"] == sound["fx"][-1]["asset_id"]
 
 
-def register(client, ws, settings, task, recipes, planning_id, request_id=None):
+def test_current_rules_can_save_a_distinct_plan_from_the_same_capture(
+    video, tmp_path, monkeypatch
+):
+    client, ws, settings, _, _, semantic, _, job, _ = captured_job(
+        video, tmp_path, monkeypatch, template=True
+    )
+    settings.video_editing_native_plan_enabled = True
+    path = base(ws) + f"/editing-planning-tasks/{job}/native-candidate"
+    original = client.post(path).raise_for_status().json()
+    explicit = client.post(path, params={"revalidate": True}).raise_for_status().json()
+    assert original == explicit
+
+    # Simulate a compact response whose expansion now excludes one repeated beat.
+    monkeypatch.setattr(provenance, "FIRST_MOTION_GROUPS", {"label-compare-v1"})
+    original_view = semantic.beats[-1].model_copy(
+        update={"group_id": "Z-M00", "native_text": [], "native_events": []}
+    )
+    updated = semantic.model_copy(
+        update={"beats": [*semantic.beats[:-1], original_view]}
+    )
+    monkeypatch.setattr(provenance, "expand_group_plan", lambda *args: updated)
+    rejected = client.post(path)
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "EDITING_PLANNING_RULES_CHANGED"
+    response = client.post(path, params={"revalidate": True})
+    assert response.status_code == 200, response.text
+    saved = response.json()
+    assert saved["id"] != original["id"]
+    assert saved["beats"][-1]["group_id"] == "Z-M00"
+    assert client.post(path, params={"revalidate": True}).json()["id"] == saved["id"]
+    with client.app.state.session_factory() as session:
+        capture = session.get(EditingPlanningTaskRecord, job)
+        prior = session.get(EditingNativePlanRecord, original["id"])
+        derived = session.get(EditingNativePlanRecord, saved["id"])
+        original_lineage = prior.details["planning_provenance"]
+        new_lineage = derived.details["planning_provenance"]
+        assert (
+            capture.result["semantic"]
+            == prior.semantic
+            == semantic.model_dump(mode="json")
+        )
+        assert new_lineage["artifact_sha256"] == original_lineage["artifact_sha256"]
+        assert (
+            new_lineage["revalidated_from_semantic_sha256"]
+            == original_lineage["semantic_content_sha256"]
+            == capture.result["semantic_content_sha256"]
+        )
+        assert (
+            new_lineage["semantic_content_sha256"]
+            != capture.result["semantic_content_sha256"]
+        )
+        artifact = session.get(
+            EditingArtifactRecord, derived.base_transcript_artifact_id
+        )
+        frozen = frozen_plan_snapshot(derived, artifact)
+        assert (
+            verify_render_provenance(session, settings, frozen)
+            == hashlib.sha256(updated.model_dump_json().encode()).hexdigest()
+        )
+        capture.result = {**capture.result, "semantic_content_sha256": "0" * 64}
+        session.commit()
+    rejected = client.post(path, params={"revalidate": True})
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "EDITING_PLANNING_PROVENANCE_CHANGED"
+
+
+def register(
+    client,
+    ws,
+    settings,
+    task,
+    recipes,
+    planning_id,
+    request_id=None,
+    *,
+    revalidate=False,
+):
     with client.app.state.session_factory() as session:
         return register_gateway_plan(
             session,
@@ -297,6 +378,7 @@ def register(client, ws, settings, task, recipes, planning_id, request_id=None):
             planning_id,
             request_id or str(uuid4()),
             recipes,
+            revalidate=revalidate,
         )
 
 
@@ -449,9 +531,10 @@ def test_changed_captures_cannot_be_adopted(video, tmp_path, monkeypatch, change
         else:
             row.prepared_task_id = str(uuid4())
         session.commit()
-    with pytest.raises(ApiError) as error:
-        register(client, ws, settings, task, recipes, job)
-    assert error.value.code == "EDITING_PLANNING_PROVENANCE_CHANGED"
+    for revalidate in (False, True):
+        with pytest.raises(ApiError) as error:
+            register(client, ws, settings, task, recipes, job, revalidate=revalidate)
+        assert error.value.code == "EDITING_PLANNING_PROVENANCE_CHANGED"
 
 
 def test_native_model_snapshot_cannot_change_source_or_semantic_or_origin(

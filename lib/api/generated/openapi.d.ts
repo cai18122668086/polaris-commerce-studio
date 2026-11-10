@@ -13096,7 +13096,9 @@ export interface operations {
     };
     create_native_candidate_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__native_candidate_post: {
         parameters: {
-            query?: never;
+            query?: {
+                revalidate?: boolean;
+            };
             header?: never;
             path: {
                 task_id: string;

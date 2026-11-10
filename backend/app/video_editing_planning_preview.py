@@ -36,6 +36,8 @@ def gateway_candidate(
     settings: Settings,
     workspace: WorkspaceContext,
     row: EditingPlanningTaskRecord,
+    *,
+    revalidate: bool = False,
 ) -> EditingNativePlanRecord:
     require_active_planning_template(row.snapshot.get("overlay_template", {}).get("id"))
     if not settings.video_editing_native_plan_enabled:
@@ -47,6 +49,7 @@ def gateway_candidate(
         workspace.principal.user_id,
         row.id,
         str(uuid5(NAMESPACE_URL, f"tengli:{PROFILE_ID}:{row.id}")),
+        revalidate=revalidate,
     )
 
 

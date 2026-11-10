@@ -5,7 +5,7 @@ import json
 from datetime import UTC
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -122,6 +122,11 @@ def plan_response(
     )
     needs_chart = requires_flow_chart(row.semantic, row.recipes)
     warnings = row.semantic.get("warnings", [])
+    if "revalidated_from_semantic_sha256" in row.details.get("planning_provenance", {}):
+        warnings = [
+            *warnings,
+            "此编排由已保存的模型响应按现行词点规则重新校验。可继续查看原规划和已有成片。",
+        ]
     needs_hypit = requires_hypit(row.semantic)
     if needs_hypit and hypit_blocker:
         warnings = [*warnings, HYPIT_BLOCKER_MESSAGES[hypit_blocker]]
@@ -249,12 +254,19 @@ def register_gateway_plan(
     planning_task_id: str,
     request_id: str,
     recipes: EpisodeRecipeBundle | None = None,
+    *,
+    revalidate: bool = False,
 ) -> EditingNativePlanRecord:
     """Adopt a captured server result with a trusted or generated recipe."""
     from .video_editing_planning_provenance import verify_gateway_planning
 
     verified = verify_gateway_planning(
-        session, settings, workspace_id, owner_user_id, planning_task_id
+        session,
+        settings,
+        workspace_id,
+        owner_user_id,
+        planning_task_id,
+        revalidate=revalidate,
     )
     template = verified.task.snapshot.get("overlay_template")
     if template is not None and (
@@ -300,6 +312,11 @@ def register_gateway_plan(
             409,
             "EDITING_CHOICES_CHANGED_REPLAN_REQUIRED",
             "选组已变化，请重新准备并核对规划。",
+        )
+    if "revalidated_from_semantic_sha256" in verified.lineage:
+        semantic_digest = verified.lineage["semantic_content_sha256"]
+        request_id = str(
+            uuid5(NAMESPACE_URL, f"{request_id}:revalidated:{semantic_digest}")
         )
     return _register_plan(
         session,

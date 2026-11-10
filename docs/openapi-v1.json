@@ -21377,6 +21377,16 @@
               "title": "Workspace Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "revalidate",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Revalidate",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {

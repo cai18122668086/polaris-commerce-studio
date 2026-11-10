@@ -20,6 +20,7 @@ export type CarrySelection = {
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const maxPreviewBatch = 5;
 const retiredTemplate = (job: Job) => job.overlay_template?.id === "fruit-introduction-v1";
+const canRevalidate = (job: Job) => job.overlay_template?.id === "product-explainer-v1" || job.overlay_template?.id === "knowledge-talk-v1";
 const belowMinimum = (job: Job) => (job.motion_counts?.distinct_groups ?? minDistinctMotionGroups) < minDistinctMotionGroups;
 const pendingAutoPreview = (job: Job) => job.auto_preview && !job.preview_task_id && !job.auto_preview_error_code;
 const canBatchPreview = (job: Job) => job.status === "completed" && job.overlay_template && !retiredTemplate(job) && !job.preview_task_id && !pendingAutoPreview(job) && !belowMinimum(job);
@@ -27,6 +28,7 @@ const autoPreviewErrors: Record<string, string> = {
   EDITING_PLAN_GROUPS_INSUFFICIENT: "候选少于五种不同动效，代理未提交。已保存本次候选。",
   EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已变化，代理未提交。已保存本次候选。",
   EDITING_PLANNING_PROVENANCE_CHANGED: "无法核对已保存的规划来源，代理未提交。",
+  EDITING_PLANNING_RULES_CHANGED: "现行词点规则改变了候选，可重核已保存的响应后再生成代理。",
 };
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = {
@@ -119,11 +121,11 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     } catch (caught) { setError(caught instanceof Error ? caught.message : "操作未确认，请刷新后查看。"); }
     finally { setBusy(false); }
   };
-  const adopt = async (job: Job) => {
+  const adopt = async (job: Job, revalidate = false) => {
     setBusy(true); setError("");
     try {
       const plan = unwrapApiResponse(await apiClient.POST(`${root}/editing-planning-tasks/{task_id}/native-candidate`, {
-        params: { path: { workspace_id: workspaceId, task_id: job.id } }, signal: AbortSignal.timeout(12000),
+        params: { path: { workspace_id: workspaceId, task_id: job.id }, query: { revalidate } }, signal: AbortSignal.timeout(12000),
       }));
       setNativePlans(current => ({ ...current, [job.id]: plan.id }));
       onNativePlan();
@@ -314,6 +316,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
         {nativePlans[job.id]
           ? <a href={`#editing-native-plan-${nativePlans[job.id]}`}>查看本次原生编排</a>
           : !retiredTemplate(job) && <button type="button" disabled={busy || belowMinimumForPreview} onClick={() => void adopt(job)}>保存编排后调整</button>}
+        {canRevalidate(job) && <button type="button" disabled={busy} onClick={() => void adopt(job, true)}>按现行规则重核已保存响应</button>}
       </>}
       {job.status === "failed" && <p role="alert" className={styles.error}>{errors[job.error_code || ""] || "本次规划未完成，请核对输入或服务配置。"}</p>}
       {job.call_state === "intent_saved" && <p className={styles.note}>请求已登记提交，结果未确认；不能自动重发付费请求。取消只能停止后续处理。</p>}

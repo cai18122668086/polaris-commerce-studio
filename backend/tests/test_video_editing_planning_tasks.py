@@ -195,6 +195,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "picture-compare-v2",
         "rotation-cards-v1",
         "strip-and-rotation-cards-v1",
+        "three-item-browser-scenes-v1",
         "numbered-pictures-v1",
         "live-strip-story-v1",
         "hypit-presenter-labels-v1",
@@ -271,6 +272,15 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     strip = next(row for row in options if row["id"] == "strip-and-rotation-cards-v1")
     assert strip["slots"][0]["group_id"] == "CX-G05"
     assert strip["slots"][1:] == rotation["slots"]
+    three_item = next(
+        row for row in options if row["id"] == "three-item-browser-scenes-v1"
+    )
+    assert [slot["group_id"] for slot in three_item["slots"][:3]] == [
+        "CX-G08",
+        "CX-G09",
+        "CX-G10",
+    ]
+    assert three_item["slots"][3:] == rotation["slots"]
     openings = next(row for row in options if row["id"] == "presenter-openings-v1")
     assert {
         slot["group_id"] for slot in openings["slots"] if slot.get("layer") == "scene"

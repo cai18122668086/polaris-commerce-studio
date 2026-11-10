@@ -36,6 +36,8 @@ THREE_ITEM_SCENE_GROUPS = (
     TEXTURE_WORD_GROUP,
     CIRCULAR_MEDIA_GROUP,
 )
+THREE_ITEM_SCENE_DESIGN = "tengli-browser-three-item-v1"
+CLEAN_BROWSER_SCENE_GROUPS = (STRIP_CARD_GROUP, *THREE_ITEM_SCENE_GROUPS)
 ROTATION_MATTE = "model-01eb6a29a5c4d8edb30b"
 ROTATION_EVENTS = tuple(f"/items/{i}/at" for i in range(3))
 ROTATION_IMAGES = tuple(f"/items/{i}/image" for i in range(3))
@@ -116,24 +118,39 @@ def _first_motion_frame(at: float, index: int) -> int:
     return round(at * 1000) * _FPS // 1000 + (1 if index else 0)
 
 
+def browser_sound_entry_key(shot: dict) -> str | None:
+    group = shot["group_id"]
+    if group == STRIP_CARD_GROUP:
+        return "strip_card_entry"
+    if group == ROTATION_GROUP:
+        return "rotation_entry"
+    if group in THREE_ITEM_SCENE_GROUPS:
+        presenter = shot["config"].get("presenter")
+        if isinstance(presenter, str) and presenter.startswith(
+            "input://" + _PRESENTER_BINDINGS[group][0]
+        ):
+            return "three_item_entry"
+    return None
+
+
 def browser_card_entry_frame(shot: dict, fps: int, path: str) -> int:
-    if (
-        shot["group_id"] not in BROWSER_CARD_GROUPS
-        or shot["layer"] != "scene"
-        or fps != _FPS
-    ):
+    key = browser_sound_entry_key(shot)
+    if key is None or shot["layer"] != "scene" or fps != _FPS:
         raise ValueError("Browser card sound needs the original 30 fps scene")
     index = ROTATION_EVENTS.index(path)
     start_ms = round(shot["start_seconds"] * 1000)
     config = shot["config"]
-    local = (
-        _strip_card_entries(
+    if key == "strip_card_entry":
+        local = _strip_card_entries(
             [item["at"] for item in config["items"]],
             round(config["duration"] * _FPS),
         )[index]
-        if shot["group_id"] == STRIP_CARD_GROUP
-        else _first_motion_frame(config["items"][index]["at"], index)
-    )
+    elif key == "three_item_entry":
+        local = three_item_entry_frame(
+            shot["group_id"], config["items"][index]["at"], index
+        )
+    else:
+        local = _first_motion_frame(config["items"][index]["at"], index)
     # The original overlay enable waits for the first output frame at or after
     # the shot boundary. The secondary stream's setpts truncates its origin.
     return max((start_ms * fps + 999) // 1000, start_ms * fps // 1000 + local)
@@ -552,6 +569,16 @@ def install_rotation_export(package: Path, root: Path) -> None:
 
         return draw_live, {
             **meta,
+            **(
+                {
+                    "tengli_three_item_entries": [
+                        three_item_entry_frame(group, item["at"], i)
+                        for i, item in enumerate(config["items"])
+                    ]
+                }
+                if three_item
+                else {}
+            ),
             "media_capability": "original split draw with current presenter frames"
             if split
             else "original G05 draw with current matte frames"

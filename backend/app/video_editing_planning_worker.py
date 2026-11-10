@@ -30,7 +30,12 @@ from .motion_local_dependencies import dependency_state, local_dependencies
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
 from .video_editing_azl_panels import azl_blockers, azl_panel_windows
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP, FRUIT_LIST_TEMPLATE_ID
-from .video_editing_browser_rotation import STRIP_CARD_GROUP
+from .video_editing_browser_rotation import (
+    CIRCULAR_MEDIA_GROUP,
+    CLEAN_BROWSER_SCENE_GROUPS,
+    STRIP_CARD_GROUP,
+    TEXTURE_WORD_GROUP,
+)
 from .video_editing_catalog import (
     external_dependencies,
     planning_runtime_snapshot,
@@ -123,37 +128,41 @@ def hypit_template_blockers(
     return result
 
 
-def mark_strip_card_blockers(
+def mark_browser_scene_blockers(
     settings: Settings,
     template: dict | None,
     source_subtitles: str,
     image_requirements: list[dict],
     unavailable: dict[str, list[str]],
 ) -> None:
-    if not any(
-        slot["group_id"] == STRIP_CARD_GROUP
-        for slot in (template or {}).get("slots", [])
-    ):
-        return
-    reasons = []
-    if source_subtitles != "none":
-        reasons.append("clean_source_required")
-    if not any(
-        row["group_id"] == STRIP_CARD_GROUP
-        and row["selected_distinct_images"] >= row["required_distinct_images"]
-        for row in image_requirements
-    ):
-        reasons.append("current_strip_card_images_required")
-    try:
-        require_drawn_browser_assets(
-            settings.video_editing_library_dir,
-            STRIP_CARD_GROUP,
-            settings.video_editing_native_bindings_file,
-        )
-    except (OSError, ValueError, KeyError, TypeError):
-        reasons.append("original_browser_assets_required")
-    if reasons:
-        unavailable.setdefault(STRIP_CARD_GROUP, []).extend(reasons)
+    image_reasons = {
+        STRIP_CARD_GROUP: "current_strip_card_images_required",
+        CIRCULAR_MEDIA_GROUP: "current_circle_images_required",
+    }
+    for slot in (template or {}).get("slots", []):
+        gid = slot["group_id"]
+        if gid not in CLEAN_BROWSER_SCENE_GROUPS:
+            continue
+        reasons = []
+        if source_subtitles != "none":
+            reasons.append("clean_source_required")
+        if gid in image_reasons and not any(
+            row["group_id"] == gid
+            and row["selected_distinct_images"] >= row["required_distinct_images"]
+            for row in image_requirements
+        ):
+            reasons.append(image_reasons[gid])
+        if gid in (STRIP_CARD_GROUP, TEXTURE_WORD_GROUP):
+            try:
+                require_drawn_browser_assets(
+                    settings.video_editing_library_dir,
+                    gid,
+                    settings.video_editing_native_bindings_file,
+                )
+            except (OSError, ValueError, KeyError, TypeError):
+                reasons.append("original_browser_assets_required")
+        if reasons:
+            unavailable.setdefault(gid, []).extend(reasons)
 
 
 def eligible() -> ColumnElement[bool]:
@@ -530,7 +539,7 @@ def process(
             )
             if image_requirements:
                 runtime["project_image_requirements"] = image_requirements
-            mark_strip_card_blockers(
+            mark_browser_scene_blockers(
                 settings,
                 template,
                 snapshot["source_subtitles"],
@@ -705,7 +714,7 @@ def process(
                     snapshot["source_sha256"],
                     current,
                 )
-                mark_strip_card_blockers(
+                mark_browser_scene_blockers(
                     settings,
                     template,
                     snapshot["source_subtitles"],

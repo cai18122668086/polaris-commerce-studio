@@ -40,10 +40,14 @@ from .video_editing_browser_rotation import (
     ROTATION_GROUP,
     ROTATION_IMAGES,
     ROTATION_LABELS,
+    ROTATION_MATTE,
     STRIP_CARD_DESIGN,
     STRIP_CARD_GROUP,
+    THREE_ITEM_SCENE_DESIGN,
+    THREE_ITEM_SCENE_GROUPS,
     rotation_card_clock,
     rotation_source_clock,
+    validate_three_item_scene,
 )
 from .video_editing_collage_scene import (
     COLLAGE_GROUP,
@@ -989,7 +993,7 @@ def _entry_sound(
     )
     if beat.group_id == COMMENT and path == "/timing/events/submitted_in":
         selection = _CLICK
-    if beat.group_id == STRIP_CARD_GROUP:
+    if beat.group_id in (STRIP_CARD_GROUP, *THREE_ITEM_SCENE_GROUPS):
         selection = _CLICK
     if beat.group_id == WHY_GROUP and path is not None:
         selection = _WHY_SOUNDS[path]
@@ -1042,6 +1046,9 @@ def _entry_sound(
             PRESENTER_LABEL_GROUP: "每项人物标签开始出现时给一次短提示，口播继续。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
             STRIP_CARD_GROUP: "原生特写条首次可见时给一次短提示，口播继续。",
+            **dict.fromkeys(
+                THREE_ITEM_SCENE_GROUPS, "原生三项内容首次入画时给一次短提示。"
+            ),
             JUDGMENT_GROUP: "按证据、勾叉和结论各自的原生动作绑定提示音。",
             LINE_GROUP: "线描手势入场时给一次原库提示音，口播继续。",
         }.get(
@@ -1627,16 +1634,8 @@ def _live_strip_entry(
     ), anchors
 
 
-def _rotation_entry(
-    package: Path,
-    group: dict,
-    beat: SemanticBeat,
-    transcript: Transcript,
-    asset_cards: list[dict],
-) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
-    strip = group["id"] == STRIP_CARD_GROUP
-    contract = input_contract(package, group)
-    assets = {
+def _browser_scene_assets(asset_cards: list[dict]) -> dict[str, dict]:
+    return {
         card["id"]: {
             "kind": card["kind"],
             "sha256": card["sha256"],
@@ -1646,6 +1645,78 @@ def _rotation_entry(
         if (card["kind"] == "image" and card["id"].startswith("material-"))
         or (card["kind"] == "original_video" and card["id"].startswith("source-"))
     }
+
+
+def _three_item_scene_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    assets = _browser_scene_assets(asset_cards)
+    config = read_json(inside(package, group["input_template"]))
+    deps = (ROTATION_MATTE,)
+    try:
+        anchors = word_bindings(beat, transcript, contract, set(assets))
+        source = rotation_source_clock(anchors, assets, transcript)
+        config["duration"] = (
+            source["source_end_ms"] - source["source_start_ms"]
+        ) / 1000
+        for row in anchors["text"]:
+            set_native_field(config, row["path"], row["text"])
+        for row in anchors["events"]:
+            set_native_field(config, row["path"], row["value"])
+        for row in anchors["media"]:
+            set_native_field(config, row["path"], "input://" + row["asset_id"])
+        validate_three_item_scene(
+            config, anchors, dict.fromkeys(deps, ""), assets, beat
+        )
+    except ValueError as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_THREE_ITEM_INPUTS_REQUIRED",
+            "需要同期原片、三个实录短词和足够的入场时间，圆形槽还需三张对应配图。",
+        ) from error
+    slots = [
+        row["path"] for kind in ("text", "events", "media") for row in anchors[kind]
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(
+            layer="scene", rect=[0, 0, 1, 1], reason="沿用原版整帧构图和同期人物层。"
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": beat.group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": THREE_ITEM_SCENE_DESIGN,
+            "design_reason": "按本期实录词点编排原三项入场。",
+            "parameter_decisions": {
+                key: "沿用原生构图和层级，按实录绑定槽位。" for key in config
+            },
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": list(deps),
+        },
+    ), anchors
+
+
+def _rotation_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    strip = group["id"] == STRIP_CARD_GROUP
+    contract = input_contract(package, group)
+    assets = _browser_scene_assets(asset_cards)
     config = read_json(inside(package, group["input_template"]))
     try:
         anchors = word_bindings(beat, transcript, contract, set(assets))
@@ -2732,6 +2803,11 @@ def _overlay_entry(
             package, group, beat, transcript, asset_cards or []
         )
         paths = ROTATION_EVENTS
+    elif beat.group_id in THREE_ITEM_SCENE_GROUPS:
+        entry, anchors = _three_item_scene_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = ROTATION_EVENTS
     elif beat.group_id in (NUMBERED_GROUP, *LIVE_SPLIT_GROUPS):
         entry, anchors = _browser_split_entry(
             package, group, beat, transcript, asset_cards or []
@@ -2908,6 +2984,7 @@ def build_overlay_recipes(
         beat.group_id
         in {
             *BROWSER_CARD_GROUPS,
+            *THREE_ITEM_SCENE_GROUPS,
             JUDGMENT_GROUP,
             NUMBERED_GROUP,
             LIVE_STRIP_GROUP,

@@ -237,6 +237,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       {!!job.excluded_template_group_ids?.length && <p className={styles.note}>按项目备忘避用 · {job.excluded_template_group_ids.join("、")}</p>}
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>当前运行条件未满足的动效 · {job.unavailable_template_group_ids.join("、")}</p>}
       {job.unavailable_template_group_ids?.includes("CX-G05") && <p className={styles.note}>特写条堆叠需要原模板的活动底板、原字体和抠像模型、无内嵌字幕的原片及三张不同的本期配图。原件状态可在原库目录查看。</p>}
+      {job.unavailable_template_group_ids?.some(id => ["CX-G08", "CX-G09", "CX-G10"].includes(id)) && <p className={styles.note}>透视板、材质词和圆形配图需要原字体、原抠像模型及无内嵌字幕的原片。材质词需原纹理，三个圆形槽需三张不同的本期配图。原件状态可在原库目录查看。</p>}
       {job.unavailable_template_group_ids?.some(id => id === "HY-A4" || id === "HY-A5") && <p className={styles.note}>原生人物标签和斜切标签需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。</p>}
       {job.unavailable_template_group_ids?.some(id => id === "HY-A2" || id === "HY-A3") && <p className={styles.note}>原生三图卡需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。斜卡还需要原字体和抠像模型。</p>}
       {job.unavailable_template_group_ids?.includes("HY-A6") && <p className={styles.note}>原生双行三卡需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。</p>}

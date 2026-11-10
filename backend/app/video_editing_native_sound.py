@@ -9,10 +9,10 @@ from pydantic import Field, model_validator
 from .motion_library import inside, read_json, sha256
 from .video_editing_azl_panels import AZL_ENTRY, AZL_GROUPS, azl_output_bounds
 from .video_editing_browser_rotation import (
-    BROWSER_CARD_GROUPS,
     ROTATION_EVENTS,
-    STRIP_CARD_GROUP,
     browser_card_entry_frame,
+    browser_sound_entry_key,
+    three_item_entry_frame,
 )
 from .video_editing_contracts import (
     EditingMusicChoice,
@@ -240,7 +240,8 @@ def compile_sound(
         or sync_cxbr_entries
         or sync_unified_entries
         or any(
-            shot["group_id"] == STRIP_CARD_GROUP for shot in episode.get("shots", [])
+            browser_sound_entry_key(shot) in {"strip_card_entry", "three_item_entry"}
+            for shot in episode.get("shots", [])
         )
     ) and (
         sha256(package / "commercial_runtime/episode.py") != MOTION_COMPOSITOR_SHA256
@@ -442,20 +443,12 @@ def compile_sound(
                 "output_frame": frame,
                 "event_path": cue.event_path,
             }
-        if (
-            shot["group_id"] in BROWSER_CARD_GROUPS
-            and cue.event_path in ROTATION_EVENTS
-            and cue.phase == "entry"
-        ):
+        evidence_key = browser_sound_entry_key(shot)
+        if evidence_key and cue.event_path in ROTATION_EVENTS and cue.phase == "entry":
             output_fps = episode["output"]["fps"]
             frame = browser_card_entry_frame(shot, output_fps, cue.event_path)
             seconds = frame / output_fps
             native_ref = {}
-            evidence_key = (
-                "strip_card_entry"
-                if shot["group_id"] == STRIP_CARD_GROUP
-                else "rotation_entry"
-            )
             card_entry[evidence_key] = {
                 "shot_index": shot_index,
                 "output_frame": frame,
@@ -687,7 +680,11 @@ def verify_rendered_sound(
                 and package_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
-        elif card_entry := (cue.get("strip_card_entry") or cue.get("rotation_entry")):
+        elif card_entry := (
+            cue.get("three_item_entry")
+            or cue.get("strip_card_entry")
+            or cue.get("rotation_entry")
+        ):
             if episode is None:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
@@ -695,22 +692,30 @@ def verify_rendered_sound(
             shot = episode["shots"][index]
             path = card_entry["event_path"]
             frame = browser_card_entry_frame(shot, fps, path)
+            evidence_key = browser_sound_entry_key(shot)
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
                 and path == cue["word_binding"]["path"]
+                and evidence_key in cue
                 and card_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
-            if shot["group_id"] == STRIP_CARD_GROUP:
+            if evidence_key in {"strip_card_entry", "three_item_entry"}:
                 clip = native["shots"][index]
                 anchor_valid = (
                     anchor_valid
-                    and "strip_card_entry" in cue
-                    and clip["group_id"] == STRIP_CARD_GROUP
+                    and clip["group_id"] == shot["group_id"]
                     and clip["native"]["fps"] == fps
                     and clip["native"]["frames"]
                     == round(shot["config"]["duration"] * fps)
                 )
+                if evidence_key == "three_item_entry":
+                    anchor_valid = anchor_valid and clip["native"].get(
+                        "tengli_three_item_entries"
+                    ) == [
+                        three_item_entry_frame(shot["group_id"], item["at"], i)
+                        for i, item in enumerate(shot["config"]["items"])
+                    ]
         elif judgment_entry := cue.get("judgment_entry"):
             if episode is None:
                 episode = read_json(root / "episode.json")

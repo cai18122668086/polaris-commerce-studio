@@ -18,7 +18,11 @@ from .motion_browser_originals import (
     require_drawn_browser_assets,
 )
 from .motion_library import MOTION_SHA256, read_json
-from .video_editing_browser_rotation import STRIP_CARD_GROUP
+from .video_editing_browser_rotation import (
+    CLEAN_BROWSER_SCENE_GROUPS,
+    STRIP_CARD_GROUP,
+    TEXTURE_WORD_GROUP,
+)
 from .video_editing_contracts import EditingOptions, SemanticPlan, Transcript
 from .video_editing_effect_edits import apply_effect_edits
 from .video_editing_episode_compiler import EpisodeRecipeBundle
@@ -739,25 +743,31 @@ def admit_render_plan(
         effective_semantic = semantic.model_dump(mode="json")
         effective_recipes = revised.model_dump(mode="json")
     excluded = set(edits.source_only_beat_ids) if edits else None
-    if any(
-        beat["group_id"] == STRIP_CARD_GROUP and beat["id"] not in (excluded or ())
+    browser_scenes = {
+        beat["group_id"]
         for beat in effective_semantic["beats"]
-    ):
+        if beat["group_id"] in CLEAN_BROWSER_SCENE_GROUPS
+        and beat["id"] not in (excluded or ())
+    }
+    if browser_scenes:
         if options.source_subtitles != "none":
             raise ApiError(
                 422,
                 "EDITING_SOURCE_SUBTITLES_REVIEW_REQUIRED",
-                "堆叠图卡需要无内嵌字幕的原片。",
+                "同期人物动效需要无内嵌字幕的原片。",
             )
         try:
-            require_drawn_browser_assets(
-                settings.video_editing_library_dir,
-                STRIP_CARD_GROUP,
-                settings.video_editing_native_bindings_file,
-            )
+            for gid in browser_scenes & {STRIP_CARD_GROUP, TEXTURE_WORD_GROUP}:
+                require_drawn_browser_assets(
+                    settings.video_editing_library_dir,
+                    gid,
+                    settings.video_editing_native_bindings_file,
+                )
         except (OSError, ValueError, KeyError, TypeError) as error:
             raise ApiError(
-                503, BROWSER_ORIGINALS_REQUIRED, "堆叠图卡需要可核对的原模板活动底板。"
+                503,
+                BROWSER_ORIGINALS_REQUIRED,
+                "所选动效需要可核对的原模板底板或纹理。",
             ) from error
     needs_hypit = requires_hypit(effective_semantic, excluded)
     if needs_hypit and (

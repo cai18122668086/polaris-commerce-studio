@@ -13,10 +13,12 @@ from .video_editing_browser_clocks import (
     NUMBERED_LABELS,
 )
 from .video_editing_browser_rotation import (
+    CIRCULAR_MEDIA_GROUP,
     ROTATION_GROUP,
     ROTATION_IMAGES,
     STRIP_CARD_DESIGN,
     STRIP_CARD_GROUP,
+    THREE_ITEM_SCENE_DESIGN,
 )
 from .video_editing_contracts import (
     EditingImageTarget,
@@ -41,6 +43,10 @@ _PROFILES = {
     ),
     STRIP_CARD_GROUP: (
         STRIP_CARD_DESIGN,
+        tuple((path,) for path in ROTATION_IMAGES),
+    ),
+    CIRCULAR_MEDIA_GROUP: (
+        THREE_ITEM_SCENE_DESIGN,
         tuple((path,) for path in ROTATION_IMAGES),
     ),
     NUMBERED_GROUP: (

@@ -14,7 +14,11 @@ from .video_editing_browser_clocks import (
     NUMBERED_GROUP,
     fruit_header_fits,
 )
-from .video_editing_browser_rotation import BROWSER_CARD_GROUPS, ROTATION_GROUP
+from .video_editing_browser_rotation import (
+    BROWSER_CARD_GROUPS,
+    CIRCULAR_MEDIA_GROUP,
+    ROTATION_GROUP,
+)
 from .video_editing_collage_scene import (
     COLLAGE_GROUP,
     COLLAGE_IMAGES,
@@ -68,6 +72,7 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
     STRIP_CARD_TEMPLATE_ID,
+    THREE_ITEM_SCENE_TEMPLATE_ID,
 )
 from .video_editing_role_scene import (
     ROLE_IMAGES,
@@ -81,6 +86,7 @@ _IMAGE_GROUPS = {
     PICTURE_TEMPLATE_ID: ((CARD_GROUP, 3),),
     ROTATION_TEMPLATE_ID: ((ROTATION_GROUP, 3),),
     STRIP_CARD_TEMPLATE_ID: tuple((group, 3) for group in BROWSER_CARD_GROUPS),
+    THREE_ITEM_SCENE_TEMPLATE_ID: ((CIRCULAR_MEDIA_GROUP, 3), (ROTATION_GROUP, 3)),
     JUDGMENT_TEMPLATE_ID: ((JUDGMENT_GROUP, 2),),
     PACKAGE_TEMPLATE_ID: ((PACKAGE_GROUP, 4),),
     LINE_TEMPLATE_ID: ((LINE_GROUP, 3), (PACKAGE_GROUP, 4)),

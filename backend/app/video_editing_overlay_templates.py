@@ -5,6 +5,7 @@ from copy import deepcopy
 
 from .video_editing_azl_panels import AZL_DEPENDENCIES, AZL_GROUPS, azl_binding
 from .video_editing_azl_panels import AZL_TEMPLATE_ID as AZL_TEMPLATE_ID
+from .video_editing_browser_boot import BROWSER_BOOT_FONT_IDS
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_FONTS,
@@ -18,10 +19,14 @@ from .video_editing_browser_clocks import (
     SPLIT_VERTICAL,
 )
 from .video_editing_browser_rotation import (
+    ANALYSIS_BOARD_GROUP,
     BROWSER_CARD_GROUPS,
+    CIRCULAR_MEDIA_GROUP,
     ROTATION_GROUP,
     ROTATION_MATTE,
     STRIP_CARD_GROUP,
+    TEXTURE_WORD_GROUP,
+    THREE_ITEM_SCENE_GROUPS,
 )
 from .video_editing_collage_scene import COLLAGE_GROUP, COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import SemanticPlan
@@ -105,6 +110,7 @@ LEGACY_PICTURE_TEMPLATE_ID = "picture-compare-v1"
 PICTURE_TEMPLATE_ID = "picture-compare-v2"
 ROTATION_TEMPLATE_ID = "rotation-cards-v1"
 STRIP_CARD_TEMPLATE_ID = "strip-and-rotation-cards-v1"
+THREE_ITEM_SCENE_TEMPLATE_ID = "three-item-browser-scenes-v1"
 PRESENTER_TEMPLATE_ID = "presenter-openings-v1"
 PRESENTER_MOTION_TEMPLATE_ID = "presenter-reframing-v1"
 YY_OPENING_TEMPLATE_ID = "yy-presenter-openings-v1"
@@ -195,6 +201,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     LINE_GROUP: (LINE_BRUSH_FONT,),
     **dict.fromkeys(BROWSER_CARD_GROUPS, (*FRUIT_LIST_FONTS, ROTATION_MATTE)),
+    **dict.fromkeys(THREE_ITEM_SCENE_GROUPS, (*BROWSER_BOOT_FONT_IDS, ROTATION_MATTE)),
     "LYO01": (_OPENING_FONT,),
     "LYO02": (_OPENING_FONT, ROTATION_MATTE),
     "LYO03": (_OPENING_FONT, ROTATION_MATTE),
@@ -532,6 +539,39 @@ _TEMPLATES[STRIP_CARD_TEMPLATE_ID] = {
                 "每项以自己的短标题和首词绑定 label 与 at。"
                 "relation_items 按口播顺序逐项绑定文字及图片。"
                 "第三张卡需要有入场和阅读时间。"
+            ),
+        },
+        *_TEMPLATES[ROTATION_TEMPLATE_ID]["slots"],
+    ],
+}
+
+_THREE_ITEM_WORD_BINDING = (
+    "用本期原片作 presenter。用三个实录短词逐项绑定 label 和对应首词 at，"
+    "每个标签最多两个字，第三项入场后保留阅读时间。"
+)
+_TEMPLATES[THREE_ITEM_SCENE_TEMPLATE_ID] = {
+    "id": THREE_ITEM_SCENE_TEMPLATE_ID,
+    "name": "三项分析与圆形配图",
+    "slots": [
+        {
+            "group_id": ANALYSIS_BOARD_GROUP,
+            "purpose": "在原透视板上依次展示三项，人物同期入画",
+            "layer": "scene",
+            "binding": _THREE_ITEM_WORD_BINDING,
+        },
+        {
+            "group_id": TEXTURE_WORD_GROUP,
+            "purpose": "用原材质词突出三项并列重点，人物同期近景",
+            "layer": "scene",
+            "binding": _THREE_ITEM_WORD_BINDING,
+        },
+        {
+            "group_id": CIRCULAR_MEDIA_GROUP,
+            "purpose": "用原圆形槽依次展示三项本期配图，人物同期入画",
+            "layer": "scene",
+            "binding": (
+                _THREE_ITEM_WORD_BINDING
+                + "三个 image 槽分别绑定不同本期图，relation_items 逐项对应标签和图。"
             ),
         },
         *_TEMPLATES[ROTATION_TEMPLATE_ID]["slots"],
@@ -1145,6 +1185,7 @@ def overlay_templates() -> list[dict]:
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
             STRIP_CARD_TEMPLATE_ID,
+            THREE_ITEM_SCENE_TEMPLATE_ID,
             NUMBERED_TEMPLATE_ID,
             LIVE_STRIP_TEMPLATE_ID,
             PRESENTER_LABEL_TEMPLATE_ID,

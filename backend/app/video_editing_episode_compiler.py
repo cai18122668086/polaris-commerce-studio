@@ -44,8 +44,9 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_rotation import (
     BROWSER_CARD_GROUPS,
+    CLEAN_BROWSER_SCENE_GROUPS,
     ROTATION_GROUP,
-    STRIP_CARD_GROUP,
+    THREE_ITEM_SCENE_GROUPS,
 )
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_collage_scene import COLLAGE_GROUP, COLLAGE_TEMPLATE_ID
@@ -105,6 +106,7 @@ from .video_editing_overlay_templates import (
     STRIP_CARD_TEMPLATE_ID,
     SYNC_SUBTITLE_TEMPLATES,
     TEXT_HANDOFF_TEMPLATES,
+    THREE_ITEM_SCENE_TEMPLATE_ID,
     YY_OPENING_TEMPLATES,
     overlay_template,
     validate_template_plan,
@@ -340,7 +342,7 @@ def compile_episode(
         )
     excluded_beats = set(edits.source_only_beat_ids) if edits else set()
     if options["source_subtitles"] != "none" and any(
-        beat.group_id == STRIP_CARD_GROUP and beat.id not in excluded_beats
+        beat.group_id in CLEAN_BROWSER_SCENE_GROUPS and beat.id not in excluded_beats
         for beat in semantic.beats
     ):
         raise EditingFailure("EDITING_SOURCE_SUBTITLES_REVIEW_REQUIRED")
@@ -942,6 +944,11 @@ def compile_episode(
             BROWSER_CARD_GROUPS,
             1257,
             "将主字幕放入原生图卡下方的读区。",
+        ),
+        THREE_ITEM_SCENE_TEMPLATE_ID: (
+            (*THREE_ITEM_SCENE_GROUPS, ROTATION_GROUP),
+            1257,
+            "主字幕放在原生镜头的底部读区。",
         ),
     }.get(authoring.overlay_template_id or "")
     if caption_lane:

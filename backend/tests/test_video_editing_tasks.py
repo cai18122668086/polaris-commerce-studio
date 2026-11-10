@@ -397,6 +397,59 @@ def test_attempt_storage_failure_releases_editing_lease(video, tmp_path):
     assert (retry["id"], retry["status"], retry["attempts"]) == (task_id, "queued", 1)
 
 
+def test_expired_editing_attempt_leaves_task_for_redelivery(
+    video, tmp_path, monkeypatch
+):
+    client, _, ws, _, settings, _, source = setup_source(video, tmp_path)
+    tasks = base(ws) + "/editing-tasks"
+    job = (
+        client.post(
+            tasks,
+            json={
+                "request_id": str(uuid4()),
+                "source_id": source,
+                "options": {"source_subtitles": "none"},
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
+    task_id = job["id"]
+    factory = client.app.state.session_factory
+    sent = []
+    monkeypatch.setattr(worker.celery_app, "send_task", lambda *a, **k: sent.append(k))
+    assert worker.recover(factory) == 1
+
+    def fail_after_expiry(_):
+        with factory() as session:
+            row = session.get(EditingTaskRecord, task_id)
+            row.lease_until = datetime.now(UTC) - timedelta(seconds=1)
+            session.commit()
+        raise RuntimeError("fixture worker resumed after its lease expired")
+
+    monkeypatch.setattr(worker, "verify_package", fail_after_expiry)
+    process(task_id, settings, factory)
+    current = client.get(f"{tasks}/{task_id}").raise_for_status().json()
+    assert current["status"] == "running" and not current["artifacts"]
+    assert worker.recover(factory) == 1 and worker.recover(factory) == 0
+    assert len(sent) == 2
+
+    client.post(f"{tasks}/{task_id}/cancel").raise_for_status()
+    process(task_id, settings, factory)
+    with factory() as session:
+        attempts = list(
+            session.scalars(
+                select(EditingAttemptRecord)
+                .where(EditingAttemptRecord.task_id == task_id)
+                .order_by(EditingAttemptRecord.number)
+            )
+        )
+        assert [(a.status, a.error_code) for a in attempts] == [
+            ("superseded", "EDITING_LEASE_EXPIRED"),
+            ("cancelled", "EDITING_CANCELLED"),
+        ]
+
+
 def test_create_task_never_connects_to_broker_in_request_thread(
     video, tmp_path, monkeypatch
 ):

@@ -1177,6 +1177,46 @@ def test_broker_loss_keeps_planning_job_durable_and_reserves_redelivery(
     assert len(sent) == 1
 
 
+def test_expired_planning_attempt_cannot_fail_or_delay_redelivery(
+    video, tmp_path, monkeypatch
+):
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    task_id = create(client, ws, task["id"]).raise_for_status().json()["id"]
+    factory = client.app.state.session_factory
+    sent = []
+    monkeypatch.setattr(worker.celery_app, "send_task", lambda *a, **k: sent.append(k))
+    assert worker.recover(factory) == 1
+
+    def fail_after_expiry(_):
+        with factory() as session:
+            row = session.get(EditingPlanningTaskRecord, task_id)
+            row.lease_until = datetime.now(UTC) - timedelta(seconds=1)
+            session.commit()
+        raise RuntimeError("fixture planner resumed after its lease expired")
+
+    monkeypatch.setattr(worker, "verify_package", fail_after_expiry)
+    worker.process(task_id, settings, factory)
+    url = base(ws) + "/editing-planning-tasks/" + task_id
+    current = client.get(url).raise_for_status().json()
+    assert current["status"] == "running" and current["call_state"] == "not_submitted"
+    assert worker.recover(factory) == 1 and worker.recover(factory) == 0
+    assert len(sent) == 2
+
+    monkeypatch.setattr(worker, "verify_package", lambda _: None)
+    worker.process(task_id, settings, factory)
+    ready = client.get(url).raise_for_status().json()
+    assert ready["status"] == "prepared" and ready["call_state"] == "not_submitted"
+    with factory() as session:
+        attempts = list(
+            session.scalars(
+                select(EditingPlanningAttemptRecord)
+                .where(EditingPlanningAttemptRecord.task_id == task_id)
+                .order_by(EditingPlanningAttemptRecord.number)
+            )
+        )
+        assert [a.status for a in attempts] == ["superseded", "prepared"]
+
+
 def test_gateway_cannot_change_after_preparation_or_while_execution_is_queued(
     video, tmp_path, monkeypatch
 ):

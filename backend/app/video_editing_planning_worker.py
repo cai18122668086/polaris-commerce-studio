@@ -209,6 +209,8 @@ def process(
             return
         row = session.get(EditingPlanningTaskRecord, task_id)
         assert row is not None
+        if row.checkpoint.get("dispatch_not_before"):
+            row.checkpoint = {**row.checkpoint, "dispatch_not_before": 0}
         session.execute(
             update(EditingPlanningAttemptRecord)
             .where(
@@ -770,11 +772,15 @@ def process(
             with suppress(OSError):
                 result["artifacts"] = artifacts(root, attempt, mode)
         with factory() as session:
-            session.execute(
+            finished_at = datetime.now(UTC)
+            failed = session.execute(
                 update(EditingPlanningTaskRecord)
+                .execution_options(synchronize_session=False)
                 .where(
                     EditingPlanningTaskRecord.id == task_id,
                     EditingPlanningTaskRecord.owner_token == token,
+                    EditingPlanningTaskRecord.status == "running",
+                    EditingPlanningTaskRecord.lease_until >= finished_at,
                 )
                 .values(
                     status=status,
@@ -786,13 +792,15 @@ def process(
                     revision=EditingPlanningTaskRecord.revision + 1,
                 )
             )
+            if not cast(CursorResult, failed).rowcount:
+                return  # Preserve the provider capture for the next attempt.
             session.execute(
                 update(EditingPlanningAttemptRecord)
                 .where(
                     EditingPlanningAttemptRecord.id == token,
                     EditingPlanningAttemptRecord.status == "running",
                 )
-                .values(status=status, error_code=code, finished_at=datetime.now(UTC))
+                .values(status=status, error_code=code, finished_at=finished_at)
             )
             session.commit()
         with suppress(OSError):

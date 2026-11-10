@@ -428,6 +428,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             return
         row = session.get(EditingTaskRecord, task_id)
         assert row is not None
+        if row.checkpoint.get("dispatch_not_before"):
+            row.checkpoint = {**row.checkpoint, "dispatch_not_before": 0}
         attempt = EditingAttemptRecord(
             id=token,
             task_id=task_id,
@@ -573,10 +575,12 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             merged = {**saved.checkpoint, **checkpoint}
             result = session.execute(
                 update(EditingTaskRecord)
+                .execution_options(synchronize_session=False)
                 .where(
                     EditingTaskRecord.id == task_id,
                     EditingTaskRecord.owner_token == token,
                     EditingTaskRecord.status == "running",
+                    EditingTaskRecord.lease_until >= datetime.now(UTC),
                     EditingTaskRecord.cancel_requested.is_(False),
                 )
                 .values(
@@ -946,11 +950,15 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                             item.model_dump() for item in error.layout_findings
                         ],
                     }
-            session.execute(
+            finished_at = datetime.now(UTC)
+            failed = session.execute(
                 update(EditingTaskRecord)
+                .execution_options(synchronize_session=False)
                 .where(
                     EditingTaskRecord.id == task_id,
                     EditingTaskRecord.owner_token == token,
+                    EditingTaskRecord.status == "running",
+                    EditingTaskRecord.lease_until >= finished_at,
                 )
                 .values(
                     status=status,
@@ -961,13 +969,15 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     **failure_values,
                 )
             )
+            if not cast(CursorResult, failed).rowcount:
+                return  # Maintenance can reclaim an expired attempt.
             session.execute(
                 update(EditingAttemptRecord)
                 .where(
                     EditingAttemptRecord.id == token,
                     EditingAttemptRecord.status == "running",
                 )
-                .values(status=status, error_code=code, finished_at=datetime.now(UTC))
+                .values(status=status, error_code=code, finished_at=finished_at)
             )
             session.commit()
         # The database is authoritative when the task volume cannot store a receipt.

@@ -20,6 +20,7 @@ from .video_editing_materials import PREFIX, material_cards, project_material_fi
 from .video_editing_native_plans import content_digest, source_assets
 from .video_editing_overlay_templates import (
     AZL_TEMPLATE_ID,
+    CXBR_TEMPLATE_ID,
     PRESENTER_MOTION_TEMPLATE_ID,
     overlay_template,
 )
@@ -210,7 +211,7 @@ def create_planning_task(
         "asset_cards": material_cards(
             source_assets(source) | selected,
             include_video_durations=body.template_id
-            in {PRESENTER_MOTION_TEMPLATE_ID, AZL_TEMPLATE_ID},
+            in {PRESENTER_MOTION_TEMPLATE_ID, AZL_TEMPLATE_ID, CXBR_TEMPLATE_ID},
         ),
         "source_subtitles": base.options["source_subtitles"],
     }

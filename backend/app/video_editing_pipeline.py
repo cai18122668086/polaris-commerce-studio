@@ -30,6 +30,7 @@ from .video_editing_captioning import (
     write_caption_receipt,
 )
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
+from .video_editing_cxbr import CXBR_CAPTION_INTENT, verify_cxbr_captions
 from .video_editing_hypit_strips import STAGGER_GROUPS
 from .video_editing_native_layout import verify_inset_layout
 from .video_editing_native_sound import verify_rendered_sound
@@ -751,5 +752,16 @@ def validate_result(
             validation["native_azl_panel_layout"] = verify_azl_layout(root, native)
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             raise EditingFailure("EDITING_NATIVE_AZL_PANEL_LAYOUT_INVALID") from None
+    if (root / CXBR_CAPTION_INTENT).is_file():
+        try:
+            if native["sha256"] != validation["sha256"]:
+                raise ValueError("Original B-roll output changed before validation")
+            validation["native_cxbr_captions"] = verify_cxbr_captions(
+                root, native["layout_review"]
+            )
+        except (ValueError, KeyError, IndexError, TypeError, OSError):
+            raise EditingFailure(
+                "EDITING_NATIVE_CHENXI_CAPTION_LAYOUT_INVALID"
+            ) from None
     atomic_json(root / "validation.json", validation)
     return validation

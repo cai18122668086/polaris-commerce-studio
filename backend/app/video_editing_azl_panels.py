@@ -228,13 +228,6 @@ def azl_output_bounds(shot: dict, fps: int) -> tuple[int, int]:
     )
 
 
-def azl_projected_end(start: float, end: float, native_frames: int, fps: int) -> float:
-    # The original overlay's setpts truncates the origin in its 1/fps timebase.
-    # Leave before the first output frame without a corresponding native frame.
-    missing_frame = math.floor(start / (1 / fps)) + native_frames
-    return min(end, (missing_frame - _FRAME_GATE_MARGIN) / fps)
-
-
 def azl_backing(shot: dict, episode: dict, index: int) -> dict:
     fmt = episode["output"]
     fps = fmt["fps"]

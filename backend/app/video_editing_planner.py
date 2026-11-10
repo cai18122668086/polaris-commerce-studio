@@ -353,6 +353,14 @@ def build_request(
             "可以沿用示例native_events，并用first_token_id至subtitle_last_token_id绑定原subtitle。"
             "标题、标签和三张关键词卡仍需从该段各自的实录选词。"
         )
+    if runtime and runtime.get("chenxi_broll_windows"):
+        message += (
+            "chenxi_broll_windows提供本期逐词实测的双路实景候选。"
+            "先判断语段和补充视频内容是否相符，参考同一条建议的native_events和"
+            "material_ids_by_path。native_text自行从实录选完整短语，"
+            "调整首词时一并调整相应动作事件。独立视频应能说明口播内容，"
+            "不能把普通头像或无关近景当成用途或实物证据。"
+        )
     body = {
         "model": model,
         "stream": False,

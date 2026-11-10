@@ -8,11 +8,16 @@ from app.video_editing_azl_panels import (
     AZL_RECT,
     azl_backing,
     azl_output_bounds,
-    azl_projected_end,
     verify_azl_layout,
+)
+from app.video_editing_cxbr import (
+    CXBR_CAPTION_INTENT,
+    cxbr_entry_frame,
+    verify_cxbr_captions,
 )
 from app.video_editing_native_layout import (
     intentional_role_overlaps,
+    projected_scene_end,
     review_with_native_roles,
     verified_effect_groups,
     verify_inset_layout,
@@ -351,12 +356,42 @@ def test_azl_projection_stops_before_original_component_eof():
         "layer": "scene",
         "rect": list(AZL_RECT),
         "start_seconds": 15.63,
-        "end_seconds": azl_projected_end(15.63, 19.05, 103, 30),
+        "end_seconds": projected_scene_end(15.63, 19.05, 103, 30),
         "config": {"events": {"subtitle_in": [0, 8]}},
     }
     assert azl_output_bounds(shot, 30) == (469, 571)
     assert 103 / 30 - (shot["end_seconds"] - shot["start_seconds"]) <= 1 / 30 + 0.0001
-    assert azl_projected_end(0.41, 3.59, 96, 30) == 3.59
+    assert projected_scene_end(0.41, 3.59, 96, 30) == 3.59
+
+
+def test_chenxi_cues_follow_the_original_first_visible_action_and_caption_band(
+    tmp_path,
+):
+    shot = {
+        "group_id": "CXBR05",
+        "layer": "scene",
+        "rect": [0, 0, 1, 1],
+        "start_seconds": 39.11,
+        "end_seconds": 43.11,
+        "config": {"timing": {"band_in": 20, "circle_in": 32}},
+    }
+    assert cxbr_entry_frame(shot, 30, "/timing/band_in") == 1193
+    assert cxbr_entry_frame(shot, 30, "/timing/circle_in") == 1206
+    atomic_json(
+        tmp_path / "episode.json",
+        {
+            "output": {"height": 1280},
+            "shots": [shot],
+            "captions": [{"start_seconds": 39.11, "end_seconds": 41.10}],
+        },
+    )
+    atomic_json(tmp_path / CXBR_CAPTION_INTENT, {"shots": [0]})
+    ink = {"start": 39.11, "end": 41.10, "box": [30, 1160, 400, 1245]}
+    report = {"status": "passed", "caption_ink": [ink]}
+    assert verify_cxbr_captions(tmp_path, report)["shots"][0]["smallest_gap_px"] == 190
+    ink["box"][1] = 969
+    with pytest.raises(ValueError, match="Main caption ink enters"):
+        verify_cxbr_captions(tmp_path, report)
 
 
 def test_preview_counts_decoded_opaque_scenes_and_visible_subtitles():

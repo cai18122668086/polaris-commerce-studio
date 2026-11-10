@@ -42,6 +42,20 @@ from .video_editing_contracts import (
     SemanticPlan,
     Transcript,
 )
+from .video_editing_cxbr import (
+    CXBR_DEPENDENCIES,
+    CXBR_DESIGN_ID,
+    CXBR_PAPER,
+    CXBR_PAPER_GROUPS,
+    CXBR_PRESENTER,
+    CXBR_PURPOSES,
+    CXBR_SOUNDS,
+    cxbr_clip_path,
+    cxbr_empty_paths,
+    cxbr_project_media,
+    cxbr_text_paths,
+    validate_cxbr_anchors,
+)
 from .video_editing_episode_compiler import (
     RELATION_MAPPING,
     EpisodeRecipeBundle,
@@ -855,7 +869,9 @@ def _entry_sound(
         }.get(
             beat.group_id,
             "原生画面运动开始时给一次短提示，口播继续。"
-            if beat.group_id in PRESENTER_MOTION_GROUPS or beat.group_id in AZL_GROUPS
+            if beat.group_id in PRESENTER_MOTION_GROUPS
+            or beat.group_id in AZL_GROUPS
+            or beat.group_id in CXBR_PURPOSES
             else "原生文字动效入场时给一次短提示，口播继续。",
         ),
         source_start_seconds=source_start,
@@ -1526,6 +1542,101 @@ def _azl_entry(
     ), anchors
 
 
+def _cxbr_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    config = read_json(inside(package, group["input_template"]))
+    group_id = beat.group_id
+    clip = cxbr_clip_path(group_id)
+    empty = cxbr_empty_paths(group_id)
+    text_paths = cxbr_text_paths(group_id)
+    event_paths = {row["path"] for row in contract["event_paths"]}
+    media_paths = {CXBR_PRESENTER, clip}
+    if group_id in CXBR_PAPER_GROUPS:
+        media_paths.add(CXBR_PAPER)
+    if group_id == "CXBR01":
+        media_paths.add("/reference")
+    presenters = {
+        row["id"]
+        for row in cards
+        if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
+    }
+    videos, images = cxbr_project_media(cards, transcript.source_sha256)
+    try:
+        anchors = word_bindings(
+            beat, transcript, contract, presenters | videos.keys() | images.keys()
+        )
+        bound = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        if (
+            set(bound) != media_paths
+            or media_paths != {row["path"] for row in contract["resource_paths"]}
+            or bound[CXBR_PRESENTER] not in presenters
+            or set(beat.asset_ids) != set(bound.values())
+            or {row["path"] for row in anchors["events"]} != event_paths
+            or {row["path"] for row in anchors["text"]} != set(text_paths)
+            or set(text_paths) | empty.keys() != set(contract["text_paths"])
+        ):
+            raise ValueError(
+                "Original B-roll requires its exact media, caption and event fields"
+            )
+        validate_cxbr_anchors(group_id, anchors, videos, images, transcript)
+    except (ValueError, KeyError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_CHENXI_BROLL_INPUTS_REQUIRED",
+            f"{group_id} 需绑定同期原片、相关且足够长的补充视频、实录短句和动作词点。"
+            "含纸纹的场景还需一张本期图片。",
+        ) from error
+    slots = [
+        *sorted(media_paths),
+        *text_paths,
+        *empty,
+        *sorted(event_paths),
+        *(
+            field["path"]
+            for field in contract["fields"]
+            if field["category"] == "clock_owned_by_compiler"
+            and field["path"].startswith("/media/")
+        ),
+    ]
+    for path in slots:
+        set_native_field(config, path, None)
+    config["source_start_frame"] = 0
+    for path in (CXBR_PRESENTER, clip):
+        config["media"][path.split("/")[2]]["end_policy"] = "error"
+    reason = "保留原生实景排版和同期人物时钟，补充视频从独立原件首帧播放。"
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": CXBR_DESIGN_ID,
+            "design_reason": reason,
+            "parameter_decisions": {
+                **{key: reason for key in config},
+                "/source_start_frame": "原演示帧号清零，实际原片取帧由实录区间控制。",
+            },
+            "config": config,
+            "placeholders": slots,
+            "empty_text": empty,
+            "dependency_ids": list(CXBR_DEPENDENCIES.get(group_id, ())),
+            "media_clocks": [
+                {"media_path": CXBR_PRESENTER, "policy": "transcript_source_window"},
+                {"media_path": clip, "policy": "project_scene_clip_window"},
+            ],
+        },
+    ), anchors
+
+
 def _presenter_motion_entry(
     package: Path,
     group: dict,
@@ -1832,6 +1943,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = (None,)
+        elif beat.group_id in CXBR_PURPOSES:
+            entries[beat.id], anchors = _cxbr_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = tuple(CXBR_SOUNDS[beat.group_id])
         else:
             make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
             entries[beat.id], anchors = make_entry(package, group, beat, transcript)
@@ -1851,6 +1967,7 @@ def build_overlay_recipes(
             *YY_OPENING_EXPANDED_GROUPS,
             *PRESENTER_MOTION_GROUPS,
             *AZL_GROUPS,
+            *CXBR_PURPOSES,
         }
         for beat in beats
     )

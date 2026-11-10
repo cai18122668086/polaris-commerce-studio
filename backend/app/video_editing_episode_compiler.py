@@ -24,7 +24,6 @@ from .video_editing_azl_panels import (
     AZL_GROUPS,
     AZL_LAYOUT_INTENT,
     azl_backing,
-    azl_projected_end,
     require_azl_compositor,
 )
 from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
@@ -32,6 +31,7 @@ from .video_editing_browser_clocks import CARD_GROUP, NUMBERED_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
+from .video_editing_cxbr import CXBR_CAPTION_INTENT, CXBR_PURPOSES, CXBR_TEMPLATE_ID
 from .video_editing_highlights import apply_highlight_edits
 from .video_editing_hypit import hypit_tools, internal_hypit_available, requires_hypit
 from .video_editing_hypit_strips import (
@@ -50,6 +50,7 @@ from .video_editing_native_layout import (
     BACKDROP_GROUP,
     LAYERED_SUBTITLE_ROLE_GROUPS,
     TEXT_HANDOFF_GROUP,
+    projected_scene_end,
 )
 from .video_editing_native_sound import NativeSoundDesign, compile_sound
 from .video_editing_overlay_templates import (
@@ -599,14 +600,20 @@ def compile_episode(
                         "config": job["config"],
                         "start_seconds": start,
                         "end_seconds": (
-                            azl_projected_end(
+                            projected_scene_end(
                                 start,
                                 end,
                                 job["config"]["frames"],
                                 episode["output"]["fps"],
                             )
-                            if authoring.overlay_template_id == AZL_TEMPLATE_ID
-                            and beat.group_id in AZL_GROUPS
+                            if (
+                                authoring.overlay_template_id == AZL_TEMPLATE_ID
+                                and beat.group_id in AZL_GROUPS
+                            )
+                            or (
+                                authoring.overlay_template_id == CXBR_TEMPLATE_ID
+                                and beat.group_id in CXBR_PURPOSES
+                            )
                             else end
                         ),
                         "layer": entry.placement.layer,
@@ -750,6 +757,11 @@ def compile_episode(
             AZL_CAPTION_BASELINE,
             "主字幕进入原生板式下方的读区。",
         ),
+        CXBR_TEMPLATE_ID: (
+            tuple(CXBR_PURPOSES),
+            1230,
+            "主字幕放在原实景标题和纸条下方。",
+        ),
         **dict.fromkeys(
             YY_OPENING_TEMPLATES,
             (
@@ -854,6 +866,7 @@ def compile_episode(
                 sync_presenter_motion_entries=authoring.overlay_template_id
                 == PRESENTER_MOTION_TEMPLATE_ID,
                 sync_azl_entries=authoring.overlay_template_id == AZL_TEMPLATE_ID,
+                sync_cxbr_entries=authoring.overlay_template_id == CXBR_TEMPLATE_ID,
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})
@@ -1004,5 +1017,13 @@ def compile_episode(
             atomic_json(root / YY_OPENING_CAPTION_INTENT, {"shots": yy_openings})
     if azl_shots:
         atomic_json(root / AZL_LAYOUT_INTENT, {"shots": azl_shots})
+    if authoring.overlay_template_id == CXBR_TEMPLATE_ID:
+        cxbr_shots = [
+            index
+            for index, shot in enumerate(episode["shots"])
+            if shot["group_id"] in CXBR_PURPOSES
+        ]
+        if cxbr_shots:
+            atomic_json(root / CXBR_CAPTION_INTENT, {"shots": cxbr_shots})
     atomic_json(root / "episode.json", episode)
     return episode

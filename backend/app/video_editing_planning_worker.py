@@ -25,6 +25,7 @@ from .video_editing_catalog import (
     planning_runtime_snapshot,
     unavailable_template_groups,
 )
+from .video_editing_cxbr import cxbr_blockers, cxbr_windows
 from .video_editing_hypit import hypit_tools
 from .video_editing_hypit_strips import LIVE_STRIP_GROUP
 from .video_editing_library_choice_store import stored_choice_snapshot
@@ -344,6 +345,21 @@ def process(
             )
             if panel_windows:
                 runtime["azl_panel_windows"] = panel_windows
+            cxbr_blockers(
+                template,
+                snapshot["source_subtitles"],
+                snapshot["asset_cards"],
+                snapshot["source_sha256"],
+                runtime["unavailable_template_groups"],
+            )
+            broll_windows = cxbr_windows(
+                template,
+                transcript,
+                snapshot["asset_cards"],
+                runtime["unavailable_template_groups"],
+            )
+            if broll_windows:
+                runtime["chenxi_broll_windows"] = broll_windows
             motion_windows = motion_word_windows(
                 template,
                 transcript,
@@ -427,6 +443,13 @@ def process(
                     current,
                 )
                 azl_blockers(
+                    template,
+                    snapshot["source_subtitles"],
+                    snapshot["asset_cards"],
+                    snapshot["source_sha256"],
+                    current,
+                )
+                cxbr_blockers(
                     template,
                     snapshot["source_subtitles"],
                     snapshot["asset_cards"],

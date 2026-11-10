@@ -12,6 +12,8 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
+from .video_editing_cxbr import CXBR_DEPENDENCIES, CXBR_PURPOSES, cxbr_binding
+from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
 from .video_editing_hypit_strips import LIVE_STRIP_GROUP
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
@@ -64,6 +66,7 @@ SYNC_SUBTITLE_TEMPLATES = frozenset(
         SUBTITLE_STORY_TEMPLATE_ID,
         PRESENTER_MOTION_TEMPLATE_ID,
         AZL_TEMPLATE_ID,
+        CXBR_TEMPLATE_ID,
         *YY_OPENING_TEMPLATES,
         *TEXT_HANDOFF_TEMPLATES,
     }
@@ -95,6 +98,7 @@ OPENING_GROUPS = frozenset(_OPENING_PURPOSES.keys() | YY_OPENING_EXPANDED_GROUPS
 _OPENING_FONT = "font-06e1a30f687ab7d3"
 AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     **dict.fromkeys(AZL_GROUPS, AZL_DEPENDENCIES),
+    **CXBR_DEPENDENCIES,
     **FOREGROUND_SUBTITLE_DEPENDENCIES,
     **dict.fromkeys(YY_OPENING_EXPANDED_GROUPS, YY_OPENING_DEPENDENCIES),
     **dict.fromkeys(PRESENTER_MOTION_GROUPS, (MOTION_FONT,)),
@@ -476,6 +480,22 @@ _TEMPLATES[AZL_TEMPLATE_ID] = {
         *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[CXBR_TEMPLATE_ID] = {
+    "id": CXBR_TEMPLATE_ID,
+    "name": "晨曦双路实景",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": cxbr_binding(group),
+            }
+            for group, purpose in CXBR_PURPOSES.items()
+        ),
+        *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
     "id": SUBTITLE_RELAY_TEMPLATE_ID,
     "name": "双层字幕接力",
@@ -576,6 +596,7 @@ def overlay_templates() -> list[dict]:
             YY_OPENING_EXPANDED_TEMPLATE_ID,
             PRESENTER_MOTION_TEMPLATE_ID,
             AZL_TEMPLATE_ID,
+            CXBR_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,

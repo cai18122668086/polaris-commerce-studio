@@ -26,6 +26,7 @@ from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_azl_panels import azl_blockers
 from app.video_editing_contracts import SemanticPlan
+from app.video_editing_cxbr import CXBR_PAPER_GROUPS, CXBR_PURPOSES, cxbr_blockers
 from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
 from app.video_editing_native_sound import verify_rendered_sound
 from app.video_editing_overlay_templates import overlay_template
@@ -120,6 +121,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "yy-presenter-openings-v2",
         "presenter-reframing-v1",
         "azl-panels-v1",
+        "chenxi-broll-v1",
         "evidence-judgment-v1",
         "explainer-steps-v1",
         "subtitle-story-v1",
@@ -1060,3 +1062,33 @@ def test_azl_preparation_requires_distinct_assets_by_original_slot_count():
     unavailable = {}
     azl_blockers(template, "none", [photo, same, clip], "source", unavailable)
     assert set(unavailable) == {"AZL04"}
+
+
+def test_chenxi_preflight_preserves_native_video_and_paper_roles():
+    template = overlay_template("chenxi-broll-v1")
+    source = {
+        "id": "material-source",
+        "kind": "video",
+        "sha256": "source",
+        "duration_ms": 4000,
+    }
+    paper = {"id": "material-paper", "kind": "image", "sha256": "paper"}
+    clip = {
+        "id": "material-broll",
+        "kind": "video",
+        "sha256": "clip",
+        "duration_ms": 2133,
+    }
+    unavailable = {}
+    cxbr_blockers(template, "none", [source, clip], "source", unavailable)
+    assert unavailable == {
+        **dict.fromkeys(CXBR_PAPER_GROUPS, ["paper_image_required"]),
+        "CXBR04": ["independent_video_required"],
+    }
+    clip["duration_ms"] = 2134
+    unavailable = {}
+    cxbr_blockers(template, "present", [source, clip, paper], "source", unavailable)
+    assert unavailable == dict.fromkeys(CXBR_PURPOSES, ["clean_source_required"])
+    unavailable = {}
+    cxbr_blockers(template, "none", [source, paper], "source", unavailable)
+    assert unavailable == dict.fromkeys(CXBR_PURPOSES, ["independent_video_required"])

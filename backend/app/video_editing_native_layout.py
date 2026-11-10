@@ -21,6 +21,17 @@ from .video_editing_subtitle_foreground import (
 BACKDROP_GROUP = "SG-S10"
 TEXT_HANDOFF_GROUP = "JJ-S06"
 TEXT_HANDOFF_MAX_FRAMES = 12
+
+
+def projected_scene_end(
+    start: float, end: float, native_frames: int, fps: int
+) -> float:
+    # The original overlay's setpts truncates the origin in its 1/fps timebase.
+    # Leave before the first output frame without a corresponding native frame.
+    missing_frame = math.floor(start / (1 / fps)) + native_frames
+    return min(end, (missing_frame - 1e-5) / fps)
+
+
 _RENDERER = (
     "src/engines/workspace/字幕动效_可编辑库_20261105/SG-S10/render.py",
     "3ebc549e6eefe28a4c0cb35f5b6af79c2ccf4352d2b01cdd0a137eb5b7dfd712",

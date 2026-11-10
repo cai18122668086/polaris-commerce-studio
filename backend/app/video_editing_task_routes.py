@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
+from .motion_browser_originals import original_startup_assets
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .motion_library_validation import group_status
 from .motion_local_dependencies import local_dependencies
@@ -24,7 +25,6 @@ from .video_editing_catalog import (
     audio_asset,
     catalog_summary,
     original_input_variants,
-    original_startup_assets,
     template_dependencies,
 )
 from .video_editing_contracts import (
@@ -309,7 +309,9 @@ def describe_group(
         "original_input_variants": original_input_variants(
             package, group, bindings, runtime["runtime_evidence"]
         ),
-        "original_startup_assets": original_startup_assets(package, group),
+        "original_startup_assets": original_startup_assets(
+            package, group, settings.video_editing_native_bindings_file
+        ),
         "dependency_scope": (
             "template inputs, indexed browser fonts and audited native engine "
             "references; "

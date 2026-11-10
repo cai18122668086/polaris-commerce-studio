@@ -15,12 +15,23 @@ type Asset = { id: string; kind: string; display_name: string; duration_seconds?
 type Summary = { groups: number; bundled_assets: number; external_references: number; runtime: Record<string, number>; visual_accepted: number };
 type Catalog = { total: number; groups: Group[]; next_offset: number | null; summary: Summary };
 type ResourcePage = { resources: Asset[]; total: number; next_offset: number | null };
+type OriginalStartupAsset = {
+  native_path_pattern: string;
+  expected_count: number;
+  bundled_count: number;
+  verified_bundled_count: number;
+  verified_supplement_count: number;
+  missing_paths: string[];
+  usage: "drawn" | "without_presenter" | "without_item_image" | "shared_startup";
+  supplement_registry_invalid: boolean;
+  indexed_external_ids: string[];
+};
 type Detail = {
   template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; original_rights?: string; local_dependency_state?: LocalDependencyState }[];
   runtime_evidence: { id: string; runtime_validation: string; recorded_at: string; native_branch?: string }[];
   original_input_variants?: { id: string; template_sha256: string; has_encoded_sample: boolean;
     dependency_fonts: { id: string; display_name: string; local_dependency_state: LocalDependencyState }[] }[];
-  original_startup_assets?: { native_path_pattern: string; expected_count: number; bundled_count: number; indexed_external_ids: string[] }[];
+  original_startup_assets?: OriginalStartupAsset[];
   contract_status: string;
   parameter_contract: {
     native_profile?: string | null;
@@ -45,6 +56,12 @@ const localDependencyLabel: Record<LocalDependencyState, string> = {
   file_missing: "已登记文件缺失",
   identity_mismatch: "已登记文件与原件摘要不符",
   verified: "本机原件摘要已核验",
+};
+const startupUsageLabel: Record<OriginalStartupAsset["usage"], string> = {
+  drawn: "本组画面需要",
+  without_presenter: "未绑定本片人物时使用",
+  without_item_image: "相应图片槽留空时使用",
+  shared_startup: "共用入口预加载",
 };
 const choiceLabel = { consider: "优先考虑", avoid: "本项目暂不选用", clear: "清除倾向" };
 const targetKey = (kind: TargetKind, id: string) => `${kind}:${id}`;
@@ -195,9 +212,15 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
           </section>}
           {!!detail.original_startup_assets?.length && <section aria-label="原入口启动原件">
             <b>原入口启动原件</b>
+            {detail.original_startup_assets.some(input => input.supplement_registry_invalid) && <p>本机补交清单无法核验，请检查版本及格式。</p>}
             <ul>{detail.original_startup_assets.map(input => <li key={input.native_path_pattern}>
-              {input.native_path_pattern} · 原 ZIP 内 {input.bundled_count}/{input.expected_count} 件
+              {input.native_path_pattern} · {startupUsageLabel[input.usage]} · 应有 {input.expected_count} 件
+              <br />原包内核验 {input.verified_bundled_count}/{input.bundled_count} 件 · 补交核验 {input.verified_supplement_count} 件
               {input.indexed_external_ids.length > 0 && " · 外部原件 " + input.indexed_external_ids.join("、")}
+              {input.missing_paths.length > 0 && <details>
+                <summary>查看 {input.missing_paths.length} 件未核验原件</summary>
+                <ul>{input.missing_paths.map(path => <li key={path}>{path}</li>)}</ul>
+              </details>}
             </li>)}</ul>
           </section>}
           {!detail.original_input_variants?.length && (detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>

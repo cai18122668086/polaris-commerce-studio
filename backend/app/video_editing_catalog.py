@@ -8,7 +8,6 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-from .motion_browser_originals import STARTUP_ASSETS
 from .motion_library import MOTION_SHA256, inside, read_json, sha256
 from .motion_library_validation import group_status
 from .motion_local_dependencies import DependencyState, dependency_state
@@ -324,34 +323,6 @@ def original_input_variants(
             ("input-B", package / group["input_template"], QUESTION_CARD_B_FONTS),
         )
     ]
-
-
-# Both browser entries eagerly read these assets before accepting current inputs.
-# A catalog alias identifies an external original and does not mean it is present.
-def original_startup_assets(package: Path, group: dict) -> list[dict[str, Any]]:
-    paths = STARTUP_ASSETS.get(group["id"])
-    if not paths:
-        return []
-    aliases = read_json(package / "catalog/native-relative-assets.json")
-    archived = read_json(package / "integrity.json")["files"]
-    result = []
-    for pattern, count in paths:
-        expected = [
-            f"{group['browser_directory']}/{pattern.format(i=i)}" for i in range(count)
-        ]
-        result.append(
-            {
-                "native_path_pattern": pattern,
-                "expected_count": count,
-                "bundled_count": sum(name in archived for name in expected),
-                "indexed_external_ids": [
-                    aliases[name][8:]
-                    for name in expected
-                    if aliases.get(name, "").startswith("input://")
-                ],
-            }
-        )
-    return result
 
 
 def unavailable_template_groups(

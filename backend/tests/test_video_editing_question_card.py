@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from app.motion_browser_originals import original_startup_assets
 from app.motion_library import atomic_json
-from app.video_editing_catalog import original_startup_assets
 from app.video_editing_contracts import (
     SemanticBeat,
     SemanticPlan,
@@ -103,6 +103,7 @@ def test_shared_browser_startup_assets_count_archived_files_and_external_referen
             "entry/assets/G10-background-clean.jpg": "input://media-original",
         },
     )
+    atomic_json(tmp_path / "catalog/external-resources.json", {"resources": []})
     result = original_startup_assets(
         tmp_path, {"id": "CX-G08", "browser_directory": "entry"}
     )
@@ -113,6 +114,8 @@ def test_shared_browser_startup_assets_count_archived_files_and_external_referen
         (0, 1),
     ]
     assert result[2]["indexed_external_ids"] == ["media-original"]
+    assert result[1]["verified_bundled_count"] == 0
+    assert all(row["usage"] == "shared_startup" for row in result)
     assert original_startup_assets(tmp_path, {"id": "CX-G04"}) == []
 
 

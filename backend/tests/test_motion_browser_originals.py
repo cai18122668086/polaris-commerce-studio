@@ -4,6 +4,7 @@ from PIL import Image
 from app.motion_browser_originals import (
     BrowserOriginalsMissing,
     compile_browser_originals,
+    original_startup_assets,
     require_browser_originals,
 )
 from app.motion_library import MOTION_SHA256, atomic_json, sha256
@@ -38,6 +39,23 @@ def test_only_images_drawn_in_the_current_branch_are_required(
             {"presenter": presenter},
         )
     assert caught.value.missing == missing
+
+
+def test_g05_checks_only_the_original_photo_for_the_unbound_item(tmp_path):
+    atomic_json(tmp_path / "integrity.json", {"files": {}})
+    with pytest.raises(BrowserOriginalsMissing) as caught:
+        require_browser_originals(
+            tmp_path,
+            {"id": "CX-G05", "browser_directory": "engine"},
+            {
+                "presenter": "current",
+                "items": [{"image": "current-a"}, {}, {"image": "current-c"}],
+            },
+        )
+    assert caught.value.missing == {
+        "g05-assets/base-{i:03d}.jpg": 69,
+        "g05-assets/photo-{i}.jpg": 1,
+    }
 
 
 @pytest.mark.parametrize("group_id", ["CX-G04", "CX-G06", "CX-G08", "CX-G10"])
@@ -124,7 +142,17 @@ def test_supplement_freezes_bytes_and_checks_indexed_originals(tmp_path, indexed
         "catalog_sha256" if indexed else "operator_attested"
     )
     assert frozen[alias]["path"] == str(stage / f"{identity['sha256']}.png")
+    material, backgrounds, *_ = original_startup_assets(package, group, manifest)
+    assert material["verified_supplement_count"] == 3
+    assert not material["missing_paths"]
+    assert material["usage"] == "drawn"
+    assert backgrounds["usage"] == "without_presenter"
+    assert len(backgrounds["missing_paths"]) == 66
     (tmp_path / "original-1.png").write_bytes(b"registration source moved")
+    material = original_startup_assets(package, group, manifest)[0]
+    assert material["verified_supplement_count"] == 2
+    assert material["missing_paths"] == [alias]
+    assert str(tmp_path) not in str(material)
     assert require_browser_originals(package, group, config, frozen, stage) == frozen
     with pytest.raises(BrowserOriginalsMissing):
         require_browser_originals(package, group, config, files, stage)

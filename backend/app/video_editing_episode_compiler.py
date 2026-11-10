@@ -48,7 +48,9 @@ from .video_editing_hypit import (
     internal_hypit_available,
     requires_hypit,
 )
+from .video_editing_hypit_chart import FLOW_CHART_CAPTION_BASELINE
 from .video_editing_hypit_strips import (
+    FLOW_GROUP,
     LIVE_STRIP_GROUP,
     PRESENTER_LABEL_GROUP,
     PRICE_CARD_GROUP,
@@ -646,7 +648,7 @@ def compile_episode(
                 ):
                     fps = episode["output"]["fps"]
                     config = job["config"]
-                    if beat.group_id in {SLANT_GROUP, PRICE_CARD_GROUP}:
+                    if beat.group_id in {SLANT_GROUP, PRICE_CARD_GROUP, FLOW_GROUP}:
                         assert stagger_frames is not None
                         frames = stagger_frames
                     elif beat.group_id == PICTURE_GROUP:
@@ -868,6 +870,7 @@ def compile_episode(
             TRANSLATION_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
             COLLAGE_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
             ROLE_CHAIN_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
+            FLOW_GROUP: FLOW_CHART_CAPTION_BASELINE,
         }
         effect_windows = [
             (
@@ -890,6 +893,11 @@ def compile_episode(
             if shot["group_id"] in caption_groups
         ]
         if effect_windows:
+            if any(shot["group_id"] == FLOW_GROUP for shot in episode["shots"]):
+                safe = episode["layout_policy"]["subtitle_safe_rect"]
+                top = min(safe[1], 0.025)
+                safe[3] += safe[1] - top
+                safe[1] = top
             if unified:
                 episode["captions"] = split_unified_caption_lanes(
                     episode["captions"], effect_windows
@@ -910,7 +918,9 @@ def compile_episode(
                         "start_seconds": caption["start_seconds"],
                         "end_seconds": caption["end_seconds"],
                         "baseline_y_px": round(episode["output"]["height"] * y / 1280),
-                        "reason": "主字幕进入人物窗下缘，避开原生标签和结论。"
+                        "reason": "主字幕置于饼图和流式标签上方。"
+                        if y == FLOW_CHART_CAPTION_BASELINE
+                        else "主字幕进入人物窗下缘，避开原生标签和结论。"
                         if unified and y == UNIFIED_WINDOW_CAPTION_BASELINE
                         else "主字幕避开原生拼贴标签和短字幕。"
                         if authoring.overlay_template_id == COLLAGE_TEMPLATE_ID

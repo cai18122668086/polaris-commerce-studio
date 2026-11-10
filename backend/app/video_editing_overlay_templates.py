@@ -25,9 +25,11 @@ from .video_editing_cxbr import CXBR_DEPENDENCIES, CXBR_PURPOSES, cxbr_binding
 from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
 from .video_editing_handoff_scenes import HANDOFF_GROUPS, HANDOFF_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
+from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
 from .video_editing_hypit_strips import (
     DETAIL_CARDS_TEMPLATE_ID,
+    FLOW_GROUP,
     LIVE_STRIP_GROUP,
     PRESENTER_LABEL_GROUP,
     PRICE_CARD_GROUP,
@@ -131,7 +133,9 @@ NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
 LIVE_STRIP_TEMPLATE_ID = "live-strip-story-v1"
 PRESENTER_LABEL_TEMPLATE_ID = "hypit-presenter-labels-v1"
 _PRIOR_SLANT_PURPOSE = "使用原生斜卡、独立底图及右下同期人物呈现三项内容。"
-_FULL_FRAME_SLANT_PURPOSE = "使用原生斜卡和独立底图呈现三项内容，人物沿用原片尺寸和位置。"
+_FULL_FRAME_SLANT_PURPOSE = (
+    "使用原生斜卡和独立底图呈现三项内容，人物沿用原片尺寸和位置。"
+)
 PACKAGE_TEMPLATES = frozenset({PACKAGE_TEMPLATE_ID, LINE_TEMPLATE_ID})
 _OPENING_PURPOSES = {
     "LYO01": (
@@ -857,6 +861,26 @@ _TEMPLATES[HY_PICTURE_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[FLOW_CHART_TEMPLATE_ID] = {
+    "id": FLOW_CHART_TEMPLATE_ID,
+    "name": "同期口播与三项占比",
+    "slots": [
+        {
+            "group_id": FLOW_GROUP,
+            "purpose": "用原生饼图和流式标签呈现校对口播中的三项数量。",
+            "layer": "scene",
+            "binding": "选用 parallel，开头明确说总数，"
+            "随后连续说三个不同标签及同单位整数。"
+            "关系项依次包含标签和数量，标签首词触发原生入场。底板绑定同期原片。"
+            "数字由编译器从校对稿读取并核对合计。",
+        },
+        *(
+            {"group_id": group, "purpose": _SUBTITLE_STORY_SLOTS[group]}
+            for group in ("AH-S08", "JJ-S04")
+        ),
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[DETAIL_CARDS_TEMPLATE_ID] = {
     "id": DETAIL_CARDS_TEMPLATE_ID,
     "name": "三项说明与同期口播",
@@ -1024,6 +1048,7 @@ def overlay_templates() -> list[dict]:
             LIVE_SPLIT_TEMPLATE_ID,
             HY_PICTURE_TEMPLATE_ID,
             DETAIL_CARDS_TEMPLATE_ID,
+            FLOW_CHART_TEMPLATE_ID,
             CUT_TEMPLATE_ID,
             PANEL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,

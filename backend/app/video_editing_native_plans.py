@@ -18,6 +18,7 @@ from .video_editing_contracts import EditingOptions, SemanticPlan, Transcript
 from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_highlights import apply_highlight_edits, editable_highlight_roles
 from .video_editing_hypit import internal_hypit_available, requires_hypit
+from .video_editing_hypit_chart import FLOW_CHART_DESIGN, FLOW_CHART_TEMPLATE_ID
 from .video_editing_hypit_strips import FLOW_GROUP
 from .video_editing_image_edits import (
     apply_image_edits,
@@ -72,8 +73,17 @@ def transparent_original_groups(settings: Settings) -> set[str]:
 FLOW_CHART_WARNING = "HY-A7 的饼图需先绑定本期经核对的数据，当前只开放原生组件验证。"
 
 
-def requires_flow_chart(semantic: dict) -> bool:
-    return any(beat["group_id"] == FLOW_GROUP for beat in semantic["beats"])
+def requires_flow_chart(semantic: dict, recipes: dict) -> bool:
+    entries = recipes.get("entries", {})
+    return any(
+        beat["group_id"] == FLOW_GROUP
+        and (
+            recipes.get("overlay_template_id") != FLOW_CHART_TEMPLATE_ID
+            or entries.get(beat["id"], {}).get("recipe", {}).get("design_id")
+            != FLOW_CHART_DESIGN
+        )
+        for beat in semantic["beats"]
+    )
 
 
 def original_scene_groups(settings: Settings) -> set[str]:
@@ -87,7 +97,7 @@ def plan_response(
     editable, has_music = available_render_edits(
         row.semantic, row.recipes, row.choice_snapshot
     )
-    needs_chart = requires_flow_chart(row.semantic)
+    needs_chart = requires_flow_chart(row.semantic, row.recipes)
     warnings = row.semantic.get("warnings", [])
     if needs_chart:
         warnings = [*warnings, FLOW_CHART_WARNING]
@@ -539,7 +549,7 @@ def admit_render_plan(
         or row.library_release != MOTION_SHA256
     ):
         raise ApiError(404, "EDITING_NATIVE_PLAN_NOT_FOUND", "未找到此原片的动效编排。")
-    if requires_flow_chart(row.semantic):
+    if requires_flow_chart(row.semantic, row.recipes):
         raise ApiError(409, "EDITING_HYPIT_FLOW_CHART_REQUIRED", FLOW_CHART_WARNING)
     if requires_hypit(row.semantic) and not internal_hypit_available(
         settings, source.workspace_id

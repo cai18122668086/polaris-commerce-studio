@@ -64,6 +64,7 @@ from .video_editing_hypit import (
     PICTURE_PROFILE,
     compile_picture_clocks,
 )
+from .video_editing_hypit_chart import FLOW_CHART_DESIGN, compile_flow_chart
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
 from .video_editing_hypit_strips import (
     FLOW_GROUP,
@@ -551,7 +552,11 @@ def compile_native_job(
             )
         ]
     elif group["id"] == FLOW_GROUP or live_stage:
-        if group["id"] == FLOW_GROUP and not component_validation:
+        if group["id"] == FLOW_GROUP and recipe["design_id"] == FLOW_CHART_DESIGN:
+            native["flow_chart"] = compile_flow_chart(
+                beat, native, transcript, STRIP_TEXT
+            )
+        elif group["id"] == FLOW_GROUP and not component_validation:
             raise ValueError("Hypit flow labels still require fact-grounded chart data")
         if recipe.get("media_clocks"):
             raise ValueError("Hypit plate uses the measured moving source window")
@@ -591,6 +596,7 @@ def compile_native_job(
             price_card_layout=recipe.get("price_card_layout"),
             live_stage=live_stage,
             slant_glosses=recipe.get("hypit_slant_glosses"),
+            flow_chart=native.get("flow_chart"),
         )
         if strip_variant
         else None
@@ -963,6 +969,7 @@ def compile_native_job(
                         "year_glyphs",
                         "translation_labels",
                         "role_scene_chain",
+                        "flow_chart",
                         "package_entries",
                         "film_feedback",
                         "line_hand_sequence",

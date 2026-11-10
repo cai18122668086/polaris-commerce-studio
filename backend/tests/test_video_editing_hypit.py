@@ -1,16 +1,17 @@
 import subprocess
 
 import pytest
-
-from app import video_editing_hypit as hypit
-from app import video_editing_hypit_strips as strips
 from app.config import Settings
 from app.motion_library import atomic_json
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from app.video_editing_hypit_chart import compile_flow_chart, patch_flow_slices
 from app.video_editing_hypit_foreground import attach_foreground_track
 from app.video_editing_pipeline import stop_hypit_runtimes
 from app.video_editing_unified_scenes import unified_action_frame
 from app.video_editing_word_bindings import word_bindings
+
+from app import video_editing_hypit as hypit
+from app import video_editing_hypit_strips as strips
 
 
 def test_picture_sound_uses_the_first_visible_top_entry_frame():
@@ -217,6 +218,82 @@ def test_hypit_flow_keeps_original_rearrangement_and_checks_source_duration():
     assets["source"]["sha256"] = "c" * 64
     with pytest.raises(ValueError, match="actual moving source window"):
         strips.compile_flow_plate(native, assets, transcript)
+
+
+def test_hypit_flow_chart_uses_corrected_counts_with_one_unit_and_exact_total():
+    tokens = [
+        TranscriptToken(id=str(i), text=word, start_ms=i * 100, end_ms=(i + 1) * 100)
+        for i, word in enumerate(
+            (
+                "共一百三十二组。",
+                "动画",
+                "五十二组，",
+                "实景",
+                "37组，",
+                "字幕",
+                "四十三组。",
+            )
+        )
+    ]
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=800,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        utterances=[],
+        tokens=tokens,
+        text_status="user_corrected",
+        text_revision_id="test-revision",
+    )
+    first = tokens[1::2]
+    last = tokens[2::2]
+    beat = SemanticBeat.model_validate(
+        {
+            "id": "chart",
+            "group_id": strips.FLOW_GROUP,
+            "first_token_id": tokens[0].id,
+            "last_token_id": tokens[-1].id,
+            "relation": "parallel",
+            "reason": "测试分项数量",
+            "relation_items": [
+                {
+                    "id": a.id,
+                    "first_token_id": a.id,
+                    "last_token_id": b.id,
+                    "native_text_paths": [path],
+                }
+                for a, b, path in zip(first, last, strips.STRIP_TEXT, strict=True)
+            ],
+        }
+    )
+    native = {
+        "text": [
+            {"path": path, "token_ids": [a.id], "text": a.text}
+            for path, a in zip(strips.STRIP_TEXT, first, strict=True)
+        ]
+    }
+    chart = compile_flow_chart(beat, native, transcript, strips.STRIP_TEXT)
+    assert chart["unit"] == "组" and chart["total"] == 132
+    assert [part["count"] for part in chart["parts"]] == [52, 37, 43]
+    scene = (
+        '<pie:View id="b1" slices="rgb(1,2,3):142.5@red;'
+        'rgb(4,5,6):110.5@green;rgb(7,8,9):104.8@blue"/>'
+    )
+    assert patch_flow_slices(scene, chart) == scene.replace("142.5", "52").replace(
+        "110.5", "37"
+    ).replace("104.8", "43")
+    for wrong, message in (
+        ("三十六组，", "sum to the spoken total"),
+        ("三十七条，", "same unit"),
+    ):
+        transcript.tokens[4].text = wrong
+        with pytest.raises(ValueError, match=message):
+            compile_flow_chart(beat, native, transcript, strips.STRIP_TEXT)
+    transcript.text_status = "operator_candidate"
+    with pytest.raises(ValueError, match="corrected transcript"):
+        compile_flow_chart(beat, native, transcript, strips.STRIP_TEXT)
 
 
 def test_hypit_slant_cards_keep_three_image_slots_and_native_arrivals(

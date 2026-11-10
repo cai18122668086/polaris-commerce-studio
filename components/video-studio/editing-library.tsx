@@ -173,7 +173,7 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
           <p>{detail.contract_status === "declared" ? "有原始参数合同" : "保留原始 schema 与入口"}。以下是模板与已核查原入口的外部输入，其他运行依赖仍需按实际分支核对。</p>
           {detail.parameter_contract.classic_authoring_status === "classic_attributes_schema_closed" && <p>经典入口的原 schema 拒绝写入当前文字和时点参数。{detail.parameter_contract.native_profile === "picture-parallel-3" && "原三图变体仅供已配置的内部工作区验证。"}</p>}
           {detail.parameter_contract.website_sidecar_scope === "component_only_until_chart_facts_are_bound" && (
-            <p>已有原生组件样本。饼图绑定本期核对过的数据后，才可用于组合出片。</p>
+            <p>经典入口已有原生组件样本。组合模板「同期口播与三项占比」使用已校对口播的总数和三个同单位数量。</p>
           )}
           {detail.parameter_contract.native_branches?.question && (
             <p>

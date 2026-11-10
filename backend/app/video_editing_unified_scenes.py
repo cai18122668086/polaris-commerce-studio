@@ -52,8 +52,10 @@ from .video_editing_hypit import (
     PICTURE_GROUP,
     picture_entry_frame,
 )
+from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID
 from .video_editing_hypit_strips import (
     DETAIL_CARDS_TEMPLATE_ID,
+    FLOW_GROUP,
     PRICE_CARD_GROUP,
     SLANT_GROUP,
 )
@@ -114,6 +116,7 @@ UNIFIED_TEMPLATES = frozenset(
         FRUIT_LIST_TEMPLATE_ID,
         HY_PICTURE_TEMPLATE_ID,
         DETAIL_CARDS_TEMPLATE_ID,
+        FLOW_CHART_TEMPLATE_ID,
     }
 )
 UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
@@ -310,6 +313,7 @@ UNIFIED_SCENE_GROUPS = (
         SLANT_GROUP,
         PICTURE_GROUP,
         PRICE_CARD_GROUP,
+        FLOW_GROUP,
         CHAPTER_SCENE_GROUP,
         WHY_GROUP,
         TRANSLATION_GROUP,
@@ -345,6 +349,7 @@ _CAPTION_BANDS = {
     SLANT_GROUP: (810, 960),
     PRICE_CARD_GROUP: (838, 960),
     PICTURE_GROUP: (715, 845),
+    FLOW_GROUP: (18, 250),
 }
 _EVENT_PREFIX = "/timing/events/"
 

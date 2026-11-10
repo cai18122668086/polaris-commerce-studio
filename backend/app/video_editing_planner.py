@@ -28,6 +28,7 @@ from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_crowd_scene import CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
+from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID
 from .video_editing_hypit_strips import SLANT_INSET_PURPOSE
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_content import (
@@ -457,6 +458,14 @@ def build_request(
             "关门、交接及禁行与原合同指定动作共用词点。"
             "三个角色短词和禁行短语用对应首词开始，另给原生短字幕自己的起止词。"
             "只用本期所选的 16 张独立插画，缺素材或原生关系不适合时跳过。"
+        )
+    if template and template["id"] == FLOW_CHART_TEMPLATE_ID:
+        message += (
+            "HY-A7 从实际说出的合计、总计、共或一共起句开始。"
+            "合计后连续三项，每项关系用不同的一至三字中文标签开头，后接整数和相同单位。"
+            "原标签文字只绑定名称，关系项覆盖整项数字和单位。标签首词驱动其原生入场。"
+            "视频绑定原 plate-clip，关系项不用图。总数与各项数量由编译器从校对稿复算。"
+            "缺少总计、连续三项或末项停留时间时跳过本组。"
         )
     if translation_scene:
         message += (

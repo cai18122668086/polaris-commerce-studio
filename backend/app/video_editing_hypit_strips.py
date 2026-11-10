@@ -13,6 +13,7 @@ from typing import Any, cast
 from .motion_library import atomic_json, read_json, sha256
 from .video_editing_contracts import Transcript
 from .video_editing_hypit import NATIVE_FILES
+from .video_editing_hypit_chart import patch_flow_slices
 from .video_editing_hypit_foreground import attach_foreground_track, render_foreground
 
 STRIP_PROFILE = "hypit-original-strips/1"
@@ -34,6 +35,7 @@ LIVE_STAGE_GROUPS = frozenset(
 )
 LIVE_STAGE_PROFILE = "hypit-live-stage/1"
 FLOW_GROUP = "HY-A7"
+FLOW_FONT = "font-d3e4bad27651d120ac8f"
 FLOW_PROFILE = "hypit-original-flow-labels/1"
 FLOW_PLATE = "/media/plate-clip"
 _FLOW_COMPONENTS = {
@@ -300,6 +302,11 @@ def _native_attributes(package: Path, group: dict, data: dict) -> dict:
         if flow:
             assert match is not None
             slot.update({"moves": _flow_moves(match[0], starts, frames), "text-en": ""})
+            if chart := data.get("flow_chart"):
+                slot["text-en"] = ";".join(str(row["count"]) for row in chart["parts"])
+                slot["text-en-size"] = "42"
+                if offsets := data.get("flow_text_offsets"):
+                    slot["text-offs"] = offsets
     if data.get("live_stage"):
         if group["id"] not in LIVE_STAGE_GROUPS:
             raise ValueError(
@@ -325,6 +332,7 @@ def compile_strips(
     price_card_layout: str | None = None,
     live_stage: bool = False,
     slant_glosses: list[dict[str, str]] | None = None,
+    flow_chart: dict | None = None,
 ) -> dict:
     text = {row["path"]: row for row in native["text"]}
     events = {row["path"]: row for row in native["events"]}
@@ -343,6 +351,8 @@ def compile_strips(
     else:
         images = (STRIP_IMAGE, *CARD_IMAGES) if price_cards else (STRIP_IMAGE,)
     flow = group["id"] == FLOW_GROUP
+    if flow_chart is not None and not flow:
+        raise ValueError("Pie counts belong to the original flow chart")
     media_paths = (FLOW_PLATE,) if flow else images
     if (
         set(text) != set(titles + detail)
@@ -406,6 +416,10 @@ def compile_strips(
         data["glosses"] = glosses
     if flow or live_stage or slant:
         data["plate"] = native["media_clocks"][0]
+    if flow_chart is not None:
+        data["flow_chart"] = flow_chart
+        # Clear the count from the overlapping third card using the native offset.
+        data["flow_text_offsets"] = "19,-36; 2,0; 48,5"
     if live_stage:
         data["live_stage"] = True
     _native_attributes(package, group, data)
@@ -650,6 +664,8 @@ def install_native_strips(package: Path, root: Path) -> None:
             updated = attach_foreground_track(
                 updated, scene.parent / "s03.svs", full_source=full_source
             )
+        if card["id"] == FLOW_GROUP and (chart := data.get("flow_chart")):
+            updated = patch_flow_slices(updated, chart)
         scene.write_text(updated, encoding="utf-8")
         atomic_json(
             receipt,

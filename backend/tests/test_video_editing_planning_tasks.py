@@ -164,6 +164,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "unified-crowd-v1",
         "unified-evidence-collage-v1",
         "unified-role-chain-v1",
+        "hypit-flow-chart-v1",
         "unified-question-relay-v1",
         "unified-bilingual-swap-v1",
         "unified-paper-typewriter-v1",

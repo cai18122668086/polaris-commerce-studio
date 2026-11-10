@@ -32,7 +32,13 @@ from .video_editing_cut_scenes import cut_scene_blockers
 from .video_editing_cxbr import cxbr_blockers, cxbr_windows
 from .video_editing_handoff_scenes import handoff_blockers
 from .video_editing_hypit import PICTURE_GROUP, hypit_tools
-from .video_editing_hypit_strips import LIVE_STAGE_GROUPS, SLANT_GROUP
+from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID, confirmed_chart_words
+from .video_editing_hypit_strips import (
+    FLOW_FONT,
+    FLOW_GROUP,
+    LIVE_STAGE_GROUPS,
+    SLANT_GROUP,
+)
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import verify_material_cards
 from .video_editing_native_content import ROLE_CHAIN_GROUP, WHY_GROUP
@@ -63,7 +69,8 @@ def hypit_template_blockers(
     groups = {
         slot["group_id"]
         for slot in (template or {}).get("slots", [])
-        if slot["group_id"] in LIVE_STAGE_GROUPS | {SLANT_GROUP, PICTURE_GROUP}
+        if slot["group_id"]
+        in LIVE_STAGE_GROUPS | {SLANT_GROUP, PICTURE_GROUP, FLOW_GROUP}
     }
     if not groups:
         return {}
@@ -74,7 +81,16 @@ def hypit_template_blockers(
         hypit_tools(settings, workspace_id)
     except (OSError, ValueError):
         blockers.append("original-hypit-internal-runtime-unavailable")
-    return {group: list(blockers) for group in sorted(groups)} if blockers else {}
+    result = {group: list(blockers) for group in sorted(groups)} if blockers else {}
+    if FLOW_GROUP in groups:
+        resources = external_dependencies(settings.video_editing_library_dir)
+        bindings = local_dependencies(settings.video_editing_native_bindings_file)
+        if (
+            dependency_state(resources[FLOW_FONT], bindings.get(FLOW_FONT))
+            != "verified"
+        ):
+            result.setdefault(FLOW_GROUP, []).append(FLOW_FONT)
+    return result
 
 
 def eligible() -> ColumnElement[bool]:
@@ -420,6 +436,14 @@ def process(
             )
             if image_requirements:
                 runtime["project_image_requirements"] = image_requirements
+            if (
+                template
+                and template["id"] == FLOW_CHART_TEMPLATE_ID
+                and not confirmed_chart_words(transcript)
+            ):
+                runtime["unavailable_template_groups"].setdefault(
+                    FLOW_GROUP, []
+                ).append("corrected_chart_words_required")
             if any(
                 row["group_id"] == ROLE_CHAIN_GROUP
                 and row["selected_distinct_images"] < row["required_distinct_images"]

@@ -104,12 +104,16 @@ from .video_editing_hypit import (
     automatic_picture_config,
     compile_picture_clocks,
 )
+from .video_editing_hypit_chart import FLOW_CHART_DESIGN, compile_flow_chart
 from .video_editing_hypit_strips import (
     CARD_DETAILS,
     CARD_EVENTS,
     CARD_IMAGES,
     CARD_TITLES,
     DETAIL_CARDS_TEMPLATE_ID,
+    FLOW_FONT,
+    FLOW_GROUP,
+    FLOW_PLATE,
     LIVE_STRIP_GROUP,
     PRESENTER_LABEL_GROUP,
     PRICE_CARD_GROUP,
@@ -1508,6 +1512,8 @@ def _live_strip_entry(
     cards: list[dict],
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
     presenter_labels = beat.group_id == PRESENTER_LABEL_GROUP
+    flow = beat.group_id == FLOW_GROUP
+    plate = FLOW_PLATE if flow else STRIP_IMAGE
     contract = input_contract(package, group)
     assets = {
         row["id"]: row
@@ -1523,9 +1529,10 @@ def _live_strip_entry(
             or len(beat.relation_items) != 3
             or set(text) != set(STRIP_TEXT)
             or len(media) != 1
-            or media[0]["path"] != STRIP_IMAGE
+            or media[0]["path"] != plate
             or beat.asset_ids != [media[0]["asset_id"]]
-            or any(
+            or not flow
+            and any(
                 item.native_text_paths != [path]
                 or item.asset_ids
                 or item.native_media_paths
@@ -1536,25 +1543,34 @@ def _live_strip_entry(
         ):
             raise ValueError("Each original strip must correspond to a spoken item")
         anchors["media_clocks"] = [
-            compile_flow_plate(anchors, assets, transcript, live_stage=True)
+            compile_flow_plate(anchors, assets, transcript, live_stage=not flow)
         ]
-        compile_strips(package, group, anchors, assets, live_stage=True)
+        chart = (
+            compile_flow_chart(beat, anchors, transcript, STRIP_TEXT) if flow else None
+        )
+        compile_strips(
+            package, group, anchors, assets, live_stage=not flow, flow_chart=chart
+        )
     except (KeyError, ValueError) as error:
         raise ApiError(
             422,
             "EDITING_TEMPLATE_STRIP_INPUTS_REQUIRED",
-            "标签需绑定同期原片及三个按首词触发的实录短词，末项须留出入场时间。",
+            "饼图需要已校对的总数和三项同单位整数，各项合计须等于总数。"
+            if flow
+            else "标签需绑定同期原片及三个按首词触发的实录短词，末项须留出入场时间。",
         ) from error
     config = read_json(inside(package, group["input_template"]))
-    set_native_field(config, STRIP_IMAGE, None)
+    set_native_field(config, plate, None)
     return NativeEpisodeEntry(
         carrier="text",
         placement=NativePlacement(
-            layer="overlay",
+            layer="scene" if flow else "overlay",
             rect=[0, 0, 1, 1],
             reason=(
                 "原生人物标签叠在同期口播上，保留人物比例与原标签位置。"
                 if presenter_labels
+                else "按校对后的数字计算原生饼图，底板按同期原片比例持续播放。"
+                if flow
                 else "原生斜切标签使用本期同期活动画面，主字幕单独排在下方。"
             ),
         ),
@@ -1564,19 +1580,23 @@ def _live_strip_entry(
             "group_id": beat.group_id,
             "template_sha256": contract["template_sha256"],
             "schema_sha256": contract["schema_sha256"],
-            "design_id": "tengli-"
+            "design_id": FLOW_CHART_DESIGN
+            if flow
+            else "tengli-"
             + (
                 PRESENTER_LABEL_TEMPLATE_ID
                 if presenter_labels
                 else LIVE_STRIP_TEMPLATE_ID
             ),
-            "design_reason": "按实录词点保留原标签的滑入、底片、刻度和字号。"
+            "design_reason": "用实录三项数量绑定原饼图，保留原标签入场和重排。"
+            if flow
+            else "按实录词点保留原标签的滑入、底片、刻度和字号。"
             if presenter_labels
             else "按实录词点沿用原斜切、擦入、字体与大小，标签让出脸部。",
             "parameter_decisions": {"fonts": "沿用原思源宋体 Heavy。"},
             "config": config,
-            "placeholders": [STRIP_IMAGE],
-            "hypit_live_stage": True,
+            "placeholders": [plate],
+            **({"dependency_ids": [FLOW_FONT]} if flow else {"hypit_live_stage": True}),
         },
     ), anchors
 
@@ -2710,7 +2730,7 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = CARD_EVENTS
-        elif beat.group_id in {LIVE_STRIP_GROUP, PRESENTER_LABEL_GROUP}:
+        elif beat.group_id in {LIVE_STRIP_GROUP, PRESENTER_LABEL_GROUP, FLOW_GROUP}:
             entries[beat.id], anchors = _live_strip_entry(
                 package, group, beat, transcript, asset_cards or []
             )

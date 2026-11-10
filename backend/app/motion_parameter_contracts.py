@@ -21,8 +21,10 @@ from .video_editing_hypit import (
     PICTURE_PROFILE,
     picture_fields,
 )
+from .video_editing_hypit_label_cards import LABEL_CARD_GROUP
 from .video_editing_hypit_strips import (
     FLOW_GROUP,
+    FLOW_PLATE,
     SLANT_BACKGROUND,
     SLANT_FOREGROUND,
     SLANT_GROUP,
@@ -137,7 +139,10 @@ def input_contract(
     original_input_a: bool = False,
     current_unified_presenter: bool = False,
     triptych_video_slots: set[int] | None = None,
+    hypit_label_cards: bool = True,
 ) -> dict[str, Any]:
+    label_card_sidecar = hypit_label_cards and group["id"] == LABEL_CARD_GROUP
+    sidecar = group["id"] in STAGGER_GROUPS or label_card_sidecar
     template_path = (
         question_card_a_input(package, group)
         if original_input_a
@@ -288,6 +293,8 @@ def input_contract(
                 resource_kind = "original_video"
             elif slot in (SLANT_BACKGROUND, *SLANT_IMAGES):
                 resource_kind = "image"
+        elif label_card_sidecar and pointer(parts) == FLOW_PLATE:
+            resource_kind = "original_video"
         fields.append(
             {
                 "path": pointer(parts),
@@ -328,7 +335,7 @@ def input_contract(
             for f in smoke_fields
             if f["path"] not in question_paths
         ]
-    if group["id"] in STAGGER_GROUPS:
+    if sidecar:
         fields.extend(strip_fields(group["id"]))
     if group["id"] in SILHOUETTE_GROUPS:
         fields.extend(
@@ -389,13 +396,16 @@ def input_contract(
             if keyword in schema
         },
         **(
-            {"website_sidecar_profile": stagger_profile(group["id"])}
-            if group["id"] in STAGGER_GROUPS
-            else {}
+            {"website_sidecar_profile": stagger_profile(group["id"])} if sidecar else {}
         ),
         **(
             {"website_sidecar_scope": "component_only_until_chart_facts_are_bound"}
             if group["id"] == FLOW_GROUP
+            else {}
+        ),
+        **(
+            {"website_sidecar_scope": "component_only_pending_original_font_review"}
+            if label_card_sidecar
             else {}
         ),
         **(

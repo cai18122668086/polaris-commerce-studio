@@ -3,6 +3,7 @@ import subprocess
 import pytest
 
 from app import video_editing_hypit as hypit
+from app import video_editing_hypit_label_cards as label_cards
 from app import video_editing_hypit_strips as strips
 from app.config import Settings
 from app.motion_library import atomic_json
@@ -12,6 +13,63 @@ from app.video_editing_hypit_foreground import attach_foreground_track
 from app.video_editing_pipeline import stop_hypit_runtimes
 from app.video_editing_unified_scenes import unified_action_frame
 from app.video_editing_word_bindings import word_bindings
+
+
+def test_original_label_card_slides_keep_their_key_distances_and_order(
+    tmp_path, monkeypatch
+):
+    scene = (
+        '<card:Card id="xiu" text="修心性" reveal="3" layer="10" '
+        'move="0:423,18:423,29:1005,39:1045,49:1554,63:1554"/>\n'
+        '<card:Card id="ti" text="提能力" reveal="24" from="22" layer="11" '
+        'move="22:497,29:498,39:498,49:959,63:959"/>\n'
+        '<card:Card id="li" text="立目标" reveal="44" from="43" layer="12" '
+        'shift="-9.5" move="43:470,44:435,49:402,63:402"/>'
+    )
+    path = tmp_path / "a1.svml"
+    path.write_text(scene, encoding="utf-8")
+    monkeypatch.setattr(label_cards, "_SOURCE_SHA256", strips.sha256(path))
+    monkeypatch.setattr(label_cards, "_COMPONENTS", {})
+    special = tmp_path / "commercial_runtime/special.py"
+    special.parent.mkdir()
+    special.write_text("# fixture", encoding="utf-8")
+    monkeypatch.setitem(
+        hypit.NATIVE_FILES, "commercial_runtime/special.py", strips.sha256(special)
+    )
+    group = {"id": label_cards.LABEL_CARD_GROUP, "entry": path.name}
+    clock = {"source_start_ms": 1200, "frames": 60}
+    native = {
+        "text": [
+            {"path": path, "text": label, "token_ids": [f"t{i}"]}
+            for i, (path, label) in enumerate(
+                zip(
+                    label_cards.LABEL_CARD_TEXT, ("洗碗", "刷锅", "洗水果"), strict=True
+                )
+            )
+        ],
+        "events": [
+            {"path": path, "edge": "start", "token_id": f"t{i}", "value": value}
+            for i, (path, value) in enumerate(
+                zip(label_cards.LABEL_CARD_EVENTS, (0, 16, 37), strict=True)
+            )
+        ],
+        "clock": {"start_ms": 1200, "end_ms": 3200},
+        "media_clocks": [clock],
+    }
+    data = strips.compile_strips(tmp_path, group, native, {})
+    attributes = label_cards.label_card_attributes(tmp_path, group, data)
+    assert data["plate"] == clock and attributes["t"] == {"end": "60f"}
+    assert attributes["xiu"]["move"] == "0:423,12:423,23:1005,33:1045,43:1554,60:1554"
+    assert attributes["ti"]["move"] == "16:497,23:498,33:498,43:959,60:959"
+    assert attributes["li"]["move"] == "37:470,38:435,43:402,60:402"
+    current = label_cards.patch_label_cards(scene, attributes)
+    assert 'text="洗水果" reveal="38" from="37" layer="12" shift="-9.5"' in current
+    native["events"][2]["value"] = 26
+    with pytest.raises(ValueError, match="leave room for original moves"):
+        strips.compile_strips(tmp_path, group, native, {})
+    native["events"][2]["token_id"] = "t1"
+    with pytest.raises(ValueError, match="its own spoken label"):
+        strips.compile_strips(tmp_path, group, native, {})
 
 
 def test_picture_sound_uses_the_first_visible_top_entry_frame():

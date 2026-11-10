@@ -19,6 +19,16 @@ from .video_editing_hypit_foreground import (
     attach_foreground_track,
     render_foreground,
 )
+from .video_editing_hypit_label_cards import (
+    LABEL_CARD_EVENTS,
+    LABEL_CARD_FONT,
+    LABEL_CARD_GROUP,
+    LABEL_CARD_PROFILE,
+    LABEL_CARD_TEXT,
+    compile_label_cards,
+    label_card_attributes,
+    patch_label_cards,
+)
 
 STRIP_PROFILE = "hypit-original-strips/1"
 SLANT_GROUP = "HY-A2"
@@ -73,6 +83,7 @@ STAGGER_GROUPS = {
         "f4ecb63d767564b2eb9e910f9b7c902a453450c4e3dc9208611556ce29e8281f",
     ),
 }
+HYPIT_SIDECAR_GROUPS = frozenset(STAGGER_GROUPS) | {LABEL_CARD_GROUP}
 STRIP_IMAGE = "/component_assets/stagger#mkstage1"
 STRIP_TEXT = tuple(f"/hypit_labels/{i}/text" for i in range(3))
 STRIP_EVENTS = tuple(f"/hypit_labels/{i}/entry_frame" for i in range(3))
@@ -86,6 +97,8 @@ _SLANT_ENGLISH = re.compile(r"[A-Z][A-Z ]{0,9}")
 
 
 def stagger_profile(group_id: str) -> str:
+    if group_id == LABEL_CARD_GROUP:
+        return LABEL_CARD_PROFILE
     if group_id == FLOW_GROUP:
         return FLOW_PROFILE
     if group_id == SLANT_GROUP:
@@ -94,6 +107,8 @@ def stagger_profile(group_id: str) -> str:
 
 
 def stagger_events(group_id: str) -> tuple[str, ...]:
+    if group_id == LABEL_CARD_GROUP:
+        return LABEL_CARD_EVENTS
     return CARD_EVENTS if group_id == PRICE_CARD_GROUP else STRIP_EVENTS
 
 
@@ -104,7 +119,10 @@ def stagger_audio_frame(group_id: str, entry_frame: int) -> int:
 
 
 def strip_fields(group_id: str) -> list[dict[str, str]]:
-    price_cards = group_id == PRICE_CARD_GROUP
+    paths = {
+        LABEL_CARD_GROUP: LABEL_CARD_TEXT,
+        PRICE_CARD_GROUP: CARD_TITLES + CARD_DETAILS,
+    }.get(group_id, STRIP_TEXT)
     return [
         {
             "path": path,
@@ -112,7 +130,7 @@ def strip_fields(group_id: str) -> list[dict[str, str]]:
             "value_type": "str",
             "binding_surface": "website_sidecar",
         }
-        for path in (CARD_TITLES + CARD_DETAILS if price_cards else STRIP_TEXT)
+        for path in paths
     ] + [
         {
             "path": path,
@@ -210,6 +228,8 @@ def _live_stage_items(items: str, *, price_cards: bool) -> str:
 
 
 def _native_attributes(package: Path, group: dict, data: dict) -> dict:
+    if group["id"] == LABEL_CARD_GROUP:
+        return label_card_attributes(package, group, data)
     node, expected = STAGGER_GROUPS[group["id"]]
     special = "commercial_runtime/special.py"
     entry = package / group["entry"]
@@ -342,6 +362,8 @@ def compile_strips(
     slant_glosses: list[dict[str, str]] | None = None,
     flow_chart: dict | None = None,
 ) -> dict:
+    if group["id"] == LABEL_CARD_GROUP:
+        return compile_label_cards(package, group, native)
     text = {row["path"]: row for row in native["text"]}
     events = {row["path"]: row for row in native["events"]}
     media = {row["path"]: row["asset_id"] for row in native["media"]}
@@ -563,8 +585,12 @@ def install_native_strips(package: Path, root: Path) -> None:
     if job_path.parent != root / "plans":
         return
     job = read_json(job_path)
-    if job["group_id"] not in STAGGER_GROUPS:
+    if job["group_id"] not in HYPIT_SIDECAR_GROUPS:
         return
+    if job["group_id"] == LABEL_CARD_GROUP and job["config"].get("fonts") != {
+        "junya": "input://" + LABEL_CARD_FONT
+    }:
+        raise ValueError("Bind the exact original HY-A1 font")
     output = Path(job["output"]).resolve()
     sidecar = root / "hypit-strips" / f"{output.stem}.json"
     if (
@@ -611,7 +637,7 @@ def install_native_strips(package: Path, root: Path) -> None:
             raise ValueError("Native strip job changed before materialization")
         attrs = _native_attributes(package, card, data)
         plate, live_source, foreground_source = None, None, None
-        if card["id"] == FLOW_GROUP:
+        if card["id"] in {FLOW_GROUP, LABEL_CARD_GROUP}:
             clip = work / "current-plate.mp4"
             plate = _render_plate_clip(
                 original, config["media"]["plate-clip"], data, clip
@@ -631,28 +657,13 @@ def install_native_strips(package: Path, root: Path) -> None:
             result = materialize(card, {**config, "attributes": {"t": attrs["t"]}})
         finally:
             original.instance = instance
-        node = STAGGER_GROUPS[card["id"]][0]
         scene = result[0] / "scene.svml"
-        # The original attribute reader stops at the '>' inside item direction
-        # strings. Supply these two parameters on the instance copy it produced.
-        tag = _stagger_tag(node)
-
-        def patch_tag(match: re.Match[str]) -> str:
-            current = match[0]
-            for key, value in attrs[node].items():
-                replacement = f'{key}="{value}"'.replace("\\", "\\\\")
-                current, count = re.subn(
-                    rf'(?<=\s){key}="[^"]*"',
-                    replacement,
-                    current,
-                )
-                if count != 1:
-                    raise ValueError("Original instance attribute was not found once")
-            return current
-
-        updated, count = tag.subn(patch_tag, scene.read_text(encoding="utf-8"))
-        if count != 1:
-            raise ValueError("Original instance stagger node was not found once")
+        source_scene = scene.read_text(encoding="utf-8")
+        updated = (
+            patch_label_cards(source_scene, attrs)
+            if card["id"] == LABEL_CARD_GROUP
+            else _patch_stagger_scene(source_scene, card["id"], attrs)
+        )
         if live_source is not None:
             plate = _render_plate_clip(
                 original, live_source, data, scene.parent / "inputs/current-plate.mp4"
@@ -688,3 +699,27 @@ def install_native_strips(package: Path, root: Path) -> None:
         return result
 
     original.hypit_materialize = bind
+
+
+def _patch_stagger_scene(scene: str, group_id: str, attrs: dict) -> str:
+    # The original attribute reader stops at the '>' inside item direction
+    # strings. Supply these two parameters on the instance copy it produced.
+    node = STAGGER_GROUPS[group_id][0]
+
+    def patch_tag(match: re.Match[str]) -> str:
+        current = match[0]
+        for key, value in attrs[node].items():
+            replacement = f'{key}="{value}"'.replace("\\", "\\\\")
+            current, count = re.subn(
+                rf'(?<=\s){key}="[^"]*"',
+                replacement,
+                current,
+            )
+            if count != 1:
+                raise ValueError("Original instance attribute was not found once")
+        return current
+
+    updated, count = _stagger_tag(node).subn(patch_tag, scene)
+    if count != 1:
+        raise ValueError("Original instance stagger node was not found once")
+    return updated

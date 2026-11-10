@@ -192,6 +192,9 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
           {detail.parameter_contract.website_sidecar_scope === "component_only_until_chart_facts_are_bound" && (
             <p>经典入口已有原生组件样本。组合模板「同期口播与三项占比」使用已校对口播的总数和三个同单位数量。</p>
           )}
+          {detail.parameter_contract.website_sidecar_scope === "component_only_pending_original_font_review" && (
+            <p>三张原卡已接入实录词点和同期画面。组件编码待原俊雅字体与项目使用授权。</p>
+          )}
           {detail.parameter_contract.native_branches?.question && (
             <p>
               {detail.runtime_evidence.some(row => row.native_branch === "question" && row.runtime_validation === "sample_rendered")

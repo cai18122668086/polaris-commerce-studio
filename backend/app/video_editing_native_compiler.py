@@ -71,14 +71,15 @@ from .video_editing_hypit import (
 )
 from .video_editing_hypit_chart import FLOW_CHART_DESIGN, compile_flow_chart
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
+from .video_editing_hypit_label_cards import LABEL_CARD_GROUP, LABEL_CARD_PROFILE
 from .video_editing_hypit_strips import (
     FLOW_GROUP,
+    HYPIT_SIDECAR_GROUPS,
     LIVE_STAGE_GROUPS,
     SLANT_FOREGROUND,
     SLANT_GROUP,
     SLANT_IMAGES,
     SLANT_PROFILE,
-    STAGGER_GROUPS,
     STRIP_SIDECAR,
     STRIP_TEXT,
     compile_flow_plate,
@@ -421,7 +422,10 @@ def compile_native_job(
         contract.get("native_profile") == PICTURE_PROFILE
         and config.get("profile") == PICTURE_PROFILE
     )
-    strip_variant = group["id"] in STAGGER_GROUPS
+    label_card_variant = group["id"] == LABEL_CARD_GROUP
+    if label_card_variant and not component_validation:
+        raise ValueError("HY-A1 is limited to original-font component validation")
+    strip_variant = group["id"] in HYPIT_SIDECAR_GROUPS
     live_stage = recipe.get("hypit_live_stage", False)
     if type(live_stage) is not bool or (
         live_stage and beat.group_id not in LIVE_STAGE_GROUPS
@@ -556,6 +560,15 @@ def compile_native_job(
                 transcript,
                 media_path=SLANT_FOREGROUND,
                 profile_id=SLANT_PROFILE,
+            )
+        ]
+    elif label_card_variant:
+        if recipe.get("media_clocks"):
+            raise ValueError("HY-A1 uses the measured moving source window")
+        media_clocks = {}
+        clock_receipts = [
+            compile_flow_plate(
+                native, asset_files, transcript, profile_id=LABEL_CARD_PROFILE
             )
         ]
     elif group["id"] == FLOW_GROUP or live_stage:

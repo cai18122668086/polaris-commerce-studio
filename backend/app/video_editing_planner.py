@@ -146,6 +146,7 @@ def catalog_index(
         parameters = input_contract(
             package,
             group,
+            hypit_label_cards=False,
             original_input_a=question_a,
             live_package_presenter=live_package and group["id"] == PACKAGE_GROUP,
             embedded_line_caption=not (line_scene and group["id"] == LINE_GROUP),

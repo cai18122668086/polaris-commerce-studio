@@ -36,7 +36,7 @@ from .video_editing_captioning import (
 )
 from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
 from .video_editing_cxbr import CXBR_CAPTION_INTENT, verify_cxbr_captions
-from .video_editing_hypit_strips import STAGGER_GROUPS
+from .video_editing_hypit_strips import HYPIT_SIDECAR_GROUPS
 from .video_editing_native_layout import verify_inset_layout
 from .video_editing_native_sound import verify_rendered_sound
 from .video_editing_unified_scenes import (
@@ -709,7 +709,7 @@ def stop_hypit_runtimes(root: Path, settings: Settings) -> None:
         (root / "hypit").glob("HY-A3-picture-parallel-3-*/hypit.runtime.json")
     )
     strip_root = root / "hypit-strips/work"
-    for group in STAGGER_GROUPS:
+    for group in HYPIT_SIDECAR_GROUPS:
         profiles.extend(strip_root.glob(f"*/hypit/{group}/hypit.runtime.json"))
     allowed = (root.resolve() / "hypit", root.resolve() / "hypit-strips/work")
     for profile in profiles:

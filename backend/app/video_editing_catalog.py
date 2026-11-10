@@ -14,6 +14,7 @@ from .motion_local_dependencies import DependencyState, dependency_state
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import LibraryChoiceSnapshot
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
+from .video_editing_hypit_label_cards import LABEL_CARD_FONT, LABEL_CARD_GROUP
 from .video_editing_hypit_strips import SLANT_GROUP
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
@@ -40,6 +41,7 @@ _NATIVE_ENGINE_DEPENDENCIES = {
         if gid != QUESTION_CARD_GROUP
     },
     SLANT_GROUP: (FOREGROUND_MATTE,),
+    LABEL_CARD_GROUP: (LABEL_CARD_FONT,),
     "CXBR01": ("font-43a890795ad133d7",),
     "YYP04": (_MATTING_MODEL,),
     "YYP06": (_MATTING_MODEL,),

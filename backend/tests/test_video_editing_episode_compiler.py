@@ -413,6 +413,48 @@ def test_master_validation_rejects_a_render_with_different_dimensions(
         )
 
 
+@pytest.mark.parametrize(
+    ("source", "master"),
+    [
+        ((1280, 720), (1280, 720)),
+        ((2560, 1440), (1920, 1080)),
+        ((720, 720), (720, 720)),
+        ((960, 1280), (960, 1280)),
+    ],
+)
+def test_basic_subtitles_keep_the_non_native_source_aspect(
+    tmp_path, monkeypatch, source, master
+):
+    root, _, prepared, transcript, _, _, settings, options = protocol(tmp_path)
+    stream = prepared["probe"]["streams"][0]
+    stream.update(width=source[0], height=source[1], sample_aspect_ratio="1:1")
+    monkeypatch.setattr("app.video_editing_pipeline.layout_captions", lambda *_: None)
+    with pytest.raises(EditingFailure, match="EDITING_ORIENTATION_REVIEW_REQUIRED"):
+        baseline_documents(root, prepared, transcript, options, settings)
+    episode, selection, _ = baseline_documents(
+        root, prepared, transcript, options, settings, allow_source_aspect=True
+    )
+    output = episode["output"]
+    assert (output["width"], output["height"]) == master
+    assert not episode["shots"]
+    (scene,) = episode["visual_scenes"]
+    assert scene["background"] == {"mode": "source", "fit": "contain"}
+    assert scene["layers"] == [] and scene["end_seconds"] == 4
+    assert selection["decisions"][0]["scene_id"] == scene["id"]
+    assert episode["typography"]["caption"]["center_x_px"] == master[0] / 2
+
+
+def test_basic_subtitles_do_not_assume_anamorphic_pixels_are_square(tmp_path):
+    root, _, prepared, transcript, _, _, settings, options = protocol(tmp_path)
+    prepared["probe"]["streams"][0]["sample_aspect_ratio"] = "4:3"
+    with pytest.raises(
+        EditingFailure, match="EDITING_SUBTITLE_PIXEL_ASPECT_UNSUPPORTED"
+    ):
+        baseline_documents(
+            root, prepared, transcript, options, settings, allow_source_aspect=True
+        )
+
+
 def test_episode_uses_actual_word_bounds_and_original_selection_protocol(tmp_path):
     root, package, prepared, transcript, plan, authoring, settings, options = protocol(
         tmp_path

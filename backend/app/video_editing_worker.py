@@ -58,6 +58,7 @@ from .video_editing_planning_provenance import verify_render_provenance
 from .video_editing_preview import build_preview
 from .video_editing_preview_base import preview_base_attempt
 from .video_editing_quantity_anchors import IncompleteQuantity
+from .video_editing_source_aspect import SOURCE_ASPECT_DESIGN
 from .video_editing_source_lineage import (
     generation_source_receipt,
     script_reference,
@@ -752,6 +753,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 ),
             )
         native_plan = snapshot["native_plan"]
+        uses_native_presenter = True
         if snapshot["options"].get("mode") == "native_plan":
             if not settings.video_editing_native_plan_enabled or not native_plan:
                 raise EditingFailure("EDITING_NATIVE_PLAN_NOT_FOUND")
@@ -877,7 +879,10 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     ready_stage="transcript_ready",
                 )
                 return
-            compile_baseline(root, prepared, transcript, snapshot["options"], settings)
+            baseline = compile_baseline(
+                root, prepared, transcript, snapshot["options"], settings
+            )
+            uses_native_presenter = baseline["design"]["id"] != SOURCE_ASPECT_DESIGN
         review_first = snapshot["options"].get("delivery") == "preview_first"
         final_role = "staged_final" if review_first else "final"
         receipts = {
@@ -897,7 +902,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             )
         if correction:
             receipts["alignment_receipt"] = "alignment-receipt.json"
-        prepare_presenter_frame_clock(root, prepared, settings, guard)
+        if uses_native_presenter:
+            prepare_presenter_frame_clock(root, prepared, settings, guard)
         if native_plan:
             prepare_material_frame_clocks(root, settings, guard)
         compiled_sha = compiled_digest(root, snapshot["request_hash"])

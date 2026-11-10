@@ -40,6 +40,7 @@ const errorLabel: Record<string, string> = {
   EDITING_PARALLEL_ITEMS_INVALID: "并列动效的事项重复使用实录词点或缺少原生绑定。请返回编排核对。",
   EDITING_QUANTITY_ANCHOR_INCOMPLETE: "本次动效文字截断了实录数量或单位。请核对原转录和动效强调词。",
   EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片。请选择符合画幅的原片。",
+  EDITING_SUBTITLE_PIXEL_ASPECT_UNSUPPORTED: "基础字幕片需要方形像素。请先将原片转换为方形像素视频。",
   EDITING_VIDEO_FRAME_CLOCK_INVALID: "无法核对原片的显示时钟，请更换原片或联系管理员。",
   EDITING_MATERIAL_FRAME_CLOCK_INVALID: "无法核对补充视频的显示时钟，请检查素材或联系管理员。",
   EDITING_MEASURE_VIDEO_FRAME_CLOCK_FAILED: "无法读取原片的显示时间，请检查视频文件。",
@@ -206,7 +207,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     <label>选择原片<select aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && (" · 确认稿 " + job.confirmed_version_id.slice(0, 8))}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
     {selected === "upload" && <label>视频文件<input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => setFile(event.target.files?.[0])} /></label>}
     <label>原片已有字幕吗？<select value={subtitles} onChange={event => setSubtitles(event.target.value as typeof subtitles)}><option value="unknown">请先查看原片后选择</option><option value="none">没有，生成主字幕</option><option value="present">已有，保留画面中的字幕</option></select></label>
-    <p className={styles.note}>先识别口播可得到词级时间轴。动效模板和基础字幕片目前使用方形像素的 9:16 竖屏原片。</p>
+    <p className={styles.note}>先识别口播可得到词级时间轴。基础字幕片保留方形像素原片的横屏、方屏或竖屏画幅。原生动效模板使用 9:16 竖屏。</p>
     <div className={styles.correctionActions}>
       <button type="button" onClick={() => void submit("transcript")} disabled={busy || !canSubmit}>识别口播，准备动效剪辑</button>
       <button type="button" onClick={() => void submit("subtitles")} disabled={busy || !canSubmit}>生成基础字幕片</button>
@@ -293,7 +294,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           {transcriptAudio && <audio id={`editing-transcript-audio-${task.id}`} controls preload="none" src={transcriptAudio.url} aria-label="口播原声试听" />}
           <a href={transcript.url} download>下载逐词转录</a>
           {task.source_frame?.supports_native_portrait === false
-            ? <p className={styles.note} role="status">原片画幅 {task.source_frame.width}×{task.source_frame.height}。转录可试听和校对。{errorLabel.EDITING_ORIENTATION_REVIEW_REQUIRED}</p>
+            ? <p className={styles.note} role="status">原片画幅 {task.source_frame.width}×{task.source_frame.height}。转录可试听和校对，方形像素原片也可生成保留画幅的基础字幕片。{errorLabel.EDITING_ORIENTATION_REVIEW_REQUIRED}</p>
             : <button type="button" disabled={busy} onClick={() => planFromTranscript(task.id)}>使用此转录开始规划</button>}
         </>}
         {task.status === "completed" && transcript && (final || task.options.mode === "transcript") && <>

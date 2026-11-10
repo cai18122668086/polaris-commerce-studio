@@ -1,4 +1,4 @@
-"""Keep the native stereo FX and music buses through final episode composition."""
+"""Keep the original picture clock and stereo buses in native episode composition."""
 
 import importlib
 import re
@@ -10,6 +10,12 @@ from typing import Any
 
 from .motion_library import atomic_json, read_json, sha256
 from .video_editing_audio_verification import MAX_SOURCE_AUDIO_OFFSET_SAMPLES, RATE
+from .video_editing_source_aspect import (
+    SOURCE_ASPECT_DESIGN,
+    SOURCE_ASPECT_RECEIPT,
+    fit_source_picture,
+    source_aspect_scene,
+)
 
 _EPISODE_SHA256 = "ec5115f41bbb44c034bccc66b06169f92a389d4a270eea8c6c6cd1d2e3472038"
 _VOICE = ",asplit=2[voice][voice_stem]"
@@ -53,7 +59,7 @@ def stereo_composition_graph(graph: str, offset_samples: int = 0) -> str:
 
 
 def install_native_stereo_composition(package: Path, root: Path) -> None:
-    """Adapt only the original episode mux command within this native process."""
+    """Adapt the pinned original episode composition within this task process."""
     path = package / "commercial_runtime/episode.py"
     if sha256(path) != _EPISODE_SHA256:
         raise ValueError("Native stereo composition needs the pinned episode exporter")
@@ -76,6 +82,31 @@ def install_native_stereo_composition(package: Path, root: Path) -> None:
     ):
         raise ValueError("Native narration origin needs its measured clock")
 
+    plan_path = root / "episode.json"
+    plan = read_json(plan_path) if plan_path.is_file() else {}
+    source_canvas = None
+    if plan.get("design", {}).get("id") == SOURCE_ASPECT_DESIGN:
+        scenes: Any = importlib.import_module("commercial_runtime.scene_composer")
+
+        def source_scene(data: dict, instance: Path) -> list:
+            if (
+                Path(instance).resolve() != root
+                or data["design"]["id"] != SOURCE_ASPECT_DESIGN
+                or data["visual_scenes"]
+                != [source_aspect_scene(data["source"]["duration_seconds"])]
+                or data["shots"]
+                or data.get("visual_overlays")
+                or Path(data["source"]["path"]).resolve() != root / "input/source.mp4"
+            ):
+                raise ValueError(
+                    "Source aspect composition needs an unadorned source scene"
+                )
+            # The original compositing command already has this source track.
+            return []
+
+        scenes.render = source_scene
+        source_canvas = {key: plan["output"][key] for key in ("width", "height")}
+
     def run(command: list[str], *args: Any, **kwargs: Any) -> Any:
         if (
             command[0] == "ffmpeg"
@@ -94,7 +125,18 @@ def install_native_stereo_composition(package: Path, root: Path) -> None:
             before = sha256(graph)
             command = command.copy()
             command[index] = stereo_composition_graph(command[index], offset_samples)
+            if source_canvas is not None:
+                command[index] = fit_source_picture(command[index], **source_canvas)
             graph.write_text(command[index], encoding="utf-8")
+            if source_canvas is not None:
+                atomic_json(
+                    root / SOURCE_ASPECT_RECEIPT,
+                    {
+                        "policy": "contain",
+                        "canvas": source_canvas,
+                        "composition_sha256": sha256(graph),
+                    },
+                )
             atomic_json(
                 root / "compatibility/stereo-composition.json",
                 {

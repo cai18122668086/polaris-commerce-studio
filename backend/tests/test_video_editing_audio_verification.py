@@ -3,6 +3,7 @@ import pytest
 
 from app.video_editing_audio_verification import RATE, compare_audio_samples
 from app.video_editing_native_audio_channels import stereo_composition_graph
+from app.video_editing_source_aspect import fit_source_picture
 
 
 def test_stereo_adaptation_is_limited_to_native_audio_split_and_mix():
@@ -23,6 +24,22 @@ def test_stereo_adaptation_is_limited_to_native_audio_split_and_mix():
     )
     with pytest.raises(ValueError, match="filter graph changed"):
         stereo_composition_graph(video + output)
+
+
+def test_source_fit_changes_only_the_native_base_picture():
+    picture = (
+        "[0:v]trim=start=0:duration=4,setpts=PTS-STARTPTS,"
+        "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,"
+        "fps=30,setsar=1[base0]"
+    )
+    other = ";\n[0:a]atrim=duration=4[voice];\n[base0]null[ending]"
+    result = fit_source_picture(picture + other, 1280, 720)
+    assert result.endswith(other)
+    assert "crop=" not in result
+    assert "force_original_aspect_ratio=decrease:force_divisible_by=2" in result
+    assert "pad=1280:720:(ow-iw)/2:(oh-ih)/2" in result
+    with pytest.raises(ValueError, match="source picture filter changed"):
+        fit_source_picture(picture + other, 720, 1280)
 
 
 @pytest.mark.parametrize(

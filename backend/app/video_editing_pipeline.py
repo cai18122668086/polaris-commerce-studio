@@ -63,6 +63,12 @@ from .video_editing_native_frame_clock import (
 )
 from .video_editing_native_layout import failed_layout_shots, verify_inset_layout
 from .video_editing_native_sound import verify_rendered_sound
+from .video_editing_source_aspect import (
+    SOURCE_ASPECT_DESIGN,
+    SOURCE_ASPECT_RECEIPT,
+    SQUARE_PIXEL_RATIOS,
+    source_aspect_scene,
+)
 from .video_editing_unified_scenes import (
     UNIFIED_CAPTION_INTENT,
     verify_unified_captions,
@@ -880,7 +886,7 @@ def measured_source_frame(info: dict[str, Any]) -> EditingSourceFrame:
         height=height,
         supports_native_portrait=(
             rotation_verified
-            and pixel_ratio in {None, "N/A", "0:1", "1:1"}
+            and pixel_ratio in SQUARE_PIXEL_RATIOS
             and abs(width / height - 9 / 16) <= 0.02
         ),
     )
@@ -892,14 +898,33 @@ def baseline_documents(
     transcript: Transcript,
     options: dict,
     settings: Settings,
+    *,
+    allow_source_aspect: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
     package = settings.video_editing_library_dir
     frame = measured_source_frame(prepared["probe"])
-    if not frame.supports_native_portrait:
-        raise EditingFailure("EDITING_ORIENTATION_REVIEW_REQUIRED")
+    source_aspect = not frame.supports_native_portrait
+    if source_aspect:
+        video = next(
+            s for s in prepared["probe"]["streams"] if s["codec_type"] == "video"
+        )
+        if not allow_source_aspect:
+            raise EditingFailure("EDITING_ORIENTATION_REVIEW_REQUIRED")
+        if video.get("sample_aspect_ratio") not in SQUARE_PIXEL_RATIOS:
+            raise EditingFailure("EDITING_SUBTITLE_PIXEL_ASPECT_UNSUPPORTED")
+        try:
+            display_rotation(video)
+        except ValueError as error:
+            raise EditingFailure("EDITING_ROTATION_REVIEW_REQUIRED") from error
     width, height = frame.width, frame.height
-    scale = min(1, _MASTER_MAX_WIDTH / width, _MASTER_MAX_HEIGHT / height)
-    width, height = 2 * round(width * scale / 2), 2 * round(height * scale / 2)
+    max_width, max_height = _MASTER_MAX_WIDTH, _MASTER_MAX_HEIGHT
+    if source_aspect and width > height:
+        max_width, max_height = max_height, max_width
+    scale = min(1, max_width / width, max_height / height)
+    width, height = (
+        max(2, 2 * round(width * scale / 2)),
+        max(2, 2 * round(height * scale / 2)),
+    )
     stroke_scale = max(1, height / 1280)
     duration = prepared["duration_ms"] / 1000
     fid = options["caption_font_id"]
@@ -1013,6 +1038,21 @@ def baseline_documents(
             }
         ],
     }
+    if source_aspect:
+        scene = source_aspect_scene(duration)
+        plan["design"]["id"] = SOURCE_ASPECT_DESIGN
+        plan["design"]["background_strategy"] = "按原比例完整保留本期原片"
+        plan["shots"] = []
+        plan["visual_scenes"] = [scene]
+        selection["decisions"] = [
+            {
+                "scene_id": scene["id"],
+                "viewer_task": "听清口播并保留原片全幅内容",
+                "reason": "使用连续原片作为画面底轨，主字幕按显示画幅排版。",
+                "considered": [{"group_id": "Z-M00"}],
+            }
+        ]
+        return plan, selection, captions
     # The original unified engine limits a native page to 15 seconds. Split
     # visual source ranges on that limit, never stretch or concatenate speech.
     boundaries = [index * 15.0 for index in range(math.ceil(duration / 15))]
@@ -1045,7 +1085,7 @@ def compile_baseline(
     settings: Settings,
 ) -> dict[str, Any]:
     plan, selection, captions = baseline_documents(
-        root, prepared, transcript, options, settings
+        root, prepared, transcript, options, settings, allow_source_aspect=True
     )
     atomic_json(root / "caption-anchors.json", captions)
     atomic_json(
@@ -1296,6 +1336,20 @@ def validate_result(
         upright = False
     if not upright or dimensions != {key: expected[key] for key in dimensions}:
         raise EditingFailure("EDITING_OUTPUT_DIMENSIONS_INVALID")
+    fit = None
+    if episode.get("design", {}).get("id") == SOURCE_ASPECT_DESIGN:
+        try:
+            fit = read_json(root / SOURCE_ASPECT_RECEIPT)
+            if (
+                fit["canvas"] != dimensions
+                or fit["policy"] != "contain"
+                or fit["composition_sha256"]
+                != sha256(root / "plans/composition.ffgraph")
+                or video.get("sample_aspect_ratio") != "1:1"
+            ):
+                raise ValueError("Source picture fit differs from its output")
+        except (OSError, ValueError, KeyError, TypeError):
+            raise EditingFailure("EDITING_OUTPUT_DIMENSIONS_INVALID") from None
     actual = round(float(info["format"]["duration"]) * 1000)
     if abs(actual - prepared["duration_ms"]) > 150:
         raise EditingFailure("EDITING_OUTPUT_DURATION_INVALID")
@@ -1313,6 +1367,8 @@ def validate_result(
         "visual_review": "unreviewed",
         "listening_review": "unreviewed",
     }
+    if fit is not None:
+        validation["source_picture_fit"] = fit
     if silent_tail := prepared.get("clock", {}).get("silent_tail"):
         validation["source_silent_tail"] = silent_tail
     if silent_head := prepared.get("clock", {}).get("silent_head"):

@@ -6105,7 +6105,7 @@ export interface components {
              * @default subtitles
              * @enum {string}
              */
-            mode: "subtitles" | "native_plan";
+            mode: "subtitles" | "transcript" | "native_plan";
             native_edits?: components["schemas"]["NativeRenderEdits"] | null;
             /** Native Plan Id */
             native_plan_id?: string | null;

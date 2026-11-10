@@ -15,7 +15,7 @@ import styles from "./editing-workspace.module.css";
 type Artifact = { id: string; role: string; url: string; sha256: string; bytes: number; duration_ms: number | null };
 type EditingTask = { source_origin?: components["schemas"]["EditingSourceOrigin"] | null; motion_counts?: components["schemas"]["EditingMotionCounts"] | null; id: string; source_id: string; status: string; stage: string; error_code: string | null; cancel_requested: boolean; created_at: string; artifacts: Artifact[]; options: components["schemas"]["EditingOptions"] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
-const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", building_preview: "生成代理预览", storing: "保存产物", preview_ready: "代理预览已就绪", completed: "成片已生成" };
+const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", building_preview: "生成代理预览", storing: "保存产物", transcript_ready: "口播转录已就绪", preview_ready: "代理预览已就绪", completed: "成片已生成" };
 const errorLabel: Record<string, string> = {
   EDITING_VIDEO_FRAME_CLOCK_INVALID: "无法核对原片的显示时钟，请更换原片或联系管理员。",
   EDITING_MATERIAL_FRAME_CLOCK_INVALID: "无法核对补充视频的显示时钟，请检查素材或联系管理员。",
@@ -34,6 +34,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [correctionTask, setCorrectionTask] = useState("");
   const [libraryOpened, setLibraryOpened] = useState(false);
   const [planningOpened, setPlanningOpened] = useState(false);
+  const [planningTask, setPlanningTask] = useState("");
+  const planningPanel = useRef<HTMLDetailsElement>(null);
   const [plansVersion, setPlansVersion] = useState(0);
   const [previewBase, setPreviewBase] = useState<PreviewBaseSelection>();
   const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
@@ -57,10 +59,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     const timer = setInterval(update, 5000);
     return () => { live = false; clearInterval(timer); };
   }, [reload]);
-  const submit = async () => {
+  const submit = async (mode: "transcript" | "subtitles") => {
     setBusy(true); setError("");
     try {
-      const key = JSON.stringify([projectId, selected, file?.name, file?.size, file?.lastModified, subtitles]);
+      const key = JSON.stringify([projectId, selected, file?.name, file?.size, file?.lastModified, subtitles, mode]);
       if (!pending.current || pending.current.key !== key) pending.current = { key, requestId: crypto.randomUUID() };
       const intent = pending.current;
       if (selected === "upload" && file && !intent.sourceId) {
@@ -68,7 +70,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         const uploaded = unwrapApiResponse(await apiClient.POST(`${root}/editing-sources`, { ...options(), signal: AbortSignal.timeout(600000), body: {} as never, bodySerializer: () => form })) as { id: string };
         intent.sourceId = uploaded.id;
       }
-      const body = { request_id: intent.requestId, ...(selected === "upload" ? { source_id: intent.sourceId } : { generation_task_id: selected }), options: { mode: "subtitles" as const, source_subtitles: subtitles, language: "zh" as const, caption_font_id: "font-d1961be1161ea1be" as const } };
+      const body = { request_id: intent.requestId, ...(selected === "upload" ? { source_id: intent.sourceId } : { generation_task_id: selected }), options: { mode, source_subtitles: subtitles, language: "zh" as const, caption_font_id: "font-d1961be1161ea1be" as const } };
       unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks`, { ...options(), body }));
       pending.current = undefined;
       setTasks(await reload());
@@ -95,20 +97,32 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     } catch (caught) { setError(caught instanceof Error ? caught.message : "高清确认暂未完成，请刷新后重试。"); }
     finally { setBusy(false); }
   };
+  const canSubmit = saved && selected && subtitles !== "unknown" && (selected !== "upload" || file);
+  const planFromTranscript = (taskId: string) => {
+    setPlanningTask(taskId);
+    setPlanningOpened(true);
+    if (planningPanel.current) {
+      planningPanel.current.open = true;
+      planningPanel.current.scrollIntoView({ block: "start" });
+    }
+  };
   return <section className={styles.panel} aria-label="口播剪辑">
-    <div className={styles.intro}><b>口播剪辑 · 试运行</b><p>从已有口播或上传视频开始，按真实录音生成字幕，保留原声节奏。</p></div>
+    <div className={styles.intro}><b>口播剪辑 · 试运行</b><p>从已有口播或上传视频开始，识别实际语音，保留原声节奏。</p></div>
     {!saved && <p role="status">请先保存当前项目，再开始剪辑。</p>}
     <label>选择原片<select aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && (" · 确认稿 " + job.confirmed_version_id.slice(0, 8))}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
     {selected === "upload" && <label>视频文件<input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => setFile(event.target.files?.[0])} /></label>}
     <label>原片已有字幕吗？<select value={subtitles} onChange={event => setSubtitles(event.target.value as typeof subtitles)}><option value="unknown">请先查看原片后选择</option><option value="none">没有，生成主字幕</option><option value="present">已有，保留画面中的字幕</option></select></label>
-    <p className={styles.note}>基础剪辑按原声生成主字幕。已保存的动效编排可在下方另行出片。</p>
-    <button type="button" onClick={() => void submit()} disabled={busy || !saved || !selected || subtitles === "unknown" || (selected === "upload" && !file)}>{busy ? "正在处理…" : "开始剪辑"}</button>
+    <p className={styles.note}>做动效剪辑可先识别口播，得到词级时间轴后选择组合模板。也可直接生成基础字幕片。</p>
+    <div className={styles.correctionActions}>
+      <button type="button" onClick={() => void submit("transcript")} disabled={busy || !canSubmit}>识别口播，准备动效剪辑</button>
+      <button type="button" onClick={() => void submit("subtitles")} disabled={busy || !canSubmit}>生成基础字幕片</button>
+    </div>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
     {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion}
       previewBase={previewBase} onClearPreviewBase={() => setPreviewBase(undefined)}
       onCreated={async () => { setTasks(await reload()); }} />}
-    {saved && <details onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} onNativePlan={() => setPlansVersion(value => value + 1)} onPreview={previews => {
+    {saved && <details ref={planningPanel} onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} selected={planningTask} onSelect={setPlanningTask} onNativePlan={() => setPlansVersion(value => value + 1)} onPreview={previews => {
       const ids = previews.map(task => task.id);
       setTasks(rows => [...previews, ...rows.filter(row => !ids.includes(row.id))]);
       setLinkedPreviews({ projectId, ids });
@@ -119,6 +133,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
       const final = task.artifacts.find(a => a.role === "final");
       const preview = task.artifacts.find(a => a.role === "preview");
       const audioReceipt = task.artifacts.find(a => a.role === "audio_receipt");
+      const transcript = task.artifacts.find(a => a.role === "transcript");
+      const transcriptAudio = task.artifacts.find(a => a.role === "transcript_audio");
       const sourceReceipt = task.artifacts.find(a => a.role === "source_receipt");
       const layoutReceipt = task.artifacts.find(a => a.role === "layout_receipt");
       const editReceipt = (task.options.native_edits || task.options.preview_base) && task.artifacts.find(a => a.role === "compile_receipt");
@@ -159,8 +175,16 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {final && <><video id={`editing-film-${task.id}`} controls preload="metadata" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
           {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
           {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查，听感待验收。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}
-          {task.artifacts.some(a => a.role === "transcript") && <button type="button" onClick={() => setCorrectionTask(correctionTask === task.id ? "" : task.id)}>{correctionTask === task.id ? "收起校对" : "校对字幕"}</button>}
-          {correctionTask === task.id && <TranscriptEditor key={task.id} workspaceId={workspaceId} taskId={task.id} options={task.options} onCreated={async () => { setTasks(await reload()); }} />}</>}
+        </>}
+        {task.status === "completed" && task.options.mode === "transcript" && transcript && <>
+          {transcriptAudio && <audio id={`editing-transcript-audio-${task.id}`} controls preload="none" src={transcriptAudio.url} aria-label="口播原声试听" />}
+          <a href={transcript.url} download>下载逐词转录</a>
+          <button type="button" disabled={busy} onClick={() => planFromTranscript(task.id)}>使用此转录开始规划</button>
+        </>}
+        {task.status === "completed" && transcript && (final || task.options.mode === "transcript") && <>
+          <button type="button" onClick={() => setCorrectionTask(correctionTask === task.id ? "" : task.id)}>{correctionTask === task.id ? "收起校对" : task.options.mode === "transcript" ? "校对口播转录" : "校对字幕"}</button>
+          {correctionTask === task.id && <TranscriptEditor key={task.id} workspaceId={workspaceId} taskId={task.id} options={task.options} onCreated={async () => { setTasks(await reload()); }} />}
+        </>}
         {["queued", "running"].includes(task.status) && <button type="button" disabled={busy || task.cancel_requested} onClick={() => void action(task, "cancel")}>{task.cancel_requested ? "正在取消" : "取消"}</button>}
         {["failed", "cancelled"].includes(task.status) && task.error_code !== "EDITING_EFFECT_LAYOUT_FAILED" && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
       </article>;

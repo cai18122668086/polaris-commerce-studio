@@ -79,6 +79,11 @@ def get_transcript(
         "tokens": [t.model_dump() for t in transcript.tokens],
         "utterances": [u.model_dump() for u in transcript.utterances],
         "alignment_available": settings.video_editing_alignment_enabled,
+        **(
+            {"analysis_audio_offset_ms": record.validation["analysis_audio_offset_ms"]}
+            if "analysis_audio_offset_ms" in record.validation
+            else {}
+        ),
     }
 
 

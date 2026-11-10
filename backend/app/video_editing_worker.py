@@ -29,6 +29,7 @@ from .motion_library import (
 )
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_delivery_checkpoint import (
+    DeliveryFile,
     checkpoint_for,
     compiled_digest,
     delivery_file,
@@ -66,6 +67,7 @@ from .video_editing_task_models import (
     EditingTaskRecord,
     EditingTranscriptRevisionRecord,
 )
+from .video_editing_transcript_store import MAX_TRANSCRIPT_BYTES
 from .video_studio_models import VideoScriptVersionRecord
 from .video_writing_provenance import script_digest
 
@@ -261,7 +263,7 @@ def load_transcript(
         # Preserve the exact immutable bytes referenced by the cached receipt.
         shutil.copyfile(cached["path"], root / "transcript.json")
     stage(
-        "compiling",
+        "storing" if snapshot["options"].get("mode") == "transcript" else "compiling",
         transcript={
             "path": str(root / "transcript.json"),
             "sha256": sha256(root / "transcript.json"),
@@ -301,7 +303,7 @@ def load_plan_transcript(
             (settings.video_editing_tasks_dir / plan["base_task_id"]).resolve()
         )
         or not path.is_file()
-        or path.stat().st_size > 2_000_000
+        or path.stat().st_size > MAX_TRANSCRIPT_BYTES
         or sha256(path) != plan["base_transcript_sha256"]
         or plan["source_sha256"] != prepared["source_sha256"]
         or plan["audio_sha256"] != prepared["audio_sha256"]
@@ -584,6 +586,57 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 raise EditingFailure("EDITING_LEASE_LOST")
             session.commit()
 
+    def publish(
+        files: dict[str, DeliveryFile],
+        media_validation: dict,
+        *,
+        status: str,
+        ready_stage: str,
+    ) -> None:
+        guard(True)
+        with factory() as session:
+            fenced = session.execute(
+                update(EditingTaskRecord)
+                .where(
+                    EditingTaskRecord.id == task_id,
+                    EditingTaskRecord.owner_token == token,
+                    EditingTaskRecord.status == "running",
+                    EditingTaskRecord.lease_until >= datetime.now(UTC),
+                    EditingTaskRecord.cancel_requested.is_(False),
+                )
+                .values(
+                    status=status,
+                    stage=ready_stage,
+                    owner_token=None,
+                    lease_until=None,
+                    revision=EditingTaskRecord.revision + 1,
+                    error_code=None,
+                )
+            )
+            if not cast(CursorResult, fenced).rowcount:
+                raise EditingFailure("EDITING_LEASE_LOST")
+            for role, file in files.items():
+                media = media_validation.get(role, {})
+                session.add(
+                    EditingArtifactRecord(
+                        id=str(uuid4()),
+                        task_id=task_id,
+                        role=role,
+                        path=str(file.path),
+                        mime=file.mime,
+                        sha256=file.sha256,
+                        bytes=file.bytes,
+                        duration_ms=media.get("duration_ms"),
+                        validation=media,
+                    )
+                )
+            session.execute(
+                update(EditingAttemptRecord)
+                .where(EditingAttemptRecord.id == token)
+                .values(status="completed", finished_at=datetime.now(UTC))
+            )
+            session.commit()
+
     try:
         guard(True)
         if not settings.video_editing_enabled:
@@ -700,6 +753,48 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             transcript = load_transcript(
                 task_id, root, prepared, snapshot, settings, guard, stage
             )
+            if snapshot["options"].get("mode") == "transcript":
+                text_file = delivery_file(root / "transcript.json")
+                audio_file = delivery_file(root / "input/speech.wav")
+                if not transcript.tokens:
+                    raise EditingFailure("EDITING_NO_SPEECH_RECOGNIZED")
+                if (
+                    text_file.bytes > MAX_TRANSCRIPT_BYTES
+                    or audio_file.sha256 != prepared["audio_sha256"]
+                    or transcript.audio_sha256 != audio_file.sha256
+                    or transcript.source_sha256 != prepared["source_sha256"]
+                    or transcript.duration_ms != prepared["duration_ms"]
+                ):
+                    raise EditingFailure("EDITING_TRANSCRIPT_CHANGED")
+                transcript_files = {
+                    "transcript": text_file,
+                    "transcript_audio": audio_file,
+                }
+                if lineage:
+                    transcript_files["source_receipt"] = delivery_file(
+                        root / "source-receipt.json"
+                    )
+                if correction:
+                    transcript_files["alignment_receipt"] = delivery_file(
+                        root / "alignment-receipt.json"
+                    )
+                clock = prepared["clock"]
+                offset = clock["audio_offset_ms"]
+                publish(
+                    transcript_files,
+                    {
+                        "transcript": {
+                            "duration_ms": transcript.duration_ms,
+                            "analysis_audio_offset_ms": offset,
+                        },
+                        "transcript_audio": {
+                            "duration_ms": clock["analysis_audio_end_ms"] - offset,
+                        },
+                    },
+                    status="completed",
+                    ready_stage="transcript_ready",
+                )
+                return
             compile_baseline(root, prepared, transcript, snapshot["options"], settings)
         review_first = snapshot["options"].get("delivery") == "preview_first"
         final_role = "staged_final" if review_first else "final"
@@ -806,49 +901,12 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             validated_delivery=checkpoint_for(root.parent, compiled_sha, files),
             reused_delivery=reused,
         )
-        guard(True)
-        with factory() as session:
-            fenced = session.execute(
-                update(EditingTaskRecord)
-                .where(
-                    EditingTaskRecord.id == task_id,
-                    EditingTaskRecord.owner_token == token,
-                    EditingTaskRecord.status == "running",
-                    EditingTaskRecord.lease_until >= datetime.now(UTC),
-                    EditingTaskRecord.cancel_requested.is_(False),
-                )
-                .values(
-                    status="awaiting_review" if review_first else "completed",
-                    stage="preview_ready" if review_first else "completed",
-                    owner_token=None,
-                    lease_until=None,
-                    revision=EditingTaskRecord.revision + 1,
-                    error_code=None,
-                )
-            )
-            if not cast(CursorResult, fenced).rowcount:
-                raise EditingFailure("EDITING_LEASE_LOST")
-            for role, file in files.items():
-                media = media_validation.get(role, {})
-                session.add(
-                    EditingArtifactRecord(
-                        id=str(uuid4()),
-                        task_id=task_id,
-                        role=role,
-                        path=str(file.path),
-                        mime=file.mime,
-                        sha256=file.sha256,
-                        bytes=file.bytes,
-                        duration_ms=media.get("duration_ms"),
-                        validation=media,
-                    )
-                )
-            session.execute(
-                update(EditingAttemptRecord)
-                .where(EditingAttemptRecord.id == token)
-                .values(status="completed", finished_at=datetime.now(UTC))
-            )
-            session.commit()
+        publish(
+            files,
+            media_validation,
+            status="awaiting_review" if review_first else "completed",
+            ready_stage="preview_ready" if review_first else "completed",
+        )
     except Exception as error:
         code = (
             error.code

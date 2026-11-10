@@ -238,7 +238,7 @@ def create_planning_task(
         raise ApiError(
             409,
             "EDITING_PLANNING_TRANSCRIPT_REQUIRED",
-            "请先完成实际录音的识别或校对出片。",
+            "请先完成实际口播的识别或校对对齐。",
         )
     source = session.get(EditingSourceRecord, base.source_id)
     if (

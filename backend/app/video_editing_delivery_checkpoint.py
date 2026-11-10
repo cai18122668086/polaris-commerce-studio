@@ -90,7 +90,9 @@ class DeliveryFile:
 
     @property
     def mime(self) -> str:
-        return "video/mp4" if self.path.suffix == ".mp4" else "application/json"
+        return {".mp4": "video/mp4", ".wav": "audio/wav"}.get(
+            self.path.suffix, "application/json"
+        )
 
 
 def delivery_file(path: Path) -> DeliveryFile:

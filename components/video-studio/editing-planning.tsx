@@ -26,12 +26,11 @@ const autoPreviewErrors: Record<string, string> = {
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = { EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。", EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。", EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。", EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。", EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。", EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "可选动效少于五种。请核对项目备忘、素材或模板后重新准备。", EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。", EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。" };
 
-export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, onPreview }: {
-  workspaceId: string; projectId: string; tasks: BaseTask[]; onNativePlan: () => void;
+export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview }: {
+  workspaceId: string; projectId: string; tasks: BaseTask[]; selected: string; onSelect: (taskId: string) => void; onNativePlan: () => void;
   onPreview: (tasks: PreviewTask[]) => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [selected, setSelected] = useState("");
   const [materialIds, setMaterialIds] = useState<string[]>([]);
   const [templates, setTemplates] = useState<OverlayTemplate[]>([]);
   const [templateId, setTemplateId] = useState("");
@@ -152,8 +151,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
     finally { setBusy(false); }
   };
   return <section aria-label="语义规划任务">
-    <p className={styles.note}>先用已有成片的实际转录准备完整请求，再生成重点与选组候选。准备不会重新配音、识别或调用模型。</p>
-    <label>使用哪条成片的实际转录？<select aria-label="使用哪条成片的实际转录？" value={selected} onChange={event => setSelected(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
+    <p className={styles.note}>使用实际口播的转录准备请求，再生成重点与选组候选。准备不会重新配音、识别或调用模型。</p>
+    <label>使用哪条口播的实际转录？<select value={selected} onChange={event => onSelect(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
     <fieldset className={styles.templatePicker}>
       <legend>选择组合模板</legend>
       <p className={styles.note}>口播声音连续。画面可随模板叠加动效或切换整帧场景。成片至少使用五种不同动效，优先十种以上。同一种动效可在不同词点重复使用。</p>

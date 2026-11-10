@@ -2,10 +2,14 @@
 
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+from wave import open as open_wave
 
+import pytest
 from sqlalchemy import select
 
-from app.motion_library import sha256
+from app import video_editing_worker as worker
+from app.motion_library import atomic_json, sha256
+from app.video_editing_contracts import Transcript, TranscriptToken
 from app.video_editing_task_models import (
     EditingArtifactRecord,
     EditingAttemptRecord,
@@ -61,6 +65,81 @@ def test_task_replay_cancel_retry_and_no_paths_exposed(video, tmp_path):
     with client.app.state.session_factory() as session:
         attempts = list(session.scalars(select(EditingAttemptRecord)))
         assert attempts == []  # Queued cancellation never needs a live worker.
+
+
+@pytest.mark.parametrize("matching_audio", [True, False])
+def test_direct_transcription_delivers_checked_words_without_rendering(
+    video, tmp_path, monkeypatch, matching_audio
+):
+    client, _, ws, _, settings, _, source = setup_source(video, tmp_path)
+    url = base(ws) + "/editing-tasks"
+    body = {
+        "request_id": str(uuid4()),
+        "source_id": source,
+        "options": {"mode": "transcript", "source_subtitles": "none"},
+    }
+    started = client.post(url, json=body).raise_for_status().json()
+    assert client.post(url, json=body).json()["id"] == started["id"]
+
+    def prepare(_path, digest, root, _settings, _guard):
+        audio = root / "input/speech.wav"
+        audio.parent.mkdir(parents=True)
+        with open_wave(str(audio), "wb") as track:
+            track.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+            track.writeframes(bytes(32000))
+        return {
+            "source_sha256": digest,
+            "audio_sha256": sha256(audio),
+            "duration_ms": 1000,
+            "clock": {"audio_offset_ms": 10, "analysis_audio_end_ms": 1010},
+        }
+
+    def load(_id, root, prepared, _snapshot, _settings, _guard, stage):
+        stage("transcribing")
+        transcript = Transcript(
+            source_sha256=prepared["source_sha256"],
+            audio_sha256=prepared["audio_sha256"] if matching_audio else "0" * 64,
+            duration_ms=1000,
+            language="zh",
+            provider="fixture",
+            model="fixture",
+            tokens=[TranscriptToken(id="t0", text="口播", start_ms=60, end_ms=700)],
+            utterances=[],
+        )
+        atomic_json(root / "transcript.json", transcript.model_dump(mode="json"))
+        return transcript
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Direct transcription must never compile or export a film")
+
+    monkeypatch.setattr(worker, "verify_package", lambda _: None)
+    monkeypatch.setattr(worker, "prepare", prepare)
+    monkeypatch.setattr(worker, "load_transcript", load)
+    monkeypatch.setattr(worker, "compile_baseline", forbidden)
+    monkeypatch.setattr(worker, "native_export", forbidden)
+    process(started["id"], settings, client.app.state.session_factory)
+    endpoint = url + "/" + started["id"]
+    result = client.get(endpoint).raise_for_status().json()
+    if not matching_audio:
+        assert result["status"] == "failed" and result["artifacts"] == []
+        assert result["error_code"] == "EDITING_TRANSCRIPT_CHANGED"
+        return
+    assert (result["status"], result["stage"]) == ("completed", "transcript_ready")
+    artifacts = {a["role"]: a for a in result["artifacts"]}
+    assert set(artifacts) == {"transcript", "transcript_audio"}
+    view = client.get(endpoint + "/transcript").raise_for_status().json()
+    assert view["text"] == "口播" and view["analysis_audio_offset_ms"] == 10
+    audio = client.get(
+        artifacts["transcript_audio"]["url"], headers={"Range": "bytes=0-43"}
+    )
+    assert audio.status_code == 206 and audio.headers["content-type"] == "audio/wav"
+    assert audio.content.startswith(b"RIFF")
+    assert client.get(base(ws) + "/editing-works").json()["items"] == []
+    planned = client.post(
+        endpoint + "/planning-tasks", json={"request_id": str(uuid4())}
+    )
+    assert planned.status_code == 200, planned.text
+    assert planned.json()["base_transcript_sha256"] == artifacts["transcript"]["sha256"]
 
 
 def test_task_and_source_are_scoped_to_owner_and_project(video, tmp_path):

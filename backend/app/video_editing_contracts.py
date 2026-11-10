@@ -143,7 +143,7 @@ class EditingPreviewBase(EditingExportConfirmation):
 
 
 class EditingOptions(StrictVideoModel):
-    mode: Literal["subtitles", "native_plan"] = "subtitles"
+    mode: Literal["subtitles", "transcript", "native_plan"] = "subtitles"
     language: Literal["zh", "en", "auto"] = "zh"
     # Explicit website binding to a bundled font, independent of old episodes.
     caption_font_id: Literal["font-d1961be1161ea1be"] = "font-d1961be1161ea1be"

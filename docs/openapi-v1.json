@@ -5842,6 +5842,7 @@
             "default": "subtitles",
             "enum": [
               "subtitles",
+              "transcript",
               "native_plan"
             ],
             "title": "Mode",

@@ -7,6 +7,8 @@ from .motion_library import read_json, sha256
 from .video_editing_contracts import Transcript
 from .video_editing_task_models import EditingArtifactRecord, EditingTaskRecord
 
+MAX_TRANSCRIPT_BYTES = 2_000_000
+
 
 def read_transcript_artifact(
     record: EditingArtifactRecord | None, task: EditingTaskRecord, task_root: Path
@@ -23,7 +25,7 @@ def read_transcript_artifact(
         not path.is_relative_to((task_root / task.id).resolve())
         or not path.is_file()
         or path.stat().st_size != record.bytes
-        or record.bytes > 2_000_000
+        or record.bytes > MAX_TRANSCRIPT_BYTES
         or sha256(path) != record.sha256
     ):
         raise ApiError(

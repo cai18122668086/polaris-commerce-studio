@@ -13,9 +13,11 @@ type NativeEdits = components["schemas"]["NativeRenderEdits"];
 type Highlight = components["schemas"]["NativeHighlightEdit"];
 type HighlightTarget = components["schemas"]["EditingHighlightTarget"];
 type ImageEdit = components["schemas"]["NativeImageEdit"];
-type Controls = { music: "keep" | "lower" | "off"; segments: string[]; highlights: Highlight[]; images: ImageEdit[] };
+type EffectEdit = components["schemas"]["NativeEffectEdit"];
+type EffectTarget = components["schemas"]["EditingEffectTarget"];
+type Controls = { music: "keep" | "lower" | "off"; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
 export type PreviewBaseSelection = { planId: string; preview: components["schemas"]["EditingPreviewBase"]; edits?: NativeEdits | null };
-const defaultControls: Controls = { music: "keep", segments: [], highlights: [], images: [] };
+const defaultControls: Controls = { music: "keep", segments: [], highlights: [], images: [], effects: [] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
 export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion, previewBase, onClearPreviewBase }: {
@@ -29,6 +31,8 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
   const [controls, setControls] = useState<Record<string, Controls>>({});
   const [highlightTargets, setHighlightTargets] = useState<Record<string, HighlightTarget[]>>({});
   const [loadingHighlights, setLoadingHighlights] = useState<string[]>([]);
+  const [effectTargets, setEffectTargets] = useState<Record<string, EffectTarget[]>>({});
+  const [loadingEffects, setLoadingEffects] = useState<string[]>([]);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const live = useRef(true);
   const selectedPlan = previewBase?.planId;
@@ -57,6 +61,21 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       if (live.current) setLoadingHighlights(previous => previous.filter(id => id !== plan.id));
     }
   };
+  const loadEffects = async (plan: Plan) => {
+    if (effectTargets[plan.id] || loadingEffects.includes(plan.id)) return;
+    setLoadingEffects(previous => [...previous, plan.id]);
+    try {
+      const targets = unwrapApiResponse(await apiClient.GET(`${root}/projects/{project_id}/editing-native-plans/{plan_id}/effect-options`, {
+        params: { path: { workspace_id: workspaceId, project_id: projectId, plan_id: plan.id } },
+        signal: AbortSignal.timeout(12000),
+      }));
+      if (live.current) setEffectTargets(previous => ({ ...previous, [plan.id]: targets }));
+    } catch (caught) {
+      if (live.current) setError(caught instanceof Error ? caught.message : "暂时无法读取本段可替换的原生动效。");
+    } finally {
+      if (live.current) setLoadingEffects(previous => previous.filter(id => id !== plan.id));
+    }
+  };
   const render = async (plan: Plan, selected: Controls, earlier?: PreviewBaseSelection) => {
     setBusy(plan.id); setError("");
     try {
@@ -66,11 +85,13 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         a.beat_id.localeCompare(b.beat_id) || a.path.localeCompare(b.path);
       const highlights = selected.highlights.slice().sort(bySlot);
       const images = selected.images.slice().sort(bySlot);
-      const edits: NativeEdits | undefined = music || segments.length || highlights.length || images.length
+      const effects = selected.effects.slice().sort((a, b) => a.beat_id.localeCompare(b.beat_id));
+      const edits: NativeEdits | undefined = music || segments.length || highlights.length || images.length || effects.length
         ? {
           music, source_only_beat_ids: segments,
           ...(highlights.length ? { highlight_edits: highlights } : {}),
           ...(images.length ? { image_edits: images } : {}),
+          ...(effects.length ? { effect_edits: effects } : {}),
         }
         : undefined;
       const key = JSON.stringify([plan.id, edits, earlier?.preview]);
@@ -100,16 +121,19 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         segments: earlier.edits.source_only_beat_ids ?? [],
         highlights: earlier.edits.highlight_edits ?? [],
         images: earlier.edits.image_edits ?? [],
+        effects: earlier.edits.effect_edits ?? [],
       } satisfies Controls : defaultControls;
       const selected = controls[key] || initial;
       const change = (update: Partial<Controls>) => setControls(current => ({
         ...current, [key]: { ...(current[key] || initial), ...update },
       }));
       const editable = plan.beats.filter(beat => beat.source_only_available);
-      const activeEffects = plan.beats.filter(beat => beat.group_id !== "Z-M00" && !selected.segments.includes(beat.id));
+      const replacements = new Map(selected.effects.map(edit => [edit.beat_id, edit.group_id]));
+      const activeEffects = plan.beats.filter(beat => beat.group_id !== "Z-M00" && !selected.segments.includes(beat.id))
+        .map(beat => ({ ...beat, group_id: replacements.get(beat.id) ?? beat.group_id }));
       const activeGroups = new Set(activeEffects.map(beat => beat.group_id));
       const repeated = repeatedEffectsForReduction(activeEffects, new Set([
-        ...selected.highlights.map(edit => edit.beat_id), ...selected.images.map(edit => edit.beat_id),
+        ...selected.highlights.map(edit => edit.beat_id), ...selected.images.map(edit => edit.beat_id), ...replacements.keys(),
       ]));
       const available = plan.render_available && plan.continuous_preview_available;
       return <article key={plan.id} id={`editing-native-plan-${plan.id}`}>
@@ -138,9 +162,33 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
             segments: event.target.checked ? [...selected.segments, beat.id] : selected.segments.filter(id => id !== beat.id),
             highlights: event.target.checked ? selected.highlights.filter(edit => edit.beat_id !== beat.id) : selected.highlights,
             images: event.target.checked ? selected.images.filter(edit => edit.beat_id !== beat.id) : selected.images,
+            effects: event.target.checked ? selected.effects.filter(edit => edit.beat_id !== beat.id) : selected.effects,
           })} />
           保留原景 · {beat.group_id} · {beat.text}
         </label>)}
+        {plan.overlay_template && <details onToggle={event => {
+          if (event.currentTarget.open) void loadEffects(plan);
+        }}>
+          <summary>单段更换动效</summary>
+          <p className={styles.note}>沿用这一段的实录词点，选择同模板内匹配的原生文字动效。生成时会检查实际画面排版。</p>
+          {loadingEffects.includes(plan.id) && <p role="status">正在核对本段可选动效…</p>}
+          {effectTargets[plan.id]?.length === 0 && <p>本候选暂无满足同一段词点和字数的替换动效。</p>}
+          {effectTargets[plan.id]?.map(target => {
+            const beat = plan.beats.find(item => item.id === target.beat_id);
+            if (!beat) return null;
+            return <label key={beat.id}>{beat.text}
+              <select aria-label={`更换动效 · ${beat.text}`} disabled={!!busy || selected.segments.includes(beat.id)}
+                value={replacements.get(beat.id) ?? ""} onChange={event => {
+                  const next = selected.effects.filter(edit => edit.beat_id !== beat.id);
+                  if (event.target.value) next.push({ beat_id: beat.id, group_id: event.target.value });
+                  change({ effects: next });
+                }}>
+                <option value="">沿用 {beat.group_id}</option>
+                {target.choices.map(choice => <option key={choice.group_id} value={choice.group_id}>{choice.group_id} · {choice.name}</option>)}
+              </select>
+            </label>;
+          })}
+        </details>}
         {plan.highlight_edit_available && <details onToggle={event => {
           if (event.currentTarget.open) void loadHighlights(plan);
         }}>

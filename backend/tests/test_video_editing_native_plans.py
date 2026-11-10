@@ -9,11 +9,13 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect, text
 
+from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import atomic_json, sha256
 from app.video_editing_catalog import choice_snapshot_hash
 from app.video_editing_contracts import EditingOptions
 from app.video_editing_native_plans import register_operator_plan
+from app.video_editing_pipeline import EditingFailure, native_export
 from app.video_editing_preview_base import preview_base_attempt
 from app.video_editing_task_models import (
     EditingArtifactRecord,
@@ -25,6 +27,28 @@ from tests.test_video_editing_transcript_revisions import completed_transcript
 from tests.test_video_projects import base
 
 pytest_plugins = ["tests.test_video_projects"]
+
+
+def test_native_export_identifies_layout_failure_on_the_replaced_shot(
+    tmp_path, monkeypatch
+):
+    def reject_export(*args):
+        if args[-1] == "native_export":
+            raise EditingFailure("EDITING_NATIVE_EXPORT_FAILED")
+
+    monkeypatch.setattr("app.video_editing_pipeline.run", reject_export)
+    atomic_json(
+        tmp_path / "compile-diagnostics.json",
+        {"applied_effect_edits": [{"beat_id": "replacement", "shot_index": 2}]},
+    )
+    settings = Settings(_env_file=None)
+    report = tmp_path / "layout/review.json"
+    atomic_json(report, {"status": "failed", "errors": [{"shot": 3}]})
+    with pytest.raises(EditingFailure, match="EDITING_NATIVE_EXPORT_FAILED"):
+        native_export(tmp_path, settings, lambda: None)
+    atomic_json(report, {"status": "failed", "errors": [{"shot": 2}]})
+    with pytest.raises(EditingFailure, match="EDITING_EFFECT_LAYOUT_FAILED"):
+        native_export(tmp_path, settings, lambda: None)
 
 
 def test_preview_base_is_bound_to_the_exact_artifact_source_and_plan(video, tmp_path):

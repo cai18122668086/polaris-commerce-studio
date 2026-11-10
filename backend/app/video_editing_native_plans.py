@@ -15,6 +15,7 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, read_json
 from .video_editing_contracts import EditingOptions, SemanticPlan, Transcript
+from .video_editing_effect_edits import apply_effect_edits
 from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_highlights import apply_highlight_edits, editable_highlight_roles
 from .video_editing_hypit import internal_hypit_available, requires_hypit
@@ -618,7 +619,7 @@ def admit_render_plan(
                 "所选段落或背景音乐不适用于这份编排。",
             ) from error
     edits = options.native_edits
-    if edits and (edits.highlight_edits or edits.image_edits):
+    if edits and (edits.highlight_edits or edits.image_edits or edits.effect_edits):
         transcript = native_edit_transcript(session, settings, row)
         semantic = SemanticPlan.model_validate(row.semantic)
         assets = row.details["asset_snapshot"]
@@ -659,18 +660,39 @@ def admit_render_plan(
                 set(assets),
                 current,
             )
+            semantic = edited
         except (ValueError, KeyError) as error:
             raise ApiError(
                 422,
                 "EDITING_IMAGE_EDIT_INVALID",
                 "请选择不同的本期图片，透明图槽需使用含透明像素的图片。",
             ) from error
+    effective_semantic, effective_recipes = row.semantic, row.recipes
+    if edits and edits.effect_edits:
+        try:
+            semantic, revised, _ = apply_effect_edits(
+                settings.video_editing_library_dir,
+                edits.effect_edits,
+                semantic,
+                EpisodeRecipeBundle.model_validate(row.recipes),
+                transcript,
+                current,
+                set(assets),
+            )
+        except ValueError as error:
+            raise ApiError(
+                422,
+                "EDITING_EFFECT_EDIT_INVALID",
+                "请选择该实录段可用的同模板原生动效。",
+            ) from error
+        effective_semantic = semantic.model_dump(mode="json")
+        effective_recipes = revised.model_dump(mode="json")
     if (
         options.delivery == "preview_first"
         and len(
             continuous_overlay_groups(
-                row.semantic,
-                row.recipes,
+                effective_semantic,
+                effective_recipes,
                 transparent_original_groups(settings),
                 set(options.native_edits.source_only_beat_ids)
                 if options.native_edits

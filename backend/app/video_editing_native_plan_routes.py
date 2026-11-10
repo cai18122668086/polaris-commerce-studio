@@ -9,11 +9,14 @@ from sqlalchemy import select
 from .auth import SessionDependency
 from .errors import ApiError
 from .video_editing_contracts import (
+    EditingEffectTarget,
     EditingHighlightTarget,
     EditingImageTarget,
     EditingNativePlanResponse,
     SemanticPlan,
 )
+from .video_editing_effect_edits import effect_edit_targets
+from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_highlights import highlight_targets
 from .video_editing_image_edits import image_edit_targets
 from .video_editing_native_plans import (
@@ -55,6 +58,30 @@ def list_native_plans(
         rows = [own_native_plan(session, workspace, project_id, include_plan_id), *rows]
     groups = transparent_original_groups(settings)
     return [plan_response(r, settings, groups) for r in rows]
+
+
+@router.get(
+    "/editing-native-plans/{plan_id}/effect-options",
+    response_model=list[EditingEffectTarget],
+)
+def native_effect_options(
+    project_id: UUID,
+    plan_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> list[EditingEffectTarget]:
+    settings = enabled(request)
+    row = own_native_plan(session, workspace, project_id, plan_id)
+    transcript = native_edit_transcript(session, settings, row)
+    return effect_edit_targets(
+        settings.video_editing_library_dir,
+        SemanticPlan.model_validate(row.semantic),
+        EpisodeRecipeBundle.model_validate(row.recipes),
+        transcript,
+        row.choice_snapshot,
+        set(row.details["asset_snapshot"]),
+    )
 
 
 @router.get(

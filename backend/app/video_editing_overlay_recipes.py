@@ -2807,6 +2807,20 @@ def check_overlay_beat(
         raise ValueError(error.message) from error
 
 
+def build_text_effect_replacement(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    template_id: str,
+    avoided: set[str],
+) -> tuple[NativeEpisodeEntry, NativeSoundCue]:
+    if beat.group_id not in _ENTRY_SOUNDS:
+        raise ValueError("The original text effect needs its verified sound entry")
+    entry, anchors = _entry(package, group, beat, transcript, template_id=template_id)
+    return entry, _entry_sound(beat, anchors, transcript.duration_ms, avoided)
+
+
 def build_overlay_recipes(
     package: Path,
     semantic: SemanticPlan,

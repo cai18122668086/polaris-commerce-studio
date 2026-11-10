@@ -2501,6 +2501,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/effect-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Native Effect Options */
+        get: operations["native_effect_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__effect_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/highlight-options": {
         parameters: {
             query?: never;
@@ -5695,6 +5712,20 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** EditingEffectChoice */
+        EditingEffectChoice: {
+            /** Group Id */
+            group_id: string;
+            /** Name */
+            name: string;
+        };
+        /** EditingEffectTarget */
+        EditingEffectTarget: {
+            /** Beat Id */
+            beat_id: string;
+            /** Choices */
+            choices: components["schemas"]["EditingEffectChoice"][];
+        };
         /** EditingEvent */
         EditingEvent: {
             /** Error Code */
@@ -7266,6 +7297,13 @@ export interface components {
             /** Micros */
             micros: string;
         };
+        /** NativeEffectEdit */
+        NativeEffectEdit: {
+            /** Beat Id */
+            beat_id: string;
+            /** Group Id */
+            group_id: string;
+        };
         /** NativeEventAnchor */
         NativeEventAnchor: {
             /**
@@ -7312,6 +7350,8 @@ export interface components {
         };
         /** NativeRenderEdits */
         NativeRenderEdits: {
+            /** Effect Edits */
+            effect_edits?: components["schemas"]["NativeEffectEdit"][];
             /** Highlight Edits */
             highlight_edits?: components["schemas"]["NativeHighlightEdit"][];
             /** Image Edits */
@@ -13961,6 +14001,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingNativePlanResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    native_effect_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__effect_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                plan_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingEffectTarget"][];
                 };
             };
             /** @description Validation Error */

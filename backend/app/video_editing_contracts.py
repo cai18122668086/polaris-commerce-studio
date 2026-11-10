@@ -46,6 +46,21 @@ class EditingImageTarget(StrictVideoModel):
     requires_transparency: bool
 
 
+class NativeEffectEdit(StrictVideoModel):
+    beat_id: str = Field(min_length=1, max_length=120)
+    group_id: str = Field(min_length=1, max_length=40)
+
+
+class EditingEffectChoice(StrictVideoModel):
+    group_id: str
+    name: str
+
+
+class EditingEffectTarget(StrictVideoModel):
+    beat_id: str
+    choices: list[EditingEffectChoice]
+
+
 class NativeRenderEdits(StrictVideoModel):
     music: Literal["lower", "off"] | None = None
     source_only_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
@@ -59,6 +74,9 @@ class NativeRenderEdits(StrictVideoModel):
     image_edits: list[NativeImageEdit] = Field(
         default_factory=list, max_length=120, exclude_if=lambda value: not value
     )
+    effect_edits: list[NativeEffectEdit] = Field(
+        default_factory=list, max_length=120, exclude_if=lambda value: not value
+    )
 
     @model_validator(mode="after")
     def checked_selection(self) -> Self:
@@ -67,8 +85,9 @@ class NativeRenderEdits(StrictVideoModel):
             and not self.source_only_beat_ids
             and not self.highlight_edits
             and not self.image_edits
+            and not self.effect_edits
         ):
-            raise ValueError("Select a music, segment, highlight or image edit")
+            raise ValueError("Select a music, segment, effect, highlight or image edit")
         if len(set(self.source_only_beat_ids)) != len(self.source_only_beat_ids):
             raise ValueError("Select each segment at most once")
         keys = {(edit.beat_id, edit.path) for edit in self.highlight_edits}
@@ -81,9 +100,17 @@ class NativeRenderEdits(StrictVideoModel):
             beat_id in self.source_only_beat_ids for beat_id, _ in image_keys
         ):
             raise ValueError("Select each image once on an active segment")
+        effect_beats = {edit.beat_id for edit in self.effect_edits}
+        if (
+            len(effect_beats) != len(self.effect_edits)
+            or effect_beats.intersection(self.source_only_beat_ids)
+            or any(beat_id in effect_beats for beat_id, _ in image_keys)
+        ):
+            raise ValueError("Choose one replacement effect on an active text segment")
         self.source_only_beat_ids = sorted(self.source_only_beat_ids)
         self.highlight_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
         self.image_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
+        self.effect_edits.sort(key=lambda edit: edit.beat_id)
         return self
 
 

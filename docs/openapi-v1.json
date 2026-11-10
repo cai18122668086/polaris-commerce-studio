@@ -4867,6 +4867,47 @@
         "title": "EditingArtifactResponse",
         "type": "object"
       },
+      "EditingEffectChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "name"
+        ],
+        "title": "EditingEffectChoice",
+        "type": "object"
+      },
+      "EditingEffectTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/EditingEffectChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "beat_id",
+          "choices"
+        ],
+        "title": "EditingEffectTarget",
+        "type": "object"
+      },
       "EditingEvent": {
         "additionalProperties": false,
         "properties": {
@@ -9154,6 +9195,29 @@
         "title": "MoneyAmount",
         "type": "object"
       },
+      "NativeEffectEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "group_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Group Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beat_id",
+          "group_id"
+        ],
+        "title": "NativeEffectEdit",
+        "type": "object"
+      },
       "NativeEventAnchor": {
         "additionalProperties": false,
         "properties": {
@@ -9282,6 +9346,14 @@
       "NativeRenderEdits": {
         "additionalProperties": false,
         "properties": {
+          "effect_edits": {
+            "items": {
+              "$ref": "#/components/schemas/NativeEffectEdit"
+            },
+            "maxItems": 120,
+            "title": "Effect Edits",
+            "type": "array"
+          },
           "highlight_edits": {
             "items": {
               "$ref": "#/components/schemas/NativeHighlightEdit"
@@ -22890,6 +22962,77 @@
           }
         ],
         "summary": "List Native Plans",
+        "tags": [
+          "video-editing-native-plans"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/effect-options": {
+      "get": {
+        "operationId": "native_effect_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__effect_options_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingEffectTarget"
+                  },
+                  "title": "Response Native Effect Options Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Native Plans  Plan Id  Effect Options Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Native Effect Options",
         "tags": [
           "video-editing-native-plans"
         ]

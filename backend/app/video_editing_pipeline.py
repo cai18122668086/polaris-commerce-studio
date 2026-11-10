@@ -754,6 +754,22 @@ def stop_hypit_runtimes(root: Path, settings: Settings) -> None:
                     break
 
 
+def _effect_layout_failed(root: Path) -> bool:
+    try:
+        replacements = read_json(root / "compile-diagnostics.json").get(
+            "applied_effect_edits", []
+        )
+        if not replacements:
+            return False
+        shots = {row["shot_index"] for row in replacements}
+        layout = read_json(root / "layout/review.json")
+        return layout["status"] == "failed" and any(
+            row["shot"] in shots for row in layout["errors"]
+        )
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
 def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> Path:
     python = settings.video_editing_python or sys.executable
     try:
@@ -778,6 +794,10 @@ def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> 
                 guard,
                 "native_" + command,
             )
+    except EditingFailure as error:
+        if error.code == "EDITING_NATIVE_EXPORT_FAILED" and _effect_layout_failed(root):
+            raise EditingFailure("EDITING_EFFECT_LAYOUT_FAILED") from error
+        raise
     finally:
         stop_hypit_runtimes(root, settings)
     return root / "outputs/episode.mp4"

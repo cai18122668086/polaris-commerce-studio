@@ -132,10 +132,13 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           本次设置 · {task.options.native_edits.music === "off" ? "关闭背景音乐。" : task.options.native_edits.music === "lower" ? "背景音乐降低 6 dB。" : ""}
           {!!task.options.native_edits.highlight_edits?.length && ("已调整 " + task.options.native_edits.highlight_edits.length + " 个动效词槽。")}
           {!!task.options.native_edits.image_edits?.length && ("已替换 " + task.options.native_edits.image_edits.length + " 张配图。")}
+          {!!task.options.native_edits.effect_edits?.length && `已更换 ${task.options.native_edits.effect_edits.length} 段原生动效。`}
           {!!task.options.native_edits.source_only_beat_ids?.length && `保留原景 ${task.options.native_edits.source_only_beat_ids.length} 段。`}
         </p>}
         {layoutReceipt && <p className={styles.note}>本次保留了原组设计里的前后叠字。 <a href={layoutReceipt.url} download>下载叠字版式记录</a></p>}
-        {task.status === "failed" && <p role="alert">{errorLabel[task.error_code || ""] || "本次剪辑未完成，可以重试；已完成的配音不会重新生成。"}</p>}
+        {task.status === "failed" && <p role="alert">{task.error_code === "EDITING_EFFECT_LAYOUT_FAILED"
+          ? "替换动效在此段发生排版碰撞。请沿用上版预览，换另一种动效。"
+          : errorLabel[task.error_code || ""] || "本次剪辑未完成，可以重试；已完成的配音不会重新生成。"}</p>}
         {task.status === "awaiting_review" && preview && <>
           <video id={`editing-preview-${task.id}`} controls preload="metadata" src={preview.url} aria-label="剪辑代理预览" />
           <p className={styles.note}>代理使用较小画幅，保留本版编排和音轨。</p>
@@ -153,7 +156,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           {task.artifacts.some(a => a.role === "transcript") && <button type="button" onClick={() => setCorrectionTask(correctionTask === task.id ? "" : task.id)}>{correctionTask === task.id ? "收起校对" : "校对字幕"}</button>}
           {correctionTask === task.id && <TranscriptEditor key={task.id} workspaceId={workspaceId} taskId={task.id} options={task.options} onCreated={async () => { setTasks(await reload()); }} />}</>}
         {["queued", "running"].includes(task.status) && <button type="button" disabled={busy || task.cancel_requested} onClick={() => void action(task, "cancel")}>{task.cancel_requested ? "正在取消" : "取消"}</button>}
-        {["failed", "cancelled"].includes(task.status) && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
+        {["failed", "cancelled"].includes(task.status) && task.error_code !== "EDITING_EFFECT_LAYOUT_FAILED" && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
       </article>;
     })}</div>
   </section>;

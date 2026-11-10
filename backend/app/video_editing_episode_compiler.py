@@ -296,6 +296,23 @@ def compile_episode(
             )
         except (ValueError, KeyError) as error:
             raise EditingFailure("EDITING_IMAGE_EDIT_INVALID") from error
+    effect_replacements: list[dict[str, Any]] = []
+    if edits and edits.effect_edits:
+        from .video_editing_effect_edits import apply_effect_edits
+
+        try:
+            semantic, authoring, effect_replacements = apply_effect_edits(
+                package,
+                edits.effect_edits,
+                semantic,
+                authoring,
+                transcript,
+                choice_snapshot,
+                set(asset_files),
+            )
+        except ValueError as error:
+            raise EditingFailure("EDITING_EFFECT_EDIT_INVALID") from error
+    replaced_beats = {row["beat_id"]: row for row in effect_replacements}
     groups = {g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]}
     relation_types = set(
         read_json(package / "params.schema.json")["properties"]["production"][
@@ -654,6 +671,8 @@ def compile_episode(
                             event,
                         )
                 shot_indices.append(len(episode["shots"]))
+                if beat.id in replaced_beats:
+                    replaced_beats[beat.id]["shot_index"] = shot_indices[-1]
                 if beat.id in backdrop_beats:
                     backdrop_shots.append(shot_indices[-1])
                 picture_end = end
@@ -1103,6 +1122,11 @@ def compile_episode(
             {
                 **({"applied_highlight_edits": highlights} if highlights else {}),
                 **(
+                    {"applied_effect_edits": effect_replacements}
+                    if effect_replacements
+                    else {}
+                ),
+                **(
                     {"applied_image_edits": image_replacements}
                     if image_replacements
                     else {}
@@ -1111,7 +1135,7 @@ def compile_episode(
                     semantic.model_dump_json().encode()
                 ).hexdigest(),
             }
-            if highlights or image_replacements
+            if highlights or image_replacements or effect_replacements
             else {}
         ),
         "episode_schema_validation": "passed" if not issues else "not_admitted",

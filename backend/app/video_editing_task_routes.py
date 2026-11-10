@@ -40,6 +40,7 @@ from .video_editing_contracts import (
     EditingTaskResponse,
     EditingWorksResponse,
 )
+from .video_editing_delivery_checkpoint import verified_delivery_file
 from .video_editing_native_plans import admit_render_plan
 from .video_editing_preview_base import preview_base_attempt
 from .video_editing_source_lineage import freeze_generation_source, source_origin
@@ -130,19 +131,6 @@ def artifact_response(
         "duration_ms": record.duration_ms,
         "url": base + "/artifacts/" + record.id,
     }
-
-
-def verified_delivery_file(record: EditingArtifactRecord, task_root: Path) -> bool:
-    try:
-        path = Path(record.path).resolve()
-        return (
-            path.is_relative_to(task_root)
-            and path.is_file()
-            and path.stat().st_size == record.bytes
-            and sha256(path) == record.sha256
-        )
-    except (OSError, ValueError):
-        return False
 
 
 def response(
@@ -956,6 +944,7 @@ def retry_task(
 def artifact(
     task_id: UUID,
     artifact_id: UUID,
+    request: Request,
     workspace: VideoWorkspace,
     session: SessionDependency,
 ) -> FileResponse:
@@ -963,13 +952,10 @@ def artifact(
     record = session.get(EditingArtifactRecord, str(artifact_id))
     if not record or record.task_id != row.id or not artifact_visible(row, record):
         raise ApiError(404, "EDITING_ARTIFACT_NOT_FOUND", "未找到已校验的剪辑产物。")
-    path = Path(record.path)
-    if (
-        not path.is_file()
-        or path.stat().st_size != record.bytes
-        or sha256(path) != record.sha256
-    ):
+    task_root = (request.app.state.settings.video_editing_tasks_dir / row.id).resolve()
+    if not verified_delivery_file(record, task_root):
         raise ApiError(409, "EDITING_ARTIFACT_MISSING", "剪辑产物暂不可用。")
+    path = Path(record.path).resolve()
     return FileResponse(
         path,
         media_type=record.mime,
@@ -977,6 +963,106 @@ def artifact(
         content_disposition_type="inline",
         headers={"Cache-Control": "private, no-store"},
     )
+
+
+@router.post(
+    "/editing-tasks/{task_id}/repair-preview", response_model=EditingTaskResponse
+)
+def repair_preview(
+    task_id: UUID,
+    body: EditingExportConfirmation,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict[str, Any]:
+    require_workspace_write(workspace)
+    settings = enabled(request)
+    row = own_task(session, workspace, str(task_id))
+    own_project(session, workspace, row.project_id)
+    preview_id, preview_sha = str(body.preview_artifact_id), body.preview_sha256
+
+    def same_repair(current: EditingTaskRecord) -> bool:
+        if current.status in {"queued", "running"}:
+            repair = current.checkpoint.get("preview_repair", {})
+        elif current.status in {"awaiting_review", "completed"}:
+            repair = current.checkpoint.get("recovered_preview", {})
+        else:
+            return False
+        return (repair.get("preview_id"), repair.get("preview_sha256")) == (
+            preview_id,
+            preview_sha,
+        )
+
+    if same_repair(row):
+        return response(row, session)
+    if (
+        row.options.get("delivery") != "preview_first"
+        or row.status != "awaiting_review"
+    ):
+        raise ApiError(409, "EDITING_EXPORT_REVIEW_STATE", "当前任务未等待高清确认。")
+    preview = session.get(EditingArtifactRecord, preview_id)
+    if not preview or (preview.task_id, preview.role, preview.sha256) != (
+        row.id,
+        "preview",
+        preview_sha,
+    ):
+        raise ApiError(409, "EDITING_PREVIEW_CHANGED", "预览版本已更新，请刷新后查看。")
+    task_root = (settings.video_editing_tasks_dir / row.id).resolve()
+    master = session.scalar(
+        select(EditingArtifactRecord).where(
+            EditingArtifactRecord.task_id == row.id,
+            EditingArtifactRecord.role == "staged_final",
+        )
+    )
+    if (
+        not master
+        or preview.validation.get("decoded") is not True
+        or preview.validation.get("native_render_sha256") != master.sha256
+        or master.validation.get("sha256") != master.sha256
+        or master.validation.get("decoded") is not True
+        or not verified_delivery_file(master, task_root)
+    ):
+        raise ApiError(
+            409, "EDITING_EXPORT_CHANGED", "高清母版无法核验，请从原编排重新生成预览。"
+        )
+    if verified_delivery_file(preview, task_root):
+        raise ApiError(
+            409, "EDITING_PREVIEW_INTACT", "当前代理文件可用，请重新打开播放器。"
+        )
+    updated = session.execute(
+        update(EditingTaskRecord)
+        .where(
+            EditingTaskRecord.id == row.id,
+            EditingTaskRecord.status == "awaiting_review",
+            EditingTaskRecord.revision == row.revision,
+            EditingTaskRecord.cancel_requested.is_(False),
+        )
+        .values(
+            status="queued",
+            stage="queued",
+            revision=EditingTaskRecord.revision + 1,
+            checkpoint={
+                **row.checkpoint,
+                "dispatch_not_before": 0,
+                "preview_repair": {
+                    "preview_id": preview_id,
+                    "preview_sha256": preview_sha,
+                    "master_id": master.id,
+                    "master_sha256": master.sha256,
+                },
+            },
+        )
+    )
+    if not cast(CursorResult, updated).rowcount:
+        session.rollback()
+        current = own_task(session, workspace, str(task_id))
+        if same_repair(current):
+            return response(current, session)
+        raise ApiError(409, "EDITING_PREVIEW_CHANGED", "预览状态已更新，请刷新后查看。")
+    session.commit()
+    session.refresh(row)
+    dispatch(request, row.id)
+    return response(row, session)
 
 
 @router.post(

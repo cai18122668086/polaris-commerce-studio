@@ -508,13 +508,18 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
                     bytes=path.stat().st_size,
                     sha256=sha256(path),
                     duration_ms=2000,
-                    validation={"decoded": True, "native_render_sha256": final_sha},
+                    validation={
+                        "decoded": True,
+                        "sha256": sha256(path),
+                        "native_render_sha256": final_sha,
+                    },
                 )
             )
         session.commit()
     task_url = url + "/" + tid
     works_url = base(ws) + "/editing-works"
     confirm_url = task_url + "/confirm-export"
+    repair_url = task_url + "/repair-preview"
     review_url = task_url + "/review"
     artifact_url = task_url + "/artifacts/"
     body = {"preview_artifact_id": preview_id, "preview_sha256": preview_sha}
@@ -538,6 +543,19 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
     assert client.get(artifact_url + final_id).status_code == 404
     assert client.get(artifact_url + preview_id).content == preview.read_bytes()
     assert (
+        client.post(repair_url, json=body).json()["error"]["code"]
+        == "EDITING_PREVIEW_INTACT"
+    )
+    unscoped = tmp_path / "other-task.mp4"
+    unscoped.write_bytes(preview.read_bytes())
+    with client.app.state.session_factory() as session:
+        session.get(EditingArtifactRecord, preview_id).path = str(unscoped)
+        session.commit()
+    assert client.get(artifact_url + preview_id).status_code == 409
+    with client.app.state.session_factory() as session:
+        session.get(EditingArtifactRecord, preview_id).path = str(preview)
+        session.commit()
+    assert (
         client.post(confirm_url, json={**body, "preview_sha256": "0" * 64}).status_code
         == 409
     )
@@ -548,6 +566,10 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
     assert client.post(confirm_url, json=body).status_code in {403, 404}
     auth.identity = identity
     master.write_bytes(b"X" * master.stat().st_size)
+    assert (
+        client.post(repair_url, json=body).json()["error"]["code"]
+        == "EDITING_EXPORT_CHANGED"
+    )
     assert (
         client.post(confirm_url, json=body).json()["error"]["code"]
         == "EDITING_EXPORT_CHANGED"

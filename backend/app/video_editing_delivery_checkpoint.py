@@ -11,6 +11,7 @@ from typing import Any
 from .motion_library import read_json, sha256
 from .video_editing_audio_verification import AUDIO_VALIDATION_VERSION
 from .video_editing_native_frame_clock import CLOCK_RECEIPTS
+from .video_editing_task_models import EditingArtifactRecord
 
 _VERSION = "tengli.editing-delivery/1"
 _PATHS = {
@@ -104,6 +105,19 @@ class DeliveryFile:
 
 def delivery_file(path: Path) -> DeliveryFile:
     return DeliveryFile(path, sha256(path), path.stat().st_size)
+
+
+def verified_delivery_file(record: EditingArtifactRecord, task_root: Path) -> bool:
+    try:
+        path = Path(record.path).resolve()
+        return (
+            path.is_relative_to(task_root)
+            and path.is_file()
+            and path.stat().st_size == record.bytes
+            and sha256(path) == record.sha256
+        )
+    except (OSError, ValueError, RuntimeError):
+        return False
 
 
 def checkpoint_for(

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .motion_library import MOTION_SHA256, sha256
+from .video_editing_delivery_checkpoint import verified_delivery_file
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingSourceRecord,
@@ -56,6 +57,25 @@ def preview_base_attempt(
             or sha256(path) != preview.sha256
         ):
             return None
+        if repaired := parent.checkpoint.get("recovered_preview"):
+            master = session.get(EditingArtifactRecord, repaired["master_id"])
+            if (
+                not master
+                or master.task_id != parent.id
+                or master.role not in {"staged_final", "final"}
+                or master.sha256 != preview.validation.get("native_render_sha256")
+                or master.validation.get("decoded") is not True
+                or not verified_delivery_file(master, task_root)
+            ):
+                return None
+            master_path = Path(master.path).resolve()
+            attempt = master_path.parent.parent
+            if (
+                attempt.parent != task_root
+                or not re.fullmatch(r"[0-9a-f]{8}", attempt.name)
+                or master_path != attempt / "outputs/episode.mp4"
+            ):
+                return None
         return attempt
-    except (OSError, ValueError):
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError):
         return None

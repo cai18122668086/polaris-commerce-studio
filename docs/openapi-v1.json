@@ -22274,6 +22274,73 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/repair-preview": {
+      "post": {
+        "operationId": "repair_preview_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__repair_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingExportConfirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Repair Preview",
+        "tags": [
+          "video-editing-tasks"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/retry": {
       "post": {
         "operationId": "retry_task_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__retry_post",

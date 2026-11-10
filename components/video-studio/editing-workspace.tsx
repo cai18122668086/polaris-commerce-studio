@@ -30,6 +30,7 @@ const errorLabel: Record<string, string> = {
   EDITING_HYPIT_INTERNAL_ONLY: "Hypit 原生出片仅在已配置的内部联调工作区开放。",
   EDITING_HYPIT_RUNTIME_UNAVAILABLE: "原 Hypit 运行环境未通过预检，请在环境恢复后重试。",
   EDITING_TASK_STORAGE_UNAVAILABLE: "剪辑服务暂时无法写入工作目录。请在存储恢复后重试此任务。",
+  EDITING_PREVIEW_REPAIR_MASTER_CHANGED: "恢复代理时无法核验高清母版。请从原编排重新生成预览。",
   EDITING_SOURCE_AUDIO_HEAD_REVIEW_REQUIRED: "画面开始前已有可听的原声，暂时无法安全接入。请核对原片开头的音画。",
   EDITING_MEASURE_SOURCE_AUDIO_CLOCK_FAILED: "无法读取原片口播的实际起点，请检查原片或联系管理员。",
   EDITING_SOUND_OUTPUT_INVALID: "成片声音与原始口播或已选音效、背景乐不一致。请重试剪辑后复核。",
@@ -53,6 +54,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [previewFailures, setPreviewFailures] = useState<string[]>([]);
   const focusedTaskId = useSyncExternalStore(subscribeToHash, readTaskHash, () => undefined);
   const [taskLinkError, setTaskLinkError] = useState<TaskLinkError>();
   const revealedTaskId = useRef<string | undefined>(undefined);
@@ -164,15 +166,22 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     } catch { setError("操作暂未确认，请刷新任务后重试。"); }
     finally { setBusy(false); }
   };
-  const confirmExport = async (task: EditingTask, preview: components["schemas"]["EditingArtifactResponse"]) => {
+  const markPreviewFailure = (id: string) => setPreviewFailures(ids => ids.includes(id) ? ids : [...ids, id]);
+  const previewAction = async (task: EditingTask, preview: components["schemas"]["EditingArtifactResponse"], action: "confirm" | "repair") => {
     setBusy(true); setError("");
     try {
-      unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/confirm-export`, {
+      const endpoint = action === "repair"
+        ? `${root}/editing-tasks/{task_id}/repair-preview` as const
+        : `${root}/editing-tasks/{task_id}/confirm-export` as const;
+      unwrapApiResponse(await apiClient.POST(endpoint, {
         ...options(), params: { path: { workspace_id: workspaceId, task_id: task.id } },
         body: { preview_artifact_id: preview.id, preview_sha256: preview.sha256 },
       }));
       applyTasks(await reload());
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "高清确认暂未完成，请刷新后重试。"); }
+    } catch (caught) {
+      if (action === "confirm" && caught instanceof ApiError && caught.code === "EDITING_EXPORT_CHANGED") markPreviewFailure(preview.id);
+      setError(caught instanceof Error ? caught.message : "代理操作暂未完成，请刷新后重试。");
+    }
     finally { setBusy(false); }
   };
   const canSubmit = saved && selected && subtitles !== "unknown" && (selected !== "upload" || file);
@@ -262,10 +271,11 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           planId, taskId: task.id, kind: "layout_failure", preview: parent, edits: task.options.native_edits, layoutFindings: task.layout_findings,
         })}>调整出错片段</button>}
         {task.status === "awaiting_review" && preview && <>
-          <video id={`editing-preview-${task.id}`} controls playsInline preload="none" src={preview.url} aria-label="剪辑代理预览" />
+          <video key={preview.id} id={`editing-preview-${task.id}`} controls playsInline preload="none" src={preview.url} aria-label="剪辑代理预览" onError={() => markPreviewFailure(preview.id)} />
           <p className={styles.note}>代理使用较小画幅，保留本版编排和音轨。</p>
           {audioReceipt && <EditingSoundReview key={`sound:${preview.id}:${audioReceipt.id}`} workspaceId={workspaceId} receipt={audioReceipt} media={preview} playerId={`editing-preview-${task.id}`} />}
-          <button type="button" disabled={busy} onClick={() => void confirmExport(task, preview)}>确认并开放高清下载</button>
+          {previewFailures.includes(preview.id) && <button type="button" disabled={busy} onClick={() => void previewAction(task, preview, "repair")}>检查并恢复代理预览</button>}
+          <button type="button" disabled={busy} onClick={() => void previewAction(task, preview, "confirm")}>确认并开放高清下载</button>
         </>}
         {preview && (task.status === "awaiting_review" || task.status === "completed") && planId && <button type="button" disabled={busy} onClick={() => revise({
           planId, taskId: task.id, kind: "preview", preview: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 }, edits: task.options.native_edits,

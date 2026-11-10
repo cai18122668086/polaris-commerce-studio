@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
@@ -35,6 +35,7 @@ from .video_editing_delivery_checkpoint import (
     compiled_digest,
     delivery_file,
     restore_delivery,
+    verified_delivery_file,
 )
 from .video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
 from .video_editing_image_edits import apply_image_edits, resolve_image_edits
@@ -599,6 +600,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         *,
         status: str,
         ready_stage: str,
+        replace_preview: bool = False,
     ) -> None:
         guard(True)
         with factory() as session:
@@ -622,6 +624,29 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             )
             if not cast(CursorResult, fenced).rowcount:
                 raise EditingFailure("EDITING_LEASE_LOST")
+            if replace_preview:
+                task = session.get(EditingTaskRecord, task_id)
+                assert task is not None
+                checkpoint = dict(task.checkpoint)
+                checkpoint["recovered_preview"] = checkpoint.pop("preview_repair")
+                validated = checkpoint.get("validated_delivery")
+                if isinstance(validated, dict) and isinstance(
+                    validated.get("files"), dict
+                ):
+                    replacements = checkpoint_for(
+                        root.parent, validated["plan_sha256"], files
+                    )["files"]
+                    checkpoint["validated_delivery"] = {
+                        **validated,
+                        "files": {**validated["files"], **replacements},
+                    }
+                task.checkpoint = checkpoint
+                session.execute(
+                    delete(EditingArtifactRecord).where(
+                        EditingArtifactRecord.task_id == task_id,
+                        EditingArtifactRecord.role.in_(("preview", "preview_receipt")),
+                    )
+                )
             for role, file in files.items():
                 media = media_validation.get(role, {})
                 session.add(
@@ -653,6 +678,47 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             raise EditingFailure("EDITING_TASK_STORAGE_UNAVAILABLE") from error
         if not settings.video_editing_enabled:
             raise EditingFailure("EDITING_DISABLED")
+        if repair := snapshot["checkpoint"].get("preview_repair"):
+            with factory() as session:
+                master = session.get(EditingArtifactRecord, repair["master_id"])
+                proxy = session.get(EditingArtifactRecord, repair["preview_id"])
+                if (
+                    snapshot["options"].get("delivery") != "preview_first"
+                    or not master
+                    or (master.task_id, master.role, master.sha256)
+                    != (task_id, "staged_final", repair["master_sha256"])
+                    or master.validation.get("sha256") != master.sha256
+                    or master.validation.get("decoded") is not True
+                    or not proxy
+                    or (proxy.task_id, proxy.role, proxy.sha256)
+                    != (task_id, "preview", repair["preview_sha256"])
+                    or proxy.validation.get("native_render_sha256") != master.sha256
+                ):
+                    raise EditingFailure("EDITING_PREVIEW_REPAIR_MASTER_CHANGED")
+            if not verified_delivery_file(master, root.parent):
+                raise EditingFailure("EDITING_PREVIEW_REPAIR_MASTER_CHANGED")
+            stage("building_preview", reused_delivery=["staged_final"])
+            (root / "outputs").mkdir(exist_ok=True)
+            preview, receipt = build_preview(
+                Path(master.path).resolve(), root, master.validation, settings, guard
+            )
+            files = {
+                "preview": delivery_file(preview),
+                "preview_receipt": delivery_file(root / "preview-validation.json"),
+            }
+            if files["preview"].sha256 != receipt["sha256"]:
+                raise EditingFailure("EDITING_PREVIEW_ARTIFACT_CHANGED")
+            if not verified_delivery_file(master, root.parent):
+                raise EditingFailure("EDITING_PREVIEW_REPAIR_MASTER_CHANGED")
+            stage("storing")
+            publish(
+                files,
+                {"preview": receipt},
+                status="awaiting_review",
+                ready_stage="preview_ready",
+                replace_preview=True,
+            )
+            return
         correction = snapshot["correction"]
         if snapshot["options"].get("transcript_revision_id") and not correction:
             raise EditingFailure("EDITING_TRANSCRIPT_REVISION_NOT_FOUND")

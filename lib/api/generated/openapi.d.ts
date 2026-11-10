@@ -6039,6 +6039,7 @@ export interface components {
             native_edits?: components["schemas"]["NativeRenderEdits"] | null;
             /** Native Plan Id */
             native_plan_id?: string | null;
+            preview_base?: components["schemas"]["EditingPreviewBase"] | null;
             /**
              * Source Subtitles
              * @default unknown
@@ -6230,6 +6231,21 @@ export interface components {
             text_status: string | null;
             /** Unavailable Template Group Ids */
             unavailable_template_group_ids?: string[] | null;
+        };
+        /** EditingPreviewBase */
+        EditingPreviewBase: {
+            /**
+             * Preview Artifact Id
+             * Format: uuid
+             */
+            preview_artifact_id: string;
+            /** Preview Sha256 */
+            preview_sha256: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
         };
         /** EditingSourceOrigin */
         EditingSourceOrigin: {
@@ -13917,7 +13933,9 @@ export interface operations {
     };
     list_native_plans_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans_get: {
         parameters: {
-            query?: never;
+            query?: {
+                include_plan_id?: string | null;
+            };
             header?: never;
             path: {
                 project_id: string;

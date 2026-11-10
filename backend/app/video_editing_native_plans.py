@@ -91,6 +91,15 @@ def original_scene_groups(settings: Settings) -> set[str]:
     return {group["id"] for group in catalog["groups"] if group.get("kind") == "visual"}
 
 
+def _saved_template(template_id: str | None) -> dict | None:
+    if template_id:
+        try:
+            return overlay_template(template_id)
+        except ValueError:
+            pass
+    return None
+
+
 def plan_response(
     row: EditingNativePlanRecord, settings: Settings, transparent_groups: set[str]
 ) -> dict[str, Any]:
@@ -101,6 +110,11 @@ def plan_response(
     warnings = row.semantic.get("warnings", [])
     if needs_chart:
         warnings = [*warnings, FLOW_CHART_WARNING]
+    template_id = row.recipes.get("overlay_template_id")
+    template = _saved_template(template_id)
+    template_unavailable = bool(template_id and template is None)
+    if template_unavailable:
+        warnings = [*warnings, f"原编排使用的模板 {template_id} 在当前版本不可用。"]
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -155,10 +169,9 @@ def plan_response(
             )
         )
         >= MIN_OVERLAY_TYPES,
-        "overlay_template": overlay_template(row.recipes["overlay_template_id"])
-        if row.recipes.get("overlay_template_id")
-        else None,
+        "overlay_template": template,
         "render_available": settings.video_editing_native_plan_enabled
+        and not template_unavailable
         and not needs_chart
         and (
             not requires_hypit(row.semantic)
@@ -551,6 +564,11 @@ def admit_render_plan(
         raise ApiError(404, "EDITING_NATIVE_PLAN_NOT_FOUND", "未找到此原片的动效编排。")
     if requires_flow_chart(row.semantic, row.recipes):
         raise ApiError(409, "EDITING_HYPIT_FLOW_CHART_REQUIRED", FLOW_CHART_WARNING)
+    template_id = row.recipes.get("overlay_template_id")
+    if template_id and _saved_template(template_id) is None:
+        raise ApiError(
+            409, "EDITING_TEMPLATE_CHANGED", "原编排使用的模板在当前版本不可用。"
+        )
     if requires_hypit(row.semantic) and not internal_hypit_available(
         settings, source.workspace_id
     ):

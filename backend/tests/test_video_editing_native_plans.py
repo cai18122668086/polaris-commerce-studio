@@ -14,12 +14,68 @@ from app.motion_library import atomic_json, sha256
 from app.video_editing_catalog import choice_snapshot_hash
 from app.video_editing_contracts import EditingOptions
 from app.video_editing_native_plans import register_operator_plan
-from app.video_editing_task_models import EditingTaskRecord
+from app.video_editing_preview_base import preview_base_attempt
+from app.video_editing_task_models import (
+    EditingArtifactRecord,
+    EditingSourceRecord,
+    EditingTaskRecord,
+)
 from app.video_editing_worker import load_plan_transcript
 from tests.test_video_editing_transcript_revisions import completed_transcript
 from tests.test_video_projects import base
 
 pytest_plugins = ["tests.test_video_projects"]
+
+
+def test_preview_base_is_bound_to_the_exact_artifact_source_and_plan(video, tmp_path):
+    client, _, _, settings, source_id, parent, _, _ = completed_transcript(
+        video, tmp_path
+    )
+    plan_id, artifact_id = str(uuid4()), str(uuid4())
+    root = (settings.video_editing_tasks_dir / parent["id"] / "ab12cd34").resolve()
+    preview = root / "outputs/preview.mp4"
+    preview.parent.mkdir(parents=True)
+    preview.write_bytes(b"fixture for preview identity")
+    base = {
+        "task_id": parent["id"],
+        "preview_artifact_id": artifact_id,
+        "preview_sha256": sha256(preview),
+    }
+    options = {"preview_base": base, "native_plan_id": plan_id}
+    with client.app.state.session_factory() as session:
+        source = session.get(EditingSourceRecord, source_id)
+        task = session.get(EditingTaskRecord, parent["id"])
+        task.options = {
+            **task.options,
+            "native_plan_id": plan_id,
+            "delivery": "preview_first",
+        }
+        session.add(
+            EditingArtifactRecord(
+                id=artifact_id,
+                task_id=task.id,
+                role="preview",
+                path=str(preview),
+                mime="video/mp4",
+                sha256=base["preview_sha256"],
+                bytes=preview.stat().st_size,
+                validation={"decoded": True},
+            )
+        )
+        session.commit()
+        assert preview_base_attempt(session, settings, source, options) == root
+        assert (
+            preview_base_attempt(
+                session, settings, source, {**options, "native_plan_id": str(uuid4())}
+            )
+            is None
+        )
+        owner = source.owner_user_id
+        source.owner_user_id = "foreign-owner"
+        assert preview_base_attempt(session, settings, source, options) is None
+        source.owner_user_id = owner
+        preview.write_bytes(b"X" * preview.stat().st_size)
+        assert preview_base_attempt(session, settings, source, options) is None
 
 
 def saved_plan(video, tmp_path, monkeypatch):
@@ -32,8 +88,6 @@ def saved_plan(video, tmp_path, monkeypatch):
     root, package, prepared, transcript, semantic, recipe, _, _ = protocol(
         tmp_path / "protocol"
     )
-    from app.video_editing_task_models import EditingArtifactRecord, EditingSourceRecord
-
     with client.app.state.session_factory() as session:
         src = session.get(EditingSourceRecord, source)
         transcript.source_sha256 = src.media_sha256
@@ -195,7 +249,8 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
 
     with client.app.state.session_factory() as session:
         row = session.get(EditingNativePlanRecord, plan_id)
-        data = {**row.choice_snapshot, "notes": [{"changed": True}]}
+        original_choices = row.choice_snapshot
+        data = {**original_choices, "notes": [{"changed": True}]}
         row.choice_snapshot = {**data, "sha256": choice_snapshot_hash(data)}
         session.commit()
     assert (
@@ -203,6 +258,27 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
             "code"
         ]
         == "EDITING_CHOICES_CHANGED_REPLAN_REQUIRED"
+    )
+    with client.app.state.session_factory() as session:
+        row = session.get(EditingNativePlanRecord, plan_id)
+        row.choice_snapshot = original_choices
+        row.recipes = {**row.recipes, "overlay_template_id": "retired-combination-v1"}
+        session.commit()
+    view = (
+        client.get(
+            base(ws) + f"/projects/{pid}/editing-native-plans",
+            params={"include_plan_id": plan_id},
+        )
+        .raise_for_status()
+        .json()[0]
+    )
+    assert view["id"] == plan_id and not view["render_available"]
+    assert any("retired-combination-v1" in text for text in view["warnings"])
+    assert (
+        client.post(url, json={**body, "request_id": str(uuid4())}).json()["error"][
+            "code"
+        ]
+        == "EDITING_TEMPLATE_CHANGED"
     )
 
 

@@ -5762,6 +5762,16 @@
             ],
             "title": "Native Plan Id"
           },
+          "preview_base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingPreviewBase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source_subtitles": {
             "default": "unknown",
             "enum": [
@@ -6390,6 +6400,33 @@
           "artifacts"
         ],
         "title": "EditingPlanningTaskResponse",
+        "type": "object"
+      },
+      "EditingPreviewBase": {
+        "additionalProperties": false,
+        "properties": {
+          "preview_artifact_id": {
+            "format": "uuid",
+            "title": "Preview Artifact Id",
+            "type": "string"
+          },
+          "preview_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Preview Sha256",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preview_artifact_id",
+          "preview_sha256",
+          "task_id"
+        ],
+        "title": "EditingPreviewBase",
         "type": "object"
       },
       "EditingSourceOrigin": {
@@ -22760,6 +22797,23 @@
             "schema": {
               "title": "Workspace Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_plan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Include Plan Id"
             }
           }
         ],

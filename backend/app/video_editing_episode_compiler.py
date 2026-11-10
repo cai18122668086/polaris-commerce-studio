@@ -1084,6 +1084,11 @@ def compile_episode(
             else {}
         ),
         **(
+            {"preview_base": options["preview_base"]}
+            if options.get("preview_base")
+            else {}
+        ),
+        **(
             {
                 **({"applied_highlight_edits": highlights} if highlights else {}),
                 **(

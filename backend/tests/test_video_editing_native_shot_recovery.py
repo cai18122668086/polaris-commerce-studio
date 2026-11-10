@@ -4,6 +4,7 @@ import pytest
 
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_native_shot_recovery import (
+    _earlier_preview,
     _matches_shot_clock,
     _request_sha,
     _restore_shot,
@@ -17,6 +18,31 @@ def test_native_shot_clock_must_fit_episode() -> None:
     assert _matches_shot_clock(receipt, 3.015, 30)
     assert not _matches_shot_clock(receipt, 3.1, 30)
     assert not _matches_shot_clock({}, 3, 30)
+
+
+def test_earlier_preview_requires_same_binding_and_renderer_identity(tmp_path):
+    root = (tmp_path / "tasks/child/11111111").resolve()
+    previous = (tmp_path / "tasks/parent/22222222").resolve()
+    marker = {
+        "version": "tengli.native-shots/1",
+        "compiled_sha256": "new-episode",
+        "python": "version",
+        "adapter_sources": ["adapters"],
+        "preview_reuse_identity": "bindings-and-tools",
+    }
+    earlier = {"preview_base_attempt": str(previous)}
+    atomic_json(
+        previous / "native-shot-resume.json",
+        {**marker, "compiled_sha256": "older-episode"},
+    )
+    assert _earlier_preview(root, earlier, marker) == previous
+    assert (
+        _earlier_preview(
+            root, earlier, {**marker, "preview_reuse_identity": "other-bindings"}
+        )
+        is None
+    )
+    assert _earlier_preview(root, {"preview_base_attempt": str(root)}, marker) is None
 
 
 def test_hypit_receipt_requires_measured_clock_and_strict_decode(tmp_path, monkeypatch):

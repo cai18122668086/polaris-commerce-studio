@@ -7,7 +7,7 @@ import type { GenerationJob } from "@/features/video-studio/library";
 import type { components } from "@/lib/api/generated/openapi";
 import { TranscriptEditor } from "./transcript-editor";
 import { EditingLibrary } from "./editing-library";
-import { EditingNativePlans } from "./editing-native-plans";
+import { EditingNativePlans, type PreviewBaseSelection } from "./editing-native-plans";
 import { EditingPlanning } from "./editing-planning";
 import styles from "./editing-workspace.module.css";
 
@@ -29,6 +29,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [libraryOpened, setLibraryOpened] = useState(false);
   const [planningOpened, setPlanningOpened] = useState(false);
   const [plansVersion, setPlansVersion] = useState(0);
+  const [previewBase, setPreviewBase] = useState<PreviewBaseSelection>();
   const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
@@ -98,7 +99,9 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     <button type="button" onClick={() => void submit()} disabled={busy || !saved || !selected || subtitles === "unknown" || (selected === "upload" && !file)}>{busy ? "正在处理…" : "开始剪辑"}</button>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
-    {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion} onCreated={async () => { setTasks(await reload()); }} />}
+    {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion}
+      previewBase={previewBase} onClearPreviewBase={() => setPreviewBase(undefined)}
+      onCreated={async () => { setTasks(await reload()); }} />}
     {saved && <details onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} onNativePlan={() => setPlansVersion(value => value + 1)} onPreview={previews => {
       const ids = previews.map(task => task.id);
       setTasks(rows => [...previews, ...rows.filter(row => !ids.includes(row.id))]);
@@ -112,7 +115,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
       const audioReceipt = task.artifacts.find(a => a.role === "audio_receipt");
       const sourceReceipt = task.artifacts.find(a => a.role === "source_receipt");
       const layoutReceipt = task.artifacts.find(a => a.role === "layout_receipt");
-      const editReceipt = task.options.native_edits && task.artifacts.find(a => a.role === "compile_receipt");
+      const editReceipt = (task.options.native_edits || task.options.preview_base) && task.artifacts.find(a => a.role === "compile_receipt");
+      const parent = task.options.preview_base;
       return <article key={task.id} id={`editing-task-${task.id}`}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
           原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>
@@ -121,6 +125,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         </p>}
         {sourceReceipt && <a href={sourceReceipt.url} download>下载原片与配音核对记录</a>}
         {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}
+        {parent && <p className={styles.note}>基于预览 <a href={`#editing-task-${parent.task_id}`}>{parent.task_id.slice(0, 8)}</a></p>}
         {task.options.native_edits && <p className={styles.note}>
           本次设置 · {task.options.native_edits.music === "off" ? "关闭背景音乐。" : task.options.native_edits.music === "lower" ? "背景音乐降低 6 dB。" : ""}
           {!!task.options.native_edits.highlight_edits?.length && ("已调整 " + task.options.native_edits.highlight_edits.length + " 个动效词槽。")}
@@ -131,9 +136,15 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {task.status === "failed" && <p role="alert">{errorLabel[task.error_code || ""] || "本次剪辑未完成，可以重试；已完成的配音不会重新生成。"}</p>}
         {task.status === "awaiting_review" && preview && <>
           <video id={`editing-preview-${task.id}`} controls preload="metadata" src={preview.url} aria-label="剪辑代理预览" />
-          <p className={styles.note}>代理使用较小画幅，保留原编排和音轨。需要修改时可回到候选重新生成预览。</p>
+          <p className={styles.note}>代理使用较小画幅，保留本版编排和音轨。</p>
           <button type="button" disabled={busy} onClick={() => void confirmExport(task, preview)}>确认并开放高清下载</button>
         </>}
+        {preview && (task.status === "awaiting_review" || task.status === "completed") && task.options.native_plan_id && <button type="button" disabled={busy} onClick={() => {
+          const planId = task.options.native_plan_id;
+          if (!planId) return;
+          setPreviewBase({ planId, preview: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 }, edits: task.options.native_edits });
+          (document.getElementById(`editing-native-plan-${planId}`) ?? document.getElementById("editing-native-plans"))?.scrollIntoView({ block: "start" });
+        }}>沿用此版继续调整</button>}
         {final && <><video id={`editing-film-${task.id}`} controls preload="metadata" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
           {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
           {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查，听感待验收。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}

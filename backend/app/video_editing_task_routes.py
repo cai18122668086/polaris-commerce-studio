@@ -34,6 +34,7 @@ from .video_editing_contracts import (
     EditingWorksResponse,
 )
 from .video_editing_native_plans import admit_render_plan
+from .video_editing_preview_base import preview_base_attempt
 from .video_editing_source_lineage import freeze_generation_source, source_origin
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -523,6 +524,15 @@ def submit_editing_task(
             session.get(EditingNativePlanRecord, str(body.options.native_plan_id)),
             source,
             body.options,
+        )
+    if (
+        body.options.preview_base
+        and preview_base_attempt(session, settings, source, payload["options"]) is None
+    ):
+        raise ApiError(
+            409,
+            "EDITING_PREVIEW_BASE_INVALID",
+            "上版预览与本次原片或编排不一致，或文件已变化，请重新读取预览。",
         )
     if body.options.transcript_revision_id:
         if not settings.video_editing_alignment_enabled:

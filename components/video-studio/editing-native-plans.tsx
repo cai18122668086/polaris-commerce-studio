@@ -13,11 +13,13 @@ type Highlight = components["schemas"]["NativeHighlightEdit"];
 type HighlightTarget = components["schemas"]["EditingHighlightTarget"];
 type ImageEdit = components["schemas"]["NativeImageEdit"];
 type Controls = { music: "keep" | "lower" | "off"; segments: string[]; highlights: Highlight[]; images: ImageEdit[] };
+export type PreviewBaseSelection = { planId: string; preview: components["schemas"]["EditingPreviewBase"]; edits?: NativeEdits | null };
 const defaultControls: Controls = { music: "keep", segments: [], highlights: [], images: [] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
-export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion }: {
+export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion, previewBase, onClearPreviewBase }: {
   workspaceId: string; projectId: string; onCreated: () => Promise<void>; plansVersion: number;
+  previewBase?: PreviewBaseSelection; onClearPreviewBase: () => void;
 }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [busy, setBusy] = useState("");
@@ -28,16 +30,17 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
   const [loadingHighlights, setLoadingHighlights] = useState<string[]>([]);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const live = useRef(true);
+  const selectedPlan = previewBase?.planId;
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => {
     const controller = new AbortController();
     void apiClient.GET(`${root}/projects/{project_id}/editing-native-plans`, {
-      params: { path: { workspace_id: workspaceId, project_id: projectId } },
+      params: { path: { workspace_id: workspaceId, project_id: projectId }, query: { include_plan_id: selectedPlan } },
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]),
     }).then(result => { if (!controller.signal.aborted) { setPlans(unwrapApiResponse(result)); setError(""); } })
       .catch(() => { if (!controller.signal.aborted) setError("暂时无法读取动效编排，请重试。"); });
     return () => controller.abort();
-  }, [workspaceId, projectId, reload, plansVersion]);
+  }, [workspaceId, projectId, reload, plansVersion, selectedPlan]);
   const loadHighlights = async (plan: Plan) => {
     if (!plan.highlight_edit_available || highlightTargets[plan.id] || loadingHighlights.includes(plan.id)) return;
     setLoadingHighlights(previous => [...previous, plan.id]);
@@ -53,7 +56,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       if (live.current) setLoadingHighlights(previous => previous.filter(id => id !== plan.id));
     }
   };
-  const render = async (plan: Plan, selected: Controls) => {
+  const render = async (plan: Plan, selected: Controls, earlier?: PreviewBaseSelection) => {
     setBusy(plan.id); setError("");
     try {
       const segments = selected.segments.slice().sort();
@@ -69,14 +72,14 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
           ...(images.length ? { image_edits: images } : {}),
         }
         : undefined;
-      const key = JSON.stringify([plan.id, edits]);
+      const key = JSON.stringify([plan.id, edits, earlier?.preview]);
       if (intent.current?.key !== key) intent.current = { key, id: crypto.randomUUID() };
       unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks`, {
         params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000),
         body: { request_id: intent.current.id, source_id: plan.source_id, options: {
           mode: "native_plan", native_plan_id: plan.id, language: "zh",
           source_subtitles: plan.source_subtitles, caption_font_id: "font-d1961be1161ea1be",
-          native_edits: edits, delivery: "preview_first",
+          native_edits: edits, delivery: "preview_first", preview_base: earlier?.preview,
         } },
       }));
       intent.current = undefined;
@@ -84,14 +87,22 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
     } catch (caught) { if (live.current) setError(caught instanceof Error ? caught.message : "出片请求暂未确认，再次点击会查询同一请求。"); }
     finally { if (live.current) setBusy(""); }
   };
-  return <section aria-label="动效编排候选">
+  return <section id="editing-native-plans" aria-label="动效编排候选">
     <b>已有动效编排候选</b>
     <p className={styles.note}>每份候选绑定原片、逐词转录和选组版本。先看代理预览，再确认并下载对应的高清文件。</p>
     {plans.length === 0 && !error && <p>当前项目还没有保存的编排。</p>}
     {plans.map(plan => {
-      const selected = controls[plan.id] || defaultControls;
+      const earlier = previewBase?.planId === plan.id ? previewBase : undefined;
+      const key = earlier ? `${plan.id}/${earlier.preview.task_id}` : plan.id;
+      const initial = earlier?.edits ? {
+        music: earlier.edits.music ?? "keep",
+        segments: earlier.edits.source_only_beat_ids ?? [],
+        highlights: earlier.edits.highlight_edits ?? [],
+        images: earlier.edits.image_edits ?? [],
+      } satisfies Controls : defaultControls;
+      const selected = controls[key] || initial;
       const change = (update: Partial<Controls>) => setControls(current => ({
-        ...current, [plan.id]: { ...(current[plan.id] || defaultControls), ...update },
+        ...current, [key]: { ...(current[key] || initial), ...update },
       }));
       const editable = plan.beats.filter(beat => beat.source_only_available);
       const activeEffects = plan.beats.filter(beat => beat.group_id !== "Z-M00" && !selected.segments.includes(beat.id));
@@ -99,11 +110,15 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       const available = plan.render_available && plan.continuous_preview_available;
       return <article key={plan.id} id={`editing-native-plan-${plan.id}`}>
       <b>{plan.audience_question}</b>
+      {earlier && <p className={styles.note}>
+        继续调整预览 <a href={`#editing-task-${earlier.preview.task_id}`}>{earlier.preview.task_id.slice(0, 8)}</a>
+        {" "}<button type="button" disabled={!!busy} onClick={onClearPreviewBase}>退出上版调整</button>
+      </p>}
       {plan.overlay_template && <p className={styles.note}>组合模板 · {plan.overlay_template.name}</p>}
       <p>{plan.origin === "operator_candidate" ? "人工工程候选 · 未经人工验收" : "腾力模型候选 · 待核对"}</p>
       <ul>{plan.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.text}<br />{beat.reason}{beat.question_gloss && <p className={styles.note}>问号英文释义 · {beat.question_gloss} · 待核对</p>}</li>)}</ul>
       {(plan.warnings.length > 0 || plan.missing_materials.length > 0) && <p>{[...plan.warnings, ...plan.missing_materials].join("；")}</p>}
-      {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available) && <details>
+      {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available) && <details key={key} open={earlier ? true : undefined}>
         <summary>调整本次出片</summary>
         <p className={styles.note}>调整随这次出片保存。勾选保留原景的段落仍显示主字幕，该段动效和绑定音效会关闭。</p>
         {plan.music_edit_available && <label>本次背景音乐
@@ -153,7 +168,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       </details>}
       {available ? <>
         <p className={styles.note}>本次使用 {activeGroups.size} 种动效，共出现 {activeEffects.length} 次。{activeGroups.size < 5 && "请保留至少五种不同动效。"}</p>
-        <button type="button" onClick={() => void render(plan, selected)} disabled={!!busy || activeGroups.size < 5}>{busy === plan.id ? "正在提交…" : "生成代理预览"}</button>
+        <button type="button" onClick={() => void render(plan, selected, earlier)} disabled={!!busy || activeGroups.size < 5}>{busy === plan.id ? "正在提交…" : earlier ? "生成新版代理预览" : "生成代理预览"}</button>
       </> : <p className={styles.note}>历史验证候选 · 待适配连续人物底片与组合动效</p>}
     </article>})}
     {error && <p role="alert" className={styles.error}>{error} <button type="button" onClick={() => setReload(n => n + 1)}>重新读取编排</button></p>}

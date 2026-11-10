@@ -87,6 +87,15 @@ class NativeRenderEdits(StrictVideoModel):
         return self
 
 
+class EditingExportConfirmation(StrictVideoModel):
+    preview_artifact_id: UUID
+    preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class EditingPreviewBase(EditingExportConfirmation):
+    task_id: UUID
+
+
 class EditingOptions(StrictVideoModel):
     mode: Literal["subtitles", "native_plan"] = "subtitles"
     language: Literal["zh", "en", "auto"] = "zh"
@@ -101,6 +110,9 @@ class EditingOptions(StrictVideoModel):
     delivery: Literal["preview_first"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    preview_base: EditingPreviewBase | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def matching_plan_mode(self) -> Self:
@@ -112,6 +124,8 @@ class EditingOptions(StrictVideoModel):
             raise ValueError("User edits require a frozen native plan")
         if self.delivery and not self.native_plan_id:
             raise ValueError("Preview confirmation requires a frozen native plan")
+        if self.preview_base and self.delivery != "preview_first":
+            raise ValueError("An earlier preview can only start a new preview")
         return self
 
 
@@ -230,11 +244,6 @@ class EditingWorkResponse(StrictVideoModel):
 class EditingWorksResponse(StrictVideoModel):
     items: list[EditingWorkResponse]
     next_before: str | None
-
-
-class EditingExportConfirmation(StrictVideoModel):
-    preview_artifact_id: UUID
-    preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class EditingSourceOrigin(StrictVideoModel):

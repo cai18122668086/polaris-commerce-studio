@@ -37,6 +37,7 @@ def list_native_plans(
     request: Request,
     workspace: VideoWorkspace,
     session: SessionDependency,
+    include_plan_id: UUID | None = None,
 ) -> list[dict[str, Any]]:
     settings = enabled(request)
     own_project(session, workspace, str(project_id))
@@ -49,7 +50,9 @@ def list_native_plans(
         )
         .order_by(EditingNativePlanRecord.created_at.desc())
         .limit(100)
-    )
+    ).all()
+    if include_plan_id and not any(row.id == str(include_plan_id) for row in rows):
+        rows = [own_native_plan(session, workspace, project_id, include_plan_id), *rows]
     groups = transparent_original_groups(settings)
     return [plan_response(r, settings, groups) for r in rows]
 

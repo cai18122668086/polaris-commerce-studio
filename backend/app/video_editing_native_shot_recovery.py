@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from fractions import Fraction
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -239,22 +240,72 @@ def _verify_hypit_encoding(
     return result
 
 
+def _preview_reuse_identity(root: Path) -> str | None:
+    """Compare source, bindings and renderer dependencies across previews."""
+    try:
+        bindings = read_json(root / "bindings.json")
+        tools = bindings.get("tools", {})
+        binary_digests = {}
+        for name in ("ffmpeg", "ffprobe"):
+            executable = tools.get(name) or shutil.which(name)
+            if not executable:
+                return None
+            binary_digests[name] = sha256(Path(executable))
+        return _request_sha(
+            {
+                "source_sha256": read_json(root / "prepared.json")["source_sha256"],
+                "bindings": normalize_attempt_paths(bindings, root),
+                "tools": binary_digests,
+                "platform": sys.platform,
+                "pillow": version("Pillow"),
+                "numpy": version("numpy"),
+            }
+        )
+    except (*_REJECTED, PackageNotFoundError):
+        return None
+
+
+def _earlier_preview(root: Path, plan: dict, marker: dict) -> Path | None:
+    name = plan.get("preview_base_attempt")
+    if not name or not marker.get("preview_reuse_identity"):
+        return None
+    try:
+        candidate = Path(name)
+        if (
+            candidate != candidate.resolve()
+            or candidate.parent.parent != root.parent.parent
+            or candidate.parent == root.parent
+            or not re.fullmatch(r"[0-9a-f]{8}", candidate.name)
+        ):
+            return None
+        previous = read_json(_file(candidate / "native-shot-resume.json"))
+        keys = ("version", "python", "adapter_sources", "preview_reuse_identity")
+        if all(previous.get(key) == marker[key] for key in keys):
+            return candidate
+    except _REJECTED:
+        pass
+    return None
+
+
 def install_shot_recovery(package: Path, root: Path) -> None:
     plan = root / "native-shot-plan.json"
     if not plan.is_file() or any(
         sha256(package / path) != digest for path, digest in _PINNED.items()
     ):
         return
+    compiled = read_json(plan)
     marker = {
         "version": "tengli.native-shots/1",
-        "compiled_sha256": read_json(plan)["compiled_sha256"],
+        "compiled_sha256": compiled["compiled_sha256"],
         "python": sys.version,
+        "preview_reuse_identity": _preview_reuse_identity(root),
         "adapter_sources": [
             sha256(Path(__file__).with_name(f"video_editing_{name}.py"))
             for name in _ADAPTERS
         ],
     }
     atomic_json(root / "native-shot-resume.json", marker)
+    earlier_preview = _earlier_preview(root, compiled, marker)
     candidates = []
     for prior in sorted(root.parent.iterdir()):
         if prior == root or not re.fullmatch(r"[0-9a-f]{8}", prior.name):
@@ -276,6 +327,7 @@ def install_shot_recovery(package: Path, root: Path) -> None:
     library_sha = sha256(package / "integrity.json")
     groups = read_json(package / "catalog/groups.json")["groups"]
     subtitles = {row["id"] for row in groups if row["kind"] == "subtitle"}
+    standalone_subtitles = {row["id"] for row in groups if row["backend"] == "subtitle"}
     hypit = {row["id"] for row in groups if row["backend"] == "hypit"}
     episode = read_json(root / "episode.json")
     duration = {
@@ -309,6 +361,15 @@ def install_shot_recovery(package: Path, root: Path) -> None:
             ):
                 restored_from = prior.name
                 break
+        if (
+            restored_from is None
+            and earlier_preview
+            and job["group_id"] in standalone_subtitles
+            and _restore_shot(earlier_preview, root, output, job, library_sha, True)
+        ):
+            restored_from = (
+                f"preview:{earlier_preview.parent.name}/{earlier_preview.name}"
+            )
         receipt = original(operation, job, instance, args)
         if _matches_shot_clock(receipt, duration[output.name], fps):
             _seal(root, output, receipt, restored_from)

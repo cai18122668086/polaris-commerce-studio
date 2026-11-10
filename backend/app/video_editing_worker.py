@@ -50,6 +50,7 @@ from .video_editing_pipeline import (
 )
 from .video_editing_planning_provenance import verify_render_provenance
 from .video_editing_preview import build_preview
+from .video_editing_preview_base import preview_base_attempt
 from .video_editing_source_lineage import (
     generation_source_receipt,
     script_reference,
@@ -442,6 +443,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         session.commit()
         source = session.get(EditingSourceRecord, row.source_id)
         assert source is not None
+        base_attempt = preview_base_attempt(session, settings, source, row.options)
         snapshot: dict[str, Any] = {
             "source_path": source.media_path,
             "source_sha256": source.media_sha256,
@@ -730,7 +732,15 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         if restored is None:
             stage("rendering", render_plan_sha256=sha256(root / "episode.json"))
             atomic_json(
-                root / "native-shot-plan.json", {"compiled_sha256": compiled_sha}
+                root / "native-shot-plan.json",
+                {
+                    "compiled_sha256": compiled_sha,
+                    **(
+                        {"preview_base_attempt": str(base_attempt)}
+                        if base_attempt
+                        else {}
+                    ),
+                },
             )
             final = native_export(root, settings, guard)
             stage("validating")

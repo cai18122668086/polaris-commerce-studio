@@ -24,6 +24,7 @@ SLANT_IMAGES = tuple(f"/component_assets/stagger#mkpic{i}" for i in range(1, 4))
 SLANT_CAPTION_BASELINE = 1208
 PRICE_CARD_GROUP = "HY-A6"
 PRICE_CARD_PROFILE = "hypit-original-price-cards/1"
+DETAIL_CARDS_TEMPLATE_ID = "hypit-detail-cards-v1"
 PRICE_CARD_INSET_TYPE = "larger-inset-type-v1"
 LIVE_STRIP_GROUP = "HY-A5"
 LIVE_STAGE_GROUPS = frozenset((LIVE_STRIP_GROUP, PRICE_CARD_GROUP))
@@ -321,6 +322,7 @@ def compile_strips(
     price_card_layout: str | None = None,
     live_stage: bool = False,
     slant_glosses: list[dict[str, str]] | None = None,
+    slant_full_source: bool = False,
 ) -> dict:
     text = {row["path"]: row for row in native["text"]}
     events = {row["path"]: row for row in native["events"]}
@@ -384,6 +386,8 @@ def compile_strips(
     else:
         data["labels"] = [text[path]["text"] for path in titles]
     if slant:
+        if slant_full_source:
+            data["full_source_foreground"] = True
         labels = data["labels"]
         glosses = [""] * len(labels)
         if slant_glosses is not None:
@@ -634,14 +638,18 @@ def install_native_strips(package: Path, root: Path) -> None:
             updated = _attach_live_stage(updated)
         foreground = None
         if foreground_source is not None:
+            full_source = data.get("full_source_foreground", False)
             foreground = render_foreground(
                 package,
                 original,
                 foreground_source,
                 data["plate"],
                 scene.parent / "inputs/current-foreground.webm",
+                full_source=full_source,
             )
-            updated = attach_foreground_track(updated, scene.parent / "s03.svs")
+            updated = attach_foreground_track(
+                updated, scene.parent / "s03.svs", full_source=full_source
+            )
         scene.write_text(updated, encoding="utf-8")
         atomic_json(
             receipt,

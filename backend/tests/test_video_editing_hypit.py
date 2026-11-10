@@ -7,6 +7,7 @@ from app import video_editing_hypit_strips as strips
 from app.config import Settings
 from app.motion_library import atomic_json
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from app.video_editing_hypit_foreground import attach_foreground_track
 from app.video_editing_pipeline import stop_hypit_runtimes
 from app.video_editing_unified_scenes import unified_action_frame
 from app.video_editing_word_bindings import word_bindings
@@ -267,12 +268,38 @@ def test_hypit_slant_cards_keep_three_image_slots_and_native_arrivals(
         "frames": "20,32,50",
     }
     assert strips.stagger_audio_frame(strips.SLANT_GROUP, 20) == 21
+    assert "full_source_foreground" not in data
+    website = strips.compile_strips(
+        tmp_path, group, native, assets, slant_full_source=True
+    )
+    assert website == {**data, "glosses": ["", "", ""], "full_source_foreground": True}
     glosses[0]["source_text"] = "刷锅"
     with pytest.raises(ValueError, match="its own spoken title"):
         strips.compile_strips(tmp_path, group, native, assets, slant_glosses=glosses)
     assets[strips.SLANT_IMAGES[0]]["sha256"] = assets[strips.SLANT_IMAGES[1]]["sha256"]
     with pytest.raises(ValueError, match="distinct current image bytes"):
         strips.compile_strips(tmp_path, group, native, assets)
+
+
+@pytest.mark.parametrize(
+    ("full_source", "left", "top"), [(True, 0, 0), (False, 483, 1014)]
+)
+def test_slant_presenter_placement_keeps_the_foreground_above_cards(
+    tmp_path, full_source, left, top
+):
+    scene = (
+        '  <import as="asset" from="@hypit/media@1"/>\n'
+        '  <spatial:Canvas id="canvas" width="1080" height="1920"/>\n'
+        "    <film:Track source={a2m.track}/>\n"
+    )
+    style = tmp_path / "s03.svs"
+    style.write_text("<sheet></sheet>", encoding="utf-8")
+    result = attach_foreground_track(scene, style, full_source=full_source)
+    assert f'left="{left}px" top="{top}px" right="1080px" bottom="1920px"' in result
+    assert result.index("source={a2m.track}") < result.index(
+        "source={tengli-fg-track.visual}"
+    )
+    assert "stack-order: 11" in style.read_text(encoding="utf-8")
 
 
 def test_hypit_sound_anchor_requires_the_rendered_scene_entry(tmp_path):

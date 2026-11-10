@@ -17,7 +17,12 @@ from .video_editing_browser_clocks import (
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
-from .video_editing_hypit_strips import SLANT_BACKGROUND, SLANT_GROUP
+from .video_editing_hypit_strips import (
+    DETAIL_CARDS_TEMPLATE_ID,
+    PRICE_CARD_GROUP,
+    SLANT_BACKGROUND,
+    SLANT_GROUP,
+)
 from .video_editing_judgment import JUDGMENT_GROUP, JUDGMENT_IMAGES
 from .video_editing_line_branch import (
     LINE_DIRECTOR_PATH,
@@ -48,6 +53,7 @@ _IMAGE_GROUPS = {
     LIVE_SPLIT_TEMPLATE_ID: tuple((group, 3) for group in LIVE_SPLIT_GROUPS),
     FRUIT_LIST_TEMPLATE_ID: ((FRUIT_LIST_GROUP, 4),),
     HY_PICTURE_TEMPLATE_ID: ((SLANT_GROUP, 4), (PICTURE_GROUP, 3)),
+    DETAIL_CARDS_TEMPLATE_ID: ((PRICE_CARD_GROUP, 3),),
 }
 _ADDITIONAL_IMAGE_PATHS = {
     FRUIT_LIST_GROUP: FRUIT_LIST_HEADER,

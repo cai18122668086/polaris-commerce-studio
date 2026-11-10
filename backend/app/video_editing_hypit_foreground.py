@@ -23,12 +23,15 @@ _SAMPLER = _OWNER / "unified/core/media.py"
 _NATIVE = Path("commercial_runtime/native.py")
 # HY-A2's original fg="mkfg1@483,1014,597,906" is above stagger layer 10.
 _FOREGROUND_SIZE = 598, 906
+_SOURCE_SIZE = 720, 1280
 _STYLE = """
   media.foreground { stack-order: 11; fit: cover; }
 """
 
 
-def attach_foreground_track(scene: str, style_file: Path) -> str:
+def attach_foreground_track(
+    scene: str, style_file: Path, *, full_source: bool = False
+) -> str:
     asset = '  <import as="asset" from="@hypit/media@1"/>\n'
     canvas = '  <spatial:Canvas id="canvas" width="1080" height="1920"/>\n'
     cards = "    <film:Track source={a2m.track}/>\n"
@@ -38,9 +41,11 @@ def attach_foreground_track(scene: str, style_file: Path) -> str:
         '  <import as="pipeline" from="@hypit/media-pipeline@1"/>\n'
         '  <import as="media-track" from="@hypit/media-track@1"/>\n'
     )
-    track = """  <spatial:Frame id="tengli-fg-frame" within={canvas}
-    left="483px" top="1014px" right="1080px" bottom="1920px"/>
-  <asset:Video id="tengli-fg-source" src="./inputs/current-foreground.webm"/>
+    left, top = (0, 0) if full_source else (483, 1014)
+    track = (
+        '  <spatial:Frame id="tengli-fg-frame" within={canvas}\n'
+        f'    left="{left}px" top="{top}px" right="1080px" bottom="1920px"/>\n'
+        """  <asset:Video id="tengli-fg-source" src="./inputs/current-foreground.webm"/>
   <pipeline:Normalize id="tengli-fg-media" source={tengli-fg-source}
     video="primary-moving" audio="none" span-authority="video" clock={clock}/>
   <media-track:Track id="tengli-fg-track" timeline={t.timeline} canvas={canvas}>
@@ -49,6 +54,7 @@ def attach_foreground_track(scene: str, style_file: Path) -> str:
       during="program"/>
   </media-track:Track>
 """
+    )
     styles = style_file.read_text(encoding="utf-8")
     if styles.count("</sheet>") != 1:
         raise ValueError("Original slant card appearance sheet changed")
@@ -63,7 +69,13 @@ def attach_foreground_track(scene: str, style_file: Path) -> str:
 
 
 def render_foreground(
-    package: Path, original: Any, source_ref: str, window: dict, clip: Path
+    package: Path,
+    original: Any,
+    source_ref: str,
+    window: dict,
+    clip: Path,
+    *,
+    full_source: bool = False,
 ) -> dict:
     source = Path(original.resolve(source_ref, True))
     model = Path(original.resolve("input://" + FOREGROUND_MATTE, True))
@@ -75,12 +87,14 @@ def render_foreground(
         for path in (_MATTE, _SAMPLER, _NATIVE)
     ):
         raise ValueError("Original presenter sampler or matte changed")
+    size = _SOURCE_SIZE if full_source else _FOREGROUND_SIZE
     identity = {
         "source_window": window,
         "model_sha256": sha256(model),
         "sampler_sha256": profile["source_files"][_SAMPLER.as_posix()],
         "matte_sha256": profile["source_files"][_MATTE.as_posix()],
-        "size": list(_FOREGROUND_SIZE),
+        "size": list(size),
+        "placement": "source-frame" if full_source else "proportional-inset",
     }
     receipt = clip.with_suffix(".json")
     if receipt.is_file() and clip.is_file():
@@ -120,7 +134,7 @@ def render_foreground(
         "-pixel_format",
         "rgba",
         "-video_size",
-        "598x906",
+        f"{size[0]}x{size[1]}",
         "-framerate",
         "30",
         "-i",
@@ -157,19 +171,20 @@ def render_foreground(
             try:
                 for i in range(frames):
                     picture = media.asset_frame(asset, i / 30, native_size=True)
-                    # Segment a bounded working frame, then fit the native box.
-                    working = ImageOps.contain(
-                        picture, _FOREGROUND_SIZE, Image.Resampling.LANCZOS
-                    )
+                    working = ImageOps.contain(picture, size, Image.Resampling.LANCZOS)
                     cutout = matte.apply(
                         working,
-                        f"{window['source_sha256']}-{window['source_start_ms']}-{i}",
+                        f"{window['source_sha256']}-{window['source_start_ms']}-"
+                        f"{working.width}x{working.height}-{i}",
                     )
-                    encoder.stdin.write(
-                        cutout.resize(
-                            _FOREGROUND_SIZE, Image.Resampling.LANCZOS
-                        ).tobytes()
+                    # Keep the same geometry in both axes. The inset can have
+                    # transparent margins instead of stretching the presenter.
+                    frame = Image.new("RGBA", size)
+                    frame.paste(
+                        cutout,
+                        ((size[0] - cutout.width) // 2, (size[1] - cutout.height) // 2),
                     )
+                    encoder.stdin.write(frame.tobytes())
                 encoder.stdin.close()
                 if encoder.wait(timeout=120):
                     raise ValueError("Hypit foreground alpha encoding failed")
@@ -197,7 +212,7 @@ def render_foreground(
         tags = {key.lower(): value for key, value in stream.get("tags", {}).items()}
         if (
             int(stream["nb_read_frames"]) != frames
-            or (stream["width"], stream["height"]) != _FOREGROUND_SIZE
+            or (stream["width"], stream["height"]) != size
             or tags.get("alpha_mode") != "1"
         ):
             raise ValueError("Hypit foreground does not cover its alpha frame window")
@@ -207,7 +222,7 @@ def render_foreground(
             "sha256": sha256(clip),
             "alpha": "straight",
             "frames": frames,
-            "native_box": [483, 1014, 597, 906],
+            "native_box": [0, 0, 1080, 1920] if full_source else [483, 1014, 597, 906],
         }
         atomic_json(receipt, result)
         return result

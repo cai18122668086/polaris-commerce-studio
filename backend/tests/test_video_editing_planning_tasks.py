@@ -161,6 +161,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         HANDOFF_TEMPLATE_ID,
         LIVE_SPLIT_TEMPLATE_ID,
         "hypit-picture-scenes-v1",
+        "hypit-detail-cards-v1",
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         "evidence-judgment-v1",
@@ -415,6 +416,7 @@ def test_missing_original_after_preparation_stops_before_model_submission(
     [
         ("live-strip-story-v1", ("HY-A5",)),
         ("hypit-picture-scenes-v1", ("HY-A2", "HY-A3")),
+        ("hypit-detail-cards-v1", ("HY-A6",)),
     ],
 )
 def test_hypit_planning_checks_scoped_runtime_and_original_subtitles(

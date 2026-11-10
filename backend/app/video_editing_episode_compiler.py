@@ -49,6 +49,7 @@ from .video_editing_hypit import (
 )
 from .video_editing_hypit_strips import (
     LIVE_STRIP_GROUP,
+    PRICE_CARD_GROUP,
     SLANT_CAPTION_BASELINE,
     SLANT_GROUP,
     STAGGER_GROUPS,
@@ -639,7 +640,7 @@ def compile_episode(
                 ):
                     fps = episode["output"]["fps"]
                     config = job["config"]
-                    if beat.group_id == SLANT_GROUP:
+                    if beat.group_id in {SLANT_GROUP, PRICE_CARD_GROUP}:
                         assert stagger_frames is not None
                         frames = stagger_frames
                     elif beat.group_id == PICTURE_GROUP:

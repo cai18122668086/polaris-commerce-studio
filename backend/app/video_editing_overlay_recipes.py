@@ -91,7 +91,14 @@ from .video_editing_hypit import (
     compile_picture_clocks,
 )
 from .video_editing_hypit_strips import (
+    CARD_DETAILS,
+    CARD_EVENTS,
+    CARD_IMAGES,
+    CARD_TITLES,
+    DETAIL_CARDS_TEMPLATE_ID,
     LIVE_STRIP_GROUP,
+    PRICE_CARD_GROUP,
+    PRICE_CARD_INSET_TYPE,
     SLANT_BACKGROUND,
     SLANT_FOREGROUND,
     SLANT_GROUP,
@@ -1207,15 +1214,10 @@ def _browser_split_entry(
     ), anchors
 
 
-def _hypit_picture_entry(
-    package: Path,
-    group: dict,
-    beat: SemanticBeat,
+def _hypit_picture_assets(
     transcript: Transcript,
     cards: list[dict],
-) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
-    slant = beat.group_id == SLANT_GROUP
-    contract = input_contract(package, group)
+) -> tuple[dict[str, dict], dict[str, str], set[str]]:
     pictures = project_image_digests(cards)
     current_sources = {
         row["id"]
@@ -1230,6 +1232,19 @@ def _hypit_picture_entry(
         for row in cards
         if row["id"] in pictures or row["id"] in current_sources
     }
+    return assets, pictures, current_sources
+
+
+def _hypit_picture_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    slant = beat.group_id == SLANT_GROUP
+    contract = input_contract(package, group)
+    assets, pictures, current_sources = _hypit_picture_assets(transcript, cards)
     image_paths = (*SLANT_IMAGES, SLANT_BACKGROUND) if slant else tuple(PICTURE_PATHS)
     track_paths = (SLANT_FOREGROUND,) if slant else PICTURE_TRACKS
     event_paths = STRIP_EVENTS if slant else tuple(ENTRY_PATHS)
@@ -1256,8 +1271,6 @@ def _hypit_picture_entry(
             raise ValueError(
                 "Hypit scene needs current narration and distinct project pictures"
             )
-        if slant and len(labels[STRIP_TEXT[-1]]["text"]) > 2:
-            raise ValueError("Keep the last slant label left of the live foreground")
         positions = {token.id: i for i, token in enumerate(transcript.tokens)}
         previous = positions[beat.first_token_id] - 1
         for index, item in enumerate(beat.relation_items):
@@ -1287,7 +1300,7 @@ def _hypit_picture_entry(
                     profile_id=SLANT_PROFILE,
                 )
             ]
-            compile_strips(package, group, anchors, assets)
+            compile_strips(package, group, anchors, assets, slant_full_source=True)
         else:
             audit_picture_entry(package, group)
             compile_picture_clocks(package, config, anchors, assets, transcript, beat)
@@ -1296,7 +1309,7 @@ def _hypit_picture_entry(
             422,
             "EDITING_TEMPLATE_HYPIT_PICTURES_REQUIRED",
             "三图卡需绑定同期口播、三个按实录顺序出画的项目图片，并留出阅读时间。"
-            "斜卡另需一张独立底图和三个实录短标题，第三张标题最多两字。",
+            "斜卡另需一张独立底图和三个实录短标题。",
         ) from error
     slots = [*media]
     if slant:
@@ -1309,7 +1322,11 @@ def _hypit_picture_entry(
                 *(path.replace("/path", "/start_seconds") for path in track_paths),
             )
         )
-    reason = "保留原生三图、人物窗和入场方式，主字幕与完整原声使用整片时钟。"
+    reason = (
+        "原生三图按实录入场，人物保持原片的尺寸和位置，可自然遮挡卡片。"
+        if slant
+        else "保留原生三图、人物窗和入场方式。"
+    ) + "主字幕与完整原声使用整片时钟。"
     return NativeEpisodeEntry(
         carrier="picture",
         placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
@@ -1327,6 +1344,103 @@ def _hypit_picture_entry(
             "dependency_ids": list(
                 AUTOMATIC_TEMPLATE_DEPENDENCIES.get(beat.group_id, ())
             ),
+        },
+    ), anchors
+
+
+def _detail_cards_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    assets, pictures, sources = _hypit_picture_assets(transcript, cards)
+    try:
+        anchors = word_bindings(beat, transcript, contract, set(assets))
+        media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        text = {row["path"]: row["token_ids"] for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        if (
+            beat.relation not in {"parallel", "sequence"}
+            or len(beat.relation_items) != 3
+            or set(text) != {*CARD_TITLES, *CARD_DETAILS}
+            or set(events) != set(CARD_EVENTS)
+            or set(media) != {STRIP_IMAGE, *CARD_IMAGES}
+            or set(media.values()) != set(beat.asset_ids)
+            or media[STRIP_IMAGE] not in sources
+            or len({pictures[media[path]] for path in CARD_IMAGES}) != 3
+        ):
+            raise ValueError("Bind three distinct project images and a current source")
+        positions = {token.id: index for index, token in enumerate(transcript.tokens)}
+        previous = positions[beat.first_token_id] - 1
+        for item, title, detail, image, at in zip(
+            beat.relation_items,
+            CARD_TITLES,
+            CARD_DETAILS,
+            CARD_IMAGES,
+            CARD_EVENTS,
+            strict=True,
+        ):
+            first, last = positions[item.first_token_id], positions[item.last_token_id]
+            title_words, detail_words = text[title], text[detail]
+            if (
+                not previous
+                < first
+                <= positions[title_words[0]]
+                <= positions[title_words[-1]]
+                < positions[detail_words[0]]
+                <= positions[detail_words[-1]]
+                <= last
+                <= positions[beat.last_token_id]
+                or set(item.native_text_paths) != {title, detail}
+                or item.native_media_paths != [image]
+                or item.asset_ids != [media[image]]
+                or events[at]["edge"] != "start"
+                or events[at]["token_id"] != detail_words[0]
+            ):
+                raise ValueError("Each card needs its own title, detail and spoken cue")
+            previous = last
+        anchors["media_clocks"] = [
+            compile_flow_plate(anchors, assets, transcript, live_stage=True)
+        ]
+        compile_strips(
+            package,
+            group,
+            anchors,
+            assets,
+            price_card_layout=PRICE_CARD_INSET_TYPE,
+            live_stage=True,
+        )
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_DETAIL_CARDS_REQUIRED",
+            "三卡需各绑定本期图、实录标题和说明，说明首词触发入场。"
+            "标题和说明各最多六字，底板使用本期同期口播。",
+        ) from error
+    config = read_json(inside(package, group["input_template"]))
+    slots = list(media)
+    for path in slots:
+        set_native_field(config, path, None)
+    reason = "原生三卡用同期口播作底板，卡片黑字沿用原字体和右对齐。"
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": PRICE_CARD_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-" + DETAIL_CARDS_TEMPLATE_ID,
+            "design_reason": reason,
+            "parameter_decisions": dict.fromkeys(config, reason),
+            "config": config,
+            "placeholders": slots,
+            "hypit_live_stage": True,
+            "price_card_layout": PRICE_CARD_INSET_TYPE,
         },
     ), anchors
 
@@ -2436,6 +2550,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = STRIP_EVENTS if beat.group_id == SLANT_GROUP else tuple(ENTRY_PATHS)
+        elif beat.group_id == PRICE_CARD_GROUP:
+            entries[beat.id], anchors = _detail_cards_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = CARD_EVENTS
         elif beat.group_id == LIVE_STRIP_GROUP:
             entries[beat.id], anchors = _live_strip_entry(
                 package, group, beat, transcript, asset_cards or []

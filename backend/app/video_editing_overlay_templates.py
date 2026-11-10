@@ -24,7 +24,12 @@ from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
 from .video_editing_handoff_scenes import HANDOFF_GROUPS, HANDOFF_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
-from .video_editing_hypit_strips import LIVE_STRIP_GROUP, SLANT_GROUP
+from .video_editing_hypit_strips import (
+    DETAIL_CARDS_TEMPLATE_ID,
+    LIVE_STRIP_GROUP,
+    PRICE_CARD_GROUP,
+    SLANT_GROUP,
+)
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP, YEAR_GROUP
@@ -652,7 +657,7 @@ _TEMPLATES[HY_PICTURE_TEMPLATE_ID] = {
     "slots": [
         {
             "group_id": SLANT_GROUP,
-            "purpose": "使用原生斜卡、独立底图及右下同期人物呈现三项内容。",
+            "purpose": "使用原生斜卡和独立底图呈现三项内容，人物沿用原片尺寸和位置。",
             "layer": "scene",
             "binding": "绑定三张独立配图和一张本期背景图。前景绑定同期原片。"
             "三条中文标题各取一至三字实录，在各自首词触发。原可选英文留空。"
@@ -665,6 +670,22 @@ _TEMPLATES[HY_PICTURE_TEMPLATE_ID] = {
             "binding": "原片同时绑定 /background/path 与 /presenter/path。"
             "三张独立项目图片按实录条目依次绑定 /items/{i}/path，"
             "entry_frame 各取对应项首词。完整口播由主字幕显示。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
+_TEMPLATES[DETAIL_CARDS_TEMPLATE_ID] = {
+    "id": DETAIL_CARDS_TEMPLATE_ID,
+    "name": "三项说明与同期口播",
+    "slots": [
+        {
+            "group_id": PRICE_CARD_GROUP,
+            "purpose": "用三个原生双行图卡显示本段对应的三项说明，保留同期人物。",
+            "layer": "scene",
+            "binding": "各项依次绑定本期独立图片及实际说出的标题和说明。"
+            "标题与说明各取一至六字，先说标题，说明首词触发图卡。"
+            "从早到晚绑定 mka6c3、mka6c2、mka6c1，底板 mkstage1 使用同期原片。"
+            "图卡右侧留浅色空白给原生黑字，完整原话由主字幕显示。",
         },
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
@@ -810,6 +831,7 @@ def overlay_templates() -> list[dict]:
             HANDOFF_TEMPLATE_ID,
             LIVE_SPLIT_TEMPLATE_ID,
             HY_PICTURE_TEMPLATE_ID,
+            DETAIL_CARDS_TEMPLATE_ID,
             CUT_TEMPLATE_ID,
             PANEL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,

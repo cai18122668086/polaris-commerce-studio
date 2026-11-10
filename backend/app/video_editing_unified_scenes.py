@@ -38,7 +38,11 @@ from .video_editing_hypit import (
     PICTURE_GROUP,
     picture_entry_frame,
 )
-from .video_editing_hypit_strips import SLANT_GROUP
+from .video_editing_hypit_strips import (
+    DETAIL_CARDS_TEMPLATE_ID,
+    PRICE_CARD_GROUP,
+    SLANT_GROUP,
+)
 from .video_editing_native_content import (
     NUMBER_GROUP,
     YEAR_GROUP,
@@ -70,6 +74,7 @@ UNIFIED_TEMPLATES = frozenset(
         LIVE_SPLIT_TEMPLATE_ID,
         FRUIT_LIST_TEMPLATE_ID,
         HY_PICTURE_TEMPLATE_ID,
+        DETAIL_CARDS_TEMPLATE_ID,
     }
 )
 UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
@@ -222,7 +227,7 @@ UNIFIED_SCENE_GROUPS = (
     | PANEL_GROUPS.keys()
     | HANDOFF_GROUPS.keys()
     | BROWSER_LIST_SCENES
-    | {SLANT_GROUP, PICTURE_GROUP}
+    | {SLANT_GROUP, PICTURE_GROUP, PRICE_CARD_GROUP}
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -239,6 +244,7 @@ _CAPTION_BANDS = {
     SPLIT_HORIZONTAL: (270, 405),
     FRUIT_LIST_GROUP: (850, 960),
     SLANT_GROUP: (810, 960),
+    PRICE_CARD_GROUP: (838, 960),
     PICTURE_GROUP: (715, 845),
 }
 _EVENT_PREFIX = "/timing/events/"

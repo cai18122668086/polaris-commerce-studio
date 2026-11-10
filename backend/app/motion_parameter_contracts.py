@@ -52,8 +52,9 @@ from .video_editing_question_branch import (
     question_variant_template,
 )
 from .video_editing_question_card import QUESTION_CARD_GLYPH, question_card_a_input
+from .video_editing_story_panels import TRIPTYCH, triptych_template
 from .video_editing_unified_scenes import (
-    UNIFIED_VIDEO_VARIANTS,
+    PRESENTER_VIDEO_GROUPS,
     unified_presenter_template,
 )
 
@@ -135,6 +136,7 @@ def input_contract(
     embedded_why_caption: bool = True,
     original_input_a: bool = False,
     current_unified_presenter: bool = False,
+    triptych_video_slots: set[int] | None = None,
 ) -> dict[str, Any]:
     template_path = (
         question_card_a_input(package, group)
@@ -153,8 +155,10 @@ def input_contract(
         )
     if group["id"] == PACKAGE_GROUP and live_package_presenter:
         template = live_package_template(template)
-    if group["id"] in UNIFIED_VIDEO_VARIANTS and current_unified_presenter:
+    if group["id"] in PRESENTER_VIDEO_GROUPS and current_unified_presenter:
         template = unified_presenter_template(template)
+    if group["id"] == TRIPTYCH and triptych_video_slots:
+        template = triptych_template(template, triptych_video_slots)
     if group["id"] == LINE_GROUP and current_line_art:
         template = line_template(template, embedded_caption=embedded_line_caption)
     if group["id"] == JUDGMENT_GROUP and not embedded_judgment_caption:

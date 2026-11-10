@@ -27,6 +27,7 @@ from .video_editing_presenter_motion import (
 )
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
+from .video_editing_story_panels import PANEL_GROUPS, PANEL_TEMPLATE_ID
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_unified_scenes import (
     UNIFIED_EXPANDED_GROUPS,
@@ -574,6 +575,23 @@ _TEMPLATES[CUT_TEMPLATE_ID] = {
         *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[PANEL_TEMPLATE_ID] = {
+    "id": PANEL_TEMPLATE_ID,
+    "name": "人物与图例并置",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": binding
+                + " 用 relation_items 按实录顺序绑定各项和对应媒体槽。",
+            }
+            for group, (purpose, binding) in PANEL_GROUPS.items()
+        ),
+        *_TEMPLATES[CUT_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
     "id": SUBTITLE_RELAY_TEMPLATE_ID,
     "name": "双层字幕接力",
@@ -677,6 +695,7 @@ def overlay_templates() -> list[dict]:
             CXBR_TEMPLATE_ID,
             UNIFIED_EXPANDED_TEMPLATE_ID,
             CUT_TEMPLATE_ID,
+            PANEL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,

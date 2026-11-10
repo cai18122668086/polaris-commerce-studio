@@ -108,8 +108,9 @@ from .video_editing_question_card import (
     question_card_a_input,
     question_card_gloss,
 )
+from .video_editing_story_panels import TRIPTYCH, triptych_template
 from .video_editing_unified_scenes import (
-    UNIFIED_VIDEO_VARIANTS,
+    PRESENTER_VIDEO_GROUPS,
     unified_presenter_template,
 )
 from .video_editing_word_bindings import word_bindings
@@ -211,8 +212,17 @@ def compile_native_job(
         and config.get("media", {}).get("presenter", {}).get("kind") == "video"
     )
     current_unified_presenter = (
-        beat.group_id in UNIFIED_VIDEO_VARIANTS
+        beat.group_id in PRESENTER_VIDEO_GROUPS
         and config.get("media", {}).get("presenter", {}).get("kind") == "video"
+    )
+    triptych_slots = (
+        {
+            i
+            for i, clip in enumerate(config.get("media", {}).get("clips", []))
+            if i in {1, 2} and clip.get("kind") == "video"
+        }
+        if beat.group_id == TRIPTYCH
+        else set()
     )
     line_art = beat.group_id == LINE_GROUP and "hand_sequence" in config["media"]
     embedded_line_caption = not line_art or config["content"].get("captions") != []
@@ -235,6 +245,7 @@ def compile_native_job(
         embedded_why_caption=embedded_why_caption,
         original_input_a=question_card_a,
         current_unified_presenter=current_unified_presenter,
+        triptych_video_slots=triptych_slots,
     )
     if (
         recipe.get("version") != "tengli.native-recipe/1"
@@ -267,6 +278,8 @@ def compile_native_job(
             raise ValueError(
                 "Keep the measured presenter moving throughout the original scene"
             )
+    if triptych_slots:
+        template = triptych_template(template, triptych_slots)
     if line_art:
         template = line_template(template, embedded_caption=embedded_line_caption)
         hand = config["media"]["hand_sequence"]

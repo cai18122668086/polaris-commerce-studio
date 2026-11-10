@@ -33,6 +33,11 @@ from app.video_editing_native_sound import verify_rendered_sound
 from app.video_editing_overlay_templates import overlay_template
 from app.video_editing_presenter_motion import motion_blockers
 from app.video_editing_question_branch import QUESTION_FONT
+from app.video_editing_story_panels import (
+    PANEL_GROUPS,
+    PANEL_TEMPLATE_ID,
+    panel_blockers,
+)
 from app.video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from app.video_editing_task_models import (
     EditingPlanningAttemptRecord,
@@ -134,6 +139,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "chenxi-broll-v1",
         UNIFIED_EXPANDED_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
+        PANEL_TEMPLATE_ID,
         "evidence-judgment-v1",
         "explainer-steps-v1",
         "subtitle-story-v1",
@@ -152,11 +158,12 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     } == set(UNIFIED_GROUPS)
     assert {
         row["group_id"] for row in unified["slots"] if row.get("layer") == "scene"
-    } == UNIFIED_SCENE_GROUPS - CUT_GROUPS.keys()
+    } == UNIFIED_SCENE_GROUPS - CUT_GROUPS.keys() - PANEL_GROUPS.keys()
     unified_blocked = {}
     require_clean_unified_source(unified, "present", unified_blocked)
     assert unified_blocked == dict.fromkeys(
-        UNIFIED_SCENE_GROUPS - CUT_GROUPS.keys(), ["clean_source_required"]
+        UNIFIED_SCENE_GROUPS - CUT_GROUPS.keys() - PANEL_GROUPS.keys(),
+        ["clean_source_required"],
     )
     progress = next(row for row in options if row["id"] == "subtitle-progress-v1")
     relay = next(row for row in options if row["id"] == "subtitle-relay-v1")
@@ -1143,6 +1150,23 @@ def test_cut_scene_preparation_counts_different_project_image_bytes():
     unavailable = {}
     cut_scene_blockers(template, cards, unavailable)
     assert set(unavailable) == {"W-R08", "W-R16"}
+
+
+def test_panel_preparation_does_not_count_copies_of_the_original_as_broll():
+    template = overlay_template(PANEL_TEMPLATE_ID)
+    cards = [
+        {"id": "material-a", "kind": "image", "sha256": "first"},
+        {"id": "material-b", "kind": "video", "sha256": "source", "duration_ms": 4000},
+    ]
+    unavailable = {}
+    panel_blockers(template, cards, "source", unavailable)
+    assert set(unavailable) == set(PANEL_GROUPS)
+    cards.append(
+        {"id": "material-c", "kind": "video", "sha256": "new", "duration_ms": 4000}
+    )
+    unavailable = {}
+    panel_blockers(template, cards, "source", unavailable)
+    assert set(unavailable) == {"Z-M07", "Z-M08"}
 
 
 def test_year_preparation_requires_a_continuous_measured_year():

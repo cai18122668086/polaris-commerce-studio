@@ -39,6 +39,7 @@ from .video_editing_question_card import (
     question_card_entry_frame,
 )
 from .video_editing_render_edits import MUSIC_REDUCTION_DB
+from .video_editing_story_panels import TRIPTYCH, TRIPTYCH_ENTRY
 from .video_editing_subtitle_sound_clock import (
     SUBTITLE_ENTRY_SYNC,
     subtitle_entry_clock,
@@ -253,6 +254,13 @@ def compile_sound(
         entry_seconds = shot["start_seconds"] + (
             value / fps if unit == "frames" else value
         )
+        if (
+            sync_unified_entries
+            and shot["group_id"] == TRIPTYCH
+            and cue.event_path == TRIPTYCH_ENTRY
+        ):
+            # The original parameter is the slide's length. Its start is zero.
+            entry_seconds = shot["start_seconds"]
         seconds = entry_seconds
         question_entry = package_entry = rotation_entry = judgment_entry = None
         question_card_entry = yy_opening_entry = presenter_motion_entry = azl_entry = (

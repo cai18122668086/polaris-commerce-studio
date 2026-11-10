@@ -141,12 +141,22 @@ from .video_editing_question_card import (
     automatic_question_card_gloss,
     question_card_a_input,
 )
+from .video_editing_story_panels import (
+    PANEL_GROUPS,
+    TRIPTYCH,
+    TRIPTYCH_PROJECT,
+    panel_project_paths,
+    project_panel_videos,
+    triptych_entrance,
+    triptych_template,
+    validate_panel_anchors,
+)
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_unified_scenes import (
+    PRESENTER_VIDEO_GROUPS,
     UNIFIED_DESIGN_ID,
     UNIFIED_MEDIA_PATHS,
     UNIFIED_SCENE_GROUPS,
-    UNIFIED_VIDEO_VARIANTS,
     unified_presenter_template,
     unified_sound_paths,
     validate_unified_anchors,
@@ -1780,22 +1790,40 @@ def _unified_entry(
     asset_cards: list[dict],
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
     group_id = beat.group_id
-    contract = input_contract(package, group, current_unified_presenter=True)
-    config = read_json(inside(package, group["input_template"]))
-    if group_id in UNIFIED_VIDEO_VARIANTS:
-        config = unified_presenter_template(config)
     is_cut = group_id in CUT_GROUPS
+    is_panel = group_id in PANEL_GROUPS
+    videos = (
+        project_panel_videos(asset_cards, transcript.source_sha256)
+        if group_id == TRIPTYCH
+        else {}
+    )
+    video_slots = {
+        int(anchor.path.split("/")[3])
+        for anchor in beat.native_media
+        if anchor.path in TRIPTYCH_PROJECT and anchor.asset_id in videos
+    }
+    contract = input_contract(
+        package, group, current_unified_presenter=True, triptych_video_slots=video_slots
+    )
+    config = read_json(inside(package, group["input_template"]))
+    if group_id in PRESENTER_VIDEO_GROUPS:
+        config = unified_presenter_template(config)
+    if video_slots:
+        config = triptych_template(config, video_slots)
     text_paths = set(contract["text_paths"])
     omitted = {
         path: "本期中文口播没有对应英文实录，原中文字幕和主字幕继续使用。"
         for path in text_paths
-        if group_id == "Z-M06" and path.endswith("/en")
+        if group_id in {"Z-M06", "Z-M08"} and path.endswith("/en")
     }
     media_path = UNIFIED_MEDIA_PATHS.get(group_id)
     source_paths = (
         cut_source_paths(group_id) if is_cut else (media_path,) if media_path else ()
     )
-    images = project_image_digests(asset_cards) if is_cut else {}
+    images = project_image_digests(asset_cards) if is_cut or is_panel else {}
+    allowed_paths = cut_media_paths(group_id) if is_cut else set(source_paths)
+    if is_panel:
+        allowed_paths.update(panel_project_paths(group_id))
     presenters = (
         {
             row["id"]
@@ -1807,11 +1835,14 @@ def _unified_entry(
         else set()
     )
     try:
-        anchors = word_bindings(beat, transcript, contract, presenters | images.keys())
+        anchors = word_bindings(
+            beat, transcript, contract, presenters | images.keys() | videos.keys()
+        )
         bound = {row["path"]: row["asset_id"] for row in anchors["media"]}
         if (
-            set(bound) != (cut_media_paths(group_id) if is_cut else set(source_paths))
+            set(bound) != allowed_paths
             or set(beat.asset_ids) != set(bound.values())
+            or any(bound[path] not in presenters for path in source_paths)
             or {row["path"] for row in anchors["text"]} != text_paths - omitted.keys()
             or {row["path"] for row in anchors["events"]}
             != {row["path"] for row in contract["event_paths"]}
@@ -1823,6 +1854,8 @@ def _unified_entry(
             )
         if is_cut:
             validate_cut_anchors(beat, anchors, transcript, presenters, images)
+        elif is_panel:
+            validate_panel_anchors(beat, anchors, transcript, images, videos)
         else:
             validate_unified_anchors(beat, anchors)
     except (ValueError, KeyError) as error:
@@ -1847,9 +1880,13 @@ def _unified_entry(
     config["layout"]["overflow"] = "reject"
     for path in source_paths:
         set_native_field(config, path.removesuffix("/path") + "/end_policy", "error")
+    if group_id == TRIPTYCH:
+        anchors["events"].append(
+            triptych_entrance(beat, anchors["clock"]["start_ms"], config)
+        )
     reason = "沿用原生文字、人物窗或整帧底板，主字幕和原声使用整片时钟。"
     return NativeEpisodeEntry(
-        carrier="picture" if is_cut else "text",
+        carrier="picture" if is_cut or is_panel else "text",
         placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
         recipe={
             "version": "tengli.native-recipe/1",
@@ -1871,6 +1908,13 @@ def _unified_entry(
                     else "transcript_source_window",
                 }
                 for path in source_paths
+            ]
+            + [
+                {
+                    "media_path": f"/media/clips/{i}/path",
+                    "policy": "project_scene_clip_window",
+                }
+                for i in sorted(video_slots)
             ],
         },
     ), anchors

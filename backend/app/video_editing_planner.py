@@ -36,6 +36,7 @@ from .video_editing_question_card import (
     QUESTION_CARD_GROUP,
     automatic_question_card_gloss,
 )
+from .video_editing_story_panels import PANEL_BOARDS, PANEL_TEMPLATE_ID
 from .video_editing_template_materials import runtime_payload, validate_template_images
 from .video_editing_unified_scenes import UNIFIED_TEMPLATES, UNIFIED_VIDEO_VARIANTS
 from .video_editing_word_bindings import word_bindings
@@ -76,6 +77,7 @@ def catalog_index(
     line_scene: bool = False,
     unified_scene: bool = False,
     cut_scene: bool = False,
+    panel_scene: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -99,12 +101,16 @@ def catalog_index(
             original_input_a=question_a,
             live_package_presenter=live_package and group["id"] == PACKAGE_GROUP,
             embedded_line_caption=not (line_scene and group["id"] == LINE_GROUP),
-            current_unified_presenter=unified_scene
-            and group["id"] in UNIFIED_VIDEO_VARIANTS,
+            current_unified_presenter=(
+                unified_scene and group["id"] in UNIFIED_VIDEO_VARIANTS
+            )
+            or (panel_scene and group["id"] in PANEL_BOARDS),
         )
         if question_a:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
-        if cut_scene and group["id"] == "Z-M06":
+        if (cut_scene and group["id"] == "Z-M06") or (
+            panel_scene and group["id"] == "Z-M08"
+        ):
             parameters["text_paths"] = [
                 path for path in parameters["text_paths"] if not path.endswith("/en")
             ]
@@ -218,7 +224,10 @@ def build_request(
         live_package=live_package,
         line_scene=line_scene,
         unified_scene=bool(template and template["id"] in UNIFIED_TEMPLATES),
-        cut_scene=bool(template and template["id"] == CUT_TEMPLATE_ID),
+        cut_scene=bool(
+            template and template["id"] in {CUT_TEMPLATE_ID, PANEL_TEMPLATE_ID}
+        ),
+        panel_scene=bool(template and template["id"] == PANEL_TEMPLATE_ID),
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
@@ -310,6 +319,12 @@ def build_request(
             f"优先 {PREFERRED_OVERLAY_TYPES} 种以上。"
             "同一动效可以在不同语义位置反复使用，重复出现不增加种类。"
             "素材或语义不足时记录原因，禁止凑项及全屏覆盖人物。"
+        )
+    if template is not None and template["id"] == PANEL_TEMPLATE_ID:
+        message += (
+            "素材名称、用途说明和来源记录仅用于选材。不要将「实录报价」「口播内容示意」"
+            "等内部备注写入字幕、标题或图卡。可见文字按原生槽绑定实录。"
+            "只选择画面与口播相符的项目素材，图片已带内部标签或其他无关字样时跳过。"
         )
     if question_card:
         message += (

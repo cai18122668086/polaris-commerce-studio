@@ -18,12 +18,25 @@ from .video_editing_native_content import (
     year_display,
     year_glyphs,
 )
+from .video_editing_story_panels import (
+    PANEL_BOARDS,
+    PANEL_CAPTION_BANDS,
+    PANEL_GROUPS,
+    PANEL_SOUNDS,
+    PANEL_SOURCE,
+    PANEL_TEMPLATE_ID,
+)
 from .video_editing_word_bindings import emphasis_text
 
 UNIFIED_TEMPLATE_ID = "unified-argument-v1"
 UNIFIED_EXPANDED_TEMPLATE_ID = "unified-argument-v2"
 UNIFIED_TEMPLATES = frozenset(
-    {UNIFIED_TEMPLATE_ID, UNIFIED_EXPANDED_TEMPLATE_ID, CUT_TEMPLATE_ID}
+    {
+        UNIFIED_TEMPLATE_ID,
+        UNIFIED_EXPANDED_TEMPLATE_ID,
+        CUT_TEMPLATE_ID,
+        PANEL_TEMPLATE_ID,
+    }
 )
 UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
 UNIFIED_CAPTION_INTENT = "unified-argument-caption-intent.json"
@@ -31,10 +44,12 @@ UNIFIED_WINDOW_GROUP = "Z-M03"
 UNIFIED_WINDOW_CAPTION_BASELINE = 980
 UNIFIED_PRESENTER = "/media/presenter/path"
 UNIFIED_VIDEO_VARIANTS = frozenset({"Z-M02", "Z-M03", "Z-M04"})
+PRESENTER_VIDEO_GROUPS = UNIFIED_VIDEO_VARIANTS | PANEL_BOARDS
 UNIFIED_MEDIA_PATHS = {
     **dict.fromkeys(("Z-M01", "Z-M14", *UNIFIED_VIDEO_VARIANTS), UNIFIED_PRESENTER),
     "W-R05": "/media/background/path",
     NUMBER_GROUP: "/media/source/path",
+    **PANEL_SOURCE,
 }
 UNIFIED_EXPANDED_GROUPS = {
     "W-R05": (
@@ -102,6 +117,7 @@ UNIFIED_SOUNDS = {
     "W-R05": {"first_in": "ease", "second_in": "ease"},
     NUMBER_GROUP: {"black_in": "ease", "second_number": "ease"},
     **CUT_SOUND_MODES,
+    **PANEL_SOUNDS,
 }
 _TEXT_BINDINGS = {
     "Z-M01": {"phrases/0": "phrase0", "phrases/1": "phrase1"},
@@ -135,7 +151,10 @@ _REQUIRED_RELATIONS = {
     NUMBER_GROUP: ("contrast", ("captions/0", "captions/1")),
 }
 UNIFIED_SCENE_GROUPS = (
-    UNIFIED_GROUPS.keys() | UNIFIED_EXPANDED_GROUPS.keys() | CUT_GROUPS.keys()
+    UNIFIED_GROUPS.keys()
+    | UNIFIED_EXPANDED_GROUPS.keys()
+    | CUT_GROUPS.keys()
+    | PANEL_GROUPS.keys()
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -144,6 +163,7 @@ _CAPTION_BANDS = {
     "Z-M14": (850, 960),
     NUMBER_GROUP: (850, 960),
     **CUT_CAPTION_BANDS,
+    **PANEL_CAPTION_BANDS,
 }
 _EVENT_PREFIX = "/timing/events/"
 

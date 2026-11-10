@@ -69,11 +69,12 @@ def cut_media_paths(group: str) -> set[str]:
 def cut_scene_blockers(
     template: dict | None, cards: list[dict], unavailable: dict
 ) -> None:
-    if not template or template["id"] != CUT_TEMPLATE_ID:
+    if not template:
         return
+    slots = {slot["group_id"] for slot in template["slots"]}
     count = len(set(project_image_digests(cards).values()))
     for group, needed in CUT_IMAGE_COUNTS.items():
-        if count < needed:
+        if group in slots and count < needed:
             unavailable.setdefault(group, []).append("distinct_cut_images_required")
 
 

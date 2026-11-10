@@ -100,7 +100,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
 
   return <details><summary>本期补充素材</summary>
     <section aria-label="本期补充素材" className={styles.materials}>
-      <p className={styles.note}>上传实拍或导入已完成的创意图。勾选后，素材说明会进入本次规划，原件由渲染时读取。</p>
+      <p className={styles.note}>上传实拍或导入已完成的创意图。素材名称和说明供规划选材。成片会使用素材原件，请选用画面里没有内部备注的版本。</p>
       <label>素材来源<select value={source} disabled={busy} onChange={event => { setSource(event.target.value === "creative" ? "creative" : "upload"); setFile(undefined); setError(""); }}>
         <option value="upload">上传文件</option><option value="creative">已有创意图</option>
       </select></label>

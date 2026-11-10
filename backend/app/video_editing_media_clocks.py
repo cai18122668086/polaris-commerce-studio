@@ -21,6 +21,13 @@ def clock_profile(group_id: str) -> dict[str, Any] | None:
     return data["profiles"].get(group_id)
 
 
+def _media_descriptor(config: dict, path: str) -> dict:
+    value = config["media"]
+    for segment in path.split("/")[2:-1]:
+        value = value[int(segment) if isinstance(value, list) else segment]
+    return value
+
+
 def compile_media_clocks(
     package: Path,
     group: dict[str, Any],
@@ -171,9 +178,9 @@ def compile_media_clocks(
                 "Presenter source clock cannot be applied to unrelated project media"
             )
         prefix = path.rsplit("/", 1)[0]
-        if (implicit_scene_clips or profile.get("require_source_end_error")) and config[
-            "media"
-        ][path.split("/")[2]].get("end_policy") != "error":
+        if (implicit_scene_clips or profile.get("require_source_end_error")) and (
+            _media_descriptor(config, path).get("end_policy") != "error"
+        ):
             raise ValueError("Presenter must run without looping or holding")
         offset_path, duration_path = (
             prefix + "/offset_seconds",
@@ -260,12 +267,11 @@ def _project_scene_clip(
         raise ValueError("Scene clip starts outside the rendered frame window")
     length = (frames - start_frame) / fps
     required_ms = math.ceil((frames - start_frame) * 1000 / fps)
-    slot = path.split("/")[2]
     implicit_extent = path in profile.get("project_scene_implicit_extent_paths", [])
     still = implicit_extent and asset.get("kind") == "image"
     if (
         asset.get("source") != "project_upload"
-        or config["media"][slot].get("end_policy") != "error"
+        or _media_descriptor(config, path).get("end_policy") != "error"
         or (
             not still
             and (

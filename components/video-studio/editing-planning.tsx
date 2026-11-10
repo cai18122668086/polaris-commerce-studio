@@ -176,6 +176,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
       {job.overlay_template?.id === "yy-presenter-openings-v3" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>月云川开场需要无内嵌字幕的原片。部分画面需要本期背景图及实录数量词，撕纸组需要两张不同的背景图。</p>}
       {job.unavailable_template_group_ids?.includes("AH-S07") && <p className={styles.note}>年份动效需要实录说出四位年份，并能读取原组背衬字体。</p>}
       {job.overlay_template?.id === "material-cut-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>素材接力需要无内嵌字幕的原片。实拍接力需要 1 张本期配图，手机画面需要 2 张，撕纸和表盘各需要 3 张。每组内的配图须不同。</p>}
+      {job.overlay_template?.id === "media-panels-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>四图板和图例各需要 4 张不同的本期图片。三路并置需要 2 份不同的本期补充素材，补充视频须覆盖所选口播段。请使用无内嵌字幕的原片。</p>}
       {job.project_image_requirements?.map(requirement => requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
         {requirement.group_id} · 本期线描素材需要不透明过渡图、透明线描图及六列四行的透明手势帧图。
         {Object.values(requirement.native_image_slot_ids).every(ids => ids.length > 0)

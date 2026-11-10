@@ -91,6 +91,7 @@ from .video_editing_render_edits import (
     source_only,
     validate_render_edits,
 )
+from .video_editing_story_panels import PANEL_TEMPLATE_ID, TRIPTYCH, triptych_entrance
 from .video_editing_unified_scenes import (
     UNIFIED_CAPTION_INTENT,
     UNIFIED_SCENE_GROUPS,
@@ -596,7 +597,15 @@ def compile_episode(
                         raise ValueError("Conflicting instance resource binding")
                     bindings["resources"][rid] = value
                 if authoring.sound:
-                    for event in read_json(directory / "word-bindings.json")["events"]:
+                    events = read_json(directory / "word-bindings.json")["events"]
+                    if (
+                        authoring.overlay_template_id == PANEL_TEMPLATE_ID
+                        and beat.group_id == TRIPTYCH
+                    ):
+                        events.append(
+                            triptych_entrance(beat, round(start * 1000), job["config"])
+                        )
+                    for event in events:
                         if event["path"] in hypit_entries:
                             event["hypit_entry"] = hypit_entries[event["path"]]
                         sound_events[beat.id, event["path"]] = (
@@ -874,7 +883,8 @@ def compile_episode(
                 "semantic_use": asset.get("semantic_use", ""),
                 "viewed_identity": (
                     "本期实录讲述者与现场画面"
-                    if authoring.overlay_template_id == CUT_TEMPLATE_ID
+                    if authoring.overlay_template_id
+                    in {CUT_TEMPLATE_ID, PANEL_TEMPLATE_ID}
                     and asset.get("kind") == "original_video"
                     and asset["sha256"] == transcript.source_sha256
                     and not asset.get("viewed_identity")

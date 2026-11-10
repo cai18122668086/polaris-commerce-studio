@@ -34,6 +34,7 @@ from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest
 from .video_editing_planning_store import FILES, execution_available, planning_root
 from .video_editing_presenter_motion import motion_blockers, motion_word_windows
+from .video_editing_story_panels import panel_blockers
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingPlanningAttemptRecord,
@@ -342,6 +343,12 @@ def process(
                 snapshot["asset_cards"],
                 runtime["unavailable_template_groups"],
             )
+            panel_blockers(
+                template,
+                snapshot["asset_cards"],
+                snapshot["source_sha256"],
+                runtime["unavailable_template_groups"],
+            )
             opening_inputs = yy6_scene_inputs(
                 template,
                 transcript,
@@ -467,6 +474,12 @@ def process(
                 )
                 require_spoken_year(template, transcript, current)
                 cut_scene_blockers(template, snapshot["asset_cards"], current)
+                panel_blockers(
+                    template,
+                    snapshot["asset_cards"],
+                    snapshot["source_sha256"],
+                    current,
+                )
                 yy6_scene_inputs(template, transcript, snapshot["asset_cards"], current)
                 motion_blockers(
                     template,

@@ -16,7 +16,7 @@ from .video_editing_captioning import (
     text_boundaries,
 )
 from .video_editing_contracts import SemanticBeat, SemanticPlan, Transcript
-from .video_editing_quantity_anchors import SpokenQuantity
+from .video_editing_quantity_anchors import SpokenQuantity, measured_quantities
 from .video_editing_word_bindings import emphasis_text
 from .video_studio_schemas import StrictVideoModel
 
@@ -763,10 +763,26 @@ def _dense_words(
         raise ValueError("原生场景缺少本期同期原片")
     if shot.group == "YYO08":
         topic, question = ranges
+        title = (topic[0], topic[0])
+        quantities = measured_quantities(tokens)
+        if any(quantity.cut_by(title) for quantity in quantities):
+            # The original push-in draws topic and question. Its required title
+            # slot may reuse one of those complete phrases if it fits three glyphs.
+            for span in (topic, question):
+                lo, hi = span
+                phrase = emphasis_text(
+                    "".join(t.text for t in tokens[lo : hi + 1]),
+                    "omit_sentence_punctuation",
+                )
+                if 1 <= len(phrase) <= 3 and not any(
+                    quantity.cut_by(span) for quantity in quantities
+                ):
+                    title = span
+                    break
         return NativeChoice(
             text={
                 "/content/topic": topic,
-                "/content/title": (topic[0], topic[0]),
+                "/content/title": title,
                 "/content/question": question,
                 "/content/subtitle": question,
             },

@@ -3,10 +3,15 @@ from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToke
 from app.video_editing_first_groups import (
     ShotChoice,
     _Candidate,
+    _dense_words,
     _find_dense_target,
     _pair,
     _select_dense,
     _shorten_phrase,
+)
+from app.video_editing_quantity_anchors import (
+    measured_quantities,
+    validate_quantity_slots,
 )
 
 
@@ -94,6 +99,23 @@ def test_shorter_native_text_keeps_the_spoken_quantity_and_condition():
     assert _shorten_phrase(action, (0, 4), (1, 4)) == (1, 4)
     condition = _transcript(["如果", "还", "能", "下单"])
     assert _shorten_phrase(condition, (0, 3), (1, 2)) == (0, 3)
+
+
+def test_yy08_inactive_title_can_reuse_a_complete_spoken_phrase():
+    transcript = _transcript(["14", "块", "9", "两", "大", "瓶"])
+    shot = ShotChoice(
+        group="YYO08", span=(0, 5), words=[(0, 2), (3, 5)], why="价格与规格"
+    )
+    binding = _dense_words(shot, transcript, "source")
+
+    assert binding.text["/content/topic"] == (0, 2)
+    assert binding.text["/content/question"] == (3, 5)
+    assert binding.text["/content/title"] == (3, 5)
+    assert binding.events["/events/title_in"] == (0, "start")
+    assert binding.events["/events/question_in"] == (3, "start")
+    validate_quantity_slots(
+        "YYO08", binding.text, measured_quantities(transcript.tokens)
+    )
 
 
 def test_line_entrance_can_settle_at_a_measured_edge_during_a_spoken_pause():

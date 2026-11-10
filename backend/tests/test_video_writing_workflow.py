@@ -8,6 +8,7 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect, select, text
 
 from app.video_studio_models import VideoScriptVersionRecord
+from app.video_studio_routes import digest
 from app.video_writing_contracts import (
     ReviseWritingDraft,
     WritingAnalysis,
@@ -15,7 +16,7 @@ from app.video_writing_contracts import (
     WritingFacts,
     WritingStructureDraft,
 )
-from app.video_writing_models import VideoWritingAdoption
+from app.video_writing_models import VideoWritingAdoption, VideoWritingDocument
 from app.video_writing_provider import (
     revised_draft,
     structure_check,
@@ -23,7 +24,8 @@ from app.video_writing_provider import (
     validate_draft,
 )
 from app.video_writing_rules import reference_from_project
-from tests.test_video_projects import base, payload
+from tests.test_auth_external import verified_identity
+from tests.test_video_projects import EMAIL, base, payload
 
 pytest_plugins = ["tests.test_video_projects"]
 
@@ -255,7 +257,7 @@ def test_manual_revision_keeps_original_replacement_constraints():
 def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_separate(
     video, tmp_path, monkeypatch
 ):
-    client, _, ws, _, settings = video
+    client, auth, ws, _, settings = video
     settings.video_writing_workflow_enabled = True
     settings.video_script_planning_enabled = True
     monkeypatch.setattr("app.video_writing_routes.verify_writing_package", lambda _: {})
@@ -514,6 +516,30 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
         ]
         == origin
     )
+    source_path = f"/versions/{confirmed['version']['id']}/writing-sources"
+    sources = client.get(project_url + source_path).raise_for_status().json()
+    assert sources == {
+        "origin": origin,
+        "reference": saved.json()["body"],
+        "analysis": saved_analysis.json()["body"],
+        "facts": saved_facts.json()["body"],
+        "draft": new_draft["body"]["draft"],
+    }
+    recovered_sources = (
+        client.get(
+            project_url + f"/versions/{recovered['version']['id']}/writing-sources"
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert recovered_sources == sources
+    assert client.get(other_url + source_path).status_code == 404
+    assert (
+        client.get(
+            project_url + f"/versions/{restored['version']['id']}/writing-sources"
+        ).status_code
+        == 404
+    )
 
     kinds = {
         r["kind"]
@@ -587,6 +613,14 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
     )
     assert accepted["version"]["snapshot"]["draft"]["text"] == revision["body"]["text"]
     assert len(fake.calls) == 3
+    with client.app.state.session_factory() as session:
+        fact_row = session.get(VideoWritingDocument, origin["facts_document_id"])
+        fact_row.body = {**fact_row.body, "forbidden_terms": ["被改动的旧事实卡"]}
+        fact_row.body_sha256 = digest(fact_row.body)
+        session.commit()
+    assert client.get(project_url + source_path).status_code == 409
+    auth.identity = verified_identity(primary_user_id="other-user", email=EMAIL)
+    assert client.get(project_url + source_path).status_code in (403, 404)
 
 
 def test_writing_migration_roundtrip_preserves_existing_project_tables(tmp_path):

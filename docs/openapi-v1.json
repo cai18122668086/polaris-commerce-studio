@@ -541,6 +541,46 @@
         "title": "AnalysisRequest",
         "type": "object"
       },
+      "AnalysisSection": {
+        "additionalProperties": false,
+        "properties": {
+          "explanation": {
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Explanation",
+            "type": "string"
+          },
+          "first_sentence_id": {
+            "title": "First Sentence Id",
+            "type": "string"
+          },
+          "function": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Function",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "last_sentence_id": {
+            "title": "Last Sentence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "first_sentence_id",
+          "last_sentence_id",
+          "function",
+          "explanation"
+        ],
+        "title": "AnalysisSection",
+        "type": "object"
+      },
       "AnnouncementAdminAccessResponse": {
         "properties": {
           "can_manage": {
@@ -7424,6 +7464,44 @@
         "title": "FactItem",
         "type": "object"
       },
+      "FactReplacement": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "identity",
+              "product",
+              "story"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "fact_id": {
+            "title": "Fact Id",
+            "type": "string"
+          },
+          "original": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Original",
+            "type": "string"
+          },
+          "replacement": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Replacement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "original",
+          "replacement",
+          "fact_id"
+        ],
+        "title": "FactReplacement",
+        "type": "object"
+      },
       "FetchItemRequest": {
         "properties": {
           "includeDescImages": {
@@ -10490,6 +10568,25 @@
         "title": "ReferenceRemixJobCreate",
         "type": "object"
       },
+      "ReferenceSentence": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "ReferenceSentence",
+        "type": "object"
+      },
       "RefundBody": {
         "additionalProperties": false,
         "properties": {
@@ -11573,6 +11670,56 @@
           }
         },
         "title": "SessionStartRequest",
+        "type": "object"
+      },
+      "SourceClaim": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "identity",
+              "product",
+              "story",
+              "promise",
+              "rights"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "handling": {
+            "enum": [
+              "requires_user_fact",
+              "must_replace",
+              "do_not_copy"
+            ],
+            "title": "Handling",
+            "type": "string"
+          },
+          "quote": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Quote",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "sentence_id": {
+            "title": "Sentence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentence_id",
+          "quote",
+          "category",
+          "handling",
+          "reason"
+        ],
+        "title": "SourceClaim",
         "type": "object"
       },
       "StructureDraftLine": {
@@ -12921,6 +13068,150 @@
         "title": "WorkspaceResponse",
         "type": "object"
       },
+      "WritingAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "cross_account_comparison": {
+            "const": "not_provided",
+            "default": "not_provided",
+            "title": "Cross Account Comparison",
+            "type": "string"
+          },
+          "hook_sentence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Hook Sentence Ids",
+            "type": "array"
+          },
+          "interaction_analysis": {
+            "const": "not_provided",
+            "default": "not_provided",
+            "title": "Interaction Analysis",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Limitations",
+            "type": "array"
+          },
+          "reusable_structure": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Reusable Structure",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "tengli.writing-analysis/1",
+            "default": "tengli.writing-analysis/1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSection"
+            },
+            "maxItems": 60,
+            "minItems": 1,
+            "title": "Sections",
+            "type": "array"
+          },
+          "source_claims": {
+            "items": {
+              "$ref": "#/components/schemas/SourceClaim"
+            },
+            "maxItems": 100,
+            "title": "Source Claims",
+            "type": "array"
+          },
+          "topic": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          },
+          "visual_review": {
+            "const": "not_provided",
+            "default": "not_provided",
+            "title": "Visual Review",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "hook_sentence_ids",
+          "sections",
+          "reusable_structure",
+          "limitations"
+        ],
+        "title": "WritingAnalysis",
+        "type": "object"
+      },
+      "WritingDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "missing_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 60,
+            "title": "Missing Facts",
+            "type": "array"
+          },
+          "replacements": {
+            "items": {
+              "$ref": "#/components/schemas/FactReplacement"
+            },
+            "maxItems": 100,
+            "title": "Replacements",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "tengli.fact-mapped-draft/1",
+            "default": "tengli.fact-mapped-draft/1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/DraftSentence"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Sentences",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "sentences"
+        ],
+        "title": "WritingDraft",
+        "type": "object"
+      },
       "WritingFacts": {
         "additionalProperties": false,
         "properties": {
@@ -12958,6 +13249,126 @@
           "facts"
         ],
         "title": "WritingFacts",
+        "type": "object"
+      },
+      "WritingReference": {
+        "additionalProperties": false,
+        "properties": {
+          "interaction_evidence": {
+            "const": "not_provided",
+            "default": "not_provided",
+            "title": "Interaction Evidence",
+            "type": "string"
+          },
+          "original_text": {
+            "maxLength": 6000,
+            "minLength": 1,
+            "title": "Original Text",
+            "type": "string"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "title": "Reference Id",
+            "type": "string"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceSentence"
+            },
+            "title": "Sentences",
+            "type": "array"
+          },
+          "source_note": {
+            "default": "",
+            "title": "Source Note",
+            "type": "string"
+          },
+          "source_project_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Project Revision"
+          },
+          "source_url": {
+            "default": "",
+            "title": "Source Url",
+            "type": "string"
+          },
+          "visual_evidence": {
+            "const": "not_provided",
+            "default": "not_provided",
+            "title": "Visual Evidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference_id",
+          "original_text",
+          "sentences"
+        ],
+        "title": "WritingReference",
+        "type": "object"
+      },
+      "WritingStructureDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "missing_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 60,
+            "title": "Missing Facts",
+            "type": "array"
+          },
+          "replacements": {
+            "items": {
+              "$ref": "#/components/schemas/FactReplacement"
+            },
+            "maxItems": 100,
+            "title": "Replacements",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "tengli.structure-draft/1",
+            "default": "tengli.structure-draft/1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/StructureDraftLine"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Sentences",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "sentences"
+        ],
+        "title": "WritingStructureDraft",
         "type": "object"
       },
       "WritingTaskRequest": {
@@ -13062,6 +13473,43 @@
           "reference_document_id"
         ],
         "title": "WritingTaskRequest",
+        "type": "object"
+      },
+      "WritingVersionSources": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/WritingAnalysis"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WritingDraft"
+              },
+              {
+                "$ref": "#/components/schemas/WritingStructureDraft"
+              }
+            ],
+            "title": "Draft"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/WritingFacts"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/VideoWritingOrigin"
+          },
+          "reference": {
+            "$ref": "#/components/schemas/WritingReference"
+          }
+        },
+        "required": [
+          "origin",
+          "reference",
+          "analysis",
+          "facts",
+          "draft"
+        ],
+        "title": "WritingVersionSources",
         "type": "object"
       }
     },
@@ -23861,6 +24309,73 @@
         "summary": "List Tasks",
         "tags": [
           "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/versions/{version_id}/writing-sources": {
+      "get": {
+        "operationId": "version_sources_api_v1_video_studio_workspaces__workspace_id__projects__project_id__versions__version_id__writing_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingVersionSources"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Version Sources",
+        "tags": [
+          "video-writing-workflow"
         ]
       }
     },

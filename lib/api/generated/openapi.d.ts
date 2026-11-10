@@ -2620,6 +2620,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/versions/{version_id}/writing-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Version Sources */
+        get: operations["version_sources_api_v1_video_studio_workspaces__workspace_id__projects__project_id__versions__version_id__writing_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/tasks": {
         parameters: {
             query?: never;
@@ -4167,6 +4184,19 @@ export interface components {
             replication_method?: ("exact" | "style") | null;
             /** Request Id */
             request_id: string;
+        };
+        /** AnalysisSection */
+        AnalysisSection: {
+            /** Explanation */
+            explanation: string;
+            /** First Sentence Id */
+            first_sentence_id: string;
+            /** Function */
+            function: string;
+            /** Id */
+            id: string;
+            /** Last Sentence Id */
+            last_sentence_id: string;
         };
         /** AnnouncementAdminAccessResponse */
         AnnouncementAdminAccessResponse: {
@@ -6666,6 +6696,20 @@ export interface components {
             /** Value */
             value?: string | null;
         };
+        /** FactReplacement */
+        FactReplacement: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "identity" | "product" | "story";
+            /** Fact Id */
+            fact_id: string;
+            /** Original */
+            original: string;
+            /** Replacement */
+            replacement: string;
+        };
         /** FetchItemRequest */
         FetchItemRequest: {
             /**
@@ -7816,6 +7860,13 @@ export interface components {
              */
             type: "reference_remix";
         };
+        /** ReferenceSentence */
+        ReferenceSentence: {
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+        };
         /** RefundBody */
         RefundBody: {
             /** Amount Fen */
@@ -8200,6 +8251,25 @@ export interface components {
             platform: "auto" | "taobao" | "tmall" | "alibaba1688" | "1688" | "jd" | "pinduoduo";
             /** Url */
             url?: string | null;
+        };
+        /** SourceClaim */
+        SourceClaim: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "identity" | "product" | "story" | "promise" | "rights";
+            /**
+             * Handling
+             * @enum {string}
+             */
+            handling: "requires_user_fact" | "must_replace" | "do_not_copy";
+            /** Quote */
+            quote: string;
+            /** Reason */
+            reason: string;
+            /** Sentence Id */
+            sentence_id: string;
         };
         /** StructureDraftLine */
         StructureDraftLine: {
@@ -8721,6 +8791,64 @@ export interface components {
             name: string;
             role: components["schemas"]["MembershipRole"];
         };
+        /** WritingAnalysis */
+        WritingAnalysis: {
+            /**
+             * Cross Account Comparison
+             * @default not_provided
+             * @constant
+             */
+            cross_account_comparison: "not_provided";
+            /** Hook Sentence Ids */
+            hook_sentence_ids: string[];
+            /**
+             * Interaction Analysis
+             * @default not_provided
+             * @constant
+             */
+            interaction_analysis: "not_provided";
+            /** Limitations */
+            limitations: string[];
+            /** Reusable Structure */
+            reusable_structure: string[];
+            /**
+             * Schema Version
+             * @default tengli.writing-analysis/1
+             * @constant
+             */
+            schema_version: "tengli.writing-analysis/1";
+            /** Sections */
+            sections: components["schemas"]["AnalysisSection"][];
+            /** Source Claims */
+            source_claims?: components["schemas"]["SourceClaim"][];
+            /** Topic */
+            topic: string;
+            /**
+             * Visual Review
+             * @default not_provided
+             * @constant
+             */
+            visual_review: "not_provided";
+        };
+        /** WritingDraft */
+        WritingDraft: {
+            /** Missing Facts */
+            missing_facts?: string[];
+            /** Replacements */
+            replacements?: components["schemas"]["FactReplacement"][];
+            /**
+             * Schema Version
+             * @default tengli.fact-mapped-draft/1
+             * @constant
+             */
+            schema_version: "tengli.fact-mapped-draft/1";
+            /** Sentences */
+            sentences: components["schemas"]["DraftSentence"][];
+            /** Title */
+            title: string;
+            /** Warnings */
+            warnings?: string[];
+        };
         /** WritingFacts */
         WritingFacts: {
             /** Facts */
@@ -8729,6 +8857,61 @@ export interface components {
             forbidden_terms?: string[];
             /** Restricted Claims */
             restricted_claims?: ("price" | "net_quantity" | "health_effect")[];
+        };
+        /** WritingReference */
+        WritingReference: {
+            /**
+             * Interaction Evidence
+             * @default not_provided
+             * @constant
+             */
+            interaction_evidence: "not_provided";
+            /** Original Text */
+            original_text: string;
+            /**
+             * Reference Id
+             * Format: uuid
+             */
+            reference_id: string;
+            /** Sentences */
+            sentences: components["schemas"]["ReferenceSentence"][];
+            /**
+             * Source Note
+             * @default
+             */
+            source_note: string;
+            /** Source Project Revision */
+            source_project_revision?: number | null;
+            /**
+             * Source Url
+             * @default
+             */
+            source_url: string;
+            /**
+             * Visual Evidence
+             * @default not_provided
+             * @constant
+             */
+            visual_evidence: "not_provided";
+        };
+        /** WritingStructureDraft */
+        WritingStructureDraft: {
+            /** Missing Facts */
+            missing_facts?: string[];
+            /** Replacements */
+            replacements?: components["schemas"]["FactReplacement"][];
+            /**
+             * Schema Version
+             * @default tengli.structure-draft/1
+             * @constant
+             */
+            schema_version: "tengli.structure-draft/1";
+            /** Sentences */
+            sentences: components["schemas"]["StructureDraftLine"][];
+            /** Title */
+            title: string;
+            /** Warnings */
+            warnings?: string[];
         };
         /** WritingTaskRequest */
         WritingTaskRequest: {
@@ -8768,6 +8951,15 @@ export interface components {
             request_id: string;
             /** Target Duration Seconds */
             target_duration_seconds?: number | null;
+        };
+        /** WritingVersionSources */
+        WritingVersionSources: {
+            analysis: components["schemas"]["WritingAnalysis"];
+            /** Draft */
+            draft: components["schemas"]["WritingDraft"] | components["schemas"]["WritingStructureDraft"];
+            facts: components["schemas"]["WritingFacts"];
+            origin: components["schemas"]["VideoWritingOrigin"];
+            reference: components["schemas"]["WritingReference"];
         };
     };
     responses: never;
@@ -14419,6 +14611,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingPlanningTaskResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    version_sources_api_v1_video_studio_workspaces__workspace_id__projects__project_id__versions__version_id__writing_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritingVersionSources"];
                 };
             };
             /** @description Validation Error */

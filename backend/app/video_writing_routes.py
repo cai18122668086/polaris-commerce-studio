@@ -30,7 +30,7 @@ from .video_assistance import (
 )
 from .video_assistance_models import VideoAssistanceRecord
 from .video_editing_task_routes import own_project
-from .video_studio_models import VideoProjectRecord
+from .video_studio_models import VideoProjectRecord, VideoScriptVersionRecord
 from .video_studio_routes import (
     VideoWorkspace,
     append_version,
@@ -54,9 +54,10 @@ from .video_writing_contracts import (
     WritingReference,
     WritingStructureDraft,
     WritingTaskRequest,
+    WritingVersionSources,
 )
 from .video_writing_models import VideoWritingAdoption, VideoWritingDocument
-from .video_writing_provenance import script_digest
+from .video_writing_provenance import matching_writing_origin, script_digest
 from .video_writing_provider import (
     revised_draft,
     shape_check,
@@ -516,7 +517,7 @@ def revision_basis(
 ) -> tuple[dict, dict[str, VideoWritingDocument]]:
     def changed() -> ApiError:
         return ApiError(
-            409, "VIDEO_WRITING_INPUTS_CHANGED", "修订所用的原资料版本不一致。"
+            409, "VIDEO_WRITING_INPUTS_CHANGED", "写稿所用的原资料版本不一致。"
         )
 
     if (
@@ -565,6 +566,70 @@ def revision_basis(
     }:
         raise changed()
     return basis, sources
+
+
+@router.get(
+    "/projects/{project_id}/versions/{version_id}/writing-sources",
+    response_model=WritingVersionSources,
+)
+def version_sources(
+    project_id: UUID,
+    version_id: UUID,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> WritingVersionSources:
+    project = own_project(session, workspace, str(project_id))
+    version = session.get(VideoScriptVersionRecord, str(version_id))
+    if (
+        not version
+        or version.project_id != project.id
+        or version.writing_origin is None
+    ):
+        raise ApiError(404, "VIDEO_WRITING_ORIGIN_NOT_FOUND", "该版文案没有写稿来源。")
+    changed = ApiError(
+        409, "VIDEO_WRITING_ORIGIN_CHANGED", "该版文案的写稿来源无法核对。"
+    )
+    origin = matching_writing_origin(version.writing_origin, version.snapshot)
+    if origin is None:
+        raise changed
+    draft = own_document(session, workspace, origin["draft_document_id"], "draft")
+    draft_text = draft.body.get("text")
+    adoption = session.get(VideoWritingAdoption, origin["adoption_id"])
+    adopted = (
+        session.get(VideoScriptVersionRecord, adoption.script_version_id)
+        if adoption
+        else None
+    )
+    if (
+        draft.project_id != project.id
+        or not adoption
+        or adoption.document_id != draft.id
+        or not adopted
+        or adopted.project_id != project.id
+        or adopted.kind != "draft"
+        or matching_writing_origin(adopted.writing_origin, adopted.snapshot) != origin
+        or draft.reference_document_id != origin["reference_document_id"]
+        or draft.analysis_document_id != origin["analysis_document_id"]
+        or draft.facts_document_id != origin["facts_document_id"]
+        or draft.body_sha256 != origin["draft_document_sha256"]
+        or draft.rules_release != origin["rules_release"]
+        or not isinstance(draft_text, str)
+        or script_digest(draft_text) != origin["script_sha256"]
+    ):
+        raise changed
+    _, sources = revision_basis(session, workspace, draft)
+    try:
+        return WritingVersionSources.model_validate(
+            {
+                "origin": origin,
+                "reference": sources["reference"].body,
+                "analysis": sources["analysis"].body,
+                "facts": sources["facts"].body,
+                "draft": draft.body["draft"],
+            }
+        )
+    except (KeyError, ValueError):
+        raise changed from None
 
 
 @router.post("/writing-documents/{document_id}/revise")

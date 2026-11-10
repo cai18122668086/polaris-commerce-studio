@@ -11,6 +11,7 @@ import { TranscriptEditor } from "./transcript-editor";
 import { EditingLibrary } from "./editing-library";
 import { EditingNativePlans, type EditingRevisionSelection } from "./editing-native-plans";
 import { EditingPlanning, type CarrySelection } from "./editing-planning";
+import { WritingVersionSources } from "./writing-version-sources";
 import styles from "./editing-workspace.module.css";
 
 type EditingTask = components["schemas"]["EditingTaskResponse"];
@@ -227,8 +228,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
           原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>
           {task.source_origin.confirmed_version_id && <> · 确认稿 <code title={task.source_origin.confirmed_version_id}>{task.source_origin.confirmed_version_id.slice(0, 8)}</code></>}
-          {task.source_origin.writing_origin && <> · 事实卡 <code title={task.source_origin.writing_origin.facts_document_id}>{task.source_origin.writing_origin.facts_document_id.slice(0, 8)}</code></>}
         </p>}
+        {task.source_origin?.confirmed_version_id && task.source_origin.writing_origin &&
+          <WritingVersionSources workspaceId={workspaceId} projectId={task.project_id} versionId={task.source_origin.confirmed_version_id}
+            adoptionId={task.source_origin.writing_origin.adoption_id} />}
         {sourceReceipt && <a href={sourceReceipt.url} download>下载原片与配音核对记录</a>}
         {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}
         {task.motion_counts && <p className={styles.note}>原生出片核验 {task.motion_counts.distinct_groups} 种动效，共出现 {task.motion_counts.occurrences} 次。{task.motion_counts.distinct_groups < preferredDistinctMotionGroups && `低于优先目标 ${preferredDistinctMotionGroups} 种。`}</p>}

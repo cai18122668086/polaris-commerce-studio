@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
-from .video_studio_schemas import StrictVideoModel
+from .video_studio_schemas import StrictVideoModel, VideoWritingOrigin
 
 
 class ReferenceSentence(StrictVideoModel):
@@ -125,6 +125,14 @@ class StructureDraftLine(SpokenDraftLine):
 class WritingStructureDraft(DraftContent):
     schema_version: Literal["tengli.structure-draft/1"] = "tengli.structure-draft/1"
     sentences: list[StructureDraftLine] = Field(min_length=1, max_length=100)
+
+
+class WritingVersionSources(StrictVideoModel):
+    origin: VideoWritingOrigin
+    reference: WritingReference
+    analysis: WritingAnalysis
+    facts: WritingFacts
+    draft: WritingDraft | WritingStructureDraft
 
 
 class SaveWritingReference(StrictVideoModel):

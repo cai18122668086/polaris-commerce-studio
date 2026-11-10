@@ -18,6 +18,7 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
+from .video_editing_crowd_scene import CROWD_GROUP, CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_GROUPS, CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_DEPENDENCIES, CXBR_PURPOSES, cxbr_binding
 from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
@@ -666,6 +667,22 @@ _TEMPLATES[LIVE_CHAPTERS_TEMPLATE_ID] = {
         *_TEMPLATES[CHAPTER_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[CROWD_TEMPLATE_ID] = {
+    "id": CROWD_TEMPLATE_ID,
+    "name": "原景剪影群像",
+    "slots": [
+        {
+            "group_id": CROWD_GROUP,
+            "purpose": "从本期前一画面回到全幅同期人物，七个原生剪影按词点进入。",
+            "layer": "scene",
+            "binding": "关系使用 explanation。"
+            "用一张本期承接图及七张符合各原生槽尺寸的透明 PNG。"
+            "剪影属于装饰。标题和短字幕均取实录，标题对准首词。"
+            "纸面退场早于标题，七个剪影随后各取不同词首，原片持续播放。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[WHY_TEMPLATE_ID] = {
     "id": WHY_TEMPLATE_ID,
     "name": "问号接力与口播重点",
@@ -952,6 +969,7 @@ def overlay_templates() -> list[dict]:
             UNIFIED_EXPLANATION_TEMPLATE_ID,
             CHAPTER_TEMPLATE_ID,
             LIVE_CHAPTERS_TEMPLATE_ID,
+            CROWD_TEMPLATE_ID,
             WHY_TEMPLATE_ID,
             TRANSLATION_TEMPLATE_ID,
             PAPER_TEMPLATE_ID,

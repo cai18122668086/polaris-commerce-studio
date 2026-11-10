@@ -10,6 +10,7 @@ from app.video_editing_azl_panels import (
     azl_output_bounds,
     verify_azl_layout,
 )
+from app.video_editing_crowd_scene import crowd_action_frame
 from app.video_editing_cxbr import (
     CXBR_CAPTION_INTENT,
     cxbr_entry_frame,
@@ -361,6 +362,23 @@ def test_original_unified_easing_and_text_band_use_real_output_frames(tmp_path):
         {**caption, "end_seconds": 4.79},
         {**caption, "start_seconds": 4.79},
     ]
+
+
+def test_crowd_sound_uses_discrete_original_clock_and_title_ink():
+    timing = {
+        "duration_seconds": 4.6,
+        "events": {
+            "paper_exit": 0.4,
+            "title_in": 0.66,
+            "silhouette_entries": [0.82, 1.0, 1.12, 1.28, 1.38, 1.56, 1.72],
+        },
+    }
+    assert crowd_action_frame(timing, "paper_exit") == 12
+    assert crowd_action_frame(timing, "silhouette_entries/0") == 25
+    assert crowd_action_frame(timing, "title_in", 10) == 20
+    assert crowd_action_frame(timing, "title_in", 12) == 21
+    with pytest.raises(ValueError, match="measured original ink"):
+        crowd_action_frame(timing, "title_in")
 
 
 def test_presenter_motion_sound_uses_fixed_and_measured_native_frames():

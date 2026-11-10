@@ -26,6 +26,7 @@ from .video_editing_catalog import (
     planning_runtime_snapshot,
     unavailable_template_groups,
 )
+from .video_editing_crowd_scene import CROWD_GROUP
 from .video_editing_cut_scenes import cut_scene_blockers
 from .video_editing_cxbr import cxbr_blockers, cxbr_windows
 from .video_editing_handoff_scenes import handoff_blockers
@@ -426,6 +427,14 @@ def process(
                 runtime["unavailable_template_groups"].setdefault(WHY_GROUP, []).append(
                     "current_question_props_required"
                 )
+            if any(
+                row["group_id"] == CROWD_GROUP
+                and not all(row["native_image_slot_ids"].values())
+                for row in image_requirements
+            ):
+                runtime["unavailable_template_groups"].setdefault(
+                    CROWD_GROUP, []
+                ).append("current_crowd_image_slots_required")
             if (
                 template
                 and template["id"] == FRUIT_LIST_TEMPLATE_ID

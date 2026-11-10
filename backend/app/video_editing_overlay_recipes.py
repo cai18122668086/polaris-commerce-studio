@@ -48,6 +48,14 @@ from .video_editing_contracts import (
     SemanticPlan,
     Transcript,
 )
+from .video_editing_crowd_scene import (
+    CROWD_FULL_FRAME,
+    CROWD_GROUP,
+    CROWD_IMAGE_PATHS,
+    CROWD_SILHOUETTES,
+    validate_crowd_anchors,
+    validate_crowd_images,
+)
 from .video_editing_cut_scenes import (
     CUT_GROUPS,
     cut_media_paths,
@@ -952,6 +960,8 @@ def _entry_sound(
             selection = _SELECT
     if beat.group_id == GHOST_GROUP and path != "/timing/events/ghost":
         selection = _SELECT
+    if beat.group_id == CROWD_GROUP and path == "/timing/events/title_in":
+        selection = _IMPACT
     event = next(row for row in anchors["events"] if row["path"] == path)
     asset_id, source_start, length, peak = (
         selection if selection[0] not in avoided else _CLICK
@@ -2248,6 +2258,7 @@ def _unified_entry(
     is_translation = group_id == TRANSLATION_GROUP
     is_paper = group_id == PAPER_GROUP
     moving_alpha = group_id in ALPHA_GROUPS
+    is_crowd = group_id == CROWD_GROUP
     videos = (
         project_panel_videos(asset_cards, transcript.source_sha256)
         if group_id == TRIPTYCH
@@ -2268,6 +2279,11 @@ def _unified_entry(
     config = read_json(inside(package, group["input_template"]))
     if is_why:
         config = why_template(config, embedded_caption=False)
+    if is_crowd:
+        config["media"]["presenter"]["crop"] = list(CROWD_FULL_FRAME)
+        config["media"]["silhouettes"] = [
+            {"kind": "image", "path": None, "alpha": True} for _ in CROWD_SILHOUETTES
+        ]
     if group_id in PRESENTER_VIDEO_GROUPS:
         config = unified_presenter_template(config)
     if video_slots:
@@ -2289,7 +2305,7 @@ def _unified_entry(
     media_clock_paths = () if moving_alpha else source_paths
     images = (
         project_image_digests(asset_cards)
-        if is_cut or is_panel or is_handoff or is_why
+        if is_cut or is_panel or is_handoff or is_why or is_crowd
         else {}
     )
     allowed_paths = cut_media_paths(group_id) if is_cut else set(source_paths)
@@ -2299,6 +2315,8 @@ def _unified_entry(
         allowed_paths.add(HANDOFF_IMAGE[group_id])
     if is_why:
         allowed_paths.update(WHY_PROP_PATHS)
+    if is_crowd:
+        allowed_paths.update(CROWD_IMAGE_PATHS)
     presenters = (
         {
             row["id"]
@@ -2335,6 +2353,9 @@ def _unified_entry(
             validate_panel_anchors(beat, anchors, transcript, images, videos)
         elif is_handoff:
             validate_handoff_anchors(beat, anchors, transcript, images)
+        elif is_crowd:
+            validate_crowd_anchors(beat, anchors)
+            validate_crowd_images(bound, images, None)
         else:
             validate_unified_anchors(beat, anchors, transcript)
         if chapter_starts is not None:
@@ -2389,6 +2410,7 @@ def _unified_entry(
             "placeholders": slots,
             **({"empty_text": omitted} if omitted else {}),
             **({"dependency_ids": [WHY_FONT]} if is_why else {}),
+            **({"crowd_live_source": True} if is_crowd else {}),
             **(
                 {
                     (

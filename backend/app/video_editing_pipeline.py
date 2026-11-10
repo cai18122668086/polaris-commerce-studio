@@ -727,7 +727,10 @@ def validate_result(
             if native["sha256"] != validation["sha256"]:
                 raise ValueError("Native mix output changed")
             audio = verify_rendered_sound(
-                root, native, read_json(root / "audio-plan.json")
+                root,
+                native,
+                read_json(root / "audio-plan.json"),
+                settings.video_editing_library_dir,
             )
             atomic_json(root / "audio-validation.json", audio)
             validation["native_mix_validation"] = "passed"

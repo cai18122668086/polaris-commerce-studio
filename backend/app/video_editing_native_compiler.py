@@ -45,6 +45,14 @@ from .video_editing_browser_rotation import (
     rotation_source_clock,
 )
 from .video_editing_contracts import SemanticBeat, Transcript
+from .video_editing_crowd_scene import (
+    CROWD_FULL_FRAME,
+    CROWD_GROUP,
+    CROWD_PRESENTER,
+    crowd_image_slots,
+    validate_crowd_anchors,
+    validate_crowd_images,
+)
 from .video_editing_hypit import (
     HY_PICTURE_TEMPLATE_ID,
     PICTURE_PROFILE,
@@ -234,6 +242,18 @@ def compile_native_job(
         and config.get("media", {}).get("presenter", {}).get("kind") == "video"
     )
     live_paper = recipe.get("paper_typewriter_live", False)
+    live_crowd = recipe.get("crowd_live_source", False)
+    if type(live_crowd) is not bool or (
+        live_crowd
+        and (
+            beat.group_id != CROWD_GROUP
+            or config["media"]["presenter"]["crop"] != CROWD_FULL_FRAME
+            or config["media"]["presenter"]["end_policy"] != "error"
+            or recipe.get("media_clocks")
+            != [{"media_path": CROWD_PRESENTER, "policy": "transcript_source_window"}]
+        )
+    ):
+        raise ValueError("Original crowd needs its full-frame live presenter")
     new_alpha = recipe.get("unified_alpha_presenter", False)
     live_alpha = live_paper or new_alpha
     if (
@@ -404,6 +424,15 @@ def compile_native_job(
     if len(placeholders) != len(set(placeholders)):
         raise ValueError("Duplicate recipe placeholder")
     native = word_bindings(beat, transcript, contract, set(asset_files))
+    if live_crowd:
+        validate_crowd_anchors(beat, native)
+        selected = {row["path"]: row["asset_id"] for row in native["media"]}
+        files = {asset_id: asset_files[asset_id] for asset_id in selected.values()}
+        validate_crowd_images(
+            selected,
+            {asset_id: row["sha256"] for asset_id, row in files.items()},
+            crowd_image_slots(files),
+        )
     if beat.group_id == ROLE_CHAIN_GROUP:
         native["role_scene_chain"] = role_scene_chain(native, asset_files)
     if live_package_presenter:

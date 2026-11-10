@@ -16,6 +16,13 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
+from .video_editing_crowd_scene import (
+    CROWD_GROUP,
+    CROWD_IMAGE_PATHS,
+    CROWD_TEMPLATE_ID,
+    crowd_image_slots,
+    validate_crowd_images,
+)
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
 from .video_editing_hypit_strips import (
     DETAIL_CARDS_TEMPLATE_ID,
@@ -61,6 +68,7 @@ _IMAGE_GROUPS = {
     HY_PICTURE_TEMPLATE_ID: ((SLANT_GROUP, 4), (PICTURE_GROUP, 3)),
     DETAIL_CARDS_TEMPLATE_ID: ((PRICE_CARD_GROUP, 3),),
     WHY_TEMPLATE_ID: ((WHY_GROUP, 2),),
+    CROWD_TEMPLATE_ID: ((CROWD_GROUP, len(CROWD_IMAGE_PATHS)),),
 }
 _ADDITIONAL_IMAGE_PATHS = {
     FRUIT_LIST_GROUP: FRUIT_LIST_HEADER,
@@ -134,6 +142,12 @@ def template_image_requirements(
                     continue
             row["selected_distinct_images"] = len({images[key] for key in eligible})
             row["native_image_slot_ids"] = dict.fromkeys(WHY_PROP_PATHS, eligible)
+        elif group_id == CROWD_GROUP:
+            slots = crowd_image_slots(files)
+            row["native_image_slot_ids"] = slots
+            row["selected_distinct_images"] = len(
+                {images[key] for candidates in slots.values() for key in candidates}
+            )
         result.append(row)
     return result
 
@@ -217,6 +231,13 @@ def validate_template_images(
                 raise ValueError(
                     "Question relay needs two distinct verified alpha props"
                 )
+            continue
+        if beat.group_id == CROWD_GROUP:
+            validate_crowd_images(
+                {anchor.path: anchor.asset_id for anchor in beat.native_media},
+                images,
+                requirement["native_image_slot_ids"],
+            )
             continue
         bound = [
             images.get(item.asset_ids[0])

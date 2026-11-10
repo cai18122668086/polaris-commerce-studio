@@ -193,6 +193,10 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
       </p> : requirement.group_id === "W-R17" ? <p key={requirement.group_id} className={styles.note}>
         W-R17 · 两个问号需要两张不同的 540×960 透明 PNG。本期已选 {requirement.selected_distinct_images} 张符合要求的图片。
         {requirement.selected_distinct_images < requirement.required_distinct_images && " 补齐道具后可重新准备。"}
+      </p> : requirement.group_id === "W-R09" ? <p key={requirement.group_id} className={styles.note}>
+        W-R09 · 需要一张 540×960 不透明承接图和七张按槽尺寸上传的透明 PNG。当前已配齐 {Object.values(requirement.native_image_slot_ids ?? {}).filter(ids => ids.length > 0).length} / {requirement.required_distinct_images} 个素材位。
+        剪影尺寸依次为 210×240、260×240、205×400、120×310、120×320、305×425、145×410。
+        {job.unavailable_template_group_ids?.includes("W-R09") && " 补齐图片并使用无内嵌字幕的原片后，可重新准备。"}
       </p> : requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
         {requirement.group_id} · 本期线描素材需要不透明过渡图、透明线描图及六列四行的透明手势帧图。
         {Object.values(requirement.native_image_slot_ids).every(ids => ids.length > 0)

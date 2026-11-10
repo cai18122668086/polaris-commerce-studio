@@ -273,7 +273,7 @@ def compile_sound(
             and cue.event_path in unified_sound_paths(shot["group_id"])
         ):
             fps = episode["output"]["fps"]
-            frame = unified_action_frame(shot, fps, cue.event_path)
+            frame = unified_action_frame(shot, fps, cue.event_path, package)
             seconds = frame / fps
             native_ref = {}
             unified_entry = {"shot_index": shot_index, "output_frame": frame}
@@ -513,7 +513,9 @@ def compile_sound(
     }
 
 
-def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
+def verify_rendered_sound(
+    root: Path, native: dict, plan: dict, package: Path | None = None
+) -> dict:
     """Check native sound artifacts and return path-free delivery evidence."""
     signal = native["audio_signal"]
     if (
@@ -662,7 +664,9 @@ def verify_rendered_sound(root: Path, native: dict, plan: dict) -> dict:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
             shot = episode["shots"][unified_entry["shot_index"]]
-            frame = unified_action_frame(shot, fps, cue["word_binding"]["path"])
+            frame = unified_action_frame(
+                shot, fps, cue["word_binding"]["path"], package
+            )
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
                 and unified_entry["output_frame"] == frame

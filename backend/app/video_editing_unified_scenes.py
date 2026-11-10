@@ -16,6 +16,13 @@ from .video_editing_browser_clocks import (
     fruit_row_first_frame,
 )
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from .video_editing_crowd_scene import (
+    CROWD_GROUP,
+    CROWD_SOUNDS,
+    CROWD_TEMPLATE_ID,
+    crowd_action_frame,
+    crowd_title_native_frame,
+)
 from .video_editing_cut_scenes import (
     CUT_CAPTION_BANDS,
     CUT_GROUPS,
@@ -88,6 +95,7 @@ UNIFIED_TEMPLATES = frozenset(
         WHY_TEMPLATE_ID,
         TRANSLATION_TEMPLATE_ID,
         PAPER_TEMPLATE_ID,
+        CROWD_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
@@ -118,6 +126,7 @@ UNIFIED_MEDIA_PATHS = {
             PAPER_GROUP,
             PAPER_CHAPTER_GROUP,
             GHOST_GROUP,
+            CROWD_GROUP,
             *UNIFIED_VIDEO_VARIANTS,
         ),
         UNIFIED_PRESENTER,
@@ -219,6 +228,7 @@ UNIFIED_SOUNDS = {
         "exit": "ease",
     },
     GHOST_GROUP: {"ghost": "ease", "phrase0": "ease", "phrase1": "ease"},
+    CROWD_GROUP: dict.fromkeys(CROWD_SOUNDS, "crowd_virtual"),
     WHY_GROUP: dict(
         zip(
             (path.removeprefix("/timing/events/") for path in WHY_EVENTS),
@@ -292,6 +302,7 @@ UNIFIED_SCENE_GROUPS = (
         PAPER_GROUP,
         PAPER_CHAPTER_GROUP,
         GHOST_GROUP,
+        CROWD_GROUP,
     }
 )
 _CAPTION_BANDS = {
@@ -306,6 +317,7 @@ _CAPTION_BANDS = {
     PAPER_GROUP: (855, 960),
     PAPER_CHAPTER_GROUP: (855, 960),
     GHOST_GROUP: (860, 960),
+    CROWD_GROUP: (800, 960),
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
     **HANDOFF_CAPTION_BANDS,
@@ -807,7 +819,9 @@ def _validate_alpha_scene(
         )
 
 
-def unified_action_frame(shot: dict, fps: int, path: str) -> int:
+def unified_action_frame(
+    shot: dict, fps: int, path: str, package: Path | None = None
+) -> int:
     group = shot["group_id"]
     event = path.removeprefix(_EVENT_PREFIX)
     if (
@@ -828,11 +842,18 @@ def unified_action_frame(shot: dict, fps: int, path: str) -> int:
         value = shot["config"]["timing"]["events"][name]
         at = (value[int(index)] if sep else value) * fps
         mode = UNIFIED_SOUNDS[group][event]
+    crowd_title_frame = None
+    if group == CROWD_GROUP and event == "title_in":
+        if package is None:
+            raise ValueError("Crowd title cue needs its original library")
+        crowd_title_frame = crowd_title_native_frame(package, shot["config"])
     local = (
         0
         if mode == "scene"
         else handoff_virtual_frame(group, shot["config"]["timing"]["events"])
         if mode == "virtual"
+        else crowd_action_frame(shot["config"]["timing"], event, crowd_title_frame)
+        if mode == "crowd_virtual"
         else fruit_row_first_frame(at)
         if mode == "fruit_row"
         else math.floor(at + 1e-7) + 1

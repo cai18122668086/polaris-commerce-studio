@@ -24,6 +24,7 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_crowd_scene import CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
 from .video_editing_line_branch import LINE_GROUP
@@ -427,6 +428,13 @@ def build_request(
             "W-R17 的两个问号从 native_image_slot_ids 对应槽选择不同道具，"
             "直接绑定 native_media，不将道具当成实录并列项。"
             "没有相符道具或实录问句时跳过该槽。"
+        )
+    if template and template["id"] == CROWD_TEMPLATE_ID:
+        message += (
+            "W-R09 按 native_image_slot_ids 绑定本期承接图和七张独立透明剪影。"
+            "剪影用于视觉装饰，不代表七个真实人物或实证，不填写 relation_items。"
+            "选用同期人物原片，承接图必须对应前一段；缺任一槽时跳过本组。"
+            "纸面退场后才出现标题，七张剪影分别使用随后七个不同的实测词首。"
         )
     if translation_scene:
         message += (

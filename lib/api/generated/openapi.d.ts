@@ -13067,7 +13067,9 @@ export interface operations {
     };
     get_task_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                project_id?: string | null;
+            };
             header?: never;
             path: {
                 task_id: string;

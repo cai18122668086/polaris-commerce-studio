@@ -1,6 +1,8 @@
 """Owner-scoped editing API. All decoding, ASR and rendering run in a worker."""
 
 import hashlib
+from collections import defaultdict
+from collections.abc import Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -130,13 +132,18 @@ def artifact_response(
 
 
 def response(
-    row: EditingTaskRecord, session: Session, source: EditingSourceRecord | None = None
+    row: EditingTaskRecord,
+    session: Session,
+    source: EditingSourceRecord | None = None,
+    *,
+    artifacts: Sequence[EditingArtifactRecord] | None = None,
 ) -> dict[str, Any]:
     if source is None:
         source = session.get(EditingSourceRecord, row.source_id)
-    artifacts = session.scalars(
-        select(EditingArtifactRecord).where(EditingArtifactRecord.task_id == row.id)
-    ).all()
+    if artifacts is None:
+        artifacts = session.scalars(
+            select(EditingArtifactRecord).where(EditingArtifactRecord.task_id == row.id)
+        ).all()
     counts = next(
         (
             item.validation.get("motion_counts")
@@ -748,19 +755,37 @@ def list_tasks(
     )
     if project_id:
         query = query.where(EditingTaskRecord.project_id == str(project_id))
-    return [
-        response(row, session, source)
-        for row, source in session.execute(
-            query.order_by(EditingTaskRecord.created_at.desc()).limit(100)
+    rows = session.execute(
+        query.order_by(
+            EditingTaskRecord.created_at.desc(), EditingTaskRecord.id.desc()
+        ).limit(100)
+    ).all()
+    if not rows:
+        return []
+    artifacts: dict[str, list[EditingArtifactRecord]] = defaultdict(list)
+    for record in session.scalars(
+        select(EditingArtifactRecord).where(
+            EditingArtifactRecord.task_id.in_([row.id for row, _ in rows])
         )
+    ):
+        artifacts[record.task_id].append(record)
+    return [
+        response(row, session, source, artifacts=artifacts[row.id])
+        for row, source in rows
     ]
 
 
 @router.get("/editing-tasks/{task_id}", response_model=EditingTaskResponse)
 def get_task(
-    task_id: UUID, workspace: VideoWorkspace, session: SessionDependency
+    task_id: UUID,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+    project_id: UUID | None = None,
 ) -> dict[str, Any]:
-    return response(own_task(session, workspace, str(task_id)), session)
+    row = own_task(session, workspace, str(task_id))
+    if project_id is not None and row.project_id != str(project_id):
+        raise ApiError(404, "EDITING_NOT_FOUND", "未找到剪辑任务。")
+    return response(row, session)
 
 
 @router.get("/editing-works", response_model=EditingWorksResponse)

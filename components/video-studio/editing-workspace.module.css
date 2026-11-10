@@ -7,7 +7,8 @@
 .panel button:disabled { opacity:.5; cursor:default; }
 .error { color:#a32d37; }
 .tasks { display:grid; gap:18px; }
-.tasks article { display:grid; gap:12px; border-top:1px solid #ece7f1; padding-top:18px; }
+.tasks article { display:grid; gap:12px; border-top:1px solid #ece7f1; padding-top:18px; scroll-margin-top:20px; }
+.tasks article:focus { outline:2px solid #7644ba; outline-offset:5px; }
 .taskHeading { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; font-size:13px; }
 .taskHeading time { color:#86788e; font-size:12px; }
 .tasks video { max-width:100%; width:320px; max-height:540px; background:#15111a; border-radius:10px; }

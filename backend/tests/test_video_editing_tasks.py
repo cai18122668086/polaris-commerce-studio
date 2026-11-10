@@ -9,7 +9,7 @@ from wave import open as open_wave
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from app import video_editing_worker as worker
@@ -531,6 +531,36 @@ def test_editing_works_search_cursor_and_owner_scope(video, tmp_path):
     ]
     assert second["next_before"] is None
     assert client.get(works_url, params={"keyword": "%"}).json()["items"] == []
+    artifact_queries = []
+
+    def record_artifact_query(_connection, _cursor, statement, *_):
+        if "FROM video_editing_artifacts" in statement:
+            artifact_queries.append(statement)
+
+    engine = client.app.state.engine
+    event.listen(engine, "before_cursor_execute", record_artifact_query)
+    try:
+        recent = (
+            client.get(task_url, params={"project_id": project})
+            .raise_for_status()
+            .json()
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", record_artifact_query)
+    assert {row["id"] for row in recent} == set(ids)
+    assert {row["id"] for row in recent if row["artifacts"]} == {high, low}
+    assert len(artifact_queries) == 1
+    detail_url = task_url + "/" + high
+    assert client.get(detail_url, params={"project_id": project}).json()["id"] == high
+    different_project = str(uuid4())
+    client.put(
+        base(ws) + "/projects/" + different_project, json=payload()
+    ).raise_for_status()
+    mismatch = client.get(detail_url, params={"project_id": different_project})
+    assert (
+        mismatch.status_code == 404
+        and mismatch.json()["error"]["code"] == "EDITING_NOT_FOUND"
+    )
     auth.identity = verified_identity(
         primary_user_id="other-user", email="1474953130@qq.com"
     )

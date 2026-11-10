@@ -40,7 +40,7 @@ export function EditingWorks({ userId, workspaceId, keyword }: { userId: string;
         <p>{work.mode === "native_plan" ? "动效剪辑" : "字幕剪辑"}{work.final.duration_ms != null && ` · ${(work.final.duration_ms / 1000).toFixed(1)} 秒`}</p>
         <div className={styles.workActions}>
           <a className={styles.textButton} href={work.final.url} download>下载成片</a>
-          <Link className={styles.textButton} href={`/video-studio/editing?project=${encodeURIComponent(work.project_id)}`}>查看项目剪辑</Link>
+          <Link className={styles.textButton} scroll={false} href={`/video-studio/editing?project=${encodeURIComponent(work.project_id)}#editing-task-${encodeURIComponent(work.task_id)}`}>查看本条剪辑</Link>
         </div>
       </div>
     </article>)}</div>}

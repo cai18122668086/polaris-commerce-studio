@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { preferredDistinctMotionGroups } from "@/features/video-studio/editing-density";
 import { ApiError } from "@/lib/api/api-error";
 import { apiClient } from "@/lib/api/client";
@@ -14,7 +14,14 @@ import { EditingPlanning, type CarrySelection } from "./editing-planning";
 import styles from "./editing-workspace.module.css";
 
 type EditingTask = components["schemas"]["EditingTaskResponse"];
+type TaskLinkError = { id: string; message: string };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
+const taskHash = /^#editing-task-([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i;
+function subscribeToHash(listener: () => void) {
+  window.addEventListener("hashchange", listener);
+  return () => window.removeEventListener("hashchange", listener);
+}
+const readTaskHash = () => taskHash.exec(window.location.hash)?.[1].toLowerCase();
 const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", building_preview: "生成代理预览", storing: "保存产物", transcript_ready: "口播转录已就绪", preview_ready: "代理预览已就绪", completed: "成片已生成" };
 const errorLabel: Record<string, string> = {
   EDITING_SOURCE_AUDIO_HEAD_REVIEW_REQUIRED: "画面开始前已有可听的原声，暂时无法安全接入。请核对原片开头的音画。",
@@ -40,6 +47,9 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
+  const focusedTaskId = useSyncExternalStore(subscribeToHash, readTaskHash, () => undefined);
+  const [taskLinkError, setTaskLinkError] = useState<TaskLinkError>();
+  const revealedTaskId = useRef<string | undefined>(undefined);
   const [correctionTask, setCorrectionTask] = useState("");
   const [libraryOpened, setLibraryOpened] = useState(false);
   const [planningOpened, setPlanningOpened] = useState(false);
@@ -56,20 +66,52 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const reload = useCallback(async () => {
     const result = await apiClient.GET(`${root}/editing-tasks`, { ...options(), params: { path: { workspace_id: workspaceId }, query: { project_id: projectId } } });
     const rows = unwrapApiResponse(result);
-    if (linkedPreviews?.projectId !== projectId) return rows;
-    const missing = linkedPreviews.ids.filter(id => !rows.some(row => row.id === id));
+    const targets = new Set(linkedPreviews?.projectId === projectId ? linkedPreviews.ids : []);
+    if (focusedTaskId) targets.add(focusedTaskId);
+    const missing = [...targets].filter(id => !rows.some(row => row.id === id));
     const details = await Promise.allSettled(missing.map(async id => unwrapApiResponse(await apiClient.GET(`${root}/editing-tasks/{task_id}`, {
-      ...options(), params: { path: { workspace_id: workspaceId, task_id: id } },
+      ...options(), params: { path: { workspace_id: workspaceId, task_id: id }, query: { project_id: projectId } },
     }))));
-    return [...details.flatMap(detail => detail.status === "fulfilled" && detail.value.project_id === projectId ? [detail.value] : []), ...rows];
-  }, [workspaceId, projectId, options, linkedPreviews]);
+    const linked = details.flatMap(detail => detail.status === "fulfilled" && detail.value.project_id === projectId ? [detail.value] : []);
+    const focused = focusedTaskId && details[missing.indexOf(focusedTaskId)];
+    let linkError: TaskLinkError | undefined;
+    if (focusedTaskId && focused && !linked.some(task => task.id === focusedTaskId)) {
+      const reason = focused.status === "rejected" ? focused.reason : undefined;
+      linkError = { id: focusedTaskId, message: focused.status === "fulfilled" || (reason instanceof ApiError && reason.status === 404)
+        ? "在当前项目中找不到这条剪辑任务。"
+        : "暂时无法打开指定剪辑任务，稍后将重试。" };
+    }
+    return { rows: [...linked, ...rows], linkError };
+  }, [workspaceId, projectId, options, linkedPreviews, focusedTaskId]);
+  const applyTasks = useCallback(({ rows, linkError }: Awaited<ReturnType<typeof reload>>) => {
+    setTasks(rows);
+    setTaskLinkError(linkError);
+    setLoadError("");
+  }, []);
   useEffect(() => {
+    if (!saved || !projectId) return;
     let live = true;
-    const update = () => { void reload().then(rows => { if (live) { setTasks(rows); setLoadError(""); } }).catch(() => { if (live) setLoadError("暂时无法读取剪辑任务，请稍后重试。"); }); };
-    update();
-    const timer = setInterval(update, 5000);
-    return () => { live = false; clearInterval(timer); };
-  }, [reload]);
+    let timer: number | undefined;
+    const update = async () => {
+      try {
+        const result = await reload();
+        if (live) applyTasks(result);
+      } catch { if (live) setLoadError("暂时无法读取剪辑任务，请稍后重试。"); }
+      finally { if (live) timer = window.setTimeout(() => void update(), 5000); }
+    };
+    void update();
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [applyTasks, projectId, reload, saved]);
+  const focusedTaskReady = tasks.some(task => task.id === focusedTaskId);
+  useEffect(() => {
+    if (!focusedTaskId) { revealedTaskId.current = undefined; return; }
+    if (!focusedTaskReady || revealedTaskId.current === focusedTaskId) return;
+    const card = document.getElementById(`editing-task-${focusedTaskId}`);
+    if (!card) return;
+    revealedTaskId.current = focusedTaskId;
+    card.focus({ preventScroll: true });
+    card.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [focusedTaskId, focusedTaskReady]);
   const submit = async (mode: "transcript" | "subtitles") => {
     setBusy(true); setError("");
     let uploadPending = false;
@@ -112,7 +154,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     try {
       const opts = { ...options(), params: { path: { workspace_id: workspaceId, task_id: task.id } } };
       const result = kind === "cancel" ? await apiClient.POST(`${root}/editing-tasks/{task_id}/cancel`, opts) : await apiClient.POST(`${root}/editing-tasks/{task_id}/retry`, opts);
-      unwrapApiResponse(result); setTasks(await reload());
+      unwrapApiResponse(result); applyTasks(await reload());
     } catch { setError("操作暂未确认，请刷新任务后重试。"); }
     finally { setBusy(false); }
   };
@@ -123,7 +165,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         ...options(), params: { path: { workspace_id: workspaceId, task_id: task.id } },
         body: { preview_artifact_id: preview.id, preview_sha256: preview.sha256 },
       }));
-      setTasks(await reload());
+      applyTasks(await reload());
     } catch (caught) { setError(caught instanceof Error ? caught.message : "高清确认暂未完成，请刷新后重试。"); }
     finally { setBusy(false); }
   };
@@ -156,9 +198,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     </div>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
+    {taskLinkError && taskLinkError.id === focusedTaskId && <p className={styles.error} role="alert">{taskLinkError.message}</p>}
     {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion}
       revisionSelection={revisionSelection} onClearRevisionSelection={() => setRevisionSelection(undefined)}
-      onCreated={async () => { setTasks(await reload()); }} />}
+      onCreated={async () => { applyTasks(await reload()); }} />}
     {saved && <details ref={planningPanel} onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} selected={planningTask} onSelect={setPlanningTask} onNativePlan={() => setPlansVersion(value => value + 1)}
       carryFrom={carrySelection?.projectId === projectId ? carrySelection : undefined} onClearCarry={() => setCarrySelection(undefined)} onPreview={previews => {
       const ids = previews.map(task => task.id);
@@ -179,7 +222,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
       const parent = task.options.preview_base;
       const planId = task.options.native_plan_id;
       const layoutFailed = task.status === "failed" && (task.error_code === "EDITING_EFFECT_LAYOUT_FAILED" || task.error_code === "EDITING_NATIVE_LAYOUT_FAILED");
-      return <article key={task.id} id={`editing-task-${task.id}`}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
+      return <article key={task.id} id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
           原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>
           {task.source_origin.confirmed_version_id && <> · 确认稿 <code title={task.source_origin.confirmed_version_id}>{task.source_origin.confirmed_version_id.slice(0, 8)}</code></>}
@@ -211,7 +254,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           planId, taskId: task.id, kind: "layout_failure", preview: parent, edits: task.options.native_edits, layoutFindings: task.layout_findings,
         })}>调整出错片段</button>}
         {task.status === "awaiting_review" && preview && <>
-          <video id={`editing-preview-${task.id}`} controls preload="metadata" src={preview.url} aria-label="剪辑代理预览" />
+          <video id={`editing-preview-${task.id}`} controls playsInline preload="none" src={preview.url} aria-label="剪辑代理预览" />
           <p className={styles.note}>代理使用较小画幅，保留本版编排和音轨。</p>
           <button type="button" disabled={busy} onClick={() => void confirmExport(task, preview)}>确认并开放高清下载</button>
         </>}
@@ -222,7 +265,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           setCarrySelection({ projectId, sourceId: task.source_id, base: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 } });
           openPlanning();
         }}>将人工调整带入另一份规划</button>}
-        {final && <><video id={`editing-film-${task.id}`} controls preload="metadata" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
+        {final && <><video id={`editing-film-${task.id}`} controls playsInline preload="none" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
           {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
           {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查，听感待验收。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}
         </>}
@@ -235,7 +278,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         </>}
         {task.status === "completed" && transcript && (final || task.options.mode === "transcript") && <>
           <button type="button" onClick={() => setCorrectionTask(correctionTask === task.id ? "" : task.id)}>{correctionTask === task.id ? "收起校对" : task.options.mode === "transcript" ? "校对口播转录" : "校对字幕"}</button>
-          {correctionTask === task.id && <TranscriptEditor key={task.id} workspaceId={workspaceId} taskId={task.id} options={task.options} onCreated={async () => { setTasks(await reload()); }} />}
+          {correctionTask === task.id && <TranscriptEditor key={task.id} workspaceId={workspaceId} taskId={task.id} options={task.options} onCreated={async () => { applyTasks(await reload()); }} />}
         </>}
         {["queued", "running"].includes(task.status) && <button type="button" disabled={busy || task.cancel_requested} onClick={() => void action(task, "cancel")}>{task.cancel_requested ? "正在取消" : "取消"}</button>}
         {["failed", "cancelled"].includes(task.status) && !layoutFailed && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}

@@ -15,6 +15,7 @@ from typing import Any
 from .config import Settings
 from .motion_library import verify_package
 from .video_editing_funasr import bundle_identity
+from .video_editing_hypit import hypit_tools
 from .video_editing_pipeline import environment
 
 _NATIVE_IMPORTS = (
@@ -83,10 +84,12 @@ def _check_python(settings: Settings) -> dict[str, str]:
     return {"native_python": output.strip()}
 
 
-def _check_browser(settings: Settings) -> dict[str, str]:
+def _check_browser(
+    settings: Settings, browser_path: str | None = None
+) -> dict[str, str]:
     from playwright.sync_api import sync_playwright
 
-    browser_path = shutil.which("chrome")
+    browser_path = browser_path or shutil.which("chrome")
     if not browser_path and os.name == "nt":
         browser_path = next(
             (
@@ -145,6 +148,18 @@ def _check_alignment(settings: Settings) -> dict[str, str]:
     }
 
 
+def _check_hypit(settings: Settings) -> dict[str, str]:
+    tools = hypit_tools(settings, settings.video_editing_hypit_internal_workspace)
+    cli = _command(["node", tools["hypit_module"], "--version"], settings).strip()
+    if not cli:
+        raise ValueError("The configured Hypit CLI returned no version")
+    return {
+        "scope": "internal_workspace",
+        "cli": cli,
+        **_check_browser(settings, tools["chrome"]),
+    }
+
+
 def check_editing_runtime(settings: Settings) -> dict[str, Any]:
     checks: dict[str, Callable[[Settings], Any]] = {
         "mounts": _check_mounts,
@@ -156,6 +171,12 @@ def check_editing_runtime(settings: Settings) -> dict[str, Any]:
     }
     if settings.video_editing_alignment_enabled:
         checks["alignment"] = _check_alignment
+    if (
+        settings.video_editing_hypit_internal_workspace
+        or settings.video_editing_hypit_local_module
+        or settings.video_editing_hypit_local_chrome
+    ):
+        checks["hypit"] = _check_hypit
     results = {}
     for name, check in checks.items():
         try:

@@ -1728,3 +1728,18 @@ Chrome 在版本历史展开旧确认稿的四项资料编号，在剪辑任务�
 从原隔离运行目录保留实际网关响应、请求、实录和摘要，以新数据库副本和任务目录重新验证。当前网站 API 重新冻结候选，再由独立 worker 原生渲染。清洁用品产品讲解任务 `2bbdb1a0-261b-4b94-b65d-e647475cc126` 为 48.475 秒，10 种动效共 15 次入场，17 条提示音和一条背景乐。桌面收纳知识口播任务 `dad7baf8-46f6-4e50-a5b2-a1f3c546886a` 为 40.123 秒，10 种动效共 10 次入场，15 条提示音和一条背景乐。两条下载件为 768×1366。代理和确认后的母版范围请求均返回 206。母版完整解码并核对下载摘要，原声分轨相对独立解码原片的波形差均低于 −143 dBFS。成片及交付回执在 `C:/tl/tengli-merged-groups-20261110` 的 `product` 和 `knowledge` 子目录。
 
 Chrome 实际选择两套模板并提交新准备任务。产品讲解和知识口播分别使用 240 和 201 个实录词点，各带 132 组目录，网关均未提交。两条成片也分别在 Chrome 实播和下载，下载摘要与 API 一致。浏览器回执位于两个子目录的 `browser-evidence.json`。原包 1,426 项摘要重新核验一致。381 项相关后端回归通过，随后加入项目避用与运行依赖的请求预检用例，5 项专项再次通过。目标 Ruff、mypy 和差异检查通过。此次验证使用已捕获的实际网关响应，无新增付费调用或部署。仍需用户验收视听、验证当前准备的新请求经过实际模型，并补齐原库缺件和授权。
+
+## Linux 独立剪辑 worker 的内部 Hypit 运行
+
+新增本地可选 `compose.editing-hypit.yaml`。将已安装的私有运行目录指向 `POLARIS_HYPIT_RUNTIME_HOST`，并将 `POLARIS_HYPIT_INTERNAL_WORKSPACE` 指向唯一的内部开发工作区。目录内提供 `node/bin/node`、`node_modules/@hypit/hypit/bin/hypit.mjs` 及完整的 `chromium` 目录，其中浏览器入口为 `chromium/chrome`。在同一 Node.js 安装下提供原版渲染器声明的 `@hyperframes/engine` 和 `@hyperframes/producer` 0.7.101。与基础、剪辑及原件覆盖配置合并后，API、规划 worker 和剪辑 worker 获得相同的只读目录和 Node.js 搜索路径，运行目录不存在时 Compose 报错。剪辑 worker 启用容器 init，以回收原生渲染启动的子进程。静态合并回执为 `C:/tl/hypit-linux-internal-20261110/compose-validation.json`。
+
+运行预检检查 Node.js 22.15.0 下限和两个固定版本的 Hyperframes 包。Windows 原有的 Hypit 机器级包目录也通过核验。配置了 Hypit 的 `--check-runtime` 还会启动受审计的 CLI 和指定的无头 Chromium，检查浏览器画布。使用独立 WSL Docker Engine 的无外网容器实测，Node.js 24.13.0、Hypit 0.2.12 和 Chromium 156.0.8078.4 可用。CLI 模块与原 Windows 验证版的 SHA256 相同。未登记工作区、生产环境及缺少 Node.js 均被拦截。最终回执为同目录的 `runtime-complete-probe.json` 和 `scope-probe.json`。Hypit 的第三方托管和多租户使用仍须取得书面授权。 [Hypit 0.2.12 原发布包](https://registry.npmjs.org/@hypit/hypit/-/hypit-0.2.12.tgz) [Hypit 许可](https://raw.githubusercontent.com/hypit-ai/hypit/main/LICENSE)
+
+同一口播的 Windows 与 Linux 识别 WAV 分别有 775,600 和 775,680 个 16 kHz 单声道样本。源视频摘要与时长一致，现有来源门槛按音频摘要拦下直接重用的 Windows 编排。Linux 技术验证重新识别并对齐当前录音。校对稿在两端的 240 个实录词点文字及时间一致，Linux 保留自己提取的音频和转录摘要。独立挂载的两个原字体和抠像模型也与原库登记的摘要一致。
+
+HY-A2 单组测试实际渲染了 120 帧。缺少 Hyperframes 包时，原生 Build 在绘制阶段明确报错。补齐两项固定版本后可编码并完整解码。没有容器 init 时原 CLI 在关停报告仍检测到 worker PID。启用 init 后，使用同一原生输入重渲，输出摘要一致且原 CLI 报告 worker 已停止。原版右下窗仍为 `[483, 1014, 597, 906]`，输入透明人物轨保持等比。单组回执为 `component-evidence.json`。
+
+
+使用重新测量的 Linux 词轴，将相同原生方案登记为独立操作者候选。断网容器内的 HTTP API、独立剪辑进程和测试 SQLite 库完成任务 `d0b459d2-48ee-4a9a-a9b6-b9c7b62d81f2`。48.475 秒整片使用 11 种原生动效、16 条提示音和一条背景乐。HY-A2 的三条提示音在成片第 1194、1206、1230 帧起音，原声分轨相对独立解码原片的波形差为 −146.37 dBFS。原生版面检查及完整解码通过，Hypit 正常关停。代理和确认后的母版范围请求返回 206。容器 Chromium 从 API 实播 768×1366 母版，下载摘要与服务端一致。复跑母版与首次完整编码的母版摘要相同。39.43、40.40、42.00 秒人物等比位于右下，前后恢复全幅。回执为同目录 `delivery-evidence.json`、`playback-evidence.json`、`geometry-evidence.json`，下载件为 `linux-hypit-slant-hd.mp4`。
+
+384 项相关后端回归通过，加入原生依赖检查后 59 项专项再次通过。目标 Ruff、mypy 和差异检查通过。本轮未新增付费调用或部署。整片语义和用户视听仍待验收，五组原件或授权及 Hypit 对外托管授权仍单列。

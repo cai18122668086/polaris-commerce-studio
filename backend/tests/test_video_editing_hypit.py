@@ -1,6 +1,9 @@
 import subprocess
 
 import pytest
+
+from app import video_editing_hypit as hypit
+from app import video_editing_hypit_strips as strips
 from app.config import Settings
 from app.motion_library import atomic_json
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
@@ -9,9 +12,6 @@ from app.video_editing_hypit_foreground import attach_foreground_track
 from app.video_editing_pipeline import stop_hypit_runtimes
 from app.video_editing_unified_scenes import unified_action_frame
 from app.video_editing_word_bindings import word_bindings
-
-from app import video_editing_hypit as hypit
-from app import video_editing_hypit_strips as strips
 
 
 def test_picture_sound_uses_the_first_visible_top_entry_frame():
@@ -433,6 +433,9 @@ def test_hypit_tools_only_for_the_configured_internal_workspace(tmp_path, monkey
         video_editing_hypit_local_chrome=chrome,
     )
     monkeypatch.setattr(hypit, "CLI_SHA256", hypit.sha256(module))
+    monkeypatch.setattr(hypit.shutil, "which", lambda _: str(tmp_path / "node"))
+    monkeypatch.setattr(hypit, "hypit_node_version", lambda: "v24.13.0")
+    monkeypatch.setattr(hypit, "_check_hyperframes", lambda _: None)
     assert hypit.hypit_tools(settings, "internal")["hypit_module"] == str(module)
     for unavailable, workspace in (
         (settings, "external-workspace"),
@@ -445,6 +448,50 @@ def test_hypit_tools_only_for_the_configured_internal_workspace(tmp_path, monkey
     module.write_bytes(b"changed")
     with pytest.raises(ValueError, match="bytes changed"):
         hypit.hypit_tools(settings, "internal")
+
+
+@pytest.mark.parametrize("version,supported", [("v22.14.0", False), ("v22.15.0", True)])
+def test_hypit_node_version_checks_the_original_cli_requirement(
+    monkeypatch, version, supported
+):
+    monkeypatch.setattr(hypit.shutil, "which", lambda _: "node")
+
+    def run(args, **kwargs):
+        assert args == ["node", "--version"]
+        assert "POLARIS_VIDEO_SCRIPT_API_KEY" not in kwargs["env"]
+        return hypit.subprocess.CompletedProcess(args, 0, stdout=version + "\n")
+
+    monkeypatch.setenv("POLARIS_VIDEO_SCRIPT_API_KEY", "fixture")
+    monkeypatch.setattr(hypit.subprocess, "run", run)
+    if supported:
+        assert hypit.hypit_node_version() == version
+    else:
+        with pytest.raises(ValueError, match="Node.js 22.15.0"):
+            hypit.hypit_node_version()
+
+
+def test_hypit_checks_pinned_renderer_packages_from_local_or_host_install(
+    tmp_path, monkeypatch
+):
+    node_modules = tmp_path / "node_modules"
+    module = node_modules / "@hypit/hypit/bin/hypit.mjs"
+    host = tmp_path / "host-packages"
+    monkeypatch.setattr(hypit, "_hypit_host_packages", lambda: host)
+    local = node_modules / "@hyperframes/engine/package.json"
+    managed = (
+        host
+        / "@hyperframes/producer/0.7.101/node_modules"
+        / "@hyperframes/producer/package.json"
+    )
+
+    atomic_json(local, {"version": "0.7.101"})
+    with pytest.raises(ValueError, match="@hyperframes/producer 0.7.101"):
+        hypit._check_hyperframes(module)
+    atomic_json(managed, {"version": "0.7.101"})
+    hypit._check_hyperframes(module)
+    atomic_json(local, {"version": "0.7.100"})
+    with pytest.raises(ValueError, match="@hyperframes/engine 0.7.101"):
+        hypit._check_hyperframes(module)
 
 
 def test_hypit_uses_real_source_windows_and_keeps_each_image_on_its_word(

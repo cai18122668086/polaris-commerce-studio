@@ -1,6 +1,11 @@
 """Adapt the original HY-A3 three-picture profile and restrict local execution."""
 
 import math
+import os
+import re
+import shutil
+import subprocess
+import sys
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -29,6 +34,7 @@ NATIVE_FILES = {
     ),
 }
 CLI_SHA256 = "1d962a229df2429fca2364e16a718b22ab0032851ed33e230ad68589eeb52f81"
+_HYPERFRAMES_VERSION = "0.7.101"
 
 
 def audit_picture_entry(package: Path, group: dict) -> None:
@@ -105,7 +111,71 @@ def internal_hypit_available(settings: Settings, workspace_id: str | None) -> bo
         and settings.video_editing_hypit_local_module.is_file()
         and settings.video_editing_hypit_local_chrome
         and settings.video_editing_hypit_local_chrome.is_file()
+        and shutil.which("node")
     )
+
+
+def hypit_node_version() -> str:
+    node = shutil.which("node")
+    if not node:
+        raise ValueError("Hypit requires Node.js on the runtime PATH")
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() in {"SYSTEMROOT", "WINDIR", "PATH"}
+    }
+    try:
+        result = subprocess.run(
+            [node, "--version"],
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            encoding="utf-8",
+            timeout=5,
+            check=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError("Unable to verify the local Hypit Node.js runtime") from error
+    version = result.stdout.strip()
+    match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", version)
+    if not match or tuple(map(int, match.groups())) < (22, 15, 0):
+        raise ValueError("Hypit requires Node.js 22.15.0 or later")
+    return version
+
+
+def _hypit_host_packages() -> Path:
+    home = Path.home()
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA")
+        root = Path(local) if local else home / "AppData" / "Local"
+        return root / "Hypit" / "packages"
+    if sys.platform == "darwin":
+        return home / "Library" / "Application Support" / "Hypit" / "packages"
+    return home / ".local" / "state" / "hypit" / "packages"
+
+
+def _check_hyperframes(module: Path) -> None:
+    # The published provider can resolve its pinned packages from the
+    # distribution's node_modules or from Hypit's versioned host store.
+    package_root = module.parent.parent.parent.parent
+    host = _hypit_host_packages()
+    for name in ("@hyperframes/engine", "@hyperframes/producer"):
+        manifest = package_root / name / "package.json"
+        if not manifest.is_file():
+            manifest = (
+                host
+                / name
+                / _HYPERFRAMES_VERSION
+                / "node_modules"
+                / name
+                / "package.json"
+            )
+        data = read_json(manifest) if manifest.is_file() else None
+        if not isinstance(data, dict) or data.get("version") != _HYPERFRAMES_VERSION:
+            raise ValueError(
+                f"Hypit requires the original {name} {_HYPERFRAMES_VERSION}"
+            )
 
 
 def hypit_tools(settings: Settings, workspace_id: str | None) -> dict[str, str]:
@@ -120,6 +190,8 @@ def hypit_tools(settings: Settings, workspace_id: str | None) -> dict[str, str]:
         or read_json(module.parent.parent / "package.json").get("version") != "0.2.12"
     ):
         raise ValueError("The audited Hypit CLI version or module bytes changed")
+    hypit_node_version()
+    _check_hyperframes(module)
     return {"hypit_module": str(module), "chrome": str(chrome.resolve())}
 
 

@@ -483,6 +483,9 @@ def test_hypit_planning_checks_scoped_runtime_and_original_subtitles(
         video_editing_hypit_local_module=cli,
         video_editing_hypit_local_chrome=chrome,
     )
+    monkeypatch.setattr(hypit.shutil, "which", lambda _: str(tmp_path / "node"))
+    monkeypatch.setattr(hypit, "hypit_node_version", lambda: "v24.13.0")
+    monkeypatch.setattr(hypit, "_check_hyperframes", lambda _: None)
     template = overlay_template(template_id)
     assert worker.hypit_template_blockers(settings, "internal", template, "none") == {}
     assert worker.hypit_template_blockers(

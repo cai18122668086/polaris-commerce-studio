@@ -34,6 +34,7 @@ from .video_editing_catalog import (
 from .video_editing_contracts import (
     EditingCarriedRevision,
     EditingExportConfirmation,
+    EditingFilmReviewWrite,
     EditingSourceUploadResponse,
     EditingTaskCreate,
     EditingTaskResponse,
@@ -131,6 +132,19 @@ def artifact_response(
     }
 
 
+def verified_delivery_file(record: EditingArtifactRecord, task_root: Path) -> bool:
+    try:
+        path = Path(record.path).resolve()
+        return (
+            path.is_relative_to(task_root)
+            and path.is_file()
+            and path.stat().st_size == record.bytes
+            and sha256(path) == record.sha256
+        )
+    except (OSError, ValueError):
+        return False
+
+
 def response(
     row: EditingTaskRecord,
     session: Session,
@@ -154,6 +168,23 @@ def response(
         None,
     )
     transcript = next((item for item in artifacts if item.role == "transcript"), None)
+    visible = [item for item in artifacts if artifact_visible(row, item)]
+    saved_review = row.checkpoint.get("manual_review")
+    manual_review = (
+        saved_review
+        if saved_review
+        and any(
+            (item.role, item.id, item.sha256)
+            == (
+                "final",
+                saved_review["final_artifact_id"],
+                saved_review["final_sha256"],
+            )
+            and item.validation.get("decoded") is True
+            for item in visible
+        )
+        else None
+    )
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -176,10 +207,19 @@ def response(
         "layout_findings": row.checkpoint.get("layout_findings")
         if row.status == "failed"
         else None,
+        "manual_review": manual_review,
         "review": {
             "semantic": "unreviewed",
             "visual": "unreviewed",
             "timing": "unreviewed",
+            **(
+                {
+                    key: manual_review["assessment"][key]
+                    for key in ("semantic", "visual", "timing", "listening")
+                }
+                if manual_review
+                else {}
+            ),
             **(
                 {
                     "delivery": "confirmed"
@@ -190,9 +230,7 @@ def response(
                 else {}
             ),
         },
-        "artifacts": [
-            artifact_response(row, a) for a in artifacts if artifact_visible(row, a)
-        ],
+        "artifacts": [artifact_response(row, item) for item in visible],
     }
 
 
@@ -1003,20 +1041,10 @@ def confirm_export(
         raise ApiError(
             409, "EDITING_EXPORT_CHANGED", "待交付的高清文件与预览校验不一致。"
         )
-    try:
-        for record in (preview, master):
-            path = Path(record.path).resolve()
-            if (
-                not path.is_relative_to(root)
-                or not path.is_file()
-                or path.stat().st_size != record.bytes
-                or sha256(path) != record.sha256
-            ):
-                raise OSError("Artifact identity changed")
-    except (OSError, ValueError):
+    if not all(verified_delivery_file(record, root) for record in (preview, master)):
         raise ApiError(
             409, "EDITING_EXPORT_CHANGED", "预览或待交付文件已变化，请重新生成预览。"
-        ) from None
+        )
     result = session.execute(
         update(EditingTaskRecord)
         .where(
@@ -1050,6 +1078,75 @@ def confirm_export(
             409, "EDITING_EXPORT_REVIEW_STATE", "任务状态已变化，请刷新后核对。"
         )
     master.role = "final"
+    session.commit()
+    session.refresh(row)
+    return response(row, session)
+
+
+@router.put("/editing-tasks/{task_id}/review", response_model=EditingTaskResponse)
+def review_film(
+    task_id: UUID,
+    body: EditingFilmReviewWrite,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict[str, Any]:
+    require_workspace_write(workspace)
+    settings = enabled(request)
+    row = own_task(session, workspace, str(task_id))
+    own_project(session, workspace, row.project_id)
+    final = session.get(EditingArtifactRecord, str(body.final_artifact_id))
+    if (
+        not final
+        or (final.task_id, final.role, final.sha256)
+        != (row.id, "final", body.final_sha256)
+        or not artifact_visible(row, final)
+        or final.validation.get("decoded") is not True
+        or not verified_delivery_file(
+            final, (settings.video_editing_tasks_dir / row.id).resolve()
+        )
+    ):
+        raise ApiError(
+            409, "EDITING_REVIEW_ARTIFACT_CHANGED", "请重新读取可下载的成片后验收。"
+        )
+    assessment = body.model_dump(mode="json", exclude={"expected_revision"})
+
+    def same_review(task: EditingTaskRecord) -> bool:
+        saved = task.checkpoint.get("manual_review", {})
+        return all(saved.get(key) == value for key, value in assessment.items())
+
+    if same_review(row):
+        return response(row, session)
+    if row.revision != body.expected_revision:
+        raise ApiError(
+            409, "EDITING_REVIEW_CHANGED", "验收记录已更新，请载入最新版本再保存。"
+        )
+    updated = session.execute(
+        update(EditingTaskRecord)
+        .where(
+            EditingTaskRecord.id == row.id,
+            EditingTaskRecord.status == "completed",
+            EditingTaskRecord.revision == body.expected_revision,
+        )
+        .values(
+            checkpoint={
+                **row.checkpoint,
+                "manual_review": {
+                    **assessment,
+                    "recorded_at": datetime.now(UTC).isoformat(),
+                },
+            },
+            revision=EditingTaskRecord.revision + 1,
+        )
+    )
+    if not cast(CursorResult, updated).rowcount:
+        session.rollback()
+        current = own_task(session, workspace, str(task_id))
+        if same_review(current):
+            return response(current, session)
+        raise ApiError(
+            409, "EDITING_REVIEW_CHANGED", "验收记录已更新，请载入最新版本再保存。"
+        )
     session.commit()
     session.refresh(row)
     return response(row, session)

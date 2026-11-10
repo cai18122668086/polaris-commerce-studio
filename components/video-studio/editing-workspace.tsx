@@ -8,6 +8,7 @@ import { unwrapApiResponse } from "@/lib/api/request";
 import type { GenerationJob } from "@/features/video-studio/library";
 import type { components } from "@/lib/api/generated/openapi";
 import { TranscriptEditor } from "./transcript-editor";
+import { EditingFilmReview } from "./editing-film-review";
 import { EditingLibrary } from "./editing-library";
 import { EditingNativePlans, type EditingRevisionSelection } from "./editing-native-plans";
 import { EditingPlanning, type CarrySelection } from "./editing-planning";
@@ -235,7 +236,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           <WritingVersionSources workspaceId={workspaceId} projectId={task.project_id} versionId={task.source_origin.confirmed_version_id}
             adoptionId={task.source_origin.writing_origin.adoption_id} />}
         {sourceReceipt && <a href={sourceReceipt.url} download>下载原片与配音核对记录</a>}
-        {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}
+        {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片</p>}
         {task.motion_counts && <p className={styles.note}>原生出片核验 {task.motion_counts.distinct_groups} 种动效，共出现 {task.motion_counts.occurrences} 次。{task.motion_counts.distinct_groups < preferredDistinctMotionGroups && `低于优先目标 ${preferredDistinctMotionGroups} 种。`}</p>}
         {parent && <p className={styles.note}>基于预览 <a href={`#editing-task-${parent.task_id}`}>{parent.task_id.slice(0, 8)}</a></p>}
         {task.carried_revision && <p className={styles.note}>继承预览 <a href={`#editing-task-${task.carried_revision.preview_base.task_id}`}>{task.carried_revision.preview_base.task_id.slice(0, 8)}</a> 的人工调整 · {task.carried_revision.protected_beat_ids.length} 段原实录</p>}
@@ -273,7 +274,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         }}>将人工调整带入另一份规划</button>}
         {final && <><video id={`editing-film-${task.id}`} controls playsInline preload="none" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
           {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
-          {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查，听感待验收。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}
+          {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}
+          <EditingFilmReview key={final.id} workspaceId={workspaceId} task={task} final={final} />
         </>}
         {task.status === "completed" && task.options.mode === "transcript" && transcript && <>
           {transcriptAudio && <audio id={`editing-transcript-audio-${task.id}`} controls preload="none" src={transcriptAudio.url} aria-label="口播原声试听" />}

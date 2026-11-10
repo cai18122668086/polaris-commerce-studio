@@ -335,6 +335,31 @@ class EditingLayoutFinding(StrictVideoModel):
     finding_count: int = Field(gt=0)
 
 
+EditingReviewDecision = Literal["unreviewed", "accepted", "needs_changes"]
+
+
+class EditingFilmAssessment(StrictVideoModel):
+    semantic: EditingReviewDecision
+    timing: EditingReviewDecision
+    visual: EditingReviewDecision
+    listening: EditingReviewDecision
+    note: str = Field(max_length=1000)
+
+
+class EditingFilmReview(StrictVideoModel):
+    final_artifact_id: UUID
+    final_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    assessment: EditingFilmAssessment
+    recorded_at: AwareDatetime
+
+
+class EditingFilmReviewWrite(StrictVideoModel):
+    final_artifact_id: UUID
+    final_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    assessment: EditingFilmAssessment
+    expected_revision: int = Field(ge=0)
+
+
 class EditingTaskResponse(StrictVideoModel):
     id: str
     project_id: str
@@ -351,6 +376,9 @@ class EditingTaskResponse(StrictVideoModel):
     library_release: str
     options: EditingOptions
     review: dict[str, str]
+    manual_review: EditingFilmReview | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     artifacts: list[EditingArtifactResponse]
     source_origin: EditingSourceOrigin | None = Field(
         default=None, exclude_if=lambda value: value is None

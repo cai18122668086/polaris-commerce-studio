@@ -462,10 +462,24 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
     task_url = url + "/" + tid
     works_url = base(ws) + "/editing-works"
     confirm_url = task_url + "/confirm-export"
+    review_url = task_url + "/review"
     artifact_url = task_url + "/artifacts/"
     body = {"preview_artifact_id": preview_id, "preview_sha256": preview_sha}
     waiting = client.get(task_url).json()
     assert waiting["status"] == "awaiting_review"
+    review = {
+        "final_artifact_id": final_id,
+        "final_sha256": final_sha,
+        "expected_revision": waiting["revision"],
+        "assessment": {
+            "semantic": "accepted",
+            "timing": "unreviewed",
+            "visual": "needs_changes",
+            "listening": "unreviewed",
+            "note": "2 秒处的叠层待核对",
+        },
+    }
+    assert client.put(review_url, json=review).status_code == 409
     assert [item["role"] for item in waiting["artifacts"]] == ["preview"]
     assert client.get(works_url).json() == {"items": [], "next_before": None}
     assert client.get(artifact_url + final_id).status_code == 404
@@ -512,6 +526,64 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
         ).status_code
         == 409
     )
+    assert "manual_review" not in record
+    review["expected_revision"] = record["revision"]
+    for invalid in (
+        {**review, "final_artifact_id": preview_id, "final_sha256": preview_sha},
+        {**review, "final_sha256": "0" * 64},
+    ):
+        assert client.put(review_url, json=invalid).status_code == 409
+    auth.identity = verified_identity(
+        primary_user_id="other-user", email="1474953130@qq.com"
+    )
+    assert client.put(review_url, json=review).status_code in {403, 404}
+    auth.identity = identity
+    approved = client.put(review_url, json=review).raise_for_status().json()
+    assert approved["status"] == "completed" and approved["attempts"] == 1
+    assert approved["revision"] == record["revision"] + 1
+    assert approved["review"]["delivery"] == "confirmed"
+    assert approved["review"]["visual"] == "needs_changes"
+    assert approved["manual_review"]["assessment"] == review["assessment"]
+    assert approved["manual_review"]["final_sha256"] == final_sha
+    assert client.get(task_url).json() == approved
+    assert client.put(review_url, json=review).json() == approved
+    changed = {
+        **review,
+        "assessment": {**review["assessment"], "note": "修改备注"},
+    }
+    assert (
+        client.put(review_url, json=changed).json()["error"]["code"]
+        == "EDITING_REVIEW_CHANGED"
+    )
+    changed["expected_revision"] = approved["revision"]
+    master.write_bytes(b"X" * master.stat().st_size)
+    assert (
+        client.put(review_url, json=changed).json()["error"]["code"]
+        == "EDITING_REVIEW_ARTIFACT_CHANGED"
+    )
+    master.write_bytes(b"master test fixture")
+    updated = client.put(review_url, json=changed).raise_for_status().json()
+    assert updated["manual_review"]["assessment"] == changed["assessment"]
+    barrier = Barrier(2)
+
+    def competing_review(note):
+        barrier.wait(timeout=5)
+        return client.put(
+            review_url,
+            json={
+                **changed,
+                "expected_revision": updated["revision"],
+                "assessment": {**changed["assessment"], "note": note},
+            },
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(competing_review, ("并发甲", "并发乙")))
+    assert sorted(r.status_code for r in outcomes) == [200, 409]
+    winner = next(r.json() for r in outcomes if r.status_code == 200)
+    assert winner["revision"] == updated["revision"] + 1
+    assert client.get(task_url).json() == winner
+    assert client.get(works_url).json()["items"] == [work]
 
 
 def test_editing_works_search_cursor_and_owner_scope(video, tmp_path):

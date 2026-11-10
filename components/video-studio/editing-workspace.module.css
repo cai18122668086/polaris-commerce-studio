@@ -15,6 +15,8 @@
 .tasks audio { max-width:100%; width:320px; }
 .correction { display:grid; gap:12px; padding:16px; background:#faf8fd; border:1px solid #e9e0f2; border-radius:12px; }
 .correction textarea,.materials textarea { resize:vertical; width:100%; padding:12px; border:1px solid #dcd5e4; border-radius:9px; background:#fff; color:inherit; line-height:1.8; font:inherit; }
+.filmReview > summary { cursor:pointer; }
+.filmReview fieldset { margin-top:10px; min-width:0; }
 .materials { display:grid; gap:12px; padding:14px 0; }
 .materialList { display:grid; gap:8px; list-style:none; margin:0; padding:0; }
 .materialList li { display:grid; gap:6px; border:1px solid #ece7f1; border-radius:9px; padding:12px; }

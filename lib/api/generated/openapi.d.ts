@@ -2122,6 +2122,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Review Film */
+        put: operations["review_film_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__review_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/transcript": {
         parameters: {
             query?: never;
@@ -5893,6 +5910,60 @@ export interface components {
             /** Last Token Id */
             last_token_id: string;
         };
+        /** EditingFilmAssessment */
+        EditingFilmAssessment: {
+            /**
+             * Listening
+             * @enum {string}
+             */
+            listening: "unreviewed" | "accepted" | "needs_changes";
+            /** Note */
+            note: string;
+            /**
+             * Semantic
+             * @enum {string}
+             */
+            semantic: "unreviewed" | "accepted" | "needs_changes";
+            /**
+             * Timing
+             * @enum {string}
+             */
+            timing: "unreviewed" | "accepted" | "needs_changes";
+            /**
+             * Visual
+             * @enum {string}
+             */
+            visual: "unreviewed" | "accepted" | "needs_changes";
+        };
+        /** EditingFilmReview */
+        EditingFilmReview: {
+            assessment: components["schemas"]["EditingFilmAssessment"];
+            /**
+             * Final Artifact Id
+             * Format: uuid
+             */
+            final_artifact_id: string;
+            /** Final Sha256 */
+            final_sha256: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
+        /** EditingFilmReviewWrite */
+        EditingFilmReviewWrite: {
+            assessment: components["schemas"]["EditingFilmAssessment"];
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Final Artifact Id
+             * Format: uuid
+             */
+            final_artifact_id: string;
+            /** Final Sha256 */
+            final_sha256: string;
+        };
         /** EditingHighlightChoice */
         EditingHighlightChoice: {
             /** First Token Id */
@@ -6517,6 +6588,7 @@ export interface components {
             layout_findings?: components["schemas"]["EditingLayoutFinding"][] | null;
             /** Library Release */
             library_release: string;
+            manual_review?: components["schemas"]["EditingFilmReview"] | null;
             motion_counts?: components["schemas"]["EditingMotionCounts"] | null;
             options: components["schemas"]["EditingOptions"];
             /** Project Id */
@@ -13439,6 +13511,42 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_film_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__review_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingFilmReviewWrite"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

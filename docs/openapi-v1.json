@@ -5185,6 +5185,123 @@
         "title": "EditingFeedbackWordMatch",
         "type": "object"
       },
+      "EditingFilmAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "listening": {
+            "enum": [
+              "unreviewed",
+              "accepted",
+              "needs_changes"
+            ],
+            "title": "Listening",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 1000,
+            "title": "Note",
+            "type": "string"
+          },
+          "semantic": {
+            "enum": [
+              "unreviewed",
+              "accepted",
+              "needs_changes"
+            ],
+            "title": "Semantic",
+            "type": "string"
+          },
+          "timing": {
+            "enum": [
+              "unreviewed",
+              "accepted",
+              "needs_changes"
+            ],
+            "title": "Timing",
+            "type": "string"
+          },
+          "visual": {
+            "enum": [
+              "unreviewed",
+              "accepted",
+              "needs_changes"
+            ],
+            "title": "Visual",
+            "type": "string"
+          }
+        },
+        "required": [
+          "semantic",
+          "timing",
+          "visual",
+          "listening",
+          "note"
+        ],
+        "title": "EditingFilmAssessment",
+        "type": "object"
+      },
+      "EditingFilmReview": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment": {
+            "$ref": "#/components/schemas/EditingFilmAssessment"
+          },
+          "final_artifact_id": {
+            "format": "uuid",
+            "title": "Final Artifact Id",
+            "type": "string"
+          },
+          "final_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Final Sha256",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_artifact_id",
+          "final_sha256",
+          "assessment",
+          "recorded_at"
+        ],
+        "title": "EditingFilmReview",
+        "type": "object"
+      },
+      "EditingFilmReviewWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment": {
+            "$ref": "#/components/schemas/EditingFilmAssessment"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "final_artifact_id": {
+            "format": "uuid",
+            "title": "Final Artifact Id",
+            "type": "string"
+          },
+          "final_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Final Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_artifact_id",
+          "final_sha256",
+          "assessment",
+          "expected_revision"
+        ],
+        "title": "EditingFilmReviewWrite",
+        "type": "object"
+      },
       "EditingHighlightChoice": {
         "additionalProperties": false,
         "properties": {
@@ -6969,6 +7086,16 @@
           "library_release": {
             "title": "Library Release",
             "type": "string"
+          },
+          "manual_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingFilmReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "motion_counts": {
             "anyOf": [
@@ -22028,6 +22155,73 @@
           }
         ],
         "summary": "Retry Task",
+        "tags": [
+          "video-editing-tasks"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks/{task_id}/review": {
+      "put": {
+        "operationId": "review_film_api_v1_video_studio_workspaces__workspace_id__editing_tasks__task_id__review_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingFilmReviewWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Review Film",
         "tags": [
           "video-editing-tasks"
         ]

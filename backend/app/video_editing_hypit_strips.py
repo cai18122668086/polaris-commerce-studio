@@ -610,6 +610,8 @@ def install_native_strips(package: Path, root: Path) -> None:
         or data.get("config_sha256") != strip_config_sha256(job["config"])
     ):
         raise ValueError("Hypit strip receipt belongs to another job")
+    if job["group_id"] == SLANT_GROUP and data.get("full_source_foreground"):
+        raise ValueError("Recompile HY-A2 for its original presenter window")
     sys.path.insert(0, str(package))
     try:
         special = importlib.import_module("commercial_runtime.special")
@@ -671,18 +673,14 @@ def install_native_strips(package: Path, root: Path) -> None:
             updated = _attach_live_stage(updated)
         foreground = None
         if foreground_source is not None:
-            full_source = data.get("full_source_foreground", False)
             foreground = render_foreground(
                 package,
                 original,
                 foreground_source,
                 data["plate"],
                 scene.parent / "inputs/current-foreground.webm",
-                full_source=full_source,
             )
-            updated = attach_foreground_track(
-                updated, scene.parent / "s03.svs", full_source=full_source
-            )
+            updated = attach_foreground_track(updated, scene.parent / "s03.svs")
         if card["id"] == FLOW_GROUP and (chart := data.get("flow_chart")):
             updated = patch_flow_slices(updated, chart)
         scene.write_text(updated, encoding="utf-8")

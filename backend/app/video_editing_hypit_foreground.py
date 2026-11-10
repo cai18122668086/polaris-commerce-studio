@@ -23,8 +23,6 @@ _SAMPLER = _OWNER / "unified/core/media.py"
 _NATIVE = Path("commercial_runtime/native.py")
 # HY-A2's original fg="mkfg1@483,1014,597,906" is above stagger layer 10.
 SLANT_FOREGROUND_BOX = 483, 1014, 597, 906
-_CANVAS_BOX = 0, 0, 1080, 1920
-_SOURCE_SIZE = 720, 1280
 
 
 def _foreground_profile(package: Path) -> dict[str, Any]:
@@ -52,9 +50,7 @@ def load_foreground_source(package: Path, model: Path, cache: Path) -> tuple[Any
     return media, matte_module.HumanMatte(model, cache)
 
 
-def attach_foreground_track(
-    scene: str, style_file: Path, *, full_source: bool = False
-) -> str:
+def attach_foreground_track(scene: str, style_file: Path) -> str:
     asset = '  <import as="asset" from="@hypit/media@1"/>\n'
     canvas = '  <spatial:Canvas id="canvas" width="1080" height="1920"/>\n'
     cards = "    <film:Track source={a2m.track}/>\n"
@@ -64,7 +60,7 @@ def attach_foreground_track(
         '  <import as="pipeline" from="@hypit/media-pipeline@1"/>\n'
         '  <import as="media-track" from="@hypit/media-track@1"/>\n'
     )
-    left, top, width, height = _CANVAS_BOX if full_source else SLANT_FOREGROUND_BOX
+    left, top, width, height = SLANT_FOREGROUND_BOX
     track = (
         '  <spatial:Frame id="tengli-fg-frame" within={canvas}\n'
         f'    left="{left}px" top="{top}px" '
@@ -82,8 +78,7 @@ def attach_foreground_track(
     styles = style_file.read_text(encoding="utf-8")
     if styles.count("</sheet>") != 1:
         raise ValueError("Original slant card appearance sheet changed")
-    fit = "cover" if full_source else "contain"
-    style = f"\n  media.foreground {{ stack-order: 11; fit: {fit}; }}\n"
+    style = "\n  media.foreground { stack-order: 11; fit: contain; }\n"
     style_file.write_text(
         styles.replace("</sheet>", style + "</sheet>"), encoding="utf-8"
     )
@@ -100,23 +95,20 @@ def render_foreground(
     source_ref: str,
     window: dict,
     clip: Path,
-    *,
-    full_source: bool = False,
 ) -> dict:
     source = Path(original.resolve(source_ref, True))
     model = Path(original.resolve("input://" + FOREGROUND_MATTE, True))
     if sha256(source) != window["source_sha256"]:
         raise ValueError("Slant card presenter differs from the compiled source window")
     profile = _foreground_profile(package)
-    box = _CANVAS_BOX if full_source else SLANT_FOREGROUND_BOX
-    size = _SOURCE_SIZE if full_source else box[2:]
+    size = SLANT_FOREGROUND_BOX[2:]
     identity = {
         "source_window": window,
         "model_sha256": sha256(model),
         "sampler_sha256": profile["source_files"][_SAMPLER.as_posix()],
         "matte_sha256": profile["source_files"][_MATTE.as_posix()],
         "size": list(size),
-        "placement": "source-frame" if full_source else "proportional-inset",
+        "placement": "proportional-inset",
     }
     receipt = clip.with_suffix(".json")
     if receipt.is_file() and clip.is_file():
@@ -236,7 +228,7 @@ def render_foreground(
             "sha256": sha256(clip),
             "alpha": "straight",
             "frames": frames,
-            "native_box": list(box),
+            "native_box": list(SLANT_FOREGROUND_BOX),
         }
         atomic_json(receipt, result)
         return result

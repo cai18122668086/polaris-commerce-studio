@@ -432,12 +432,7 @@ def test_hypit_slant_cards_keep_three_image_slots_and_native_arrivals(
         strips._native_attributes(tmp_path, group, data)
 
 
-@pytest.mark.parametrize(
-    ("full_source", "left", "top"), [(True, 0, 0), (False, 483, 1014)]
-)
-def test_slant_presenter_placement_keeps_the_foreground_above_cards(
-    tmp_path, full_source, left, top
-):
+def test_slant_presenter_placement_keeps_the_foreground_above_cards(tmp_path):
     scene = (
         '  <import as="asset" from="@hypit/media@1"/>\n'
         '  <spatial:Canvas id="canvas" width="1080" height="1920"/>\n'
@@ -445,13 +440,42 @@ def test_slant_presenter_placement_keeps_the_foreground_above_cards(
     )
     style = tmp_path / "s03.svs"
     style.write_text("<sheet></sheet>", encoding="utf-8")
-    result = attach_foreground_track(scene, style, full_source=full_source)
-    assert f'left="{left}px" top="{top}px" right="1080px" bottom="1920px"' in result
+    result = attach_foreground_track(scene, style)
+    assert 'left="483px" top="1014px" right="1080px" bottom="1920px"' in result
     assert result.index("source={a2m.track}") < result.index(
         "source={tengli-fg-track.visual}"
     )
-    fit = "cover" if full_source else "contain"
-    assert f"stack-order: 11; fit: {fit};" in style.read_text(encoding="utf-8")
+    assert "stack-order: 11; fit: contain;" in style.read_text(encoding="utf-8")
+
+
+def test_slant_legacy_full_source_job_requires_recompiling(tmp_path, monkeypatch):
+    job = tmp_path / "plans/slant.json"
+    job.parent.mkdir()
+    output = tmp_path / "renders/001-HY-A2.mp4"
+    config = {"attributes": {}}
+    atomic_json(
+        job, {"group_id": strips.SLANT_GROUP, "output": str(output), "config": config}
+    )
+    sidecar = tmp_path / "hypit-strips/001-HY-A2.json"
+    sidecar.parent.mkdir()
+    atomic_json(
+        sidecar,
+        {
+            "profile": strips.SLANT_PROFILE,
+            "group_id": strips.SLANT_GROUP,
+            "config_sha256": strips.strip_config_sha256(config),
+            "full_source_foreground": True,
+        },
+    )
+    atomic_json(
+        tmp_path / "bindings.json",
+        {"tengli_hypit_strips": {output.stem: strips.sha256(sidecar)}},
+    )
+    monkeypatch.setattr(strips.sys, "argv", ["render.py", "--job", str(job)])
+    with pytest.raises(
+        ValueError, match="Recompile HY-A2 for its original presenter window"
+    ):
+        strips.install_native_strips(tmp_path / "original", tmp_path)
 
 
 def test_hypit_sound_anchor_requires_the_rendered_scene_entry(tmp_path):

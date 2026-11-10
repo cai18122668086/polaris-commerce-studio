@@ -159,6 +159,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "chenxi-broll-v1",
         UNIFIED_EXPANDED_TEMPLATE_ID,
         UNIFIED_EXPLANATION_TEMPLATE_ID,
+        "unified-chapter-v1",
         HANDOFF_TEMPLATE_ID,
         LIVE_SPLIT_TEMPLATE_ID,
         "hypit-picture-scenes-v1",

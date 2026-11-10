@@ -633,6 +633,9 @@ class SemanticPlan(StrictVideoModel):
     schema_version: Literal["tengli.semantic-plan/1"] = "tengli.semantic-plan/1"
     audience_question: str = Field(min_length=1, max_length=500)
     argument_outline: list[str] = Field(min_length=1, max_length=50)
+    chapter_start_token_ids: list[str] = Field(
+        default_factory=list, max_length=10, exclude_if=lambda value: not value
+    )
     style_reason: str = Field(min_length=1, max_length=1000)
     beats: list[SemanticBeat] = Field(min_length=1, max_length=60)
     missing_materials: list[str] = Field(default_factory=list, max_length=40)

@@ -130,8 +130,10 @@ from .video_editing_line_branch import (
 from .video_editing_materials import project_image_digests
 from .video_editing_native_compiler import set_native_field
 from .video_editing_native_content import (
+    CHAPTER_PATH,
     PACKAGE_GROUP,
     YEAR_GROUP,
+    chapter_ordinal,
     live_package_template,
 )
 from .video_editing_native_layout import (
@@ -189,6 +191,7 @@ from .video_editing_story_panels import (
 )
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_unified_scenes import (
+    CHAPTER_SCENE_GROUP,
     PRESENTER_VIDEO_GROUPS,
     UNIFIED_DESIGN_ID,
     UNIFIED_MEDIA_PATHS,
@@ -2211,6 +2214,8 @@ def _unified_entry(
     beat: SemanticBeat,
     transcript: Transcript,
     asset_cards: list[dict],
+    *,
+    chapter_starts: list[str] | None = None,
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
     group_id = beat.group_id
     is_cut = group_id in CUT_GROUPS
@@ -2235,6 +2240,8 @@ def _unified_entry(
     if video_slots:
         config = triptych_template(config, video_slots)
     text_paths = set(contract["text_paths"])
+    if chapter_starts is not None:
+        text_paths.remove(CHAPTER_PATH)
     omitted = {
         path: "本期中文口播没有对应英文实录，原中文字幕和主字幕继续使用。"
         for path in text_paths
@@ -2288,6 +2295,8 @@ def _unified_entry(
             validate_handoff_anchors(beat, anchors, transcript, images)
         else:
             validate_unified_anchors(beat, anchors, transcript)
+        if chapter_starts is not None:
+            chapter_ordinal(beat, transcript, chapter_starts)
     except (ValueError, KeyError) as error:
         raise ApiError(
             422,
@@ -2298,6 +2307,7 @@ def _unified_entry(
     slots = [
         *(row["path"] for key in ("text", "events", "media") for row in anchors[key]),
         *omitted,
+        *((CHAPTER_PATH,) if chapter_starts is not None else ()),
         *(
             field["path"]
             for field in contract["fields"]
@@ -2330,6 +2340,11 @@ def _unified_entry(
             "config": config,
             "placeholders": slots,
             **({"empty_text": omitted} if omitted else {}),
+            **(
+                {"chapter_start_token_ids": chapter_starts}
+                if chapter_starts is not None
+                else {}
+            ),
             "media_clocks": [
                 {
                     "media_path": path,
@@ -2622,7 +2637,14 @@ def build_overlay_recipes(
             paths = tuple(CXBR_SOUNDS[beat.group_id])
         elif beat.group_id in UNIFIED_SCENE_GROUPS:
             entries[beat.id], anchors = _unified_entry(
-                package, group, beat, transcript, asset_cards or []
+                package,
+                group,
+                beat,
+                transcript,
+                asset_cards or [],
+                chapter_starts=semantic.chapter_start_token_ids
+                if beat.group_id == CHAPTER_SCENE_GROUP
+                else None,
             )
             paths = unified_sound_paths(beat.group_id)
         else:

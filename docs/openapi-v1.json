@@ -10565,6 +10565,14 @@
             "title": "Beats",
             "type": "array"
           },
+          "chapter_start_token_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Chapter Start Token Ids",
+            "type": "array"
+          },
           "missing_materials": {
             "items": {
               "type": "string"

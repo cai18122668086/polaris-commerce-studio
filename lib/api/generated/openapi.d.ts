@@ -7833,6 +7833,8 @@ export interface components {
             audience_question: string;
             /** Beats */
             beats: components["schemas"]["SemanticBeat"][];
+            /** Chapter Start Token Ids */
+            chapter_start_token_ids?: string[];
             /** Missing Materials */
             missing_materials?: string[];
             /**

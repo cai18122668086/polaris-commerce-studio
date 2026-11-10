@@ -63,11 +63,14 @@ from .video_editing_word_bindings import emphasis_text
 UNIFIED_TEMPLATE_ID = "unified-argument-v1"
 UNIFIED_EXPANDED_TEMPLATE_ID = "unified-argument-v2"
 UNIFIED_EXPLANATION_TEMPLATE_ID = "unified-explanation-v1"
+CHAPTER_TEMPLATE_ID = "unified-chapter-v1"
+CHAPTER_SCENE_GROUP = "Z-M15"
 UNIFIED_TEMPLATES = frozenset(
     {
         UNIFIED_TEMPLATE_ID,
         UNIFIED_EXPANDED_TEMPLATE_ID,
         UNIFIED_EXPLANATION_TEMPLATE_ID,
+        CHAPTER_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
@@ -86,7 +89,14 @@ UNIFIED_VIDEO_VARIANTS = frozenset({"Z-M02", "Z-M03", "Z-M04"})
 PRESENTER_VIDEO_GROUPS = UNIFIED_VIDEO_VARIANTS | PANEL_BOARDS
 UNIFIED_MEDIA_PATHS = {
     **dict.fromkeys(
-        ("Z-M01", "Z-M13", "Z-M14", "Z-M16", *UNIFIED_VIDEO_VARIANTS),
+        (
+            "Z-M01",
+            "Z-M13",
+            "Z-M14",
+            "Z-M16",
+            CHAPTER_SCENE_GROUP,
+            *UNIFIED_VIDEO_VARIANTS,
+        ),
         UNIFIED_PRESENTER,
     ),
     "W-R05": "/media/background/path",
@@ -172,6 +182,7 @@ UNIFIED_SOUNDS = {
     "Z-M09": {"relation_in": "ease", "answer_in": "visible"},
     "Z-M10": {"number_in": "ease", "action_in": "ease"},
     "Z-M14": {"item0": "ease", "item1": "ease", "item2": "ease"},
+    CHAPTER_SCENE_GROUP: {"ordinal": "ease", "title": "ease"},
     "W-R05": {"first_in": "ease", "second_in": "ease"},
     "Z-M13": {"table": "ease"},
     "Z-M16": {
@@ -227,7 +238,7 @@ UNIFIED_SCENE_GROUPS = (
     | PANEL_GROUPS.keys()
     | HANDOFF_GROUPS.keys()
     | BROWSER_LIST_SCENES
-    | {SLANT_GROUP, PICTURE_GROUP, PRICE_CARD_GROUP}
+    | {SLANT_GROUP, PICTURE_GROUP, PRICE_CARD_GROUP, CHAPTER_SCENE_GROUP}
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -525,6 +536,24 @@ def validate_unified_anchors(
         raise ValueError("Original unified scene needs measured motion entrances")
     if group == "Z-M02":
         _validate_judgment(text, events, duration)
+        return
+    if group == CHAPTER_SCENE_GROUP:
+        ordinal, move, title = (
+            events[_EVENT_PREFIX + key] for key in ("ordinal", "move", "title")
+        )
+        heading = text["title"]
+        if (
+            beat.relation != "explanation"
+            or ordinal["token_id"] != beat.first_token_id
+            or move["edge"] != "start"
+            or not _starts(title, heading)
+            or not 1 <= len(heading["text"]) <= 6
+            or "\n" in heading["text"]
+            or move["value"] < 0.20
+            or title["value"] < move["value"] + 0.24
+            or title["value"] + max(0.72, _reading_time(heading)) > duration
+        ):
+            raise ValueError("Chapter reveal needs its spoken heading and reading time")
         return
     if group in UNIFIED_EXPLANATION_GROUPS:
         _validate_explanation(beat, text, events, transcript, duration)

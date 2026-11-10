@@ -45,6 +45,8 @@ from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GR
 from .video_editing_story_panels import PANEL_GROUPS, PANEL_TEMPLATE_ID
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_unified_scenes import (
+    CHAPTER_SCENE_GROUP,
+    CHAPTER_TEMPLATE_ID,
     UNIFIED_EXPANDED_GROUPS,
     UNIFIED_EXPANDED_TEMPLATE_ID,
     UNIFIED_EXPLANATION_GROUPS,
@@ -611,6 +613,22 @@ _TEMPLATES[UNIFIED_EXPLANATION_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[CHAPTER_TEMPLATE_ID] = {
+    "id": CHAPTER_TEMPLATE_ID,
+    "name": "章节导航与口播重点",
+    "slots": [
+        {
+            "group_id": CHAPTER_SCENE_GROUP,
+            "purpose": "在新的实际章节开头，用原生序词和中文章名提示话题切换。",
+            "layer": "scene",
+            "binding": "选择 explanation，使用同期原片作模糊背景。"
+            "ordinal 对准本章起始词，move 对准章内稍后的实录词。"
+            "title 取一至六字实录，title 事件对准其首词并留出阅读时间。"
+            "序词由章起点顺序计算，不填写 /content/ordinal。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[HANDOFF_TEMPLATE_ID] = {
     "id": HANDOFF_TEMPLATE_ID,
     "name": "转场与评论引导",
@@ -847,6 +865,7 @@ def overlay_templates() -> list[dict]:
             CXBR_TEMPLATE_ID,
             UNIFIED_EXPANDED_TEMPLATE_ID,
             UNIFIED_EXPLANATION_TEMPLATE_ID,
+            CHAPTER_TEMPLATE_ID,
             HANDOFF_TEMPLATE_ID,
             LIVE_SPLIT_TEMPLATE_ID,
             HY_PICTURE_TEMPLATE_ID,
@@ -894,6 +913,27 @@ def validate_template_plan(
         raise ValueError("English question gloss must match the selected AH-S03 A slot")
     groups = {slot["group_id"] for slot in template["slots"]}
     chosen = {beat.group_id for beat in plan.beats if beat.group_id != "Z-M00"}
+    chapter_starts = plan.chapter_start_token_ids
+    if chapter_starts or CHAPTER_SCENE_GROUP in chosen:
+        positions = {
+            beat.first_token_id: index for index, beat in enumerate(plan.beats)
+        }
+        if (
+            template["id"] != CHAPTER_TEMPLATE_ID
+            or CHAPTER_SCENE_GROUP not in chosen
+            or not chapter_starts
+            or len(chapter_starts) != len(plan.argument_outline)
+            or chapter_starts[0] != plan.beats[0].first_token_id
+            or any(marker not in positions for marker in chapter_starts)
+            or [positions[marker] for marker in chapter_starts]
+            != sorted({positions[marker] for marker in chapter_starts})
+            or any(
+                beat.first_token_id not in chapter_starts
+                for beat in plan.beats
+                if beat.group_id == CHAPTER_SCENE_GROUP
+            )
+        ):
+            raise ValueError("Chapters must map in order to measured plan boundaries")
     if not chosen <= groups or (complete and len(chosen) < MIN_OVERLAY_TYPES):
         raise ValueError(
             "Selected native groups do not match the chosen overlay template"

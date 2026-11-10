@@ -27,7 +27,7 @@ from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
 from .video_editing_line_branch import LINE_GROUP
-from .video_editing_native_content import PACKAGE_GROUP
+from .video_editing_native_content import CHAPTER_PATH, PACKAGE_GROUP
 from .video_editing_overlay_templates import (
     LINE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
@@ -45,6 +45,8 @@ from .video_editing_question_card import (
 from .video_editing_story_panels import PANEL_BOARDS, PANEL_TEMPLATE_ID
 from .video_editing_template_materials import runtime_payload, validate_template_images
 from .video_editing_unified_scenes import (
+    CHAPTER_SCENE_GROUP,
+    CHAPTER_TEMPLATE_ID,
     UNIFIED_EXPLANATION_TEMPLATE_ID,
     UNIFIED_TEMPLATES,
     UNIFIED_VIDEO_VARIANTS,
@@ -90,6 +92,7 @@ def catalog_index(
     panel_scene: bool = False,
     explanation_scene: bool = False,
     live_splits: bool = False,
+    chapter_scene: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -120,6 +123,8 @@ def catalog_index(
         )
         if question_a:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
+        if chapter_scene and group["id"] == CHAPTER_SCENE_GROUP:
+            parameters["text_paths"].remove(CHAPTER_PATH)
         if (
             (cut_scene and group["id"] == "Z-M06")
             or (panel_scene and group["id"] == "Z-M08")
@@ -238,6 +243,7 @@ def build_request(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rules = rule_pack(package)
     question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
+    chapter_scene = bool(template and template["id"] == CHAPTER_TEMPLATE_ID)
     live_package = bool(template and template["id"] in PACKAGE_TEMPLATES)
     line_scene = bool(template and template["id"] == LINE_TEMPLATE_ID)
     catalog = catalog_index(
@@ -254,11 +260,14 @@ def build_request(
             template and template["id"] == UNIFIED_EXPLANATION_TEMPLATE_ID
         ),
         live_splits=bool(template and template["id"] == LIVE_SPLIT_TEMPLATE_ID),
+        chapter_scene=chapter_scene,
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
         # Saved requests for older templates must replay with their original schema.
         del schema["$defs"]["SemanticBeat"]["properties"]["question_gloss"]
+    if not chapter_scene:
+        del schema["properties"]["chapter_start_token_ids"]
     if runtime is not None:
         if set(runtime["groups"]) != {row["id"] for row in catalog}:
             raise ValueError(
@@ -365,6 +374,14 @@ def build_request(
             "只有透明问号槽 AH-S03 可以给 question_gloss。"
             "该字段是左右两个实录短语的英文释义，不能加新信息。"
             "无需为英文释义或问号填写 native_text。"
+        )
+    if chapter_scene:
+        message += (
+            "选择 Z-M15 时，用 chapter_start_token_ids "
+            "按 argument_outline 的顺序列出所有章的起始词。"
+            "第一个从实录首词起，每章必须是一个 beat 的开始，包括没有选 Z-M15 的章。"
+            "Z-M15 只能放在章首，英文序词由编译器按章次生成，不写入 native_text。"
+            "没有真实的话题换章或实录章名时，可以不选 Z-M15 并省略章起始词列表。"
         )
     if runtime is not None:
         message += (
@@ -738,6 +755,8 @@ def generate(
         raise ValueError(
             "English question gloss requires the selected AH-S03 A template"
         )
+    if template is None and plan.chapter_start_token_ids:
+        raise ValueError("Chapter boundaries require the selected chapter template")
     validate_plan(
         plan,
         transcript,

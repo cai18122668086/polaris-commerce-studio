@@ -1,7 +1,12 @@
 import pytest
 from PIL import Image
 
-from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from app.video_editing_contracts import (
+    SemanticBeat,
+    SemanticPlan,
+    Transcript,
+    TranscriptToken,
+)
 from app.video_editing_native_content import (
     chapter_ordinal,
     film_feedback_entries,
@@ -13,6 +18,8 @@ from app.video_editing_native_content import (
     year_glyphs,
 )
 from app.video_editing_native_sound import package_entry_frame
+from app.video_editing_overlay_templates import overlay_template, validate_template_plan
+from app.video_editing_unified_scenes import CHAPTER_TEMPLATE_ID, UNIFIED_TEMPLATE_ID
 
 
 def test_chapter_ordinal_is_derived_from_ordered_source_starts():
@@ -47,6 +54,36 @@ def test_chapter_ordinal_is_derived_from_ordered_source_starts():
         chapter_ordinal(beat, transcript, ["t0", "t1", "t4"])
     with pytest.raises(ValueError, match="saved outline interval"):
         chapter_ordinal(beat, transcript, ["t0", "t2", "t3"])
+
+
+def test_automatic_chapters_use_complete_ordered_beat_boundaries():
+    plan = SemanticPlan(
+        audience_question="要讲什么",
+        argument_outline=["现状", "用途", "条件"],
+        style_reason="章名用于实录话题切换",
+        chapter_start_token_ids=["t0", "t2", "t4"],
+        beats=[
+            SemanticBeat(
+                id=f"b{i}",
+                group_id="Z-M15" if i == 1 else "Z-M00",
+                first_token_id=f"t{2 * i}",
+                last_token_id=f"t{2 * i + 1}",
+                relation="explanation",
+                reason="章次对照",
+            )
+            for i in range(3)
+        ],
+    )
+    template = overlay_template(CHAPTER_TEMPLATE_ID)
+    validate_template_plan(plan, template, complete=False)
+    for markers in ([], ["t0", "t4", "t2"], ["t0", "t3", "t4"], ["t0", "t2", "t2"]):
+        invalid = plan.model_copy(update={"chapter_start_token_ids": markers})
+        with pytest.raises(ValueError, match="measured plan boundaries"):
+            validate_template_plan(invalid, template, complete=False)
+    with pytest.raises(ValueError, match="measured plan boundaries"):
+        validate_template_plan(
+            plan, overlay_template(UNIFIED_TEMPLATE_ID), complete=False
+        )
 
 
 def test_original_number_glyphs_preserve_each_spoken_unit_and_its_reveal():

@@ -37,6 +37,15 @@ export function ScriptHistory({ versions, currentText, onRestore, onCopy, onClos
       <section className={styles.versionDetail} aria-label="版本完整文案" aria-live="polite">
         {selected ? <><header><div><h3>{selected.kind === "confirmed" ? "已确认文案" : "历史草稿"}</h3><span><Clock3 size={13} />{formatDate(selected.created_at)} · {selected.snapshot.draft.text.length} 字</span></div><button type="button" className={styles.quietButton} disabled={!selected.snapshot.draft.text} onClick={() => onCopy(selected.snapshot.draft.text)}><Copy size={14} />复制全文</button></header>
           {selected.snapshot.draft.text === currentText && <div className={styles.sameText}><Check size={13} />与当前编辑器文案一致</div>}
+          {selected.writing_origin && <details>
+            <summary>查看该版写稿来源</summary>
+            <ul>
+              <li>参考原文 <code>{selected.writing_origin.reference_document_id}</code></li>
+              <li>拆解报告 <code>{selected.writing_origin.analysis_document_id}</code></li>
+              <li>事实卡 <code>{selected.writing_origin.facts_document_id}</code></li>
+              <li>采用草稿 <code>{selected.writing_origin.draft_document_id}</code></li>
+            </ul>
+          </details>}
           <div key={selected.id} className={styles.versionFullText} tabIndex={0}>{selected.snapshot.draft.text || "此版本尚未填写文案。"}</div>
         </> : <div className={styles.historyEmpty}><FileText size={28} /><b>选择一个版本查看全文</b></div>}
       </section>

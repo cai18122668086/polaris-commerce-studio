@@ -6439,6 +6439,16 @@
               }
             ],
             "title": "Script Sha256"
+          },
+          "writing_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoWritingOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -11485,6 +11495,16 @@
           "workspace_id": {
             "title": "Workspace Id",
             "type": "string"
+          },
+          "writing_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoWritingOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -11661,6 +11681,16 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/VideoProjectContent"
+          },
+          "writing_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoWritingOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -11704,6 +11734,63 @@
           "project"
         ],
         "title": "VideoWriteResponse",
+        "type": "object"
+      },
+      "VideoWritingOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "adoption_id": {
+            "format": "uuid",
+            "title": "Adoption Id",
+            "type": "string"
+          },
+          "analysis_document_id": {
+            "format": "uuid",
+            "title": "Analysis Document Id",
+            "type": "string"
+          },
+          "draft_document_id": {
+            "format": "uuid",
+            "title": "Draft Document Id",
+            "type": "string"
+          },
+          "draft_document_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Draft Document Sha256",
+            "type": "string"
+          },
+          "facts_document_id": {
+            "format": "uuid",
+            "title": "Facts Document Id",
+            "type": "string"
+          },
+          "reference_document_id": {
+            "format": "uuid",
+            "title": "Reference Document Id",
+            "type": "string"
+          },
+          "rules_release": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Rules Release",
+            "type": "string"
+          },
+          "script_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Script Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "adoption_id",
+          "draft_document_id",
+          "reference_document_id",
+          "analysis_document_id",
+          "facts_document_id",
+          "draft_document_sha256",
+          "rules_release",
+          "script_sha256"
+        ],
+        "title": "VideoWritingOrigin",
         "type": "object"
       },
       "WorkerAccountSessionRequest": {

@@ -36,7 +36,7 @@ from .video_studio_routes import (
     replay,
     version_response,
 )
-from .video_studio_schemas import VideoWriteResponse
+from .video_studio_schemas import VideoWriteResponse, VideoWritingOrigin
 from .video_writing_contracts import (
     ApplyWritingDraft,
     SaveWritingFacts,
@@ -50,6 +50,7 @@ from .video_writing_contracts import (
     WritingTaskRequest,
 )
 from .video_writing_models import VideoWritingAdoption, VideoWritingDocument
+from .video_writing_provenance import script_digest
 from .video_writing_provider import validate_analysis, validate_draft
 from .video_writing_rules import reference_from_project, verify_writing_package
 
@@ -516,6 +517,14 @@ def apply_draft(
     previous = replay(session, workspace, body.request_id, fingerprint)
     if previous:
         return previous
+    if digest(document.body) != document.body_sha256 or not all(
+        (
+            document.reference_document_id,
+            document.analysis_document_id,
+            document.facts_document_id,
+        )
+    ):
+        raise ApiError(409, "VIDEO_WRITING_INPUTS_CHANGED", "输入资料版本不一致。")
     project = own_project(session, workspace, document.project_id)
     stored = document.body["draft"]
     draft_model = (
@@ -530,6 +539,19 @@ def apply_draft(
         )
     content = copy.deepcopy(project.content)
     content["draft"].update(name=draft.title, text=document.body["text"], drive="text")
+    adoption_id = str(uuid4())
+    origin = VideoWritingOrigin.model_validate(
+        {
+            "adoption_id": adoption_id,
+            "draft_document_id": document.id,
+            "reference_document_id": document.reference_document_id,
+            "analysis_document_id": document.analysis_document_id,
+            "facts_document_id": document.facts_document_id,
+            "draft_document_sha256": document.body_sha256,
+            "rules_release": document.rules_release,
+            "script_sha256": script_digest(document.body["text"]),
+        }
+    ).model_dump(mode="json")
     try:
         changed = session.execute(
             update(VideoProjectRecord)
@@ -539,6 +561,7 @@ def apply_draft(
             )
             .values(
                 content=content,
+                writing_origin=origin,
                 revision=body.expected_revision + 1,
                 updated_at=utc_now(),
             )
@@ -550,10 +573,12 @@ def apply_draft(
                 409, "VIDEO_REVISION_CONFLICT", "当前草稿已变化，本次没有覆盖。"
             )
         session.refresh(project)
-        version = append_version(session, project.id, content, "draft")
+        version = append_version(
+            session, project.id, content, "draft", writing_origin=origin
+        )
         session.add(
             VideoWritingAdoption(
-                id=str(uuid4()),
+                id=adoption_id,
                 document_id=document.id,
                 script_version_id=version.id,
                 request_id=str(body.request_id),

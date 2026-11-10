@@ -327,11 +327,18 @@ def test_migration_adds_only_video_tables_and_preserves_users(video):
     spec = importlib.util.spec_from_file_location("video_migration", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    origin_spec = importlib.util.spec_from_file_location(
+        "video_origin_migration",
+        path.with_name("20261110_0051_video_writing_origin.py"),
+    )
+    origin_module = importlib.util.module_from_spec(origin_spec)
+    origin_spec.loader.exec_module(origin_module)
     with engine.begin() as connection:
         for table in tables:
             table.drop(connection)
         with Operations.context(MigrationContext.configure(connection)):
             module.upgrade()
+            origin_module.upgrade()
     with client.app.state.session_factory() as session:
         assert session.get(UserRecord, user) is not None
         assert session.scalar(select(func.count()).select_from(VideoProjectRecord)) == 0

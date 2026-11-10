@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, Field, field_validator, model_validator
 
-from .video_studio_schemas import StrictVideoModel
+from .video_studio_schemas import StrictVideoModel, VideoWritingOrigin
 
 
 class NativeHighlightEdit(StrictVideoModel):
@@ -243,6 +243,9 @@ class EditingSourceOrigin(StrictVideoModel):
     generation_task_id: str | None
     media_sha256: str
     script_sha256: str | None
+    writing_origin: VideoWritingOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class EditingTaskResponse(StrictVideoModel):

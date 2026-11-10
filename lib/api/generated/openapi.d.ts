@@ -6246,6 +6246,7 @@ export interface components {
             media_sha256: string;
             /** Script Sha256 */
             script_sha256: string | null;
+            writing_origin?: components["schemas"]["VideoWritingOrigin"] | null;
         };
         /** EditingTaskCreate */
         EditingTaskCreate: {
@@ -8151,6 +8152,7 @@ export interface components {
             updated_at: string;
             /** Workspace Id */
             workspace_id: string;
+            writing_origin?: components["schemas"]["VideoWritingOrigin"] | null;
         };
         /** VideoProjectWrite */
         VideoProjectWrite: {
@@ -8245,12 +8247,47 @@ export interface components {
             /** Project Id */
             project_id: string;
             snapshot: components["schemas"]["VideoProjectContent"];
+            writing_origin?: components["schemas"]["VideoWritingOrigin"] | null;
         };
         /** VideoWriteResponse */
         VideoWriteResponse: {
             project: components["schemas"]["VideoProjectResponse"];
             task?: components["schemas"]["VideoTaskResponse"] | null;
             version?: components["schemas"]["VideoVersionResponse"] | null;
+        };
+        /** VideoWritingOrigin */
+        VideoWritingOrigin: {
+            /**
+             * Adoption Id
+             * Format: uuid
+             */
+            adoption_id: string;
+            /**
+             * Analysis Document Id
+             * Format: uuid
+             */
+            analysis_document_id: string;
+            /**
+             * Draft Document Id
+             * Format: uuid
+             */
+            draft_document_id: string;
+            /** Draft Document Sha256 */
+            draft_document_sha256: string;
+            /**
+             * Facts Document Id
+             * Format: uuid
+             */
+            facts_document_id: string;
+            /**
+             * Reference Document Id
+             * Format: uuid
+             */
+            reference_document_id: string;
+            /** Rules Release */
+            rules_release: string;
+            /** Script Sha256 */
+            script_sha256: string;
         };
         /** WorkerAccountSessionRequest */
         WorkerAccountSessionRequest: {

@@ -52,7 +52,6 @@ from .video_editing_planning_provenance import verify_render_provenance
 from .video_editing_preview import build_preview
 from .video_editing_source_lineage import (
     generation_source_receipt,
-    script_digest,
     script_reference,
     source_origin,
 )
@@ -65,6 +64,7 @@ from .video_editing_task_models import (
     EditingTranscriptRevisionRecord,
 )
 from .video_studio_models import VideoScriptVersionRecord
+from .video_writing_provenance import script_digest
 
 
 def eligible() -> ColumnElement[bool]:
@@ -470,6 +470,9 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             and version.project_id == source.project_id
             and version.kind == "confirmed"
         )
+        snapshot["confirmed_writing_origin"] = (
+            version.writing_origin if version else None
+        )
         snapshot["native_plan"] = None
         plan_id = row.options.get("native_plan_id")
         if plan_id:
@@ -592,6 +595,10 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         if lineage and (
             not snapshot["confirmed_version_valid"]
             or script_digest(snapshot["reference"]) != lineage["script_sha256"]
+            or (
+                "writing_origin" in lineage
+                and lineage["writing_origin"] != snapshot["confirmed_writing_origin"]
+            )
         ):
             raise EditingFailure("EDITING_GENERATION_SCRIPT_CHANGED")
         verify_package(settings.video_editing_library_dir)

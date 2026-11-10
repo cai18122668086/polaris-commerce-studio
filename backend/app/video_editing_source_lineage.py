@@ -1,6 +1,5 @@
 """Freeze a completed narration source and inspect its separate voice clock."""
 
-import hashlib
 import math
 import subprocess
 from collections.abc import Callable
@@ -14,19 +13,18 @@ from .video_editing_pipeline import probe
 from .video_editing_task_models import EditingSourceRecord
 from .video_generation_models import VideoGenerationRecord
 from .video_studio_models import VideoScriptVersionRecord
+from .video_writing_provenance import (
+    matching_writing_origin,
+    script_digest,
+    spoken_script,
+)
 
 START_TOLERANCE_MS = 50
 DURATION_TOLERANCE_MS = 100
 
 
-def script_digest(reference: str | None) -> str | None:
-    return hashlib.sha256(reference.encode()).hexdigest() if reference else None
-
-
 def script_reference(version: VideoScriptVersionRecord | None) -> str | None:
-    draft = version.snapshot.get("draft", {}) if version else {}
-    text = draft.get("text")
-    return text if isinstance(text, str) and draft.get("drive") != "audio" else None
+    return spoken_script(version.snapshot) if version else None
 
 
 def freeze_generation_source(
@@ -34,6 +32,7 @@ def freeze_generation_source(
 ) -> dict[str, Any]:
     if job.confirmed_version_id and (
         version is None
+        or version.id != job.confirmed_version_id
         or version.project_id != job.project_id
         or version.kind != "confirmed"
     ):
@@ -41,6 +40,15 @@ def freeze_generation_source(
             409, "EDITING_GENERATION_SCRIPT_CHANGED", "口播任务的确认稿已不可用。"
         )
     reference = script_reference(version)
+    writing_origin = None
+    if version and version.writing_origin is not None:
+        writing_origin = matching_writing_origin(
+            version.writing_origin, version.snapshot
+        )
+        if writing_origin is None:
+            raise ApiError(
+                409, "EDITING_GENERATION_SCRIPT_CHANGED", "确认稿正文与写稿来源不一致。"
+            )
     draft = job.details.get("snapshot", {}).get("draft")
     if version and draft:
         confirmed = version.snapshot.get("draft", {})
@@ -74,6 +82,7 @@ def freeze_generation_source(
         if version and draft
         else "not_recorded",
         "voice": voice,
+        **({"writing_origin": writing_origin} if writing_origin else {}),
     }
 
 
@@ -85,6 +94,11 @@ def source_origin(source: EditingSourceRecord) -> dict[str, Any]:
         "generation_task_id": source.generation_task_id,
         "media_sha256": source.media_sha256,
         "script_sha256": lineage.get("script_sha256"),
+        **(
+            {"writing_origin": lineage["writing_origin"]}
+            if lineage.get("writing_origin")
+            else {}
+        ),
     }
 
 

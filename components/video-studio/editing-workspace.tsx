@@ -117,6 +117,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
           原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>
           {task.source_origin.confirmed_version_id && <> · 确认稿 <code title={task.source_origin.confirmed_version_id}>{task.source_origin.confirmed_version_id.slice(0, 8)}</code></>}
+          {task.source_origin.writing_origin && <> · 事实卡 <code title={task.source_origin.writing_origin.facts_document_id}>{task.source_origin.writing_origin.facts_document_id.slice(0, 8)}</code></>}
         </p>}
         {sourceReceipt && <a href={sourceReceipt.url} download>下载原片与配音核对记录</a>}
         {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}

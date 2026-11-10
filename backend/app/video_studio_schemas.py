@@ -80,6 +80,17 @@ class VideoProjectWrite(StrictVideoModel):
     action: Literal["save", "library", "demo"] = "save"
 
 
+class VideoWritingOrigin(StrictVideoModel):
+    adoption_id: UUID
+    draft_document_id: UUID
+    reference_document_id: UUID
+    analysis_document_id: UUID
+    facts_document_id: UUID
+    draft_document_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rules_release: str = Field(pattern=r"^[0-9a-f]{64}$")
+    script_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class VideoProjectResponse(StrictVideoModel):
     id: str
     workspace_id: str
@@ -87,6 +98,9 @@ class VideoProjectResponse(StrictVideoModel):
     content: VideoProjectContent
     created_at: datetime
     updated_at: datetime
+    writing_origin: VideoWritingOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class VideoVersionResponse(StrictVideoModel):
@@ -95,6 +109,9 @@ class VideoVersionResponse(StrictVideoModel):
     kind: Literal["draft", "library", "confirmed"]
     snapshot: VideoProjectContent
     created_at: datetime
+    writing_origin: VideoWritingOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class VideoTaskResponse(StrictVideoModel):

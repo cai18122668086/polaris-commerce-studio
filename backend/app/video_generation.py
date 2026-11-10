@@ -54,6 +54,7 @@ from .video_tts import synthesize
 from .video_voice_catalog import VOICES, official_voices, preview_path, select_tao_voice
 from .video_voice_cloning import catalog as cloned_voice_catalog
 from .video_voice_cloning import select_voice as select_cloned_voice
+from .video_writing_provenance import matching_writing_origin
 
 router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}", tags=["video-generation"]
@@ -899,6 +900,9 @@ def submit_generation(
                 409, "VIDEO_REVISION_CONFLICT", "项目已变化，请重新载入后确认。"
             )
         details["snapshot"] = project.content
+        writing_origin = matching_writing_origin(
+            project.writing_origin, details["snapshot"]
+        )
         model_id = avatar.provider_model_id
         source_video = {"video_url": avatar.video_url} if avatar.video_url else None
         if avatar.source == "self_owned":
@@ -977,7 +981,13 @@ def submit_generation(
                     "emotion": None,
                     "language_boost": None,
                 }
-        version = append_version(session, project.id, project.content, "confirmed")
+        version = append_version(
+            session,
+            project.id,
+            details["snapshot"],
+            "confirmed",
+            writing_origin=writing_origin,
+        )
     row = VideoGenerationRecord(
         id=str(uuid4()),
         workspace_id=workspace.workspace_id,

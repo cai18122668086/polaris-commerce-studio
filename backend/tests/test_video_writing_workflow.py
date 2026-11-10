@@ -352,13 +352,22 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
         .raise_for_status()
         .json()
     )
+    origin = adopted["project"]["writing_origin"]
+    assert origin == adopted["version"]["writing_origin"]
+    assert origin["draft_document_id"] == new_draft["id"]
+    assert origin["reference_document_id"] == rid
+    assert origin["analysis_document_id"] == saved_analysis.json()["id"]
+    assert origin["facts_document_id"] == saved_facts.json()["id"]
+    assert origin["draft_document_sha256"] == new_draft["body_sha256"]
+    content = adopted["project"]["content"]
+    content["draft"]["name"] = "只改项目标题"
     confirmed = (
         client.put(
             url + f"/projects/{pid}",
             json={
                 "request_id": str(uuid4()),
                 "expected_revision": 3,
-                "content": adopted["project"]["content"],
+                "content": content,
                 "action": "demo",
             },
         )
@@ -366,11 +375,55 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
         .json()
     )
     assert confirmed["task"]["confirmed_version_id"] == confirmed["version"]["id"]
+    assert confirmed["project"]["writing_origin"] == origin
+    assert confirmed["version"]["writing_origin"] == origin
     assert (
         confirmed["version"]["snapshot"]["draft"]["text"] == new_draft["body"]["text"]
     )
     assert fake.calls[-1][1]["draft_mode"] == "structure"
     assert len(fake.calls) == 3
+    content["draft"]["text"] = "人工修改了原采用稿。"
+    edited = (
+        client.put(
+            url + f"/projects/{pid}",
+            json={
+                "request_id": str(uuid4()),
+                "expected_revision": 4,
+                "content": content,
+                "action": "demo",
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert "writing_origin" not in edited["project"]
+    assert "writing_origin" not in edited["version"]
+    content["draft"]["text"] = new_draft["body"]["text"]
+    restored = (
+        client.put(
+            url + f"/projects/{pid}",
+            json={
+                "request_id": str(uuid4()),
+                "expected_revision": 5,
+                "content": content,
+                "action": "demo",
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert "writing_origin" not in restored["version"]
+    history = (
+        client.get(url + "/versions", params={"project_id": pid, "kind": "confirmed"})
+        .raise_for_status()
+        .json()
+    )
+    assert (
+        next(row for row in history if row["id"] == confirmed["version"]["id"])[
+            "writing_origin"
+        ]
+        == origin
+    )
 
     kinds = {
         r["kind"]

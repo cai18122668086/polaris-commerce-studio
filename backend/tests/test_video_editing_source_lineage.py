@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from struct import pack
+from uuid import uuid4
 from wave import open as open_wave
 
 import pytest
@@ -14,11 +15,11 @@ from app.video_editing_source_lineage import (
     audio_clock,
     freeze_generation_source,
     generation_source_receipt,
-    script_digest,
     script_reference,
 )
 from app.video_generation_models import VideoGenerationRecord
 from app.video_studio_models import VideoScriptVersionRecord
+from app.video_writing_provenance import matching_writing_origin, script_digest
 
 
 def test_generation_snapshot_must_match_the_original_project_confirmation(tmp_path):
@@ -36,6 +37,35 @@ def test_generation_snapshot_must_match_the_original_project_confirmation(tmp_pa
     frozen = freeze_generation_source(job, version)
     assert frozen["script_sha256"] == script_digest(draft["text"])
     assert frozen["voice"]["sha256"] == sha256(voice)
+    assert "writing_origin" not in frozen
+    version.writing_origin = {
+        **{
+            key: str(uuid4())
+            for key in (
+                "adoption_id",
+                "draft_document_id",
+                "reference_document_id",
+                "analysis_document_id",
+                "facts_document_id",
+            )
+        },
+        "draft_document_sha256": "a" * 64,
+        "rules_release": "b" * 64,
+        "script_sha256": frozen["script_sha256"],
+    }
+    assert (
+        freeze_generation_source(job, version)["writing_origin"]
+        == version.writing_origin
+    )
+    assert (
+        matching_writing_origin(
+            version.writing_origin,
+            {
+                "draft": {**draft, "drive": "audio"},
+            },
+        )
+        is None
+    )
     with pytest.raises(ApiError) as wrong_scope:
         freeze_generation_source(job, None)
     assert wrong_scope.value.code == "EDITING_GENERATION_SCRIPT_CHANGED"
@@ -48,6 +78,10 @@ def test_generation_snapshot_must_match_the_original_project_confirmation(tmp_pa
     version.snapshot = {"draft": {"drive": "audio", "text": "旧文本未用于配音"}}
     job.details["snapshot"]["draft"] = {"drive": "audio", "text": ""}
     assert script_reference(version) is None
+    with pytest.raises(ApiError) as wrong_origin:
+        freeze_generation_source(job, version)
+    assert wrong_origin.value.code == "EDITING_GENERATION_SCRIPT_CHANGED"
+    version.writing_origin = None
     assert freeze_generation_source(job, version)["script_sha256"] is None
 
 

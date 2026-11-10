@@ -9,6 +9,7 @@ import type { GenerationJob } from "@/features/video-studio/library";
 import type { components } from "@/lib/api/generated/openapi";
 import { TranscriptEditor } from "./transcript-editor";
 import { EditingFilmReview } from "./editing-film-review";
+import { EditingSoundReview } from "./editing-sound-review";
 import { EditingLibrary } from "./editing-library";
 import { EditingNativePlans, type EditingRevisionSelection } from "./editing-native-plans";
 import { EditingPlanning, type CarrySelection } from "./editing-planning";
@@ -263,6 +264,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {task.status === "awaiting_review" && preview && <>
           <video id={`editing-preview-${task.id}`} controls playsInline preload="none" src={preview.url} aria-label="剪辑代理预览" />
           <p className={styles.note}>代理使用较小画幅，保留本版编排和音轨。</p>
+          {audioReceipt && <EditingSoundReview key={`sound:${preview.id}:${audioReceipt.id}`} workspaceId={workspaceId} receipt={audioReceipt} media={preview} playerId={`editing-preview-${task.id}`} />}
           <button type="button" disabled={busy} onClick={() => void confirmExport(task, preview)}>确认并开放高清下载</button>
         </>}
         {preview && (task.status === "awaiting_review" || task.status === "completed") && planId && <button type="button" disabled={busy} onClick={() => revise({
@@ -274,7 +276,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         }}>将人工调整带入另一份规划</button>}
         {final && <><video id={`editing-film-${task.id}`} controls playsInline preload="none" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
           {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
-          {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}
+          {audioReceipt && <EditingSoundReview key={`sound:${final.id}:${audioReceipt.id}`} workspaceId={workspaceId} receipt={audioReceipt} media={final} playerId={`editing-film-${task.id}`} />}
           <EditingFilmReview key={final.id} workspaceId={workspaceId} task={task} final={final} />
         </>}
         {task.status === "completed" && task.options.mode === "transcript" && transcript && <>

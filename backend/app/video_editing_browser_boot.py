@@ -21,6 +21,7 @@ _BUNDLED_ALIAS = "legacy/assets/fonts/SHSerifHeavy.ttf"
 _BUNDLED_FONT = "assets/fonts/Source_Han_Serif_SC_Heavy--152bc1c4535b.ttf"
 _ENGINE = "924e38d4f3efc727158f2d6d0abb08a583d59edcfbe37e5e508c1bb0b2406e76"
 _LEGACY = "6e41fa0ad6e1cc32120e5df820d0c458af2ad8331f6a9ed7c8d8f5c492472c80"
+_CIRCULAR_TIMELINE = "971e91be9818312d354028b091743184c7ab31153720c3a8e184c529b0924c9e"
 
 
 class BrowserBootFontsMissing(ValueError):
@@ -40,6 +41,10 @@ def audit_browser_boot_engine(package: Path, group: dict) -> None:
     }
     if any(sha256(inside(package, path)) != digest for path, digest in pinned.items()):
         raise ValueError("Original browser font loader changed")
+    if group["id"] == "CX-G10" and (
+        sha256(inside(package, f"{directory}/timeline.json")) != _CIRCULAR_TIMELINE
+    ):
+        raise ValueError("Original G10 circle timeline changed")
 
 
 def require_browser_boot_fonts(

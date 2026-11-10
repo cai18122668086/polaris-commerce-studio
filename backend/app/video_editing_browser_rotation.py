@@ -22,13 +22,20 @@ from .video_editing_browser_clocks import (
     audit_card_family_engine,
     audit_split_engine,
 )
-from .video_editing_contracts import Transcript
+from .video_editing_contracts import SemanticBeat, Transcript
 
 ROTATION_GROUP = "CX-G04"
 STRIP_CARD_GROUP = "CX-G05"
 STRIP_CARD_DESIGN = "tengli-strip-cards-v1"
 BROWSER_CARD_GROUPS = (ROTATION_GROUP, STRIP_CARD_GROUP)
 ANALYSIS_BOARD_GROUP = "CX-G08"
+TEXTURE_WORD_GROUP = "CX-G09"
+CIRCULAR_MEDIA_GROUP = "CX-G10"
+THREE_ITEM_SCENE_GROUPS = (
+    ANALYSIS_BOARD_GROUP,
+    TEXTURE_WORD_GROUP,
+    CIRCULAR_MEDIA_GROUP,
+)
 ROTATION_MATTE = "model-01eb6a29a5c4d8edb30b"
 ROTATION_EVENTS = tuple(f"/items/{i}/at" for i in range(3))
 ROTATION_IMAGES = tuple(f"/items/{i}/image" for i in range(3))
@@ -36,11 +43,21 @@ ROTATION_LABELS = tuple(f"/items/{i}/label" for i in range(3))
 _ROTATION_REF = "tengli-card-rotation-"
 _STRIP_CARD_REF = "tengli-strip-card-"
 _SPLIT_REF = "tengli-browser-split-"
-_ANALYSIS_REF = "tengli-analysis-board-"
-_PRESENTER_REFS = {
-    ROTATION_GROUP: _ROTATION_REF,
-    STRIP_CARD_GROUP: _STRIP_CARD_REF,
-    ANALYSIS_BOARD_GROUP: _ANALYSIS_REF,
+_PRESENTER_BINDINGS = {
+    ROTATION_GROUP: (_ROTATION_REF, "native_rotation_presenter_window"),
+    STRIP_CARD_GROUP: (_STRIP_CARD_REF, "native_strip_card_presenter_window"),
+    ANALYSIS_BOARD_GROUP: (
+        "tengli-analysis-board-",
+        "native_analysis_board_presenter_window",
+    ),
+    TEXTURE_WORD_GROUP: (
+        "tengli-texture-word-",
+        "native_texture_word_presenter_window",
+    ),
+    CIRCULAR_MEDIA_GROUP: (
+        "tengli-circular-media-",
+        "native_circular_media_presenter_window",
+    ),
 }
 _FPS = 30
 _OWNER = Path("src/engines/workspace/商业口播_可编辑改造_20261104")
@@ -51,12 +68,14 @@ _MATTE = (
 _MEDIA_SHA = "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf"
 _MATTE_SHA = "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12"
 _STRIP_TIMELINE_SHA = "b3d9bf69f9f11a8a1b699eacede74baad1bb379cb0b3d3d9fc71e4593a0e1194"
+_CIRCULAR_TRACK_ANCHORS = (6, 21, 40)
+_CIRCULAR_FIRST_VISIBLE = (7, 22, 42)
 _STRIP_ENTRIES = (9, 26, 48)
 # Native G05 draws the presenter at (130, 500) with this size.
 _STRIP_PRESENTER_SIZE = (500, 780)
-# The original draw expands its input to 1600 x 2400 before applying
-# a single 0.51 scale and translation. Use a proportional half-size input.
-_ANALYSIS_PRESENTER_SIZE = (800, 1200)
+# The shared native draw interprets the input as a 1600 x 2400 image
+# before applying each scene's uniform scale and translation.
+_THREE_ITEM_PRESENTER_SIZE = (800, 1200)
 _SPECIAL = Path("commercial_runtime/special.py")
 _DRAW = (
     '([g,f])=>{engine.draw(exportCanvas,g,f/30,"B");'
@@ -77,7 +96,7 @@ async ([group, frame, uri, slot, liveBackground]) => {
 
 
 def _audit(package: Path, group: dict) -> None:
-    if group["id"] == ANALYSIS_BOARD_GROUP:
+    if group["id"] in THREE_ITEM_SCENE_GROUPS:
         audit_browser_boot_engine(package, group)
     elif group["id"] in LIVE_SPLIT_GROUPS:
         audit_split_engine(package, group)
@@ -140,24 +159,13 @@ def rotation_source_clock(
     ):
         raise ValueError(
             "Original browser scene requires its current measured presenter"
-            if split or native.get("group_id") == ANALYSIS_BOARD_GROUP
+            if split or native.get("group_id") in THREE_ITEM_SCENE_GROUPS
             else "Rotating cards require their current, measured presenter"
         )
-    strip = native.get("group_id") == STRIP_CARD_GROUP
-    analysis = native.get("group_id") == ANALYSIS_BOARD_GROUP
-    prefix = (
-        _SPLIT_REF
+    prefix, policy = (
+        (_SPLIT_REF, "native_split_presenter_window")
         if split
-        else _PRESENTER_REFS.get(native.get("group_id", ROTATION_GROUP), _ROTATION_REF)
-    )
-    policy = (
-        "native_analysis_board_presenter_window"
-        if analysis
-        else "native_split_presenter_window"
-        if split
-        else "native_strip_card_presenter_window"
-        if strip
-        else "native_rotation_presenter_window"
+        else _PRESENTER_BINDINGS[native.get("group_id", ROTATION_GROUP)]
     )
     return {
         "policy": policy,
@@ -191,41 +199,98 @@ def compile_rotation_clock(
     )
 
 
-def validate_analysis_board(
-    config: dict, native: dict, resources: dict[str, str]
-) -> None:
-    """Check G08's original three text slots and its moving presenter binding."""
+def three_item_entry_frame(group_id: str, at: float, index: int) -> int:
+    milliframes = round(at * 1000) * _FPS
+    if group_id != CIRCULAR_MEDIA_GROUP:
+        return (milliframes + 999) // 1000
+    anchor = _CIRCULAR_TRACK_ANCHORS[index]
+    first = _CIRCULAR_FIRST_VISIBLE[index]
+    # G10 rounds the current track position to the nearest frame. Match the
+    # browser's floating-point expression at the half-frame boundary.
+    frame = (milliframes + 1000 * (first - anchor) + 499) // 1000
+    track_position = (frame / _FPS - at) * _FPS + anchor
+    return frame + int(track_position < first - 0.5)
+
+
+def validate_three_item_scene(
+    config: dict,
+    native: dict,
+    resources: dict[str, str],
+    assets: dict[str, dict],
+    beat: SemanticBeat,
+) -> dict[str, Any]:
+    """Check the original two-character labels and current presenter/media slots."""
     if ROTATION_MATTE not in resources:
-        raise ValueError("Analysis board needs the original presenter matte")
+        raise ValueError("Three-item scene needs the original presenter matte")
     duration, items = config["duration"], config["items"]
-    if not 0 < duration <= 30 or len(items) != 3:
-        raise ValueError("Original analysis board needs three items in one shot")
-    if [row["path"] for row in native["media"]] != ["/presenter"]:
-        raise ValueError("Original analysis board uses its presenter and three labels")
+    if not 0 < duration <= 30 or len(items) != 3 or config["background"] is not None:
+        raise ValueError(
+            "Three-item scene needs its original background and three items"
+        )
+    circular = beat.group_id == CIRCULAR_MEDIA_GROUP
+    media = {row["path"]: row["asset_id"] for row in native["media"]}
+    required_paths = {"/presenter", *ROTATION_IMAGES} if circular else {"/presenter"}
+    if media.keys() != required_paths:
+        raise ValueError("Three-item scene needs its current presenter and media slots")
     text = {row["path"]: row for row in native["text"]}
     events = {row["path"]: row for row in native["events"]}
-    previous_frame = -1
-    for item, label_path, event_path in zip(
-        items, ROTATION_LABELS, ROTATION_EVENTS, strict=True
+    frames = round(duration * _FPS)
+    first_frames: list[int] = []
+    previous_at = -1.0
+    for index, (item, label_path, event_path) in enumerate(
+        zip(items, ROTATION_LABELS, ROTATION_EVENTS, strict=True)
     ):
         label, event = text.get(label_path), events.get(event_path)
         at, enter = item["at"], item["enter"]
-        frame = math.floor(round(at * 1000) * _FPS / 1000) + 1
+        frame = three_item_entry_frame(beat.group_id, at, index)
         if (
             not label
             or not event
             or event["edge"] != "start"
             or event["token_id"] != label["token_ids"][0]
             or not 1 <= len(item["label"]) <= 2
-            or item["image"]
+            or bool(item["image"]) != circular
             or not 0 <= at < duration
-            or frame <= previous_frame
+            or at <= previous_at
+            or (first_frames and frame <= first_frames[-1])
+            or frame >= frames
             or not 0 < enter < duration - at
         ):
             raise ValueError(
-                "Analysis board labels need separate measured frames and room to appear"
+                "Three-item labels need separate measured frames and room to appear"
             )
-        previous_frame = frame
+        first_frames.append(frame)
+        previous_at = at
+    if circular:
+        picture_ids = [media[path] for path in ROTATION_IMAGES]
+        pictures = [assets.get(aid, {}) for aid in picture_ids]
+        if (
+            any(
+                p.get("kind") != "image" or p.get("source") != "project_upload"
+                for p in pictures
+            )
+            or len({p["sha256"] for p in pictures}) != 3
+            or len(beat.relation_items) != 3
+            or any(
+                item.asset_ids != [aid]
+                or item.native_text_paths != [label_path]
+                or item.native_media_paths != [image_path]
+                or item.first_token_id != text[label_path]["token_ids"][0]
+                or item.last_token_id != text[label_path]["token_ids"][-1]
+                for item, aid, label_path, image_path in zip(
+                    beat.relation_items,
+                    picture_ids,
+                    ROTATION_LABELS,
+                    ROTATION_IMAGES,
+                    strict=True,
+                )
+            )
+        ):
+            raise ValueError(
+                "Circle media needs three distinct current images "
+                "matched to the spoken items"
+            )
+    return {"fps": _FPS, "frames": frames, "first_visible_frames": first_frames}
 
 
 def rotation_card_clock(
@@ -380,10 +445,10 @@ def install_rotation_export(package: Path, root: Path) -> None:
     group = job["group_id"]
     split = group in LIVE_SPLIT_GROUPS
     strip = group == STRIP_CARD_GROUP
-    analysis = group == ANALYSIS_BOARD_GROUP
-    if not split and not analysis and group not in BROWSER_CARD_GROUPS:
+    three_item = group in THREE_ITEM_SCENE_GROUPS
+    if not split and group not in _PRESENTER_BINDINGS:
         return
-    prefix = _SPLIT_REF if split else _PRESENTER_REFS[group]
+    prefix = _SPLIT_REF if split else _PRESENTER_BINDINGS[group][0]
     reference = job["config"].get("presenter", "")
     if not isinstance(reference, str) or not reference.startswith("input://" + prefix):
         return
@@ -453,8 +518,8 @@ def install_rotation_export(package: Path, root: Path) -> None:
                 if split
                 else _presenter_in_slot(source_frame, _STRIP_PRESENTER_SIZE)
                 if strip
-                else _presenter_in_slot(source_frame, _ANALYSIS_PRESENTER_SIZE)
-                if analysis
+                else _presenter_in_slot(source_frame, _THREE_ITEM_PRESENTER_SIZE)
+                if three_item
                 else _presenter_plate(source_frame)
             )
             uri = _png_uri(plate)
@@ -491,8 +556,8 @@ def install_rotation_export(package: Path, root: Path) -> None:
             if split
             else "original G05 draw with current matte frames"
             if strip
-            else "original G08 draw with current matte frames"
-            if analysis
+            else f"original {group.removeprefix('CX-')} draw with current matte frames"
+            if three_item
             else "original G04 draw with current matte frames",
         }
 

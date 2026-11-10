@@ -41,7 +41,7 @@ type Detail = {
     website_sidecar_scope?: string;
     native_branches?: Record<string, { branch_paths: string[] }>;
     media_clock_profile?: { project_scene_clip_paths?: string[] } | null;
-    native_analysis_presenter?: { media_path: string; fps: number };
+    native_browser_presenter?: { project_image_paths: string[] };
   };
 };
 type Target = { kind: TargetKind; id: string; name: string };
@@ -215,7 +215,7 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
             </p>
           )}
           {detail.parameter_contract.media_clock_profile?.project_scene_clip_paths && <p>已核对口播取帧规则及 {detail.parameter_contract.media_clock_profile.project_scene_clip_paths.length} 个独立补充素材槽。</p>}
-          {detail.parameter_contract.native_analysis_presenter && <p>透视板组件可绑定本期同期口播，沿用原人物层等比取帧。正式编码需核验原入口字体。</p>}
+          {detail.parameter_contract.native_browser_presenter && <p>组件支持同期口播，沿用原人物层等比取帧。{detail.parameter_contract.native_browser_presenter.project_image_paths.length > 0 && "三个圆形槽分别绑定本期配图。"}正式编码需核验原入口资源。</p>}
           {!!detail.original_input_variants?.length && <section aria-label="原生输入版本">
             <b>原生输入版本</b>
             <ul>{detail.original_input_variants.map(variant => <li key={variant.id}>

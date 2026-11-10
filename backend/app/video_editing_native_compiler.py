@@ -52,13 +52,13 @@ from .video_editing_browser_live import (
     card_live_clock,
 )
 from .video_editing_browser_rotation import (
-    ANALYSIS_BOARD_GROUP,
     ROTATION_GROUP,
     ROTATION_MATTE,
     STRIP_CARD_GROUP,
+    THREE_ITEM_SCENE_GROUPS,
     compile_rotation_clock,
     rotation_source_clock,
-    validate_analysis_board,
+    validate_three_item_scene,
 )
 from .video_editing_collage_scene import (
     COLLAGE_GROUP,
@@ -520,9 +520,11 @@ def compile_native_job(
         for row in native["media"]
     )
     strip_cards = group["id"] == STRIP_CARD_GROUP and uses_current_browser_video
-    analysis_board = group["id"] == ANALYSIS_BOARD_GROUP and uses_current_browser_video
+    three_item_scene = (
+        group["id"] in THREE_ITEM_SCENE_GROUPS and uses_current_browser_video
+    )
     live_browser_presenter = (
-        group["id"] == ROTATION_GROUP or split_live or strip_cards or analysis_board
+        group["id"] == ROTATION_GROUP or split_live or strip_cards or three_item_scene
     )
     if type(split_live) is not bool or (
         split_live and (group["id"] not in LIVE_SPLIT_GROUPS or live_cards)
@@ -986,8 +988,11 @@ def compile_native_job(
             package, group, config, resources, native, asset_files
         )
         native["browser_clock"] = browser_clock
-    elif analysis_board:
-        validate_analysis_board(config, native, resources)
+    elif three_item_scene:
+        browser_clock = validate_three_item_scene(
+            config, native, resources, asset_files, beat
+        )
+        native["browser_clock"] = browser_clock
     schema = read_json(package / group["input_schema"])
     Draft202012Validator(schema).validate(config)
     browser_originals = compile_browser_originals(

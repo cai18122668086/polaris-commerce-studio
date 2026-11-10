@@ -216,10 +216,13 @@ def test_strip_card_rejects_same_frame_entries_and_keeps_presenter_ratio():
     assert left > 0 and right < 500
 
 
-def test_analysis_board_uses_measured_labels_and_a_proportional_source(tmp_path):
+@pytest.mark.parametrize("group_id", rotation.THREE_ITEM_SCENE_GROUPS)
+def test_three_item_scene_uses_measured_labels_and_a_proportional_source(
+    tmp_path, group_id
+):
     _, transcript, _, _ = inputs(tmp_path)
     native = {
-        "group_id": rotation.ANALYSIS_BOARD_GROUP,
+        "group_id": group_id,
         "clock": {"start_ms": 1000, "end_ms": 3000, "native_fps": 30},
         "media": [{"path": "/presenter", "asset_id": "source"}],
         "events": [
@@ -232,32 +235,88 @@ def test_analysis_board_uses_measured_labels_and_a_proportional_source(tmp_path)
         ],
     }
     assets = {"source": {"kind": "original_video", "sha256": transcript.source_sha256}}
+    pictures = []
+    relations = []
+    if group_id == rotation.CIRCULAR_MEDIA_GROUP:
+        for i, (image, label) in enumerate(
+            zip(rotation.ROTATION_IMAGES, rotation.ROTATION_LABELS, strict=True)
+        ):
+            aid = f"material-{i}"
+            pictures.append(aid)
+            assets[aid] = {
+                "kind": "image",
+                "source": "project_upload",
+                "sha256": str(i),
+            }
+            native["media"].append({"path": image, "asset_id": aid})
+            relations.append(
+                {
+                    "id": f"item-{i}",
+                    "first_token_id": f"t{i}",
+                    "last_token_id": f"t{i}",
+                    "asset_ids": [aid],
+                    "native_media_paths": [image],
+                    "native_text_paths": [label],
+                }
+            )
+    beat = SemanticBeat.model_validate(
+        {
+            "id": "three-item",
+            "first_token_id": "t0",
+            "last_token_id": "t2",
+            "relation": "parallel",
+            "group_id": group_id,
+            "reason": "三个实录短词。",
+            "asset_ids": ["source", *pictures],
+            "relation_items": relations,
+        }
+    )
     window = rotation.rotation_source_clock(native, assets, transcript)
-    assert window["binding_id"].startswith("tengli-analysis-board-")
+    assert window["binding_id"].startswith(rotation._PRESENTER_BINDINGS[group_id][0])
     assert window["source_start_ms"] == 1000 and window["source_end_ms"] == 3000
     source = Image.new("RGBA", (720, 1280), (0, 0, 0, 255))
-    plate = rotation._presenter_in_slot(source, rotation._ANALYSIS_PRESENTER_SIZE)
+    plate = rotation._presenter_in_slot(source, rotation._THREE_ITEM_PRESENTER_SIZE)
     assert plate.size == (800, 1200)
     assert plate.getbbox() == (62, 0, 737, 1200)
 
     config = {
         "duration": 2,
+        "background": None,
         "items": [
-            {"label": label, "at": at, "enter": 0.36, "image": ""}
-            for label, at in (("洗碗", 0), ("刷锅", 0.42), ("蔬菜", 1))
+            {
+                "label": label,
+                "at": at,
+                "enter": 0.36,
+                "image": f"input://{pictures[i]}" if pictures else "",
+            }
+            for i, (label, at) in enumerate(
+                (("洗碗", 0), ("刷锅", 0.42), ("水果", 1.22))
+            )
         ],
     }
     resources = {rotation.ROTATION_MATTE: "fixture"}
-    rotation.validate_analysis_board(config, native, resources)
+    clock = rotation.validate_three_item_scene(config, native, resources, assets, beat)
+    assert clock["first_visible_frames"] == ([1, 14, 39] if pictures else [0, 13, 37])
+    if pictures:
+        assert rotation.three_item_entry_frame(group_id, 0.55, 0) == 18
+        second = assets[pictures[1]]
+        second["sha256"] = assets[pictures[0]]["sha256"]
+        with pytest.raises(ValueError, match="distinct current images"):
+            rotation.validate_three_item_scene(config, native, resources, assets, beat)
+        second["sha256"] = "1"
+        beat.relation_items[1].asset_ids = [pictures[0]]
+        with pytest.raises(ValueError, match="matched to the spoken items"):
+            rotation.validate_three_item_scene(config, native, resources, assets, beat)
+        beat.relation_items[1].asset_ids = [pictures[1]]
     with pytest.raises(ValueError, match="original presenter matte"):
-        rotation.validate_analysis_board(config, native, {})
-    config["items"][1]["at"] = 0.02
+        rotation.validate_three_item_scene(config, native, {}, assets, beat)
+    config["items"][0]["at"], config["items"][1]["at"] = 0.003, 0.01
     with pytest.raises(ValueError, match="separate measured frames"):
-        rotation.validate_analysis_board(config, native, resources)
-    config["items"][1]["at"] = 0.42
+        rotation.validate_three_item_scene(config, native, resources, assets, beat)
+    config["items"][0]["at"], config["items"][1]["at"] = 0, 0.42
     native["events"][1]["token_id"] = "t2"
     with pytest.raises(ValueError, match="separate measured frames"):
-        rotation.validate_analysis_board(config, native, resources)
+        rotation.validate_three_item_scene(config, native, resources, assets, beat)
 
 
 @pytest.mark.parametrize("group_id", rotation.BROWSER_CARD_GROUPS)

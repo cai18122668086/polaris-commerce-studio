@@ -9,7 +9,7 @@ import type { components } from "@/lib/api/generated/openapi";
 import { TranscriptEditor } from "./transcript-editor";
 import { EditingLibrary } from "./editing-library";
 import { EditingNativePlans, type EditingRevisionSelection } from "./editing-native-plans";
-import { EditingPlanning } from "./editing-planning";
+import { EditingPlanning, type CarrySelection } from "./editing-planning";
 import styles from "./editing-workspace.module.css";
 
 type EditingTask = components["schemas"]["EditingTaskResponse"];
@@ -45,6 +45,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const planningPanel = useRef<HTMLDetailsElement>(null);
   const [plansVersion, setPlansVersion] = useState(0);
   const [revisionSelection, setRevisionSelection] = useState<EditingRevisionSelection>();
+  const [carrySelection, setCarrySelection] = useState<CarrySelection>();
   const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
@@ -105,13 +106,16 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     finally { setBusy(false); }
   };
   const canSubmit = saved && selected && subtitles !== "unknown" && (selected !== "upload" || file);
-  const planFromTranscript = (taskId: string) => {
-    setPlanningTask(taskId);
+  const openPlanning = () => {
     setPlanningOpened(true);
     if (planningPanel.current) {
       planningPanel.current.open = true;
       planningPanel.current.scrollIntoView({ block: "start" });
     }
+  };
+  const planFromTranscript = (taskId: string) => {
+    setPlanningTask(taskId);
+    openPlanning();
   };
   const revise = (selection: EditingRevisionSelection) => {
     setRevisionSelection(selection);
@@ -133,7 +137,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion}
       revisionSelection={revisionSelection} onClearRevisionSelection={() => setRevisionSelection(undefined)}
       onCreated={async () => { setTasks(await reload()); }} />}
-    {saved && <details ref={planningPanel} onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} selected={planningTask} onSelect={setPlanningTask} onNativePlan={() => setPlansVersion(value => value + 1)} onPreview={previews => {
+    {saved && <details ref={planningPanel} onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} selected={planningTask} onSelect={setPlanningTask} onNativePlan={() => setPlansVersion(value => value + 1)}
+      carryFrom={carrySelection?.projectId === projectId ? carrySelection : undefined} onClearCarry={() => setCarrySelection(undefined)} onPreview={previews => {
       const ids = previews.map(task => task.id);
       setTasks(rows => [...previews, ...rows.filter(row => !ids.includes(row.id))]);
       setLinkedPreviews({ projectId, ids });
@@ -162,6 +167,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片 · 语义及视觉待验收</p>}
         {task.motion_counts && <p className={styles.note}>原生出片核验 {task.motion_counts.distinct_groups} 种动效，共出现 {task.motion_counts.occurrences} 次。{task.motion_counts.distinct_groups < preferredDistinctMotionGroups && `低于优先目标 ${preferredDistinctMotionGroups} 种。`}</p>}
         {parent && <p className={styles.note}>基于预览 <a href={`#editing-task-${parent.task_id}`}>{parent.task_id.slice(0, 8)}</a></p>}
+        {task.carried_revision && <p className={styles.note}>继承预览 <a href={`#editing-task-${task.carried_revision.preview_base.task_id}`}>{task.carried_revision.preview_base.task_id.slice(0, 8)}</a> 的人工调整 · {task.carried_revision.protected_beat_ids.length} 段原实录</p>}
         {task.options.native_edits && <p className={styles.note}>
           本次设置 · {task.options.native_edits.music === "off" ? "关闭背景音乐。" : task.options.native_edits.music === "lower" ? "背景音乐降低 6 dB。" : ""}
           {task.options.native_edits.music_track_id && "已更换原库背景音乐。"}
@@ -190,6 +196,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {preview && (task.status === "awaiting_review" || task.status === "completed") && planId && <button type="button" disabled={busy} onClick={() => revise({
           planId, taskId: task.id, kind: "preview", preview: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 }, edits: task.options.native_edits,
         })}>沿用此版继续调整</button>}
+        {preview && (task.status === "awaiting_review" || task.status === "completed") && planId && task.options.native_edits && <button type="button" disabled={busy} onClick={() => {
+          setCarrySelection({ projectId, sourceId: task.source_id, base: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 } });
+          openPlanning();
+        }}>将人工调整带入另一份规划</button>}
         {final && <><video id={`editing-film-${task.id}`} controls preload="metadata" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
           {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
           {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查，听感待验收。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}

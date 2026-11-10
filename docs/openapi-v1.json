@@ -4867,6 +4867,33 @@
         "title": "EditingArtifactResponse",
         "type": "object"
       },
+      "EditingCarriedRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "planning_task_id": {
+            "format": "uuid",
+            "title": "Planning Task Id",
+            "type": "string"
+          },
+          "preview_base": {
+            "$ref": "#/components/schemas/EditingPreviewBase"
+          },
+          "protected_beat_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Protected Beat Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "planning_task_id",
+          "preview_base",
+          "protected_beat_ids"
+        ],
+        "title": "EditingCarriedRevision",
+        "type": "object"
+      },
       "EditingEffectChoice": {
         "additionalProperties": false,
         "properties": {
@@ -6770,6 +6797,16 @@
           "cancel_requested": {
             "title": "Cancel Requested",
             "type": "boolean"
+          },
+          "carried_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingCarriedRevision"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "format": "date-time",
@@ -20740,6 +20777,73 @@
           }
         ],
         "summary": "Retry Task",
+        "tags": [
+          "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/revision-preview": {
+      "post": {
+        "operationId": "create_revision_preview_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__revision_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingPreviewBase"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Revision Preview",
         "tags": [
           "video-editing-planning"
         ]

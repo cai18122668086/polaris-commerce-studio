@@ -28,6 +28,7 @@ from .video_editing_catalog import (
     template_dependencies,
 )
 from .video_editing_contracts import (
+    EditingCarriedRevision,
     EditingExportConfirmation,
     EditingTaskCreate,
     EditingTaskResponse,
@@ -160,6 +161,7 @@ def response(
         else row.created_at,
         "library_release": row.library_release,
         "options": row.options,
+        "carried_revision": row.checkpoint.get("carried_revision"),
         "motion_counts": counts,
         "layout_findings": row.checkpoint.get("layout_findings")
         if row.status == "failed"
@@ -462,6 +464,7 @@ def persist_editing_task(
     session: Session,
     *,
     preview_for: EditingPlanningTaskRecord | None = None,
+    carried_revision: EditingCarriedRevision | None = None,
 ) -> tuple[EditingTaskRecord, bool]:
     require_workspace_write(workspace)
 
@@ -510,7 +513,12 @@ def persist_editing_task(
         payload["options"].pop("transcript_revision_id")
     if payload["options"]["native_plan_id"] is None:
         payload["options"].pop("native_plan_id")
-    fingerprint = digest({**payload, "library_release": MOTION_SHA256})
+    carried = (
+        {"carried_revision": carried_revision.model_dump(mode="json")}
+        if carried_revision
+        else {}
+    )
+    fingerprint = digest({**payload, **carried, "library_release": MOTION_SHA256})
     previous = session.scalar(
         select(EditingTaskRecord).where(
             EditingTaskRecord.workspace_id == workspace.workspace_id,
@@ -626,6 +634,7 @@ def persist_editing_task(
         request_hash=fingerprint,
         library_release=MOTION_SHA256,
         options=body.options.model_dump(mode="json"),
+        checkpoint=carried,
     )
     session.add(row)
     link_preview(row)

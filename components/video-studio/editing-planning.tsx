@@ -12,6 +12,11 @@ type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
 type OverlayTemplate = components["schemas"]["EditingOverlayTemplate"];
 type BaseTask = Pick<PreviewTask, "id" | "status" | "created_at" | "artifacts" | "source_frame">;
+export type CarrySelection = {
+  projectId: string;
+  sourceId: string;
+  base: components["schemas"]["EditingPreviewBase"];
+};
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const maxPreviewBatch = 5;
 const retiredTemplate = (job: Job) => job.overlay_template?.id === "fruit-introduction-v1";
@@ -39,9 +44,11 @@ const errors: Record<string, string> = {
   EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。",
 };
 
-export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview }: {
+export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry }: {
   workspaceId: string; projectId: string; tasks: BaseTask[]; selected: string; onSelect: (taskId: string) => void; onNativePlan: () => void;
   onPreview: (tasks: PreviewTask[]) => void;
+  carryFrom?: CarrySelection;
+  onClearCarry: () => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [materialIds, setMaterialIds] = useState<string[]>([]);
@@ -145,6 +152,20 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     } catch (caught) { setError(caught instanceof Error ? caught.message : "预览提交未确认，再次点击会查询同一任务。"); }
     finally { setBusy(false); }
   };
+  const carryPreview = async (job: Job) => {
+    if (!carryFrom) return;
+    setBusy(true); setError("");
+    try {
+      const task = unwrapApiResponse(await apiClient.POST(`${root}/editing-planning-tasks/{task_id}/revision-preview`, {
+        params: { path: { workspace_id: workspaceId, task_id: job.id } },
+        signal: AbortSignal.timeout(12000), body: carryFrom.base,
+      }));
+      onPreview([task]);
+      onClearCarry();
+      requestAnimationFrame(() => document.getElementById(`editing-task-${task.id}`)?.scrollIntoView({ block: "start" }));
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "继承调整暂未完成，原版仍可查看。"); }
+    finally { setBusy(false); }
+  };
   const batchPreview = async () => {
     setBusy(true); setError(""); setBatchCount(0); setBatchErrors({});
     try {
@@ -181,6 +202,11 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     <button type="button" disabled={busy || !selectedCandidate || !templateId} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {loadError && <p role="alert" className={styles.error}>{loadError}</p>}
+    {carryFrom && <div className={styles.correction}>
+      <b>保留预览 {carryFrom.base.task_id.slice(0, 8)} 的人工调整</b>
+      <p className={styles.note}>从同一原片的已完成规划中选择新版本。实录词段和槽位须兼容，原版可继续查看。</p>
+      <button type="button" disabled={busy} onClick={onClearCarry}>取消继承</button>
+    </div>}
     {showBatch && <div>
       <p className={styles.note}>可勾选 2 至 {maxPreviewBatch} 条规划生成代理。每条独立剪辑，高清逐条确认。</p>
       <button type="button" disabled={busy || batchIds.length < 2} onClick={() => void batchPreview()}>批量生成代理预览（{batchIds.length} 条）</button>
@@ -273,6 +299,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
         {beat.translation_gloss && <p className={styles.note}>英文短译待核对 · {beat.translation_gloss.before} → {beat.translation_gloss.after}</p>}
       </li>)}</ul><p className={styles.note}>{belowMinimumForPreview ? "可先核对候选语义和事实。" : "语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。"}</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
       {job.status === "completed" && job.overlay_template && <>
+        {carryFrom?.sourceId === job.source_id && !retiredTemplate(job) && !belowMinimumForPreview && <button type="button" disabled={busy} onClick={() => void carryPreview(job)}>保留调整并按此规划生成代理</button>}
         {batchErrors[job.id] && <p role="alert" className={styles.error}>{batchErrors[job.id]}</p>}
         {pendingAutoPreview(job) && <p role="status" className={styles.note}>候选已保存，正在提交代理预览。</p>}
         {job.auto_preview_error_code && <p role="alert" className={styles.error}>{autoPreviewErrors[job.auto_preview_error_code] || "自动代理未提交。已保存本次候选，可用同一份规划再次提交代理。"}</p>}

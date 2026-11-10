@@ -1968,6 +1968,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-planning-tasks/{task_id}/revision-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Revision Preview */
+        post: operations["create_revision_preview_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__revision_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-sources": {
         parameters: {
             query?: never;
@@ -5729,6 +5746,17 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** EditingCarriedRevision */
+        EditingCarriedRevision: {
+            /**
+             * Planning Task Id
+             * Format: uuid
+             */
+            planning_task_id: string;
+            preview_base: components["schemas"]["EditingPreviewBase"];
+            /** Protected Beat Ids */
+            protected_beat_ids: string[];
+        };
         /** EditingEffectChoice */
         EditingEffectChoice: {
             /** Group Id */
@@ -6395,6 +6423,7 @@ export interface components {
             attempts: number;
             /** Cancel Requested */
             cancel_requested: boolean;
+            carried_revision?: components["schemas"]["EditingCarriedRevision"] | null;
             /**
              * Created At
              * Format: date-time
@@ -12809,6 +12838,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingPlanningTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_revision_preview_api_v1_video_studio_workspaces__workspace_id__editing_planning_tasks__task_id__revision_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingPreviewBase"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingTaskResponse"];
                 };
             };
             /** @description Validation Error */

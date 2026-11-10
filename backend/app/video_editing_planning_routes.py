@@ -21,6 +21,7 @@ from .video_editing_contracts import (
     EditingPlanningPreviewBatchItem,
     EditingPlanningTaskCreate,
     EditingPlanningTaskResponse,
+    EditingPreviewBase,
     EditingTaskResponse,
 )
 from .video_editing_native_plans import (
@@ -37,6 +38,7 @@ from .video_editing_planning_store import (
     planning_root,
     require_active_planning_template,
 )
+from .video_editing_revision_preview import persist_revision_preview
 from .video_editing_task_models import EditingPlanningTaskRecord
 from .video_editing_task_routes import (
     dispatch as dispatch_editing,
@@ -162,6 +164,27 @@ def create_preview(
     row = own_planning_task(session, workspace, str(task_id))
     own_project(session, workspace, row.project_id)
     return submit_planning_preview(row, request, workspace, session, settings)
+
+
+@router.post(
+    "/editing-planning-tasks/{task_id}/revision-preview",
+    response_model=EditingTaskResponse,
+)
+def create_revision_preview(
+    task_id: UUID,
+    body: EditingPreviewBase,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict[str, Any]:
+    require_workspace_write(workspace)
+    settings = enabled(request)
+    row = own_planning_task(session, workspace, str(task_id))
+    own_project(session, workspace, row.project_id)
+    task, created = persist_revision_preview(row, body, workspace, session, settings)
+    if created:
+        dispatch_editing(request, task.id)
+    return editing_response(task, session)
 
 
 @router.post(

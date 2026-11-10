@@ -142,6 +142,12 @@ class EditingPreviewBase(EditingExportConfirmation):
     task_id: UUID
 
 
+class EditingCarriedRevision(StrictVideoModel):
+    planning_task_id: UUID
+    preview_base: EditingPreviewBase
+    protected_beat_ids: list[str]
+
+
 class EditingOptions(StrictVideoModel):
     mode: Literal["subtitles", "transcript", "native_plan"] = "subtitles"
     language: Literal["zh", "en", "auto"] = "zh"
@@ -349,6 +355,9 @@ class EditingTaskResponse(StrictVideoModel):
         default=None, exclude_if=lambda value: value is None
     )
     layout_findings: list[EditingLayoutFinding] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    carried_revision: EditingCarriedRevision | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 

@@ -23,6 +23,7 @@ from uuid import uuid4
 
 from .config import Settings
 from .motion_library import atomic_json, read_json, sha256
+from .video_editing_audio_verification import CHANNELS, RATE, compare_audio_samples
 from .video_editing_azl_panels import AZL_LAYOUT_INTENT, verify_azl_layout
 from .video_editing_caption_layout import (
     layout_main_captions,
@@ -1065,6 +1066,94 @@ def decode_av(
     )
 
 
+def verify_delivery_audio(
+    path: Path,
+    root: Path,
+    episode: dict,
+    video: dict,
+    audio: dict,
+    settings: Settings,
+    guard: Callable[[], None],
+) -> dict:
+    duration = float(episode["source"]["duration_seconds"])
+    start = float(episode["source"].get("start_seconds", 0))
+    mix = episode.get("mix", {})
+    gain = float(mix.get("voice_gain_db", 0))
+    audio_start = float(audio["start_time"])
+    video_start = float(video["start_time"])
+    audio_duration = float(audio["duration"])
+    if (
+        not all(
+            map(
+                math.isfinite,
+                (duration, start, gain, audio_start, video_start, audio_duration),
+            )
+        )
+        or not 0.5 <= duration <= 600
+        or start != 0
+        or not -18 <= gain <= 0
+        or mix.get("end_fade_seconds", 0) != 0
+        or audio["codec_name"] != "aac"
+        or int(audio["sample_rate"]) != RATE
+        or (
+            (episode.get("fx") or episode.get("music"))
+            and audio["channels"] != CHANNELS
+        )
+        or abs(audio_start - video_start) > 0.002
+        or abs(audio_duration - duration) > 0.002
+    ):
+        raise ValueError("Master audio clock differs from the native episode")
+    source_filter = (
+        f"atrim=start=0:duration={duration},asetpts=PTS-STARTPTS,aresample={RATE},"
+        f"volume={gain}dB,apad,atrim=duration={duration}"
+    )
+    paths = {
+        "source": root / "input/source.mp4",
+        "voice": root / "audio/voice.wav",
+        "fx": root / "audio/fx.wav",
+        "master": path,
+    }
+    required = {"fx"} if episode.get("fx") else set()
+    if episode.get("music"):
+        paths["bgm"] = root / "audio/bgm.wav"
+        required.add("bgm")
+    elif (root / "audio/bgm.wav").exists():
+        raise ValueError("Unexpected background music stem")
+    with TemporaryDirectory(prefix="verify-sound-", dir=root) as scratch:
+        decoded = {name: Path(scratch) / f"{name}.f32" for name in paths}
+        for name, source in paths.items():
+            run(
+                [
+                    settings.video_editing_ffmpeg,
+                    "-nostdin",
+                    "-v",
+                    "error",
+                    "-xerror",
+                    "-protocol_whitelist",
+                    "file,pipe",
+                    "-format_whitelist",
+                    "mov,matroska,webm,wav",
+                    "-i",
+                    str(source),
+                    "-map",
+                    "0:a:0",
+                    *(["-af", source_filter] if name == "source" else []),
+                    "-ar",
+                    str(RATE),
+                    "-ac",
+                    str(CHANNELS),
+                    "-f",
+                    "f32le",
+                    str(decoded[name]),
+                ],
+                root,
+                settings,
+                guard,
+                "decode_sound_check",
+            )
+        return compare_audio_samples(decoded, round(duration * RATE), required, guard)
+
+
 def validate_result(
     path: Path,
     prepared: dict,
@@ -1074,10 +1163,12 @@ def validate_result(
 ) -> dict[str, Any]:
     info = probe(path, settings)
     video = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
-    if video is None or not any(s["codec_type"] == "audio" for s in info["streams"]):
+    audio_tracks = [s for s in info["streams"] if s["codec_type"] == "audio"]
+    if video is None or len(audio_tracks) != 1:
         raise EditingFailure("EDITING_OUTPUT_TRACKS_INVALID")
     dimensions = {key: video[key] for key in ("width", "height")}
-    expected = read_json(root / "episode.json")["output"]
+    episode = read_json(root / "episode.json")
+    expected = episode["output"]
     if dimensions != {key: expected[key] for key in dimensions}:
         raise EditingFailure("EDITING_OUTPUT_DIMENSIONS_INVALID")
     actual = round(float(info["format"]["duration"]) * 1000)
@@ -1103,8 +1194,17 @@ def validate_result(
         validation["presenter_frame_clock"] = read_json(root / FRAME_CLOCK_RECEIPT)
     if (root / MATERIAL_CLOCK_RECEIPT).is_file():
         validation["material_frame_clocks"] = read_json(root / MATERIAL_CLOCK_RECEIPT)
-    if validation["native_source_sha256"] != prepared["source_sha256"]:
+    if (
+        validation["native_source_sha256"] != prepared["source_sha256"]
+        or sha256(root / "input/source.mp4") != prepared["source_sha256"]
+    ):
         raise EditingFailure("EDITING_OUTPUT_SOURCE_MISMATCH")
+    try:
+        validation["decoded_audio_mix"] = verify_delivery_audio(
+            path, root, episode, video, audio_tracks[0], settings, guard
+        )
+    except (ValueError, KeyError, TypeError, OSError):
+        raise EditingFailure("EDITING_SOUND_OUTPUT_INVALID") from None
     if (root / "audio-plan.json").is_file():
         try:
             if native["sha256"] != validation["sha256"]:
@@ -1115,6 +1215,7 @@ def validate_result(
                 read_json(root / "audio-plan.json"),
                 settings.video_editing_library_dir,
             )
+            audio["decoded_audio_mix"] = validation["decoded_audio_mix"]
             atomic_json(root / "audio-validation.json", audio)
             validation["native_mix_validation"] = "passed"
         except (ValueError, KeyError, TypeError, OSError):

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .motion_library import read_json, sha256
+from .video_editing_audio_verification import AUDIO_VALIDATION_VERSION
 from .video_editing_native_frame_clock import CLOCK_RECEIPTS
 
 _VERSION = "tengli.editing-delivery/1"
@@ -60,7 +61,7 @@ def normalize_attempt_paths(value: Any, root: Path) -> Any:
 
 def compiled_digest(root: Path, request_hash: str) -> str:
     """Bind the original engine inputs while allowing a new attempt directory."""
-    inputs = {
+    inputs: dict[str, Any] = {
         name: normalize_attempt_paths(read_json(root / name), root)
         for name in (
             "episode.json",
@@ -69,6 +70,7 @@ def compiled_digest(root: Path, request_hash: str) -> str:
             "transcript.json",
         )
     }
+    inputs["audio_validation_version"] = AUDIO_VALIDATION_VERSION
     for name in (
         "audio-plan.json",
         "layout-intent.json",

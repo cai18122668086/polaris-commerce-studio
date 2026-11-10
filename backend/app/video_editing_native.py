@@ -19,6 +19,7 @@ from .motion_browser_originals import (
     require_browser_originals,
 )
 from .motion_library import atomic_json, read_json
+from .video_editing_native_audio_channels import install_native_stereo_composition
 from .video_editing_native_compat import install
 from .video_editing_native_frame_clock import install_native_frame_clocks
 from .video_editing_native_layout import install_native_role_review
@@ -154,6 +155,7 @@ def main() -> None:
         if args.kind == "episode":
             install_unified_sequence_audit(package, sequences)
         if args.command == "export":
+            install_native_stereo_composition(package, root)
             install_native_role_review(package, root)
             install_shot_recovery(package, root)
             install_subtitle_sound_clock(package, root)

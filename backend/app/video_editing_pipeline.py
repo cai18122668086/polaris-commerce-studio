@@ -48,6 +48,9 @@ from .video_editing_yy_openings import (
     verify_yy_opening_captions,
 )
 
+_MASTER_MAX_WIDTH = 1080
+_MASTER_MAX_HEIGHT = 1920
+
 
 class EditingFailure(Exception):
     def __init__(self, code: str):
@@ -536,8 +539,9 @@ def baseline_documents(
     if abs(width / height - 9 / 16) > 0.02:
         raise EditingFailure("EDITING_ORIENTATION_REVIEW_REQUIRED")
     # Keep the input aspect; no portrait crop of a landscape speaker.
-    scale = min(1, 1280 / max(width, height))
+    scale = min(1, _MASTER_MAX_WIDTH / width, _MASTER_MAX_HEIGHT / height)
     width, height = 2 * round(width * scale / 2), 2 * round(height * scale / 2)
+    stroke_scale = max(1, height / 1280)
     duration = prepared["duration_ms"] / 1000
     fid = options["caption_font_id"]
     captions = caption_rows(transcript)
@@ -594,8 +598,8 @@ def baseline_documents(
                 "max_lines": 2,
                 "fill": "#ffffff",
                 "outline_color": "#111317",
-                "outline_px": 2,
-                "shadow_px": 1,
+                "outline_px": 2 * stroke_scale,
+                "shadow_px": stroke_scale,
             }
         },
         "fx": [],
@@ -816,11 +820,13 @@ def validate_result(
     guard: Callable[[], None],
 ) -> dict[str, Any]:
     info = probe(path, settings)
-    if not all(
-        any(s["codec_type"] == kind for s in info["streams"])
-        for kind in ("audio", "video")
-    ):
+    video = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
+    if video is None or not any(s["codec_type"] == "audio" for s in info["streams"]):
         raise EditingFailure("EDITING_OUTPUT_TRACKS_INVALID")
+    dimensions = {key: video[key] for key in ("width", "height")}
+    expected = read_json(root / "episode.json")["output"]
+    if dimensions != {key: expected[key] for key in dimensions}:
+        raise EditingFailure("EDITING_OUTPUT_DIMENSIONS_INVALID")
     actual = round(float(info["format"]["duration"]) * 1000)
     if abs(actual - prepared["duration_ms"]) > 150:
         raise EditingFailure("EDITING_OUTPUT_DURATION_INVALID")
@@ -829,6 +835,7 @@ def validate_result(
     validation = {
         "decoded": True,
         "duration_ms": actual,
+        "master_dimensions": dimensions,
         "source_duration_ms": prepared["duration_ms"],
         "sha256": sha256(path),
         "native_export_receipt": sha256(path.with_suffix(".delivery.json")),

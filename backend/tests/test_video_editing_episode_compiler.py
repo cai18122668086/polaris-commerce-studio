@@ -13,7 +13,11 @@ from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from app.motion_parameter_contracts import input_contract
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
 from app.video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
-from app.video_editing_pipeline import EditingFailure, baseline_documents
+from app.video_editing_pipeline import (
+    EditingFailure,
+    baseline_documents,
+    validate_result,
+)
 from app.video_editing_planner import validate_plan
 
 
@@ -258,6 +262,55 @@ def test_subtitle_source_pages_fit_original_duration_bounds(
         assert 0.5 <= shot["config"]["timing"]["duration_seconds"] <= 15
         assert shot["config"]["media"]["presenter"]["offset_seconds"] == start
     assert len(selection["decisions"]) == len(episode["shots"])
+
+
+@pytest.mark.parametrize(
+    ("source", "master"),
+    [
+        ((720, 1280), (720, 1280)),
+        ((768, 1366), (768, 1366)),
+        ((1080, 1920), (1080, 1920)),
+        ((2160, 3840), (1080, 1920)),
+        ((1100, 1920), (1080, 1886)),
+    ],
+)
+def test_portrait_master_keeps_source_size_within_delivery_bounds(
+    tmp_path, monkeypatch, source, master
+):
+    root, _, prepared, transcript, _, _, settings, options = protocol(tmp_path)
+    prepared["probe"]["streams"][0].update(width=source[0], height=source[1])
+    monkeypatch.setattr("app.video_editing_pipeline.layout_captions", lambda *_: None)
+    episode, _, _ = baseline_documents(root, prepared, transcript, options, settings)
+    output = episode["output"]
+    assert (output["width"], output["height"]) == master
+    assert episode["source"]["start_seconds"] == 0
+    assert episode["source"]["duration_seconds"] == 4
+    caption = episode["typography"]["caption"]
+    assert caption["size_px"] == round(master[1] * 0.0375)
+    assert caption["outline_px"] == 2 * max(1, master[1] / 1280)
+
+
+def test_master_validation_rejects_a_render_with_different_dimensions(
+    tmp_path, monkeypatch
+):
+    atomic_json(tmp_path / "episode.json", {"output": {"width": 1080, "height": 1920}})
+    monkeypatch.setattr(
+        "app.video_editing_pipeline.probe",
+        lambda *_: {
+            "streams": [
+                {"codec_type": "video", "width": 720, "height": 1280},
+                {"codec_type": "audio"},
+            ]
+        },
+    )
+    with pytest.raises(EditingFailure, match="EDITING_OUTPUT_DIMENSIONS_INVALID"):
+        validate_result(
+            tmp_path / "wrong-size.mp4",
+            {},
+            tmp_path,
+            Settings(_env_file=None),
+            lambda: None,
+        )
 
 
 def test_episode_uses_actual_word_bounds_and_original_selection_protocol(tmp_path):

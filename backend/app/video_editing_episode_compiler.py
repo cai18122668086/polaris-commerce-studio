@@ -32,6 +32,10 @@ from .video_editing_azl_panels import (
     require_azl_compositor,
 )
 from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
+from .video_editing_browser_boot import (
+    BROWSER_BOOT_FONTS_REQUIRED,
+    BrowserBootFontsMissing,
+)
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     NUMBERED_GROUP,
@@ -757,6 +761,16 @@ def compile_episode(
                     }
                 )
                 continue
+            except BrowserBootFontsMissing as error:
+                issues.append(
+                    {
+                        "beat_id": beat.id,
+                        "group_id": beat.group_id,
+                        "code": BROWSER_BOOT_FONTS_REQUIRED,
+                        "original_font_states": error.states,
+                    }
+                )
+                continue
             except (
                 ValueError,
                 KeyError,
@@ -1153,6 +1167,8 @@ def compile_episode(
     if issues:
         if any(row["code"] == BROWSER_ORIGINALS_REQUIRED for row in issues):
             raise EditingFailure(BROWSER_ORIGINALS_REQUIRED)
+        if any(row["code"] == BROWSER_BOOT_FONTS_REQUIRED for row in issues):
+            raise EditingFailure(BROWSER_BOOT_FONTS_REQUIRED)
         if any(row["code"] == "EDITING_SOUND_INPUTS_REQUIRED" for row in issues):
             raise EditingFailure("EDITING_SOUND_INPUTS_REQUIRED")
         raise EditingFailure("EDITING_NATIVE_INPUTS_REQUIRED")

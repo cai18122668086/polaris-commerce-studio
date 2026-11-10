@@ -86,7 +86,7 @@ def test_browser_evidence_requires_active_originals_and_matching_receipt(
     tmp_path, monkeypatch
 ):
     package, instance, state = (tmp_path / n for n in ("package", "instance", "state"))
-    group = {"id": "CX-G09", "backend": "browser", "browser_directory": "engine"}
+    group = {"id": "CX-G05", "backend": "browser", "browser_directory": "engine"}
     atomic_json(package / "catalog/groups.json", {"groups": [group]})
     integrity = package / "integrity.json"
     atomic_json(integrity, {"files": {}})
@@ -114,11 +114,11 @@ def test_browser_evidence_requires_active_originals_and_matching_receipt(
     atomic_json(receipt, report)
     with pytest.raises(BrowserOriginalsMissing):
         record_native(package, state, instance, receipt)
-    asset_root = package / "engine/assets"
+    asset_root = package / "engine/g05-assets"
     asset_root.mkdir(parents=True)
     files = {}
-    for i in range(3):
-        asset = asset_root / f"material-{i}.png"
+    for i in range(69):
+        asset = asset_root / f"base-{i:03d}.jpg"
         asset.write_bytes(bytes([i]))
         files[asset.relative_to(package).as_posix()] = sha256(asset)
     atomic_json(integrity, {"files": files})

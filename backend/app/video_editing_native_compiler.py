@@ -30,6 +30,10 @@ from .motion_parameter_contracts import (
     SILHOUETTE_PATHS,
     input_contract,
 )
+from .video_editing_browser_boot import (
+    BROWSER_BOOT_FONT_GROUPS,
+    require_browser_boot_fonts,
+)
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_GROUP,
@@ -980,6 +984,14 @@ def compile_native_job(
         native_bindings_file,
         browser_originals_directory or root / "browser-originals",
     )
+    boot_fonts = (
+        require_browser_boot_fonts(
+            package, group, {**local_dependencies(native_bindings_file), **resources}
+        )
+        if group["id"] in BROWSER_BOOT_FONT_GROUPS
+        else {}
+    )
+    resources.update(boot_fonts)
     job = {
         "schema": "commercial-talk-job/1",
         "group_id": beat.group_id,
@@ -1018,6 +1030,7 @@ def compile_native_job(
             "job_sha256": sha256(root / "job.json"),
             "word_bindings_sha256": sha256(root / "word-bindings.json"),
             "media_clocks": clock_receipts,
+            **({"browser_boot_font_ids": list(boot_fonts)} if boot_fonts else {}),
             **(
                 {BROWSER_ORIGINALS_KEY: browser_original_evidence(browser_originals)}
                 if browser_originals

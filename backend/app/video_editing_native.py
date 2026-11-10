@@ -19,6 +19,10 @@ from .motion_browser_originals import (
     validate_browser_original_receipt,
 )
 from .motion_library import atomic_json, read_json, verify_package
+from .video_editing_browser_boot import (
+    BROWSER_BOOT_FONT_GROUPS,
+    require_browser_boot_fonts,
+)
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP
 from .video_editing_hypit_label_cards import (
     LABEL_CARD_GROUP,
@@ -78,11 +82,13 @@ def main() -> None:
         ]
         if original_shots:
             binding_path = root / "bindings.json"
-            frozen = (
-                read_json(binding_path).get(BROWSER_ORIGINALS_KEY)
-                if binding_path.is_file()
-                else None
-            )
+            bindings = read_json(binding_path) if binding_path.is_file() else {}
+            frozen = bindings.get(BROWSER_ORIGINALS_KEY)
+            if any(
+                shot["group_id"] in BROWSER_BOOT_FONT_GROUPS
+                for _, shot in original_shots
+            ):
+                verify_package(package)
             groups = {
                 group["id"]: group
                 for group in read_json(package / "catalog/groups.json")["groups"]
@@ -95,6 +101,9 @@ def main() -> None:
                     frozen,
                     root / "browser-originals",
                     allow_diagnostic=diagnostic,
+                )
+                require_browser_boot_fonts(
+                    package, groups[shot["group_id"]], bindings.get("resources", {})
                 )
                 if (
                     selected or shot["group_id"] == FRUIT_LIST_GROUP

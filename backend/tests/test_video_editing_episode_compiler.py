@@ -11,6 +11,10 @@ from app.motion_browser_originals import (
 )
 from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from app.motion_parameter_contracts import input_contract
+from app.video_editing_browser_boot import (
+    BROWSER_BOOT_FONTS_REQUIRED,
+    BrowserBootFontsMissing,
+)
 from app.video_editing_contracts import (
     NativeRenderEdits,
     SemanticPlan,
@@ -618,16 +622,32 @@ def test_missing_native_inputs_are_not_silently_replaced_with_plain_speech(
     )
 
 
-def test_missing_original_browser_images_stop_the_episode_with_a_specific_diagnostic(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ("failure", "code", "field", "missing"),
+    [
+        (
+            BrowserOriginalsMissing,
+            BROWSER_ORIGINALS_REQUIRED,
+            "missing_original_images",
+            {"g05-assets/base-{i:03d}.jpg": 69},
+        ),
+        (
+            BrowserBootFontsMissing,
+            BROWSER_BOOT_FONTS_REQUIRED,
+            "original_font_states",
+            {"font-db575410c0444da5": "not_registered"},
+        ),
+    ],
+)
+def test_missing_original_browser_dependencies_stop_the_episode_with_a_diagnostic(
+    tmp_path, monkeypatch, failure, code, field, missing
 ):
     root, _, prepared, transcript, plan, authoring, settings, options = protocol(
         tmp_path
     )
-    missing = {"g05-assets/base-{i:03d}.jpg": 69}
 
     def missing_originals(*args, **kwargs):
-        raise BrowserOriginalsMissing(plan.beats[0].group_id, missing)
+        raise failure(plan.beats[0].group_id, missing)
 
     monkeypatch.setattr(
         "app.video_editing_episode_compiler.compile_native_job", missing_originals
@@ -636,14 +656,14 @@ def test_missing_original_browser_images_stop_the_episode_with_a_specific_diagno
         compile_episode(
             root, prepared, transcript, plan, authoring, {}, options, settings
         )
-    assert error.value.code == BROWSER_ORIGINALS_REQUIRED
+    assert error.value.code == code
     assert not (root / "episode.json").exists()
     assert read_json(root / "compile-diagnostics.json")["issues"] == [
         {
             "beat_id": plan.beats[0].id,
             "group_id": plan.beats[0].group_id,
-            "code": BROWSER_ORIGINALS_REQUIRED,
-            "missing_original_images": missing,
+            "code": code,
+            field: missing,
         }
     ]
 

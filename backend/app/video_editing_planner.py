@@ -62,6 +62,7 @@ from .video_editing_overlay_templates import (
     template_snapshot_matches,
     validate_template_plan,
 )
+from .video_editing_quantity_anchors import IncompleteQuantity, measured_quantities
 from .video_editing_question_card import (
     QUESTION_CARD_ENGLISH,
     QUESTION_CARD_GROUP,
@@ -688,6 +689,7 @@ def validate_plan(
 ) -> None:
     ids = {t.id: i for i, t in enumerate(transcript.tokens)}
     denials = explicit_denial_spans(transcript.tokens)
+    quantities = measured_quantities(transcript.tokens)
     group_rows = {
         g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]
     }
@@ -733,6 +735,10 @@ def validate_plan(
             raise ValueError("Emphasis falls outside its meaning span")
         if emphasis and drops_explicit_denial(emphasis[0], emphasis[-1], denials):
             raise IncompleteDenial("强调词须保留同一实录分句的否定标记")
+        if emphasis and any(
+            quantity.cut_by((emphasis[0], emphasis[-1])) for quantity in quantities
+        ):
+            raise IncompleteQuantity("强调词须保留同一次实录的完整数值和单位")
         negations = [
             i
             for i in range(start, end + 1)

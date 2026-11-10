@@ -7,6 +7,7 @@ from itertools import accumulate
 from typing import Any
 
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from .video_editing_quantity_anchors import measured_quantities, validate_quantity_slots
 
 _DENIAL_OR_CLAUSE_END = re.compile(
     r"(?P<denial>(?<!是)不是|并非|绝非|不等于|不代表|不意味着|不表示)"
@@ -79,7 +80,7 @@ def emphasis_text(text: str, policy: str) -> str:
             0 < i < len(text) - 1
             and text[i - 1].isdigit()
             and text[i + 1].isdigit()
-            and char in ".,:"
+            and char in ".,，:："
         )
         if char not in "，。！？、；：,.!?;:" or internal_number:
             output.append(char)
@@ -121,16 +122,17 @@ def word_bindings(
 
     denials = explicit_denial_spans(transcript.tokens) if beat.native_text else []
     texts = []
+    text_spans = {}
     for anchor in beat.native_text:
         field(anchor.path, set(contract["text_paths"]))
         tokens = span(anchor.first_token_id, anchor.last_token_id)
-        if drops_explicit_denial(
-            positions[anchor.first_token_id], positions[anchor.last_token_id], denials
-        ):
+        a, b = positions[anchor.first_token_id], positions[anchor.last_token_id]
+        if drops_explicit_denial(a, b, denials):
             raise IncompleteDenial("原生文字须保留同一实录分句的否定标记")
         text = emphasis_text("".join(t.text for t in tokens), anchor.punctuation)
         if not text:
             raise ValueError("Native text anchor has no visible content")
+        text_spans[anchor.path] = (a, b)
         texts.append(
             {
                 "path": anchor.path,
@@ -138,6 +140,10 @@ def word_bindings(
                 "token_ids": [t.id for t in tokens],
                 "punctuation_policy": anchor.punctuation,
             }
+        )
+    if text_spans:
+        validate_quantity_slots(
+            beat.group_id, text_spans, measured_quantities(transcript.tokens)
         )
     event_units = {row["path"]: row["unit"] for row in contract["event_paths"]}
     events = []

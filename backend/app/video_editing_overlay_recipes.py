@@ -199,6 +199,7 @@ from .video_editing_presenter_motion import (
     motion_sound_paths,
     validate_motion_anchors,
 )
+from .video_editing_quantity_anchors import IncompleteQuantity
 from .video_editing_question_branch import (
     QUESTION_BACKGROUND,
     QUESTION_BRANCH,
@@ -238,7 +239,7 @@ from .video_editing_unified_scenes import (
     validate_unified_anchors,
     validate_year_anchors,
 )
-from .video_editing_word_bindings import word_bindings
+from .video_editing_word_bindings import IncompleteDenial, word_bindings
 from .video_editing_yy6_scenes import (
     YY6_GROUPS,
     YY6_SOUND_EVENTS,
@@ -2804,6 +2805,8 @@ def check_overlay_beat(
     try:
         _overlay_entry(package, group, beat, transcript, asset_cards, "")
     except ApiError as error:
+        if isinstance(error.__cause__, (IncompleteDenial, IncompleteQuantity)):
+            raise error.__cause__ from None
         raise ValueError(error.message) from error
 
 

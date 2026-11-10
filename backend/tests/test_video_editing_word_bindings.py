@@ -10,6 +10,11 @@ from app.video_editing_contracts import (
     Transcript,
     TranscriptToken,
 )
+from app.video_editing_quantity_anchors import (
+    IncompleteQuantity,
+    measured_quantities,
+    validate_quantity_slots,
+)
 from app.video_editing_word_bindings import (
     IncompleteDenial,
     emphasis_text,
@@ -19,7 +24,10 @@ from app.video_editing_yy_openings import validate_yy_opening
 
 
 def transcript():
-    words = ["不是", "14.9元，", "每瓶", "1000克。", "洗碗", "洗碗"]
+    return measured_transcript(["不是", "14.9元，", "每瓶", "1000克。", "洗碗", "洗碗"])
+
+
+def measured_transcript(words: list[str]) -> Transcript:
     return Transcript(
         audio_sha256="a" * 64,
         source_sha256="b" * 64,
@@ -96,16 +104,7 @@ def test_repeated_words_compile_by_occurrence_and_actual_frame_clock():
 def test_original_native_text_keeps_explicit_denial_even_across_beat_boundaries(
     words, first, last, allowed
 ):
-    measured = transcript().model_copy(
-        update={
-            "tokens": [
-                TranscriptToken(
-                    id=f"t{i}", text=word, start_ms=i * 300, end_ms=i * 300 + 250
-                )
-                for i, word in enumerate(words)
-            ]
-        }
-    )
+    measured = measured_transcript(words)
     candidate = beat().model_copy(
         update={
             "first_token_id": f"t{first}",
@@ -126,6 +125,69 @@ def test_original_native_text_keeps_explicit_denial_even_across_beat_boundaries(
     else:
         bound = word_bindings(candidate, measured, CONTRACT, set())
         assert bound["text"][0]["text"] == "".join(words[first : last + 1])
+
+
+@pytest.mark.parametrize(
+    ("words", "bad"),
+    [
+        (["14", "块", "9"], (0, 1)),
+        (["14", "块 ", "9"], (0, 1)),
+        (["1000", "克"], (0, 0)),
+        (["五", "百", "毫", "升"], (1, 3)),
+        (["1", "，", "000", "克"], (2, 3)),
+        (["14", ".", "9"], (0, 0)),
+        (["￥", "14", ".9"], (1, 2)),
+        (["两", "大", "瓶"], (0, 0)),
+    ],
+)
+def test_native_text_uses_the_entire_measured_amount(words, bad):
+    source = measured_transcript(words)
+
+    def bound(first, last):
+        selected = beat().model_copy(
+            update={
+                "first_token_id": f"t{first}",
+                "last_token_id": f"t{last}",
+                "native_text": [
+                    NativeTextAnchor(
+                        path="/content/text",
+                        first_token_id=f"t{first}",
+                        last_token_id=f"t{last}",
+                        punctuation="omit_sentence_punctuation",
+                    )
+                ],
+                "native_events": [],
+            }
+        )
+        return word_bindings(selected, source, CONTRACT, set())
+
+    with pytest.raises(IncompleteQuantity):
+        bound(*bad)
+    assert bound(0, len(words) - 1)["text"][0]["text"] == "".join(words)
+
+
+def test_original_number_slots_require_the_same_spoken_occurrence():
+    tokens = measured_transcript(["4", "斤，", "4", "斤"]).tokens
+    quantities = measured_quantities(tokens)
+    for group, partial, full, partial_span, full_span in [
+        ("YY6O04", "count", "unit", (0, 0), (1, 1)),
+        ("Z-M10", "number", "body", (0, 0), (0, 1)),
+        ("W-R07", "label", "numbers/0", (1, 1), (0, 1)),
+    ]:
+        fields = {f"/content/{partial}": partial_span, f"/content/{full}": full_span}
+        validate_quantity_slots(group, fields, quantities)
+        with pytest.raises(IncompleteQuantity):
+            validate_quantity_slots(
+                group,
+                {**fields, f"/content/{full}": tuple(i + 2 for i in full_span)},
+                quantities,
+            )
+        with pytest.raises(IncompleteQuantity):
+            validate_quantity_slots("BG-S04", fields, quantities)
+    independent = measured_quantities(
+        measured_transcript(["14", "块", "9", "瓶"]).tokens
+    )
+    assert [(row.first, row.last) for row in independent] == [(0, 1), (2, 3)]
 
 
 def test_model_cannot_use_arbitrary_native_paths_assets_times_or_wrong_occurrences():

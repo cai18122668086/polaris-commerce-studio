@@ -13,6 +13,7 @@ from .video_editing_contracts import (
     SemanticPlan,
     Transcript,
 )
+from .video_editing_quantity_anchors import measured_quantities
 from .video_editing_word_bindings import (
     drops_explicit_denial,
     emphasis_text,
@@ -72,6 +73,7 @@ def highlight_targets(
     tokens = transcript.tokens
     positions = {token.id: index for index, token in enumerate(tokens)}
     denials = explicit_denial_spans(tokens)
+    quantities = measured_quantities(tokens)
     result = []
     for beat in plan.beats:
         roles = editable_highlight_roles(beat.model_dump(mode="json"), recipes)
@@ -141,6 +143,7 @@ def highlight_targets(
                         len(visible) >= 2
                         and visible != current
                         and not drops_explicit_denial(a, b, denials)
+                        and not any(quantity.cut_by((a, b)) for quantity in quantities)
                         and tokens[b].end_ms <= cutoff
                         and cutoff - tokens[a].start_ms >= max(250, len(visible) * 60)
                     ):

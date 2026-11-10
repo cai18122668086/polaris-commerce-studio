@@ -63,6 +63,7 @@ from .video_editing_planning_store import (
     require_template_group_capacity,
 )
 from .video_editing_presenter_motion import motion_blockers, motion_word_windows
+from .video_editing_quantity_anchors import IncompleteQuantity
 from .video_editing_story_panels import panel_blockers
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -724,7 +725,7 @@ def process(
     except Exception as error:
         code = (
             error.code
-            if isinstance(error, (ApiError, IncompleteDenial))
+            if isinstance(error, (ApiError, IncompleteDenial, IncompleteQuantity))
             else "EDITING_PLAN_CONTRACT_INVALID"
             if isinstance(error, (ValueError, KeyError, TypeError))
             else "EDITING_PLANNING_INTERNAL_ERROR"

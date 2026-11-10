@@ -26,6 +26,7 @@ const autoPreviewErrors: Record<string, string> = {
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = {
   EDITING_NEGATION_ANCHOR_INCOMPLETE: "候选中的动效文字遗漏了实录的否定表达。请核对转录或使用保留完整否定的编排。",
+  EDITING_QUANTITY_ANCHOR_INCOMPLETE: "候选中的动效文字截断了实录数量或单位。请核对转录并保留完整表达。",
   EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片，请选择符合画幅的转录。",
   EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。",
   EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。",

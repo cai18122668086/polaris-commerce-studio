@@ -55,6 +55,7 @@ from .video_editing_pipeline import (
 from .video_editing_planning_provenance import verify_render_provenance
 from .video_editing_preview import build_preview
 from .video_editing_preview_base import preview_base_attempt
+from .video_editing_quantity_anchors import IncompleteQuantity
 from .video_editing_source_lineage import (
     generation_source_receipt,
     script_reference,
@@ -915,7 +916,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
     except Exception as error:
         code = (
             error.code
-            if isinstance(error, (EditingFailure, IncompleteDenial))
+            if isinstance(error, (EditingFailure, IncompleteDenial, IncompleteQuantity))
             else "EDITING_INTERNAL_ERROR"
         )
         status = "cancelled" if code == "EDITING_CANCELLED" else "failed"

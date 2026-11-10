@@ -30,6 +30,7 @@ from .motion_library_validation import (
 )
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit import hypit_tools
+from .video_editing_hypit_label_cards import LABEL_CARD_GROUP
 from .video_editing_materials import PREFIX, project_material_files
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_pipeline import run, stop_hypit_runtimes
@@ -325,6 +326,15 @@ def execute(
                             command,
                             "--instance",
                             str(instance),
+                            *(
+                                [
+                                    "--native-bindings",
+                                    str(settings.video_editing_native_bindings_file),
+                                ]
+                                if gid == LABEL_CARD_GROUP
+                                and settings.video_editing_native_bindings_file
+                                else []
+                            ),
                         ],
                         instance,
                         settings,

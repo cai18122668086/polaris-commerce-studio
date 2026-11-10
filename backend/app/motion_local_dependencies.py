@@ -16,6 +16,8 @@ from .motion_library import (
 DependencyState = Literal[
     "not_registered", "file_missing", "identity_mismatch", "verified"
 ]
+ComponentUseState = Literal["reference_required", "reference_recorded"]
+NONCOMMERCIAL_FONT = "noncommercial_marked_no_commercial_or_redistribution_claim"
 _MANIFEST_LIMIT = 1_000_000
 
 
@@ -81,12 +83,51 @@ def dependency_state(identity: dict, binding: str | None) -> DependencyState:
     return "verified"
 
 
+def _requires_component_reference(identity: dict) -> bool:
+    return (
+        identity.get("kind") == "font" and identity.get("rights") == NONCOMMERCIAL_FONT
+    )
+
+
+def _component_reference(identity: dict, intake: dict) -> str | None:
+    if not _requires_component_reference(identity):
+        return None
+    receipt = intake.get(identity["id"])
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("library_release") != MOTION_SHA256
+        or receipt.get("sha256") != identity["sha256"]
+    ):
+        return None
+    reference = receipt.get("component_use_reference")
+    return (
+        reference
+        if isinstance(reference, str) and 0 < len(reference.strip()) <= 240
+        else None
+    )
+
+
+def component_use_state(
+    identity: dict, manifest: Path | None
+) -> ComponentUseState | None:
+    if not _requires_component_reference(identity):
+        return None
+    try:
+        receipts = read_dependency_manifest(manifest).get("resource_intake")
+    except (OSError, ValueError):
+        receipts = None
+    if isinstance(receipts, dict) and _component_reference(identity, receipts):
+        return "reference_recorded"
+    return "reference_required"
+
+
 def intake_local_dependencies(
     package: Path,
     manifest: Path,
     candidates: dict[str, Path],
     *,
     origin: str = "",
+    component_references: dict[str, str] | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
     """Match explicitly supplied font/model bytes and merge an all-valid batch."""
@@ -104,6 +145,16 @@ def intake_local_dependencies(
     }
     if not candidates.keys() <= identities.keys():
         raise ValueError("Each candidate needs an indexed original font or model ID")
+    references = {
+        rid: value.strip() for rid, value in (component_references or {}).items()
+    }
+    if not references.keys() <= candidates.keys() or any(
+        not _requires_component_reference(identities[rid]) or not 0 < len(value) <= 240
+        for rid, value in references.items()
+    ):
+        raise ValueError(
+            "A component use reference needs a matching restricted font candidate"
+        )
     previous = read_dependency_manifest(manifest)
     resources = previous.get("resources", {})
     receipts = previous.get("resource_intake", {})
@@ -134,21 +185,37 @@ def intake_local_dependencies(
                 "retains_verified_binding": retain,
             }
         )
-        if state == "verified" and not retain:
+        if state != "verified":
+            continue
+        if not retain:
             merged[rid] = str(candidate)
+        if not retain or rid in references:
+            prior = receipts.get(rid) if retain else None
+            reference = references.get(rid) or _component_reference(identity, receipts)
             intake[rid] = {
+                "delivery_reference": origin,
+                **(prior if isinstance(prior, dict) else {}),
                 "library_release": MOTION_SHA256,
                 "sha256": identity["sha256"],
-                "delivery_reference": origin,
+                **({"component_use_reference": reference} if reference else {}),
             }
     ready = all(row["candidate"] == "verified" for row in rows)
-    changed = apply and ready and merged != resources
+    changed = apply and ready and (merged != resources or intake != receipts)
     if changed:
         save_dependency_manifest(
             manifest,
             previous,
             {**previous, "resources": merged, "resource_intake": intake},
         )
+    for row in rows:
+        identity = identities[row["id"]]
+        if _requires_component_reference(identity):
+            row["component_use_state"] = (
+                "reference_recorded"
+                if _component_reference(identity, intake if changed else receipts)
+                else "reference_required"
+            )
+            row["component_use_reference_supplied"] = row["id"] in references
     return {
         "scope": "exact_local_dependency_intake",
         "library_release": MOTION_SHA256,

@@ -27,6 +27,10 @@ from .motion_library import (
     sha256,
     verify_package,
 )
+from .video_editing_hypit_label_cards import (
+    LABEL_CARD_GROUP,
+    require_label_card_component_font,
+)
 from .video_editing_pipeline import environment
 from .video_editing_question_branch import QUESTION_BRANCH, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_input
@@ -143,6 +147,13 @@ def record_native(
             BROWSER_ORIGINALS_KEY, {}
         ) != browser_original_evidence(selected):
             raise ValueError("Native receipt lacks matching original browser images")
+    if group_id == LABEL_CARD_GROUP:
+        require_label_card_component_font(
+            package,
+            job["config"],
+            instance / "bindings.json",
+            settings.video_editing_native_bindings_file if settings else None,
+        )
     encoding = report.get("encoding")
     if groups[group_id].get("backend") == "hypit" and not encoding:
         if not report.get("build_id") or settings is None:
@@ -172,6 +183,8 @@ def record_native(
     }
     if group_id in RENDER_GROUPS:
         evidence["browser_originals_checked"] = True
+    if group_id == LABEL_CARD_GROUP:
+        evidence["component_font_use_checked"] = True
     branch = job.get("config", {}).get("branch")
     if job["group_id"] == QUESTION_GROUP and branch in (QUESTION_BRANCH, "smoke"):
         evidence["native_branch"] = branch
@@ -281,6 +294,13 @@ def _validate_evidence(record: Any, group_id: str, evidence_id: str) -> None:
         raise ValueError("Invalid native evidence identity")
     hashes = ["input_sha256", "receipt_sha256"]
     if record["runtime_validation"] == "sample_rendered":
+        if (
+            group_id == LABEL_CARD_GROUP
+            and record.get("component_font_use_checked") is not True
+        ):
+            raise ValueError(
+                "HY-A1 evidence needs the original-font component use check"
+            )
         if (
             group_id in RENDER_GROUPS
             and record.get("browser_originals_checked") is not True

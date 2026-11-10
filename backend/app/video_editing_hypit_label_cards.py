@@ -4,7 +4,12 @@ import math
 import re
 from pathlib import Path
 
-from .motion_library import inside, sha256
+from .motion_library import inside, read_json, sha256
+from .motion_local_dependencies import (
+    component_use_state,
+    dependency_state,
+    local_dependencies,
+)
 from .video_editing_hypit import NATIVE_FILES
 
 LABEL_CARD_GROUP = "HY-A1"
@@ -25,6 +30,27 @@ _COMPONENTS = {
         "ab310779f5f15748db229a4f7807f5cc33c0a3b0d9a083f2a7738e64be8afc11"
     ),
 }
+
+
+def require_label_card_component_font(
+    package: Path, config: dict, task_bindings: Path, registry: Path | None
+) -> None:
+    if config.get("fonts") != {"junya": "input://" + LABEL_CARD_FONT}:
+        raise ValueError("HY-A1 needs the original Junya font slot")
+    identity = next(
+        row
+        for row in read_json(package / "catalog/external-resources.json")["resources"]
+        if row["id"] == LABEL_CARD_FONT
+    )
+    if (
+        dependency_state(
+            identity, local_dependencies(task_bindings).get(LABEL_CARD_FONT)
+        )
+        != "verified"
+    ):
+        raise ValueError("HY-A1 needs the exact original font bytes")
+    if component_use_state(identity, registry) != "reference_recorded":
+        raise ValueError("HY-A1 needs an original-font component use reference")
 
 
 def _card_tag(node: str) -> re.Pattern[str]:

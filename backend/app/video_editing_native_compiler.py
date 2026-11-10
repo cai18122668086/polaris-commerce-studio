@@ -19,7 +19,11 @@ from .motion_browser_originals import (
     compile_browser_originals,
 )
 from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
-from .motion_local_dependencies import dependency_state, local_dependencies
+from .motion_local_dependencies import (
+    component_use_state,
+    dependency_state,
+    local_dependencies,
+)
 from .motion_parameter_contracts import (
     SHIFTED_GEOMETRY_EVENTS,
     SILHOUETTE_GROUPS,
@@ -770,6 +774,13 @@ def compile_native_job(
         if dependency_state(identity, str(source)) != "verified":
             raise ValueError(
                 "Original font/model dependency bytes do not match: " + rid
+            )
+        usage = component_use_state(identity, native_bindings_file)
+        if usage is not None and (
+            not label_card_variant or usage != "reference_recorded"
+        ):
+            raise ValueError(
+                "Restricted original font needs a component use reference: " + rid
             )
         resources[rid] = str(source)
     for row in native["media"]:

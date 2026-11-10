@@ -412,7 +412,12 @@ def describe_group(
         "group": group,
         "input_schema": read_json(package / group["input_schema"]),
         "parameter_contract": input_contract(package, group),
-        "template_dependencies": template_dependencies(package, group, bindings),
+        "template_dependencies": template_dependencies(
+            package,
+            group,
+            bindings,
+            manifest=settings.video_editing_native_bindings_file,
+        ),
         "original_input_variants": original_input_variants(
             package, group, bindings, runtime["runtime_evidence"]
         ),
@@ -472,7 +477,12 @@ def library_resources(
         else None
     )
     resources = [
-        asset_metadata(row, bundled=source == "bundled", bindings=bindings)
+        asset_metadata(
+            row,
+            bundled=source == "bundled",
+            bindings=bindings,
+            manifest=settings.video_editing_native_bindings_file,
+        )
         for row in rows[offset : offset + limit]
     ]
     return {

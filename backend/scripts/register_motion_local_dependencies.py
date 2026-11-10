@@ -19,17 +19,28 @@ def main() -> None:
         required=True,
     )
     parser.add_argument("--provenance", default="")
+    parser.add_argument(
+        "--component-use-reference",
+        nargs=2,
+        metavar=("RESOURCE_ID", "REFERENCE"),
+        action="append",
+        default=[],
+    )
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     candidates = {rid: Path(path) for rid, path in args.candidate}
     if len(candidates) != len(args.candidate):
         parser.error("Supply each original resource only once")
+    references = dict(args.component_use_reference)
+    if len(references) != len(args.component_use_reference):
+        parser.error("Supply each component use reference only once")
     try:
         report = intake_local_dependencies(
             args.package,
             args.bindings,
             candidates,
             origin=args.provenance,
+            component_references=references,
             apply=args.apply,
         )
     except OSError:

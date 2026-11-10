@@ -11,7 +11,8 @@ type NotePage = components["schemas"]["EditingLibraryNotesResponse"];
 type TargetKind = Note["target_kind"];
 type Group = { id: string; name: string; kind: string; purpose: string; primary_function: string; branch: string; runtime_validation: string; contract: string | null };
 type LocalDependencyState = "not_registered" | "file_missing" | "identity_mismatch" | "verified";
-type Asset = { id: string; kind: string; display_name: string; duration_seconds?: number; availability: string; local_dependency_state?: LocalDependencyState; audio_preview_supported: boolean; source?: string; purpose?: string; faces?: { family?: string; full_name?: string }[] };
+type ComponentUseState = "reference_required" | "reference_recorded";
+type Asset = { id: string; kind: string; display_name: string; duration_seconds?: number; availability: string; local_dependency_state?: LocalDependencyState; component_use_state?: ComponentUseState; audio_preview_supported: boolean; source?: string; purpose?: string; faces?: { family?: string; full_name?: string }[] };
 type Summary = { groups: number; bundled_assets: number; external_references: number; runtime: Record<string, number>; visual_accepted: number; runtime_evidence_rejected?: number };
 type Catalog = { total: number; groups: Group[]; next_offset: number | null; summary: Summary };
 type ResourcePage = { resources: Asset[]; total: number; next_offset: number | null };
@@ -27,7 +28,7 @@ type OriginalStartupAsset = {
   indexed_external_ids: string[];
 };
 type Detail = {
-  template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; original_rights?: string; local_dependency_state?: LocalDependencyState }[];
+  template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; original_rights?: string; local_dependency_state?: LocalDependencyState; component_use_state?: ComponentUseState }[];
   runtime_evidence: { id: string; runtime_validation: string; recorded_at: string; native_branch?: string }[];
   runtime_evidence_rejected?: number;
   original_input_variants?: { id: string; template_sha256: string; has_encoded_sample: boolean;
@@ -57,6 +58,10 @@ const localDependencyLabel: Record<LocalDependencyState, string> = {
   file_missing: "已登记文件缺失",
   identity_mismatch: "已登记文件与原件摘要不符",
   verified: "本机原件摘要已核验",
+};
+const componentUseLabel: Record<ComponentUseState, string> = {
+  reference_required: "组件验证待登记使用凭据",
+  reference_recorded: "已登记组件验证使用凭据",
 };
 const startupUsageLabel: Record<OriginalStartupAsset["usage"], string> = {
   drawn: "本组画面需要",
@@ -195,7 +200,7 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
             <p>经典入口已有原生组件样本。组合模板「同期口播与三项占比」使用已校对口播的总数和三个同单位数量。</p>
           )}
           {detail.parameter_contract.website_sidecar_scope === "component_only_pending_original_font_review" && (
-            <p>三张原卡已接入实录词点和同期画面。组件编码待原俊雅字体与项目使用授权。</p>
+            <p>三张原卡已接入实录词点和同期画面。当前限组件验证，原俊雅字节和使用凭据需分别核对。</p>
           )}
           {detail.parameter_contract.native_branches?.question && (
             <p>
@@ -229,7 +234,7 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
             </li>)}</ul>
           </section>}
           {!detail.original_input_variants?.length && (detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>
-            {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}{d.local_dependency_state && ` · ${localDependencyLabel[d.local_dependency_state]}`}{d.original_rights === "noncommercial_marked_no_commercial_or_redistribution_claim" && " · 原件标注仅非商用，商用需核对授权"}
+            {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}{d.local_dependency_state && ` · ${localDependencyLabel[d.local_dependency_state]}`}{d.component_use_state && ` · ${componentUseLabel[d.component_use_state]}`}{d.original_rights === "noncommercial_marked_no_commercial_or_redistribution_claim" && " · 原件标注仅非商用，商用需核对授权"}
           </li>)}</ul> : <p>暂未登记外部输入引用。</p>)}
           <p>已登记 {detail.runtime_evidence.length} 份具体运行记录，画面和听感未验收。</p>
           {!!detail.runtime_evidence_rejected && <p>本组有 {detail.runtime_evidence_rejected} 份运行回执无法核验，请核对原记录。</p>}
@@ -241,7 +246,7 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
       <form className={styles.searchForm} onSubmit={e => { e.preventDefault(); setResourceSearch(resourceDraft); setResourceOffset(0); setResourceLoading(true); setResourceReload(value => value + 1); }}><label>搜索资源<input aria-label="搜索原库资源" value={resourceDraft} onChange={e => setResourceDraft(e.target.value)} maxLength={100} /></label><button type="submit">搜索资源</button></form>
       <p>{source === "external" ? "外部引用记录全部保留；字体、模型和本期素材需明确绑定，历史素材不会自动进入新片。" : "试听使用原包音频。文件名只供检索，播放不会自动标记听感通过。"}</p>
       {resourceLoading && <p role="status">正在读取资源…</p>}
-      {resourcePage && <><p>共 {resourcePage.total} 项，当前 {resourcePage.total ? resourceOffset + 1 : 0}–{resourceOffset + resourcePage.resources.length} 项</p><div className={styles.grid} aria-label="原库资源列表">{resourcePage.resources.map(a => <article key={a.id}><div><small>{kindLabel[a.kind] || a.kind}</small><b>{a.display_name}</b></div><small>{a.id}</small><p>{a.availability === "packaged" ? "原包内置" : a.local_dependency_state ? localDependencyLabel[a.local_dependency_state] : "待本任务绑定"}{typeof a.duration_seconds === "number" ? ` · ${a.duration_seconds.toFixed(2)} 秒` : ""}</p>{a.kind === "geometry" && <p>仅几何轮廓，不能充当商品实拍证据。</p>}{a.kind === "image" && <p>原生插画素材，具体语义需按本片核对。</p>}{noteBadge(source === "bundled" ? "bundled_asset" : "external_resource", a.id)}<div className={styles.actions}>{a.audio_preview_supported && <button type="button" disabled={resourceLoading} onClick={() => setAudioId(audioId === a.id ? "" : a.id)}>{audioId === a.id ? "收起试听" : "试听原包音频"}</button>}<button type="button" disabled={!saved || resourceLoading} onClick={() => chooseTarget({ kind: source === "bundled" ? "bundled_asset" : "external_resource", id: a.id, name: a.display_name })}>记录选择倾向</button></div>{audioId === a.id && <audio controls preload="metadata" aria-label={`${a.display_name}试听`} src={`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-library/assets/${encodeURIComponent(a.id)}/audio`} onError={() => setError("原包音频暂不可用，请检查资源完整性。")} />}</article>)}</div><div className={styles.actions}><button type="button" disabled={resourceLoading || resourceOffset === 0} onClick={() => { setResourceOffset(Math.max(0, resourceOffset - 100)); setResourceLoading(true); }}>上一页资源</button><button type="button" disabled={resourceLoading || resourcePage.next_offset === null} onClick={() => { if (resourcePage.next_offset !== null) { setResourceOffset(resourcePage.next_offset); setResourceLoading(true); } }}>下一页资源</button></div></>}
+      {resourcePage && <><p>共 {resourcePage.total} 项，当前 {resourcePage.total ? resourceOffset + 1 : 0}–{resourceOffset + resourcePage.resources.length} 项</p><div className={styles.grid} aria-label="原库资源列表">{resourcePage.resources.map(a => <article key={a.id}><div><small>{kindLabel[a.kind] || a.kind}</small><b>{a.display_name}</b></div><small>{a.id}</small><p>{a.availability === "packaged" ? "原包内置" : a.local_dependency_state ? localDependencyLabel[a.local_dependency_state] : "待本任务绑定"}{a.component_use_state && ` · ${componentUseLabel[a.component_use_state]}`}{typeof a.duration_seconds === "number" ? ` · ${a.duration_seconds.toFixed(2)} 秒` : ""}</p>{a.kind === "geometry" && <p>仅几何轮廓，不能充当商品实拍证据。</p>}{a.kind === "image" && <p>原生插画素材，具体语义需按本片核对。</p>}{noteBadge(source === "bundled" ? "bundled_asset" : "external_resource", a.id)}<div className={styles.actions}>{a.audio_preview_supported && <button type="button" disabled={resourceLoading} onClick={() => setAudioId(audioId === a.id ? "" : a.id)}>{audioId === a.id ? "收起试听" : "试听原包音频"}</button>}<button type="button" disabled={!saved || resourceLoading} onClick={() => chooseTarget({ kind: source === "bundled" ? "bundled_asset" : "external_resource", id: a.id, name: a.display_name })}>记录选择倾向</button></div>{audioId === a.id && <audio controls preload="metadata" aria-label={`${a.display_name}试听`} src={`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-library/assets/${encodeURIComponent(a.id)}/audio`} onError={() => setError("原包音频暂不可用，请检查资源完整性。")} />}</article>)}</div><div className={styles.actions}><button type="button" disabled={resourceLoading || resourceOffset === 0} onClick={() => { setResourceOffset(Math.max(0, resourceOffset - 100)); setResourceLoading(true); }}>上一页资源</button><button type="button" disabled={resourceLoading || resourcePage.next_offset === null} onClick={() => { if (resourcePage.next_offset !== null) { setResourceOffset(resourcePage.next_offset); setResourceLoading(true); } }}>下一页资源</button></div></>}
     </>}
     {tab === "notes" && <section aria-label="项目选组备忘"><p>记录本项目的选组和资源倾向，不会修改原库或自动改变当前基础字幕视频。</p>{notes.length ? notes.map(n => <article className={styles.memo} key={n.id}><b>{n.target_name} · {n.target_id}</b><p>{choiceLabel[n.choice]} · 第 {n.sequence} 版</p><p>{n.reason}</p><button type="button" onClick={() => chooseTarget({ kind: n.target_kind, id: n.target_id, name: n.target_name })}>修改备忘</button></article>) : <p>暂无选组备忘。可在动效或资源条目中记录。</p>}</section>}
     {!saved && <p>保存当前项目后，可记录独立的项目选组倾向。</p>}

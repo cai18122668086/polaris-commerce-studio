@@ -18,7 +18,11 @@ from .motion_browser_originals import (
     browser_original_evidence,
     require_browser_originals,
 )
-from .motion_library import atomic_json, read_json
+from .motion_library import atomic_json, read_json, verify_package
+from .video_editing_hypit_label_cards import (
+    LABEL_CARD_GROUP,
+    require_label_card_component_font,
+)
 from .video_editing_native_audio_channels import install_native_stereo_composition
 from .video_editing_native_compat import install
 from .video_editing_native_frame_clock import install_native_frame_clocks
@@ -39,6 +43,7 @@ def main() -> None:
         "--command", choices=["check", "export", "render-group", "plan"], required=True
     )
     parser.add_argument("--kind", choices=["episode", "group"], default="episode")
+    parser.add_argument("--native-bindings", type=Path)
     parser.add_argument("--diagnostic-browser-images", action="store_true")
     args = parser.parse_args()
     diagnostic = args.diagnostic_browser_images
@@ -53,6 +58,18 @@ def main() -> None:
     if args.command != "plan":
         native_input = read_json(input_file)
         shots = native_input["shots"] if args.kind == "episode" else [native_input]
+        if any(shot["group_id"] == LABEL_CARD_GROUP for shot in shots):
+            if args.kind != "group" or args.command not in ("check", "render-group"):
+                raise ValueError(
+                    "HY-A1 is limited to original-font component validation"
+                )
+            verify_package(package)
+            require_label_card_component_font(
+                package,
+                native_input["config"],
+                root / "bindings.json",
+                args.native_bindings,
+            )
         original_shots = [
             (index, shot)
             for index, shot in enumerate(shots)

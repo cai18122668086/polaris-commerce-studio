@@ -10,7 +10,11 @@ from typing import Any
 
 from .motion_library import MOTION_SHA256, inside, read_json, sha256
 from .motion_library_validation import group_status
-from .motion_local_dependencies import DependencyState, dependency_state
+from .motion_local_dependencies import (
+    DependencyState,
+    component_use_state,
+    dependency_state,
+)
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import LibraryChoiceSnapshot
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
@@ -132,12 +136,18 @@ def asset_label(asset: dict[str, Any]) -> str:
 
 
 def asset_metadata(
-    asset: dict[str, Any], *, bundled: bool, bindings: dict[str, str] | None = None
+    asset: dict[str, Any],
+    *,
+    bundled: bool,
+    bindings: dict[str, str] | None = None,
+    manifest: Path | None = None,
 ) -> dict[str, Any]:
+    usage = component_use_state(asset, manifest) if not bundled else None
     return {
         **asset,
         "display_name": asset_label(asset),
         "availability": "packaged" if bundled else "requires_explicit_task_binding",
+        **({"component_use_state": usage} if usage is not None else {}),
         **(
             {
                 "local_dependency_state": dependency_state(
@@ -175,7 +185,11 @@ def audio_asset(package: Path, asset_id: str) -> tuple[dict[str, Any], Path]:
 
 
 def template_dependencies(
-    package: Path, group: dict[str, Any], bindings: dict[str, str] | None = None
+    package: Path,
+    group: dict[str, Any],
+    bindings: dict[str, str] | None = None,
+    *,
+    manifest: Path | None = None,
 ) -> list[dict[str, Any]]:
     external = external_dependencies(package)
     aliases = (
@@ -183,13 +197,18 @@ def template_dependencies(
         if group.get("backend") == "browser"
         else {}
     )
-    return _template_dependencies(
+    rows = _template_dependencies(
         package,
         group,
         external,
         aliases,
         lambda rid: dependency_state(external[rid], (bindings or {}).get(rid)),
     )
+    for row in rows:
+        usage = component_use_state(external.get(row["id"], {}), manifest)
+        if usage is not None:
+            row["component_use_state"] = usage
+    return rows
 
 
 def external_dependencies(package: Path) -> dict[str, dict]:

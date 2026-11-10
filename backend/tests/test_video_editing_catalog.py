@@ -11,7 +11,8 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect, text
 
-from app.motion_library import atomic_json, read_json, sha256
+from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from app.motion_local_dependencies import NONCOMMERCIAL_FONT
 from app.video_editing_catalog import choice_snapshot_hash, validate_choice_snapshot
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
 from app.video_editing_planner import validate_plan
@@ -145,7 +146,9 @@ def test_local_font_state_checks_current_bytes_without_exposing_path(video, tmp_
     font = tmp_path / "private-original-font.ttf"
     font.write_bytes(b"local exact font fixture")
     resources = read_json(package / "catalog/external-resources.json")
-    resources["resources"][1].update(bytes=font.stat().st_size, sha256=sha256(font))
+    resources["resources"][1].update(
+        bytes=font.stat().st_size, sha256=sha256(font), rights=NONCOMMERCIAL_FONT
+    )
     atomic_json(package / "catalog/external-resources.json", resources)
     manifest = tmp_path / "bindings.json"
     atomic_json(
@@ -162,7 +165,8 @@ def test_local_font_state_checks_current_bytes_without_exposing_path(video, tmp_
             params={"source": "external", "search": "external-1", "kind": "font"},
         )
         assert detail.status_code == listed.status_code == 200
-        assert "private-original-font.ttf" not in detail.text + listed.text
+        for private in ("private-original-font.ttf", "private-component-approval"):
+            assert private not in detail.text + listed.text
         rows = {row["id"]: row for row in detail.json()["template_dependencies"]}
         assert "local_dependency_state" not in rows["external-0"]
         font_row = listed.json()["resources"][0]
@@ -170,17 +174,32 @@ def test_local_font_state_checks_current_bytes_without_exposing_path(video, tmp_
             font_row["local_dependency_state"]
             == rows["external-1"]["local_dependency_state"]
         )
-        return font_row["local_dependency_state"], listed.json()[
-            "external_files_available"
-        ]
+        assert (
+            font_row["component_use_state"] == rows["external-1"]["component_use_state"]
+        )
+        return (
+            font_row["local_dependency_state"],
+            font_row["component_use_state"],
+            listed.json()["external_files_available"],
+        )
 
-    assert read_state() == ("verified", True)
+    assert read_state() == ("verified", "reference_required", True)
+    document = read_json(manifest)
+    document["resource_intake"] = {
+        "external-1": {
+            "library_release": MOTION_SHA256,
+            "sha256": sha256(font),
+            "component_use_reference": "private-component-approval",
+        }
+    }
+    atomic_json(manifest, document)
+    assert read_state() == ("verified", "reference_recorded", True)
     font.write_bytes(b"X" * font.stat().st_size)
-    assert read_state() == ("identity_mismatch", False)
+    assert read_state() == ("identity_mismatch", "reference_recorded", False)
     font.unlink()
-    assert read_state() == ("file_missing", False)
+    assert read_state() == ("file_missing", "reference_recorded", False)
     atomic_json(manifest, {"resources": {"external-1": "relative.ttf"}})
-    assert read_state() == ("not_registered", False)
+    assert read_state() == ("not_registered", "reference_required", False)
 
 
 def test_audio_is_authenticated_range_served_and_changed_bytes_are_rejected(

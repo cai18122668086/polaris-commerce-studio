@@ -15,6 +15,7 @@ from .video_editing_contracts import SemanticPlan
 from .video_editing_cut_scenes import CUT_GROUPS, CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_DEPENDENCIES, CXBR_PURPOSES, cxbr_binding
 from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
+from .video_editing_handoff_scenes import HANDOFF_GROUPS, HANDOFF_TEMPLATE_ID
 from .video_editing_hypit_strips import LIVE_STRIP_GROUP
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
@@ -575,6 +576,22 @@ _TEMPLATES[UNIFIED_EXPLANATION_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[HANDOFF_TEMPLATE_ID] = {
+    "id": HANDOFF_TEMPLATE_ID,
+    "name": "转场与评论引导",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": binding,
+            }
+            for group, (purpose, binding) in HANDOFF_GROUPS.items()
+        ),
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[CUT_TEMPLATE_ID] = {
     "id": CUT_TEMPLATE_ID,
     "name": "实拍与项目素材接力",
@@ -713,6 +730,7 @@ def overlay_templates() -> list[dict]:
             CXBR_TEMPLATE_ID,
             UNIFIED_EXPANDED_TEMPLATE_ID,
             UNIFIED_EXPLANATION_TEMPLATE_ID,
+            HANDOFF_TEMPLATE_ID,
             CUT_TEMPLATE_ID,
             PANEL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,

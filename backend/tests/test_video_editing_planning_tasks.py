@@ -28,6 +28,13 @@ from app.video_editing_azl_panels import azl_blockers
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
 from app.video_editing_cut_scenes import CUT_TEMPLATE_ID, cut_scene_blockers
 from app.video_editing_cxbr import CXBR_PAPER_GROUPS, CXBR_PURPOSES, cxbr_blockers
+from app.video_editing_handoff_scenes import (
+    COMMENT,
+    FLASH,
+    HANDOFF_TEMPLATE_ID,
+    handoff_blockers,
+    handoff_virtual_frame,
+)
 from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
 from app.video_editing_native_sound import verify_rendered_sound
 from app.video_editing_overlay_templates import overlay_template
@@ -141,6 +148,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "chenxi-broll-v1",
         UNIFIED_EXPANDED_TEMPLATE_ID,
         UNIFIED_EXPLANATION_TEMPLATE_ID,
+        HANDOFF_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         "evidence-judgment-v1",
@@ -1175,6 +1183,40 @@ def test_panel_preparation_does_not_count_copies_of_the_original_as_broll():
     unavailable = {}
     panel_blockers(template, cards, "source", unavailable)
     assert set(unavailable) == {"Z-M07", "Z-M08"}
+
+
+def test_handoff_preparation_requires_project_image_and_spoken_comment():
+    template = overlay_template(HANDOFF_TEMPLATE_ID)
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=2000,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        tokens=[TranscriptToken(id="t0", text="请看资料", start_ms=0, end_ms=1000)],
+        utterances=[],
+    )
+    unavailable = {}
+    handoff_blockers(template, transcript, [], unavailable)
+    assert unavailable == {
+        FLASH: ["handoff_image_required"],
+        COMMENT: ["handoff_image_required", "spoken_comment_instruction_required"],
+    }
+    cards = [{"id": "material-a", "kind": "image", "sha256": "image"}]
+    unavailable = {}
+    handoff_blockers(template, transcript, cards, unavailable)
+    assert unavailable == {COMMENT: ["spoken_comment_instruction_required"]}
+    transcript.tokens[0].text = "请在评论区留言，输入示例"
+    unavailable = {}
+    handoff_blockers(template, transcript, cards, unavailable)
+    assert not unavailable
+
+
+def test_retimed_handoff_sound_uses_the_first_drawn_frame():
+    assert handoff_virtual_frame(FLASH, {"transition_start": 0.84}) == 25
+    assert handoff_virtual_frame(FLASH, {"transition_start": 13 / 30}) == 13
+    assert handoff_virtual_frame(COMMENT, {"rise_in": 2, "rise_duration": 0.48}) == 61
 
 
 def test_year_preparation_requires_a_continuous_measured_year():

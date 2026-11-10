@@ -68,6 +68,11 @@ from .video_editing_episode_compiler import (
     NativeEpisodeEntry,
     NativePlacement,
 )
+from .video_editing_handoff_scenes import (
+    COMMENT,
+    HANDOFF_IMAGE,
+    validate_handoff_anchors,
+)
 from .video_editing_highlights import AUTOMATIC_TEXT_PROFILE
 from .video_editing_hypit_strips import (
     LIVE_STRIP_GROUP,
@@ -888,6 +893,8 @@ def _entry_sound(
         if card_path is not None
         else _ENTRY_SOUNDS[beat.group_id]
     )
+    if beat.group_id == COMMENT and path == "/timing/events/submitted_in":
+        selection = _CLICK
     event = next(row for row in anchors["events"] if row["path"] == path)
     asset_id, source_start, length, peak = (
         selection if selection[0] not in avoided else _CLICK
@@ -1792,6 +1799,7 @@ def _unified_entry(
     group_id = beat.group_id
     is_cut = group_id in CUT_GROUPS
     is_panel = group_id in PANEL_GROUPS
+    is_handoff = group_id in HANDOFF_IMAGE
     videos = (
         project_panel_videos(asset_cards, transcript.source_sha256)
         if group_id == TRIPTYCH
@@ -1820,10 +1828,14 @@ def _unified_entry(
     source_paths = (
         cut_source_paths(group_id) if is_cut else (media_path,) if media_path else ()
     )
-    images = project_image_digests(asset_cards) if is_cut or is_panel else {}
+    images = (
+        project_image_digests(asset_cards) if is_cut or is_panel or is_handoff else {}
+    )
     allowed_paths = cut_media_paths(group_id) if is_cut else set(source_paths)
     if is_panel:
         allowed_paths.update(panel_project_paths(group_id))
+    if is_handoff:
+        allowed_paths.add(HANDOFF_IMAGE[group_id])
     presenters = (
         {
             row["id"]
@@ -1856,6 +1868,8 @@ def _unified_entry(
             validate_cut_anchors(beat, anchors, transcript, presenters, images)
         elif is_panel:
             validate_panel_anchors(beat, anchors, transcript, images, videos)
+        elif is_handoff:
+            validate_handoff_anchors(beat, anchors, transcript, images)
         else:
             validate_unified_anchors(beat, anchors, transcript)
     except (ValueError, KeyError) as error:
@@ -1886,7 +1900,7 @@ def _unified_entry(
         )
     reason = "沿用原生文字、人物窗或整帧底板，主字幕和原声使用整片时钟。"
     return NativeEpisodeEntry(
-        carrier="picture" if is_cut or is_panel else "text",
+        carrier="picture" if is_cut or is_panel or is_handoff else "text",
         placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
         recipe={
             "version": "tengli.native-recipe/1",

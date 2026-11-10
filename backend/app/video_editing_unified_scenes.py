@@ -12,6 +12,14 @@ from .video_editing_cut_scenes import (
     CUT_SOUND_MODES,
     CUT_TEMPLATE_ID,
 )
+from .video_editing_handoff_scenes import (
+    HANDOFF_CAPTION_BANDS,
+    HANDOFF_GROUPS,
+    HANDOFF_SOUNDS,
+    HANDOFF_SOURCE,
+    HANDOFF_TEMPLATE_ID,
+    handoff_virtual_frame,
+)
 from .video_editing_native_content import (
     NUMBER_GROUP,
     YEAR_GROUP,
@@ -39,6 +47,7 @@ UNIFIED_TEMPLATES = frozenset(
         UNIFIED_EXPLANATION_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
+        HANDOFF_TEMPLATE_ID,
     }
 )
 UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
@@ -56,6 +65,7 @@ UNIFIED_MEDIA_PATHS = {
     "W-R05": "/media/background/path",
     NUMBER_GROUP: "/media/source/path",
     **PANEL_SOURCE,
+    **HANDOFF_SOURCE,
 }
 UNIFIED_EXPANDED_GROUPS = {
     "W-R05": (
@@ -148,6 +158,7 @@ UNIFIED_SOUNDS = {
     NUMBER_GROUP: {"black_in": "ease", "second_number": "ease"},
     **CUT_SOUND_MODES,
     **PANEL_SOUNDS,
+    **HANDOFF_SOUNDS,
 }
 _TEXT_BINDINGS = {
     "Z-M01": {"phrases/0": "phrase0", "phrases/1": "phrase1"},
@@ -186,6 +197,7 @@ UNIFIED_SCENE_GROUPS = (
     | UNIFIED_EXPLANATION_GROUPS.keys()
     | CUT_GROUPS.keys()
     | PANEL_GROUPS.keys()
+    | HANDOFF_GROUPS.keys()
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -197,6 +209,7 @@ _CAPTION_BANDS = {
     NUMBER_GROUP: (850, 960),
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
+    **HANDOFF_CAPTION_BANDS,
 }
 _EVENT_PREFIX = "/timing/events/"
 
@@ -569,6 +582,8 @@ def unified_action_frame(shot: dict, fps: int, path: str) -> int:
     local = (
         0
         if mode == "scene"
+        else handoff_virtual_frame(group, shot["config"]["timing"]["events"])
+        if mode == "virtual"
         else math.floor(at + 1e-7) + 1
         if mode == "ease"
         else math.ceil(at - 1e-7)

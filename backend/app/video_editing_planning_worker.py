@@ -27,6 +27,7 @@ from .video_editing_catalog import (
 )
 from .video_editing_cut_scenes import cut_scene_blockers
 from .video_editing_cxbr import cxbr_blockers, cxbr_windows
+from .video_editing_handoff_scenes import handoff_blockers
 from .video_editing_hypit import hypit_tools
 from .video_editing_hypit_strips import LIVE_STRIP_GROUP
 from .video_editing_library_choice_store import stored_choice_snapshot
@@ -349,6 +350,12 @@ def process(
                 snapshot["source_sha256"],
                 runtime["unavailable_template_groups"],
             )
+            handoff_blockers(
+                template,
+                transcript,
+                snapshot["asset_cards"],
+                runtime["unavailable_template_groups"],
+            )
             opening_inputs = yy6_scene_inputs(
                 template,
                 transcript,
@@ -480,6 +487,7 @@ def process(
                     snapshot["source_sha256"],
                     current,
                 )
+                handoff_blockers(template, transcript, snapshot["asset_cards"], current)
                 yy6_scene_inputs(template, transcript, snapshot["asset_cards"], current)
                 motion_blockers(
                     template,

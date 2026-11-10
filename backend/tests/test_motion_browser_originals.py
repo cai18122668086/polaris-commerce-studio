@@ -21,6 +21,7 @@ from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
             "",
             {"g05-assets/base-{i:03d}.jpg": 69, "g05-assets/actor-{i:03d}.png": 69},
         ),
+        ("CX-G08", "", {"legacy/assets/img/person.png": 1}),
         ("CX-G09", "current", {"assets/material-{i}.png": 3}),
         ("CX-G09", "", {"assets/material-{i}.png": 3, "assets/g09-bg/{i:03d}.jpg": 66}),
         (
@@ -259,7 +260,7 @@ def test_intake_preserves_private_bindings_and_rejects_wrong_indexed_bytes(
     preview = intake_browser_originals(package, manifest, **options)
     assert preview["counts"] == {
         "ready_to_register": 1,
-        "missing": 69,
+        "missing": 70,
         "rejected_candidate": 1,
     }
     rejected = next(row for row in preview["files"] if row["native_path"] == key)

@@ -101,6 +101,7 @@ def test_shared_browser_startup_assets_count_archived_files_and_external_referen
         tmp_path / "catalog/native-relative-assets.json",
         {
             "entry/assets/G10-background-clean.jpg": "input://media-original",
+            "entry/legacy/assets/img/person.png": "input://media-person",
         },
     )
     atomic_json(tmp_path / "catalog/external-resources.json", {"resources": []})
@@ -112,10 +113,17 @@ def test_shared_browser_startup_assets_count_archived_files_and_external_referen
         (1, 66),
         (0, 1),
         (0, 1),
+        (0, 1),
     ]
     assert result[2]["indexed_external_ids"] == ["media-original"]
     assert result[1]["verified_bundled_count"] == 0
-    assert all(row["usage"] == "shared_startup" for row in result)
+    assert all(row["usage"] == "shared_startup" for row in result[:-1])
+    assert result[-1]["usage"] == "without_presenter"
+    assert result[-1]["indexed_external_ids"] == ["media-person"]
+    shared = original_startup_assets(
+        tmp_path, {"id": "CX-G09", "browser_directory": "entry"}
+    )
+    assert shared[-1]["usage"] == "shared_startup"
     assert original_startup_assets(tmp_path, {"id": "CX-G04"}) == []
 
 

@@ -26,11 +26,18 @@ from .motion_local_dependencies import (
 _G05_BACKGROUND = ("g05-assets/base-{i:03d}.jpg", 69)
 _G05_ACTOR = ("g05-assets/actor-{i:03d}.png", 69)
 _G05_PHOTOS = ("g05-assets/photo-{i}.jpg", 3)
+_G08_ACTOR = ("legacy/assets/img/person.png", 1)
 _G09_TEXTURES = ("assets/material-{i}.png", 3)
 _G09_BACKGROUND = ("assets/g09-bg/{i:03d}.jpg", 66)
 _G10_BACKGROUND = ("assets/G10-background-clean.jpg", 1)
 _G10_ACTOR = ("assets/G10-person-clean.png", 1)
-_SHARED_STARTUP = (_G09_TEXTURES, _G09_BACKGROUND, _G10_BACKGROUND, _G10_ACTOR)
+_SHARED_STARTUP = (
+    _G09_TEXTURES,
+    _G09_BACKGROUND,
+    _G10_BACKGROUND,
+    _G10_ACTOR,
+    _G08_ACTOR,
+)
 STARTUP_ASSETS = {
     "CX-G05": (_G05_BACKGROUND, _G05_ACTOR, _G05_PHOTOS),
     "CX-G08": _SHARED_STARTUP,
@@ -43,6 +50,7 @@ STARTUP_ASSETS = {
 _ALWAYS_DRAWN = {"CX-G05": (_G05_BACKGROUND,), "CX-G09": (_G09_TEXTURES,)}
 _DRAWN_WITHOUT_PRESENTER = {
     "CX-G05": (_G05_ACTOR,),
+    "CX-G08": (_G08_ACTOR,),
     "CX-G09": (_G09_BACKGROUND,),
     "CX-G10": (_G10_BACKGROUND, _G10_ACTOR),
 }

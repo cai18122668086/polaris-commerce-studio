@@ -1,13 +1,19 @@
 """Business isolation and durable cancellation, without paid/video providers."""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from threading import Barrier
 from uuid import uuid4
 from wave import open as open_wave
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app import video_editing_worker as worker
+from app.main import create_app
 from app.motion_library import atomic_json, sha256
 from app.video_editing_contracts import Transcript, TranscriptToken
 from app.video_editing_display_rotation import display_rotation
@@ -15,6 +21,7 @@ from app.video_editing_pipeline import measured_source_frame
 from app.video_editing_task_models import (
     EditingArtifactRecord,
     EditingAttemptRecord,
+    EditingSourceRecord,
     EditingTaskRecord,
 )
 from app.video_editing_worker import process
@@ -105,6 +112,73 @@ def test_task_replay_cancel_retry_and_no_paths_exposed(video, tmp_path):
     with client.app.state.session_factory() as session:
         attempts = list(session.scalars(select(EditingAttemptRecord)))
         assert attempts == []  # Queued cancellation never needs a live worker.
+
+
+def test_source_upload_retries_keep_one_immutable_owned_input(
+    video, tmp_path, monkeypatch
+):
+    client, auth, ws, _, settings, pid, old_source = setup_source(video, tmp_path)
+    endpoint = base(ws) + "/editing-sources"
+    request_id = str(uuid4())
+
+    def upload(
+        content=b"unique oral source", project=pid, mime="video/mp4", via=client
+    ):
+        return via.post(
+            endpoint,
+            data={"project_id": project, "request_id": request_id},
+            files={"file": ("spoken.mp4", content, mime)},
+        )
+
+    assert upload(b"").json()["error"]["code"] == "EDITING_SOURCE_EMPTY"
+    barrier = Barrier(2)
+    commit = Session.commit
+
+    def concurrent_commit(session):
+        if any(isinstance(row, EditingSourceRecord) for row in session.new):
+            barrier.wait(timeout=12)
+        return commit(session)
+
+    with (
+        TestClient(create_app(settings, auth)) as other_client,
+        monkeypatch.context() as patches,
+        ThreadPoolExecutor(max_workers=2) as pool,
+    ):
+        patches.setattr(Session, "commit", concurrent_commit)
+        first = pool.submit(upload)
+        second = pool.submit(upload, via=other_client)
+        a = first.result().raise_for_status().json()
+        b = second.result().raise_for_status().json()
+    assert a == b and a["id"] != old_source
+    assert a == upload().raise_for_status().json()
+    second_project = str(uuid4())
+    client.put(
+        base(ws) + "/projects/" + second_project, json=payload()
+    ).raise_for_status()
+    for conflict in (
+        upload(b"another oral source"),
+        upload(project=second_project),
+        upload(mime="video/webm"),
+    ):
+        assert conflict.status_code == 409
+        assert conflict.json()["error"]["code"] == "EDITING_SOURCE_REQUEST_REUSED"
+    with client.app.state.session_factory() as session:
+        row = session.get(EditingSourceRecord, a["id"])
+        stored = Path(row.media_path)
+        assert stored.read_bytes() == b"unique oral source"
+        assert sha256(stored) == a["sha256"]
+        assert set(session.scalars(select(EditingSourceRecord.id))) == {
+            old_source,
+            a["id"],
+        }
+    source_dir = settings.video_editing_tasks_dir / "sources"
+    assert len(list(source_dir.iterdir())) == 2
+    stored.write_bytes(b"changed oral source")
+    response = upload()
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "EDITING_SOURCE_CHANGED"
+    assert stored.read_bytes() == b"changed oral source"
+    assert len(list(source_dir.iterdir())) == 2
 
 
 @pytest.mark.parametrize(

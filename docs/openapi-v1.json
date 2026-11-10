@@ -1750,6 +1750,18 @@
             "format": "uuid",
             "title": "Project Id",
             "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
           }
         },
         "required": [
@@ -6775,6 +6787,39 @@
           "script_sha256"
         ],
         "title": "EditingSourceOrigin",
+        "type": "object"
+      },
+      "EditingSourceUploadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "sha256",
+          "bytes"
+        ],
+        "title": "EditingSourceUploadResponse",
         "type": "object"
       },
       "EditingTaskCreate": {
@@ -21002,9 +21047,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Upload Source Api V1 Video Studio Workspaces  Workspace Id  Editing Sources Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/EditingSourceUploadResponse"
                 }
               }
             },

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { preferredDistinctMotionGroups } from "@/features/video-studio/editing-density";
+import { ApiError } from "@/lib/api/api-error";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { GenerationJob } from "@/features/video-studio/library";
@@ -46,7 +47,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [plansVersion, setPlansVersion] = useState(0);
   const [revisionSelection, setRevisionSelection] = useState<EditingRevisionSelection>();
   const [carrySelection, setCarrySelection] = useState<CarrySelection>();
-  const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
+  const pending = useRef<{ key: string; requestId: string } | undefined>(undefined);
+  const upload = useRef<{ workspaceId: string; projectId: string; file: File; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
   const [linkedPreviews, setLinkedPreviews] = useState<{ projectId: string; ids: string[] }>();
@@ -69,20 +71,39 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   }, [reload]);
   const submit = async (mode: "transcript" | "subtitles") => {
     setBusy(true); setError("");
+    let uploadPending = false;
     try {
-      const key = JSON.stringify([projectId, selected, file?.name, file?.size, file?.lastModified, subtitles, mode]);
-      if (!pending.current || pending.current.key !== key) pending.current = { key, requestId: crypto.randomUUID() };
-      const intent = pending.current;
-      if (selected === "upload" && file && !intent.sourceId) {
-        const form = new FormData(); form.append("project_id", projectId); form.append("file", file);
-        const uploaded = unwrapApiResponse(await apiClient.POST(`${root}/editing-sources`, { ...options(), signal: AbortSignal.timeout(600000), body: {} as never, bodySerializer: () => form })) as { id: string };
-        intent.sourceId = uploaded.id;
+      let sourceId: string | undefined;
+      if (selected === "upload" && file) {
+        if (upload.current?.file !== file || upload.current.projectId !== projectId || upload.current.workspaceId !== workspaceId) {
+          upload.current = { workspaceId, projectId, file, requestId: crypto.randomUUID() };
+        }
+        const original = upload.current;
+        if (!original.sourceId) {
+          uploadPending = true;
+          const form = new FormData();
+          form.append("project_id", projectId);
+          form.append("request_id", original.requestId);
+          form.append("file", file);
+          const uploaded = unwrapApiResponse(await apiClient.POST(`${root}/editing-sources`, {
+            ...options(), signal: AbortSignal.timeout(600000), body: {} as never, bodySerializer: () => form,
+          }));
+          original.sourceId = uploaded.id;
+          uploadPending = false;
+        }
+        sourceId = original.sourceId;
       }
-      const body = { request_id: intent.requestId, ...(selected === "upload" ? { source_id: intent.sourceId } : { generation_task_id: selected }), options: { mode, source_subtitles: subtitles, language: "zh" as const, caption_font_id: "font-d1961be1161ea1be" as const } };
-      unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks`, { ...options(), body }));
+      const key = JSON.stringify([workspaceId, projectId, sourceId ?? selected, subtitles, mode]);
+      if (!pending.current || pending.current.key !== key) pending.current = { key, requestId: crypto.randomUUID() };
+      const body = { request_id: pending.current.requestId, ...(sourceId ? { source_id: sourceId } : { generation_task_id: selected }), options: { mode, source_subtitles: subtitles, language: "zh" as const, caption_font_id: "font-d1961be1161ea1be" as const } };
+      const task = unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks`, { ...options(), body }));
       pending.current = undefined;
-      setTasks(await reload());
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "剪辑提交暂未确认，再次点击会查询同一请求。"); }
+      setTasks(rows => [task, ...rows.filter(row => row.id !== task.id)]);
+    } catch (caught) {
+      setError(caught instanceof ApiError && !caught.retryable ? caught.message : uploadPending
+        ? "原片上传结果暂未确认，再次点击会继续同一次上传。"
+        : "剪辑提交暂未确认，再次点击会查询同一请求。");
+    }
     finally { setBusy(false); }
   };
   const action = async (task: EditingTask, kind: "cancel" | "retry") => {

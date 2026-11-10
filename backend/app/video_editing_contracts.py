@@ -303,6 +303,13 @@ class EditingWorksResponse(StrictVideoModel):
     next_before: str | None
 
 
+class EditingSourceUploadResponse(StrictVideoModel):
+    id: UUID
+    project_id: UUID
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    bytes: int = Field(gt=0)
+
+
 class EditingSourceOrigin(StrictVideoModel):
     kind: Literal["upload_asset", "generation_task"]
     confirmed_version_id: str | None

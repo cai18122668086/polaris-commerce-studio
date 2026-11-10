@@ -4601,6 +4601,8 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Request Id */
+            request_id?: string | null;
         };
         /** CancelRequest */
         CancelRequest: {
@@ -6432,6 +6434,23 @@ export interface components {
             /** Script Sha256 */
             script_sha256: string | null;
             writing_origin?: components["schemas"]["VideoWritingOrigin"] | null;
+        };
+        /** EditingSourceUploadResponse */
+        EditingSourceUploadResponse: {
+            /** Bytes */
+            bytes: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Sha256 */
+            sha256: string;
         };
         /** EditingTaskCreate */
         EditingTaskCreate: {
@@ -12964,9 +12983,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EditingSourceUploadResponse"];
                 };
             };
             /** @description Validation Error */

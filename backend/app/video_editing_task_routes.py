@@ -1,9 +1,11 @@
 """Owner-scoped editing API. All decoding, ASR and rendering run in a worker."""
 
+import hashlib
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, cast
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -30,6 +32,7 @@ from .video_editing_catalog import (
 from .video_editing_contracts import (
     EditingCarriedRevision,
     EditingExportConfirmation,
+    EditingSourceUploadResponse,
     EditingTaskCreate,
     EditingTaskResponse,
     EditingWorksResponse,
@@ -238,7 +241,7 @@ def library(
     }
 
 
-@router.post("/editing-sources")
+@router.post("/editing-sources", response_model=EditingSourceUploadResponse)
 async def upload_source(
     request: Request,
     workspace: VideoWorkspace,
@@ -246,6 +249,7 @@ async def upload_source(
     project_id: Annotated[UUID, Form()],
     file: Annotated[UploadFile, File()],
     confirmed_version_id: Annotated[UUID | None, Form()] = None,
+    request_id: Annotated[UUID | None, Form()] = None,
 ) -> dict[str, Any]:
     require_workspace_write(workspace)
     settings = enabled(request)
@@ -260,11 +264,33 @@ async def upload_source(
             raise ApiError(422, "EDITING_SCRIPT_INVALID", "请选择本项目的确认稿版本。")
     if file.content_type not in {"video/mp4", "video/quicktime", "video/webm"}:
         raise ApiError(422, "EDITING_SOURCE_TYPE", "请上传 MP4、MOV 或 WebM 视频。")
-    sid = str(uuid4())
-    target = settings.video_editing_tasks_dir / "sources" / sid / "source.media"
-    target.parent.mkdir(parents=True)
+    candidate = uuid4()
+    sid = str(
+        uuid5(
+            NAMESPACE_URL,
+            "polaris:editing-source-upload:"
+            + digest(
+                {
+                    "workspace_id": workspace.workspace_id,
+                    "owner_user_id": workspace.principal.user_id,
+                    "request_id": str(request_id),
+                }
+            ),
+        )
+        if request_id
+        else candidate
+    )
+    # Concurrent uploads write separate candidates. Only the winning row owns a file.
+    target = (
+        settings.video_editing_tasks_dir / "sources" / str(candidate) / "source.media"
+    )
     length = 0
+    hasher = hashlib.sha256()
+    created_dir = False
+    keep_file = False
     try:
+        target.parent.mkdir(parents=True)
+        created_dir = True
         with target.open("xb") as out:
             while block := await file.read(1024 * 1024):
                 length += len(block)
@@ -273,6 +299,7 @@ async def upload_source(
                         413, "EDITING_SOURCE_TOO_LARGE", "视频不能超过 500 MB。"
                     )
                 out.write(block)
+                hasher.update(block)
         if length == 0:
             raise ApiError(422, "EDITING_SOURCE_EMPTY", "视频文件为空。")
         row = EditingSourceRecord(
@@ -285,15 +312,58 @@ async def upload_source(
             else None,
             kind="upload_asset",
             media_path=str(target.resolve()),
-            media_sha256=sha256(target),
+            media_sha256=hasher.hexdigest(),
             details={"mime": file.content_type, "bytes": length},
         )
-        session.add(row)
-        session.commit()
-    except Exception:
-        target.unlink(missing_ok=True)
-        raise
+        existing = session.get(EditingSourceRecord, sid) if request_id else None
+        if existing is None:
+            session.add(row)
+            # A lost commit acknowledgement may still leave a row owning this file.
+            keep_file = True
+            try:
+                session.commit()
+            except IntegrityError:
+                keep_file = False
+                session.rollback()
+                existing = session.get(EditingSourceRecord, sid)
+                if existing is None:
+                    raise
+        if existing is not None:
+            if (
+                existing.kind != row.kind
+                or existing.workspace_id != row.workspace_id
+                or existing.owner_user_id != row.owner_user_id
+                or existing.project_id != row.project_id
+                or existing.confirmed_version_id != row.confirmed_version_id
+                or existing.media_sha256 != row.media_sha256
+                or existing.details.get("mime") != file.content_type
+                or existing.details.get("bytes") != length
+            ):
+                raise ApiError(
+                    409,
+                    "EDITING_SOURCE_REQUEST_REUSED",
+                    "上传编号已用于另一份原片或项目。",
+                )
+            try:
+                path = Path(existing.media_path)
+                valid = (
+                    path.stat().st_size == length
+                    and sha256(path) == existing.media_sha256
+                )
+            except OSError:
+                valid = False
+            if not valid:
+                raise ApiError(
+                    409,
+                    "EDITING_SOURCE_CHANGED",
+                    "已保存的原片不可用，请重新选择文件。",
+                )
+            row = existing
     finally:
+        if created_dir and not keep_file:
+            with suppress(OSError):
+                target.unlink(missing_ok=True)
+                target.parent.rmdir()
         await file.close()
     return {
         "id": row.id,

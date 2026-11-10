@@ -45,6 +45,7 @@ from .video_editing_pipeline import (
     compile_baseline,
     native_export,
     prepare,
+    prepare_material_frame_clocks,
     prepare_presenter_frame_clock,
     run,
     validate_result,
@@ -720,6 +721,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         if correction:
             receipts["alignment_receipt"] = "alignment-receipt.json"
         prepare_presenter_frame_clock(root, prepared, settings, guard)
+        if native_plan:
+            prepare_material_frame_clocks(root, settings, guard)
         compiled_sha = compiled_digest(root, snapshot["request_hash"])
         restored = restore_delivery(
             snapshot["checkpoint"].get("validated_delivery"),

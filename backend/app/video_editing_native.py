@@ -20,7 +20,7 @@ from .motion_browser_originals import (
 )
 from .motion_library import atomic_json, read_json
 from .video_editing_native_compat import install
-from .video_editing_native_frame_clock import install_presenter_frame_clock
+from .video_editing_native_frame_clock import install_native_frame_clocks
 from .video_editing_native_layout import install_native_role_review
 from .video_editing_native_shot_recovery import install_shot_recovery
 from .video_editing_subtitle_sound_clock import install_subtitle_sound_clock
@@ -88,7 +88,7 @@ def main() -> None:
                                 "Cached browser output has different originals"
                             )
     install(package, root)
-    install_presenter_frame_clock(package, root)
+    install_native_frame_clocks(package, root)
     # Original adapter launches original Python workers. Apply the same narrow
     # copy-mode rule at Python startup there, without editing their source.
     compatibility = root / "python-startup"
@@ -100,7 +100,7 @@ def main() -> None:
         "from app.video_editing_native_compat import install_native_opening_validator\n"
         "from app.video_editing_native_font_maps import install_native_font_maps\n"
         "from app.video_editing_native_frame_clock import "
-        "install_presenter_frame_clock\n"
+        "install_native_frame_clocks\n"
         "from app.video_editing_hypit_strips import install_native_strips\n"
         "from app.video_editing_browser_live import install_live_card_export\n"
         "from app.video_editing_browser_live import install_fruit_list_export\n"
@@ -113,7 +113,7 @@ def main() -> None:
         "root = Path(os.environ['TENGLI_NATIVE_INSTANCE'])\n"
         "install(package, root)\n"
         "try:\n"
-        "    install_presenter_frame_clock(package, root)\n"
+        "    install_native_frame_clocks(package, root)\n"
         "    isolate_native_matte_cache(package, root)\n"
         "    install_native_opening_validator(package, root)\n"
         "    install_native_font_maps(package, root)\n"

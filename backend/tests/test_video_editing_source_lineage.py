@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from struct import pack
+from types import SimpleNamespace
 from uuid import uuid4
 from wave import open as open_wave
 
@@ -9,8 +10,14 @@ import pytest
 
 from app.config import Settings
 from app.errors import ApiError
-from app.motion_library import sha256
-from app.video_editing_native_frame_clock import variable_frame_clock
+from app.motion_library import atomic_json, sha256
+from app.video_editing_native_frame_clock import (
+    MATERIAL_CLOCK_RECEIPT,
+    MATERIAL_CLOCK_VERSION,
+    install_native_frame_clocks,
+    material_clock_plate,
+    variable_frame_clock,
+)
 from app.video_editing_pipeline import EditingFailure, prepare
 from app.video_editing_source_lineage import (
     audio_clock,
@@ -35,6 +42,68 @@ def test_frame_clock_detects_drift_even_when_the_average_rate_matches():
     assert variable_frame_clock(measured(0, 33, 67, 100), "1/1000", "24/1") == (4, True)
     with pytest.raises(ValueError, match="must increase"):
         variable_frame_clock(measured(0, 33, 33, 100), "1/1000", "30/1")
+
+
+def test_native_project_clock_only_rebinds_sealed_video(tmp_path, monkeypatch):
+    from app import video_editing_native_frame_clock as clocks
+
+    package = tmp_path / "motion"
+    sampler = package / clocks._NATIVE_MEDIA
+    sampler.parent.mkdir(parents=True)
+    sampler.write_bytes(b"original sampler")
+    monkeypatch.setattr(clocks, "_NATIVE_MEDIA_SHA256", sha256(sampler))
+    original_sampler = SimpleNamespace(
+        __file__=str(sampler), inspect_asset=lambda raw, alpha_required: raw
+    )
+    monkeypatch.setattr(clocks.importlib, "import_module", lambda _: original_sampler)
+
+    root = tmp_path / "attempt"
+    clip = root / "input/materials/material-chosen.mov"
+    clip.parent.mkdir(parents=True)
+    clip.write_bytes(b"original clip")
+    digest = sha256(clip)
+    plate = material_clock_plate(root, digest)
+    plate.parent.mkdir()
+    plate.write_bytes(b"derived clip")
+    atomic_json(
+        root / "episode.json",
+        {
+            "production": {
+                "materials": [
+                    {
+                        "kind": "video",
+                        "source": "project_upload",
+                        "id": clip.stem,
+                        "path": str(clip),
+                        "sha256": digest,
+                    }
+                ]
+            }
+        },
+    )
+    atomic_json(
+        root / MATERIAL_CLOCK_RECEIPT,
+        {
+            "version": MATERIAL_CLOCK_VERSION,
+            "materials": {
+                clip.stem: {"source_sha256": digest, "plate_sha256": sha256(plate)}
+            },
+        },
+    )
+    install_native_frame_clocks(package, root)
+    raw = {
+        "path": str(clip),
+        "offset_seconds": 0.4,
+        "duration_seconds": 2.0,
+        "end_policy": "error",
+    }
+    assert original_sampler.inspect_asset(raw) == {**raw, "path": str(plate)}
+    assert raw["path"] == str(clip)
+    other = {**raw, "path": str(root / "input/source.mp4")}
+    assert original_sampler.inspect_asset(other) == other
+    plate.write_bytes(b"changed")
+    with pytest.raises(ValueError, match="differs from its sealed input"):
+        install_native_frame_clocks(package, root)
 
 
 def test_generation_snapshot_must_match_the_original_project_confirmation(tmp_path):

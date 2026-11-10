@@ -42,6 +42,10 @@ from .video_editing_native_frame_clock import (
     FRAME_CLOCK_PLATE,
     FRAME_CLOCK_RECEIPT,
     FRAME_CLOCK_VERSION,
+    MATERIAL_CLOCK_RECEIPT,
+    MATERIAL_CLOCK_VERSION,
+    material_clock_plate,
+    project_video_inputs,
     variable_frame_clock,
 )
 from .video_editing_native_layout import verify_inset_layout
@@ -376,10 +380,91 @@ def prepare(
 def prepare_presenter_frame_clock(
     root: Path, prepared: dict, settings: Settings, guard: Callable[[], None]
 ) -> None:
-    source = root / "input/source.mp4"
     video = next(
         row for row in prepared["probe"]["streams"] if row["codec_type"] == "video"
     )
+    receipt = _prepare_frame_clock_plate(
+        root / "input/source.mp4",
+        video,
+        root / FRAME_CLOCK_PLATE,
+        root,
+        settings,
+        guard,
+        minimum_ms=prepared["duration_ms"],
+    )
+    if receipt is not None:
+        atomic_json(
+            root / FRAME_CLOCK_RECEIPT,
+            {
+                "version": FRAME_CLOCK_VERSION,
+                "source_sha256": prepared["source_sha256"],
+                **receipt,
+                "sampler": "original_unified_media",
+                "source_audio_used_for_mix": True,
+            },
+        )
+
+
+def prepare_material_frame_clocks(
+    root: Path, settings: Settings, guard: Callable[[], None]
+) -> None:
+    try:
+        inputs = project_video_inputs(root, read_json(root / "episode.json"))
+        measured: dict[str, dict | None] = {}
+        receipts = {}
+        for aid, (source, digest) in inputs.items():
+            guard()
+            if sha256(source) != digest:
+                raise EditingFailure("EDITING_MATERIAL_CHANGED")
+            if digest not in measured:
+                (video,) = (
+                    row
+                    for row in probe(source, settings)["streams"]
+                    if row["codec_type"] == "video"
+                    and not row.get("disposition", {}).get("attached_pic")
+                )
+                measured[digest] = _prepare_frame_clock_plate(
+                    source,
+                    video,
+                    material_clock_plate(root, digest),
+                    root,
+                    settings,
+                    guard,
+                    error_code="EDITING_MATERIAL_FRAME_CLOCK_INVALID",
+                )
+            receipt = measured[digest]
+            if receipt is not None:
+                receipts[aid] = {"source_sha256": digest, **receipt}
+        if receipts:
+            atomic_json(
+                root / MATERIAL_CLOCK_RECEIPT,
+                {
+                    "version": MATERIAL_CLOCK_VERSION,
+                    "sampler": "original_unified_media",
+                    "materials": receipts,
+                },
+            )
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        subprocess.SubprocessError,
+    ) as error:
+        raise EditingFailure("EDITING_MATERIAL_FRAME_CLOCK_INVALID") from error
+
+
+def _prepare_frame_clock_plate(
+    source: Path,
+    video: dict,
+    plate: Path,
+    root: Path,
+    settings: Settings,
+    guard: Callable[[], None],
+    *,
+    minimum_ms: int = 0,
+    error_code: str = "EDITING_VIDEO_FRAME_CLOCK_INVALID",
+) -> dict | None:
     arguments = [
         "-v",
         "error",
@@ -393,10 +478,10 @@ def prepare_presenter_frame_clock(
             settings.video_editing_ffprobe,
             *arguments,
             "-select_streams",
-            "v:0",
+            "V:0",
             "-show_frames",
             "-show_entries",
-            "frame=best_effort_timestamp",
+            "frame=best_effort_timestamp,duration,pkt_duration",
             "-of",
             "json",
             str(source),
@@ -407,15 +492,16 @@ def prepare_presenter_frame_clock(
         "measure_video_frame_clock",
     )
     try:
+        timestamps = read_json(measured)["frames"]
         decoded_frames, variable = variable_frame_clock(
-            read_json(measured)["frames"], video["time_base"], video["avg_frame_rate"]
+            timestamps, video["time_base"], video["avg_frame_rate"]
         )
     except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError) as error:
-        raise EditingFailure("EDITING_VIDEO_FRAME_CLOCK_INVALID") from error
+        raise EditingFailure(error_code) from error
     if not variable:
-        return
-    plate = root / FRAME_CLOCK_PLATE
-    pending = plate.with_name("presenter-cfr.pending.mp4")
+        return None
+    plate.parent.mkdir(parents=True, exist_ok=True)
+    pending = plate.with_suffix(".pending.mp4")
     width, height = video["width"], video["height"]
     try:
         run(
@@ -427,7 +513,7 @@ def prepare_presenter_frame_clock(
                 "-i",
                 str(source),
                 "-map",
-                "0:v:0",
+                "0:V:0",
                 "-an",
                 "-sn",
                 "-dn",
@@ -456,7 +542,16 @@ def prepare_presenter_frame_clock(
         (stream,) = probe(pending, settings)["streams"]
         frames = int(stream["nb_frames"])
         span = frames / FRAME_CLOCK_FPS
-        source_span = float(video.get("duration", prepared["duration_ms"] / 1000))
+        source_duration = video.get("duration")
+        if source_duration and source_duration != "N/A":
+            source_span = float(source_duration)
+        else:
+            last = timestamps[-1]
+            tail = int(last.get("duration") or last.get("pkt_duration") or 0)
+            ticks = int(last["best_effort_timestamp"]) - int(
+                timestamps[0]["best_effort_timestamp"]
+            )
+            source_span = float((ticks + tail) * Fraction(video["time_base"]))
         if (
             stream["codec_type"] != "video"
             or (stream["width"], stream["height"]) != (width, height)
@@ -465,32 +560,26 @@ def prepare_presenter_frame_clock(
             or float(stream["start_time"]) != 0
             or frames <= 0
             or abs(source_span - span) > 1 / FRAME_CLOCK_FPS + 0.002
-            or span + 1 / FRAME_CLOCK_FPS + 0.002 < prepared["duration_ms"] / 1000
+            or span + 1 / FRAME_CLOCK_FPS + 0.002 < minimum_ms / 1000
         ):
-            raise ValueError("CFR plate differs from the measured presenter window")
+            raise ValueError("CFR plate differs from the measured video window")
         digest = sha256(pending)
         pending.replace(plate)
-        atomic_json(
-            root / FRAME_CLOCK_RECEIPT,
-            {
-                "version": FRAME_CLOCK_VERSION,
-                "source_sha256": prepared["source_sha256"],
-                "plate_sha256": digest,
-                "source_frames": decoded_frames,
-                "plate_frames": frames,
-                "plate_fps": FRAME_CLOCK_FPS,
-                "sampler": "original_unified_media",
-                "source_audio_used_for_mix": True,
-            },
-        )
+        return {
+            "plate_sha256": digest,
+            "source_frames": decoded_frames,
+            "plate_frames": frames,
+            "plate_fps": FRAME_CLOCK_FPS,
+        }
     except (
         OSError,
         ValueError,
         KeyError,
         TypeError,
+        ZeroDivisionError,
         subprocess.SubprocessError,
     ) as error:
-        raise EditingFailure("EDITING_VIDEO_FRAME_CLOCK_INVALID") from error
+        raise EditingFailure(error_code) from error
     finally:
         pending.unlink(missing_ok=True)
 
@@ -997,6 +1086,8 @@ def validate_result(
         validation["source_silent_tail"] = silent_tail
     if (root / FRAME_CLOCK_RECEIPT).is_file():
         validation["presenter_frame_clock"] = read_json(root / FRAME_CLOCK_RECEIPT)
+    if (root / MATERIAL_CLOCK_RECEIPT).is_file():
+        validation["material_frame_clocks"] = read_json(root / MATERIAL_CLOCK_RECEIPT)
     if validation["native_source_sha256"] != prepared["source_sha256"]:
         raise EditingFailure("EDITING_OUTPUT_SOURCE_MISMATCH")
     if (root / "audio-plan.json").is_file():

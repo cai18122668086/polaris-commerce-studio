@@ -17,6 +17,7 @@ from typing import Any
 
 from .motion_library import atomic_json, read_json, sha256
 from .video_editing_delivery_checkpoint import normalize_attempt_paths
+from .video_editing_native_frame_clock import CLOCK_RECEIPTS
 
 _PINNED = {
     "adapter.py": "2e21e9639c9398164ba05f2e63444d510378621445fdf57be1f66380ee44212e",
@@ -259,6 +260,11 @@ def _preview_reuse_identity(root: Path) -> str | None:
                 "platform": sys.platform,
                 "pillow": version("Pillow"),
                 "numpy": version("numpy"),
+                **{
+                    name: sha256(root / name)
+                    for name in CLOCK_RECEIPTS
+                    if (root / name).is_file()
+                },
             }
         )
     except (*_REJECTED, PackageNotFoundError):

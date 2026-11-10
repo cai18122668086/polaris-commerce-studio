@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .motion_library import read_json, sha256
-from .video_editing_native_frame_clock import FRAME_CLOCK_RECEIPT
+from .video_editing_native_frame_clock import CLOCK_RECEIPTS
 
 _VERSION = "tengli.editing-delivery/1"
 _PATHS = {
@@ -73,7 +73,7 @@ def compiled_digest(root: Path, request_hash: str) -> str:
         "audio-plan.json",
         "layout-intent.json",
         "inset-layout-intent.json",
-        FRAME_CLOCK_RECEIPT,
+        *CLOCK_RECEIPTS,
     ):
         if (root / name).is_file():
             inputs[name] = normalize_attempt_paths(read_json(root / name), root)

@@ -1,7 +1,8 @@
-"""Give the original frame-index sampler a PTS-aligned presenter plate."""
+"""Give the original frame-index sampler PTS-aligned video plates."""
 
 import importlib
 import math
+import re
 import sys
 from fractions import Fraction
 from functools import cache
@@ -15,6 +16,9 @@ FRAME_CLOCK_RECEIPT = "presenter-frame-clock.json"
 FRAME_CLOCK_PLATE = "input/presenter-cfr.mp4"
 FRAME_CLOCK_VERSION = "presenter-frame-clock/1"
 FRAME_CLOCK_FPS = 30
+MATERIAL_CLOCK_RECEIPT = "material-frame-clocks.json"
+MATERIAL_CLOCK_VERSION = "material-frame-clocks/1"
+CLOCK_RECEIPTS = (FRAME_CLOCK_RECEIPT, MATERIAL_CLOCK_RECEIPT)
 _OWNER = Path("src/engines/workspace/商业口播_可编辑改造_20261104")
 _NATIVE_MEDIA = _OWNER / "unified/core/media.py"
 _NATIVE_MEDIA_SHA256 = (
@@ -47,46 +51,86 @@ def variable_frame_clock(
     return len(timestamps), variable
 
 
-def install_presenter_frame_clock(package: Path, root: Path) -> None:
-    receipt_path = root / FRAME_CLOCK_RECEIPT
-    if not receipt_path.is_file():
+def project_video_inputs(root: Path, episode: dict) -> dict[str, tuple[Path, str]]:
+    inputs = {}
+    directory = root / "input/materials"
+    for row in episode["production"]["materials"]:
+        if row["kind"] != "video" or row.get("source") != "project_upload":
+            continue
+        path, aid, digest = Path(row["path"]).resolve(), row["id"], row["sha256"]
+        if (
+            path.parent != directory
+            or path.stem != aid
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        ):
+            raise ValueError("Project video must be staged inside its editing attempt")
+        inputs[aid] = (path, digest)
+    return inputs
+
+
+def material_clock_plate(root: Path, digest: str) -> Path:
+    return root / "input/material-cfr" / f"{digest}.mp4"
+
+
+def install_native_frame_clocks(package: Path, root: Path) -> None:
+    presenter_path, material_path = (root / name for name in CLOCK_RECEIPTS)
+    if not presenter_path.is_file() and not material_path.is_file():
         return
-    receipt = read_json(receipt_path)
-    plate = (root / FRAME_CLOCK_PLATE).resolve()
-    source = root / "input/source.mp4"
-    if (
-        receipt["version"] != FRAME_CLOCK_VERSION
-        or not plate.is_relative_to(root)
-        or sha256(plate) != receipt["plate_sha256"]
-        or sha256(source) != receipt["source_sha256"]
-        or sha256(package / _NATIVE_MEDIA) != _NATIVE_MEDIA_SHA256
-    ):
-        raise ValueError("Presenter clock or original sampler identity changed")
     episode = read_json(root / "episode.json")
-    paths = {source.resolve()}
-    paths.update(
-        Path(row["path"]).resolve()
-        for row in episode["production"]["materials"]
-        if row["kind"] == "original_video" and row["sha256"] == receipt["source_sha256"]
-    )
+    replacements: dict[Path, tuple[str, Path]] = {}
+
+    @cache
+    def verify_input(path: Path, digest: str) -> None:
+        if sha256(path) != digest:
+            raise ValueError("Video asset differs from its measured frame clock")
+
+    def bind(source: Path, digest: str, plate: Path, receipt: dict) -> None:
+        if (
+            digest != receipt["source_sha256"]
+            or not plate.resolve().is_relative_to(root)
+            or sha256(plate) != receipt["plate_sha256"]
+        ):
+            raise ValueError("Video frame clock plate differs from its sealed input")
+        verify_input(source, digest)
+        replacements[source] = (digest, plate)
+
+    if presenter_path.is_file():
+        receipt = read_json(presenter_path)
+        if receipt["version"] != FRAME_CLOCK_VERSION:
+            raise ValueError("Unknown presenter frame clock version")
+        digest = receipt["source_sha256"]
+        plate = root / FRAME_CLOCK_PLATE
+        source = (root / "input/source.mp4").resolve()
+        bind(source, digest, plate, receipt)
+        for row in episode["production"]["materials"]:
+            if row["kind"] == "original_video" and row["sha256"] == digest:
+                replacements[Path(row["path"]).resolve()] = (digest, plate)
+
+    if material_path.is_file():
+        receipt = read_json(material_path)
+        if receipt["version"] != MATERIAL_CLOCK_VERSION:
+            raise ValueError("Unknown project video frame clock version")
+        inputs = project_video_inputs(root, episode)
+        for aid, row in receipt["materials"].items():
+            source, digest = inputs[aid]
+            bind(source, digest, material_clock_plate(root, digest), row)
+
+    if sha256(package / _NATIVE_MEDIA) != _NATIVE_MEDIA_SHA256:
+        raise ValueError("Original video sampler identity changed")
     sys.path[:0] = [str(package), str(package / _OWNER)]
     try:
         media: Any = importlib.import_module("unified.core.media")
     finally:
         del sys.path[:2]
     if Path(media.__file__).resolve() != package / _NATIVE_MEDIA:
-        raise ValueError("Presenter clock requires its pinned original sampler")
+        raise ValueError("Video frame clocks require the pinned original sampler")
     inspect_asset = media.inspect_asset
-
-    @cache
-    def verify_input(path: Path) -> None:
-        if path != source and sha256(path) != receipt["source_sha256"]:
-            raise ValueError("Presenter asset differs from the measured clock")
 
     def inspect_with_frame_clock(raw: dict, alpha_required: bool = False) -> Any:
         path = Path(raw["path"]).resolve()
-        if path in paths and raw.get("kind", "auto") in {"video", "auto"}:
-            verify_input(path)
+        if path in replacements and raw.get("kind", "auto") in {"video", "auto"}:
+            digest, plate = replacements[path]
+            verify_input(path, digest)
             raw = {**raw, "path": str(plate)}
         return inspect_asset(raw, alpha_required)
 

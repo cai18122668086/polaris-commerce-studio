@@ -53,7 +53,12 @@ from .video_editing_native_content import (
     WHY_GROUP,
 )
 from .video_editing_native_plans import content_digest
-from .video_editing_planning_store import FILES, execution_available, planning_root
+from .video_editing_planning_store import (
+    FILES,
+    execution_available,
+    planning_root,
+    require_template_group_capacity,
+)
 from .video_editing_presenter_motion import motion_blockers, motion_word_windows
 from .video_editing_story_panels import panel_blockers
 from .video_editing_task_models import (
@@ -564,6 +569,7 @@ def process(
                 and template
                 and not (root / "provider/semantic-submit-intent.json").exists()
             ):
+                require_template_group_capacity(snapshot)
                 external = external_dependencies(settings.video_editing_library_dir)
                 bindings = local_dependencies(
                     settings.video_editing_native_bindings_file

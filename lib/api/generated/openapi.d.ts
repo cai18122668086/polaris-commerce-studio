@@ -6139,6 +6139,8 @@ export interface components {
             artifacts: components["schemas"]["EditingArtifactResponse"][];
             /** Attempts */
             attempts: number;
+            /** Available Template Group Count */
+            available_template_group_count?: number | null;
             /** Base Task Id */
             base_task_id: string;
             /** Base Transcript Artifact Id */
@@ -6163,6 +6165,8 @@ export interface components {
             created_at: string;
             /** Error Code */
             error_code: string | null;
+            /** Excluded Template Group Ids */
+            excluded_template_group_ids?: string[] | null;
             /** Execution Available */
             execution_available: boolean;
             /** Gateway Host */

@@ -901,6 +901,97 @@ def test_changed_project_choice_requires_a_new_preparation_before_spending(
     assert result.json()["error"]["code"] == "EDITING_CHOICES_CHANGED_REPLAN_REQUIRED"
 
 
+@pytest.mark.parametrize(
+    ("avoid_count", "expected", "can_generate"),
+    [
+        (1, 8, True),
+        (5, 4, False),
+    ],
+)
+def test_template_preparation_keeps_other_groups_and_gates_paid_submission(
+    video, tmp_path, monkeypatch, avoid_count, expected, can_generate
+):
+    from app.motion_library import MOTION_SHA256
+    from app.video_editing_task_models import EditingLibraryNoteRecord
+
+    client, _, ws, settings, _, task, semantic = setup(video, tmp_path, monkeypatch)
+    template_id = "roll-compare-v2"
+    slots = [slot["group_id"] for slot in overlay_template(template_id)["slots"]]
+    excluded = slots[:avoid_count]
+    blocked = [slots[0], slots[-1]]
+    monkeypatch.setattr(
+        worker,
+        "planning_runtime_snapshot",
+        lambda *args: {
+            "unavailable_template_groups": {k: ["fixture"] for k in blocked}
+        },
+    )
+    with client.app.state.session_factory() as session:
+        source_task = session.get(EditingTaskRecord, task["id"])
+        for gid in excluded:
+            session.add(
+                EditingLibraryNoteRecord(
+                    id=str(uuid4()),
+                    workspace_id=source_task.workspace_id,
+                    owner_user_id=source_task.owner_user_id,
+                    project_id=source_task.project_id,
+                    library_release=MOTION_SHA256,
+                    request_id=str(uuid4()),
+                    request_hash="a" * 64,
+                    target_kind="group",
+                    target_id=gid,
+                    sequence=1,
+                    choice="avoid",
+                    reason="fixture excludes individual groups",
+                    details={"target_name": gid},
+                )
+            )
+        session.commit()
+    enable_fixture(settings)
+    submitted = (
+        client.post(
+            base(ws) + f"/editing-tasks/{task['id']}/planning-tasks",
+            json={"request_id": str(uuid4()), "template_id": template_id},
+        )
+        .raise_for_status()
+        .json()
+    )
+    worker.process(submitted["id"], settings, client.app.state.session_factory)
+    ready = (
+        client.get(base(ws) + "/editing-planning-tasks/" + submitted["id"])
+        .raise_for_status()
+        .json()
+    )
+    assert ready["status"] == "prepared"
+    assert ready["available_template_group_count"] == expected
+    assert ready["excluded_template_group_ids"] == sorted(excluded)
+    assert ready["unavailable_template_group_ids"] == sorted(blocked)
+    assert len(ready["overlay_template"]["slots"]) == 10
+    result = create(client, ws, task["id"], "generate", submitted["id"])
+    if can_generate:
+        assert result.status_code == 200
+        assert result.json()["call_state"] == "not_submitted"
+    else:
+        assert result.status_code == 409
+        assert result.json()["error"]["code"] == "EDITING_TEMPLATE_GROUPS_INSUFFICIENT"
+        with monkeypatch.context() as legacy:
+            legacy.setattr(
+                "app.video_editing_planning_store.require_template_group_capacity",
+                lambda _: None,
+            )
+            queued = create(client, ws, task["id"], "generate", submitted["id"])
+        job = queued.raise_for_status().json()
+        provider = Provider(semantic)
+        worker.process(job["id"], settings, client.app.state.session_factory, provider)
+        failed = (
+            client.get(base(ws) + "/editing-planning-tasks/" + job["id"])
+            .raise_for_status()
+            .json()
+        )
+        assert failed["error_code"] == "EDITING_TEMPLATE_GROUPS_INSUFFICIENT"
+        assert failed["call_state"] == "not_submitted" and provider.calls == 0
+
+
 def test_broker_loss_keeps_planning_job_durable_and_reserves_redelivery(
     video, tmp_path, monkeypatch
 ):

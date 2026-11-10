@@ -22,9 +22,12 @@ from .video_editing_pipeline import (
     word_timestamp_end_limit,
 )
 
-PROCESSING_VERSION = "funasr-word-clock/2"
-# The pinned Paraformer stacks six 10 ms steps and can pad the final frame.
-_PARAFORMER_FINAL_FRAME_MS = 60
+PROCESSING_VERSION = "funasr-word-clock/3"
+# The pinned timestamp model shifts CIF peaks by -1.5 steps of 60 ms.
+_PARAFORMER_INITIAL_SHIFT_MS = 90
+# A 25 ms fbank window at 10 ms stride can round up to the 60 ms LFR
+# grid by 35 ms. The CIF tail adds one 60 ms step and clocks round to ms.
+_PARAFORMER_FINAL_PADDING_MS = 96
 MANIFEST = Path(__file__).parent / "data/editing_funasr_models.json"
 UNIT = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]|[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*")
 
@@ -75,6 +78,7 @@ def normalize_result(
     duration = prepared["duration_ms"]
     end_limit = word_timestamp_end_limit(prepared)
     sample_end = prepared["clock"].get("analysis_audio_end_ms") if paraformer else None
+    anchor_start = max(0, offset) if sample_end is not None else 0
     anchor_end = duration
     if sample_end is not None:
         anchor_end = min(duration, sample_end)
@@ -85,12 +89,27 @@ def normalize_result(
         if len(stamp) != 2 or any(type(v) is not int for v in stamp):
             raise EditingFailure("EDITING_ASR_TIMING_INVALID")
         start, end = stamp[0] + offset, stamp[1] + offset
+        if (
+            sample_end is not None
+            and i == 0
+            and stamp[0] >= -_PARAFORMER_INITIAL_SHIFT_MS
+            and start < anchor_start < end
+        ):
+            adjustments.append(
+                {
+                    "token_id": f"t{i:06}",
+                    "native_start_ms": start,
+                    "start_ms": anchor_start,
+                    "reason": "clip_paraformer_initial_shift_to_media_start",
+                }
+            )
+            start = anchor_start
         padded_end = (
             sample_end is not None
             and i == len(stamps) - 1
-            and end_limit < end <= sample_end + _PARAFORMER_FINAL_FRAME_MS
+            and end_limit < end <= sample_end + _PARAFORMER_FINAL_PADDING_MS
         )
-        if not (0 <= start < anchor_end and start < end) or (
+        if not (anchor_start <= start < anchor_end and start < end) or (
             end > end_limit and not padded_end
         ):
             raise EditingFailure("EDITING_ASR_TIMING_INVALID")

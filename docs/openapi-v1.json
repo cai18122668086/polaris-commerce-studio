@@ -6078,6 +6078,18 @@
             "title": "Attempts",
             "type": "integer"
           },
+          "available_template_group_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Template Group Count"
+          },
           "base_task_id": {
             "title": "Base Task Id",
             "type": "string"
@@ -6133,6 +6145,20 @@
               }
             ],
             "title": "Error Code"
+          },
+          "excluded_template_group_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Template Group Ids"
           },
           "execution_available": {
             "title": "Execution Available",

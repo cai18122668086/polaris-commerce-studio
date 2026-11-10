@@ -22,6 +22,7 @@ from .video_editing_native_plans import content_digest, source_assets
 from .video_editing_overlay_templates import (
     AZL_TEMPLATE_ID,
     CXBR_TEMPLATE_ID,
+    MIN_OVERLAY_TYPES,
     PRESENTER_MOTION_TEMPLATE_ID,
     overlay_template,
 )
@@ -78,6 +79,37 @@ def own_planning_task(
     return row
 
 
+def _template_availability(snapshot: dict) -> tuple[int | None, list[str]]:
+    template = snapshot.get("overlay_template")
+    if not template:
+        return None, []
+    slots = {slot["group_id"] for slot in template["slots"]} - {"Z-M00"}
+    excluded = {
+        note["target_id"]
+        for note in snapshot["choice_snapshot"]["notes"]
+        if note["target_kind"] == "group" and note["choice"] == "avoid"
+    } & slots
+    runtime = snapshot.get("planning_runtime")
+    available = (
+        len(slots - excluded - runtime["unavailable_template_groups"].keys())
+        if runtime is not None
+        else None
+    )
+    return available, sorted(excluded)
+
+
+def require_template_group_capacity(snapshot: dict) -> None:
+    available, _ = _template_availability(snapshot)
+    if available is not None and available < MIN_OVERLAY_TYPES:
+        raise ApiError(
+            409,
+            "EDITING_TEMPLATE_GROUPS_INSUFFICIENT",
+            f"本次仅有 {available} 种可选动效，"
+            f"成片至少需要 {MIN_OVERLAY_TYPES} 种。"
+            "请核对避用备忘、素材或模板后重新准备。",
+        )
+
+
 def planning_response(
     row: EditingPlanningTaskRecord, settings: Settings
 ) -> dict[str, Any]:
@@ -89,6 +121,7 @@ def planning_response(
         if (provider / "semantic-submit-intent.json").is_file()
         else "not_submitted"
     )
+    available, excluded = _template_availability(row.snapshot)
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -127,6 +160,8 @@ def planning_response(
         else "not_compiled",
         "preview_task_id": row.result.get("preview_task_id"),
         "overlay_template": row.snapshot.get("overlay_template"),
+        "available_template_group_count": available,
+        "excluded_template_group_ids": excluded or None,
         "unavailable_template_group_ids": sorted(
             row.snapshot["planning_runtime"]["unavailable_template_groups"]
         )
@@ -240,18 +275,6 @@ def create_planning_task(
             raise ApiError(
                 422, "EDITING_TEMPLATE_INVALID", "未找到该组合模板版本。"
             ) from error
-        slots = {slot["group_id"] for slot in template["slots"]}
-        if any(
-            note["target_kind"] == "group"
-            and note["target_id"] in slots
-            and note["choice"] == "avoid"
-            for note in choices["notes"]
-        ):
-            raise ApiError(
-                409,
-                "EDITING_TEMPLATE_EXCLUDED",
-                "项目备忘排除了该模板中的动效，请选择其他模板。",
-            )
         snapshot["overlay_template"] = template
     model = settings.video_editing_plan_model
     if body.mode == "generate":
@@ -301,6 +324,7 @@ def create_planning_task(
                 "EDITING_CHOICES_CHANGED_REPLAN_REQUIRED",
                 "选组或模型已变化，请重新准备请求后核对。",
             )
+        require_template_group_capacity(prepared.snapshot)
         snapshot = {
             **prepared.snapshot,
             "expected_request_sha256": prepared.result["request_sha256"],

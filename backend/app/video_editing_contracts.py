@@ -597,6 +597,12 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     unavailable_template_group_ids: list[str] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    excluded_template_group_ids: list[str] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    available_template_group_count: int | None = Field(
+        default=None, exclude_if=lambda value: value is None, ge=0
+    )
     project_image_requirements: list[EditingTemplateImageRequirement] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )

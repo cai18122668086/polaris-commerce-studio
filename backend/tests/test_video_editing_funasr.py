@@ -81,7 +81,10 @@ def test_verified_silent_tail_keeps_analysis_clock_and_clamps_a_measured_end():
 
 
 @pytest.mark.parametrize("picture_end", [2930, 3500])
-def test_only_final_paraformer_padding_can_cross_the_decoded_audio_end(picture_end):
+@pytest.mark.parametrize("native_end", [3039, 3069, 3096])
+def test_only_final_paraformer_padding_can_cross_the_decoded_audio_end(
+    picture_end, native_end
+):
     sample_end = 3000
     media_end = min(picture_end, sample_end)
     prepared = {
@@ -99,7 +102,7 @@ def test_only_final_paraformer_padding_can_cross_the_decoded_audio_end(picture_e
     }
     raw = fixture()
     stamps = raw[0]["timestamp"]
-    stamps[-1] = [2850, 3039]
+    stamps[-1] = [2850, native_end]
     raw[0]["sentence_info"][-1]["timestamp"][-1] = stamps[-1]
     result = normalize_result(raw, prepared, "local-model", "c" * 64, "1.4.24")
     assert result.duration_ms == picture_end
@@ -108,20 +111,20 @@ def test_only_final_paraformer_padding_can_cross_the_decoded_audio_end(picture_e
     assert result.timing_adjustments == [
         {
             "token_id": "t000008",
-            "native_end_ms": 3039,
+            "native_end_ms": native_end,
             "end_ms": media_end,
             "reason": "clip_paraformer_final_padding_to_media_end",
             "analysis_audio_end_ms": sample_end,
         }
     ]
-    assert stamps[-1] == [2850, 3039]
+    assert stamps[-1] == [2850, native_end]
 
 
 @pytest.mark.parametrize(
     ("position", "stamp", "measured_clock", "paraformer"),
     [
         (-2, [2700, 3039], True, True),
-        (-1, [2850, 3061], True, True),
+        (-1, [2850, 3097], True, True),
         (-1, [3000, 3039], True, True),
         (-1, [2850, 3039], False, True),
         (-1, [2850, 3039], True, False),
@@ -136,6 +139,51 @@ def test_unsupported_overshoot_keeps_fail_closed_timing(
     raw = fixture()
     raw[0]["timestamp"][position] = stamp
     raw[0]["sentence_info"][-1]["timestamp"][position] = stamp
+    with pytest.raises(EditingFailure, match="EDITING_ASR_TIMING_INVALID"):
+        normalize_result(
+            raw, prepared, "local-model", "c" * 64, "1.4.24", paraformer=paraformer
+        )
+
+
+@pytest.mark.parametrize("offset", [-20, 0, 15])
+def test_paraformer_initial_shift_clips_only_the_first_overlapping_word(offset):
+    raw = fixture()
+    raw[0]["timestamp"][0] = [-90, 150]
+    raw[0]["sentence_info"][0]["timestamp"][0] = raw[0]["timestamp"][0]
+    prepared = copy.deepcopy(PREPARED)
+    prepared["clock"].update(audio_offset_ms=offset, analysis_audio_end_ms=3000)
+    result = normalize_result(raw, prepared, "local-model", "c" * 64, "1.4.24")
+    assert result.tokens[0].start_ms == max(0, offset)
+    assert result.tokens[0].end_ms == 150 + offset
+    assert result.tokens[1].start_ms == raw[0]["timestamp"][1][0] + offset
+    assert result.timing_adjustments == [
+        {
+            "token_id": "t000000",
+            "native_start_ms": -90 + offset,
+            "start_ms": max(0, offset),
+            "reason": "clip_paraformer_initial_shift_to_media_start",
+        }
+    ]
+    assert raw[0]["timestamp"][0] == [-90, 150]
+
+
+@pytest.mark.parametrize(
+    ("position", "stamp", "measured_clock", "paraformer"),
+    [
+        (0, [-91, 150], True, True),
+        (0, [-90, 0], True, True),
+        (1, [-90, 300], True, True),
+        (0, [-90, 150], False, True),
+        (0, [-90, 150], True, False),
+    ],
+)
+def test_invalid_initial_clock_is_rejected(position, stamp, measured_clock, paraformer):
+    raw = fixture()
+    raw[0]["timestamp"][position] = stamp
+    raw[0]["sentence_info"][0]["timestamp"][position] = stamp
+    prepared = copy.deepcopy(PREPARED)
+    if measured_clock:
+        prepared["clock"]["analysis_audio_end_ms"] = 3000
     with pytest.raises(EditingFailure, match="EDITING_ASR_TIMING_INVALID"):
         normalize_result(
             raw, prepared, "local-model", "c" * 64, "1.4.24", paraformer=paraformer

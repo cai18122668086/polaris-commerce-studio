@@ -42,7 +42,10 @@ from .video_editing_task_models import (
 )
 from .video_editing_template_materials import template_image_requirements
 from .video_editing_transcript_store import read_transcript_artifact
-from .video_editing_unified_scenes import require_clean_unified_source
+from .video_editing_unified_scenes import (
+    require_clean_unified_source,
+    require_spoken_year,
+)
 from .video_editing_yy6_scenes import yy6_scene_inputs
 from .video_editing_yy_openings import require_clean_yy_source
 
@@ -330,6 +333,9 @@ def process(
                 snapshot["source_subtitles"],
                 runtime["unavailable_template_groups"],
             )
+            require_spoken_year(
+                template, transcript, runtime["unavailable_template_groups"]
+            )
             opening_inputs = yy6_scene_inputs(
                 template,
                 transcript,
@@ -453,6 +459,7 @@ def process(
                 require_clean_unified_source(
                     template, snapshot["source_subtitles"], current
                 )
+                require_spoken_year(template, transcript, current)
                 yy6_scene_inputs(template, transcript, snapshot["asset_cards"], current)
                 motion_blockers(
                     template,

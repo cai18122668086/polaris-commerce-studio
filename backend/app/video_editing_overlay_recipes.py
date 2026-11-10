@@ -89,7 +89,11 @@ from .video_editing_line_branch import (
 )
 from .video_editing_materials import project_image_digests
 from .video_editing_native_compiler import set_native_field
-from .video_editing_native_content import PACKAGE_GROUP, live_package_template
+from .video_editing_native_content import (
+    PACKAGE_GROUP,
+    YEAR_GROUP,
+    live_package_template,
+)
 from .video_editing_native_layout import (
     BACKDROP_GROUP,
     TEXT_HANDOFF_GROUP,
@@ -134,13 +138,13 @@ from .video_editing_question_card import (
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_unified_scenes import (
     UNIFIED_DESIGN_ID,
-    UNIFIED_GROUPS,
-    UNIFIED_LIVE_GROUPS,
-    UNIFIED_PRESENTER,
+    UNIFIED_MEDIA_PATHS,
+    UNIFIED_SCENE_GROUPS,
     UNIFIED_VIDEO_VARIANTS,
     unified_presenter_template,
     unified_sound_paths,
     validate_unified_anchors,
+    validate_year_anchors,
 )
 from .video_editing_word_bindings import word_bindings
 from .video_editing_yy6_scenes import (
@@ -173,6 +177,7 @@ _ENTRY_SOUNDS = {
     "AH-S04": ("/events/body_frame", _TYPING),
     "AH-S05": ("/events/type_frame", _TYPING),
     "AH-S06": ("/events/center_frame", _SLIDE),
+    YEAR_GROUP: ("/events/body_frame", _SLIDE),
     "AH-S08": ("/events/title_frame", _SLIDE),
     "AH-S09": ("/events/title_frame", _CLICK),
     "AHG-S01": ("/events/body/0", _SLIDE),
@@ -402,7 +407,11 @@ def _entry(
         )
     contract = input_contract(package, group)
     config = read_json(inside(package, group["input_template"]))
-    dependency_ids = FOREGROUND_SUBTITLE_DEPENDENCIES.get(beat.group_id, ())
+    dependency_ids = (
+        AUTOMATIC_TEMPLATE_DEPENDENCIES[YEAR_GROUP]
+        if beat.group_id == YEAR_GROUP
+        else FOREGROUND_SUBTITLE_DEPENDENCIES.get(beat.group_id, ())
+    )
     dependency_fields = {
         field["path"]
         for field in contract["fields"]
@@ -437,6 +446,15 @@ def _entry(
             "EDITING_TEMPLATE_ANCHORS_REQUIRED",
             f"{beat.group_id} 缺少原生文字或动作的词点。",
         )
+    if beat.group_id == YEAR_GROUP:
+        try:
+            validate_year_anchors(anchors, transcript)
+        except ValueError as error:
+            raise ApiError(
+                422,
+                "EDITING_TEMPLATE_SPOKEN_YEAR_REQUIRED",
+                "年份和前后短语须来自连续实录，原生红字与背衬须留足进场时间。",
+            ) from error
     if beat.group_id in FOREGROUND_SUBTITLE_DEPENDENCIES or beat.group_id in {
         "BG-S09",
         "SG-S08",
@@ -896,7 +914,7 @@ def _entry_sound(
             if beat.group_id in PRESENTER_MOTION_GROUPS
             or beat.group_id in AZL_GROUPS
             or beat.group_id in CXBR_PURPOSES
-            or beat.group_id in UNIFIED_GROUPS
+            or beat.group_id in UNIFIED_SCENE_GROUPS
             else "原生文字动效入场时给一次短提示，口播继续。",
         ),
         source_start_seconds=source_start,
@@ -1760,7 +1778,7 @@ def _unified_entry(
     config = read_json(inside(package, group["input_template"]))
     if group_id in UNIFIED_VIDEO_VARIANTS:
         config = unified_presenter_template(config)
-    live = group_id in UNIFIED_LIVE_GROUPS
+    media_path = UNIFIED_MEDIA_PATHS.get(group_id)
     presenters = (
         {
             row["id"]
@@ -1768,14 +1786,14 @@ def _unified_entry(
             if row["kind"] == "original_video"
             and row["sha256"] == transcript.source_sha256
         }
-        if live
+        if media_path
         else set()
     )
     try:
         anchors = word_bindings(beat, transcript, contract, presenters)
         bound = {row["path"]: row["asset_id"] for row in anchors["media"]}
         if (
-            set(bound) != ({UNIFIED_PRESENTER} if live else set())
+            set(bound) != ({media_path} if media_path else set())
             or set(beat.asset_ids) != set(bound.values())
             or {row["path"] for row in anchors["text"]} != set(contract["text_paths"])
             or {row["path"] for row in anchors["events"]}
@@ -1806,8 +1824,8 @@ def _unified_entry(
     for path in slots:
         set_native_field(config, path, None)
     config["layout"]["overflow"] = "reject"
-    if live:
-        config["media"]["presenter"]["end_policy"] = "error"
+    if media_path:
+        config["media"][media_path.split("/")[2]]["end_policy"] = "error"
     reason = "沿用原生文字、人物窗或整帧底板，主字幕和原声使用整片时钟。"
     return NativeEpisodeEntry(
         carrier="text",
@@ -1824,9 +1842,9 @@ def _unified_entry(
             "config": config,
             "placeholders": slots,
             "media_clocks": [
-                {"media_path": UNIFIED_PRESENTER, "policy": "transcript_source_window"}
+                {"media_path": media_path, "policy": "transcript_source_window"}
             ]
-            if live
+            if media_path
             else [],
         },
     ), anchors
@@ -2087,7 +2105,7 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = tuple(CXBR_SOUNDS[beat.group_id])
-        elif beat.group_id in UNIFIED_GROUPS:
+        elif beat.group_id in UNIFIED_SCENE_GROUPS:
             entries[beat.id], anchors = _unified_entry(
                 package, group, beat, transcript, asset_cards or []
             )
@@ -2112,7 +2130,7 @@ def build_overlay_recipes(
             *PRESENTER_MOTION_GROUPS,
             *AZL_GROUPS,
             *CXBR_PURPOSES,
-            *UNIFIED_GROUPS,
+            *UNIFIED_SCENE_GROUPS,
         }
         for beat in beats
     )

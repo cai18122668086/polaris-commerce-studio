@@ -17,7 +17,7 @@ from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
 from .video_editing_hypit_strips import LIVE_STRIP_GROUP
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
-from .video_editing_native_content import PACKAGE_GROUP
+from .video_editing_native_content import PACKAGE_GROUP, YEAR_GROUP
 from .video_editing_presenter_motion import (
     MOTION_FONT,
     MOTION_MATTE,
@@ -27,7 +27,15 @@ from .video_editing_presenter_motion import (
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
-from .video_editing_unified_scenes import UNIFIED_GROUPS, unified_binding
+from .video_editing_unified_scenes import (
+    UNIFIED_EXPANDED_GROUPS,
+    UNIFIED_EXPANDED_TEMPLATE_ID,
+    UNIFIED_GROUPS,
+    UNIFIED_TEMPLATES,
+    YEAR_BINDING,
+    YEAR_FONT,
+    unified_binding,
+)
 from .video_editing_unified_scenes import UNIFIED_TEMPLATE_ID as UNIFIED_TEMPLATE_ID
 from .video_editing_yy6_scenes import YY6_GROUPS, yy6_binding
 from .video_editing_yy_openings import (
@@ -76,7 +84,7 @@ SYNC_SUBTITLE_TEMPLATES = frozenset(
         PRESENTER_MOTION_TEMPLATE_ID,
         AZL_TEMPLATE_ID,
         CXBR_TEMPLATE_ID,
-        UNIFIED_TEMPLATE_ID,
+        *UNIFIED_TEMPLATES,
         *YY_OPENING_TEMPLATES,
         *TEXT_HANDOFF_TEMPLATES,
     }
@@ -110,6 +118,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     **dict.fromkeys(AZL_GROUPS, AZL_DEPENDENCIES),
     **CXBR_DEPENDENCIES,
     **FOREGROUND_SUBTITLE_DEPENDENCIES,
+    YEAR_GROUP: (YEAR_FONT,),
     **dict.fromkeys(YY_OPENING_ALL_GROUPS, YY_OPENING_DEPENDENCIES),
     **dict.fromkeys(PRESENTER_MOTION_GROUPS, (MOTION_FONT,)),
     **dict.fromkeys(("YYP04", "YYP06"), (MOTION_FONT, MOTION_MATTE)),
@@ -525,6 +534,27 @@ _TEMPLATES[UNIFIED_TEMPLATE_ID] = {
         *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[UNIFIED_EXPANDED_TEMPLATE_ID] = {
+    "id": UNIFIED_EXPANDED_TEMPLATE_ID,
+    "name": "论点、数量与年份",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": unified_binding(group),
+            }
+            for group, (purpose, _) in UNIFIED_EXPANDED_GROUPS.items()
+        ),
+        {
+            "group_id": YEAR_GROUP,
+            "purpose": "用实录年份引出实际说出的事件，保持原生前后字和背衬。",
+            "binding": YEAR_BINDING,
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
     "id": SUBTITLE_RELAY_TEMPLATE_ID,
     "name": "双层字幕接力",
@@ -626,7 +656,7 @@ def overlay_templates() -> list[dict]:
             PRESENTER_MOTION_TEMPLATE_ID,
             AZL_TEMPLATE_ID,
             CXBR_TEMPLATE_ID,
-            UNIFIED_TEMPLATE_ID,
+            UNIFIED_EXPANDED_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,

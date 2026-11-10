@@ -174,6 +174,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
       {job.overlay_template?.id === "azl-panels-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>阿哲板式需要无内嵌字幕的原片。不同板式需要一至三份不同的本期图片或足够长的视频。</p>}
       {job.overlay_template?.id === "chenxi-broll-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>晨曦实景需要无内嵌字幕的原片和足够长的本期补充视频。部分板式还需要一张纸纹底图。</p>}
       {job.overlay_template?.id === "yy-presenter-openings-v3" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>月云川开场需要无内嵌字幕的原片。部分画面需要本期背景图及实录数量词，撕纸组需要两张不同的背景图。</p>}
+      {job.unavailable_template_group_ids?.includes("AH-S07") && <p className={styles.note}>年份动效需要实录说出四位年份，并能读取原组背衬字体。</p>}
       {job.project_image_requirements?.map(requirement => requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
         {requirement.group_id} · 本期线描素材需要不透明过渡图、透明线描图及六列四行的透明手势帧图。
         {Object.values(requirement.native_image_slot_ids).every(ids => ids.length > 0)

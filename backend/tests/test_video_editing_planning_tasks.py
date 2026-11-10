@@ -43,8 +43,12 @@ from app.video_editing_template_materials import (
     validate_template_images,
 )
 from app.video_editing_unified_scenes import (
+    UNIFIED_EXPANDED_TEMPLATE_ID,
     UNIFIED_GROUPS,
+    UNIFIED_SCENE_GROUPS,
+    UNIFIED_TEMPLATE_ID,
     require_clean_unified_source,
+    require_spoken_year,
 )
 from app.video_editing_yy6_scenes import YY6_GROUPS, yy6_scene_inputs
 from app.video_editing_yy_openings import require_clean_yy_source
@@ -127,7 +131,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "presenter-reframing-v1",
         "azl-panels-v1",
         "chenxi-broll-v1",
-        "unified-argument-v1",
+        UNIFIED_EXPANDED_TEMPLATE_ID,
         "evidence-judgment-v1",
         "explainer-steps-v1",
         "subtitle-story-v1",
@@ -136,13 +140,22 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "subtitle-foreground-v1",
     }
     assert all(len(row["slots"]) >= 10 for row in options)
-    unified = next(row for row in options if row["id"] == "unified-argument-v1")
+    unified = next(row for row in options if row["id"] == UNIFIED_EXPANDED_TEMPLATE_ID)
+    previous_unified = overlay_template(UNIFIED_TEMPLATE_ID)
+    assert unified["slots"][3:] == previous_unified["slots"]
+    assert {
+        row["group_id"]
+        for row in previous_unified["slots"]
+        if row.get("layer") == "scene"
+    } == set(UNIFIED_GROUPS)
     assert {
         row["group_id"] for row in unified["slots"] if row.get("layer") == "scene"
-    } == set(UNIFIED_GROUPS)
+    } == UNIFIED_SCENE_GROUPS
     unified_blocked = {}
     require_clean_unified_source(unified, "present", unified_blocked)
-    assert unified_blocked == dict.fromkeys(UNIFIED_GROUPS, ["clean_source_required"])
+    assert unified_blocked == dict.fromkeys(
+        UNIFIED_SCENE_GROUPS, ["clean_source_required"]
+    )
     progress = next(row for row in options if row["id"] == "subtitle-progress-v1")
     relay = next(row for row in options if row["id"] == "subtitle-relay-v1")
     assert len(progress["slots"]) == len(relay["slots"]) + 8
@@ -1112,6 +1125,35 @@ def test_chenxi_preflight_preserves_native_video_and_paper_roles():
     unavailable = {}
     cxbr_blockers(template, "none", [source, paper], "source", unavailable)
     assert unavailable == dict.fromkeys(CXBR_PURPOSES, ["independent_video_required"])
+
+
+def test_year_preparation_requires_a_continuous_measured_year():
+    template = overlay_template(UNIFIED_EXPANDED_TEMPLATE_ID)
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=2500,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        tokens=[
+            TranscriptToken(
+                id=f"t{i}", text=text, start_ms=i * 100, end_ms=i * 100 + 80
+            )
+            for i, text in enumerate(("自", "二", "零", "二", "六", "年，", "测试"))
+        ],
+        utterances=[],
+    )
+    unavailable = {}
+    require_spoken_year(template, transcript, unavailable)
+    assert unavailable == {}
+    transcript.tokens[2].text = "零，"
+    unavailable = {"AH-S07": ["missing-original"]}
+    require_spoken_year(template, transcript, unavailable)
+    assert unavailable == {"AH-S07": ["missing-original", "spoken_year_required"]}
+    unavailable = {}
+    require_spoken_year(overlay_template(UNIFIED_TEMPLATE_ID), transcript, unavailable)
+    assert unavailable == {}
 
 
 def test_yy6_preparation_requires_measured_quantity_pairs_and_distinct_stills():

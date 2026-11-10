@@ -144,9 +144,14 @@ def number_glyphs(native: dict[str, Any]) -> list[dict[str, Any]]:
     return readings
 
 
+def year_display(text: str) -> str | None:
+    return text.translate(_YEAR_DIGITS) if _YEAR.fullmatch(text) else None
+
+
 def year_glyphs(native: dict[str, Any]) -> dict[str, Any]:
     year = next((row for row in native["text"] if row["path"] == YEAR_PATH), None)
-    if not year or not _YEAR.fullmatch(year["text"]):
+    display = year_display(year["text"]) if year else None
+    if not year or display is None:
         raise ValueError("Native year needs four spoken digits followed by 年")
     entry = next(
         (row for row in native["events"] if row["path"] == "/events/year_frame"), None
@@ -157,7 +162,7 @@ def year_glyphs(native: dict[str, Any]) -> dict[str, Any]:
         or entry["edge"] != "start"
     ):
         raise ValueError("Native year reveal must use the spoken year's first digit")
-    return {**year, "display_text": year["text"].translate(_YEAR_DIGITS)}
+    return {**year, "display_text": display}
 
 
 def translation_labels(native: dict[str, Any], authored: Any) -> list[dict[str, Any]]:

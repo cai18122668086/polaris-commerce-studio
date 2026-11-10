@@ -36,7 +36,7 @@ from .video_editing_question_card import (
     automatic_question_card_gloss,
 )
 from .video_editing_template_materials import runtime_payload, validate_template_images
-from .video_editing_unified_scenes import UNIFIED_TEMPLATE_ID, UNIFIED_VIDEO_VARIANTS
+from .video_editing_unified_scenes import UNIFIED_TEMPLATES, UNIFIED_VIDEO_VARIANTS
 from .video_editing_word_bindings import word_bindings
 
 RULES_VERSION = "tengli-editorial-rules/1"
@@ -211,7 +211,7 @@ def build_request(
         question_card=question_card,
         live_package=live_package,
         line_scene=line_scene,
-        unified_scene=bool(template and template["id"] == UNIFIED_TEMPLATE_ID),
+        unified_scene=bool(template and template["id"] in UNIFIED_TEMPLATES),
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:

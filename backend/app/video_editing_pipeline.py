@@ -48,6 +48,7 @@ from .video_editing_contracts import (
     TranscriptUtterance,
 )
 from .video_editing_cxbr import CXBR_CAPTION_INTENT, verify_cxbr_captions
+from .video_editing_display_rotation import display_rotation, display_size
 from .video_editing_hypit_strips import HYPIT_SIDECAR_GROUPS
 from .video_editing_native_frame_clock import (
     FRAME_CLOCK_FPS,
@@ -391,9 +392,10 @@ def prepare(
         or abs(video_start) > 0.02
     ):
         raise EditingFailure("EDITING_CLOCK_REVIEW_REQUIRED")
-    rotation = [s.get("rotation", 0) for s in video.get("side_data_list", [])]
-    if any(rotation) or int(video.get("tags", {}).get("rotate", 0)):
-        raise EditingFailure("EDITING_ROTATION_REVIEW_REQUIRED")
+    try:
+        display_rotation(video)
+    except ValueError as error:
+        raise EditingFailure("EDITING_ROTATION_REVIEW_REQUIRED") from error
     inspect_start = stream_start != video_start
     measured_start = (
         _measure_audio_start(target, root, settings, guard)
@@ -501,6 +503,7 @@ def prepare_presenter_frame_clock(
         settings,
         guard,
         minimum_ms=prepared["duration_ms"],
+        rotation=display_rotation(video),
     )
     if receipt is not None:
         atomic_json(
@@ -573,6 +576,7 @@ def _prepare_frame_clock_plate(
     guard: Callable[[], None],
     *,
     minimum_ms: int = 0,
+    rotation: int = 0,
     error_code: str = "EDITING_VIDEO_FRAME_CLOCK_INVALID",
 ) -> dict | None:
     arguments = [
@@ -608,18 +612,18 @@ def _prepare_frame_clock_plate(
         )
     except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError) as error:
         raise EditingFailure(error_code) from error
-    if not variable:
+    if not variable and not rotation:
         return None
     plate.parent.mkdir(parents=True, exist_ok=True)
     pending = plate.with_suffix(".pending.mp4")
-    width, height = video["width"], video["height"]
+    width, height = display_size(video, rotation)
     try:
         run(
             [
                 settings.video_editing_ffmpeg,
                 "-nostdin",
                 *arguments,
-                "-noautorotate",
+                *([] if rotation else ["-noautorotate"]),
                 "-i",
                 str(source),
                 "-map",
@@ -665,6 +669,7 @@ def _prepare_frame_clock_plate(
         if (
             stream["codec_type"] != "video"
             or (stream["width"], stream["height"]) != (width, height)
+            or display_rotation(stream) != 0
             or Fraction(stream["avg_frame_rate"]) != FRAME_CLOCK_FPS
             or Fraction(stream["r_frame_rate"]) != FRAME_CLOCK_FPS
             or float(stream["start_time"]) != 0
@@ -680,6 +685,11 @@ def _prepare_frame_clock_plate(
             "source_frames": decoded_frames,
             "plate_frames": frames,
             "plate_fps": FRAME_CLOCK_FPS,
+            **(
+                {"display_rotation_ccw": rotation, "display_size": [width, height]}
+                if rotation
+                else {}
+            ),
         }
     except (
         OSError,
@@ -858,13 +868,19 @@ def measured_source_frame(info: dict[str, Any]) -> EditingSourceFrame:
     video = next(
         stream for stream in info["streams"] if stream["codec_type"] == "video"
     )
-    width, height = video["width"], video["height"]
+    try:
+        width, height = display_size(video, display_rotation(video))
+        rotation_verified = True
+    except ValueError:
+        width, height = display_size(video, 0)
+        rotation_verified = False
     pixel_ratio = video.get("sample_aspect_ratio")
     return EditingSourceFrame(
         width=width,
         height=height,
         supports_native_portrait=(
-            pixel_ratio in {None, "N/A", "0:1", "1:1"}
+            rotation_verified
+            and pixel_ratio in {None, "N/A", "0:1", "1:1"}
             and abs(width / height - 9 / 16) <= 0.02
         ),
     )
@@ -1274,7 +1290,11 @@ def validate_result(
     dimensions = {key: video[key] for key in ("width", "height")}
     episode = read_json(root / "episode.json")
     expected = episode["output"]
-    if dimensions != {key: expected[key] for key in dimensions}:
+    try:
+        upright = display_rotation(video) == 0
+    except ValueError:
+        upright = False
+    if not upright or dimensions != {key: expected[key] for key in dimensions}:
         raise EditingFailure("EDITING_OUTPUT_DIMENSIONS_INVALID")
     actual = round(float(info["format"]["duration"]) * 1000)
     if abs(actual - prepared["duration_ms"]) > 150:

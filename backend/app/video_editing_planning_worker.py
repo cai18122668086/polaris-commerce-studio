@@ -331,10 +331,15 @@ def process(
             verified_materials = {}
             if not (root / "provider/semantic-submit-intent.json").exists():
                 if base.options.get("mode") == "transcript":
-                    frame = recorded_source_frame(record) or measured_source_frame(
-                        probe(media_path, settings)
+                    frame = (
+                        recorded_source_frame(record)
+                        if record.validation.get("source_display_transform_verified")
+                        is True
+                        else None
                     )
-                    require_native_source_frame(frame)
+                    require_native_source_frame(
+                        frame or measured_source_frame(probe(media_path, settings))
+                    )
                 verified_materials = verify_material_cards(
                     session,
                     settings,

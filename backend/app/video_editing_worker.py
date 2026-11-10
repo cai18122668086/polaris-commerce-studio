@@ -793,6 +793,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                             "source_frame": measured_source_frame(
                                 prepared["probe"]
                             ).model_dump(),
+                            "source_display_transform_verified": True,
                         },
                         "transcript_audio": {
                             "duration_ms": clock["analysis_audio_end_ms"] - offset,

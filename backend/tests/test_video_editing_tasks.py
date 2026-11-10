@@ -10,6 +10,8 @@ from sqlalchemy import select
 from app import video_editing_worker as worker
 from app.motion_library import atomic_json, sha256
 from app.video_editing_contracts import Transcript, TranscriptToken
+from app.video_editing_display_rotation import display_rotation
+from app.video_editing_pipeline import measured_source_frame
 from app.video_editing_task_models import (
     EditingArtifactRecord,
     EditingAttemptRecord,
@@ -19,6 +21,44 @@ from app.video_editing_worker import process
 from tests.test_video_projects import base, payload
 
 pytest_plugins = ["tests.test_video_projects"]
+
+
+@pytest.mark.parametrize(
+    ("matrix", "angle", "expected", "native"),
+    [
+        ((0, -65536, 65536, 0), 90, (720, 1280), True),
+        ((0, 65536, -65536, 0), -90, (720, 1280), True),
+        ((-65536, 0, 0, -65536), 180, (1280, 720), False),
+        ((65536, 0, 0, -65536), 0, (1280, 720), False),
+        ((65536, 1, 0, 65536), 0, (1280, 720), False),
+    ],
+)
+def test_display_frame_accepts_only_canonical_quarter_turns(
+    matrix, angle, expected, native
+):
+    a, b, c, d = matrix
+    video = {
+        "codec_type": "video",
+        "width": 1280,
+        "height": 720,
+        "sample_aspect_ratio": "1:1",
+        "side_data_list": [
+            {
+                "side_data_type": "Display Matrix",
+                "rotation": angle,
+                "displaymatrix": (
+                    f"\n00000000: {a} {b} 0\n00000001: {c} {d} 0\n"
+                    f"00000002: 0 {-min(b, 0) * 1280} 1073741824\n"
+                ),
+            }
+        ],
+    }
+    frame = measured_source_frame({"streams": [video]})
+    assert (frame.width, frame.height) == expected
+    assert frame.supports_native_portrait is native
+    if a == 65536:
+        with pytest.raises(ValueError, match="verified quarter turn"):
+            display_rotation(video)
 
 
 def setup_source(video, tmp_path):

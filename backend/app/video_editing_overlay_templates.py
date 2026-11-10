@@ -38,6 +38,7 @@ from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import (
     CHAPTER_GROUPS,
     PACKAGE_GROUP,
+    ROLE_CHAIN_GROUP,
     TRANSLATION_GROUP,
     WHY_FONT,
     WHY_GROUP,
@@ -52,6 +53,7 @@ from .video_editing_presenter_motion import (
 )
 from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
+from .video_editing_role_scene import ROLE_TEMPLATE_ID
 from .video_editing_story_panels import PANEL_GROUPS, PANEL_TEMPLATE_ID
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_unified_alpha import ALPHA_GROUPS, GHOST_GROUP, PAPER_CHAPTER_GROUP
@@ -668,6 +670,26 @@ _TEMPLATES[LIVE_CHAPTERS_TEMPLATE_ID] = {
         *_TEMPLATES[CHAPTER_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[ROLE_TEMPLATE_ID] = {
+    "id": ROLE_TEMPLATE_ID,
+    "name": "多角色插画与流程论证",
+    "slots": [
+        {
+            "group_id": ROLE_CHAIN_GROUP,
+            "purpose": "以原生插画切换解释多角色流程，口播与主字幕持续。",
+            "layer": "scene",
+            "binding": "使用 sequence。16 个 relation_items 按原生图槽顺序绑定，"
+            "各用本期独立插画和其出画时对应的实录词范围。"
+            "原画交叉淡化与连续换图可共用同一段实录。"
+            "关门、交接、禁行沿用原合同共享词点，三个角色短词和禁行短语均取实录。",
+        },
+        *(
+            {"group_id": group, "purpose": _SUBTITLE_STORY_SLOTS[group]}
+            for group in ("AH-S08", "JJ-S04")
+        ),
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[COLLAGE_TEMPLATE_ID] = {
     "id": COLLAGE_TEMPLATE_ID,
     "name": "同期口播与证据拼贴",
@@ -992,6 +1014,7 @@ def overlay_templates() -> list[dict]:
             LIVE_CHAPTERS_TEMPLATE_ID,
             CROWD_TEMPLATE_ID,
             COLLAGE_TEMPLATE_ID,
+            ROLE_TEMPLATE_ID,
             WHY_TEMPLATE_ID,
             TRANSLATION_TEMPLATE_ID,
             PAPER_TEMPLATE_ID,

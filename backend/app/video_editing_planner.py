@@ -50,6 +50,7 @@ from .video_editing_question_card import (
     QUESTION_CARD_GROUP,
     automatic_question_card_gloss,
 )
+from .video_editing_role_scene import ROLE_TEMPLATE_ID
 from .video_editing_story_panels import PANEL_BOARDS, PANEL_TEMPLATE_ID
 from .video_editing_template_materials import runtime_payload, validate_template_images
 from .video_editing_unified_alpha import GHOST_GROUP, PAPER_CHAPTER_GROUP
@@ -445,6 +446,16 @@ def build_request(
             "前 3 个标签各按自己的首词，标签 3/4 和 5/6 同步取后一个标签的首词。"
             "依次安排图层 0、标签 0、图层 1、标签 1/2、图层 2、标签 3/4、"
             "图层 3、标签 5/6。缺少本期证据时选择同模板其他动效。"
+        )
+    if template and template["id"] == ROLE_TEMPLATE_ID:
+        message += (
+            "W-R15 按 native_scene_chain.image_slots 原图槽顺序列出 16 个关系项，"
+            "每项只绑定一个对应插画和图槽，并提供其首次出画时对应的实录范围。"
+            "原生淡化、留屏及末尾短蒙太奇仍使用原引擎，多张图可在同一语句内出现。"
+            "16 个 scene_boundaries 用本段首词及之后的递增词首驱动动作，"
+            "关门、交接及禁行与原合同指定动作共用词点。"
+            "三个角色短词和禁行短语用对应首词开始，另给原生短字幕自己的起止词。"
+            "只用本期所选的 16 张独立插画，缺素材或原生关系不适合时跳过。"
         )
     if translation_scene:
         message += (

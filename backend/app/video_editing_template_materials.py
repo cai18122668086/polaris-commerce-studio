@@ -49,6 +49,7 @@ from .video_editing_line_branch import (
 from .video_editing_materials import project_image_digests
 from .video_editing_native_content import (
     PACKAGE_GROUP,
+    ROLE_CHAIN_GROUP,
     WHY_GROUP,
     WHY_PROP_PATHS,
     why_prop_shape,
@@ -61,6 +62,7 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
 )
+from .video_editing_role_scene import ROLE_IMAGES, ROLE_TEMPLATE_ID
 from .video_editing_unified_scenes import WHY_TEMPLATE_ID
 
 _IMAGE_GROUPS = {
@@ -77,6 +79,7 @@ _IMAGE_GROUPS = {
     WHY_TEMPLATE_ID: ((WHY_GROUP, 2),),
     CROWD_TEMPLATE_ID: ((CROWD_GROUP, len(CROWD_IMAGE_PATHS)),),
     COLLAGE_TEMPLATE_ID: ((COLLAGE_GROUP, len(COLLAGE_IMAGES)),),
+    ROLE_TEMPLATE_ID: ((ROLE_CHAIN_GROUP, len(ROLE_IMAGES)),),
 }
 _ADDITIONAL_IMAGE_PATHS = {
     FRUIT_LIST_GROUP: FRUIT_LIST_HEADER,

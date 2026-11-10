@@ -147,6 +147,7 @@ from .video_editing_native_content import (
     CHAPTER_GROUPS,
     CHAPTER_PATH,
     PACKAGE_GROUP,
+    ROLE_CHAIN_GROUP,
     TRANSLATION_GROUP,
     TRANSLATION_PATHS,
     WHY_EVENTS,
@@ -204,6 +205,7 @@ from .video_editing_question_card import (
     automatic_question_card_gloss,
     question_card_a_input,
 )
+from .video_editing_role_scene import ROLE_IMAGES, bind_role_scene
 from .video_editing_story_panels import (
     PANEL_GROUPS,
     TRIPTYCH,
@@ -315,6 +317,11 @@ _JUDGMENT_SOUNDS = dict(
     )
 )
 _WHY_SOUNDS = dict(zip(WHY_EVENTS, (_SELECT, _SELECT, _CLICK, _SLIDE), strict=True))
+_ROLE_SOUNDS = {
+    "/timing/events/door_close": ("sfx-c4867399b4ffabc2", 0.015, 0.265, -25),
+    "/timing/events/handoff": ("sfx-d283d8cbfa6313e7", 0.02, 0.38, -27),
+    "/timing/events/prohibition_in": ("sfx-7c848c90539bc039", 0.13, 0.27, -25),
+}
 _OPENING_PRESENTER = "/media/presenter/path"
 _PACKAGE_LABELS = tuple(f"/content/items/{i}/label" for i in range(4))
 _PACKAGE_IMAGES = tuple(f"/media/product_images/{i}/path" for i in range(4))
@@ -957,6 +964,8 @@ def _entry_sound(
         selection = _CLICK
     if beat.group_id == WHY_GROUP and path is not None:
         selection = _WHY_SOUNDS[path]
+    if beat.group_id == ROLE_CHAIN_GROUP and path is not None:
+        selection = _ROLE_SOUNDS[path]
     if beat.group_id == PAPER_GROUP:
         selection = _TYPING
     if beat.group_id == PAPER_CHAPTER_GROUP:
@@ -2266,6 +2275,7 @@ def _unified_entry(
     moving_alpha = group_id in ALPHA_GROUPS
     is_crowd = group_id == CROWD_GROUP
     is_collage = group_id == COLLAGE_GROUP
+    is_role = group_id == ROLE_CHAIN_GROUP
     videos = (
         project_panel_videos(asset_cards, transcript.source_sha256)
         if group_id == TRIPTYCH
@@ -2313,7 +2323,13 @@ def _unified_entry(
     media_clock_paths = () if moving_alpha else source_paths
     images = (
         project_image_digests(asset_cards)
-        if is_cut or is_panel or is_handoff or is_why or is_crowd or is_collage
+        if is_cut
+        or is_panel
+        or is_handoff
+        or is_why
+        or is_crowd
+        or is_collage
+        or is_role
         else {}
     )
     allowed_paths = cut_media_paths(group_id) if is_cut else set(source_paths)
@@ -2327,6 +2343,8 @@ def _unified_entry(
         allowed_paths.update(CROWD_IMAGE_PATHS)
     if is_collage:
         allowed_paths.update(COLLAGE_IMAGES)
+    if is_role:
+        allowed_paths.update(ROLE_IMAGES)
     presenters = (
         {
             row["id"]
@@ -2369,6 +2387,10 @@ def _unified_entry(
         elif is_collage:
             validate_collage_anchors(beat, anchors, transcript)
             validate_collage_images(bound, images, None)
+        elif is_role:
+            bind_role_scene(
+                beat, anchors, transcript, {row["id"]: row for row in asset_cards}
+            )
         else:
             validate_unified_anchors(beat, anchors, transcript)
         if chapter_starts is not None:
@@ -2408,7 +2430,9 @@ def _unified_entry(
         )
     reason = "沿用原生文字、人物窗或整帧底板，主字幕和原声使用整片时钟。"
     return NativeEpisodeEntry(
-        carrier="picture" if is_cut or is_panel or is_handoff or is_collage else "text",
+        carrier="picture"
+        if is_cut or is_panel or is_handoff or is_collage or is_role
+        else "text",
         placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
         recipe={
             "version": "tengli.native-recipe/1",

@@ -59,6 +59,7 @@ from .video_editing_hypit_strips import (
 )
 from .video_editing_native_content import (
     NUMBER_GROUP,
+    ROLE_CHAIN_GROUP,
     TRANSLATION_GROUP,
     WHY_EVENTS,
     WHY_GROUP,
@@ -73,6 +74,7 @@ from .video_editing_paper_typewriter import (
     PAPER_TEMPLATE_ID,
     paper_character_times,
 )
+from .video_editing_role_scene import ROLE_SOUNDS, ROLE_TEMPLATE_ID, role_action_frame
 from .video_editing_story_panels import (
     PANEL_BOARDS,
     PANEL_CAPTION_BANDS,
@@ -104,6 +106,7 @@ UNIFIED_TEMPLATES = frozenset(
         PAPER_TEMPLATE_ID,
         CROWD_TEMPLATE_ID,
         COLLAGE_TEMPLATE_ID,
+        ROLE_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
@@ -239,6 +242,7 @@ UNIFIED_SOUNDS = {
     GHOST_GROUP: {"ghost": "ease", "phrase0": "ease", "phrase1": "ease"},
     CROWD_GROUP: dict.fromkeys(CROWD_SOUNDS, "crowd_virtual"),
     COLLAGE_GROUP: dict.fromkeys(COLLAGE_SOUNDS, "collage_virtual"),
+    ROLE_CHAIN_GROUP: dict.fromkeys(ROLE_SOUNDS, "role_virtual"),
     WHY_GROUP: dict(
         zip(
             (path.removeprefix("/timing/events/") for path in WHY_EVENTS),
@@ -314,6 +318,7 @@ UNIFIED_SCENE_GROUPS = (
         GHOST_GROUP,
         CROWD_GROUP,
         COLLAGE_GROUP,
+        ROLE_CHAIN_GROUP,
     }
 )
 _CAPTION_BANDS = {
@@ -330,6 +335,7 @@ _CAPTION_BANDS = {
     GHOST_GROUP: (860, 960),
     CROWD_GROUP: (800, 960),
     COLLAGE_GROUP: (880, 960),
+    ROLE_CHAIN_GROUP: (880, 960),
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
     **HANDOFF_CAPTION_BANDS,
@@ -868,6 +874,8 @@ def unified_action_frame(
         if mode == "crowd_virtual"
         else collage_action_frame(shot["config"]["timing"], event)
         if mode == "collage_virtual"
+        else role_action_frame(shot["config"]["timing"], event)
+        if mode == "role_virtual"
         else fruit_row_first_frame(at)
         if mode == "fruit_row"
         else math.floor(at + 1e-7) + 1

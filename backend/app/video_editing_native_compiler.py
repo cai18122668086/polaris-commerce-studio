@@ -135,6 +135,7 @@ from .video_editing_question_card import (
     question_card_a_input,
     question_card_gloss,
 )
+from .video_editing_role_scene import bind_role_scene
 from .video_editing_story_panels import TRIPTYCH, triptych_template
 from .video_editing_unified_alpha import (
     ALPHA_GROUPS,
@@ -144,6 +145,7 @@ from .video_editing_unified_alpha import (
 )
 from .video_editing_unified_scenes import (
     PRESENTER_VIDEO_GROUPS,
+    UNIFIED_DESIGN_ID,
     unified_presenter_template,
 )
 from .video_editing_word_bindings import word_bindings
@@ -461,7 +463,11 @@ def compile_native_job(
             collage_image_slots(files),
         )
     if beat.group_id == ROLE_CHAIN_GROUP:
-        native["role_scene_chain"] = role_scene_chain(native, asset_files)
+        native["role_scene_chain"] = (
+            bind_role_scene(beat, native, transcript, asset_files)
+            if recipe["design_id"] == UNIFIED_DESIGN_ID
+            else role_scene_chain(native, asset_files)
+        )
     if live_package_presenter:
         native["package_entries"] = package_entries(native, asset_files)
     if beat.group_id in SILHOUETTE_GROUPS:

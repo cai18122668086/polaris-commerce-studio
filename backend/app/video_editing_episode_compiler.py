@@ -63,7 +63,7 @@ from .video_editing_image_edits import apply_image_edits
 from .video_editing_judgment import JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_compiler import compile_native_job
-from .video_editing_native_content import PACKAGE_GROUP
+from .video_editing_native_content import PACKAGE_GROUP, ROLE_CHAIN_GROUP
 from .video_editing_native_layout import (
     BACKDROP_GROUP,
     LAYERED_SUBTITLE_ROLE_GROUPS,
@@ -109,6 +109,7 @@ from .video_editing_render_edits import (
     source_only,
     validate_render_edits,
 )
+from .video_editing_role_scene import ROLE_TEMPLATE_ID
 from .video_editing_story_panels import PANEL_TEMPLATE_ID, TRIPTYCH, triptych_entrance
 from .video_editing_unified_scenes import (
     BROWSER_LIST_SCENES,
@@ -866,6 +867,7 @@ def compile_episode(
             UNIFIED_WINDOW_GROUP: UNIFIED_WINDOW_CAPTION_BASELINE,
             TRANSLATION_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
             COLLAGE_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
+            ROLE_CHAIN_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
         }
         effect_windows = [
             (
@@ -912,6 +914,9 @@ def compile_episode(
                         if unified and y == UNIFIED_WINDOW_CAPTION_BASELINE
                         else "主字幕避开原生拼贴标签和短字幕。"
                         if authoring.overlay_template_id == COLLAGE_TEMPLATE_ID
+                        and y == UNIFIED_TRANSLATION_CAPTION_BASELINE
+                        else "主字幕位于插画内原生角色字和短字幕下方。"
+                        if authoring.overlay_template_id == ROLE_TEMPLATE_ID
                         and y == UNIFIED_TRANSLATION_CAPTION_BASELINE
                         else "主字幕放在双语换字的原生释义下方。"
                         if unified and y == UNIFIED_TRANSLATION_CAPTION_BASELINE

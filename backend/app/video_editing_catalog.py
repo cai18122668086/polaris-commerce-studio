@@ -108,6 +108,9 @@ def catalog_summary(package: Path, state: Path) -> dict[str, Any]:
         "groups": len(groups),
         "group_kinds": dict(Counter(g["kind"] for g in groups)),
         "runtime": dict(statuses),
+        "runtime_evidence_rejected": sum(
+            s["runtime_evidence_rejected"] for s in evidence
+        ),
         "visual_accepted": sum(s["visual_acceptance"] == "accepted" for s in evidence),
         "bundled_assets": len(assets),
         "bundled_kinds": dict(Counter(a["kind"] for a in assets)),

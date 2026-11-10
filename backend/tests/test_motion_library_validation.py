@@ -3,12 +3,32 @@ import pytest
 from app.config import Settings
 from app.motion_library import MOTION_SHA256, atomic_json, sha256, verify_package
 from app.motion_library_validation import (
+    EVIDENCE_SCHEMA,
     canonical_hash,
     group_status,
     motion_evidence_directory,
     record_failure,
     record_native,
 )
+
+
+def encoded_record(group_id, evidence_id):
+    return {
+        "schema": EVIDENCE_SCHEMA,
+        "release": MOTION_SHA256,
+        "id": evidence_id,
+        "group_id": group_id,
+        "recorded_at": "2026-11-11T00:00:00+00:00",
+        "runtime_validation": "sample_rendered",
+        "input_sha256": "a" * 64,
+        "receipt_sha256": "b" * 64,
+        "output_sha256": "c" * 64,
+        "format": {"fps": 30.0, "width": 720, "height": 1280, "frames": 120},
+        "scope": "record shape fixture only",
+        "visual_acceptance": "unreviewed",
+        "semantic_review": "unreviewed",
+        "listening_review": "unreviewed",
+    }
 
 
 def test_library_evidence_is_shared_across_task_volumes_when_configured(
@@ -21,14 +41,10 @@ def test_library_evidence_is_shared_across_task_volumes_when_configured(
         first / "_library-validation" / MOTION_SHA256[:12]
     )
     shared = tmp_path / "library-evidence"
+    evidence_id = "a" * 32
     atomic_json(
-        shared / MOTION_SHA256[:12] / "HY-A2/sample.json",
-        {
-            "release": MOTION_SHA256,
-            "group_id": "HY-A2",
-            "recorded_at": "2026-11-11T00:00:00+00:00",
-            "runtime_validation": "sample_rendered",
-        },
+        shared / MOTION_SHA256[:12] / "HY-A2" / f"{evidence_id}.json",
+        encoded_record("HY-A2", evidence_id),
     )
     monkeypatch.setenv("POLARIS_VIDEO_EDITING_LIBRARY_EVIDENCE_DIR", str(shared))
     for tasks in (first, second):
@@ -36,10 +52,33 @@ def test_library_evidence_is_shared_across_task_volumes_when_configured(
         status = group_status(motion_evidence_directory(settings), "HY-A2")
         assert status["runtime_validation"] == "sample_rendered"
         assert status["visual_acceptance"] == "unreviewed"
+        assert status["runtime_evidence_rejected"] == 0
     assert (
         group_status(motion_evidence_directory(original), "HY-A2")["runtime_validation"]
         == "unverified"
     )
+
+
+def test_transferred_evidence_rejects_incomplete_records_without_losing_valid_groups(
+    tmp_path,
+):
+    valid = encoded_record("HY-A2", "a" * 32)
+    atomic_json(tmp_path / "HY-A2" / f"{valid['id']}.json", valid)
+    corrupt = tmp_path / "HY-A2" / ("b" * 32 + ".json")
+    corrupt.write_bytes(b'{"schema":')
+    incomplete = encoded_record("HY-A1", "c" * 32)
+    incomplete.pop("output_sha256")
+    atomic_json(tmp_path / "HY-A1" / f"{incomplete['id']}.json", incomplete)
+    atomic_json(tmp_path / "HY-A1" / f"{valid['id']}.json", valid)
+
+    a2 = group_status(tmp_path, "HY-A2")
+    assert a2["runtime_evidence"] == [valid]
+    assert a2["runtime_validation"] == "sample_rendered"
+    assert a2["runtime_evidence_rejected"] == 1
+    a1 = group_status(tmp_path, "HY-A1")
+    assert a1["runtime_validation"] == "unverified"
+    assert a1["runtime_evidence_rejected"] == 2
+    assert corrupt.read_bytes() == b'{"schema":'
 
 
 def test_installed_motion_cannot_supply_its_own_integrity_manifest(tmp_path):
@@ -77,7 +116,11 @@ def test_native_evidence_cannot_promote_changed_bytes_or_human_acceptance(
         "library_sha256": sha256(package / "integrity.json"),
         "public_request_sha256": canonical_hash(job),
         "native": {"frames": 1},
-        "encoding": {"full_decode": True, "frames_written": 1, "format": {"frames": 1}},
+        "encoding": {
+            "full_decode": True,
+            "frames_written": 1,
+            "format": {"fps": 30.0, "width": 720, "height": 1280, "frames": 1},
+        },
         "visual_acceptance": "approved",
     }
     receipt = instance / "report.json"

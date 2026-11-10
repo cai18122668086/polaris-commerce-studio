@@ -22,7 +22,9 @@ def main() -> None:
     parser.add_argument("--native-report", type=Path)
     parser.add_argument("--native-failure", type=Path)
     parser.add_argument(
-        "--state-dir", type=Path, help="Release-specific evidence directory"
+        "--state-dir",
+        type=Path,
+        help="Release-specific evidence directory to read or update",
     )
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
@@ -54,7 +56,7 @@ def main() -> None:
     else:
         if not args.output:
             parser.error("An all-group static audit needs --output")
-        result = audit(args.package)
+        result = audit(args.package, args.state_dir)
     if args.output:
         atomic_json(args.output, result)
     print(

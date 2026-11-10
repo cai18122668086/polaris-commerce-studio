@@ -655,6 +655,9 @@ class EditingTemplateImageRequirement(StrictVideoModel):
     feedback_word_matches: dict[str, list[EditingFeedbackWordMatch]] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    role_action_word_matches: dict[str, list[str]] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class EditingPlanningTaskResponse(StrictVideoModel):

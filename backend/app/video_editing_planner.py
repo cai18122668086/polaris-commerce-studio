@@ -522,6 +522,15 @@ def build_request(
             "三个角色短词和禁行短语用对应首词开始，另给原生短字幕自己的起止词。"
             "只用本期所选的 16 张独立插画，缺素材或原生关系不适合时跳过。"
         )
+        if any(
+            "role_action_word_matches" in requirement
+            for requirement in (runtime or {}).get("project_image_requirements", [])
+        ):
+            message += (
+                "关门、交接、禁行动作须绑定 role_action_word_matches"
+                " 对应事件列出的实录词首。三者都须属于本段实际流程。"
+                "缺少顺序对应的实录时，使用同模板的其他动效。"
+            )
     if template and template["id"] == FLOW_CHART_TEMPLATE_ID:
         message += (
             "HY-A7 从实际说出的合计、总计、共或一共起句开始。"

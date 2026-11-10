@@ -6979,6 +6979,23 @@
             "title": "Required Distinct Images",
             "type": "integer"
           },
+          "role_action_word_matches": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Action Word Matches"
+          },
           "selected_distinct_images": {
             "title": "Selected Distinct Images",
             "type": "integer"

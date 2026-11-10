@@ -1,4 +1,6 @@
 import pytest
+from PIL import Image
+
 from app.video_editing_contracts import (
     BilingualContrastGloss,
     SemanticBeat,
@@ -26,6 +28,11 @@ from app.video_editing_native_content import (
 from app.video_editing_native_sound import package_entry_frame
 from app.video_editing_overlay_templates import overlay_template, validate_template_plan
 from app.video_editing_paper_typewriter import paper_character_times
+from app.video_editing_role_scene import (
+    RoleActionMismatch,
+    role_action_words,
+    validate_role_action_words,
+)
 from app.video_editing_template_materials import template_image_requirements
 from app.video_editing_unified_alpha import ALPHA_PRESENTER, alpha_source_clock
 from app.video_editing_unified_scenes import (
@@ -33,7 +40,63 @@ from app.video_editing_unified_scenes import (
     UNIFIED_TEMPLATE_ID,
     unified_action_frame,
 )
-from PIL import Image
+
+
+@pytest.mark.parametrize(
+    ("parts", "action_indices"),
+    [
+        (["旧稿，", "关", "上", "门，", "开始", "交接，", "禁止", "跳过。"], [1, 4, 6]),
+        (["不用", "关门，", "开始交接，", "禁止跳过。"], []),
+        (["交接，", "关门，", "禁止跳过。"], []),
+        (["关门，", "别开始交接，", "禁止跳过。"], []),
+        (["关门，", "交接，", "区别两种操作。"], []),
+    ],
+)
+def test_role_scene_requires_measured_original_action_words(parts, action_indices):
+    transcript = Transcript(
+        source_sha256="a" * 64,
+        audio_sha256="b" * 64,
+        duration_ms=4500,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        tokens=[
+            TranscriptToken(
+                id=f"t{i}", text=text, start_ms=i * 500, end_ms=(i + 1) * 500
+            )
+            for i, text in enumerate(parts)
+        ],
+        utterances=[],
+    )
+    matches = role_action_words(transcript)
+    if not action_indices:
+        assert matches == {}
+        return
+    paths = [
+        f"/timing/events/{action}"
+        for action in ("door_close", "handoff", "prohibition_in")
+    ]
+    expected = {path: [f"t{i}"] for path, i in zip(paths, action_indices, strict=True)}
+    assert matches == expected
+    beat = SemanticBeat.model_validate(
+        {
+            "id": "roles",
+            "group_id": "W-R15",
+            "relation": "sequence",
+            "first_token_id": "t0",
+            "last_token_id": f"t{len(parts) - 1}",
+            "asset_ids": [],
+            "reason": "动作按原话出场",
+            "native_events": [
+                {"path": path, "token_id": ids[0], "edge": "start"}
+                for path, ids in expected.items()
+            ],
+        }
+    )
+    validate_role_action_words(beat, matches)
+    beat.native_events[0].token_id = "t0"
+    with pytest.raises(RoleActionMismatch, match="实际说出的动作词首"):
+        validate_role_action_words(beat, matches)
 
 
 def test_chapter_ordinal_is_derived_from_ordered_source_starts():

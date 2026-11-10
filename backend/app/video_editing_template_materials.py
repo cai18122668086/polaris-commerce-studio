@@ -68,7 +68,12 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
 )
-from .video_editing_role_scene import ROLE_IMAGES, ROLE_TEMPLATE_ID
+from .video_editing_role_scene import (
+    ROLE_IMAGES,
+    ROLE_TEMPLATE_ID,
+    role_action_words,
+    validate_role_action_words,
+)
 from .video_editing_unified_scenes import WHY_TEMPLATE_ID
 
 _IMAGE_GROUPS = {
@@ -168,6 +173,8 @@ def template_image_requirements(
             matches = film_feedback_matches(evidence, transcript) if transcript else {}
             row["feedback_word_matches"] = matches
             row["selected_distinct_images"] = len({images[key] for key in matches})
+        elif group_id == ROLE_CHAIN_GROUP and transcript is not None:
+            row["role_action_word_matches"] = role_action_words(transcript)
         elif group_id in {CROWD_GROUP, COLLAGE_GROUP}:
             slots = (
                 crowd_image_slots(files)
@@ -241,6 +248,11 @@ def validate_template_images(
         required_images = requirement["required_distinct_images"]
         if requirement["selected_distinct_images"] < required_images:
             raise ValueError("Selected template group lacks distinct project images")
+        if (
+            beat.group_id == ROLE_CHAIN_GROUP
+            and "role_action_word_matches" in requirement
+        ):
+            validate_role_action_words(beat, requirement["role_action_word_matches"])
         if beat.group_id == LINE_GROUP:
             media = {anchor.path: anchor.asset_id for anchor in beat.native_media}
             slots = requirement["native_image_slot_ids"]

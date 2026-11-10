@@ -65,6 +65,7 @@ from .video_editing_planning_store import (
 )
 from .video_editing_presenter_motion import motion_blockers, motion_word_windows
 from .video_editing_quantity_anchors import IncompleteQuantity
+from .video_editing_role_scene import RoleActionMismatch
 from .video_editing_story_panels import panel_blockers
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -497,6 +498,14 @@ def process(
                 ).append("matched_feedback_evidence_required")
             if any(
                 row["group_id"] == ROLE_CHAIN_GROUP
+                and not row["role_action_word_matches"]
+                for row in image_requirements
+            ):
+                runtime["unavailable_template_groups"].setdefault(
+                    ROLE_CHAIN_GROUP, []
+                ).append("current_role_actions_required")
+            if any(
+                row["group_id"] == ROLE_CHAIN_GROUP
                 and row["selected_distinct_images"] < row["required_distinct_images"]
                 for row in image_requirements
             ):
@@ -728,7 +737,13 @@ def process(
             error.code
             if isinstance(
                 error,
-                (ApiError, IncompleteCondition, IncompleteDenial, IncompleteQuantity),
+                (
+                    ApiError,
+                    IncompleteCondition,
+                    IncompleteDenial,
+                    IncompleteQuantity,
+                    RoleActionMismatch,
+                ),
             )
             else "EDITING_PLAN_CONTRACT_INVALID"
             if isinstance(error, (ValueError, KeyError, TypeError))

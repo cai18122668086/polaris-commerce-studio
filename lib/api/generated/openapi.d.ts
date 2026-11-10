@@ -6473,6 +6473,10 @@ export interface components {
             } | null;
             /** Required Distinct Images */
             required_distinct_images: number;
+            /** Role Action Word Matches */
+            role_action_word_matches?: {
+                [key: string]: string[];
+            } | null;
             /** Selected Distinct Images */
             selected_distinct_images: number;
             /** Transparent Image Ids */

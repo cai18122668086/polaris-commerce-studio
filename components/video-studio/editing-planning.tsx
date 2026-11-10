@@ -31,6 +31,7 @@ const autoPreviewErrors: Record<string, string> = {
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = {
   EDITING_CONDITION_ANCHOR_INCOMPLETE: "候选中的动效文字遗漏了实录适用条件。请核对转录并保留完整前提。",
+  EDITING_ROLE_ACTION_ANCHOR_INVALID: "角色场景的关门、交接或禁行切点没有对应实录词首。请选择对应的动作词或其他动效。",
   EDITING_NEGATION_ANCHOR_INCOMPLETE: "候选中的动效文字遗漏了实录的否定表达。请核对转录或使用保留完整否定的编排。",
   EDITING_QUANTITY_ANCHOR_INCOMPLETE: "候选中的动效文字截断了实录数量或单位。请核对转录并保留完整表达。",
   EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片，请选择符合画幅的转录。",
@@ -266,7 +267,9 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
         {job.unavailable_template_group_ids?.includes("W-R01") && " 本组还需要实录英文短词、无内嵌字幕的原片及可用的原抠像模型。编排可以选同模板其他动效。"}
       </p> : requirement.group_id === "W-R15" ? <p key={requirement.group_id} className={styles.note}>
         W-R15 · 需要 16 张分别对应流程各场景的本期插画，当前已选 {requirement.selected_distinct_images} 张不同图片。
-        {job.unavailable_template_group_ids?.includes("W-R15") && " 补齐素材并使用无内嵌字幕的原片后，可重新准备。"}
+        {requirement.role_action_word_matches && !Object.keys(requirement.role_action_word_matches).length
+          ? " 本次实录未找到按顺序可锚定的关门、交接和禁行动作，编排可使用同模板的其他动效。"
+          : job.unavailable_template_group_ids?.includes("W-R15") && " 补齐素材并使用无内嵌字幕的原片后，可重新准备。"}
       </p> : requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
         {requirement.group_id} · 本期线描素材需要不透明过渡图、透明线描图及六列四行的透明手势帧图。
         {Object.values(requirement.native_image_slot_ids).every(ids => ids.length > 0)

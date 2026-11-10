@@ -1,7 +1,6 @@
 """Verify original browser images and freeze supplemental originals per attempt."""
 
 import hashlib
-import json
 import os
 import re
 from collections import Counter
@@ -13,11 +12,14 @@ from PIL import Image
 
 from .motion_library import (
     MOTION_SHA256,
-    atomic_json,
     inside,
     read_json,
     sha256,
     verify_package,
+)
+from .motion_local_dependencies import (
+    read_dependency_manifest,
+    save_dependency_manifest,
 )
 
 _G05_BACKGROUND = ("g05-assets/base-{i:03d}.jpg", 69)
@@ -47,7 +49,6 @@ RENDER_GROUPS = frozenset(_ALWAYS_DRAWN | _DRAWN_WITHOUT_PRESENTER)
 BROWSER_ORIGINALS_REQUIRED = "EDITING_ORIGINAL_BROWSER_ASSETS_REQUIRED"
 BROWSER_ORIGINALS_KEY = "tengli_browser_originals"
 _IMAGE_LIMIT = 16 * 1024 * 1024
-_MANIFEST_LIMIT = 1_000_000
 
 
 class BrowserOriginalsMissing(ValueError):
@@ -201,17 +202,6 @@ def verified_image_bytes(path: Path, digest: str) -> bytes:
     return data
 
 
-def _manifest_document(manifest: Path | None) -> dict:
-    if manifest is None or not manifest.is_file():
-        return {}
-    if manifest.stat().st_size > _MANIFEST_LIMIT:
-        raise ValueError("Private original dependency manifest is too large")
-    document = read_json(manifest)
-    if not isinstance(document, dict):
-        raise ValueError("Invalid private original dependency manifest")
-    return document
-
-
 def _registry_files(document: dict) -> dict:
     registry = document.get("browser_startup_originals")
     if registry is None:
@@ -226,7 +216,7 @@ def _registry_files(document: dict) -> dict:
 
 
 def _registered_originals(manifest: Path | None) -> dict:
-    return _registry_files(_manifest_document(manifest))
+    return _registry_files(read_dependency_manifest(manifest))
 
 
 def _incoming_image(source: Path, relative: str, origin: str) -> dict | None:
@@ -247,18 +237,7 @@ def _save_intake(manifest: Path, previous: dict, files: dict) -> None:
             "files": files,
         },
     }
-    payload = json.dumps(updated, ensure_ascii=False, indent=2) + "\n"
-    if len(payload.replace("\n", os.linesep).encode("utf-8")) > _MANIFEST_LIMIT:
-        raise ValueError("Private original dependency manifest is too large")
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    lock = manifest.with_name(manifest.name + ".browser-intake.lock")
-    lock.open("x", encoding="utf-8").close()
-    try:
-        if _manifest_document(manifest) != previous:
-            raise ValueError("Private bindings changed during intake; run again")
-        atomic_json(manifest, updated)
-    finally:
-        lock.unlink()
+    save_dependency_manifest(manifest, previous, updated)
 
 
 def intake_browser_originals(
@@ -284,7 +263,7 @@ def intake_browser_originals(
     if apply and source is None:
         raise ValueError("Registering originals requires a delivery directory")
     verify_package(package)
-    document = _manifest_document(manifest)
+    document = read_dependency_manifest(manifest)
     registered = _registry_files(document)
     index = _original_index(package)
     archived, aliases, identities = index

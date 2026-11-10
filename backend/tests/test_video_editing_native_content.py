@@ -1,6 +1,4 @@
 import pytest
-from PIL import Image
-
 from app.video_editing_contracts import (
     BilingualContrastGloss,
     SemanticBeat,
@@ -24,6 +22,7 @@ from app.video_editing_native_sound import package_entry_frame
 from app.video_editing_overlay_templates import overlay_template, validate_template_plan
 from app.video_editing_paper_typewriter import paper_character_times
 from app.video_editing_unified_scenes import CHAPTER_TEMPLATE_ID, UNIFIED_TEMPLATE_ID
+from PIL import Image
 
 
 def test_chapter_ordinal_is_derived_from_ordered_source_starts():
@@ -388,6 +387,32 @@ def test_film_feedback_counts_are_bound_to_dated_current_evidence():
     proof = film_feedback_entries(native, assets, observations)
     assert [row["likes"] for row in proof] == [0, 1, 2]
     assert proof[1]["asset_sha256"] == "1"
+    registered = {
+        item["asset_id"]: {
+            **assets[item["asset_id"]],
+            "feedback_observation": {
+                **{key: value for key, value in item.items() if key != "asset_id"},
+                "attests_observation": True,
+            },
+        }
+        for item in observations
+    }
+    proof = film_feedback_entries(native, registered, None)
+    assert [row["likes"] for row in proof] == [0, 1, 2]
+    assert {row["observation_provenance"] for row in proof} == {
+        "project_owner_attested"
+    }
+    wrong_count = [observations[0], {**observations[1], "likes": 99}, observations[2]]
+    with pytest.raises(ValueError, match="matching project evidence"):
+        film_feedback_entries(native, registered, wrong_count)
+    duplicate_image = {
+        **registered,
+        "evidence-2": {**registered["evidence-2"], "sha256": "1"},
+    }
+    with pytest.raises(ValueError, match="three distinct registered images"):
+        film_feedback_entries(native, duplicate_image, None)
+    with pytest.raises(ValueError, match="matching project evidence"):
+        film_feedback_entries(native, assets, None)
     generated = {
         **assets,
         "evidence-1": {

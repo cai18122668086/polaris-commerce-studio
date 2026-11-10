@@ -1,10 +1,10 @@
 """Versioned contracts: models refer to word IDs; only the compiler owns time."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import AwareDatetime, Field, field_validator, model_validator
 
 from .video_studio_schemas import StrictVideoModel
 
@@ -481,6 +481,41 @@ class EditingImageResultImport(StrictVideoModel):
     description: str = Field(min_length=1, max_length=400)
 
 
+class EditingFeedbackObservation(StrictVideoModel):
+    label: str = Field(min_length=1, max_length=16)
+    likes: int = Field(ge=0, le=999_999_999, strict=True)
+    source_ref: str = Field(min_length=1, max_length=400)
+    observed_at: AwareDatetime
+    attests_observation: Literal[True]
+
+    @field_validator("label", "source_ref")
+    @classmethod
+    def one_line(cls, value: str) -> str:
+        result = value.strip()
+        if not result or not result.isprintable():
+            raise ValueError("Evidence needs a label and a one-line source reference")
+        return result
+
+    @field_validator("observed_at", mode="before")
+    @classmethod
+    def explicit_time(cls, value: object) -> object:
+        if isinstance(value, datetime) or isinstance(value, str) and "T" in value:
+            return value
+        raise ValueError("Evidence needs an ISO 8601 observation timestamp")
+
+    @field_validator("attests_observation", mode="before")
+    @classmethod
+    def explicit_attestation(cls, value: object) -> bool:
+        if value is not True:
+            raise ValueError("The project owner must attest the observation")
+        return True
+
+    @field_validator("observed_at")
+    @classmethod
+    def utc_time(cls, value: datetime) -> datetime:
+        return value.astimezone(UTC)
+
+
 class EditingMaterialResponse(StrictVideoModel):
     id: str
     asset_id: str
@@ -495,6 +530,7 @@ class EditingMaterialResponse(StrictVideoModel):
     duration_ms: int | None
     source_job_id: str | None
     source_asset_id: str | None
+    feedback_observation: EditingFeedbackObservation | None = None
     url: str
 
 

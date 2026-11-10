@@ -4510,6 +4510,8 @@ export interface components {
         Body_upload_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials_post: {
             /** Description */
             description: string;
+            /** Feedback Observation */
+            feedback_observation?: string | null;
             /** File */
             file: string;
             /** Label */
@@ -5726,6 +5728,25 @@ export interface components {
             /** Preview Sha256 */
             preview_sha256: string;
         };
+        /** EditingFeedbackObservation */
+        EditingFeedbackObservation: {
+            /**
+             * Attests Observation
+             * @constant
+             */
+            attests_observation: true;
+            /** Label */
+            label: string;
+            /** Likes */
+            likes: number;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Source Ref */
+            source_ref: string;
+        };
         /** EditingHighlightChoice */
         EditingHighlightChoice: {
             /** First Token Id */
@@ -5865,6 +5886,7 @@ export interface components {
             description: string;
             /** Duration Ms */
             duration_ms: number | null;
+            feedback_observation?: components["schemas"]["EditingFeedbackObservation"] | null;
             /** Height */
             height: number;
             /** Id */

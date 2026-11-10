@@ -1689,6 +1689,18 @@
             "title": "Description",
             "type": "string"
           },
+          "feedback_observation": {
+            "anyOf": [
+              {
+                "maxLength": 1200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Observation"
+          },
           "file": {
             "contentMediaType": "application/octet-stream",
             "title": "File",
@@ -4953,6 +4965,48 @@
         "title": "EditingExportConfirmation",
         "type": "object"
       },
+      "EditingFeedbackObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "attests_observation": {
+            "const": true,
+            "title": "Attests Observation",
+            "type": "boolean"
+          },
+          "label": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "likes": {
+            "maximum": 999999999.0,
+            "minimum": 0.0,
+            "title": "Likes",
+            "type": "integer"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "source_ref": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Source Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "likes",
+          "source_ref",
+          "observed_at",
+          "attests_observation"
+        ],
+        "title": "EditingFeedbackObservation",
+        "type": "object"
+      },
       "EditingHighlightChoice": {
         "additionalProperties": false,
         "properties": {
@@ -5305,6 +5359,16 @@
               }
             ],
             "title": "Duration Ms"
+          },
+          "feedback_observation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingFeedbackObservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "height": {
             "title": "Height",

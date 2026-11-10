@@ -12,6 +12,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -35,6 +36,7 @@ from .motion_library import sha256
 from .services import asset_is_available, job_history_is_available
 from .storage import ALLOWED_IMAGE_FORMATS, ImageStorage, UploadValidationError
 from .video_editing_contracts import (
+    EditingFeedbackObservation,
     EditingImageResultImport,
     EditingMaterialResponse,
     EditingMaterialsResponse,
@@ -123,6 +125,7 @@ def response(row: EditingMaterialRecord) -> dict:
                 "duration_ms",
                 "source_job_id",
                 "source_asset_id",
+                "feedback_observation",
             )
         },
         "asset_id": PREFIX + row.id,
@@ -153,7 +156,13 @@ def material_description(label: str, description: str) -> tuple[str, str]:
 
 
 def material_intent(row: EditingMaterialRecord) -> tuple:
-    return row.label, row.description, row.source_job_id, row.source_asset_id
+    return (
+        row.label,
+        row.description,
+        row.source_job_id,
+        row.source_asset_id,
+        row.feedback_observation,
+    )
 
 
 def reused_request() -> ApiError:
@@ -226,6 +235,7 @@ async def upload_material(
     request_id: Annotated[UUID, Form()],
     label: Annotated[str, Form(min_length=1, max_length=120)],
     description: Annotated[str, Form(min_length=1, max_length=400)],
+    feedback_observation: Annotated[str | None, Form(max_length=1200)] = None,
 ) -> dict:
     require_workspace_write(workspace)
     settings = enabled(request)
@@ -246,6 +256,24 @@ async def upload_material(
     )
     duration = None
     try:
+        observation = None
+        if feedback_observation is not None:
+            try:
+                observation = EditingFeedbackObservation.model_validate_json(
+                    feedback_observation
+                )
+            except ValidationError:
+                raise ApiError(
+                    422,
+                    "EDITING_FEEDBACK_OBSERVATION_INVALID",
+                    "请填写反馈标签、实际点赞数、来源及带时区的观察时间，并确认记录。",
+                ) from None
+            if kind != "image":
+                raise ApiError(
+                    422,
+                    "EDITING_FEEDBACK_EVIDENCE_IMAGE_REQUIRED",
+                    "互动记录需要上传对应的证据图片。",
+                )
         if kind == "image":
             try:
                 image = await request.app.state.image_validator.validate(
@@ -291,6 +319,9 @@ async def upload_material(
             width=width,
             height=height,
             duration_ms=duration,
+            feedback_observation=observation.model_dump(mode="json")
+            if observation
+            else None,
         )
         preserve = True
         return commit_material(session, row, target, identity)
@@ -318,7 +349,13 @@ async def import_image_result(
     )
     old = session.scalar(select(EditingMaterialRecord).where(*identity))
     if old is not None:
-        if material_intent(old) != (label, description, body.job_id, body.asset_id):
+        if material_intent(old) != (
+            label,
+            description,
+            body.job_id,
+            body.asset_id,
+            None,
+        ):
             raise reused_request()
         verify_material_file(settings, old)
         return response(old)

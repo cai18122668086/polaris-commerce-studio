@@ -2,21 +2,24 @@
 
 from datetime import UTC, datetime
 from io import BytesIO
+from json import dumps
 from uuid import uuid4
 
 import pytest
-from PIL import Image
-
+from app.errors import ApiError
 from app.models import AssetRecord, JobAssetRecord, JobItemRecord, JobRecord
 from app.services import new_id
 from app.video_editing_materials import (
     material_cards,
     material_file,
     project_material_files,
+    verify_material_cards,
 )
 from app.video_editing_pipeline import EditingFailure
 from app.video_editing_task_models import EditingSourceRecord
 from app.video_editing_worker import stage_plan_materials
+from PIL import Image
+
 from tests.test_auth_external import verified_identity
 from tests.test_processing_consent import CHOICE
 from tests.test_processing_consent import PATH as CONSENT_PATH
@@ -91,6 +94,90 @@ def test_original_replay_project_access_and_frozen_material_bytes(video, tmp_pat
             == assets
         )
         assert not original_only.exists()
+
+
+def test_feedback_observation_freezes_count_and_source_with_uploaded_bytes(
+    video, tmp_path
+):
+    client, _, ws, _, settings, project, source_id = setup_source(video, tmp_path)
+    data = {
+        "request_id": str(uuid4()),
+        "label": "反馈图",
+        "description": "本期反馈原图",
+    }
+    observation = {
+        "label": "对齐偏移",
+        "likes": 0,
+        "source_ref": "现场记录 #12",
+        "observed_at": "2026-11-09T16:50:00+08:00",
+        "attests_observation": True,
+    }
+    image = BytesIO()
+    Image.new("RGB", (12, 12), "blue").save(image, format="PNG")
+    files = {"file": ("feedback.png", image.getvalue(), "image/png")}
+    url = base(ws) + f"/projects/{project}/editing-materials"
+
+    def upload(value, *, selected_files=files):
+        return client.post(
+            url,
+            data={**data, "feedback_observation": dumps(value)},
+            files=selected_files,
+        )
+
+    original = upload(observation)
+    assert original.status_code == 201, original.text
+    row = original.json()
+    saved = {**observation, "observed_at": "2026-11-09T08:50:00Z"}
+    assert row["feedback_observation"] == saved
+    assert upload(saved).json() == row
+    assert upload({**saved, "likes": 1}).status_code == 409
+    assert client.get(url).json()["items"] == [row]
+    assert client.get(row["url"]).content == image.getvalue()
+
+    for change in (
+        {"observed_at": "2026-11-09T16:50:00"},
+        {"observed_at": 1794214200},
+        {"likes": -1},
+        {"likes": "0"},
+        {"attests_observation": 1},
+        {"attests_observation": False},
+    ):
+        failure = upload({**observation, **change})
+        assert failure.status_code == 422, failure.text
+        assert "EDITING_FEEDBACK_OBSERVATION_INVALID" in failure.text
+    failure = upload(
+        saved, selected_files={"file": ("source.mp4", b"video", "video/mp4")}
+    )
+    assert failure.status_code == 422, failure.text
+    assert "EDITING_FEEDBACK_EVIDENCE_IMAGE_REQUIRED" in failure.text
+
+    other = str(uuid4())
+    assert (
+        client.put(base(ws) + "/projects/" + other, json=payload()).status_code == 200
+    )
+    assert client.get(url.replace(project, other)).json()["items"] == []
+    assert client.get(row["url"].replace(project, other)).status_code == 404
+    with client.app.state.session_factory() as session:
+        source = session.get(EditingSourceRecord, source_id)
+        aid = row["asset_id"]
+        assets = project_material_files(
+            session, settings, source, {aid}, verify_bytes=True
+        )
+        assert assets[aid]["feedback_observation"] == saved
+        (card,) = material_cards(assets)
+        assert card["feedback_observation_label"] == saved["label"]
+        assert "feedback_observation" not in card
+        assert saved["source_ref"] not in dumps(card, ensure_ascii=False)
+        assert (
+            verify_material_cards(session, settings, source, [card], verify_bytes=True)
+            == assets
+        )
+        changed_card = {**card, "feedback_observation_sha256": "0" * 64}
+        with pytest.raises(ApiError) as failure:
+            verify_material_cards(
+                session, settings, source, [changed_card], verify_bytes=True
+            )
+        assert failure.value.code == "EDITING_MATERIAL_CHANGED"
 
 
 def attach_creative_output(

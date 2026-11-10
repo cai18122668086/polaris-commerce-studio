@@ -60,6 +60,7 @@ class EditingMaterialRecord(TimestampMixin, Base):
     duration_ms: Mapped[int | None] = mapped_column()
     source_job_id: Mapped[str | None] = mapped_column(String(40))
     source_asset_id: Mapped[str | None] = mapped_column(String(40))
+    feedback_observation: Mapped[dict | None] = mapped_column(json_type())
 
 
 class EditingTaskRecord(TimestampMixin, Base):

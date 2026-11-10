@@ -1,5 +1,7 @@
 """Immutable, owner-scoped project media and path-free planning cards."""
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -87,6 +89,13 @@ def project_material_files(
             "source": "project_upload",
             "license": "project owner supplied; rights and facts unreviewed",
             **(
+                {"feedback_observation": row.feedback_observation}
+                if row.feedback_observation
+                and row.kind == "image"
+                and not row.source_job_id
+                else {}
+            ),
+            **(
                 {
                     "source_image_result": {
                         "job_id": row.source_job_id,
@@ -101,6 +110,18 @@ def project_material_files(
     }
 
 
+def feedback_card(asset: dict[str, Any]) -> dict:
+    observation = asset.get("feedback_observation")
+    if not observation:
+        return {}
+    return {
+        "feedback_observation_label": observation["label"],
+        "feedback_observation_sha256": hashlib.sha256(
+            json.dumps(observation, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest(),
+    }
+
+
 def material_cards(
     assets: dict[str, dict[str, Any]], *, include_video_durations: bool = False
 ) -> list[dict[str, Any]]:
@@ -111,6 +132,7 @@ def material_cards(
                 key: asset[key]
                 for key in ("kind", "sha256", "semantic_use", "viewed_identity")
             },
+            **feedback_card(asset),
             **(
                 {"duration_ms": asset["duration_ms"]}
                 if include_video_durations

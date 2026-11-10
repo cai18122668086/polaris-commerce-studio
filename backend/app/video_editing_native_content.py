@@ -245,15 +245,31 @@ def film_feedback_entries(
     observations: Any,
 ) -> list[dict[str, Any]]:
     """Bind each displayed reaction count to a current, dated evidence image."""
-    if not isinstance(observations, list) or len(observations) != 3:
+    if observations is not None and (
+        not isinstance(observations, list) or len(observations) != 3
+    ):
         raise ValueError("Film feedback requires three dated evidence records")
     text = {row["path"]: row for row in native["text"]}
     media = {row["path"]: row["asset_id"] for row in native["media"]}
     events = {row["path"]: row for row in native["events"]}
     entries = []
-    for index, observed in enumerate(observations):
+    for index in range(3):
         asset_id = media.get(f"/media/photos/{index}/path", "")
         asset = assets.get(asset_id, {})
+        saved = asset.get("feedback_observation", {})
+        record = (
+            {
+                "asset_id": asset_id,
+                **{
+                    key: value
+                    for key, value in saved.items()
+                    if key != "attests_observation"
+                },
+            }
+            if saved.get("attests_observation") is True
+            else None
+        )
+        observed = record if observations is None else observations[index]
         label = text.get(f"/content/comments/{index}/text")
         event = events.get(f"/timing/events/comments/{index}")
         if (
@@ -263,6 +279,7 @@ def film_feedback_entries(
             or asset.get("kind") != "image"
             or asset.get("source") != "project_upload"
             or asset.get("source_image_result")
+            or (record is not None and observed != record)
             or not label
             or not event
             or observed["asset_id"] != asset_id
@@ -287,8 +304,15 @@ def film_feedback_entries(
                 "asset_sha256": asset["sha256"],
                 "token_id": event["token_id"],
                 "semantic_review": "unreviewed",
+                **(
+                    {"observation_provenance": "project_owner_attested"}
+                    if record
+                    else {}
+                ),
             }
         )
+    if observations is None and len({row["asset_sha256"] for row in entries}) != 3:
+        raise ValueError("Film feedback needs three distinct registered images")
     return entries
 
 

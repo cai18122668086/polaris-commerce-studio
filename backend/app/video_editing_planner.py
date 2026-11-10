@@ -28,6 +28,7 @@ from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_crowd_scene import CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
+from .video_editing_hypit_strips import SLANT_INSET_PURPOSE
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_content import (
     CHAPTER_PATH,
@@ -506,11 +507,18 @@ def build_request(
             "跳过 CX-G06 并说明缺少的内容。"
         )
     if template is not None and template["id"] == HY_PICTURE_TEMPLATE_ID:
-        message += (
-            "HY-A2 第三张斜卡的中文标题最多两字，让出右下同期人物。"
-            "从该项实际口播中选连续短词，并把第三项首词及入场绑定在所选短词首词。"
-            "完整短语继续由主字幕显示。"
-        )
+        if template["slots"][0]["purpose"] == SLANT_INSET_PURPOSE:
+            message += (
+                "HY-A2 沿用原右下人物窗，使用同期原片等比适配。"
+                "每张斜卡各取本项实录的一至三字，以所选短词首词触发。"
+                "人物可自然挡住卡片一部分，完整短语继续由主字幕显示。"
+            )
+        else:
+            message += (
+                "HY-A2 第三张斜卡的中文标题最多两字，让出右下同期人物。"
+                "从该项实际口播中选连续短词，并把第三项首词及入场绑定在所选短词首词。"
+                "完整短语继续由主字幕显示。"
+            )
     if runtime and runtime.get("presenter_motion_windows"):
         message += (
             "presenter_motion_windows是服务端按实录核对的可用段落示例。"

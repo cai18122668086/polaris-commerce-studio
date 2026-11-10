@@ -32,6 +32,7 @@ from .video_editing_hypit_strips import (
     PRESENTER_LABEL_GROUP,
     PRICE_CARD_GROUP,
     SLANT_GROUP,
+    SLANT_INSET_PURPOSE,
 )
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
@@ -130,6 +131,7 @@ NUMBERED_TEMPLATE_ID = "numbered-pictures-v1"
 LIVE_STRIP_TEMPLATE_ID = "live-strip-story-v1"
 PRESENTER_LABEL_TEMPLATE_ID = "hypit-presenter-labels-v1"
 _PRIOR_SLANT_PURPOSE = "使用原生斜卡、独立底图及右下同期人物呈现三项内容。"
+_FULL_FRAME_SLANT_PURPOSE = "使用原生斜卡和独立底图呈现三项内容，人物沿用原片尺寸和位置。"
 PACKAGE_TEMPLATES = frozenset({PACKAGE_TEMPLATE_ID, LINE_TEMPLATE_ID})
 _OPENING_PURPOSES = {
     "LYO01": (
@@ -838,7 +840,7 @@ _TEMPLATES[HY_PICTURE_TEMPLATE_ID] = {
     "slots": [
         {
             "group_id": SLANT_GROUP,
-            "purpose": "使用原生斜卡和独立底图呈现三项内容，人物沿用原片尺寸和位置。",
+            "purpose": SLANT_INSET_PURPOSE,
             "layer": "scene",
             "binding": "绑定三张独立配图和一张本期背景图。前景绑定同期原片。"
             "三条中文标题各取一至三字实录，在各自首词触发。原可选英文留空。"
@@ -1047,8 +1049,11 @@ def template_snapshot_matches(template: dict) -> bool:
     if template["id"] != HY_PICTURE_TEMPLATE_ID:
         return False
     # The original copy is part of the request digest of existing slant plans.
-    current["slots"][0]["purpose"] = _PRIOR_SLANT_PURPOSE
-    return template == current
+    for purpose in (_PRIOR_SLANT_PURPOSE, _FULL_FRAME_SLANT_PURPOSE):
+        current["slots"][0]["purpose"] = purpose
+        if template == current:
+            return True
+    return False
 
 
 def validate_template_plan(

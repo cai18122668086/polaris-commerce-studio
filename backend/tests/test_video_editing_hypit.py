@@ -279,10 +279,8 @@ def test_hypit_slant_cards_keep_three_image_slots_and_native_arrivals(
     }
     assert strips.stagger_audio_frame(strips.SLANT_GROUP, 20) == 21
     assert "full_source_foreground" not in data
-    website = strips.compile_strips(
-        tmp_path, group, native, assets, slant_full_source=True
-    )
-    assert website == {**data, "glosses": ["", "", ""], "full_source_foreground": True}
+    website = strips.compile_strips(tmp_path, group, native, assets)
+    assert website == {**data, "glosses": ["", "", ""]}
     glosses[0]["source_text"] = "刷锅"
     with pytest.raises(ValueError, match="its own spoken title"):
         strips.compile_strips(tmp_path, group, native, assets, slant_glosses=glosses)

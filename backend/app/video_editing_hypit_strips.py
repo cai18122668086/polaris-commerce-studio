@@ -22,6 +22,7 @@ SLANT_BACKGROUND = "/component_assets/stagger#mkbg3"
 SLANT_FOREGROUND = "/component_assets/stagger#mkfg1"
 SLANT_IMAGES = tuple(f"/component_assets/stagger#mkpic{i}" for i in range(1, 4))
 SLANT_CAPTION_BASELINE = 1208
+SLANT_INSET_PURPOSE = "使用原生斜卡和独立底图呈现三项内容，人物等比放入原右下窗口。"
 PRICE_CARD_GROUP = "HY-A6"
 PRICE_CARD_PROFILE = "hypit-original-price-cards/1"
 DETAIL_CARDS_TEMPLATE_ID = "hypit-detail-cards-v1"
@@ -324,7 +325,6 @@ def compile_strips(
     price_card_layout: str | None = None,
     live_stage: bool = False,
     slant_glosses: list[dict[str, str]] | None = None,
-    slant_full_source: bool = False,
 ) -> dict:
     text = {row["path"]: row for row in native["text"]}
     events = {row["path"]: row for row in native["events"]}
@@ -388,8 +388,6 @@ def compile_strips(
     else:
         data["labels"] = [text[path]["text"] for path in titles]
     if slant:
-        if slant_full_source:
-            data["full_source_foreground"] = True
         labels = data["labels"]
         glosses = [""] * len(labels)
         if slant_glosses is not None:

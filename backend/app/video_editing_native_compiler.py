@@ -61,7 +61,6 @@ from .video_editing_crowd_scene import (
     validate_crowd_images,
 )
 from .video_editing_hypit import (
-    HY_PICTURE_TEMPLATE_ID,
     PICTURE_PROFILE,
     compile_picture_clocks,
 )
@@ -592,10 +591,6 @@ def compile_native_job(
             price_card_layout=recipe.get("price_card_layout"),
             live_stage=live_stage,
             slant_glosses=recipe.get("hypit_slant_glosses"),
-            slant_full_source=(
-                group["id"] == SLANT_GROUP
-                and recipe["design_id"] == "tengli-" + HY_PICTURE_TEMPLATE_ID
-            ),
         )
         if strip_variant
         else None

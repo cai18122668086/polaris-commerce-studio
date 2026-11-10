@@ -1355,7 +1355,7 @@ def _hypit_picture_entry(
                     profile_id=SLANT_PROFILE,
                 )
             ]
-            compile_strips(package, group, anchors, assets, slant_full_source=True)
+            compile_strips(package, group, anchors, assets)
         else:
             audit_picture_entry(package, group)
             compile_picture_clocks(package, config, anchors, assets, transcript, beat)
@@ -1378,7 +1378,7 @@ def _hypit_picture_entry(
             )
         )
     reason = (
-        "原生三图按实录入场，人物保持原片的尺寸和位置，可自然遮挡卡片。"
+        "原生三图按实录入场，人物等比放入原右下窗口，可自然遮挡卡片。"
         if slant
         else "保留原生三图、人物窗和入场方式。"
     ) + "主字幕与完整原声使用整片时钟。"

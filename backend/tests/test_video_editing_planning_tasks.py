@@ -420,7 +420,14 @@ def test_missing_original_after_preparation_stops_before_model_submission(
     assert fonts[removed] not in json.dumps(frozen)
 
 
-def test_saved_slant_template_accepts_only_the_previous_exact_copy():
+@pytest.mark.parametrize(
+    "old_purpose",
+    [
+        "使用原生斜卡、独立底图及右下同期人物呈现三项内容。",
+        "使用原生斜卡和独立底图呈现三项内容，人物沿用原片尺寸和位置。",
+    ],
+)
+def test_saved_slant_template_accepts_only_previous_exact_copies(old_purpose):
     from app.video_editing_hypit import HY_PICTURE_TEMPLATE_ID
     from app.video_editing_overlay_templates import (
         overlay_template,
@@ -429,7 +436,7 @@ def test_saved_slant_template_accepts_only_the_previous_exact_copy():
 
     saved = overlay_template(HY_PICTURE_TEMPLATE_ID)
     assert template_snapshot_matches(saved)
-    saved["slots"][0]["purpose"] = "使用原生斜卡、独立底图及右下同期人物呈现三项内容。"
+    saved["slots"][0]["purpose"] = old_purpose
     assert template_snapshot_matches(saved)
     saved["slots"][0]["binding"] = "改动绑定合同"
     assert not template_snapshot_matches(saved)

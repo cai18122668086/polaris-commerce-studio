@@ -14,7 +14,7 @@ from jsonschema import Draft202012Validator
 
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .video_editing_browser_clocks import CARD_GROUP, CARD_LANDMARKS
-from .video_editing_browser_rotation import ROTATION_GROUP
+from .video_editing_browser_rotation import ANALYSIS_BOARD_GROUP, ROTATION_GROUP
 from .video_editing_hypit import (
     PICTURE_FPS,
     PICTURE_GROUP,
@@ -208,7 +208,7 @@ def input_contract(
                 group["id"] in {"CX-G04", "CX-G05", "CX-G06"}
                 and names == ["items", "image"]
             )
-            or (group["id"] == "CX-G08" and parts == ["presenter"])
+            or (group["id"] == ANALYSIS_BOARD_GROUP and parts == ["presenter"])
         ):
             category, resource_kind = "resource", "media"
         elif isinstance(value, str) and (
@@ -468,6 +468,11 @@ def input_contract(
             else {}
         ),
         "fresh_recipe_required": True,
+        **(
+            {"native_analysis_presenter": {"media_path": "/presenter", "fps": 30}}
+            if group["id"] == ANALYSIS_BOARD_GROUP
+            else {}
+        ),
         **(
             {
                 "native_card_focus": {

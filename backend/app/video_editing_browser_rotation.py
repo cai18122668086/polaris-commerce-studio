@@ -14,6 +14,7 @@ from typing import Any, cast
 from PIL import Image, ImageOps
 
 from .motion_library import read_json, sha256
+from .video_editing_browser_boot import audit_browser_boot_engine
 from .video_editing_browser_clocks import (
     FRUIT_LIST_FONTS,
     LIVE_SPLIT_GROUPS,
@@ -27,6 +28,7 @@ ROTATION_GROUP = "CX-G04"
 STRIP_CARD_GROUP = "CX-G05"
 STRIP_CARD_DESIGN = "tengli-strip-cards-v1"
 BROWSER_CARD_GROUPS = (ROTATION_GROUP, STRIP_CARD_GROUP)
+ANALYSIS_BOARD_GROUP = "CX-G08"
 ROTATION_MATTE = "model-01eb6a29a5c4d8edb30b"
 ROTATION_EVENTS = tuple(f"/items/{i}/at" for i in range(3))
 ROTATION_IMAGES = tuple(f"/items/{i}/image" for i in range(3))
@@ -34,6 +36,12 @@ ROTATION_LABELS = tuple(f"/items/{i}/label" for i in range(3))
 _ROTATION_REF = "tengli-card-rotation-"
 _STRIP_CARD_REF = "tengli-strip-card-"
 _SPLIT_REF = "tengli-browser-split-"
+_ANALYSIS_REF = "tengli-analysis-board-"
+_PRESENTER_REFS = {
+    ROTATION_GROUP: _ROTATION_REF,
+    STRIP_CARD_GROUP: _STRIP_CARD_REF,
+    ANALYSIS_BOARD_GROUP: _ANALYSIS_REF,
+}
 _FPS = 30
 _OWNER = Path("src/engines/workspace/商业口播_可编辑改造_20261104")
 _MEDIA = _OWNER / "unified/core/media.py"
@@ -46,6 +54,9 @@ _STRIP_TIMELINE_SHA = "b3d9bf69f9f11a8a1b699eacede74baad1bb379cb0b3d3d9fc71e4593
 _STRIP_ENTRIES = (9, 26, 48)
 # Native G05 draws the presenter at (130, 500) with this size.
 _STRIP_PRESENTER_SIZE = (500, 780)
+# The original draw expands its input to 1600 x 2400 before applying
+# a single 0.51 scale and translation. Use a proportional half-size input.
+_ANALYSIS_PRESENTER_SIZE = (800, 1200)
 _SPECIAL = Path("commercial_runtime/special.py")
 _DRAW = (
     '([g,f])=>{engine.draw(exportCanvas,g,f/30,"B");'
@@ -66,7 +77,9 @@ async ([group, frame, uri, slot, liveBackground]) => {
 
 
 def _audit(package: Path, group: dict) -> None:
-    if group["id"] in LIVE_SPLIT_GROUPS:
+    if group["id"] == ANALYSIS_BOARD_GROUP:
+        audit_browser_boot_engine(package, group)
+    elif group["id"] in LIVE_SPLIT_GROUPS:
         audit_split_engine(package, group)
     else:
         audit_card_family_engine(package, group)
@@ -127,13 +140,20 @@ def rotation_source_clock(
     ):
         raise ValueError(
             "Original browser scene requires its current measured presenter"
-            if split
+            if split or native.get("group_id") == ANALYSIS_BOARD_GROUP
             else "Rotating cards require their current, measured presenter"
         )
     strip = native.get("group_id") == STRIP_CARD_GROUP
-    prefix = _SPLIT_REF if split else _STRIP_CARD_REF if strip else _ROTATION_REF
+    analysis = native.get("group_id") == ANALYSIS_BOARD_GROUP
+    prefix = (
+        _SPLIT_REF
+        if split
+        else _PRESENTER_REFS.get(native.get("group_id", ROTATION_GROUP), _ROTATION_REF)
+    )
     policy = (
-        "native_split_presenter_window"
+        "native_analysis_board_presenter_window"
+        if analysis
+        else "native_split_presenter_window"
         if split
         else "native_strip_card_presenter_window"
         if strip
@@ -169,6 +189,43 @@ def compile_rotation_clock(
     return rotation_card_clock(
         config, native, assets, strip=group["id"] == STRIP_CARD_GROUP
     )
+
+
+def validate_analysis_board(
+    config: dict, native: dict, resources: dict[str, str]
+) -> None:
+    """Check G08's original three text slots and its moving presenter binding."""
+    if ROTATION_MATTE not in resources:
+        raise ValueError("Analysis board needs the original presenter matte")
+    duration, items = config["duration"], config["items"]
+    if not 0 < duration <= 30 or len(items) != 3:
+        raise ValueError("Original analysis board needs three items in one shot")
+    if [row["path"] for row in native["media"]] != ["/presenter"]:
+        raise ValueError("Original analysis board uses its presenter and three labels")
+    text = {row["path"]: row for row in native["text"]}
+    events = {row["path"]: row for row in native["events"]}
+    previous_frame = -1
+    for item, label_path, event_path in zip(
+        items, ROTATION_LABELS, ROTATION_EVENTS, strict=True
+    ):
+        label, event = text.get(label_path), events.get(event_path)
+        at, enter = item["at"], item["enter"]
+        frame = math.floor(round(at * 1000) * _FPS / 1000) + 1
+        if (
+            not label
+            or not event
+            or event["edge"] != "start"
+            or event["token_id"] != label["token_ids"][0]
+            or not 1 <= len(item["label"]) <= 2
+            or item["image"]
+            or not 0 <= at < duration
+            or frame <= previous_frame
+            or not 0 < enter < duration - at
+        ):
+            raise ValueError(
+                "Analysis board labels need separate measured frames and room to appear"
+            )
+        previous_frame = frame
 
 
 def rotation_card_clock(
@@ -323,9 +380,10 @@ def install_rotation_export(package: Path, root: Path) -> None:
     group = job["group_id"]
     split = group in LIVE_SPLIT_GROUPS
     strip = group == STRIP_CARD_GROUP
-    if not split and group not in BROWSER_CARD_GROUPS:
+    analysis = group == ANALYSIS_BOARD_GROUP
+    if not split and not analysis and group not in BROWSER_CARD_GROUPS:
         return
-    prefix = _SPLIT_REF if split else _STRIP_CARD_REF if strip else _ROTATION_REF
+    prefix = _SPLIT_REF if split else _PRESENTER_REFS[group]
     reference = job["config"].get("presenter", "")
     if not isinstance(reference, str) or not reference.startswith("input://" + prefix):
         return
@@ -349,7 +407,7 @@ def install_rotation_export(package: Path, root: Path) -> None:
         or Path(media.__file__).resolve() != package / _MEDIA
     ):
         raise ValueError(
-            "Rotating cards must use the pinned original browser and sampler"
+            "Live browser scenes must use the pinned original browser and sampler"
         )
     browser_drawer, evaluate = special.browser_drawer, Page.evaluate
 
@@ -395,6 +453,8 @@ def install_rotation_export(package: Path, root: Path) -> None:
                 if split
                 else _presenter_in_slot(source_frame, _STRIP_PRESENTER_SIZE)
                 if strip
+                else _presenter_in_slot(source_frame, _ANALYSIS_PRESENTER_SIZE)
+                if analysis
                 else _presenter_plate(source_frame)
             )
             uri = _png_uri(plate)
@@ -431,6 +491,8 @@ def install_rotation_export(package: Path, root: Path) -> None:
             if split
             else "original G05 draw with current matte frames"
             if strip
+            else "original G08 draw with current matte frames"
+            if analysis
             else "original G04 draw with current matte frames",
         }
 

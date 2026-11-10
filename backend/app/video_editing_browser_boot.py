@@ -31,13 +31,7 @@ class BrowserBootFontsMissing(ValueError):
         )
 
 
-def require_browser_boot_fonts(
-    package: Path, group: dict, resources: dict
-) -> dict[str, str]:
-    if group["id"] not in BROWSER_BOOT_FONT_GROUPS:
-        return {}
-    if not isinstance(resources, dict):
-        raise ValueError("Invalid original browser startup font bindings")
+def audit_browser_boot_engine(package: Path, group: dict) -> None:
     directory = group["browser_directory"]
     pinned = {
         group["entry"]: _ENGINE,
@@ -46,6 +40,17 @@ def require_browser_boot_fonts(
     }
     if any(sha256(inside(package, path)) != digest for path, digest in pinned.items()):
         raise ValueError("Original browser font loader changed")
+
+
+def require_browser_boot_fonts(
+    package: Path, group: dict, resources: dict
+) -> dict[str, str]:
+    if group["id"] not in BROWSER_BOOT_FONT_GROUPS:
+        return {}
+    if not isinstance(resources, dict):
+        raise ValueError("Invalid original browser startup font bindings")
+    audit_browser_boot_engine(package, group)
+    directory = group["browser_directory"]
     aliases = read_json(package / "catalog/native-relative-assets.json")
     expected = {path: "input://" + rid for path, rid in _FONT_ALIASES.items()}
     expected[_BUNDLED_ALIAS] = "pkg://" + _BUNDLED_FONT

@@ -216,6 +216,50 @@ def test_strip_card_rejects_same_frame_entries_and_keeps_presenter_ratio():
     assert left > 0 and right < 500
 
 
+def test_analysis_board_uses_measured_labels_and_a_proportional_source(tmp_path):
+    _, transcript, _, _ = inputs(tmp_path)
+    native = {
+        "group_id": rotation.ANALYSIS_BOARD_GROUP,
+        "clock": {"start_ms": 1000, "end_ms": 3000, "native_fps": 30},
+        "media": [{"path": "/presenter", "asset_id": "source"}],
+        "events": [
+            {"path": path, "edge": "start", "token_id": f"t{i}"}
+            for i, path in enumerate(rotation.ROTATION_EVENTS)
+        ],
+        "text": [
+            {"path": path, "token_ids": [f"t{i}"]}
+            for i, path in enumerate(rotation.ROTATION_LABELS)
+        ],
+    }
+    assets = {"source": {"kind": "original_video", "sha256": transcript.source_sha256}}
+    window = rotation.rotation_source_clock(native, assets, transcript)
+    assert window["binding_id"].startswith("tengli-analysis-board-")
+    assert window["source_start_ms"] == 1000 and window["source_end_ms"] == 3000
+    source = Image.new("RGBA", (720, 1280), (0, 0, 0, 255))
+    plate = rotation._presenter_in_slot(source, rotation._ANALYSIS_PRESENTER_SIZE)
+    assert plate.size == (800, 1200)
+    assert plate.getbbox() == (62, 0, 737, 1200)
+
+    config = {
+        "duration": 2,
+        "items": [
+            {"label": label, "at": at, "enter": 0.36, "image": ""}
+            for label, at in (("洗碗", 0), ("刷锅", 0.42), ("蔬菜", 1))
+        ],
+    }
+    resources = {rotation.ROTATION_MATTE: "fixture"}
+    rotation.validate_analysis_board(config, native, resources)
+    with pytest.raises(ValueError, match="original presenter matte"):
+        rotation.validate_analysis_board(config, native, {})
+    config["items"][1]["at"] = 0.02
+    with pytest.raises(ValueError, match="separate measured frames"):
+        rotation.validate_analysis_board(config, native, resources)
+    config["items"][1]["at"] = 0.42
+    native["events"][1]["token_id"] = "t2"
+    with pytest.raises(ValueError, match="separate measured frames"):
+        rotation.validate_analysis_board(config, native, resources)
+
+
 @pytest.mark.parametrize("group_id", rotation.BROWSER_CARD_GROUPS)
 def test_rotation_template_binds_each_current_item_before_worker_admission(
     tmp_path, group_id

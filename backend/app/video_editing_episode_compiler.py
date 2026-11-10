@@ -19,6 +19,7 @@ from pydantic import Field, model_validator
 
 from .config import Settings
 from .motion_browser_originals import (
+    BROWSER_ORIGINALS_KEY,
     BROWSER_ORIGINALS_REQUIRED,
     BrowserOriginalsMissing,
 )
@@ -582,6 +583,7 @@ def compile_episode(
                     recipe,
                     asset_files,
                     native_bindings_file=settings.video_editing_native_bindings_file,
+                    browser_originals_directory=root / "browser-originals",
                 )
                 part_bindings = read_json(directory / "bindings.json")
                 hypit_entries = {}
@@ -626,6 +628,14 @@ def compile_episode(
                     ):
                         raise ValueError("Conflicting instance resource binding")
                     bindings["resources"][rid] = value
+                if originals := part_bindings.get(BROWSER_ORIGINALS_KEY):
+                    frozen = bindings.setdefault(BROWSER_ORIGINALS_KEY, {})
+                    if any(
+                        name in frozen and frozen[name] != row
+                        for name, row in originals.items()
+                    ):
+                        raise ValueError("Conflicting frozen original browser image")
+                    frozen.update(originals)
                 if authoring.sound:
                     events = read_json(directory / "word-bindings.json")["events"]
                     if (

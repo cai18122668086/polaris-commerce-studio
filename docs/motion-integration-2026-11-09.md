@@ -1638,3 +1638,13 @@ Chrome 本机实测经「语义规划任务」展开「本期补充素材」，�
 在指定本地目录和两个原 ZIP 内按文件大小及 SHA256 查找七个已登记的缺件资源。扫描 305,961 个文件及 1,461 个 ZIP 文件条目，唯一大小相同的候选摘要不同。两份 ZIP 摘要与交接基线一致，原 Motion 包 1,426 项完整性通过。HY-A1 原入口包含一路同期视频输入和三张文字卡，原俊雅字体的授权与字节仍待取得。励字原超粗黑及志向黑也待取得可核验的字体和项目授权。[造字工房俊雅](https://www.makefont.com/font-1564.html) · [励字超粗黑简繁](https://www.dreamfont.cn/font/lizichaocuheijianfan.html) · [励字志向黑简特粗](https://www.dreamfont.cn/font/lizizhixiangheijian%20tecu.html)
 
 314 项剪辑、原库和视频工作台回归通过。加入任务诊断专项用例后复跑 23 项；目标 Ruff、mypy、前端类型和 ESLint 检查通过。四个浏览器缺件组和 HY-A1 仍保留原目录状态，待取得原件后继续运行验证。
+
+## 单独补交浏览器原件的接入
+
+剪辑服务使用现有 `POLARIS_VIDEO_EDITING_NATIVE_BINDINGS_FILE`，在其私有 JSON 中新增可选的 `browser_startup_originals`。保留该文件原有 `resources` 和 `tools`。新增对象的 `library_release` 填原 Motion ZIP 的完整 SHA256，`files` 以从 Motion 根目录起的原始相对路径为键。每条记录提供本机绝对 `path`、文件 `sha256` 和可追溯的 `original_source`。例如 G05 第零帧的键为 `src/engines/workspace/晨曦_接手复刻_20261104/editable-library/reuse-G04-G06/g05-assets/base-000.jpg`。同一分支实际绘制的缺失序列需逐帧补齐。
+
+编译将本次使用的 JPEG 和 PNG 按摘要冻结到任务目录。已索引的原图同时核对原目录记录的字节数和摘要，回执记为 `catalog_sha256`。未索引的原帧核对补交文件摘要及来源登记，回执记为 `operator_attested`。任务启动和浏览器逐文件响应时再次核对冻结字节。原浏览器的本地服务只对本次原路径返回已核验的补交图，原引擎继续执行原绘制。原生回执记录实际加载的路径键、摘要与证据类型。变更后的补交文件进入新任务，续跑指纹包含已冻结的绑定。
+
+使用一段实录的 69 张测试帧，在独立目录验证实际 CX-G05 编译、冻结、浏览器加载和编码。原生回执记录全部 69 张，输出独立解码 100 帧，其中 89 种画面摘要。首帧左上抽样区和对应输入图的 RGB 平均绝对误差为 0.76。另复制任务并改动一个冻结文件的一字节，原生入口在启动浏览器之前拦截。原库 1,426 项摘要复核一致。详情见 `C:/tl/browser-supplement-20261110/transport-verification.json`。测试验证接入传输和渲染机制。四组缺件浏览器动效和 HY-A1 的真实原件及授权状态仍待补齐。
+
+缓存负例在独立任务中变更一项来源记录，旧原生片段被拒绝复用。317 项相关回归及最终 35 项专项复验通过，目标 Ruff、mypy 和差异检查通过。

@@ -34,6 +34,7 @@ _ADAPTERS = (
     "hypit_strips",
     "browser_live",
     "browser_rotation",
+    "browser_original_transport",
     "line_branch",
     "question_branch",
 )

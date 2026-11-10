@@ -13,7 +13,11 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from .motion_browser_originals import require_browser_originals
+from .motion_browser_originals import (
+    BROWSER_ORIGINALS_KEY,
+    browser_original_evidence,
+    compile_browser_originals,
+)
 from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
 from .motion_local_dependencies import dependency_state, local_dependencies
 from .motion_parameter_contracts import (
@@ -218,6 +222,7 @@ def compile_native_job(
     asset_files: dict[str, dict[str, Any]],
     *,
     native_bindings_file: Path | None = None,
+    browser_originals_directory: Path | None = None,
     component_validation: bool = False,
 ) -> dict[str, Any]:
     """Return a schema-admitted original job plus traceable measured bindings.
@@ -944,7 +949,13 @@ def compile_native_job(
         native["browser_clock"] = browser_clock
     schema = read_json(package / group["input_schema"])
     Draft202012Validator(schema).validate(config)
-    require_browser_originals(package, group, config)
+    browser_originals = compile_browser_originals(
+        package,
+        group,
+        config,
+        native_bindings_file,
+        browser_originals_directory or root / "browser-originals",
+    )
     job = {
         "schema": "commercial-talk-job/1",
         "group_id": beat.group_id,
@@ -954,6 +965,8 @@ def compile_native_job(
     root.mkdir(parents=True, exist_ok=True)
     atomic_json(root / "job.json", job)
     bindings: dict[str, Any] = {"resources": resources, "tools": {}}
+    if browser_originals:
+        bindings[BROWSER_ORIGINALS_KEY] = browser_originals
     strip_digest = None
     if strip is not None:
         sidecar = root / STRIP_SIDECAR
@@ -981,6 +994,11 @@ def compile_native_job(
             "job_sha256": sha256(root / "job.json"),
             "word_bindings_sha256": sha256(root / "word-bindings.json"),
             "media_clocks": clock_receipts,
+            **(
+                {BROWSER_ORIGINALS_KEY: browser_original_evidence(browser_originals)}
+                if browser_originals
+                else {}
+            ),
             **({"retained_design_glyphs": retained_glyphs} if retained_glyphs else {}),
             **(
                 {

@@ -12,7 +12,12 @@ import runpy
 import sys
 from pathlib import Path
 
-from .motion_browser_originals import RENDER_GROUPS, require_browser_originals
+from .motion_browser_originals import (
+    BROWSER_ORIGINALS_KEY,
+    RENDER_GROUPS,
+    browser_original_evidence,
+    require_browser_originals,
+)
 from .motion_library import atomic_json, read_json
 from .video_editing_native_compat import install
 from .video_editing_native_layout import install_native_role_review
@@ -40,16 +45,47 @@ def main() -> None:
     if args.command != "plan":
         native_input = read_json(input_file)
         shots = native_input["shots"] if args.kind == "episode" else [native_input]
-        original_shots = [shot for shot in shots if shot["group_id"] in RENDER_GROUPS]
+        original_shots = [
+            (index, shot)
+            for index, shot in enumerate(shots)
+            if shot["group_id"] in RENDER_GROUPS
+        ]
         if original_shots:
+            binding_path = root / "bindings.json"
+            frozen = (
+                read_json(binding_path).get(BROWSER_ORIGINALS_KEY)
+                if binding_path.is_file()
+                else None
+            )
             groups = {
                 group["id"]: group
                 for group in read_json(package / "catalog/groups.json")["groups"]
             }
-            for shot in original_shots:
-                require_browser_originals(
-                    package, groups[shot["group_id"]], shot["config"]
+            for index, shot in original_shots:
+                selected = require_browser_originals(
+                    package,
+                    groups[shot["group_id"]],
+                    shot["config"],
+                    frozen,
+                    root / "browser-originals",
                 )
+                if selected and args.command in {"export", "render-group"}:
+                    output = (
+                        root / "renders" / f"{index:03}-{shot['group_id']}.mp4"
+                        if args.kind == "episode"
+                        else root
+                        / shot.get("output", f"outputs/{shot['group_id']}.mp4")
+                    ).resolve()
+                    if not output.is_relative_to(root):
+                        raise ValueError("Native browser output leaves its task")
+                    if output.is_file():
+                        receipt = read_json(output.with_suffix(".receipt.json"))
+                        if receipt.get("native", {}).get(
+                            BROWSER_ORIGINALS_KEY
+                        ) != browser_original_evidence(selected):
+                            raise ValueError(
+                                "Cached browser output has different originals"
+                            )
     install(package, root)
     # Original adapter launches original Python workers. Apply the same narrow
     # copy-mode rule at Python startup there, without editing their source.
@@ -65,6 +101,8 @@ def main() -> None:
         "from app.video_editing_browser_live import install_live_card_export\n"
         "from app.video_editing_browser_live import install_fruit_list_export\n"
         "from app.video_editing_browser_rotation import install_rotation_export\n"
+        "from app.video_editing_browser_original_transport import ("
+        "install_browser_originals)\n"
         "from app.video_editing_line_branch import install_native_line_branch\n"
         "from app.video_editing_question_branch import install_native_question_branch\n"
         "package = Path(os.environ['TENGLI_NATIVE_PACKAGE'])\n"
@@ -79,6 +117,7 @@ def main() -> None:
         "    install_live_card_export(package, root)\n"
         "    install_fruit_list_export(package, root)\n"
         "    install_rotation_export(package, root)\n"
+        "    install_browser_originals(package, root)\n"
         "    install_native_line_branch(package, root)\n"
         "except Exception as error:\n"
         "    raise SystemExit('Unable to prepare native shot adapter') from error\n",

@@ -12,6 +12,7 @@ from .video_editing_contracts import (
     EditingEffectTarget,
     EditingHighlightTarget,
     EditingImageTarget,
+    EditingMusicOptions,
     EditingNativePlanResponse,
     SemanticPlan,
 )
@@ -24,6 +25,7 @@ from .video_editing_native_plans import (
     plan_response,
     transparent_original_groups,
 )
+from .video_editing_native_sound import music_replacement_options
 from .video_editing_task_models import EditingNativePlanRecord
 from .video_editing_task_routes import enabled, own_project
 from .video_studio_routes import VideoWorkspace
@@ -58,6 +60,33 @@ def list_native_plans(
         rows = [own_native_plan(session, workspace, project_id, include_plan_id), *rows]
     groups = transparent_original_groups(settings)
     return [plan_response(r, settings, groups) for r in rows]
+
+
+@router.get(
+    "/editing-native-plans/{plan_id}/music-options",
+    response_model=EditingMusicOptions | None,
+)
+def native_music_options(
+    project_id: UUID,
+    plan_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> EditingMusicOptions | None:
+    settings = enabled(request)
+    row = own_native_plan(session, workspace, project_id, plan_id)
+    transcript = native_edit_transcript(session, settings, row)
+    try:
+        return music_replacement_options(
+            settings.video_editing_library_dir,
+            row.recipes.get("sound"),
+            transcript,
+            row.choice_snapshot,
+        )
+    except (ValueError, KeyError, OSError) as error:
+        raise ApiError(
+            409, "EDITING_MUSIC_UNAVAILABLE", "暂时无法核对这份编排的原库背景音乐。"
+        ) from error
 
 
 @router.get(

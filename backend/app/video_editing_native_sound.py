@@ -13,7 +13,13 @@ from .video_editing_browser_rotation import (
     ROTATION_GROUP,
     rotation_entry_frame,
 )
-from .video_editing_contracts import NativeRenderEdits, Transcript
+from .video_editing_contracts import (
+    EditingMusicChoice,
+    EditingMusicOptions,
+    NativeRenderEdits,
+    Transcript,
+    TranscriptToken,
+)
 from .video_editing_cxbr import CXBR_SOUNDS, cxbr_entry_frame
 from .video_editing_hypit_strips import verify_stagger_entry
 from .video_editing_judgment import (
@@ -115,6 +121,80 @@ class NativeSoundDesign(StrictVideoModel):
         return self
 
 
+def _sound_boundary(
+    point: SoundBoundary, tokens: dict[str, TranscriptToken], duration: float
+) -> float:
+    if isinstance(point, WordBoundary):
+        token = tokens[point.token_id]
+        return (token.start_ms if point.edge == "start" else token.end_ms) / 1000
+    return 0 if point == "episode_start" else duration
+
+
+def _avoided_sound_assets(choice_snapshot: dict | None) -> set[str]:
+    return {
+        row["target_id"]
+        for row in (choice_snapshot or {}).get("notes", [])
+        if row["target_kind"] == "bundled_asset" and row["choice"] == "avoid"
+    }
+
+
+def _music_can_replace(
+    row: dict, track: NativeMusicTrack, length: float, avoided: set[str]
+) -> bool:
+    return (
+        row["id"] != track.asset_id
+        and row["id"] not in avoided
+        and row["kind"] == "music"
+        and row.get("bundled") is True
+        and row.get("rights", {}).get("local_use") == "user-authorized"
+        and (track.loop or row["duration_seconds"] + 0.0001 >= length)
+    )
+
+
+def music_replacement_options(
+    package: Path,
+    sound: dict | None,
+    transcript: Transcript,
+    choices: dict,
+    selected_id: str | None = None,
+) -> EditingMusicOptions | None:
+    if len((sound or {}).get("music", [])) != 1:
+        return None
+    design = NativeSoundDesign.model_validate(sound)
+    (track,) = design.music
+    tokens = {token.id: token for token in transcript.tokens}
+    duration = transcript.duration_ms / 1000
+    start = _sound_boundary(track.start, tokens, duration)
+    end = _sound_boundary(track.end, tokens, duration)
+    if not 0 <= start < end <= duration:
+        return None
+    assets = {
+        row["id"]: row
+        for row in read_json(package / "asset-manifest.json")["assets"]
+        if row["kind"] == "music"
+    }
+    avoided = _avoided_sound_assets(choices)
+
+    def info(row: dict) -> EditingMusicChoice:
+        return EditingMusicChoice(
+            asset_id=row["id"],
+            name=row.get("name") or row["id"],
+            duration_seconds=row["duration_seconds"],
+        )
+
+    current = assets[track.asset_id]
+    options = []
+    for aid, row in assets.items():
+        if (selected_id is not None and aid != selected_id) or not _music_can_replace(
+            row, track, end - start, avoided
+        ):
+            continue
+        path = inside(package, row["path"])
+        if path.is_file() and sha256(path) == row["sha256"]:
+            options.append(info(row))
+    return EditingMusicOptions(original=info(current), choices=options)
+
+
 def package_entry_frame(shot: dict, fps: int, event_path: str) -> int:
     if (
         shot["group_id"] != PACKAGE_GROUP
@@ -169,11 +249,7 @@ def compile_sound(
         item["id"]: item
         for item in read_json(package / "assets/sfx/runtime-assets.json")["assets"]
     }
-    avoided = {
-        row["target_id"]
-        for row in (choice_snapshot or {}).get("notes", [])
-        if row["target_kind"] == "bundled_asset" and row["choice"] == "avoid"
-    }
+    avoided = _avoided_sound_assets(choice_snapshot)
 
     def asset(asset_id: str, kinds: set[str]) -> dict:
         row = stock[asset_id]
@@ -188,10 +264,7 @@ def compile_sound(
         return row
 
     def boundary(point: SoundBoundary) -> float:
-        if isinstance(point, WordBoundary):
-            token = tokens[point.token_id]
-            return (token.start_ms if point.edge == "start" else token.end_ms) / 1000
-        return 0 if point == "episode_start" else duration
+        return _sound_boundary(point, tokens, duration)
 
     fx, music, cue_evidence, music_evidence = [], [], [], []
     used_events = set()
@@ -447,10 +520,23 @@ def compile_sound(
         )
 
     music_choice = edits.music if edits else None
+    replacement = edits.music_track_id if edits else None
+    if replacement and (len(design.music) != 1 or music_choice == "off"):
+        raise ValueError("Original soundtrack replacement requires one planned track")
     for track in design.music if music_choice != "off" else []:
-        row = asset(track.asset_id, {"music"})
+        row = asset(replacement or track.asset_id, {"music"})
         start, end = boundary(track.start), boundary(track.end)
         length = end - start
+        if replacement:
+            if not _music_can_replace(row, track, length, avoided):
+                raise ValueError("Background music replacement is unavailable")
+            track = track.model_copy(
+                update={
+                    "asset_id": replacement,
+                    "source_start_seconds": 0,
+                    "reason": "用户更换原库背景音乐，沿用本期音乐区间及淡入淡出。",
+                }
+            )
         if (
             not 0 <= start < end <= duration
             or not track.reason.strip()
@@ -503,11 +589,16 @@ def compile_sound(
         **(
             {
                 "music_edit": {
-                    "mode": music_choice,
+                    "mode": "replace" if replacement else music_choice,
                     "original_track_ids": [track.asset_id for track in design.music],
+                    **(
+                        {"replacement_track_id": replacement, "gain_mode": music_choice}
+                        if replacement
+                        else {}
+                    ),
                 }
             }
-            if music_choice
+            if music_choice or replacement
             else {}
         ),
     }

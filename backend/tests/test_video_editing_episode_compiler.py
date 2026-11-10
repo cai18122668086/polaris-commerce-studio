@@ -11,8 +11,18 @@ from app.motion_browser_originals import (
 )
 from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from app.motion_parameter_contracts import input_contract
-from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
+from app.video_editing_contracts import (
+    NativeRenderEdits,
+    SemanticPlan,
+    Transcript,
+    TranscriptToken,
+)
 from app.video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
+from app.video_editing_native_sound import (
+    NativeSoundDesign,
+    compile_sound,
+    music_replacement_options,
+)
 from app.video_editing_pipeline import (
     EditingFailure,
     baseline_documents,
@@ -239,6 +249,96 @@ def protocol(tmp_path):
     settings = Settings(_env_file=None, video_editing_library_dir=package)
     options = {"caption_font_id": "font-d1961be1161ea1be", "source_subtitles": "none"}
     return root, package, prepared, transcript, semantic, authoring, settings, options
+
+
+def test_replacement_music_keeps_native_mix_boundaries_and_checks_stock(tmp_path):
+    _, package, _, transcript, *_ = protocol(tmp_path)
+    original, valid, short, avoided = [f"bgm-{i:016x}" for i in range(4)]
+    assets = []
+    for aid, length in ((original, 4), (valid, 4), (short, 1), (avoided, 4)):
+        audio = package / f"{aid}.mp3"
+        audio.write_bytes(aid.encode())
+        assets.append(
+            {
+                "id": aid,
+                "kind": "music",
+                "bundled": True,
+                "rights": {"local_use": "user-authorized"},
+                "name": aid,
+                "path": audio.name,
+                "sha256": sha256(audio),
+                "duration_seconds": length,
+            }
+        )
+    atomic_json(package / "asset-manifest.json", {"assets": assets})
+    atomic_json(package / "assets/sfx/runtime-assets.json", {"assets": []})
+    sound = NativeSoundDesign.model_validate(
+        {
+            "music": [
+                {
+                    "asset_id": original,
+                    "start": {"token_id": "t1", "edge": "start"},
+                    "end": "episode_end",
+                    "source_start_seconds": 0.2,
+                    "gain_db": -15,
+                    "fade_seconds": 0.2,
+                    "reason": "original music",
+                }
+            ]
+        }
+    )
+    notes = {
+        "notes": [
+            {"target_id": avoided, "target_kind": "bundled_asset", "choice": "avoid"}
+        ]
+    }
+    options = music_replacement_options(
+        package, sound.model_dump(mode="json"), transcript, notes
+    )
+    assert options and options.original.asset_id == original
+    assert [row.asset_id for row in options.choices] == [valid]
+    episode = {"source": {"duration_seconds": 4.0}}
+    result = compile_sound(
+        package,
+        transcript,
+        episode,
+        sound,
+        {},
+        notes,
+        NativeRenderEdits(music="lower", music_track_id=valid),
+    )
+    (music,) = episode["music"]
+    assert music["asset_id"] == valid and music["gain_db"] == -21
+    assert music["source_start_seconds"] == 0
+    assert (music["start_seconds"], music["end_seconds"], music["fade_seconds"]) == (
+        0.6,
+        4.0,
+        0.2,
+    )
+    assert result["music_edit"] == {
+        "mode": "replace",
+        "original_track_ids": [original],
+        "replacement_track_id": valid,
+        "gain_mode": "lower",
+    }
+    assert sound.music[0].asset_id == original
+    with pytest.raises(ValueError, match="requires background music to be on"):
+        NativeRenderEdits(music="off", music_track_id=valid)
+    (package / f"{valid}.mp3").write_bytes(b"changed")
+    options = music_replacement_options(
+        package, sound.model_dump(mode="json"), transcript, notes
+    )
+    assert options and not options.choices
+    with pytest.raises(ValueError, match="does not match the current selection"):
+        compile_sound(
+            package,
+            transcript,
+            episode,
+            sound,
+            {},
+            notes,
+            NativeRenderEdits(music_track_id=valid),
+        )
 
 
 @pytest.mark.parametrize(

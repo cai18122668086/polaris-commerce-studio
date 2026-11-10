@@ -2552,6 +2552,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/music-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Native Music Options */
+        get: operations["native_music_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__music_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-planning-preview-batch": {
         parameters: {
             query?: never;
@@ -5963,6 +5980,21 @@ export interface components {
             /** Occurrences */
             occurrences: number;
         };
+        /** EditingMusicChoice */
+        EditingMusicChoice: {
+            /** Asset Id */
+            asset_id: string;
+            /** Duration Seconds */
+            duration_seconds: number;
+            /** Name */
+            name: string;
+        };
+        /** EditingMusicOptions */
+        EditingMusicOptions: {
+            /** Choices */
+            choices: components["schemas"]["EditingMusicChoice"][];
+            original: components["schemas"]["EditingMusicChoice"];
+        };
         /** EditingNativeBeatResponse */
         EditingNativeBeatResponse: {
             /** Group Id */
@@ -7358,6 +7390,8 @@ export interface components {
             image_edits?: components["schemas"]["NativeImageEdit"][];
             /** Music */
             music?: ("lower" | "off") | null;
+            /** Music Track Id */
+            music_track_id?: string | null;
             /** Source Only Beat Ids */
             source_only_beat_ids?: string[];
         };
@@ -14100,6 +14134,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingImageTarget"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    native_music_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__music_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                plan_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingMusicOptions"] | null;
                 };
             };
             /** @description Validation Error */

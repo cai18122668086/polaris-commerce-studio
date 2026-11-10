@@ -61,8 +61,24 @@ class EditingEffectTarget(StrictVideoModel):
     choices: list[EditingEffectChoice]
 
 
+class EditingMusicChoice(StrictVideoModel):
+    asset_id: str
+    name: str
+    duration_seconds: float
+
+
+class EditingMusicOptions(StrictVideoModel):
+    original: EditingMusicChoice
+    choices: list[EditingMusicChoice]
+
+
 class NativeRenderEdits(StrictVideoModel):
     music: Literal["lower", "off"] | None = None
+    music_track_id: str | None = Field(
+        default=None,
+        pattern=r"^bgm-[0-9a-f]{16}$",
+        exclude_if=lambda value: value is None,
+    )
     source_only_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
         Field(default_factory=list, max_length=120)
     )
@@ -82,12 +98,15 @@ class NativeRenderEdits(StrictVideoModel):
     def checked_selection(self) -> Self:
         if (
             not self.music
+            and not self.music_track_id
             and not self.source_only_beat_ids
             and not self.highlight_edits
             and not self.image_edits
             and not self.effect_edits
         ):
             raise ValueError("Select a music, segment, effect, highlight or image edit")
+        if self.music == "off" and self.music_track_id:
+            raise ValueError("A replacement track requires background music to be on")
         if len(set(self.source_only_beat_ids)) != len(self.source_only_beat_ids):
             raise ValueError("Select each segment at most once")
         keys = {(edit.beat_id, edit.path) for edit in self.highlight_edits}

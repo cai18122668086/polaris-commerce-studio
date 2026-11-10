@@ -120,8 +120,13 @@ def validate_render_edits(
     edits: NativeRenderEdits, semantic: dict, recipes: dict, choices: dict | None
 ) -> None:
     editable, has_music = available_render_edits(semantic, recipes, choices)
-    if not set(edits.source_only_beat_ids).issubset(editable) or (
-        edits.music is not None and not has_music
+    if (
+        not set(edits.source_only_beat_ids).issubset(editable)
+        or (edits.music is not None and not has_music)
+        or (
+            edits.music_track_id is not None
+            and len((recipes.get("sound") or {}).get("music") or []) != 1
+        )
     ):
         raise ValueError("Native edits must address this candidate's editable inputs")
 

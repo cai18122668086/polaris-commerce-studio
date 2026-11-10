@@ -5558,6 +5558,51 @@
         "title": "EditingMotionCounts",
         "type": "object"
       },
+      "EditingMusicChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "name",
+          "duration_seconds"
+        ],
+        "title": "EditingMusicChoice",
+        "type": "object"
+      },
+      "EditingMusicOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/EditingMusicChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "original": {
+            "$ref": "#/components/schemas/EditingMusicChoice"
+          }
+        },
+        "required": [
+          "original",
+          "choices"
+        ],
+        "title": "EditingMusicOptions",
+        "type": "object"
+      },
       "EditingNativeBeatResponse": {
         "additionalProperties": false,
         "properties": {
@@ -9384,6 +9429,18 @@
               }
             ],
             "title": "Music"
+          },
+          "music_track_id": {
+            "anyOf": [
+              {
+                "pattern": "^bgm-[0-9a-f]{16}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Music Track Id"
           },
           "source_only_beat_ids": {
             "items": {
@@ -23175,6 +23232,81 @@
           }
         ],
         "summary": "Native Image Targets",
+        "tags": [
+          "video-editing-native-plans"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans/{plan_id}/music-options": {
+      "get": {
+        "operationId": "native_music_options_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans__plan_id__music_options_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/EditingMusicOptions"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Native Music Options Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Native Plans  Plan Id  Music Options Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Native Music Options",
         "tags": [
           "video-editing-native-plans"
         ]

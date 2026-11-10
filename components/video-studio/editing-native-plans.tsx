@@ -15,9 +15,10 @@ type HighlightTarget = components["schemas"]["EditingHighlightTarget"];
 type ImageEdit = components["schemas"]["NativeImageEdit"];
 type EffectEdit = components["schemas"]["NativeEffectEdit"];
 type EffectTarget = components["schemas"]["EditingEffectTarget"];
-type Controls = { music: "keep" | "lower" | "off"; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
+type MusicOptions = components["schemas"]["EditingMusicOptions"];
+type Controls = { music: "keep" | "lower" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
 export type PreviewBaseSelection = { planId: string; preview: components["schemas"]["EditingPreviewBase"]; edits?: NativeEdits | null };
-const defaultControls: Controls = { music: "keep", segments: [], highlights: [], images: [], effects: [] };
+const defaultControls: Controls = { music: "keep", musicTrackId: "", segments: [], highlights: [], images: [], effects: [] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
 export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion, previewBase, onClearPreviewBase }: {
@@ -33,6 +34,8 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
   const [loadingHighlights, setLoadingHighlights] = useState<string[]>([]);
   const [effectTargets, setEffectTargets] = useState<Record<string, EffectTarget[]>>({});
   const [loadingEffects, setLoadingEffects] = useState<string[]>([]);
+  const [musicOptions, setMusicOptions] = useState<Record<string, MusicOptions | null>>({});
+  const [loadingMusic, setLoadingMusic] = useState<string[]>([]);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const live = useRef(true);
   const selectedPlan = previewBase?.planId;
@@ -76,19 +79,36 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       if (live.current) setLoadingEffects(previous => previous.filter(id => id !== plan.id));
     }
   };
+  const loadMusic = async (plan: Plan) => {
+    if (plan.id in musicOptions || loadingMusic.includes(plan.id)) return;
+    setLoadingMusic(previous => [...previous, plan.id]);
+    try {
+      const options = unwrapApiResponse(await apiClient.GET(`${root}/projects/{project_id}/editing-native-plans/{plan_id}/music-options`, {
+        params: { path: { workspace_id: workspaceId, project_id: projectId, plan_id: plan.id } },
+        signal: AbortSignal.timeout(12000),
+      }));
+      if (live.current) setMusicOptions(previous => ({ ...previous, [plan.id]: options }));
+    } catch (caught) {
+      if (live.current) setError(caught instanceof Error ? caught.message : "暂时无法读取可替换的原库背景音乐。");
+    } finally {
+      if (live.current) setLoadingMusic(previous => previous.filter(id => id !== plan.id));
+    }
+  };
   const render = async (plan: Plan, selected: Controls, earlier?: PreviewBaseSelection) => {
     setBusy(plan.id); setError("");
     try {
       const segments = selected.segments.slice().sort();
       const music = selected.music === "keep" ? null : selected.music;
+      const musicTrackId = music !== "off" && selected.musicTrackId;
       const bySlot = (a: Highlight | ImageEdit, b: Highlight | ImageEdit) =>
         a.beat_id.localeCompare(b.beat_id) || a.path.localeCompare(b.path);
       const highlights = selected.highlights.slice().sort(bySlot);
       const images = selected.images.slice().sort(bySlot);
       const effects = selected.effects.slice().sort((a, b) => a.beat_id.localeCompare(b.beat_id));
-      const edits: NativeEdits | undefined = music || segments.length || highlights.length || images.length || effects.length
+      const edits: NativeEdits | undefined = music || musicTrackId || segments.length || highlights.length || images.length || effects.length
         ? {
           music, source_only_beat_ids: segments,
+          ...(musicTrackId ? { music_track_id: musicTrackId } : {}),
           ...(highlights.length ? { highlight_edits: highlights } : {}),
           ...(images.length ? { image_edits: images } : {}),
           ...(effects.length ? { effect_edits: effects } : {}),
@@ -118,6 +138,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       const key = earlier ? `${plan.id}/${earlier.preview.task_id}` : plan.id;
       const initial = earlier?.edits ? {
         music: earlier.edits.music ?? "keep",
+        musicTrackId: earlier.edits.music_track_id ?? "",
         segments: earlier.edits.source_only_beat_ids ?? [],
         highlights: earlier.edits.highlight_edits ?? [],
         images: earlier.edits.image_edits ?? [],
@@ -136,6 +157,10 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         ...selected.highlights.map(edit => edit.beat_id), ...selected.images.map(edit => edit.beat_id), ...replacements.keys(),
       ]));
       const available = plan.render_available && plan.continuous_preview_available;
+      const trackOptions = musicOptions[plan.id];
+      const audition = selected.musicTrackId
+        ? trackOptions?.choices.find(track => track.asset_id === selected.musicTrackId)
+        : trackOptions?.original;
       return <article key={plan.id} id={`editing-native-plan-${plan.id}`}>
       <b>{plan.audience_question}</b>
       {earlier && <p className={styles.note}>
@@ -153,10 +178,32 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
           onClick={() => change({ segments: [...selected.segments, ...repeated] })}>精简 {repeated.length} 段重复动效</button>}
         {repeated.length > 0 && <p className={styles.note}>预选部分重复入场为原景，保留每种动效的首次出现和已手动调整的段落。提交前可逐段取消勾选。</p>}
         {plan.music_edit_available && <label>本次背景音乐
-          <select value={selected.music} disabled={!!busy} onChange={event => change({ music: event.target.value as Controls["music"] })}>
+          <select value={selected.music} disabled={!!busy} onChange={event => change({
+            music: event.target.value as Controls["music"],
+            ...(event.target.value === "off" ? { musicTrackId: "" } : {}),
+          })}>
             <option value="keep">沿用编排</option><option value="lower">降低 6 dB</option><option value="off">关闭背景音乐</option>
           </select>
         </label>}
+        {plan.music_edit_available && selected.music !== "off" && <details onToggle={event => {
+          if (event.currentTarget.open) void loadMusic(plan);
+        }}>
+          <summary>试听和更换背景音乐</summary>
+          {loadingMusic.includes(plan.id) && <p role="status">正在核对原库曲目…</p>}
+          {trackOptions === null && <p>此编排的背景音乐需要沿用原有分轨。</p>}
+          {trackOptions && <>
+            <label>原库背景音乐
+              <select value={selected.musicTrackId} disabled={!!busy} onChange={event => change({ musicTrackId: event.target.value })}>
+                <option value="">沿用 {trackOptions.original.name}</option>
+                {selected.musicTrackId && !audition && <option value={selected.musicTrackId}>此前曲目当前不可用</option>}
+                {trackOptions.choices.map(track => <option key={track.asset_id} value={track.asset_id}>{track.name} · {Math.round(track.duration_seconds)} 秒</option>)}
+              </select>
+            </label>
+            {audition && <audio key={audition.asset_id} controls preload="none" aria-label={`${audition.name}试听`}
+              src={`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-library/assets/${encodeURIComponent(audition.asset_id)}/audio`} />}
+            <p className={styles.note}>更换后从新曲目的开头播放，沿用原编排的音乐入点、出点和淡入淡出。</p>
+          </>}
+        </details>}
         {editable.map(beat => <label key={beat.id}>
           <input type="checkbox" disabled={!!busy} checked={selected.segments.includes(beat.id)} onChange={event => change({
             segments: event.target.checked ? [...selected.segments, beat.id] : selected.segments.filter(id => id !== beat.id),

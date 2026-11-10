@@ -135,6 +135,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {parent && <p className={styles.note}>基于预览 <a href={`#editing-task-${parent.task_id}`}>{parent.task_id.slice(0, 8)}</a></p>}
         {task.options.native_edits && <p className={styles.note}>
           本次设置 · {task.options.native_edits.music === "off" ? "关闭背景音乐。" : task.options.native_edits.music === "lower" ? "背景音乐降低 6 dB。" : ""}
+          {task.options.native_edits.music_track_id && "已更换原库背景音乐。"}
           {!!task.options.native_edits.highlight_edits?.length && ("已调整 " + task.options.native_edits.highlight_edits.length + " 个动效词槽。")}
           {!!task.options.native_edits.image_edits?.length && ("已替换 " + task.options.native_edits.image_edits.length + " 张配图。")}
           {!!task.options.native_edits.effect_edits?.length && `已更换 ${task.options.native_edits.effect_edits.length} 段原生动效。`}

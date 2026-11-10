@@ -28,6 +28,7 @@ from .video_editing_image_edits import (
 )
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import project_material_files, verify_material_cards
+from .video_editing_native_sound import music_replacement_options
 from .video_editing_overlay_templates import (
     MIN_OVERLAY_TYPES,
     motion_counts,
@@ -619,8 +620,31 @@ def admit_render_plan(
                 "所选段落或背景音乐不适用于这份编排。",
             ) from error
     edits = options.native_edits
-    if edits and (edits.highlight_edits or edits.image_edits or edits.effect_edits):
+    if edits and (
+        edits.music_track_id
+        or edits.highlight_edits
+        or edits.image_edits
+        or edits.effect_edits
+    ):
         transcript = native_edit_transcript(session, settings, row)
+    if edits and edits.music_track_id:
+        try:
+            replacements = music_replacement_options(
+                settings.video_editing_library_dir,
+                row.recipes.get("sound"),
+                transcript,
+                current,
+                edits.music_track_id,
+            )
+            if replacements is None or not replacements.choices:
+                raise ValueError("Background music replacement is unavailable")
+        except (ValueError, KeyError, OSError) as error:
+            raise ApiError(
+                422,
+                "EDITING_MUSIC_UNAVAILABLE",
+                "请选择符合本期时长、选材备忘及原件校验的原库背景音乐。",
+            ) from error
+    if edits and (edits.highlight_edits or edits.image_edits or edits.effect_edits):
         semantic = SemanticPlan.model_validate(row.semantic)
         assets = row.details["asset_snapshot"]
     if edits and edits.highlight_edits:

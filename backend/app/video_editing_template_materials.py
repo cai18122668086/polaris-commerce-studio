@@ -6,9 +6,13 @@ from PIL import Image
 
 from .video_editing_browser_clocks import (
     CARD_GROUP,
+    FRUIT_LIST_GROUP,
+    FRUIT_LIST_HEADER,
+    FRUIT_LIST_TEMPLATE_ID,
     LIVE_SPLIT_GROUPS,
     LIVE_SPLIT_TEMPLATE_ID,
     NUMBERED_GROUP,
+    fruit_header_fits,
 )
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
@@ -40,6 +44,7 @@ _IMAGE_GROUPS = {
     LINE_TEMPLATE_ID: ((LINE_GROUP, 3), (PACKAGE_GROUP, 4)),
     NUMBERED_TEMPLATE_ID: ((NUMBERED_GROUP, 3),),
     LIVE_SPLIT_TEMPLATE_ID: tuple((group, 3) for group in LIVE_SPLIT_GROUPS),
+    FRUIT_LIST_TEMPLATE_ID: ((FRUIT_LIST_GROUP, 4),),
 }
 
 
@@ -88,6 +93,16 @@ def template_image_requirements(
             ]
         elif group_id == LINE_GROUP:
             row["native_image_slot_ids"] = line_image_slots(files)
+        elif group_id == FRUIT_LIST_GROUP:
+            row["native_image_slot_ids"] = {
+                FRUIT_LIST_HEADER: [
+                    image_id
+                    for image_id, asset in sorted(files.items())
+                    if fruit_header_fits(
+                        asset.get("width") or 0, asset.get("height") or 0
+                    )
+                ]
+            }
         result.append(row)
     return result
 
@@ -148,8 +163,8 @@ def validate_template_images(
         requirement = requirements.get(beat.group_id)
         if requirement is None:
             continue
-        required = requirement["required_distinct_images"]
-        if requirement["selected_distinct_images"] < required:
+        required_images = requirement["required_distinct_images"]
+        if requirement["selected_distinct_images"] < required_images:
             raise ValueError("Selected template group lacks distinct project images")
         if beat.group_id == LINE_GROUP:
             media = {anchor.path: anchor.asset_id for anchor in beat.native_media}
@@ -166,11 +181,25 @@ def validate_template_images(
             for item in beat.relation_items
             if len(item.asset_ids) == 1
         ]
+        required_items = required_images
+        if beat.group_id == FRUIT_LIST_GROUP:
+            header_id = next(
+                (
+                    anchor.asset_id
+                    for anchor in beat.native_media
+                    if anchor.path == FRUIT_LIST_HEADER
+                ),
+                "",
+            )
+            if header_id not in requirement["native_image_slot_ids"][FRUIT_LIST_HEADER]:
+                raise ValueError("Fruit list needs a full-sized project header")
+            bound.append(images.get(header_id))
+            required_items -= 1
         if (
-            len(beat.relation_items) != required
-            or len(bound) != required
+            len(beat.relation_items) != required_items
+            or len(bound) != required_images
             or None in bound
-            or len(set(bound)) != required
+            or len(set(bound)) != len(bound)
         ):
             raise ValueError("Each spoken card item needs its own project image")
         if "transparent_image_ids" in requirement:

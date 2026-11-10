@@ -178,7 +178,13 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
       {job.overlay_template?.id === "material-cut-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>素材接力需要无内嵌字幕的原片。实拍接力需要 1 张本期配图，手机画面需要 2 张，撕纸和表盘各需要 3 张。每组内的配图须不同。</p>}
       {job.overlay_template?.id === "media-panels-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>四图板和图例各需要 4 张不同的本期图片。三路并置需要 2 份不同的本期补充素材，补充视频须覆盖所选口播段。请使用无内嵌字幕的原片。</p>}
       {job.overlay_template?.id === "unified-handoff-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>闪亮转场和评论框需要无内嵌字幕的原片及一张本期配图。评论框还需要实录说出评论邀请和指定关键词。</p>}
-      {job.project_image_requirements?.map(requirement => requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
+      {job.project_image_requirements?.map(requirement => requirement.group_id === "CX-G06" ? <p key={requirement.group_id} className={styles.note}>
+        CX-G06 · 水果清单需要三张不同的水果配图和一张至少 1006×814 的独立头图。本期已选 {requirement.selected_distinct_images} 张不同图片，其中 {requirement.native_image_slot_ids?.["/presenter"]?.length ?? 0} 张符合头图尺寸。
+        {job.unavailable_template_group_ids?.includes(requirement.group_id)
+          ? " 当前实录主题或原库依赖尚不满足，编排可选同模板其他动效。"
+          : (requirement.selected_distinct_images < requirement.required_distinct_images || !requirement.native_image_slot_ids?.["/presenter"]?.length)
+          && " 补齐图片后可重新准备。"}
+      </p> : requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
         {requirement.group_id} · 本期线描素材需要不透明过渡图、透明线描图及六列四行的透明手势帧图。
         {Object.values(requirement.native_image_slot_ids).every(ids => ids.length > 0)
           ? " 三类素材均有可选原件。"

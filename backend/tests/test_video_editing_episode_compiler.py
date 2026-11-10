@@ -9,7 +9,7 @@ from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from app.motion_parameter_contracts import input_contract
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
 from app.video_editing_episode_compiler import EpisodeRecipeBundle, compile_episode
-from app.video_editing_pipeline import EditingFailure
+from app.video_editing_pipeline import EditingFailure, baseline_documents
 from app.video_editing_planner import validate_plan
 
 
@@ -231,6 +231,29 @@ def protocol(tmp_path):
     settings = Settings(_env_file=None, video_editing_library_dir=package)
     options = {"caption_font_id": "font-d1961be1161ea1be", "source_subtitles": "none"}
     return root, package, prepared, transcript, semantic, authoring, settings, options
+
+
+@pytest.mark.parametrize(
+    ("duration_ms", "boundaries"),
+    [(30000, [0, 15, 30]), (30470, [0, 15, 29.5, 30.47]), (30500, [0, 15, 30, 30.5])],
+)
+def test_subtitle_source_pages_fit_original_duration_bounds(
+    tmp_path, monkeypatch, duration_ms, boundaries
+):
+    root, _, prepared, transcript, _, _, settings, options = protocol(tmp_path)
+    prepared["duration_ms"] = duration_ms
+    transcript.duration_ms = duration_ms
+    monkeypatch.setattr("app.video_editing_pipeline.layout_captions", lambda *_: None)
+    episode, selection, _ = baseline_documents(
+        root, prepared, transcript, options, settings
+    )
+    for shot, (start, end) in zip(
+        episode["shots"], zip(boundaries, boundaries[1:], strict=False), strict=True
+    ):
+        assert (shot["start_seconds"], shot["end_seconds"]) == (start, end)
+        assert 0.5 <= shot["config"]["timing"]["duration_seconds"] <= 15
+        assert shot["config"]["media"]["presenter"]["offset_seconds"] == start
+    assert len(selection["decisions"]) == len(episode["shots"])
 
 
 def test_episode_uses_actual_word_bounds_and_original_selection_protocol(tmp_path):

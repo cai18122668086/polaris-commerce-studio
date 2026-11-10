@@ -10,6 +10,10 @@ from .motion_library import sha256
 
 CARD_GROUP = "CX-G07"
 FRUIT_LIST_GROUP = "CX-G06"
+FRUIT_LIST_TEMPLATE_ID = "fruit-introduction-v1"
+FRUIT_LIST_HEADER = "/presenter"
+FRUIT_LIST_HEADER_MIN_SIZE = (1006, 814)
+FRUIT_LIST_DESCRIPTIONS = tuple(f"/items/{i}/description" for i in range(3))
 FRUIT_LIST_FONTS = (
     "font-346c3d9c8c827faa",
     "font-e4b3b9d058750fb8",
@@ -145,7 +149,7 @@ def compile_fruit_list_clock(
     text = {row["path"]: row for row in native["text"]}
     events = {row["path"]: row for row in native["events"]}
     media = {row["path"]: row["asset_id"] for row in native["media"]}
-    paths = ["/presenter", *(f"/items/{i}/image" for i in range(3))]
+    paths = [FRUIT_LIST_HEADER, *NUMBERED_IMAGES]
     if (
         len(items) != 3
         or config["background"] is not None
@@ -161,8 +165,10 @@ def compile_fruit_list_clock(
             for path in paths
         )
         or len({assets[media[path]]["sha256"] for path in paths}) != 4
-        or assets[media["/presenter"]].get("width", 0) < 1006
-        or assets[media["/presenter"]].get("height", 0) < 814
+        or not fruit_header_fits(
+            assets[media[FRUIT_LIST_HEADER]].get("width") or 0,
+            assets[media[FRUIT_LIST_HEADER]].get("height") or 0,
+        )
     ):
         raise ValueError(
             "The fruit list needs four distinct current images and time to settle"
@@ -197,6 +203,19 @@ def compile_fruit_list_clock(
         "assets": media,
         "timing_review": "unreviewed",
     }
+
+
+def fruit_header_fits(width: int, height: int) -> bool:
+    minimum_width, minimum_height = FRUIT_LIST_HEADER_MIN_SIZE
+    return width >= minimum_width and height >= minimum_height
+
+
+def fruit_row_first_frame(at: float) -> int:
+    # The original row skips alpha <= 0.004. Its first two alpha keys are
+    # (1, 0) and (2, 0.4), connected with the original smoothstep.
+    frame = math.floor(at) + 2
+    u = min(1.0, frame - at - 1)
+    return frame if 0.4 * u * u * (3 - 2 * u) > 0.004 else frame + 1
 
 
 def compile_card_clock(

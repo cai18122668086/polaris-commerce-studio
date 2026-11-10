@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -534,9 +535,13 @@ def baseline_documents(
     }
     # The original unified engine limits a native page to 15 seconds. Split
     # visual source ranges on that limit, never stretch or concatenate speech.
+    boundaries = [index * 15.0 for index in range(math.ceil(duration / 15))]
+    if len(boundaries) > 1 and duration - boundaries[-1] < 0.5:
+        # Keep the native minimum by borrowing half a second from the prior page.
+        boundaries[-1] -= 0.5
+    boundaries.append(duration)
     shots = []
-    for index in range(math.ceil(duration / 15)):
-        start, end = index * 15, min(duration, (index + 1) * 15)
+    for start, end in pairwise(boundaries):
         shot = copy.deepcopy(plan["shots"][0])
         shot.update(start_seconds=start, end_seconds=end)
         shot["config"]["media"]["presenter"].update(

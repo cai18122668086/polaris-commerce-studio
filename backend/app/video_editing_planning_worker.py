@@ -20,6 +20,7 @@ from .motion_library import MOTION_SHA256, atomic_json, sha256, verify_package
 from .motion_local_dependencies import dependency_state, local_dependencies
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
 from .video_editing_azl_panels import azl_blockers, azl_panel_windows
+from .video_editing_browser_clocks import FRUIT_LIST_GROUP, FRUIT_LIST_TEMPLATE_ID
 from .video_editing_catalog import (
     external_dependencies,
     planning_runtime_snapshot,
@@ -414,6 +415,14 @@ def process(
             )
             if image_requirements:
                 runtime["project_image_requirements"] = image_requirements
+            if (
+                template
+                and template["id"] == FRUIT_LIST_TEMPLATE_ID
+                and "水果" not in "".join(token.text for token in transcript.tokens)
+            ):
+                runtime["unavailable_template_groups"].setdefault(
+                    FRUIT_LIST_GROUP, []
+                ).append("fruit-topic-missing-from-recorded-speech")
             snapshot = {**snapshot, "planning_runtime": runtime}
         body, evidence = planner.build_request(
             transcript,

@@ -21,6 +21,9 @@ from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     CARD_LANDMARKS,
+    FRUIT_LIST_DESCRIPTIONS,
+    FRUIT_LIST_GROUP,
+    FRUIT_LIST_HEADER,
     LIVE_SPLIT_GROUPS,
     LIVE_SPLIT_TEMPLATE_ID,
     NUMBERED_EVENTS,
@@ -947,6 +950,108 @@ def _entry_sound(
         trim_duration_seconds=length,
         target_peak_dbfs=peak,
     )
+
+
+def _fruit_list_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    images = project_image_digests(cards)
+    try:
+        anchors = word_bindings(beat, transcript, contract, set(images))
+        texts = {row["path"]: row for row in anchors["text"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        if (
+            beat.relation != "parallel"
+            or len(beat.relation_items) != 3
+            or set(texts) != {*NUMBERED_LABELS, *FRUIT_LIST_DESCRIPTIONS}
+            or set(events) != set(NUMBERED_EVENTS)
+            or set(media) != {FRUIT_LIST_HEADER, *NUMBERED_IMAGES}
+            or set(media.values()) != set(beat.asset_ids)
+            or len({images[asset_id] for asset_id in media.values()}) != 4
+        ):
+            raise ValueError("Fruit list needs its three spoken rows and four images")
+        positions = {token.id: i for i, token in enumerate(transcript.tokens)}
+        first = positions[beat.first_token_id]
+        first_row = positions[beat.relation_items[0].first_token_id]
+        if "水果" not in "".join(t.text for t in transcript.tokens[first:first_row]):
+            raise ValueError("Fruit topic must be spoken before the first fruit")
+        previous = first_row - 1
+        names = set()
+        for item, label, description, image, event in zip(
+            beat.relation_items,
+            NUMBERED_LABELS,
+            FRUIT_LIST_DESCRIPTIONS,
+            NUMBERED_IMAGES,
+            NUMBERED_EVENTS,
+            strict=True,
+        ):
+            a, b = positions[item.first_token_id], positions[item.last_token_id]
+            name_ids = texts[label]["token_ids"]
+            description_ids = texts[description]["token_ids"]
+            name, details = texts[label]["text"], texts[description]["text"]
+            if (
+                not previous
+                < a
+                == positions[name_ids[0]]
+                <= positions[name_ids[-1]]
+                < positions[description_ids[0]]
+                <= positions[description_ids[-1]]
+                <= b
+                or item.asset_ids != [media[image]]
+                or set(item.native_text_paths) != {label, description}
+                or item.native_media_paths != [image]
+                or name in names
+                or not 1 <= len(name) <= 3
+                or not 1 <= len(details) <= 12
+                or any(char in details for char in "|\r\n")
+                or events[event]["token_id"] != name_ids[0]
+                or events[event]["edge"] != "start"
+            ):
+                raise ValueError(
+                    "Fruit list rows must follow separate spoken names and descriptions"
+                )
+            previous = b
+            names.add(name)
+        last_at = events[NUMBERED_EVENTS[-1]]["value"]
+        clock = anchors["clock"]
+        frames = round((clock["end_ms"] - clock["start_ms"]) * 30 / 1000)
+        if last_at * 30 + 16 > frames - 1:
+            raise ValueError("Leave time for the final fruit row to settle")
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_FRUIT_INPUTS_REQUIRED",
+            "需先说出水果主题，并分别绑定三项水果的实录名称、说明和配图。"
+            "另需一张不同的水果头图，末项要留足入场时间。",
+        ) from error
+    config = read_json(inside(package, group["input_template"]))
+    slots = [*texts, *events, *media]
+    for path in slots:
+        set_native_field(config, path, None)
+    reason = "沿用原生水果标题、圆形头图和三条图文说明，口播原声继续。"
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": beat.group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-fruit-introduction-v1",
+            "design_reason": reason,
+            "parameter_decisions": dict.fromkeys(config, reason),
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
+        },
+    ), anchors
 
 
 def _browser_split_entry(
@@ -2179,6 +2284,11 @@ def build_overlay_recipes(
             paths = ROTATION_EVENTS
         elif beat.group_id in (NUMBERED_GROUP, *LIVE_SPLIT_GROUPS):
             entries[beat.id], anchors = _browser_split_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = NUMBERED_EVENTS
+        elif beat.group_id == FRUIT_LIST_GROUP:
+            entries[beat.id], anchors = _fruit_list_entry(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = NUMBERED_EVENTS

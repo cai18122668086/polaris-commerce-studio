@@ -11,6 +11,12 @@ from app.video_editing_overlay_recipes import _browser_split_entry, _rotation_en
 from tests.test_video_editing_native_compiler import inputs
 
 
+def test_fruit_row_sound_uses_first_original_visible_alpha():
+    assert cards.fruit_row_first_frame(20.0) == 22
+    assert cards.fruit_row_first_frame(20.94) == 22
+    assert cards.fruit_row_first_frame(20.95) == 23
+
+
 def test_split_clock_preserves_original_font_and_requires_renderable_items(
     tmp_path, monkeypatch
 ):

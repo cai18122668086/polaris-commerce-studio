@@ -18,6 +18,7 @@ from .video_assistance_provider import (
 )
 from .video_editing_browser_clocks import (
     FRUIT_LIST_GROUP,
+    FRUIT_LIST_TEMPLATE_ID,
     LIVE_SPLIT_TEMPLATE_ID,
     SPLIT_VERTICAL,
 )
@@ -397,6 +398,12 @@ def build_request(
             "W-R11按native_image_slot_ids的字段分别选过渡图、透明线描、手势帧图。"
             "这三个素材直接绑定native_media，不需要并列图卡的relation_items。"
             "缺少任一素材角色时跳过W-R11并登记缺件，保留其他合适动效。"
+        )
+    if template is not None and template["id"] == FRUIT_LIST_TEMPLATE_ID:
+        message += (
+            "CX-G06 的圆形头图只能从 native_image_slot_ids 的 /presenter 列表选。"
+            "另三张图分别绑定每行的图片槽。没有合格头图、不同图片或明确的三种水果时，"
+            "跳过 CX-G06 并说明缺少的内容。"
         )
     if runtime and runtime.get("presenter_motion_windows"):
         message += (

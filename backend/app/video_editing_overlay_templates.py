@@ -7,6 +7,8 @@ from .video_editing_azl_panels import AZL_TEMPLATE_ID as AZL_TEMPLATE_ID
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_FONTS,
+    FRUIT_LIST_GROUP,
+    FRUIT_LIST_TEMPLATE_ID,
     LIVE_SPLIT_GROUPS,
     LIVE_SPLIT_TEMPLATE_ID,
     NUMBERED_GROUP,
@@ -132,6 +134,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     **dict.fromkeys(PRESENTER_MOTION_GROUPS, (MOTION_FONT,)),
     **dict.fromkeys(("YYP04", "YYP06"), (MOTION_FONT, MOTION_MATTE)),
     CARD_GROUP: (SPLIT_TITLE_FONT,),
+    FRUIT_LIST_GROUP: FRUIT_LIST_FONTS,
     NUMBERED_GROUP: (SPLIT_TITLE_FONT,),
     SPLIT_VERTICAL: (SPLIT_TITLE_FONT,),
     SPLIT_HORIZONTAL: (SPLIT_TITLE_FONT, ROTATION_MATTE),
@@ -624,6 +627,22 @@ _TEMPLATES[LIVE_SPLIT_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[FRUIT_LIST_TEMPLATE_ID] = {
+    "id": FRUIT_LIST_TEMPLATE_ID,
+    "name": "水果介绍与图文清单",
+    "slots": [
+        {
+            "group_id": FRUIT_LIST_GROUP,
+            "purpose": "用原生「水果介绍」圆形头图及三条图文说明展示实录。",
+            "layer": "scene",
+            "binding": "第一项之前须在本段说出水果主题。"
+            "三种水果各绑定一至三字名称、一至十二字说明及不同的项目图。"
+            "at 取各水果名称首词，三个 relation_items 按实录顺序绑定对应行。"
+            "另选一张至少 1006×814 的水果头图绑定 /presenter。该槽用于头图。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[CUT_TEMPLATE_ID] = {
     "id": CUT_TEMPLATE_ID,
     "name": "实拍与项目素材接力",
@@ -764,6 +783,7 @@ def overlay_templates() -> list[dict]:
             UNIFIED_EXPLANATION_TEMPLATE_ID,
             HANDOFF_TEMPLATE_ID,
             LIVE_SPLIT_TEMPLATE_ID,
+            FRUIT_LIST_TEMPLATE_ID,
             CUT_TEMPLATE_ID,
             PANEL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,

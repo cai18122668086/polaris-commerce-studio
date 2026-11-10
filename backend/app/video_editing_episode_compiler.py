@@ -29,7 +29,6 @@ from .video_editing_azl_panels import (
 from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
 from .video_editing_browser_clocks import (
     CARD_GROUP,
-    LIVE_SPLIT_GROUPS,
     NUMBERED_GROUP,
     SPLIT_HORIZONTAL,
     SPLIT_HORIZONTAL_CAPTION_BASELINE,
@@ -100,6 +99,7 @@ from .video_editing_render_edits import (
 )
 from .video_editing_story_panels import PANEL_TEMPLATE_ID, TRIPTYCH, triptych_entrance
 from .video_editing_unified_scenes import (
+    BROWSER_LIST_SCENES,
     UNIFIED_CAPTION_INTENT,
     UNIFIED_SCENE_GROUPS,
     UNIFIED_TEMPLATES,
@@ -631,7 +631,7 @@ def compile_episode(
                     config = job["config"]
                     duration = (
                         config["duration"]
-                        if beat.group_id in LIVE_SPLIT_GROUPS
+                        if beat.group_id in BROWSER_LIST_SCENES
                         else config["timing"]["duration_seconds"]
                     )
                     picture_end = projected_scene_end(

@@ -160,6 +160,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         UNIFIED_EXPLANATION_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
         LIVE_SPLIT_TEMPLATE_ID,
+        "fruit-introduction-v1",
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         "evidence-judgment-v1",

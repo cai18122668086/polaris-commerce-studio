@@ -6,11 +6,14 @@ from pathlib import Path
 
 from .motion_library import read_json
 from .video_editing_browser_clocks import (
+    FRUIT_LIST_GROUP,
+    FRUIT_LIST_TEMPLATE_ID,
     LIVE_SPLIT_GROUPS,
     LIVE_SPLIT_TEMPLATE_ID,
     NUMBERED_EVENTS,
     SPLIT_HORIZONTAL,
     SPLIT_VERTICAL,
+    fruit_row_first_frame,
 )
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from .video_editing_cut_scenes import (
@@ -56,6 +59,7 @@ UNIFIED_TEMPLATES = frozenset(
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
         LIVE_SPLIT_TEMPLATE_ID,
+        FRUIT_LIST_TEMPLATE_ID,
     }
 )
 UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
@@ -199,6 +203,7 @@ _REQUIRED_RELATIONS = {
     "W-R05": ("parallel", ("first", "second")),
     NUMBER_GROUP: ("contrast", ("captions/0", "captions/1")),
 }
+BROWSER_LIST_SCENES = {FRUIT_LIST_GROUP, *LIVE_SPLIT_GROUPS}
 UNIFIED_SCENE_GROUPS = (
     UNIFIED_GROUPS.keys()
     | UNIFIED_EXPANDED_GROUPS.keys()
@@ -206,7 +211,7 @@ UNIFIED_SCENE_GROUPS = (
     | CUT_GROUPS.keys()
     | PANEL_GROUPS.keys()
     | HANDOFF_GROUPS.keys()
-    | set(LIVE_SPLIT_GROUPS)
+    | BROWSER_LIST_SCENES
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -221,6 +226,7 @@ _CAPTION_BANDS = {
     **HANDOFF_CAPTION_BANDS,
     SPLIT_VERTICAL: (850, 960),
     SPLIT_HORIZONTAL: (270, 405),
+    FRUIT_LIST_GROUP: (850, 960),
 }
 _EVENT_PREFIX = "/timing/events/"
 
@@ -246,7 +252,7 @@ def unified_binding(group: str) -> str:
 
 
 def unified_sound_paths(group: str) -> tuple[str, ...]:
-    if group in LIVE_SPLIT_GROUPS:
+    if group in BROWSER_LIST_SCENES:
         return NUMBERED_EVENTS
     return tuple(_EVENT_PREFIX + event for event in UNIFIED_SOUNDS.get(group, {}))
 
@@ -587,9 +593,9 @@ def unified_action_frame(shot: dict, fps: int, path: str) -> int:
         or shot["rect"] != [0, 0, 1, 1]
     ):
         raise ValueError("Original unified sound needs its full-frame native action")
-    if group in LIVE_SPLIT_GROUPS:
+    if group in BROWSER_LIST_SCENES:
         at = shot["config"]["items"][NUMBERED_EVENTS.index(path)]["at"] * fps
-        mode = "ease"
+        mode = "fruit_row" if group == FRUIT_LIST_GROUP else "ease"
     else:
         name, sep, index = event.partition("/")
         value = shot["config"]["timing"]["events"][name]
@@ -600,6 +606,8 @@ def unified_action_frame(shot: dict, fps: int, path: str) -> int:
         if mode == "scene"
         else handoff_virtual_frame(group, shot["config"]["timing"]["events"])
         if mode == "virtual"
+        else fruit_row_first_frame(at)
+        if mode == "fruit_row"
         else math.floor(at + 1e-7) + 1
         if mode == "ease"
         else math.ceil(at - 1e-7)

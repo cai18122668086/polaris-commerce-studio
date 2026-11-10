@@ -33,6 +33,7 @@ from .motion_parameter_contracts import (
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_GROUP,
+    FRUIT_LIST_PREFIX,
     LIVE_BROWSER_SOURCE_FIELDS,
     LIVE_SPLIT_GROUPS,
     SPLIT_GROUPS,
@@ -44,7 +45,6 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_live import (
     CARD_LIVE_PREFIX,
-    FRUIT_LIST_PREFIX,
     card_live_clock,
 )
 from .video_editing_browser_rotation import (

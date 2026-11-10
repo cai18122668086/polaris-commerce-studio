@@ -102,6 +102,7 @@ def test_shared_browser_startup_assets_count_archived_files_and_external_referen
         {
             "entry/assets/G10-background-clean.jpg": "input://media-original",
             "entry/legacy/assets/img/person.png": "input://media-person",
+            "entry/legacy/assets/img/g06-bg.png": "input://media-background",
         },
     )
     atomic_json(tmp_path / "catalog/external-resources.json", {"resources": []})
@@ -114,17 +115,24 @@ def test_shared_browser_startup_assets_count_archived_files_and_external_referen
         (0, 1),
         (0, 1),
         (0, 1),
+        (0, 1),
     ]
     assert result[2]["indexed_external_ids"] == ["media-original"]
     assert result[1]["verified_bundled_count"] == 0
-    assert all(row["usage"] == "shared_startup" for row in result[:-1])
-    assert result[-1]["usage"] == "without_presenter"
-    assert result[-1]["indexed_external_ids"] == ["media-person"]
+    assert all(row["usage"] == "shared_startup" for row in result[:-2])
+    assert result[-2]["usage"] == "without_presenter"
+    assert result[-2]["indexed_external_ids"] == ["media-person"]
+    assert result[-1]["usage"] == "shared_startup"
     shared = original_startup_assets(
         tmp_path, {"id": "CX-G09", "browser_directory": "entry"}
     )
-    assert shared[-1]["usage"] == "shared_startup"
-    assert original_startup_assets(tmp_path, {"id": "CX-G04"}) == []
+    assert shared[-2]["usage"] == "shared_startup"
+    list_group = original_startup_assets(
+        tmp_path, {"id": "CX-G06", "browser_directory": "entry"}
+    )
+    assert list_group[-2]["usage"] == "without_presenter"
+    assert list_group[-1]["usage"] == "unless_native_solid_background"
+    assert list_group[-1]["indexed_external_ids"] == ["media-background"]
 
 
 def test_automatic_question_gloss_keeps_measured_roles_and_native_tail():

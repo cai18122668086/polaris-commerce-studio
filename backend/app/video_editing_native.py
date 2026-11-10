@@ -15,10 +15,11 @@ from pathlib import Path
 from .motion_browser_originals import (
     BROWSER_ORIGINALS_KEY,
     RENDER_GROUPS,
-    browser_original_evidence,
     require_browser_originals,
+    validate_browser_original_receipt,
 )
 from .motion_library import atomic_json, read_json, verify_package
+from .video_editing_browser_clocks import FRUIT_LIST_GROUP
 from .video_editing_hypit_label_cards import (
     LABEL_CARD_GROUP,
     require_label_card_component_font,
@@ -95,7 +96,9 @@ def main() -> None:
                     root / "browser-originals",
                     allow_diagnostic=diagnostic,
                 )
-                if selected and args.command in {"export", "render-group"}:
+                if (
+                    selected or shot["group_id"] == FRUIT_LIST_GROUP
+                ) and args.command in {"export", "render-group"}:
                     output = (
                         root / "renders" / f"{index:03}-{shot['group_id']}.mp4"
                         if args.kind == "episode"
@@ -106,12 +109,12 @@ def main() -> None:
                         raise ValueError("Native browser output leaves its task")
                     if output.is_file():
                         receipt = read_json(output.with_suffix(".receipt.json"))
-                        if receipt.get("native", {}).get(
-                            BROWSER_ORIGINALS_KEY
-                        ) != browser_original_evidence(selected):
-                            raise ValueError(
-                                "Cached browser output has different originals"
-                            )
+                        validate_browser_original_receipt(
+                            shot["group_id"],
+                            shot["config"],
+                            selected,
+                            receipt.get("native", {}),
+                        )
     install(package, root)
     install_native_frame_clocks(package, root)
     # Original adapter launches original Python workers. Apply the same narrow

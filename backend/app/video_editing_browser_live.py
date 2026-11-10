@@ -13,16 +13,18 @@ from .motion_library import read_json, sha256
 from .video_editing_browser_clocks import (
     CARD_ENGINE_SHA,
     FRUIT_LIST_GROUP,
+    FRUIT_LIST_PREFIX,
+    FRUIT_LIST_SOLID_BACKGROUND,
     LIVE_BROWSER_SOURCE_FIELDS,
     NUMBERED_GROUP,
     SPLIT_WRAPPER_SHA,
     audit_card_family_engine,
     audit_split_engine,
+    fruit_list_uses_solid_background,
 )
 from .video_editing_contracts import Transcript
 
 CARD_LIVE_PREFIX = "tengli-card-live-"
-FRUIT_LIST_PREFIX = "tengli-fruit-list-"
 _ORIGINAL_DRAW = (
     'f=>{engine.draw(exportCanvas,f,"city",true);'
     'return exportCanvas.toDataURL("image/png").split(",")[1]}'
@@ -221,12 +223,11 @@ def install_fruit_list_export(package: Path, root: Path) -> None:
     job = read_json(path)
     reference = job["config"].get("presenter")
     prefix = "input://" + FRUIT_LIST_PREFIX
-    if (
-        job["group_id"] != FRUIT_LIST_GROUP
-        or not isinstance(reference, str)
-        or not reference.startswith(prefix)
+    if job["group_id"] != FRUIT_LIST_GROUP or not fruit_list_uses_solid_background(
+        job["config"]
     ):
         return
+    assert isinstance(reference, str)
 
     from playwright.sync_api import Page
 
@@ -270,6 +271,6 @@ def install_fruit_list_export(package: Path, root: Path) -> None:
             cast(Any, Page).evaluate = evaluate
         if not applied:
             raise ValueError("Original fruit list setup did not run")
-        return draw, {**meta, "background": "original_solid_mode"}
+        return draw, {**meta, "background": FRUIT_LIST_SOLID_BACKGROUND}
 
     special.browser_drawer = with_solid_plate

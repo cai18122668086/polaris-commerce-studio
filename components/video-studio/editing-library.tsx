@@ -23,7 +23,7 @@ type OriginalStartupAsset = {
   verified_bundled_count: number;
   verified_supplement_count: number;
   missing_paths: string[];
-  usage: "drawn" | "without_presenter" | "without_item_image" | "shared_startup";
+  usage: "drawn" | "without_presenter" | "without_item_image" | "unless_native_solid_background" | "shared_startup";
   supplement_registry_invalid: boolean;
   indexed_external_ids: string[];
 };
@@ -67,6 +67,7 @@ const startupUsageLabel: Record<OriginalStartupAsset["usage"], string> = {
   drawn: "本组画面需要",
   without_presenter: "未绑定本片人物时使用",
   without_item_image: "相应图片槽留空时使用",
+  unless_native_solid_background: "使用原图背景时需要",
   shared_startup: "共用入口预加载",
 };
 const choiceLabel = { consider: "优先考虑", avoid: "本项目暂不选用", clear: "清除倾向" };

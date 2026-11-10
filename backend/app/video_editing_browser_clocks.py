@@ -10,6 +10,8 @@ from .motion_library import sha256
 
 CARD_GROUP = "CX-G07"
 FRUIT_LIST_GROUP = "CX-G06"
+FRUIT_LIST_PREFIX = "tengli-fruit-list-"
+FRUIT_LIST_SOLID_BACKGROUND = "original_solid_mode"
 FRUIT_LIST_TEMPLATE_ID = "fruit-introduction-v1"
 FRUIT_LIST_HEADER = "/presenter"
 FRUIT_LIST_HEADER_MIN_SIZE = (1006, 814)
@@ -52,6 +54,13 @@ CARD_LANDMARKS = {
     "/cards/2/keys/2/0": 42,
     "/cards/2/keys/9/0": 54,
 }
+
+
+def fruit_list_uses_solid_background(config: dict) -> bool:
+    presenter = config.get("presenter")
+    return isinstance(presenter, str) and presenter.startswith(
+        "input://" + FRUIT_LIST_PREFIX
+    )
 
 
 def audit_split_engine(package: Path, group: dict) -> None:

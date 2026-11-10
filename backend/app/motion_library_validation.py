@@ -16,8 +16,8 @@ from .config import Settings
 from .motion_browser_originals import (
     BROWSER_ORIGINALS_KEY,
     RENDER_GROUPS,
-    browser_original_evidence,
     require_browser_originals,
+    validate_browser_original_receipt,
 )
 from .motion_library import (
     MOTION_SHA256,
@@ -143,10 +143,9 @@ def record_native(
             else None,
             instance / "browser-originals",
         )
-        if report.get("native", {}).get(
-            BROWSER_ORIGINALS_KEY, {}
-        ) != browser_original_evidence(selected):
-            raise ValueError("Native receipt lacks matching original browser images")
+        validate_browser_original_receipt(
+            group_id, job["config"], selected, report.get("native", {})
+        )
     if group_id == LABEL_CARD_GROUP:
         require_label_card_component_font(
             package,

@@ -61,7 +61,8 @@ def install_browser_originals(
     job = Path(sys.argv[sys.argv.index("--job") + 1]).resolve()
     if job.parent != root / "plans":
         return
-    group_id = read_json(job)["group_id"]
+    public_job = read_json(job)
+    group_id = public_job["group_id"]
     if group_id not in RENDER_GROUPS:
         return
     frozen = read_json(root / "bindings.json").get(BROWSER_ORIGINALS_KEY)
@@ -85,7 +86,7 @@ def install_browser_originals(
         selected = require_browser_originals(
             package,
             card,
-            config,
+            public_job["config"],
             frozen,
             root / "browser-originals",
             allow_diagnostic=allow_diagnostic,

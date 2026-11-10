@@ -8,18 +8,30 @@ from app.motion_browser_originals import (
     intake_browser_originals,
     original_startup_assets,
     require_browser_originals,
+    validate_browser_original_receipt,
 )
 from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from app.video_editing_browser_clocks import (
+    FRUIT_LIST_PREFIX,
+    FRUIT_LIST_SOLID_BACKGROUND,
+)
 
 
 @pytest.mark.parametrize(
     ("group_id", "presenter", "missing"),
     [
+        ("CX-G04", "", {"legacy/assets/img/person.png": 1}),
         ("CX-G05", "current", {"g05-assets/base-{i:03d}.jpg": 69}),
         (
             "CX-G05",
             "",
             {"g05-assets/base-{i:03d}.jpg": 69, "g05-assets/actor-{i:03d}.png": 69},
+        ),
+        ("CX-G06", "current", {"legacy/assets/img/g06-bg.png": 1}),
+        (
+            "CX-G06",
+            "",
+            {"legacy/assets/img/g06-bg.png": 1, "legacy/assets/img/person.png": 1},
         ),
         ("CX-G08", "", {"legacy/assets/img/person.png": 1}),
         ("CX-G09", "current", {"assets/material-{i}.png": 3}),
@@ -61,10 +73,20 @@ def test_g05_checks_only_the_original_photo_for_the_unbound_item(tmp_path):
     }
 
 
-@pytest.mark.parametrize("group_id", ["CX-G04", "CX-G06", "CX-G08", "CX-G10"])
-def test_unused_shared_startup_images_do_not_block_other_branches(tmp_path, group_id):
+@pytest.mark.parametrize(
+    ("group_id", "presenter"),
+    [
+        ("CX-G04", "current"),
+        ("CX-G06", "input://" + FRUIT_LIST_PREFIX + "current"),
+        ("CX-G08", "current"),
+        ("CX-G10", "current"),
+    ],
+)
+def test_unused_shared_startup_images_do_not_block_other_branches(
+    tmp_path, group_id, presenter
+):
     group = {"id": group_id}
-    config = {"presenter": "current"}
+    config = {"presenter": presenter}
     manifest = tmp_path / "unrelated.json"
     manifest.write_text("unneeded", encoding="utf-8")
     assert require_browser_originals(tmp_path, group, config) == {}
@@ -73,6 +95,15 @@ def test_unused_shared_startup_images_do_not_block_other_branches(tmp_path, grou
             tmp_path, group, config, manifest, tmp_path / "browser-originals"
         )
         == {}
+    )
+
+
+def test_fruit_list_solid_branch_needs_actual_native_mode_receipt():
+    config = {"presenter": "input://" + FRUIT_LIST_PREFIX + "current"}
+    with pytest.raises(ValueError, match="original fruit-list solid mode"):
+        validate_browser_original_receipt("CX-G06", config, {}, {})
+    validate_browser_original_receipt(
+        "CX-G06", config, {}, {"background": FRUIT_LIST_SOLID_BACKGROUND}
     )
 
 
@@ -260,7 +291,7 @@ def test_intake_preserves_private_bindings_and_rejects_wrong_indexed_bytes(
     preview = intake_browser_originals(package, manifest, **options)
     assert preview["counts"] == {
         "ready_to_register": 1,
-        "missing": 70,
+        "missing": 71,
         "rejected_candidate": 1,
     }
     rejected = next(row for row in preview["files"] if row["native_path"] == key)

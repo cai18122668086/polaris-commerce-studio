@@ -22,35 +22,49 @@ from .motion_local_dependencies import (
     read_dependency_manifest,
     save_dependency_manifest,
 )
+from .video_editing_browser_clocks import (
+    FRUIT_LIST_GROUP,
+    FRUIT_LIST_SOLID_BACKGROUND,
+    fruit_list_uses_solid_background,
+)
 
 _G05_BACKGROUND = ("g05-assets/base-{i:03d}.jpg", 69)
 _G05_ACTOR = ("g05-assets/actor-{i:03d}.png", 69)
 _G05_PHOTOS = ("g05-assets/photo-{i}.jpg", 3)
-_G08_ACTOR = ("legacy/assets/img/person.png", 1)
+_LEGACY_ACTOR = ("legacy/assets/img/person.png", 1)
+_G06_BACKGROUND = ("legacy/assets/img/g06-bg.png", 1)
 _G09_TEXTURES = ("assets/material-{i}.png", 3)
 _G09_BACKGROUND = ("assets/g09-bg/{i:03d}.jpg", 66)
 _G10_BACKGROUND = ("assets/G10-background-clean.jpg", 1)
 _G10_ACTOR = ("assets/G10-person-clean.png", 1)
-_SHARED_STARTUP = (
+_G04_G06_STARTUP = (
+    _G05_BACKGROUND,
+    _G05_ACTOR,
+    _G05_PHOTOS,
+    _LEGACY_ACTOR,
+    _G06_BACKGROUND,
+)
+_G08_G10_STARTUP = (
     _G09_TEXTURES,
     _G09_BACKGROUND,
     _G10_BACKGROUND,
     _G10_ACTOR,
-    _G08_ACTOR,
+    _LEGACY_ACTOR,
+    _G06_BACKGROUND,
 )
 STARTUP_ASSETS = {
-    "CX-G05": (_G05_BACKGROUND, _G05_ACTOR, _G05_PHOTOS),
-    "CX-G08": _SHARED_STARTUP,
-    "CX-G09": _SHARED_STARTUP,
-    "CX-G10": _SHARED_STARTUP,
+    **dict.fromkeys(("CX-G04", "CX-G05", FRUIT_LIST_GROUP), _G04_G06_STARTUP),
+    **dict.fromkeys(("CX-G08", "CX-G09", "CX-G10"), _G08_G10_STARTUP),
 }
 
 # The shared entry loads every group's startup images. Only these paths are
 # drawn in the requested branch, depending on the current presenter binding.
 _ALWAYS_DRAWN = {"CX-G05": (_G05_BACKGROUND,), "CX-G09": (_G09_TEXTURES,)}
 _DRAWN_WITHOUT_PRESENTER = {
+    "CX-G04": (_LEGACY_ACTOR,),
     "CX-G05": (_G05_ACTOR,),
-    "CX-G08": (_G08_ACTOR,),
+    FRUIT_LIST_GROUP: (_LEGACY_ACTOR,),
+    "CX-G08": (_LEGACY_ACTOR,),
     "CX-G09": (_G09_BACKGROUND,),
     "CX-G10": (_G10_BACKGROUND, _G10_ACTOR),
 }
@@ -71,6 +85,8 @@ class BrowserOriginalsMissing(ValueError):
 
 def _needed(group_id: str, config: dict) -> dict[str, list[int]]:
     needed: tuple[tuple[str, int], ...] = _ALWAYS_DRAWN.get(group_id, ())
+    if group_id == FRUIT_LIST_GROUP and not fruit_list_uses_solid_background(config):
+        needed += (_G06_BACKGROUND,)
     if not config.get("presenter"):
         needed += _DRAWN_WITHOUT_PRESENTER.get(group_id, ())
     result = {pattern: list(range(count)) for pattern, count in needed}
@@ -444,6 +460,8 @@ def original_startup_assets(
             usage = "without_presenter"
         elif group_id == "CX-G05" and requirement == _G05_PHOTOS:
             usage = "without_item_image"
+        elif group_id == FRUIT_LIST_GROUP and requirement == _G06_BACKGROUND:
+            usage = "unless_native_solid_background"
         else:
             usage = "shared_startup"
         result.append(
@@ -518,3 +536,16 @@ def browser_original_evidence(selected: dict[str, dict[str, str]]) -> dict:
         path: {key: value for key, value in row.items() if key != "path"}
         for path, row in selected.items()
     }
+
+
+def validate_browser_original_receipt(
+    group_id: str, config: dict, selected: dict[str, dict[str, str]], native: dict
+) -> None:
+    if native.get(BROWSER_ORIGINALS_KEY, {}) != browser_original_evidence(selected):
+        raise ValueError("Native receipt lacks matching original browser images")
+    if (
+        group_id == FRUIT_LIST_GROUP
+        and fruit_list_uses_solid_background(config)
+        and native.get("background") != FRUIT_LIST_SOLID_BACKGROUND
+    ):
+        raise ValueError("Native receipt lacks the original fruit-list solid mode")

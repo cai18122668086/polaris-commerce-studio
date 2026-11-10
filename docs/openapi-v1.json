@@ -11870,6 +11870,18 @@
             "format": "uuid",
             "title": "Request Id",
             "type": "string"
+          },
+          "restore_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restore Version Id"
           }
         },
         "required": [

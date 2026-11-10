@@ -413,6 +413,54 @@ def test_documents_tasks_and_adoption_keep_reference_facts_and_confirmation_sepa
         .json()
     )
     assert "writing_origin" not in restored["version"]
+    restore_body = {
+        "request_id": str(uuid4()),
+        "expected_revision": restored["project"]["revision"],
+        "content": confirmed["version"]["snapshot"],
+        "restore_version_id": confirmed["version"]["id"],
+    }
+    project_url = url + f"/projects/{pid}"
+    assert (
+        client.put(project_url, json={**restore_body, "action": "demo"}).status_code
+        == 422
+    )
+    assert (
+        client.put(
+            project_url, json={**restore_body, "restore_version_id": str(uuid4())}
+        ).status_code
+        == 404
+    )
+    other_url = url + f"/projects/{uuid4()}"
+    other_body = payload("另一个同工作区项目")
+    client.put(other_url, json=other_body).raise_for_status()
+    assert (
+        client.put(other_url, json={**restore_body, "expected_revision": 1}).status_code
+        == 404
+    )
+    assert (
+        client.put(
+            project_url, json={**restore_body, "content": edited["project"]["content"]}
+        ).status_code
+        == 409
+    )
+    recovered = client.put(project_url, json=restore_body).raise_for_status().json()
+    assert recovered["project"]["writing_origin"] == origin
+    assert recovered["version"]["writing_origin"] == origin
+    assert recovered["version"]["kind"] == "draft"
+    assert recovered["version"]["id"] != confirmed["version"]["id"]
+    assert recovered["task"] is None
+    assert (
+        client.put(project_url, json=restore_body).raise_for_status().json()
+        == recovered
+    )
+    assert (
+        client.put(
+            project_url,
+            json={**restore_body, "request_id": str(uuid4())},
+        ).status_code
+        == 409
+    )
+    assert len(fake.calls) == 3
     history = (
         client.get(url + "/versions", params={"project_id": pid, "kind": "confirmed"})
         .raise_for_status()

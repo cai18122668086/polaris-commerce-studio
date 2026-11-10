@@ -78,6 +78,9 @@ class VideoProjectWrite(StrictVideoModel):
     expected_revision: int = Field(ge=0)
     content: VideoProjectContent
     action: Literal["save", "library", "demo"] = "save"
+    restore_version_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class VideoWritingOrigin(StrictVideoModel):

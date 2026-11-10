@@ -36,7 +36,7 @@ import { WritingWorkflow } from "./writing-workflow";
 import { BenchmarkSearch } from "./benchmark-search";
 import { useProjectSession } from "@/features/video-studio/use-project-session";
 import { useVideoLibrary, type VideoAvatar, type GenerationJob } from "@/features/video-studio/library";
-import type { VideoDraft, VideoContent } from "@/features/video-studio/projects";
+import type { VideoDraft, VideoContent, VideoVersion } from "@/features/video-studio/projects";
 
 export type StudioScreen = "home" | "create" | "avatars" | "voices" | "library" | "works" | "editing";
 type Avatar = VideoAvatar;
@@ -374,7 +374,11 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const assetContent = <><div className={styles.pageHeading}><div><h1>{screen === "avatars" ? "形象克隆" : "声音克隆"}</h1><p>{screen === "avatars" ? "管理你的数字分身，为每个故事选择合适的讲述者。" : "一个熟悉的声音，让表达更有温度。"}</p></div><button type="button" className={styles.primaryButton} onClick={() => open(screen === "avatars" ? "avatar-clone" : "voice-clone")}><Plus size={17} />{screen === "avatars" ? "克隆新形象" : "克隆新声音"}</button></div>{tabs([{ key: "own", label: screen === "avatars" ? "我的定制" : "我的声音" }, { key: "public", label: screen === "avatars" ? "公共模特" : "系统声音" }], assetTab, setAssetTab)}{assetTab === "own" && screen === "voices" ? <MyVoices clones={clones} onClone={() => open("voice-clone")} onApply={id => attempt(async () => { await library.reload(); applyVoice(id); await session.save(); router.push(hrefOf("create") + "?project=" + session.state.projectId); })} onReload={library.reload} onError={text => notify(text, "error")} /> : <>{screen === "avatars" && filters("搜索数字人")}{screen === "avatars" ? avatarGrid() : <><p className={styles.inlineNote}>选择适合视频风格的声音，点击试听预览</p>{voiceGrid()}</>}</>}</>;
 
   const blocked = status === "loading" || Boolean(persisted.recovery) || (!projectId && Boolean(persisted.error));
-  const restoreVersion = (snapshot: VideoContent) => { session.edit(snapshot); setModal(null); notify("历史版本已恢复为当前草稿，原版本保留", "success"); };
+  const restoreVersion = (version: VideoVersion) => attempt(async () => {
+    await session.restoreVersion(version);
+    setModal(null);
+    notify("历史版本已恢复为当前草稿，原版本保留", "success");
+  });
   return <div className={styles.studio}>
     {(persisted.error || persisted.recovery) && <div role="alert" className={styles.persistenceNotice}><span>{persisted.recovery ? "发现本机未保存内容，请选择恢复或使用服务端版本。" : persisted.error}</span>{persisted.recovery ? <><button onClick={() => session.restoreRecovery()}>恢复本机内容</button><button onClick={() => attempt(() => session.discardRecovery())}>使用服务端版本</button></> : status === "conflict" ? <><button onClick={() => attempt(() => session.saveAsNew())}>另存项目</button><button onClick={() => attempt(() => session.discardRecovery())}>重新载入服务端版本</button></> : <button onClick={() => attempt(() => !projectId ? session.initialize() : session.save())}>重试保存</button>}</div>}
     {persisted.backupUnavailable && status !== "saved" && <div className={styles.persistenceNotice}>本机备份不可用，请等待保存成功后离开页面。</div>}
@@ -387,7 +391,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     {modal === "h3-template" && templateAvatar && <Dialog title="生成形象动作" onClose={() => setModal(null)}><div className={styles.templateReview}><img src={imageOf(templateAvatar)} alt={templateAvatar.name} /><div><h3>{templateAvatar.name}</h3><span>15 秒 · 自然讲述动作</span></div></div><MetadataGrid items={[{label:"拍摄方式",value:"固定机位"},{label:"动作衔接",value:"正向首尾循环"}]} /><Notice>生成后先预览，确认人物与动作满意再加入形象库。</Notice>{generationError && <Notice tone="warning">{generationError}</Notice>}<footer className={styles.dialogFooter}><button type="button" className={styles.outlineButton} onClick={() => setModal(null)}>取消</button><button type="button" className={styles.primaryButton} disabled={submitting} onClick={createTemplate}>{submitting ? "正在提交" : generationError ? "查询原提交" : "确认生成"}</button></footer></Dialog>}
     {modal === "real-preview" && realPreview && <GenerationPreview job={realPreview} resuming={library.resumingIds.includes(realPreview.id)} submitting={submitting} onClose={() => setModal(null)} onResume={() => attempt(() => library.resume(realPreview.id))} onCopy={copyText} onApprove={() => attempt(async () => { setSubmitting(true); try { await library.approveTemplate(realPreview.id); setModal(null); } catch (error) { submissionError(error); } finally { setSubmitting(false); } })} onReject={() => attempt(async () => { setSubmitting(true); try { await library.rejectTemplate(realPreview.id); setModal(null); } finally { setSubmitting(false); } })} />}
     {modal === "proofread" && <ScriptProofread original={rawReference?.original_text || ""} text={draft.text} onChange={text => updateDraft({ text })} onClose={() => setModal(null)} onSave={() => attempt(async () => { await session.save(); setModal(null); notify("校对稿已保存，原始参考文稿保留"); })} />}
-    {modal === "history" && <ScriptHistory versions={persisted.history} currentText={draft.text} onRestore={restoreVersion} onCopy={copyText} onClose={() => setModal(null)} />}
+    {modal === "history" && <ScriptHistory versions={persisted.history} currentText={draft.text} saving={status === "saving"} onRestore={restoreVersion} onCopy={copyText} onClose={() => setModal(null)} />}
     {screen === "create" && <div className={styles.editorBrand}><Brand small /><span>灰度测试 · 仅指定账号可用</span></div>}
     {toast && <StudioToast message={toast} contextKey={modal} onClose={dismissToast} />}
     {modal === "avatar" && <AvatarPicker avatars={AVATARS} selectedId={selectedAvatar} loading={library.loading} error={library.error} onSelect={setSelectedAvatar} onApply={() => { if (AVATARS.some(item => item.id === selectedAvatar)) { updateDraft({ avatarId: selectedAvatar }); setModal(null); } }} onClose={() => setModal(null)} onReload={() => attempt(() => library.reload())} onClone={() => open("avatar-clone")} />}

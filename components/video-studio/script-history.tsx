@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { Check, Clock3, Copy, FileText, History, RotateCcw } from "lucide-react";
-import type { VideoContent, VideoVersion } from "@/features/video-studio/projects";
+import type { VideoVersion } from "@/features/video-studio/projects";
 import { Dialog } from "./studio-primitives";
 import styles from "./studio-workflow.module.css";
 
-export function ScriptHistory({ versions, currentText, onRestore, onCopy, onClose }: {
-  versions: VideoVersion[]; currentText: string; onRestore: (snapshot: VideoContent) => void;
+export function ScriptHistory({ versions, currentText, saving, onRestore, onCopy, onClose }: {
+  versions: VideoVersion[]; currentText: string; saving: boolean; onRestore: (version: VideoVersion) => void;
   onCopy: (text: string) => void; onClose: () => void;
 }) {
   const hasText = versions.some(version => version.snapshot.draft.text.trim());
@@ -50,6 +50,6 @@ export function ScriptHistory({ versions, currentText, onRestore, onCopy, onClos
         </> : <div className={styles.historyEmpty}><FileText size={28} /><b>选择一个版本查看全文</b></div>}
       </section>
     </div>
-    <footer className={styles.historyFooter}><span>恢复后仍可继续编辑</span><button type="button" className={styles.secondaryButton} onClick={onClose}>返回编辑</button><button type="button" className={styles.actionButton} disabled={!selected} onClick={() => selected && onRestore(selected.snapshot)}><RotateCcw size={15} />恢复此版本</button></footer>
+    <footer className={styles.historyFooter}><span>恢复后仍可继续编辑</span><button type="button" className={styles.secondaryButton} onClick={onClose}>返回编辑</button><button type="button" className={styles.actionButton} disabled={!selected || saving} onClick={() => selected && onRestore(selected)}><RotateCcw size={15} />{saving ? "正在保存…" : "恢复此版本"}</button></footer>
   </Dialog>;
 }

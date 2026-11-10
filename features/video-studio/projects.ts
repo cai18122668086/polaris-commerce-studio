@@ -10,7 +10,7 @@ export type VideoContent = { draft: VideoDraft; product_facts: string; reference
 export type VideoProject = { id: string; workspace_id: string; revision: number; content: VideoContent; created_at: string; updated_at: string };
 export type VideoVersion = { id: string; project_id: string; kind: "draft" | "library" | "confirmed"; snapshot: VideoContent; created_at: string; writing_origin?: components["schemas"]["VideoWritingOrigin"] | null };
 export type VideoTask = { id: string; project_id: string; confirmed_version_id: string; status: "demo"; snapshot: VideoContent; created_at: string };
-export type VideoWrite = { request_id: string; expected_revision: number; content: VideoContent; action: "save" | "library" | "demo" };
+export type VideoWrite = { request_id: string; expected_revision: number; content: VideoContent; action: "save" | "library" | "demo"; restore_version_id?: string };
 export type VideoWriteResult = { project: VideoProject; version?: VideoVersion | null; task?: VideoTask | null };
 export const emptyVideoContent = (): VideoContent => ({ draft: { name: "未命名视频", text: "", avatarId: "", voiceId: "", speed: 1, emotion: "自然", language: "auto", quality: "1080P", drive: "text" }, product_facts: "", references: [], media: [] });
 

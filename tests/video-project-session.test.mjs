@@ -25,7 +25,9 @@ function fixture() {
       if ((current?.revision ?? 0) !== body.expected_revision) throw { status: 409 };
       const project = { id, revision: body.expected_revision + 1, content: structuredClone(body.content), updated_at: "2026-11-04", created_at: "2026-11-04" };
       rows.set(id, project);
-      const result = { project };
+      const result = { project, ...(body.restore_version_id ? {
+        version: { id: crypto.randomUUID(), project_id: id, kind: "draft", snapshot: project.content },
+      } : {}) };
       replays.set(body.request_id, result);
       return result;
     },
@@ -79,6 +81,39 @@ test("double-click confirmation shares one submission", async () => {
   edit(f.session, "confirmed");
   await Promise.all([f.session.save("demo"), f.session.save("demo")]);
   assert.equal(f.calls.length, 1);
+  f.session.dispose();
+});
+
+test("restoring a version saves pending edits and replays the same restore on an unknown result", async () => {
+  const f = fixture();
+  await f.session.initialize();
+  edit(f.session, "historical script");
+  await f.session.save();
+  const version = {
+    id: crypto.randomUUID(), project_id: f.session.state.projectId, kind: "confirmed",
+    snapshot: structuredClone(f.session.state.content),
+  };
+  edit(f.session, "current unsaved draft");
+  f.setWrite(body => {
+    if (body.restore_version_id) throw new Error("restore response lost");
+  });
+  const restoring = f.session.restoreVersion(version);
+  assert.equal(f.session.restoreVersion(version), restoring);
+  await assert.rejects(restoring);
+  assert.equal(f.calls[1].content.draft.text, "current unsaved draft");
+  const request = f.calls[2];
+  assert.equal(request.restore_version_id, version.id);
+  assert.equal(request.expected_revision, 2);
+  assert.deepEqual(JSON.parse(f.data.get(f.session.recoveryKey)).pending, request);
+  assert.equal(f.session.state.content.draft.text, "historical script");
+  f.setWrite(undefined);
+  await f.session.restoreVersion(version);
+  assert.deepEqual(f.calls.slice(2), [request, request]);
+  assert.equal(f.session.state.revision, 3);
+  assert.equal(f.rows.get(version.project_id).content.draft.text, "historical script");
+  assert.equal(f.session.state.history[0].kind, "draft");
+  assert.equal(f.session.state.history[0].snapshot.draft.text, "historical script");
+  assert.equal(f.data.size, 0);
   f.session.dispose();
 });
 

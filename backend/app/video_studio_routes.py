@@ -244,7 +244,30 @@ def save_project(
         raise ApiError(422, "VIDEO_SCRIPT_EMPTY", "请先填写文案。")
     content = body.content.model_dump(mode="json")
     old_content = row.content if row else None
-    origin = matching_writing_origin(row.writing_origin, content) if row else None
+    restored = None
+    if body.restore_version_id is not None:
+        if body.action != "save":
+            raise ApiError(
+                422, "VIDEO_SCRIPT_RESTORE_ACTION", "请先将历史版本恢复为草稿。"
+            )
+        restored = session.get(VideoScriptVersionRecord, str(body.restore_version_id))
+        if row is None or restored is None or restored.project_id != row.id:
+            raise ApiError(
+                404, "VIDEO_SCRIPT_VERSION_NOT_FOUND", "未找到该项目的文案版本。"
+            )
+        snapshot = VideoProjectContent.model_validate(restored.snapshot).model_dump(
+            mode="json"
+        )
+        if content != snapshot:
+            raise ApiError(
+                409, "VIDEO_SCRIPT_RESTORE_CHANGED", "恢复内容与历史版本不一致。"
+            )
+    source = restored if restored is not None else row
+    origin = matching_writing_origin(source.writing_origin, content) if source else None
+    if restored is not None and restored.writing_origin is not None and origin is None:
+        raise ApiError(
+            409, "VIDEO_SCRIPT_RESTORE_CHANGED", "历史文案与写稿来源不一致。"
+        )
     try:
         if row is None:
             if body.expected_revision != 0:
@@ -288,8 +311,12 @@ def save_project(
             session.refresh(row)
         version = None
         task = None
-        if old_content != content:
-            append_version(session, row.id, content, "draft", writing_origin=origin)
+        if old_content != content or restored is not None:
+            draft = append_version(
+                session, row.id, content, "draft", writing_origin=origin
+            )
+            if restored is not None:
+                version = draft
         if body.action == "library":
             version = append_version(
                 session, row.id, content, "library", writing_origin=origin

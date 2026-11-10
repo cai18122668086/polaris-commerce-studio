@@ -8311,6 +8311,8 @@ export interface components {
              * Format: uuid
              */
             request_id: string;
+            /** Restore Version Id */
+            restore_version_id?: string | null;
         };
         /** VideoReference */
         VideoReference: {

@@ -5,6 +5,13 @@ from itertools import pairwise
 from pathlib import Path
 
 from .motion_library import read_json
+from .video_editing_browser_clocks import (
+    LIVE_SPLIT_GROUPS,
+    LIVE_SPLIT_TEMPLATE_ID,
+    NUMBERED_EVENTS,
+    SPLIT_HORIZONTAL,
+    SPLIT_VERTICAL,
+)
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from .video_editing_cut_scenes import (
     CUT_CAPTION_BANDS,
@@ -48,6 +55,7 @@ UNIFIED_TEMPLATES = frozenset(
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
+        LIVE_SPLIT_TEMPLATE_ID,
     }
 )
 UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
@@ -198,6 +206,7 @@ UNIFIED_SCENE_GROUPS = (
     | CUT_GROUPS.keys()
     | PANEL_GROUPS.keys()
     | HANDOFF_GROUPS.keys()
+    | set(LIVE_SPLIT_GROUPS)
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -210,6 +219,8 @@ _CAPTION_BANDS = {
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
     **HANDOFF_CAPTION_BANDS,
+    SPLIT_VERTICAL: (850, 960),
+    SPLIT_HORIZONTAL: (270, 405),
 }
 _EVENT_PREFIX = "/timing/events/"
 
@@ -235,6 +246,8 @@ def unified_binding(group: str) -> str:
 
 
 def unified_sound_paths(group: str) -> tuple[str, ...]:
+    if group in LIVE_SPLIT_GROUPS:
+        return NUMBERED_EVENTS
     return tuple(_EVENT_PREFIX + event for event in UNIFIED_SOUNDS.get(group, {}))
 
 
@@ -569,16 +582,19 @@ def unified_action_frame(shot: dict, fps: int, path: str) -> int:
     event = path.removeprefix(_EVENT_PREFIX)
     if (
         fps != 30
-        or path != _EVENT_PREFIX + event
+        or path not in unified_sound_paths(group)
         or shot["layer"] != "scene"
         or shot["rect"] != [0, 0, 1, 1]
-        or event not in UNIFIED_SOUNDS[group]
     ):
         raise ValueError("Original unified sound needs its full-frame native action")
-    name, sep, index = event.partition("/")
-    value = shot["config"]["timing"]["events"][name]
-    at = (value[int(index)] if sep else value) * fps
-    mode = UNIFIED_SOUNDS[group][event]
+    if group in LIVE_SPLIT_GROUPS:
+        at = shot["config"]["items"][NUMBERED_EVENTS.index(path)]["at"] * fps
+        mode = "ease"
+    else:
+        name, sep, index = event.partition("/")
+        value = shot["config"]["timing"]["events"][name]
+        at = (value[int(index)] if sep else value) * fps
+        mode = UNIFIED_SOUNDS[group][event]
     local = (
         0
         if mode == "scene"

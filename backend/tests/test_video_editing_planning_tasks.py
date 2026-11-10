@@ -25,6 +25,7 @@ from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_azl_panels import azl_blockers
+from app.video_editing_browser_clocks import LIVE_SPLIT_TEMPLATE_ID
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
 from app.video_editing_cut_scenes import CUT_TEMPLATE_ID, cut_scene_blockers
 from app.video_editing_cxbr import CXBR_PAPER_GROUPS, CXBR_PURPOSES, cxbr_blockers
@@ -80,13 +81,22 @@ def setup(video, tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "verify_package", lambda _: None)
 
     def request(
-        transcript, package, model, cards, choices, template=None, runtime=None
+        transcript,
+        package,
+        model,
+        cards,
+        choices,
+        template=None,
+        runtime=None,
+        *,
+        public_copy_only=False,
     ):
         body = {
             "model": model,
             "words": [{"id": t.id, "text": t.text} for t in transcript.tokens],
             "cards": cards,
             "choices": choices,
+            "public_copy_only": public_copy_only,
             **({"overlay_template": template} if template else {}),
             **({"runtime": runtime} if runtime else {}),
         }
@@ -149,6 +159,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         UNIFIED_EXPANDED_TEMPLATE_ID,
         UNIFIED_EXPLANATION_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
+        LIVE_SPLIT_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         "evidence-judgment-v1",
@@ -306,6 +317,7 @@ def test_free_preparation_is_durable_scoped_and_contains_no_paths(
     payload = client.get(artifact["url"])
     assert payload.status_code == 200 and str(tmp_path) not in payload.text
     assert payload.json()["cards"][0]["id"] == "source-" + source
+    assert payload.json()["public_copy_only"] is True
     assert create(client, ws, task["id"], "generate", result["id"]).status_code == 503
     from tests.test_auth_external import verified_identity
 

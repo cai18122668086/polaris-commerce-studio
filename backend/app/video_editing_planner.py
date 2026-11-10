@@ -16,7 +16,11 @@ from .video_assistance_provider import (
     planner_configured,
     planner_endpoint,
 )
-from .video_editing_browser_clocks import FRUIT_LIST_GROUP
+from .video_editing_browser_clocks import (
+    FRUIT_LIST_GROUP,
+    LIVE_SPLIT_TEMPLATE_ID,
+    SPLIT_VERTICAL,
+)
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
@@ -83,6 +87,7 @@ def catalog_index(
     cut_scene: bool = False,
     panel_scene: bool = False,
     explanation_scene: bool = False,
+    live_splits: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -120,6 +125,12 @@ def catalog_index(
         ):
             parameters["text_paths"] = [
                 path for path in parameters["text_paths"] if not path.endswith("/en")
+            ]
+        if live_splits and group["id"] == SPLIT_VERTICAL:
+            parameters["text_paths"] = [
+                path
+                for path in parameters["text_paths"]
+                if not path.endswith("/english")
             ]
         rows.append(
             {
@@ -220,6 +231,8 @@ def build_request(
     choice_snapshot: dict[str, Any] | None = None,
     template: dict | None = None,
     runtime: dict | None = None,
+    *,
+    public_copy_only: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rules = rule_pack(package)
     question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
@@ -238,6 +251,7 @@ def build_request(
         explanation_scene=bool(
             template and template["id"] == UNIFIED_EXPLANATION_TEMPLATE_ID
         ),
+        live_splits=bool(template and template["id"] == LIVE_SPLIT_TEMPLATE_ID),
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
@@ -330,7 +344,15 @@ def build_request(
             "同一动效可以在不同语义位置反复使用，重复出现不增加种类。"
             "素材或语义不足时记录原因，禁止凑项及全屏覆盖人物。"
         )
-    if template is not None and template["id"] == PANEL_TEMPLATE_ID:
+    if public_copy_only:
+        message += (
+            "所有模板的字幕、标题和图卡文字均绑定本期实录。"
+            "素材名称、用途说明和来源记录仅用于选材，不能作为可见文案。"
+            "「实录报价」「口播内容示意」等内部备注不得写入画面。"
+            "素材记录若表明原件画面带有内部备注、占位字或无关水印，应跳过并说明需要干净原件。"
+        )
+    elif template is not None and template["id"] == PANEL_TEMPLATE_ID:
+        # Preserve the exact prompt for planning requests frozen before the shared rule.
         message += (
             "素材名称、用途说明和来源记录仅用于选材。不要将「实录报价」「口播内容示意」"
             "等内部备注写入字幕、标题或图卡。可见文字按原生槽绑定实录。"
@@ -592,6 +614,8 @@ def generate(
     guard: Callable[[], None] | None = None,
     template: dict | None = None,
     runtime: dict | None = None,
+    *,
+    public_copy_only: bool = False,
 ) -> SemanticPlan:
     """Single paid submission only after explicit operational authorization.
 
@@ -612,6 +636,7 @@ def generate(
         choice_snapshot,
         template,
         runtime,
+        public_copy_only=public_copy_only,
     )
     if (
         expected_request_sha256

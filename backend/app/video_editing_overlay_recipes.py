@@ -21,12 +21,15 @@ from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     CARD_LANDMARKS,
+    LIVE_SPLIT_GROUPS,
+    LIVE_SPLIT_TEMPLATE_ID,
     NUMBERED_EVENTS,
     NUMBERED_GROUP,
     NUMBERED_IMAGES,
     NUMBERED_LABELS,
     NUMBERED_LINES,
     NUMBERED_PRESENTER,
+    SPLIT_VERTICAL,
 )
 from .video_editing_browser_rotation import (
     ROTATION_EVENTS,
@@ -946,13 +949,16 @@ def _entry_sound(
     )
 
 
-def _numbered_entry(
+def _browser_split_entry(
     package: Path,
     group: dict,
     beat: SemanticBeat,
     transcript: Transcript,
     cards: list[dict],
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    group_id = beat.group_id
+    split = group_id in LIVE_SPLIT_GROUPS
+    vertical = group_id == SPLIT_VERTICAL
     contract = input_contract(package, group)
     images = project_image_digests(cards)
     presenters = {
@@ -963,6 +969,11 @@ def _numbered_entry(
         and row["id"].startswith("source-")
     }
     config = read_json(inside(package, group["input_template"]))
+    omitted = {
+        path: "中文实录对应原中文槽，原可空英文槽留空。"
+        for path in contract["text_paths"]
+        if vertical and path.endswith("/english")
+    }
     try:
         anchors = word_bindings(beat, transcript, contract, presenters | images.keys())
         text = {row["path"]: row for row in anchors["text"]}
@@ -971,7 +982,8 @@ def _numbered_entry(
         if (
             beat.relation not in {"parallel", "sequence"}
             or len(beat.relation_items) != 3
-            or set(text) != {*NUMBERED_LABELS, *NUMBERED_LINES}
+            or set(text)
+            != {*NUMBERED_LABELS, *NUMBERED_LINES} | ({"/intro"} if vertical else set())
             or set(events) != set(NUMBERED_EVENTS)
             or set(media) != {NUMBERED_PRESENTER, *NUMBERED_IMAGES}
             or set(media.values()) != set(beat.asset_ids)
@@ -994,7 +1006,7 @@ def _numbered_entry(
                 or item.native_media_paths != [image]
                 or item.first_token_id != line_tokens[0]
                 or item.last_token_id != line_tokens[-1]
-                or not 1 <= len(text[label]["text"]) <= 2
+                or not 1 <= len(text[label]["text"]) <= (4 if vertical else 2)
                 or events[event]["token_id"] != text[label]["token_ids"][0]
                 or events[event]["edge"] != "start"
             ):
@@ -1010,37 +1022,67 @@ def _numbered_entry(
             )
         ):
             raise ValueError("Leave time for the last numbered label to settle")
+        if split:
+            positions = {token.id: i for i, token in enumerate(transcript.tokens)}
+            if any(
+                positions[left.last_token_id] >= positions[right.first_token_id]
+                for left, right in zip(
+                    beat.relation_items, beat.relation_items[1:], strict=False
+                )
+            ):
+                raise ValueError("Split items must use separate ordered spoken ranges")
+            if vertical and (
+                not 1 <= len(text["/intro"]["text"]) <= 6
+                or text["/intro"]["token_ids"][0] != beat.first_token_id
+                or positions[text["/intro"]["token_ids"][-1]]
+                >= positions[beat.relation_items[0].first_token_id]
+                or starts[0] < 0.3
+            ):
+                raise ValueError("Vertical intro needs its own spoken opening")
     except (KeyError, ValueError) as error:
         raise ApiError(
             422,
-            "EDITING_TEMPLATE_NUMBERED_INPUTS_REQUIRED",
-            "编号标签需绑定同期原片、三份不同的项目图片和三个依次出现的实录短词。",
+            "EDITING_TEMPLATE_SPLIT_INPUTS_REQUIRED"
+            if split
+            else "EDITING_TEMPLATE_NUMBERED_INPUTS_REQUIRED",
+            "需绑定同期原片、三份不同的项目图片和三个依次出现的实录短词。",
         ) from error
-    slots = [*text, *events, *media]
+    slots = [*text, *events, *media, *omitted]
     for path in slots:
         set_native_field(config, path, None)
     return NativeEpisodeEntry(
         carrier="picture",
         placement=NativePlacement(
-            layer="overlay",
+            layer="scene" if split else "overlay",
             rect=[0, 0, 1, 1],
-            reason="原生编号和标签叠在同期口播画面上。",
+            reason="原生分屏使用本期同期人物及配图。"
+            if split
+            else "原生编号和标签叠在同期口播画面上。",
         ),
         recipe={
             "version": "tengli.native-recipe/1",
             "release": MOTION_SHA256,
-            "group_id": NUMBERED_GROUP,
+            "group_id": group_id,
             "template_sha256": contract["template_sha256"],
             "schema_sha256": contract["schema_sha256"],
-            "design_id": "tengli-numbered-pictures-v1",
-            "design_reason": "保留原编号、标签、配图及入场曲线，主画面使用连续口播。",
+            "design_id": "tengli-" + LIVE_SPLIT_TEMPLATE_ID
+            if split
+            else "tengli-numbered-pictures-v1",
+            "design_reason": "保留原分屏、人物槽及入场曲线。"
+            if split
+            else "保留原编号、标签、配图及入场曲线，主画面使用连续口播。",
             "parameter_decisions": {
                 key: "沿用原生画幅、标签构图及入场机制。" for key in config
             },
             "config": config,
             "placeholders": slots,
-            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[NUMBERED_GROUP]),
-            "browser_live_background": True,
+            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[group_id]),
+            **(
+                {"browser_split_live_presenter": True}
+                if split
+                else {"browser_live_background": True}
+            ),
+            **({"empty_text": omitted} if omitted else {}),
         },
     ), anchors
 
@@ -2135,8 +2177,8 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = ROTATION_EVENTS
-        elif beat.group_id == NUMBERED_GROUP:
-            entries[beat.id], anchors = _numbered_entry(
+        elif beat.group_id in (NUMBERED_GROUP, *LIVE_SPLIT_GROUPS):
+            entries[beat.id], anchors = _browser_split_entry(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = NUMBERED_EVENTS

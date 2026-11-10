@@ -27,7 +27,13 @@ from .video_editing_azl_panels import (
     require_azl_compositor,
 )
 from .video_editing_bg03_readability import BG_OFFSET_GROUP, apply_outline
-from .video_editing_browser_clocks import CARD_GROUP, NUMBERED_GROUP
+from .video_editing_browser_clocks import (
+    CARD_GROUP,
+    LIVE_SPLIT_GROUPS,
+    NUMBERED_GROUP,
+    SPLIT_HORIZONTAL,
+    SPLIT_HORIZONTAL_CAPTION_BASELINE,
+)
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
@@ -622,10 +628,16 @@ def compile_episode(
                     and beat.group_id in UNIFIED_SCENE_GROUPS
                 ):
                     fps = episode["output"]["fps"]
+                    config = job["config"]
+                    duration = (
+                        config["duration"]
+                        if beat.group_id in LIVE_SPLIT_GROUPS
+                        else config["timing"]["duration_seconds"]
+                    )
                     picture_end = projected_scene_end(
                         start,
                         end,
-                        round(job["config"]["timing"]["duration_seconds"] * fps),
+                        round(duration * fps),
                         fps,
                     )
                 episode["shots"].append(
@@ -834,6 +846,8 @@ def compile_episode(
                 else UNIFIED_WINDOW_CAPTION_BASELINE
                 if authoring.overlay_template_id in UNIFIED_TEMPLATES
                 and shot["group_id"] == UNIFIED_WINDOW_GROUP
+                else SPLIT_HORIZONTAL_CAPTION_BASELINE
+                if shot["group_id"] == SPLIT_HORIZONTAL
                 else baseline,
             )
             for shot in episode["shots"]
@@ -863,6 +877,8 @@ def compile_episode(
                         "baseline_y_px": round(episode["output"]["height"] * y / 1280),
                         "reason": "主字幕进入人物窗下缘，避开原生标签和结论。"
                         if unified and y == UNIFIED_WINDOW_CAPTION_BASELINE
+                        else "主字幕放在原横向分屏前两排标签之间。"
+                        if y == SPLIT_HORIZONTAL_CAPTION_BASELINE
                         else lane_reason,
                     }
                 )

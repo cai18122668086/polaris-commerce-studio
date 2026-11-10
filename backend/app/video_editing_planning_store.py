@@ -207,6 +207,7 @@ def create_planning_task(
     )
     snapshot: dict[str, Any] = {
         "gateway": planner_endpoint(settings),
+        "public_copy_only": True,
         "source_sha256": source.media_sha256,
         "choice_snapshot": choices,
         "asset_cards": material_cards(

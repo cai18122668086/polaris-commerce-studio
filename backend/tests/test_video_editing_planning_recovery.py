@@ -29,7 +29,17 @@ def setup_request(tmp_path, monkeypatch):
         video_editing_planning_enabled=True,
     )
 
-    def request(t, p, m, assets, choices=None, template=None, runtime=None):
+    def request(
+        t,
+        p,
+        m,
+        assets,
+        choices=None,
+        template=None,
+        runtime=None,
+        *,
+        public_copy_only=False,
+    ):
         body = {"transcript": t.model_dump(), "model": m, "assets": assets}
         if template is not None:
             body["overlay_template"] = template

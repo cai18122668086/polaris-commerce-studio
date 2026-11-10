@@ -7,7 +7,7 @@ from app import video_editing_browser_rotation as rotation
 from app.errors import ApiError
 from app.motion_library import atomic_json
 from app.video_editing_contracts import SemanticBeat, TranscriptToken
-from app.video_editing_overlay_recipes import _numbered_entry, _rotation_entry
+from app.video_editing_overlay_recipes import _browser_split_entry, _rotation_entry
 from tests.test_video_editing_native_compiler import inputs
 
 
@@ -355,7 +355,7 @@ def test_numbered_tags_require_distinct_images_and_each_label_first_word(tmp_pat
             for i, image in enumerate(pictures)
         ],
     ]
-    entry, anchors = _numbered_entry(package, group, beat, transcript, assets)
+    entry, anchors = _browser_split_entry(package, group, beat, transcript, assets)
     assert (
         entry.placement.layer == "overlay" and entry.recipe["browser_live_background"]
     )
@@ -366,5 +366,7 @@ def test_numbered_tags_require_distinct_images_and_each_label_first_word(tmp_pat
     duplicate[-1]["sha256"] = assets[-2]["sha256"]
     for invalid_beat, invalid_assets in ((incorrect, assets), (beat, duplicate)):
         with pytest.raises(ApiError) as caught:
-            _numbered_entry(package, group, invalid_beat, transcript, invalid_assets)
+            _browser_split_entry(
+                package, group, invalid_beat, transcript, invalid_assets
+            )
         assert caught.value.code == "EDITING_TEMPLATE_NUMBERED_INPUTS_REQUIRED"

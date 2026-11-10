@@ -423,6 +423,7 @@ def process(
             snapshot["choice_snapshot"],
             template,
             runtime,
+            public_copy_only=snapshot.get("public_copy_only", False),
         )
         result = {**evidence, "text_status": transcript.text_status}
         if mode == "prepare":
@@ -529,6 +530,7 @@ def process(
                 guard=guard,
                 template=template,
                 runtime=runtime,
+                public_copy_only=snapshot.get("public_copy_only", False),
             )
             atomic_json(root / "provider" / FILES["request_evidence"], evidence)
             result.update(

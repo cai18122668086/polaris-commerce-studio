@@ -14,7 +14,10 @@ from PIL import Image, ImageOps
 from .motion_library import read_json, sha256
 from .video_editing_browser_clocks import (
     FRUIT_LIST_FONTS,
+    LIVE_SPLIT_GROUPS,
+    SPLIT_VERTICAL,
     audit_card_family_engine,
+    audit_split_engine,
 )
 from .video_editing_contracts import Transcript
 
@@ -24,6 +27,7 @@ ROTATION_EVENTS = tuple(f"/items/{i}/at" for i in range(3))
 ROTATION_IMAGES = tuple(f"/items/{i}/image" for i in range(3))
 ROTATION_LABELS = tuple(f"/items/{i}/label" for i in range(3))
 _ROTATION_REF = "tengli-card-rotation-"
+_SPLIT_REF = "tengli-browser-split-"
 _FPS = 30
 _OWNER = Path("src/engines/workspace/商业口播_可编辑改造_20261104")
 _MEDIA = _OWNER / "unified/core/media.py"
@@ -38,11 +42,13 @@ _DRAW = (
     'return exportCanvas.toDataURL("image/png").split(",")[1]}'
 )
 _LIVE_DRAW = """
-async ([group, frame, uri]) => {
+async ([group, frame, uri, slot, liveBackground]) => {
   const person = new Image();
   person.src = uri;
   await person.decode();
-  engine.states[group].B.person = person;
+  const state = engine.states[group].B;
+  state[slot] = person;
+  if (liveBackground) state.background = person;
   engine.draw(exportCanvas, group, frame / 30, "B");
   return exportCanvas.toDataURL("image/png").split(",")[1];
 }
@@ -50,8 +56,13 @@ async ([group, frame, uri]) => {
 
 
 def _audit(package: Path, group: dict) -> None:
-    audit_card_family_engine(package, group)
-    if sha256(package / _MEDIA) != _MEDIA_SHA or sha256(package / _MATTE) != _MATTE_SHA:
+    if group["id"] in LIVE_SPLIT_GROUPS:
+        audit_split_engine(package, group)
+    else:
+        audit_card_family_engine(package, group)
+    if sha256(package / _MEDIA) != _MEDIA_SHA or (
+        group["id"] != SPLIT_VERTICAL and sha256(package / _MATTE) != _MATTE_SHA
+    ):
         raise ValueError("Original video sampler or presenter matte changed")
 
 
@@ -71,7 +82,11 @@ def rotation_entry_frame(shot: dict, fps: int, path: str) -> int:
 
 
 def rotation_source_clock(
-    native: dict, assets: dict[str, dict], transcript: Transcript
+    native: dict,
+    assets: dict[str, dict],
+    transcript: Transcript,
+    *,
+    split: bool = False,
 ) -> dict[str, Any]:
     slots = {row["path"]: row["asset_id"] for row in native["media"]}
     source_id = slots.get("/presenter")
@@ -84,16 +99,27 @@ def rotation_source_clock(
         or not 0 <= start < end <= transcript.duration_ms
         or clock["native_fps"] != _FPS
     ):
-        raise ValueError("Rotating cards require their current, measured presenter")
+        raise ValueError(
+            "Original browser scene requires its current measured presenter"
+            if split
+            else "Rotating cards require their current, measured presenter"
+        )
+    prefix = _SPLIT_REF if split else _ROTATION_REF
     return {
-        "policy": "native_rotation_presenter_window",
+        "policy": "native_split_presenter_window"
+        if split
+        else "native_rotation_presenter_window",
         "media_path": "/presenter",
         "asset_id": source_id,
         "source_sha256": transcript.source_sha256,
         "source_start_ms": start,
         "source_end_ms": end,
-        "binding_id": f"{_ROTATION_REF}{transcript.source_sha256}-{start}-{end}",
-        "native_matte_id": ROTATION_MATTE,
+        "binding_id": f"{prefix}{transcript.source_sha256}-{start}-{end}",
+        **(
+            {"native_matte_id": ROTATION_MATTE}
+            if not split or native["group_id"] != SPLIT_VERTICAL
+            else {}
+        ),
     }
 
 
@@ -194,6 +220,16 @@ def _presenter_plate(image: Image.Image) -> Image.Image:
     return plate
 
 
+def _split_presenter(image: Image.Image, group: str) -> Image.Image:
+    if group == SPLIT_VERTICAL:
+        return ImageOps.fit(image, (540, 960), Image.Resampling.LANCZOS)
+    # The original outlined person occupies a 346 x 559 input rectangle.
+    fitted = ImageOps.contain(image, (346, 559), Image.Resampling.LANCZOS)
+    plate = Image.new("RGBA", (346, 559))
+    plate.paste(fitted, ((346 - fitted.width) // 2, (559 - fitted.height) // 2))
+    return plate
+
+
 def install_rotation_export(package: Path, root: Path) -> None:
     if "--job" not in sys.argv:
         return
@@ -201,18 +237,19 @@ def install_rotation_export(package: Path, root: Path) -> None:
     if path.parent != root / "plans":
         return
     job = read_json(path)
-    if job["group_id"] != ROTATION_GROUP:
+    group = job["group_id"]
+    split = group in LIVE_SPLIT_GROUPS
+    if not split and group != ROTATION_GROUP:
         return
+    prefix = _SPLIT_REF if split else _ROTATION_REF
     reference = job["config"].get("presenter", "")
-    if not isinstance(reference, str) or not reference.startswith(
-        "input://" + _ROTATION_REF
-    ):
+    if not isinstance(reference, str) or not reference.startswith("input://" + prefix):
         return
     match = re.fullmatch(
-        r"input://" + _ROTATION_REF + r"([a-f0-9]{64})-(\d+)-(\d+)", reference
+        r"input://" + prefix + r"([a-f0-9]{64})-(\d+)-(\d+)", reference
     )
     if not match:
-        raise ValueError("Invalid rotating card presenter window")
+        raise ValueError("Invalid original browser presenter window")
     digest, start, end = match[1], int(match[2]), int(match[3])
 
     from playwright.sync_api import Page
@@ -233,23 +270,25 @@ def install_rotation_export(package: Path, root: Path) -> None:
     browser_drawer, evaluate = special.browser_drawer, Page.evaluate
 
     def with_live_person(card: dict, config: dict) -> tuple[Any, dict]:
-        if card["id"] != ROTATION_GROUP:
+        if card["id"] != group:
             return browser_drawer(card, config)
         _audit(package, card)
         source = Path(special.resolve(config["presenter"], True))
         if sha256(source) != digest or config["duration"] != (end - start) / 1000:
-            raise ValueError("Rotating card presenter identity or duration changed")
-        spec = importlib.util.spec_from_file_location(
-            "tengli_rotation_matte", package / _MATTE
-        )
-        if spec is None or spec.loader is None:
-            raise ValueError("Cannot load the original presenter matte")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        matte = module.HumanMatte(
-            special.resolve("input://" + ROTATION_MATTE, True),
-            root / "cache" / "browser-rotation" / path.stem,
-        )
+            raise ValueError("Original browser presenter identity or duration changed")
+        matte = None
+        if group != SPLIT_VERTICAL:
+            spec = importlib.util.spec_from_file_location(
+                "tengli_browser_presenter_matte", package / _MATTE
+            )
+            if spec is None or spec.loader is None:
+                raise ValueError("Cannot load the original presenter matte")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            matte = module.HumanMatte(
+                special.resolve("input://" + ROTATION_MATTE, True),
+                root / "cache" / "browser-rotation" / path.stem,
+            )
         asset = media.inspect_asset(
             {
                 "path": str(source),
@@ -263,15 +302,32 @@ def install_rotation_export(package: Path, root: Path) -> None:
 
         def draw_live(frame: int) -> Image.Image:
             source_frame = media.asset_frame(asset, frame / _FPS, native_size=True)
-            alpha = matte.apply(source_frame, f"{digest}-{start}-{end}-{frame}")
-            uri = _png_uri(_presenter_plate(alpha))
+            if matte is not None:
+                source_frame = matte.apply(
+                    source_frame, f"{digest}-{start}-{end}-{frame}"
+                )
+            plate = (
+                _split_presenter(source_frame, group)
+                if split
+                else _presenter_plate(source_frame)
+            )
+            uri = _png_uri(plate)
             applied = False
 
             def evaluate_live(page: Page, expression: str, arg: Any = None) -> Any:
                 nonlocal applied
                 if expression == _DRAW:
                     applied = True
-                    return evaluate(page, _LIVE_DRAW, [*arg, uri])
+                    return evaluate(
+                        page,
+                        _LIVE_DRAW,
+                        [
+                            *arg,
+                            uri,
+                            "presenter" if split else "person",
+                            group == SPLIT_VERTICAL,
+                        ],
+                    )
                 return evaluate(page, expression, arg)
 
             cast(Any, Page).evaluate = evaluate_live
@@ -280,14 +336,14 @@ def install_rotation_export(package: Path, root: Path) -> None:
             finally:
                 cast(Any, Page).evaluate = evaluate
             if not applied:
-                raise ValueError(
-                    "Original rotating card draw did not receive a live frame"
-                )
+                raise ValueError("Original browser draw did not receive a live frame")
             return image
 
         return draw_live, {
             **meta,
-            "media_capability": "original G04 draw with current matte frames",
+            "media_capability": "original split draw with current presenter frames"
+            if split
+            else "original G04 draw with current matte frames",
         }
 
     special.browser_drawer = with_live_person

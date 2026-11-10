@@ -7,8 +7,12 @@ from .video_editing_azl_panels import AZL_TEMPLATE_ID as AZL_TEMPLATE_ID
 from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_FONTS,
+    LIVE_SPLIT_GROUPS,
+    LIVE_SPLIT_TEMPLATE_ID,
     NUMBERED_GROUP,
+    SPLIT_HORIZONTAL,
     SPLIT_TITLE_FONT,
+    SPLIT_VERTICAL,
 )
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
@@ -129,6 +133,8 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     **dict.fromkeys(("YYP04", "YYP06"), (MOTION_FONT, MOTION_MATTE)),
     CARD_GROUP: (SPLIT_TITLE_FONT,),
     NUMBERED_GROUP: (SPLIT_TITLE_FONT,),
+    SPLIT_VERTICAL: (SPLIT_TITLE_FONT,),
+    SPLIT_HORIZONTAL: (SPLIT_TITLE_FONT, ROTATION_MATTE),
     QUESTION_GROUP: (QUESTION_FONT,),
     QUESTION_CARD_GROUP: QUESTION_CARD_A_FONTS,
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
@@ -592,6 +598,32 @@ _TEMPLATES[HANDOFF_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[LIVE_SPLIT_TEMPLATE_ID] = {
+    "id": LIVE_SPLIT_TEMPLATE_ID,
+    "name": "竖横分屏与同期人物",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": "用原生竖向分屏和人物方窗依次显示三项。"
+                if group == SPLIT_VERTICAL
+                else "用原生横向分屏和右下人物轮廓依次显示三项。",
+                "layer": "scene",
+                "binding": "同期原片绑定 /presenter。"
+                "三个 spoken、label、image 各自绑定同一实录条目。"
+                "at 取各 label 的实际首词。末项要留足原入场时间。"
+                + (
+                    "intro 绑定第一项前已说出的短标题。"
+                    "需至少 0.3 秒入场前区间，中文片的英文槽留空。"
+                    if group == SPLIT_VERTICAL
+                    else "横向 label 最多两字，完整短语绑定 spoken 并由主字幕承载。"
+                ),
+            }
+            for group in LIVE_SPLIT_GROUPS
+        ),
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[CUT_TEMPLATE_ID] = {
     "id": CUT_TEMPLATE_ID,
     "name": "实拍与项目素材接力",
@@ -731,6 +763,7 @@ def overlay_templates() -> list[dict]:
             UNIFIED_EXPANDED_TEMPLATE_ID,
             UNIFIED_EXPLANATION_TEMPLATE_ID,
             HANDOFF_TEMPLATE_ID,
+            LIVE_SPLIT_TEMPLATE_ID,
             CUT_TEMPLATE_ID,
             PANEL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,

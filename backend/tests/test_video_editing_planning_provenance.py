@@ -126,7 +126,15 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
         )
 
     def protocol_request(
-        transcript, package, model, cards, choices, template=None, runtime=None
+        transcript,
+        package,
+        model,
+        cards,
+        choices,
+        template=None,
+        runtime=None,
+        *,
+        public_copy_only=False,
     ):
         # Explicit 132-group wire fixture; not a real Tengli result or library.
         payload = {

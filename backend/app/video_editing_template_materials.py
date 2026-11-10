@@ -4,7 +4,12 @@ from typing import Any
 
 from PIL import Image
 
-from .video_editing_browser_clocks import CARD_GROUP, NUMBERED_GROUP
+from .video_editing_browser_clocks import (
+    CARD_GROUP,
+    LIVE_SPLIT_GROUPS,
+    LIVE_SPLIT_TEMPLATE_ID,
+    NUMBERED_GROUP,
+)
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
 from .video_editing_judgment import JUDGMENT_GROUP, JUDGMENT_IMAGES
@@ -34,6 +39,7 @@ _IMAGE_GROUPS = {
     PACKAGE_TEMPLATE_ID: ((PACKAGE_GROUP, 4),),
     LINE_TEMPLATE_ID: ((LINE_GROUP, 3), (PACKAGE_GROUP, 4)),
     NUMBERED_TEMPLATE_ID: ((NUMBERED_GROUP, 3),),
+    LIVE_SPLIT_TEMPLATE_ID: tuple((group, 3) for group in LIVE_SPLIT_GROUPS),
 }
 
 

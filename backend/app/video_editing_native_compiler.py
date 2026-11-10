@@ -25,7 +25,9 @@ from .video_editing_browser_clocks import (
     CARD_GROUP,
     FRUIT_LIST_GROUP,
     LIVE_BROWSER_SOURCE_FIELDS,
+    LIVE_SPLIT_GROUPS,
     SPLIT_GROUPS,
+    SPLIT_HORIZONTAL,
     card_font_evidence,
     compile_card_clock,
     compile_fruit_list_clock,
@@ -38,6 +40,7 @@ from .video_editing_browser_live import (
 )
 from .video_editing_browser_rotation import (
     ROTATION_GROUP,
+    ROTATION_MATTE,
     compile_rotation_clock,
     rotation_source_clock,
 )
@@ -395,6 +398,11 @@ def compile_native_job(
     ):
         raise ValueError("Word-bound scene geometry requires zero native shift_frames")
     live_cards = recipe.get("browser_live_background", False)
+    split_live = recipe.get("browser_split_live_presenter", False)
+    if type(split_live) is not bool or (
+        split_live and (group["id"] not in LIVE_SPLIT_GROUPS or live_cards)
+    ):
+        raise ValueError("Live split presenter requires its original browser group")
     if type(live_cards) is not bool or (
         live_cards
         and (
@@ -405,11 +413,15 @@ def compile_native_job(
     if live_cards:
         media_clocks: dict[str, float] = {}
         clock_receipts = [card_live_clock(package, native, asset_files, transcript)]
-    elif group["id"] == ROTATION_GROUP:
+    elif group["id"] == ROTATION_GROUP or split_live:
         if recipe.get("media_clocks"):
-            raise ValueError("Rotating cards use their measured presenter window")
+            raise ValueError(
+                "Original browser scene uses its measured presenter window"
+            )
         media_clocks = {}
-        clock_receipts = [rotation_source_clock(native, asset_files, transcript)]
+        clock_receipts = [
+            rotation_source_clock(native, asset_files, transcript, split=split_live)
+        ]
     elif picture_variant:
         if recipe.get("media_clocks"):
             raise ValueError("Hypit tracks use the measured shot source window")
@@ -616,7 +628,9 @@ def compile_native_job(
         if group["id"] == FRUIT_LIST_GROUP and row["path"] == "/presenter":
             prefix = FRUIT_LIST_PREFIX
         rid = prefix + asset["sha256"][:24]
-        if group["id"] == ROTATION_GROUP and row["path"] == "/presenter":
+        if (group["id"] == ROTATION_GROUP or split_live) and row[
+            "path"
+        ] == "/presenter":
             rid = clock_receipts[0]["binding_id"]
         if line_art and row["path"] == LINE_HAND_PATH:
             if asset.get("kind") != "image" or asset.get("source") != "project_upload":
@@ -743,6 +757,20 @@ def compile_native_job(
         browser_clock.update(card_font_evidence(browser_font, config))
     elif group["id"] in SPLIT_GROUPS:
         browser_clock = compile_split_clock(package, group, config, resources)
+        if split_live:
+            if config["background"] is not None or (
+                group["id"] == SPLIT_HORIZONTAL and ROTATION_MATTE not in resources
+            ):
+                raise ValueError(
+                    "Live split needs its original background and matte policy"
+                )
+            if group["id"] == SPLIT_HORIZONTAL and any(
+                len(item["label"]) > 2 for item in config["items"]
+            ):
+                raise ValueError(
+                    "Horizontal labels must fit left of the original portrait"
+                )
+            browser_clock["presenter_clock"] = clock_receipts[0]
         native["browser_clock"] = browser_clock
     elif group["id"] == FRUIT_LIST_GROUP:
         if beat.relation != "parallel":

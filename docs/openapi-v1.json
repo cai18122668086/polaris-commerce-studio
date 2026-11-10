@@ -5007,6 +5007,25 @@
         "title": "EditingFeedbackObservation",
         "type": "object"
       },
+      "EditingFeedbackWordMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "first_token_id": {
+            "title": "First Token Id",
+            "type": "string"
+          },
+          "last_token_id": {
+            "title": "Last Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "first_token_id",
+          "last_token_id"
+        ],
+        "title": "EditingFeedbackWordMatch",
+        "type": "object"
+      },
       "EditingHighlightChoice": {
         "additionalProperties": false,
         "properties": {
@@ -6561,6 +6580,23 @@
       "EditingTemplateImageRequirement": {
         "additionalProperties": false,
         "properties": {
+          "feedback_word_matches": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingFeedbackWordMatch"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Word Matches"
+          },
           "group_id": {
             "title": "Group Id",
             "type": "string"

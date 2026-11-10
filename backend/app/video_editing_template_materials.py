@@ -22,7 +22,7 @@ from .video_editing_collage_scene import (
     collage_image_slots,
     validate_collage_images,
 )
-from .video_editing_contracts import SemanticPlan
+from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_crowd_scene import (
     CROWD_GROUP,
     CROWD_IMAGE_PATHS,
@@ -48,10 +48,15 @@ from .video_editing_line_branch import (
 )
 from .video_editing_materials import project_image_digests
 from .video_editing_native_content import (
+    FILM_FEEDBACK_GROUP,
+    FILM_FEEDBACK_TEMPLATE_ID,
+    FILM_PHOTOS,
     PACKAGE_GROUP,
     ROLE_CHAIN_GROUP,
     WHY_GROUP,
     WHY_PROP_PATHS,
+    film_feedback_cards,
+    film_feedback_matches,
     why_prop_shape,
 )
 from .video_editing_overlay_templates import (
@@ -78,6 +83,7 @@ _IMAGE_GROUPS = {
     DETAIL_CARDS_TEMPLATE_ID: ((PRICE_CARD_GROUP, 3),),
     WHY_TEMPLATE_ID: ((WHY_GROUP, 2),),
     CROWD_TEMPLATE_ID: ((CROWD_GROUP, len(CROWD_IMAGE_PATHS)),),
+    FILM_FEEDBACK_TEMPLATE_ID: ((FILM_FEEDBACK_GROUP, len(FILM_PHOTOS)),),
     COLLAGE_TEMPLATE_ID: ((COLLAGE_GROUP, len(COLLAGE_IMAGES)),),
     ROLE_TEMPLATE_ID: ((ROLE_CHAIN_GROUP, len(ROLE_IMAGES)),),
 }
@@ -107,6 +113,8 @@ def template_image_requirements(
     template: dict | None,
     cards: list[dict],
     material_files: dict[str, dict[str, Any]] | None = None,
+    *,
+    transcript: Transcript | None = None,
 ) -> list[dict[str, Any]]:
     if template is None:
         return []
@@ -153,6 +161,11 @@ def template_image_requirements(
                     continue
             row["selected_distinct_images"] = len({images[key] for key in eligible})
             row["native_image_slot_ids"] = dict.fromkeys(WHY_PROP_PATHS, eligible)
+        elif group_id == FILM_FEEDBACK_GROUP:
+            evidence = film_feedback_cards(cards)
+            matches = film_feedback_matches(evidence, transcript) if transcript else {}
+            row["feedback_word_matches"] = matches
+            row["selected_distinct_images"] = len({images[key] for key in matches})
         elif group_id in {CROWD_GROUP, COLLAGE_GROUP}:
             slots = (
                 crowd_image_slots(files)
@@ -261,6 +274,14 @@ def validate_template_images(
                 requirement["native_image_slot_ids"],
             )
             continue
+        if beat.group_id == FILM_FEEDBACK_GROUP and any(
+            len(item.asset_ids) != 1
+            or item.asset_ids[0] not in requirement["feedback_word_matches"]
+            for item in beat.relation_items
+        ):
+            raise ValueError(
+                "Film items need selected evidence with a measured spoken label"
+            )
         bound = [
             images.get(item.asset_ids[0])
             for item in beat.relation_items

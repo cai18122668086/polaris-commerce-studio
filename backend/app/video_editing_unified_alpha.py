@@ -13,6 +13,7 @@ from PIL import ImageOps
 from .motion_library import atomic_json, read_json, sha256
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_hypit_foreground import FOREGROUND_MATTE, load_foreground_source
+from .video_editing_native_content import FILM_FEEDBACK_GROUP, FILM_PHOTOS
 from .video_editing_paper_typewriter import PAPER_GROUP
 
 PAPER_CHAPTER_GROUP = "Z-M05"
@@ -22,6 +23,7 @@ _ALPHA_POLICIES = {
     PAPER_GROUP: "original_typewriter_alpha_sequence",
     PAPER_CHAPTER_GROUP: "original_chapter_alpha_sequence",
     GHOST_GROUP: "original_ghost_alpha_sequence",
+    FILM_FEEDBACK_GROUP: "original_film_alpha_sequence",
 }
 ALPHA_GROUPS = frozenset(_ALPHA_POLICIES)
 _FPS = 30
@@ -61,7 +63,17 @@ _GHOST_RUNTIME = (
 )
 _BATCH_RUNTIME_SHA = "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa"
 _RUNTIME11_SHA = "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310"
+_FILM_RUNTIME = (
+    "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/"
+    "experiments/media-carriers/runtime.py"
+)
+_FILM_RUNTIME_SHA = "1fe655fbb657fb799ea7e542d7a4e6242723d0b56aecc13ba37856c38637ab47"
 _PROFILE_SOURCES = {
+    FILM_FEEDBACK_GROUP: {
+        "unified/runtime11.py": _RUNTIME11_SHA,
+        "unified/core/typography.py": _NATIVE_SOURCES["unified/core/typography.py"],
+        _FILM_RUNTIME: _FILM_RUNTIME_SHA,
+    },
     PAPER_GROUP: _NATIVE_SOURCES,
     PAPER_CHAPTER_GROUP: {
         **_COMMON_BATCH_SOURCES,
@@ -83,9 +95,15 @@ def alpha_presenter_directory(group_id: str) -> str:
 def alpha_source_clock(
     beat: SemanticBeat, native: dict, transcript: Transcript, assets: dict
 ) -> dict:
-    if len(native["media"]) != 1 or native["media"][0]["path"] != ALPHA_PRESENTER:
-        raise ValueError("Use the original unified alpha presenter slot")
-    asset_id = native["media"][0]["asset_id"]
+    media = {row["path"]: row["asset_id"] for row in native["media"]}
+    expected = {ALPHA_PRESENTER}
+    if beat.group_id == FILM_FEEDBACK_GROUP:
+        expected.update(FILM_PHOTOS)
+    if media.keys() != expected or len(media) != len(native["media"]):
+        raise ValueError(
+            "Use the original unified alpha presenter and declared media slots"
+        )
+    asset_id = media[ALPHA_PRESENTER]
     asset = assets[asset_id]
     start, end = (native["clock"][key] for key in ("start_ms", "end_ms"))
     frames = round((end - start) * _FPS / 1000)
@@ -225,6 +243,9 @@ def _stage_sequence(
                 cutout.getchannel("A").save(frames / mask_name)
                 hashes[mask_name] = sha256(frames / mask_name)
             else:
+                if group == FILM_FEEDBACK_GROUP:
+                    # The original carrier consumes a full canvas and resizes its input.
+                    cutout = ImageOps.pad(cutout, _SIZE, color=(0, 0, 0, 0))
                 cutout.save(frames / name)
             hashes[name] = sha256(frames / name)
         atomic_json(frames / "sequence.json", {**expected, "frames": hashes})

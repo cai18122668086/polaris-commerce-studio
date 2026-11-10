@@ -60,6 +60,9 @@ from .video_editing_hypit_strips import (
     SLANT_GROUP,
 )
 from .video_editing_native_content import (
+    FILM_EVENTS,
+    FILM_FEEDBACK_GROUP,
+    FILM_FEEDBACK_TEMPLATE_ID,
     NUMBER_GROUP,
     ROLE_CHAIN_GROUP,
     TRANSLATION_GROUP,
@@ -107,6 +110,7 @@ UNIFIED_TEMPLATES = frozenset(
         TRANSLATION_TEMPLATE_ID,
         PAPER_TEMPLATE_ID,
         CROWD_TEMPLATE_ID,
+        FILM_FEEDBACK_TEMPLATE_ID,
         COLLAGE_TEMPLATE_ID,
         ROLE_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
@@ -141,6 +145,7 @@ UNIFIED_MEDIA_PATHS = {
             PAPER_CHAPTER_GROUP,
             GHOST_GROUP,
             CROWD_GROUP,
+            FILM_FEEDBACK_GROUP,
             *UNIFIED_VIDEO_VARIANTS,
         ),
         UNIFIED_PRESENTER,
@@ -244,6 +249,9 @@ UNIFIED_SOUNDS = {
     },
     GHOST_GROUP: {"ghost": "ease", "phrase0": "ease", "phrase1": "ease"},
     CROWD_GROUP: dict.fromkeys(CROWD_SOUNDS, "crowd_virtual"),
+    FILM_FEEDBACK_GROUP: dict.fromkeys(
+        (path.removeprefix("/timing/events/") for path in FILM_EVENTS), "ease"
+    ),
     COLLAGE_GROUP: dict.fromkeys(COLLAGE_SOUNDS, "collage_virtual"),
     ROLE_CHAIN_GROUP: dict.fromkeys(ROLE_SOUNDS, "role_virtual"),
     WHY_GROUP: dict(
@@ -321,6 +329,7 @@ UNIFIED_SCENE_GROUPS = (
         PAPER_CHAPTER_GROUP,
         GHOST_GROUP,
         CROWD_GROUP,
+        FILM_FEEDBACK_GROUP,
         COLLAGE_GROUP,
         ROLE_CHAIN_GROUP,
     }
@@ -338,6 +347,7 @@ _CAPTION_BANDS = {
     PAPER_CHAPTER_GROUP: (855, 960),
     GHOST_GROUP: (860, 960),
     CROWD_GROUP: (800, 960),
+    FILM_FEEDBACK_GROUP: (820, 960),
     COLLAGE_GROUP: (880, 960),
     ROLE_CHAIN_GROUP: (880, 960),
     **CUT_CAPTION_BANDS,

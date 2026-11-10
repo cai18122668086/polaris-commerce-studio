@@ -41,7 +41,11 @@ from .video_editing_hypit_strips import (
 )
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import verify_material_cards
-from .video_editing_native_content import ROLE_CHAIN_GROUP, WHY_GROUP
+from .video_editing_native_content import (
+    FILM_FEEDBACK_GROUP,
+    ROLE_CHAIN_GROUP,
+    WHY_GROUP,
+)
 from .video_editing_native_plans import content_digest
 from .video_editing_planning_store import FILES, execution_available, planning_root
 from .video_editing_presenter_motion import motion_blockers, motion_word_windows
@@ -432,7 +436,10 @@ def process(
             if motion_windows:
                 runtime["presenter_motion_windows"] = motion_windows
             image_requirements = template_image_requirements(
-                template, snapshot["asset_cards"], verified_materials
+                template,
+                snapshot["asset_cards"],
+                verified_materials,
+                transcript=transcript,
             )
             if image_requirements:
                 runtime["project_image_requirements"] = image_requirements
@@ -444,6 +451,14 @@ def process(
                 runtime["unavailable_template_groups"].setdefault(
                     FLOW_GROUP, []
                 ).append("corrected_chart_words_required")
+            if any(
+                row["group_id"] == FILM_FEEDBACK_GROUP
+                and row["selected_distinct_images"] < row["required_distinct_images"]
+                for row in image_requirements
+            ):
+                runtime["unavailable_template_groups"].setdefault(
+                    FILM_FEEDBACK_GROUP, []
+                ).append("matched_feedback_evidence_required")
             if any(
                 row["group_id"] == ROLE_CHAIN_GROUP
                 and row["selected_distinct_images"] < row["required_distinct_images"]

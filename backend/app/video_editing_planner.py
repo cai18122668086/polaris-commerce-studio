@@ -33,6 +33,7 @@ from .video_editing_hypit_strips import SLANT_INSET_PURPOSE
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_content import (
     CHAPTER_PATH,
+    FILM_FEEDBACK_TEMPLATE_ID,
     PACKAGE_GROUP,
     TRANSLATION_GROUP,
     TRANSLATION_PATHS,
@@ -432,6 +433,16 @@ def build_request(
             "W-R17 的两个问号从 native_image_slot_ids 对应槽选择不同道具，"
             "直接绑定 native_media，不将道具当成实录并列项。"
             "没有相符道具或实录问句时跳过该槽。"
+        )
+    if template and template["id"] == FILM_FEEDBACK_TEMPLATE_ID:
+        message += (
+            "W-R01 只用于实际说明三个反馈实例的一段话。"
+            "photos 按实录顺序选三张不同的已登记图片，参考 feedback_word_matches。"
+            "每项 relation_items 各绑定一张图片、对应 comments 文案槽和该项实录范围。"
+            "comments 文案必须等于图的登记短标签，评论入场锚定短标签首词。"
+            "点赞数由编译器读取登记记录。英文槽取本段实录英文短词。"
+            "人物绑定同期原片，三项按序出现并给末项留阅读时间。"
+            "缺任一条件时改用同模板其他动效。"
         )
     if template and template["id"] == CROWD_TEMPLATE_ID:
         message += (

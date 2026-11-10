@@ -113,6 +113,7 @@ from .video_editing_native_content import (
     package_entries,
     role_scene_chain,
     translation_labels,
+    validate_film_feedback_anchors,
     why_template,
     why_word_bindings,
     year_glyphs,
@@ -618,9 +619,28 @@ def compile_native_job(
         | media_clocks
     )
     if beat.group_id == FILM_FEEDBACK_GROUP:
-        feedback = film_feedback_entries(
-            native, asset_files, recipe.get("film_feedback")
-        )
+        observations = recipe.get("film_feedback")
+        if recipe["design_id"] == UNIFIED_DESIGN_ID and (
+            not live_alpha or observations is not None
+        ):
+            raise ValueError(
+                "Website film needs live source and registered observations"
+            )
+        feedback = film_feedback_entries(native, asset_files, observations)
+        if live_alpha:
+            validate_film_feedback_anchors(
+                beat,
+                native,
+                transcript,
+                {
+                    row["asset_id"]: {
+                        "feedback_observation_label": row["label"],
+                        "sha256": row["asset_sha256"],
+                    }
+                    for row in feedback
+                    if row.get("observation_provenance") == "project_owner_attested"
+                },
+            )
         assignments.update({row["path"]: row["likes"] for row in feedback})
         native["film_feedback"] = feedback
     if "chapter_start_token_ids" in recipe:

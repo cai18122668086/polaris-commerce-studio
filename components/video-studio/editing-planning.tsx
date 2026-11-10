@@ -201,6 +201,9 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
       </p> : requirement.group_id === "W-R04" ? <p key={requirement.group_id} className={styles.note}>
         W-R04 · 需要顶部图 365×240、透明人物 PNG 至少 275×345、左图 270×280、记录图 390×240，以及七张透明装饰剪影。当前已配齐 {Object.values(requirement.native_image_slot_ids ?? {}).filter(ids => ids.length > 0).length} / {requirement.required_distinct_images} 个素材位。
         {job.unavailable_template_group_ids?.includes("W-R04") && " 补齐本期素材并使用无内嵌字幕的原片后，可重新准备。"}
+      </p> : requirement.group_id === "W-R01" ? <p key={requirement.group_id} className={styles.note}>
+        W-R01 · 三张反馈图须各有核对记录和对应的实录短标签，当前匹配 {requirement.selected_distinct_images} 张不同图片。
+        {job.unavailable_template_group_ids?.includes("W-R01") && " 本组还需要实录英文短词、无内嵌字幕的原片及可用的原抠像模型。编排可以选同模板其他动效。"}
       </p> : requirement.group_id === "W-R15" ? <p key={requirement.group_id} className={styles.note}>
         W-R15 · 需要 16 张分别对应流程各场景的本期插画，当前已选 {requirement.selected_distinct_images} 张不同图片。
         {job.unavailable_template_group_ids?.includes("W-R15") && " 补齐素材并使用无内嵌字幕的原片后，可重新准备。"}

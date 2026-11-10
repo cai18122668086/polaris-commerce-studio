@@ -40,6 +40,8 @@ from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import (
     CHAPTER_GROUPS,
+    FILM_FEEDBACK_GROUP,
+    FILM_FEEDBACK_TEMPLATE_ID,
     PACKAGE_GROUP,
     ROLE_CHAIN_GROUP,
     TRANSLATION_GROUP,
@@ -732,6 +734,21 @@ _TEMPLATES[CROWD_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[FILM_FEEDBACK_TEMPLATE_ID] = {
+    "id": FILM_FEEDBACK_TEMPLATE_ID,
+    "name": "胶片作品带与实录反馈",
+    "slots": [
+        {
+            "group_id": FILM_FEEDBACK_GROUP,
+            "purpose": "以原胶片轨迹展示三张本期反馈图，评论卡按各自实录词点出现。",
+            "layer": "scene",
+            "binding": "使用 explanation。人物绑定同期原片，沿用原模板前景和遮挡。"
+            "三图各自有已核对的互动登记，短标签在实录出现，数字从登记读取。"
+            "标题、侧字、短字幕与英文词均取本段实录。条件不足时选同模板其他动效。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[WHY_TEMPLATE_ID] = {
     "id": WHY_TEMPLATE_ID,
     "name": "问号接力与口播重点",
@@ -1039,6 +1056,7 @@ def overlay_templates() -> list[dict]:
             CHAPTER_TEMPLATE_ID,
             LIVE_CHAPTERS_TEMPLATE_ID,
             CROWD_TEMPLATE_ID,
+            FILM_FEEDBACK_TEMPLATE_ID,
             COLLAGE_TEMPLATE_ID,
             ROLE_TEMPLATE_ID,
             WHY_TEMPLATE_ID,

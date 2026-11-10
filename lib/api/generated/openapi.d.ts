@@ -5747,6 +5747,13 @@ export interface components {
             /** Source Ref */
             source_ref: string;
         };
+        /** EditingFeedbackWordMatch */
+        EditingFeedbackWordMatch: {
+            /** First Token Id */
+            first_token_id: string;
+            /** Last Token Id */
+            last_token_id: string;
+        };
         /** EditingHighlightChoice */
         EditingHighlightChoice: {
             /** First Token Id */
@@ -6290,6 +6297,10 @@ export interface components {
         };
         /** EditingTemplateImageRequirement */
         EditingTemplateImageRequirement: {
+            /** Feedback Word Matches */
+            feedback_word_matches?: {
+                [key: string]: components["schemas"]["EditingFeedbackWordMatch"][];
+            } | null;
             /** Group Id */
             group_id: string;
             /** Native Image Slot Ids */

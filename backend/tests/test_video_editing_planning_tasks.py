@@ -163,6 +163,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "unified-live-chapters-v1",
         "unified-crowd-v1",
         "unified-evidence-collage-v1",
+        "unified-film-evidence-v1",
         "unified-role-chain-v1",
         "hypit-flow-chart-v1",
         "unified-question-relay-v1",

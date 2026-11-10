@@ -9,6 +9,7 @@ from typing import Any
 from PIL import Image
 
 from .video_editing_contracts import SemanticBeat, Transcript
+from .video_editing_word_bindings import emphasis_text
 
 CHAPTER_GROUPS = frozenset(("Z-M05", "Z-M15"))
 CHAPTER_PATH = "/content/ordinal"
@@ -20,6 +21,12 @@ TRANSLATION_PATHS = ("/content/english_before", "/content/english_after")
 ROLE_CHAIN_GROUP = "W-R15"
 PACKAGE_GROUP = "Z-M12"
 FILM_FEEDBACK_GROUP = "W-R01"
+FILM_FEEDBACK_TEMPLATE_ID = "unified-film-evidence-v1"
+FILM_PHOTOS = tuple(f"/media/photos/{i}/path" for i in range(3))
+FILM_LABELS = tuple(f"/content/comments/{i}/text" for i in range(3))
+FILM_EVENTS = tuple(f"/timing/events/comments/{i}" for i in range(3))
+FILM_COUNTS = tuple(f"/content/comments/{i}/likes" for i in range(3))
+_FILM_ENGLISH = re.compile(r"[A-Za-z]+(?:[ ._-]*[A-Za-z0-9]+)*")
 WHY_GROUP = "W-R17"
 WHY_FONT = "font-baa251526d686271"
 WHY_TEXT = "/content/english_question"
@@ -239,6 +246,98 @@ def automatic_translation_labels(beat: SemanticBeat, native: dict) -> dict:
     }
 
 
+def film_feedback_cards(cards: list[dict]) -> dict[str, dict]:
+    return {
+        card["id"]: card
+        for card in cards
+        if card["kind"] == "image"
+        and card["id"].startswith("material-")
+        and card.get("feedback_observation_sha256")
+        and card.get("feedback_observation_label")
+    }
+
+
+def film_feedback_matches(
+    cards: dict[str, dict], transcript: Transcript
+) -> dict[str, list[dict[str, str]]]:
+    """Expose measured label occurrences, leaving scene selection to the planner."""
+    labels = {card["feedback_observation_label"] for card in cards.values()}
+    if not labels or not any(
+        _FILM_ENGLISH.fullmatch(emphasis_text(token.text, "omit_sentence_punctuation"))
+        for token in transcript.tokens
+    ):
+        return {}
+    width = max(map(len, labels))
+    matches: dict[str, list[dict[str, str]]] = {label: [] for label in labels}
+    for index, token in enumerate(transcript.tokens):
+        raw = ""
+        for end in transcript.tokens[index : index + width + 2]:
+            raw += end.text
+            plain = emphasis_text(raw, "omit_sentence_punctuation")
+            if len(plain) > width:
+                break
+            for label in {plain, raw.strip()} & labels:
+                if len(matches[label]) < 12:
+                    match = {"first_token_id": token.id, "last_token_id": end.id}
+                    matches[label].append(match)
+    return {
+        key: matches[card["feedback_observation_label"]]
+        for key, card in cards.items()
+        if matches[card["feedback_observation_label"]]
+    }
+
+
+def validate_film_feedback_anchors(
+    beat: SemanticBeat, native: dict, transcript: Transcript, cards: dict[str, dict]
+) -> None:
+    """Keep each original comment beside its own spoken evidence item."""
+    text = {row["path"]: row for row in native["text"]}
+    media = {row["path"]: row["asset_id"] for row in native["media"]}
+    events = {row["path"]: row for row in native["events"]}
+    if (
+        beat.relation != "explanation"
+        or len(beat.relation_items) != len(FILM_PHOTOS)
+        or not _FILM_ENGLISH.fullmatch(text["/content/english"]["text"])
+    ):
+        raise ValueError(
+            "Film needs three explained observations and a spoken English label"
+        )
+    positions = {token.id: i for i, token in enumerate(transcript.tokens)}
+    previous_end = positions[beat.first_token_id] - 1
+    digests = set()
+    for item, photo, label, event in zip(
+        beat.relation_items, FILM_PHOTOS, FILM_LABELS, FILM_EVENTS, strict=True
+    ):
+        asset_id = media[photo]
+        card = cards.get(asset_id)
+        first, last = positions[item.first_token_id], positions[item.last_token_id]
+        words = text[label]["token_ids"]
+        if (
+            not card
+            or item.asset_ids != [asset_id]
+            or item.native_media_paths != [photo]
+            or item.native_text_paths != [label]
+            or not previous_end < first <= positions[words[0]]
+            or not positions[words[-1]] <= last <= positions[beat.last_token_id]
+            or text[label]["text"] != card["feedback_observation_label"]
+            or events[event]["token_id"] != words[0]
+            or events[event]["edge"] != "start"
+        ):
+            raise ValueError("Film photo, feedback label and spoken item must match")
+        previous_end = last
+        digests.add(card["sha256"])
+    onsets = [events[path]["measured_anchor_ms"] for path in FILM_EVENTS]
+    if (
+        len(digests) != len(FILM_PHOTOS)
+        or any(b - a < 160 for a, b in pairwise(onsets))
+        or native["clock"]["end_ms"] - onsets[-1] < 600
+        or not 500 <= native["clock"]["end_ms"] - native["clock"]["start_ms"] <= 15000
+    ):
+        raise ValueError(
+            "Film needs distinct evidence and time for the original entrances"
+        )
+
+
 def film_feedback_entries(
     native: dict[str, Any],
     assets: dict[str, dict[str, Any]],
@@ -253,8 +352,10 @@ def film_feedback_entries(
     media = {row["path"]: row["asset_id"] for row in native["media"]}
     events = {row["path"]: row for row in native["events"]}
     entries = []
-    for index in range(3):
-        asset_id = media.get(f"/media/photos/{index}/path", "")
+    for index, (photo, title, cue, count) in enumerate(
+        zip(FILM_PHOTOS, FILM_LABELS, FILM_EVENTS, FILM_COUNTS, strict=True)
+    ):
+        asset_id = media.get(photo, "")
         asset = assets.get(asset_id, {})
         saved = asset.get("feedback_observation", {})
         record = (
@@ -270,8 +371,8 @@ def film_feedback_entries(
             else None
         )
         observed = record if observations is None else observations[index]
-        label = text.get(f"/content/comments/{index}/text")
-        event = events.get(f"/timing/events/comments/{index}")
+        label = text.get(title)
+        event = events.get(cue)
         if (
             not isinstance(observed, dict)
             or set(observed)
@@ -300,7 +401,7 @@ def film_feedback_entries(
         entries.append(
             {
                 **observed,
-                "path": f"/content/comments/{index}/likes",
+                "path": count,
                 "asset_sha256": asset["sha256"],
                 "token_id": event["token_id"],
                 "semantic_review": "unreviewed",

@@ -8,6 +8,10 @@ from app.video_editing_contracts import (
     TranscriptToken,
 )
 from app.video_editing_native_content import (
+    FILM_EVENTS,
+    FILM_FEEDBACK_TEMPLATE_ID,
+    FILM_LABELS,
+    FILM_PHOTOS,
     automatic_translation_labels,
     chapter_ordinal,
     film_feedback_entries,
@@ -15,13 +19,20 @@ from app.video_editing_native_content import (
     package_entries,
     role_scene_chain,
     translation_labels,
+    validate_film_feedback_anchors,
     why_word_bindings,
     year_glyphs,
 )
 from app.video_editing_native_sound import package_entry_frame
 from app.video_editing_overlay_templates import overlay_template, validate_template_plan
 from app.video_editing_paper_typewriter import paper_character_times
-from app.video_editing_unified_scenes import CHAPTER_TEMPLATE_ID, UNIFIED_TEMPLATE_ID
+from app.video_editing_template_materials import template_image_requirements
+from app.video_editing_unified_alpha import ALPHA_PRESENTER, alpha_source_clock
+from app.video_editing_unified_scenes import (
+    CHAPTER_TEMPLATE_ID,
+    UNIFIED_TEMPLATE_ID,
+    unified_action_frame,
+)
 from PIL import Image
 
 
@@ -429,6 +440,121 @@ def test_film_feedback_counts_are_bound_to_dated_current_evidence():
     observations[1]["observed_at"] = "2026-11-09T08:50:00"
     with pytest.raises(ValueError, match="timezone"):
         film_feedback_entries(native, assets, observations)
+
+
+def test_film_automatic_admission_needs_measured_labels_and_original_presenter():
+    texts = ["Case，", "录", "像。", "对齐。", "时间。", "回放。", "完。"]
+    tokens = [
+        TranscriptToken(id=f"t{i}", text=value, start_ms=i * 500, end_ms=(i + 1) * 500)
+        for i, value in enumerate(texts)
+    ]
+    transcript = Transcript(
+        source_sha256="a" * 64,
+        audio_sha256="b" * 64,
+        duration_ms=3500,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        tokens=tokens,
+        utterances=[],
+    )
+    images = {
+        f"material-{i}": {
+            "id": f"material-{i}",
+            "kind": "image",
+            "sha256": str(i) * 64,
+            "feedback_observation_sha256": "c" * 64,
+            "feedback_observation_label": label,
+        }
+        for i, label in enumerate(("对齐", "时间", "回放"))
+    }
+    items = []
+    native = {
+        "clock": {"start_ms": 0, "end_ms": 3500},
+        "text": [{"path": "/content/english", "text": "Case", "token_ids": ["t0"]}],
+        "events": [],
+        "media": [{"path": ALPHA_PRESENTER, "asset_id": "source"}],
+    }
+    for i, (photo, label, event) in enumerate(
+        zip(FILM_PHOTOS, FILM_LABELS, FILM_EVENTS, strict=True)
+    ):
+        asset_id = f"material-{i}"
+        token = tokens[i + 3]
+        items.append(
+            SemanticRelationItem(
+                id=f"i{i}",
+                first_token_id=token.id,
+                last_token_id=token.id,
+                asset_ids=[asset_id],
+                native_text_paths=[label],
+                native_media_paths=[photo],
+            )
+        )
+        native["text"].append(
+            {"path": label, "text": texts[i + 3][:-1], "token_ids": [token.id]}
+        )
+        native["events"].append(
+            {
+                "path": event,
+                "token_id": token.id,
+                "edge": "start",
+                "measured_anchor_ms": token.start_ms,
+            }
+        )
+        native["media"].append({"path": photo, "asset_id": asset_id})
+    beat = SemanticBeat(
+        id="film",
+        first_token_id="t0",
+        last_token_id="t6",
+        relation="explanation",
+        group_id="W-R01",
+        reason="三份实际反馈",
+        relation_items=items,
+    )
+    template = overlay_template(FILM_FEEDBACK_TEMPLATE_ID)
+    (requirement,) = template_image_requirements(
+        template, list(images.values()), transcript=transcript
+    )
+    assert requirement["selected_distinct_images"] == 3
+    assert requirement["feedback_word_matches"]["material-1"][0] == {
+        "first_token_id": "t4",
+        "last_token_id": "t4",
+    }
+    images["material-1"]["feedback_observation_label"] = "本期无对应词"
+    (requirement,) = template_image_requirements(
+        template, list(images.values()), transcript=transcript
+    )
+    assert requirement["selected_distinct_images"] == 2
+    with pytest.raises(ValueError, match="spoken item must match"):
+        validate_film_feedback_anchors(beat, native, transcript, images)
+    images["material-1"]["feedback_observation_label"] = "时间"
+    validate_film_feedback_anchors(beat, native, transcript, images)
+    assets = {
+        **images,
+        "source": {"kind": "original_video", "sha256": transcript.source_sha256},
+    }
+    assert alpha_source_clock(beat, native, transcript, assets)["frames"] == 105
+    with pytest.raises(ValueError, match="current presenter"):
+        alpha_source_clock(
+            beat, native, transcript, {**assets, "source": images["material-0"]}
+        )
+    beat.relation_items[1].asset_ids = ["material-0"]
+    with pytest.raises(ValueError, match="spoken item must match"):
+        validate_film_feedback_anchors(beat, native, transcript, images)
+
+    shot = {
+        "group_id": "W-R01",
+        "layer": "scene",
+        "rect": [0, 0, 1, 1],
+        "start_seconds": 2,
+        "end_seconds": 5.5,
+        "config": {"timing": {"events": {"comments": [1.5, 2.0, 2.5]}}},
+    }
+    assert [unified_action_frame(shot, 30, event) for event in FILM_EVENTS] == [
+        106,
+        121,
+        136,
+    ]
 
 
 def test_short_question_gloss_preserves_spoken_anchor_and_original_clock(tmp_path):

@@ -539,6 +539,11 @@ class EditingMaterialsResponse(StrictVideoModel):
     next_offset: int | None
 
 
+class EditingFeedbackWordMatch(StrictVideoModel):
+    first_token_id: str
+    last_token_id: str
+
+
 class EditingTemplateImageRequirement(StrictVideoModel):
     group_id: str
     required_distinct_images: int
@@ -547,6 +552,9 @@ class EditingTemplateImageRequirement(StrictVideoModel):
         default=None, exclude_if=lambda value: value is None
     )
     native_image_slot_ids: dict[str, list[str]] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    feedback_word_matches: dict[str, list[EditingFeedbackWordMatch]] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 

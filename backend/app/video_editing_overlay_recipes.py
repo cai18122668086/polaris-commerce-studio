@@ -150,6 +150,9 @@ from .video_editing_native_compiler import set_native_field
 from .video_editing_native_content import (
     CHAPTER_GROUPS,
     CHAPTER_PATH,
+    FILM_COUNTS,
+    FILM_FEEDBACK_GROUP,
+    FILM_PHOTOS,
     PACKAGE_GROUP,
     ROLE_CHAIN_GROUP,
     TRANSLATION_GROUP,
@@ -161,8 +164,10 @@ from .video_editing_native_content import (
     YEAR_GROUP,
     automatic_translation_labels,
     chapter_ordinal,
+    film_feedback_cards,
     live_package_template,
     translation_labels,
+    validate_film_feedback_anchors,
     why_template,
 )
 from .video_editing_native_layout import (
@@ -2294,6 +2299,7 @@ def _unified_entry(
     is_paper = group_id == PAPER_GROUP
     moving_alpha = group_id in ALPHA_GROUPS
     is_crowd = group_id == CROWD_GROUP
+    is_film = group_id == FILM_FEEDBACK_GROUP
     is_collage = group_id == COLLAGE_GROUP
     is_role = group_id == ROLE_CHAIN_GROUP
     videos = (
@@ -2348,6 +2354,7 @@ def _unified_entry(
         or is_handoff
         or is_why
         or is_crowd
+        or is_film
         or is_collage
         or is_role
         else {}
@@ -2361,6 +2368,8 @@ def _unified_entry(
         allowed_paths.update(WHY_PROP_PATHS)
     if is_crowd:
         allowed_paths.update(CROWD_IMAGE_PATHS)
+    if is_film:
+        allowed_paths.update(FILM_PHOTOS)
     if is_collage:
         allowed_paths.update(COLLAGE_IMAGES)
     if is_role:
@@ -2404,6 +2413,10 @@ def _unified_entry(
         elif is_crowd:
             validate_crowd_anchors(beat, anchors)
             validate_crowd_images(bound, images, None)
+        elif is_film:
+            validate_film_feedback_anchors(
+                beat, anchors, transcript, film_feedback_cards(asset_cards)
+            )
         elif is_collage:
             validate_collage_anchors(beat, anchors, transcript)
             validate_collage_images(bound, images, None)
@@ -2432,6 +2445,7 @@ def _unified_entry(
         *omitted,
         *((CHAPTER_PATH,) if chapter_starts is not None else ()),
         *(TRANSLATION_PATHS if is_translation else ()),
+        *(FILM_COUNTS if is_film else ()),
         *(
             field["path"]
             for field in contract["fields"]
@@ -2451,7 +2465,7 @@ def _unified_entry(
     reason = "沿用原生文字、人物窗或整帧底板，主字幕和原声使用整片时钟。"
     return NativeEpisodeEntry(
         carrier="picture"
-        if is_cut or is_panel or is_handoff or is_collage or is_role
+        if is_cut or is_panel or is_handoff or is_collage or is_role or is_film
         else "text",
         placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
         recipe={

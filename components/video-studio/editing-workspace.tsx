@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { preferredDistinctMotionGroups } from "@/features/video-studio/editing-density";
+import { projectApi, type VideoVersion } from "@/features/video-studio/projects";
 import { ApiError } from "@/lib/api/api-error";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
@@ -27,6 +28,7 @@ function subscribeToHash(listener: () => void) {
 const readTaskHash = () => taskHash.exec(window.location.hash)?.[1].toLowerCase();
 const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", building_preview: "生成代理预览", storing: "保存产物", transcript_ready: "口播转录已就绪", preview_ready: "代理预览已就绪", completed: "成片已生成" };
 const errorLabel: Record<string, string> = {
+  EDITING_UPLOAD_SCRIPT_CHANGED: "这条原片的参考确认稿无法核对，请重新选择确认稿并上传。",
   EDITING_HYPIT_INTERNAL_ONLY: "Hypit 原生出片仅在已配置的内部联调工作区开放。",
   EDITING_HYPIT_RUNTIME_UNAVAILABLE: "原 Hypit 运行环境未通过预检，请在环境恢复后重试。",
   EDITING_TASK_STORAGE_UNAVAILABLE: "剪辑服务暂时无法写入工作目录。请在存储恢复后重试此任务。",
@@ -51,6 +53,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [tasks, setTasks] = useState<EditingTask[]>([]);
   const [selected, setSelected] = useState("");
   const [file, setFile] = useState<File>();
+  const [referenceVersion, setReferenceVersion] = useState("");
+  const [confirmedVersions, setConfirmedVersions] = useState<VideoVersion[] | "unavailable">();
   const [subtitles, setSubtitles] = useState<"none" | "present" | "unknown">("unknown");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -68,10 +72,30 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [revisionSelection, setRevisionSelection] = useState<EditingRevisionSelection>();
   const [carrySelection, setCarrySelection] = useState<CarrySelection>();
   const pending = useRef<{ key: string; requestId: string } | undefined>(undefined);
-  const upload = useRef<{ workspaceId: string; projectId: string; file: File; requestId: string; sourceId?: string } | undefined>(undefined);
+  const upload = useRef<{ workspaceId: string; projectId: string; file: File; versionId: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
   const [linkedPreviews, setLinkedPreviews] = useState<{ projectId: string; ids: string[] }>();
+  useEffect(() => {
+    if (!saved || !projectId || selected !== "upload") return;
+    let live = true;
+    const list = async () => {
+      const api = projectApi(workspaceId);
+      const versions = new Map<string, VideoVersion>();
+      try {
+        for (let offset = 0; live; offset += 100) {
+          const page = await api.versions(projectId, "confirmed", offset);
+          for (const version of page) versions.set(version.id, version);
+          if (page.length < 100) break;
+        }
+        if (live) setConfirmedVersions([...versions.values()]);
+      } catch {
+        if (live) setConfirmedVersions("unavailable");
+      }
+    };
+    void list();
+    return () => { live = false; };
+  }, [projectId, saved, selected, workspaceId]);
   const reload = useCallback(async () => {
     const result = await apiClient.GET(`${root}/editing-tasks`, { ...options(), params: { path: { workspace_id: workspaceId }, query: { project_id: projectId } } });
     const rows = unwrapApiResponse(result);
@@ -127,8 +151,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     try {
       let sourceId: string | undefined;
       if (selected === "upload" && file) {
-        if (upload.current?.file !== file || upload.current.projectId !== projectId || upload.current.workspaceId !== workspaceId) {
-          upload.current = { workspaceId, projectId, file, requestId: crypto.randomUUID() };
+        if (upload.current?.file !== file || upload.current.projectId !== projectId || upload.current.workspaceId !== workspaceId || upload.current.versionId !== referenceVersion) {
+          upload.current = { workspaceId, projectId, file, versionId: referenceVersion, requestId: crypto.randomUUID() };
         }
         const original = upload.current;
         if (!original.sourceId) {
@@ -136,6 +160,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           const form = new FormData();
           form.append("project_id", projectId);
           form.append("request_id", original.requestId);
+          if (original.versionId) form.append("confirmed_version_id", original.versionId);
           form.append("file", file);
           const uploaded = unwrapApiResponse(await apiClient.POST(`${root}/editing-sources`, {
             ...options(), signal: AbortSignal.timeout(600000), body: {} as never, bodySerializer: () => form,
@@ -204,8 +229,17 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   return <section className={styles.panel} aria-label="口播剪辑">
     <div className={styles.intro}><b>口播剪辑 · 试运行</b><p>从已有口播或上传视频开始，识别实际语音，保留原声节奏。</p></div>
     {!saved && <p role="status">请先保存当前项目，再开始剪辑。</p>}
-    <label>选择原片<select aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && (" · 确认稿 " + job.confirmed_version_id.slice(0, 8))}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
-    {selected === "upload" && <label>视频文件<input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => setFile(event.target.files?.[0])} /></label>}
+    <label>选择原片<select aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); setReferenceVersion(""); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && (" · 确认稿 " + job.confirmed_version_id.slice(0, 8))}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
+    {selected === "upload" && <>
+      <label>视频文件<input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => setFile(event.target.files?.[0])} /></label>
+      <label>参考确认稿（可选）<select value={referenceVersion} onChange={event => setReferenceVersion(event.target.value)} disabled={busy || !Array.isArray(confirmedVersions) || !confirmedVersions.length}>
+        <option value="">不绑定确认稿</option>
+        {Array.isArray(confirmedVersions) && confirmedVersions.map(version => <option key={version.id} value={version.id}>
+          {version.snapshot.draft.name || "确认稿"} · {new Date(version.created_at).toLocaleString("zh-CN")} · {version.id.slice(0, 8)}
+        </option>)}
+      </select></label>
+      <p className={styles.note}>{confirmedVersions === "unavailable" ? "暂时无法读取确认稿。重新选择上传原片可重试。" : confirmedVersions === undefined && saved ? "正在读取本项目确认稿。" : "参考稿用于回查写稿来源，字幕和词级时间轴以原片实际口播为准。"}</p>
+    </>}
     <label>原片已有字幕吗？<select value={subtitles} onChange={event => setSubtitles(event.target.value as typeof subtitles)}><option value="unknown">请先查看原片后选择</option><option value="none">没有，生成主字幕</option><option value="present">已有，保留画面中的字幕</option></select></label>
     <p className={styles.note}>先识别口播可得到词级时间轴。基础字幕片保留方形像素原片的横屏、方屏或竖屏画幅。原生动效模板使用 9:16 竖屏。</p>
     <div className={styles.correctionActions}>
@@ -246,7 +280,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {task.source_origin?.confirmed_version_id && task.source_origin.writing_origin &&
           <WritingVersionSources workspaceId={workspaceId} projectId={task.project_id} versionId={task.source_origin.confirmed_version_id}
             adoptionId={task.source_origin.writing_origin.adoption_id} />}
-        {sourceReceipt && <a href={sourceReceipt.url} download>下载原片与配音核对记录</a>}
+        {task.source_origin?.kind === "upload_asset" && task.source_origin.confirmed_version_id && <p className={styles.note}>
+          参考确认稿 <code title={task.source_origin.confirmed_version_id}>{task.source_origin.confirmed_version_id.slice(0, 8)}</code>
+        </p>}
+        {sourceReceipt && <a href={sourceReceipt.url} download>{task.source_origin?.kind === "upload_asset" ? "下载原片与参考稿核对记录" : "下载原片与配音核对记录"}</a>}
         {task.options.mode === "native_plan" && <p className={styles.note}>动效编排试片</p>}
         {task.motion_counts && <p className={styles.note}>原生出片核验 {task.motion_counts.distinct_groups} 种动效，共出现 {task.motion_counts.occurrences} 次。{task.motion_counts.distinct_groups < preferredDistinctMotionGroups && `低于优先目标 ${preferredDistinctMotionGroups} 种。`}</p>}
         {parent && <p className={styles.note}>基于预览 <a href={`#editing-task-${parent.task_id}`}>{parent.task_id.slice(0, 8)}</a></p>}

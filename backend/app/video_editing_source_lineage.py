@@ -1,4 +1,4 @@
-"""Freeze a completed narration source and inspect its separate voice clock."""
+"""Bind script provenance to narration sources and inspect their audio clocks."""
 
 import math
 import subprocess
@@ -25,6 +25,19 @@ DURATION_TOLERANCE_MS = 100
 
 def script_reference(version: VideoScriptVersionRecord | None) -> str | None:
     return spoken_script(version.snapshot) if version else None
+
+
+def uploaded_script_reference(
+    version: VideoScriptVersionRecord,
+) -> dict[str, Any] | None:
+    writing_origin = matching_writing_origin(version.writing_origin, version.snapshot)
+    if version.writing_origin is not None and writing_origin is None:
+        return None
+    return {
+        "schema": "tengli.editing-upload-script-reference/1",
+        "script_sha256": script_digest(script_reference(version)),
+        **({"writing_origin": writing_origin} if writing_origin else {}),
+    }
 
 
 def freeze_generation_source(
@@ -87,7 +100,12 @@ def freeze_generation_source(
 
 
 def source_origin(source: EditingSourceRecord) -> dict[str, Any]:
-    lineage = source.details.get("generation_lineage") or {}
+    key = (
+        "confirmed_script_reference"
+        if source.kind == "upload_asset"
+        else "generation_lineage"
+    )
+    lineage = source.details.get(key) or {}
     return {
         "kind": source.kind,
         "confirmed_version_id": source.confirmed_version_id,
@@ -180,5 +198,17 @@ def generation_source_receipt(
             lineage["voice"], embedded, settings, guard
         ),
         "separate_voice_used": False,
+        "speech_stretched": False,
+    }
+
+
+def upload_source_receipt(origin: dict, prepared: dict) -> dict:
+    return {
+        "schema": "tengli.editing-upload-source-receipt/1",
+        "source": origin,
+        "confirmed_script_role": "reference_only",
+        "selected_audio": "original_video_audio",
+        "embedded_audio_clock": audio_clock(prepared["probe"]),
+        "embedded_asr_pcm_sha256": prepared["audio_sha256"],
         "speech_stretched": False,
     }

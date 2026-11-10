@@ -21,7 +21,7 @@ export function projectApi(workspaceId: string) {
   return {
     projects: async () => unwrapApiResponse(await withAuthTimeout(apiClient.GET(`${root}/projects`, options()))) as VideoProject[],
     project: async (id: string) => unwrapApiResponse(await withAuthTimeout(apiClient.GET(`${root}/projects/{project_id}`, { ...options(), params: { path: { workspace_id: workspaceId, project_id: id } } }))) as VideoProject,
-    versions: async (id?: string, kind: "draft" | "library" | "confirmed" = "library") => unwrapApiResponse(await withAuthTimeout(apiClient.GET(`${root}/versions`, { ...options(), params: { ...params, query: { project_id: id, kind } } }))) as VideoVersion[],
+    versions: async (id?: string, kind: "draft" | "library" | "confirmed" = "library", offset?: number) => unwrapApiResponse(await withAuthTimeout(apiClient.GET(`${root}/versions`, { ...options(), params: { ...params, query: { project_id: id, kind, offset } } }))) as VideoVersion[],
     tasks: async () => unwrapApiResponse(await withAuthTimeout(apiClient.GET(`${root}/tasks`, options()))) as VideoTask[],
     write: async (id: string, body: VideoWrite) => unwrapApiResponse(await withAuthTimeout(apiClient.PUT(`${root}/projects/{project_id}`, { ...options(), params: { path: { workspace_id: workspaceId, project_id: id } }, body }))) as VideoWriteResult,
     importLegacy: async (body: { request_id: string; draft: VideoDraft; copies: { id: string; title: string; text: string; date: string }[]; works: { id: string; draft: VideoDraft; date: string }[] }) => unwrapApiResponse(await withAuthTimeout(apiClient.POST(`${root}/imports/legacy`, { ...options(), body }))) as VideoWriteResult,

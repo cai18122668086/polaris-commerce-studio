@@ -63,6 +63,8 @@ from .video_editing_source_lineage import (
     generation_source_receipt,
     script_reference,
     source_origin,
+    upload_source_receipt,
+    uploaded_script_reference,
 )
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -472,9 +474,20 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             if source.confirmed_version_id
             else None
         )
+        if (
+            source.kind == "upload_asset"
+            and "confirmed_script_reference" in source.details
+        ):
+            snapshot["uploaded_reference_valid"] = bool(
+                version
+                and version.project_id == source.project_id
+                and version.kind == "confirmed"
+                and (reference := uploaded_script_reference(version))
+                and reference == source.details["confirmed_script_reference"]
+            )
         snapshot["reference"] = (
             script_reference(version)
-            if snapshot["generation_lineage"]
+            if snapshot["generation_lineage"] or "uploaded_reference_valid" in snapshot
             else version.snapshot.get("draft", {}).get("text")
             if version
             else None
@@ -737,6 +750,9 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             )
         ):
             raise EditingFailure("EDITING_GENERATION_SCRIPT_CHANGED")
+        uploaded_reference = snapshot.get("uploaded_reference_valid")
+        if uploaded_reference is False:
+            raise EditingFailure("EDITING_UPLOAD_SCRIPT_CHANGED")
         verify_package(settings.video_editing_library_dir)
         prepared = prepare(
             Path(snapshot["source_path"]),
@@ -751,6 +767,11 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 generation_source_receipt(
                     snapshot["source_origin"], lineage, prepared, settings, guard
                 ),
+            )
+        elif uploaded_reference:
+            atomic_json(
+                root / "source-receipt.json",
+                upload_source_receipt(snapshot["source_origin"], prepared),
             )
         native_plan = snapshot["native_plan"]
         uses_native_presenter = True
@@ -850,7 +871,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     "transcript": text_file,
                     "transcript_audio": audio_file,
                 }
-                if lineage:
+                if lineage or uploaded_reference:
                     transcript_files["source_receipt"] = delivery_file(
                         root / "source-receipt.json"
                     )
@@ -892,7 +913,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             "caption_layout": "caption-adapter-layout.json",
             "receipt": "validation.json",
         }
-        if lineage:
+        if lineage or uploaded_reference:
             receipts["source_receipt"] = "source-receipt.json"
         if native_plan:
             receipts.update(

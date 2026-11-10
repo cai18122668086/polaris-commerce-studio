@@ -24,7 +24,11 @@ from app.video_editing_source_lineage import (
     freeze_generation_source,
     generation_source_receipt,
     script_reference,
+    source_origin,
+    upload_source_receipt,
+    uploaded_script_reference,
 )
+from app.video_editing_task_models import EditingSourceRecord
 from app.video_generation_models import VideoGenerationRecord
 from app.video_studio_models import VideoScriptVersionRecord
 from app.video_writing_provenance import matching_writing_origin, script_digest
@@ -42,6 +46,42 @@ def test_frame_clock_detects_drift_even_when_the_average_rate_matches():
     assert variable_frame_clock(measured(0, 33, 67, 100), "1/1000", "24/1") == (4, True)
     with pytest.raises(ValueError, match="must increase"):
         variable_frame_clock(measured(0, 33, 33, 100), "1/1000", "30/1")
+
+
+def test_upload_reference_tracks_confirmed_text_without_claiming_audio_identity():
+    version = VideoScriptVersionRecord(
+        id="v1",
+        project_id="p1",
+        kind="confirmed",
+        snapshot={"draft": {"drive": "text", "text": "参考文字"}},
+    )
+    reference = uploaded_script_reference(version)
+    assert reference["script_sha256"] == script_digest("参考文字")
+    source = EditingSourceRecord(
+        id="s1",
+        kind="upload_asset",
+        confirmed_version_id="v1",
+        media_sha256="c" * 64,
+        details={"confirmed_script_reference": reference},
+    )
+    origin = source_origin(source)
+    assert origin["script_sha256"] == reference["script_sha256"]
+    prepared = {
+        "probe": {
+            "streams": [{"codec_type": "audio", "start_time": "0", "duration": "2"}]
+        },
+        "audio_sha256": "d" * 64,
+    }
+    receipt = upload_source_receipt(origin, prepared)
+    assert receipt["confirmed_script_role"] == "reference_only"
+    assert receipt["selected_audio"] == "original_video_audio"
+    assert receipt["embedded_asr_pcm_sha256"] == "d" * 64
+    source.details = {"generation_lineage": reference}
+    assert source_origin(source)["script_sha256"] is None
+    version.snapshot = {"draft": {"drive": "audio", "text": "遗留文字"}}
+    assert uploaded_script_reference(version)["script_sha256"] is None
+    version.writing_origin = {"script_sha256": "f" * 64}
+    assert uploaded_script_reference(version) is None
 
 
 def test_native_project_clock_only_rebinds_sealed_video(tmp_path, monkeypatch):

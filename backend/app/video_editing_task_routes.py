@@ -43,7 +43,11 @@ from .video_editing_contracts import (
 from .video_editing_delivery_checkpoint import verified_delivery_file
 from .video_editing_native_plans import admit_render_plan
 from .video_editing_preview_base import preview_base_attempt
-from .video_editing_source_lineage import freeze_generation_source, source_origin
+from .video_editing_source_lineage import (
+    freeze_generation_source,
+    source_origin,
+    uploaded_script_reference,
+)
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingNativePlanRecord,
@@ -275,6 +279,7 @@ async def upload_source(
     require_workspace_write(workspace)
     settings = enabled(request)
     own_project(session, workspace, str(project_id))
+    reference = None
     if confirmed_version_id:
         version = session.get(VideoScriptVersionRecord, str(confirmed_version_id))
         if (
@@ -283,6 +288,11 @@ async def upload_source(
             or version.kind != "confirmed"
         ):
             raise ApiError(422, "EDITING_SCRIPT_INVALID", "请选择本项目的确认稿版本。")
+        reference = uploaded_script_reference(version)
+        if reference is None:
+            raise ApiError(
+                409, "EDITING_UPLOAD_SCRIPT_CHANGED", "这份确认稿的写稿来源无法核对。"
+            )
     if file.content_type not in {"video/mp4", "video/quicktime", "video/webm"}:
         raise ApiError(422, "EDITING_SOURCE_TYPE", "请上传 MP4、MOV 或 WebM 视频。")
     candidate = uuid4()
@@ -334,7 +344,11 @@ async def upload_source(
             kind="upload_asset",
             media_path=str(target.resolve()),
             media_sha256=hasher.hexdigest(),
-            details={"mime": file.content_type, "bytes": length},
+            details={
+                "mime": file.content_type,
+                "bytes": length,
+                **({"confirmed_script_reference": reference} if reference else {}),
+            },
         )
         existing = session.get(EditingSourceRecord, sid) if request_id else None
         if existing is None:
@@ -364,6 +378,13 @@ async def upload_source(
                     409,
                     "EDITING_SOURCE_REQUEST_REUSED",
                     "上传编号已用于另一份原片或项目。",
+                )
+            if (
+                "confirmed_script_reference" in existing.details
+                and existing.details["confirmed_script_reference"] != reference
+            ):
+                raise ApiError(
+                    409, "EDITING_UPLOAD_SCRIPT_CHANGED", "原片绑定的参考确认稿已变化。"
                 )
             try:
                 path = Path(existing.media_path)

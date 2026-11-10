@@ -18,6 +18,7 @@ from app.motion_library import atomic_json, sha256
 from app.video_editing_contracts import Transcript, TranscriptToken
 from app.video_editing_display_rotation import display_rotation
 from app.video_editing_pipeline import measured_source_frame
+from app.video_editing_source_lineage import uploaded_script_reference
 from app.video_editing_task_models import (
     EditingArtifactRecord,
     EditingAttemptRecord,
@@ -25,6 +26,8 @@ from app.video_editing_task_models import (
     EditingTaskRecord,
 )
 from app.video_editing_worker import process
+from app.video_studio_models import VideoScriptVersionRecord
+from app.video_writing_provenance import script_digest
 from tests.test_video_projects import base, payload
 
 pytest_plugins = ["tests.test_video_projects"]
@@ -179,6 +182,103 @@ def test_source_upload_retries_keep_one_immutable_owned_input(
     assert response.json()["error"]["code"] == "EDITING_SOURCE_CHANGED"
     assert stored.read_bytes() == b"changed oral source"
     assert len(list(source_dir.iterdir())) == 2
+
+
+@pytest.mark.parametrize("change", ["text", "origin"])
+def test_uploaded_reference_is_frozen_and_rechecked_before_worker_decoding(
+    video, tmp_path, monkeypatch, change
+):
+    client, _, ws, _, settings, pid, _ = setup_source(video, tmp_path)
+    confirmed = (
+        client.put(base(ws) + "/projects/" + pid, json=payload("参考口播", 1, "demo"))
+        .raise_for_status()
+        .json()["version"]
+    )
+    with client.app.state.session_factory() as session:
+        version = session.get(VideoScriptVersionRecord, confirmed["id"])
+        origin = {
+            **{
+                key: str(uuid4())
+                for key in (
+                    "adoption_id",
+                    "draft_document_id",
+                    "reference_document_id",
+                    "analysis_document_id",
+                    "facts_document_id",
+                )
+            },
+            "draft_document_sha256": "a" * 64,
+            "rules_release": "b" * 64,
+            "script_sha256": script_digest("参考口播"),
+        }
+        version.writing_origin = origin
+        session.commit()
+        expected = uploaded_script_reference(version)
+    fields = {
+        "project_id": pid,
+        "confirmed_version_id": confirmed["id"],
+        "request_id": str(uuid4()),
+    }
+
+    def upload():
+        return client.post(
+            base(ws) + "/editing-sources",
+            data=fields,
+            files={"file": ("spoken.mp4", b"API boundary only", "video/mp4")},
+        )
+
+    uploaded = upload().raise_for_status().json()
+    assert upload().raise_for_status().json() == uploaded
+    started = (
+        client.post(
+            base(ws) + "/editing-tasks",
+            json={
+                "source_id": uploaded["id"],
+                "request_id": str(uuid4()),
+                "options": {"source_subtitles": "none"},
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert started["source_origin"]["writing_origin"] == origin
+    assert started["source_origin"]["script_sha256"] == expected["script_sha256"]
+    assert str(tmp_path) not in str(started)
+    with client.app.state.session_factory() as session:
+        row = session.get(EditingSourceRecord, uploaded["id"])
+        assert row.details["confirmed_script_reference"] == expected
+        version = session.get(VideoScriptVersionRecord, confirmed["id"])
+        if change == "text":
+            version.snapshot = {
+                **version.snapshot,
+                "draft": {**version.snapshot["draft"], "text": "修改后的文字"},
+            }
+        else:
+            version.writing_origin = {**origin, "facts_document_id": str(uuid4())}
+        session.commit()
+    conflict = upload()
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "EDITING_UPLOAD_SCRIPT_CHANGED"
+
+    def unexpected(*args):
+        pytest.fail("Changed reference must fail before decoding or rendering")
+
+    monkeypatch.setattr(worker, "prepare", unexpected)
+    process(started["id"], settings, client.app.state.session_factory)
+    failed = (
+        client.get(base(ws) + "/editing-tasks/" + started["id"])
+        .raise_for_status()
+        .json()
+    )
+    assert failed["status"] == "failed" and failed["artifacts"] == []
+    assert failed["error_code"] == "EDITING_UPLOAD_SCRIPT_CHANGED"
+    with client.app.state.session_factory() as session:
+        assert (
+            session.get(EditingSourceRecord, uploaded["id"]).details[
+                "confirmed_script_reference"
+            ]
+            == expected
+        )
 
 
 @pytest.mark.parametrize(

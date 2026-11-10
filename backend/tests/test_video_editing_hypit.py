@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from app import video_editing_hypit as hypit
@@ -5,7 +7,51 @@ from app import video_editing_hypit_strips as strips
 from app.config import Settings
 from app.motion_library import atomic_json
 from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from app.video_editing_pipeline import stop_hypit_runtimes
+from app.video_editing_unified_scenes import unified_action_frame
 from app.video_editing_word_bindings import word_bindings
+
+
+def test_picture_sound_uses_the_first_visible_top_entry_frame():
+    config = hypit.automatic_picture_config()
+    config["items"][0]["entry_frame"] = 20
+    shot = {
+        "group_id": hypit.PICTURE_GROUP,
+        "layer": "scene",
+        "rect": [0, 0, 1, 1],
+        "start_seconds": 39.11,
+        "end_seconds": 43.11,
+        "config": config,
+    }
+    path = hypit.ENTRY_PATHS[0]
+    assert unified_action_frame(shot, 30, path) == 1195
+    config["items"][0]["direction"] = "left"
+    with pytest.raises(ValueError, match="verified top-entry geometry"):
+        unified_action_frame(shot, 30, path)
+
+
+def test_hypit_cleanup_retries_the_same_task_after_timeout(tmp_path, monkeypatch):
+    workspace = tmp_path / "hypit/HY-A3-picture-parallel-3-test"
+    (workspace / ".hypit").mkdir(parents=True)
+    (workspace / "hypit.runtime.json").write_text("{}", encoding="utf-8")
+    settings = Settings(
+        _env_file=None, video_editing_hypit_local_module=tmp_path / "cli"
+    )
+    calls = []
+
+    def down(argv, **kwargs):
+        calls.append(argv)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr("app.video_editing_pipeline.subprocess.run", down)
+    stop_hypit_runtimes(tmp_path, settings)
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert str(workspace.resolve()) in calls[0]
+    assert (workspace / "tengli-runtime-down.log").read_text() == (
+        "\ncleanup_error=TimeoutExpired\n\nexit=0\n"
+    )
 
 
 def test_hypit_strips_keep_directions_and_bind_entrances_to_words(

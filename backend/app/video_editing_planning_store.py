@@ -14,6 +14,7 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256
 from .video_assistance_provider import planner_configured, planner_endpoint
+from .video_editing_browser_clocks import FRUIT_LIST_TEMPLATE_ID
 from .video_editing_contracts import EditingPlanningTaskCreate
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import PREFIX, material_cards, project_material_files
@@ -53,6 +54,15 @@ def planning_root(settings: Settings, task_id: str) -> Path:
 
 def execution_available(settings: Settings) -> bool:
     return settings.video_editing_planning_enabled and planner_configured(settings)
+
+
+def require_active_planning_template(template_id: str | None) -> None:
+    if template_id == FRUIT_LIST_TEMPLATE_ID:
+        raise ApiError(
+            409,
+            "EDITING_TEMPLATE_RETIRED",
+            "该模板已从网站剪辑下架，请选择其他组合模板。",
+        )
 
 
 def own_planning_task(
@@ -172,6 +182,7 @@ def create_planning_task(
                 409, "EDITING_PLANNING_REQUEST_REUSED", "此请求编号已用于其他规划输入。"
             )
         return previous
+    require_active_planning_template(body.template_id)
     if base.status != "completed" or base.library_release != MOTION_SHA256:
         raise ApiError(
             409,
@@ -266,6 +277,9 @@ def create_planning_task(
         )
         if existing:
             return existing
+        require_active_planning_template(
+            prepared.snapshot.get("overlay_template", {}).get("id")
+        )
         if not execution_available(settings):
             raise ApiError(
                 503,

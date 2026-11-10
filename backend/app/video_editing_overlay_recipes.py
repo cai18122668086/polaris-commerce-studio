@@ -80,8 +80,23 @@ from .video_editing_handoff_scenes import (
     validate_handoff_anchors,
 )
 from .video_editing_highlights import AUTOMATIC_TEXT_PROFILE
+from .video_editing_hypit import (
+    ENTRY_PATHS,
+    HY_PICTURE_TEMPLATE_ID,
+    PICTURE_GROUP,
+    PICTURE_PATHS,
+    PICTURE_TRACKS,
+    audit_picture_entry,
+    automatic_picture_config,
+    compile_picture_clocks,
+)
 from .video_editing_hypit_strips import (
     LIVE_STRIP_GROUP,
+    SLANT_BACKGROUND,
+    SLANT_FOREGROUND,
+    SLANT_GROUP,
+    SLANT_IMAGES,
+    SLANT_PROFILE,
     STRIP_EVENTS,
     STRIP_IMAGE,
     STRIP_TEXT,
@@ -1192,6 +1207,130 @@ def _browser_split_entry(
     ), anchors
 
 
+def _hypit_picture_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    slant = beat.group_id == SLANT_GROUP
+    contract = input_contract(package, group)
+    pictures = project_image_digests(cards)
+    current_sources = {
+        row["id"]
+        for row in cards
+        if row["kind"] == "original_video" and row["sha256"] == transcript.source_sha256
+    }
+    assets = {
+        row["id"]: {
+            **row,
+            **({"source": "project_upload"} if row["id"] in pictures else {}),
+        }
+        for row in cards
+        if row["id"] in pictures or row["id"] in current_sources
+    }
+    image_paths = (*SLANT_IMAGES, SLANT_BACKGROUND) if slant else tuple(PICTURE_PATHS)
+    track_paths = (SLANT_FOREGROUND,) if slant else PICTURE_TRACKS
+    event_paths = STRIP_EVENTS if slant else tuple(ENTRY_PATHS)
+    config = (
+        read_json(inside(package, group["input_template"]))
+        if slant
+        else automatic_picture_config()
+    )
+    try:
+        anchors = word_bindings(beat, transcript, contract, set(assets))
+        media = {row["path"]: row["asset_id"] for row in anchors["media"]}
+        events = {row["path"]: row for row in anchors["events"]}
+        labels = {row["path"]: row for row in anchors["text"]}
+        if (
+            beat.relation != "parallel"
+            or len(beat.relation_items) != 3
+            or set(media) != {*track_paths, *image_paths}
+            or set(beat.asset_ids) != set(media.values())
+            or any(media[path] not in current_sources for path in track_paths)
+            or len({pictures[media[path]] for path in image_paths}) != len(image_paths)
+            or set(events) != set(event_paths)
+            or set(labels) != (set(STRIP_TEXT) if slant else set())
+        ):
+            raise ValueError(
+                "Hypit scene needs current narration and distinct project pictures"
+            )
+        if slant and len(labels[STRIP_TEXT[-1]]["text"]) > 2:
+            raise ValueError("Keep the last slant label left of the live foreground")
+        positions = {token.id: i for i, token in enumerate(transcript.tokens)}
+        previous = positions[beat.first_token_id] - 1
+        for index, item in enumerate(beat.relation_items):
+            image, event = image_paths[index], events[event_paths[index]]
+            label = STRIP_TEXT[index]
+            first, last = positions[item.first_token_id], positions[item.last_token_id]
+            if (
+                not previous < first <= last <= positions[beat.last_token_id]
+                or item.native_media_paths != [image]
+                or item.asset_ids != [media[image]]
+                or event["token_id"] != item.first_token_id
+                or event["edge"] != "start"
+                or item.native_text_paths != ([label] if slant else [])
+                or (slant and positions[labels[label]["token_ids"][-1]] > last)
+            ):
+                raise ValueError(
+                    "Each Hypit picture must bind its own ordered spoken item"
+                )
+            previous = last
+        if slant:
+            anchors["media_clocks"] = [
+                compile_flow_plate(
+                    anchors,
+                    assets,
+                    transcript,
+                    media_path=SLANT_FOREGROUND,
+                    profile_id=SLANT_PROFILE,
+                )
+            ]
+            compile_strips(package, group, anchors, assets)
+        else:
+            audit_picture_entry(package, group)
+            compile_picture_clocks(package, config, anchors, assets, transcript, beat)
+    except (KeyError, ValueError, FileNotFoundError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_HYPIT_PICTURES_REQUIRED",
+            "三图卡需绑定同期口播、三个按实录顺序出画的项目图片，并留出阅读时间。"
+            "斜卡另需一张独立底图和三个实录短标题，第三张标题最多两字。",
+        ) from error
+    slots = [*media]
+    if slant:
+        for path in slots:
+            set_native_field(config, path, None)
+    else:
+        slots.extend(
+            (
+                *event_paths,
+                *(path.replace("/path", "/start_seconds") for path in track_paths),
+            )
+        )
+    reason = "保留原生三图、人物窗和入场方式，主字幕与完整原声使用整片时钟。"
+    return NativeEpisodeEntry(
+        carrier="picture",
+        placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": beat.group_id,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": "tengli-" + HY_PICTURE_TEMPLATE_ID,
+            "design_reason": reason,
+            "parameter_decisions": dict.fromkeys(config, reason),
+            "config": config,
+            "placeholders": slots,
+            "dependency_ids": list(
+                AUTOMATIC_TEMPLATE_DEPENDENCIES.get(beat.group_id, ())
+            ),
+        },
+    ), anchors
+
+
 def _live_strip_entry(
     package: Path,
     group: dict,
@@ -2292,6 +2431,11 @@ def build_overlay_recipes(
                 package, group, beat, transcript, asset_cards or []
             )
             paths = NUMBERED_EVENTS
+        elif beat.group_id in {SLANT_GROUP, PICTURE_GROUP}:
+            entries[beat.id], anchors = _hypit_picture_entry(
+                package, group, beat, transcript, asset_cards or []
+            )
+            paths = STRIP_EVENTS if beat.group_id == SLANT_GROUP else tuple(ENTRY_PATHS)
         elif beat.group_id == LIVE_STRIP_GROUP:
             entries[beat.id], anchors = _live_strip_entry(
                 package, group, beat, transcript, asset_cards or []

@@ -600,31 +600,37 @@ def stop_hypit_runtimes(root: Path, settings: Settings) -> None:
             continue
         log = workspace / "tengli-runtime-down.log"
         with log.open("ab") as output:
-            try:
-                result = subprocess.run(
-                    [
-                        "node",
-                        str(module.resolve()),
-                        "runtime",
-                        "down",
-                        "--workspace",
-                        str(workspace),
-                        "--runtime",
-                        profile.name,
-                        "--json",
-                    ],
-                    cwd=workspace,
-                    env=environment(settings),
-                    stdout=output,
-                    stderr=subprocess.STDOUT,
-                    stdin=subprocess.DEVNULL,
-                    timeout=25,
-                    check=False,
-                    creationflags=creation_flags(),
-                )
-                output.write(f"\nexit={result.returncode}\n".encode())
-            except (OSError, subprocess.TimeoutExpired) as error:
-                output.write(f"\ncleanup_error={type(error).__name__}\n".encode())
+            for _ in range(2):
+                try:
+                    result = subprocess.run(
+                        [
+                            "node",
+                            str(module.resolve()),
+                            "runtime",
+                            "down",
+                            "--workspace",
+                            str(workspace),
+                            "--runtime",
+                            profile.name,
+                            "--json",
+                        ],
+                        cwd=workspace,
+                        env=environment(settings),
+                        stdout=output,
+                        stderr=subprocess.STDOUT,
+                        stdin=subprocess.DEVNULL,
+                        timeout=25,
+                        check=False,
+                        creationflags=creation_flags(),
+                    )
+                    output.write(f"\nexit={result.returncode}\n".encode())
+                    break
+                except subprocess.TimeoutExpired:
+                    # Retry the same private runtime once after a transient timeout.
+                    output.write(b"\ncleanup_error=TimeoutExpired\n")
+                except OSError as error:
+                    output.write(f"\ncleanup_error={type(error).__name__}\n".encode())
+                    break
 
 
 def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> Path:

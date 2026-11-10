@@ -7,7 +7,9 @@ import math
 import os
 import re
 import shutil
+import subprocess
 import sys
+from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -178,6 +180,64 @@ def _matches_shot_clock(receipt: dict, duration: float, episode_fps: float) -> b
     )
 
 
+def _verify_hypit_encoding(
+    output: Path, receipt: dict, duration: float, fps: float
+) -> dict:
+    if receipt.get("decoded") is not True or receipt["sha256"] != sha256(output):
+        raise ValueError("Original Hypit build does not match its encoded shot")
+    observed = subprocess.check_output(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-count_frames",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=nb_read_frames,avg_frame_rate,width,height",
+            "-of",
+            "json",
+            str(output),
+        ],
+        timeout=120,
+    )
+    (video,) = json.loads(observed)["streams"]
+    rate = float(Fraction(video["avg_frame_rate"]))
+    encoding = {
+        "output": str(output),
+        "full_decode": True,
+        "format": {
+            "fps": rate,
+            "frames": int(video["nb_read_frames"]),
+            "width": int(video["width"]),
+            "height": int(video["height"]),
+        },
+    }
+    result = {**receipt, "encoding": encoding}
+    if rate != fps or not _matches_shot_clock(result, duration, fps):
+        raise ValueError("Hypit decoded frame clock does not fit the episode")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-v",
+            "error",
+            "-xerror",
+            "-i",
+            str(output),
+            "-map",
+            "0:v:0",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        timeout=120,
+    )
+    atomic_json(output.with_suffix(".receipt.json"), result)
+    return result
+
+
 def install_shot_recovery(package: Path, root: Path) -> None:
     plan = root / "native-shot-plan.json"
     if not plan.is_file() or any(
@@ -213,11 +273,9 @@ def install_shot_recovery(package: Path, root: Path) -> None:
         return
     original = adapter.worker
     library_sha = sha256(package / "integrity.json")
-    subtitles = {
-        row["id"]
-        for row in read_json(package / "catalog/groups.json")["groups"]
-        if row["kind"] == "subtitle"
-    }
+    groups = read_json(package / "catalog/groups.json")["groups"]
+    subtitles = {row["id"] for row in groups if row["kind"] == "subtitle"}
+    hypit = {row["id"] for row in groups if row["backend"] == "hypit"}
     episode = read_json(root / "episode.json")
     duration = {
         f"{index:03}-{shot['group_id']}.mp4": shot["end_seconds"]
@@ -235,6 +293,14 @@ def install_shot_recovery(package: Path, root: Path) -> None:
             or output.name not in duration
         ):
             return original(operation, job, instance, args)
+        if job["group_id"] in hypit:
+            # Retain the build receipt and its live task files together.
+            return _verify_hypit_encoding(
+                output,
+                original(operation, job, instance, args),
+                duration[output.name],
+                fps,
+            )
         restored_from = None
         for prior in candidates:
             if _restore_shot(

@@ -22,7 +22,9 @@ from .video_editing_cut_scenes import CUT_GROUPS, CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_DEPENDENCIES, CXBR_PURPOSES, cxbr_binding
 from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
 from .video_editing_handoff_scenes import HANDOFF_GROUPS, HANDOFF_TEMPLATE_ID
-from .video_editing_hypit_strips import LIVE_STRIP_GROUP
+from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
+from .video_editing_hypit_foreground import FOREGROUND_MATTE
+from .video_editing_hypit_strips import LIVE_STRIP_GROUP, SLANT_GROUP
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP, YEAR_GROUP
@@ -135,6 +137,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     **dict.fromkeys(("YYP04", "YYP06"), (MOTION_FONT, MOTION_MATTE)),
     CARD_GROUP: (SPLIT_TITLE_FONT,),
     FRUIT_LIST_GROUP: FRUIT_LIST_FONTS,
+    SLANT_GROUP: (SPLIT_TITLE_FONT, "font-baa251526d686271", FOREGROUND_MATTE),
     NUMBERED_GROUP: (SPLIT_TITLE_FONT,),
     SPLIT_VERTICAL: (SPLIT_TITLE_FONT,),
     SPLIT_HORIZONTAL: (SPLIT_TITLE_FONT, ROTATION_MATTE),
@@ -643,6 +646,29 @@ _TEMPLATES[FRUIT_LIST_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[HY_PICTURE_TEMPLATE_ID] = {
+    "id": HY_PICTURE_TEMPLATE_ID,
+    "name": "同期人物与原生三图卡",
+    "slots": [
+        {
+            "group_id": SLANT_GROUP,
+            "purpose": "使用原生斜卡、独立底图及右下同期人物呈现三项内容。",
+            "layer": "scene",
+            "binding": "绑定三张独立配图和一张本期背景图。前景绑定同期原片。"
+            "三条中文标题各取一至三字实录，在各自首词触发。原可选英文留空。"
+            "每项绑定对应的原生标题、图片和实录范围。",
+        },
+        {
+            "group_id": PICTURE_GROUP,
+            "purpose": "三张图片依次落入原生图槽，同期人物与背景同时播放。",
+            "layer": "scene",
+            "binding": "原片同时绑定 /background/path 与 /presenter/path。"
+            "三张独立项目图片按实录条目依次绑定 /items/{i}/path，"
+            "entry_frame 各取对应项首词。完整口播由主字幕显示。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[CUT_TEMPLATE_ID] = {
     "id": CUT_TEMPLATE_ID,
     "name": "实拍与项目素材接力",
@@ -783,7 +809,7 @@ def overlay_templates() -> list[dict]:
             UNIFIED_EXPLANATION_TEMPLATE_ID,
             HANDOFF_TEMPLATE_ID,
             LIVE_SPLIT_TEMPLATE_ID,
-            FRUIT_LIST_TEMPLATE_ID,
+            HY_PICTURE_TEMPLATE_ID,
             CUT_TEMPLATE_ID,
             PANEL_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,

@@ -40,9 +40,17 @@ from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_CAPTION_INTENT, CXBR_PURPOSES, CXBR_TEMPLATE_ID
 from .video_editing_handoff_scenes import HANDOFF_TEMPLATE_ID
 from .video_editing_highlights import apply_highlight_edits
-from .video_editing_hypit import hypit_tools, internal_hypit_available, requires_hypit
+from .video_editing_hypit import (
+    PICTURE_CAPTION_BASELINE,
+    PICTURE_GROUP,
+    hypit_tools,
+    internal_hypit_available,
+    requires_hypit,
+)
 from .video_editing_hypit_strips import (
     LIVE_STRIP_GROUP,
+    SLANT_CAPTION_BASELINE,
+    SLANT_GROUP,
     STAGGER_GROUPS,
     STRIP_SIDECAR,
     stagger_audio_frame,
@@ -564,6 +572,7 @@ def compile_episode(
                 )
                 part_bindings = read_json(directory / "bindings.json")
                 hypit_entries = {}
+                stagger_frames = None
                 if beat.group_id in STAGGER_GROUPS:
                     stem = f"{len(episode['shots']):03}-{beat.group_id}"
                     part = directory / STRIP_SIDECAR
@@ -576,6 +585,7 @@ def compile_episode(
                         )
                     sidecar = root / "hypit-strips" / f"{stem}.json"
                     strip = read_json(part)
+                    stagger_frames = strip["frames"]
                     atomic_json(sidecar, strip)
                     digest = sha256(sidecar)
                     bindings.setdefault("tengli_hypit_strips", {})[stem] = digest
@@ -629,15 +639,19 @@ def compile_episode(
                 ):
                     fps = episode["output"]["fps"]
                     config = job["config"]
-                    duration = (
-                        config["duration"]
-                        if beat.group_id in BROWSER_LIST_SCENES
-                        else config["timing"]["duration_seconds"]
-                    )
+                    if beat.group_id == SLANT_GROUP:
+                        assert stagger_frames is not None
+                        frames = stagger_frames
+                    elif beat.group_id == PICTURE_GROUP:
+                        frames = config["frames"]
+                    elif beat.group_id in BROWSER_LIST_SCENES:
+                        frames = round(config["duration"] * fps)
+                    else:
+                        frames = round(config["timing"]["duration_seconds"] * fps)
                     picture_end = projected_scene_end(
                         start,
                         end,
-                        round(duration * fps),
+                        frames,
                         fps,
                     )
                 episode["shots"].append(
@@ -848,6 +862,10 @@ def compile_episode(
                 and shot["group_id"] == UNIFIED_WINDOW_GROUP
                 else SPLIT_HORIZONTAL_CAPTION_BASELINE
                 if shot["group_id"] == SPLIT_HORIZONTAL
+                else SLANT_CAPTION_BASELINE
+                if shot["group_id"] == SLANT_GROUP
+                else PICTURE_CAPTION_BASELINE
+                if shot["group_id"] == PICTURE_GROUP
                 else baseline,
             )
             for shot in episode["shots"]

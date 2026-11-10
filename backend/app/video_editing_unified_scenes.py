@@ -30,6 +30,15 @@ from .video_editing_handoff_scenes import (
     HANDOFF_TEMPLATE_ID,
     handoff_virtual_frame,
 )
+from .video_editing_hypit import (
+    ENTRY_PATHS as PICTURE_ENTRY_PATHS,
+)
+from .video_editing_hypit import (
+    HY_PICTURE_TEMPLATE_ID,
+    PICTURE_GROUP,
+    picture_entry_frame,
+)
+from .video_editing_hypit_strips import SLANT_GROUP
 from .video_editing_native_content import (
     NUMBER_GROUP,
     YEAR_GROUP,
@@ -60,6 +69,7 @@ UNIFIED_TEMPLATES = frozenset(
         HANDOFF_TEMPLATE_ID,
         LIVE_SPLIT_TEMPLATE_ID,
         FRUIT_LIST_TEMPLATE_ID,
+        HY_PICTURE_TEMPLATE_ID,
     }
 )
 UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
@@ -212,6 +222,7 @@ UNIFIED_SCENE_GROUPS = (
     | PANEL_GROUPS.keys()
     | HANDOFF_GROUPS.keys()
     | BROWSER_LIST_SCENES
+    | {SLANT_GROUP, PICTURE_GROUP}
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -227,6 +238,8 @@ _CAPTION_BANDS = {
     SPLIT_VERTICAL: (850, 960),
     SPLIT_HORIZONTAL: (270, 405),
     FRUIT_LIST_GROUP: (850, 960),
+    SLANT_GROUP: (810, 960),
+    PICTURE_GROUP: (715, 845),
 }
 _EVENT_PREFIX = "/timing/events/"
 
@@ -252,6 +265,8 @@ def unified_binding(group: str) -> str:
 
 
 def unified_sound_paths(group: str) -> tuple[str, ...]:
+    if group == PICTURE_GROUP:
+        return tuple(PICTURE_ENTRY_PATHS)
     if group in BROWSER_LIST_SCENES:
         return NUMBERED_EVENTS
     return tuple(_EVENT_PREFIX + event for event in UNIFIED_SOUNDS.get(group, {}))
@@ -593,7 +608,10 @@ def unified_action_frame(shot: dict, fps: int, path: str) -> int:
         or shot["rect"] != [0, 0, 1, 1]
     ):
         raise ValueError("Original unified sound needs its full-frame native action")
-    if group in BROWSER_LIST_SCENES:
+    if group == PICTURE_GROUP:
+        at = picture_entry_frame(shot["config"], path)
+        mode = "visible"
+    elif group in BROWSER_LIST_SCENES:
         at = shot["config"]["items"][NUMBERED_EVENTS.index(path)]["at"] * fps
         mode = "fruit_row" if group == FRUIT_LIST_GROUP else "ease"
     else:

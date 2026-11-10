@@ -13,6 +13,8 @@ type OverlayTemplate = components["schemas"]["EditingOverlayTemplate"];
 type BaseTask = { id: string; status: string; created_at: string; artifacts: { role: string }[] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const maxPreviewBatch = 5;
+const retiredTemplate = (job: Job) => job.overlay_template?.id === "fruit-introduction-v1";
+const canBatchPreview = (job: Job) => job.status === "completed" && job.overlay_template && !retiredTemplate(job) && !job.preview_task_id;
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = { EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。", EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。", EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。", EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。", EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。", EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。", EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。" };
 
@@ -35,7 +37,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
   const [batchCount, setBatchCount] = useState(0);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const candidates = tasks.filter(task => task.status === "completed" && task.artifacts.some(a => a.role === "transcript"));
-  const eligible = jobs.filter(job => job.status === "completed" && job.overlay_template && !job.preview_task_id);
+  const eligible = jobs.filter(canBatchPreview);
   const batchIds = batchSelection.filter(id => eligible.some(job => job.id === id));
   const showBatch = eligible.length >= 2 || batchIds.length > 0;
   const refresh = useCallback(async () => unwrapApiResponse(await apiClient.GET(`${root}/projects/{project_id}/editing-planning-tasks`, {
@@ -164,12 +166,13 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
     <div className={styles.tasks}>{jobs.map(job => <article key={job.id} data-planning-job={job.id}>
       <div className={styles.taskHeading}><b>{labels[job.status === "running" ? job.stage : job.status] || "正在处理规划"}</b><time>{new Date(job.created_at).toLocaleString("zh-CN")}</time></div>
       <p className={styles.note}>模型：{job.model} · 网关：{job.gateway_host || "尚未固定"} · 转录版本 {job.base_transcript_sha256.slice(0, 12)}{job.text_status && ` · ${job.text_status === "user_corrected" ? "用户已校对文字，词点待验" : "转录文字待核对"}`}</p>
-      {job.overlay_template && <p className={styles.note}>组合模板 · {job.overlay_template.name}</p>}
-      {showBatch && job.status === "completed" && job.overlay_template && !job.preview_task_id && <label className={styles.reviewCheck}>
+      {job.overlay_template && <p className={styles.note}>组合模板 · {job.overlay_template.name}{retiredTemplate(job) && "（已下架）"}</p>}
+      {showBatch && canBatchPreview(job) && <label className={styles.reviewCheck}>
         <input type="checkbox" checked={batchIds.includes(job.id)} disabled={busy || (!batchIds.includes(job.id) && batchIds.length >= maxPreviewBatch)} onChange={event => setBatchSelection(event.target.checked ? [...batchIds, job.id] : batchIds.filter(id => id !== job.id))} />加入批量预览
       </label>}
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>当前运行条件未满足的动效 · {job.unavailable_template_group_ids.join("、")}</p>}
       {job.unavailable_template_group_ids?.includes("HY-A5") && <p className={styles.note}>斜切标签需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。</p>}
+      {job.unavailable_template_group_ids?.some(id => id === "HY-A2" || id === "HY-A3") && <p className={styles.note}>原生三图卡需要无内嵌字幕的原片，以及当前工作区可用的 Hypit 运行环境。斜卡还需要原字体和抠像模型。</p>}
       {job.unavailable_template_group_ids?.includes("YYP05") && <p className={styles.note}>双素材接力需要无内嵌字幕的原片，以及两段不同且足够长的本期补充视频。</p>}
       {job.overlay_template?.id === "azl-panels-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>阿哲板式需要无内嵌字幕的原片。不同板式需要一至三份不同的本期图片或足够长的视频。</p>}
       {job.overlay_template?.id === "chenxi-broll-v1" && !!job.unavailable_template_group_ids?.length && <p className={styles.note}>晨曦实景需要无内嵌字幕的原片和足够长的本期补充视频。部分板式还需要一张纸纹底图。</p>}
@@ -198,23 +201,25 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
       {job.status === "prepared" && <>
         <p className={styles.note}>尚未调用模型，没有规划结果。执行时最大输出 5000 token，输入另计，实际费用按腾力网关账单。</p>
         {job.artifacts.filter(a => a.role === "request").map(a => <a key={a.id} href={a.url} download>下载已准备请求</a>)}
-        <button type="button" disabled={busy || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>生成重点与选组候选（付费）</button>
-        {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
+        {!retiredTemplate(job) && <>
+          <button type="button" disabled={busy || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>生成重点与选组候选（付费）</button>
+          {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
+        </>}
       </>}
       {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}</li>)}</ul><p className={styles.note}>语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
       {job.status === "completed" && job.overlay_template && <>
         {batchErrors[job.id] && <p role="alert" className={styles.error}>{batchErrors[job.id]}</p>}
         {job.preview_task_id && tasks.some(task => task.id === job.preview_task_id)
           ? <a href={`#editing-task-${job.preview_task_id}`}>查看本次代理预览任务</a>
-          : <button type="button" disabled={busy} onClick={() => void preview(job)}>{job.preview_task_id ? "读取本次代理预览任务" : "按本次规划生成代理预览"}</button>}
+          : (job.preview_task_id || !retiredTemplate(job)) && <button type="button" disabled={busy} onClick={() => void preview(job)}>{job.preview_task_id ? "读取本次代理预览任务" : "按本次规划生成代理预览"}</button>}
         {nativePlans[job.id]
           ? <a href={`#editing-native-plan-${nativePlans[job.id]}`}>查看本次原生编排</a>
-          : <button type="button" disabled={busy} onClick={() => void adopt(job)}>保存编排后调整</button>}
+          : !retiredTemplate(job) && <button type="button" disabled={busy} onClick={() => void adopt(job)}>保存编排后调整</button>}
       </>}
       {job.status === "failed" && <p role="alert" className={styles.error}>{errors[job.error_code || ""] || "本次规划未完成，请核对输入或服务配置。"}</p>}
       {job.call_state === "intent_saved" && <p className={styles.note}>请求已登记提交，结果未确认；不能自动重发付费请求。取消只能停止后续处理。</p>}
       {["queued", "running"].includes(job.status) && <button type="button" disabled={busy || job.cancel_requested} onClick={() => void action(job, "cancel")}>{job.cancel_requested ? "正在取消" : job.call_state === "not_submitted" ? "取消" : "取消后续处理"}</button>}
-      {["failed", "cancelled"].includes(job.status) && job.call_state !== "intent_saved" && <button type="button" disabled={busy || (job.mode === "generate" && job.call_state === "not_submitted" && !job.execution_available)} onClick={() => void action(job, "retry")}>{job.call_state === "response_saved" ? "重新校验已保存响应" : "重试任务"}</button>}
+      {["failed", "cancelled"].includes(job.status) && !retiredTemplate(job) && job.call_state !== "intent_saved" && <button type="button" disabled={busy || (job.mode === "generate" && job.call_state === "not_submitted" && !job.execution_available)} onClick={() => void action(job, "retry")}>{job.call_state === "response_saved" ? "重新校验已保存响应" : "重试任务"}</button>}
     </article>)}</div>
   </section>;
 }

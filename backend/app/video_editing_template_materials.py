@@ -16,6 +16,8 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_contracts import SemanticPlan
+from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
+from .video_editing_hypit_strips import SLANT_BACKGROUND, SLANT_GROUP
 from .video_editing_judgment import JUDGMENT_GROUP, JUDGMENT_IMAGES
 from .video_editing_line_branch import (
     LINE_DIRECTOR_PATH,
@@ -45,6 +47,11 @@ _IMAGE_GROUPS = {
     NUMBERED_TEMPLATE_ID: ((NUMBERED_GROUP, 3),),
     LIVE_SPLIT_TEMPLATE_ID: tuple((group, 3) for group in LIVE_SPLIT_GROUPS),
     FRUIT_LIST_TEMPLATE_ID: ((FRUIT_LIST_GROUP, 4),),
+    HY_PICTURE_TEMPLATE_ID: ((SLANT_GROUP, 4), (PICTURE_GROUP, 3)),
+}
+_ADDITIONAL_IMAGE_PATHS = {
+    FRUIT_LIST_GROUP: FRUIT_LIST_HEADER,
+    SLANT_GROUP: SLANT_BACKGROUND,
 }
 
 
@@ -182,18 +189,22 @@ def validate_template_images(
             if len(item.asset_ids) == 1
         ]
         required_items = required_images
-        if beat.group_id == FRUIT_LIST_GROUP:
-            header_id = next(
+        if extra_path := _ADDITIONAL_IMAGE_PATHS.get(beat.group_id):
+            extra_id = next(
                 (
                     anchor.asset_id
                     for anchor in beat.native_media
-                    if anchor.path == FRUIT_LIST_HEADER
+                    if anchor.path == extra_path
                 ),
                 "",
             )
-            if header_id not in requirement["native_image_slot_ids"][FRUIT_LIST_HEADER]:
+            if (
+                beat.group_id == FRUIT_LIST_GROUP
+                and extra_id
+                not in requirement["native_image_slot_ids"][FRUIT_LIST_HEADER]
+            ):
                 raise ValueError("Fruit list needs a full-sized project header")
-            bound.append(images.get(header_id))
+            bound.append(images.get(extra_id))
             required_items -= 1
         if (
             len(beat.relation_items) != required_items

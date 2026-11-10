@@ -37,6 +37,7 @@ from .video_editing_planning_store import (
     own_planning_task,
     planning_response,
     planning_root,
+    require_active_planning_template,
 )
 from .video_editing_task_models import (
     EditingNativePlanRecord,
@@ -155,6 +156,7 @@ def gateway_candidate(
     workspace: WorkspaceContext,
     row: EditingPlanningTaskRecord,
 ) -> EditingNativePlanRecord:
+    require_active_planning_template(row.snapshot.get("overlay_template", {}).get("id"))
     if not settings.video_editing_native_plan_enabled:
         raise ApiError(503, "EDITING_NATIVE_PLAN_DISABLED", "原生编排服务尚未开放。")
     return register_gateway_plan(
@@ -324,6 +326,7 @@ def retry_task(
     row = own_planning_task(session, workspace, str(task_id))
     if row.status not in {"failed", "cancelled"}:
         raise ApiError(409, "EDITING_PLANNING_NOT_RETRYABLE", "规划任务不需要重试。")
+    require_active_planning_template(row.snapshot.get("overlay_template", {}).get("id"))
     provider = planning_root(settings, row.id) / "provider"
     if row.mode == "generate" and not (provider / "semantic-response.json").is_file():
         if (provider / "semantic-submit-intent.json").exists():

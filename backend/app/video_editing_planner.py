@@ -25,6 +25,7 @@ from .video_editing_browser_clocks import (
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
+from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_overlay_templates import (
@@ -404,6 +405,12 @@ def build_request(
             "CX-G06 的圆形头图只能从 native_image_slot_ids 的 /presenter 列表选。"
             "另三张图分别绑定每行的图片槽。没有合格头图、不同图片或明确的三种水果时，"
             "跳过 CX-G06 并说明缺少的内容。"
+        )
+    if template is not None and template["id"] == HY_PICTURE_TEMPLATE_ID:
+        message += (
+            "HY-A2 第三张斜卡的中文标题最多两字，让出右下同期人物。"
+            "从该项实际口播中选连续短词，并把第三项首词及入场绑定在所选短词首词。"
+            "完整短语继续由主字幕显示。"
         )
     if runtime and runtime.get("presenter_motion_windows"):
         message += (

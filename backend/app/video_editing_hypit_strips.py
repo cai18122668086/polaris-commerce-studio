@@ -21,6 +21,7 @@ SLANT_PROFILE = "hypit-original-slant-cards/1"
 SLANT_BACKGROUND = "/component_assets/stagger#mkbg3"
 SLANT_FOREGROUND = "/component_assets/stagger#mkfg1"
 SLANT_IMAGES = tuple(f"/component_assets/stagger#mkpic{i}" for i in range(1, 4))
+SLANT_CAPTION_BASELINE = 1208
 PRICE_CARD_GROUP = "HY-A6"
 PRICE_CARD_PROFILE = "hypit-original-price-cards/1"
 PRICE_CARD_INSET_TYPE = "larger-inset-type-v1"

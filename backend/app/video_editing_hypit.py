@@ -11,9 +11,15 @@ from .video_editing_contracts import SemanticBeat, Transcript
 
 PICTURE_GROUP = "HY-A3"
 PICTURE_PROFILE = "picture-parallel-3"
+HY_PICTURE_TEMPLATE_ID = "hypit-picture-scenes-v1"
 PICTURE_FPS = 30
 PICTURE_PATHS = [f"/items/{i}/path" for i in range(3)]
 ENTRY_PATHS = [f"/items/{i}/entry_frame" for i in range(3)]
+PICTURE_TRACKS = ("/background/path", "/presenter/path")
+PICTURE_CAPTION_BASELINE = 1060
+_STAGGER_RENDERER_SHA256 = (
+    "306f69356e311ff971f94a5458c3d2e0eb3b0ffd7716a7a9c7987a8c027dddd4"
+)
 NATIVE_FILES = {
     "commercial_runtime/picture_parallel.py": (
         "5fcbbc8c825bbb91563aeeb4713fb7ee128e20538184605b35fd44fcf3cfd6a7"
@@ -23,6 +29,66 @@ NATIVE_FILES = {
     ),
 }
 CLI_SHA256 = "1d962a229df2429fca2364e16a718b22ab0032851ed33e230ad68589eeb52f81"
+
+
+def audit_picture_entry(package: Path, group: dict) -> None:
+    renderer = (package / group["entry"]).parent / "packages/stagger/dist/render.js"
+    if sha256(renderer) != _STAGGER_RENDERER_SHA256:
+        raise ValueError("Original Hypit picture arrival changed")
+
+
+def automatic_picture_config() -> dict[str, Any]:
+    """Use the existing three-picture schema and the verified portrait layout."""
+    return {
+        "profile": PICTURE_PROFILE,
+        "width": 360,
+        "height": 640,
+        "fps": PICTURE_FPS,
+        "frames": None,
+        "font": "pkg://assets/fonts/Noto_Sans_SC_Medium--9c62ceb174d7.otf",
+        "background": {
+            "path": None,
+            "start_seconds": None,
+            "blur_sigma": 12,
+            "brightness": -0.18,
+            "saturation": 0.65,
+        },
+        "presenter": {
+            "path": None,
+            "start_seconds": None,
+            "rect": [0.22, 0.025, 0.56, 0.463],
+        },
+        "items": [
+            {
+                "path": None,
+                "rect": [x, 320, 102, 150],
+                "entry_frame": None,
+                "rotation_deg": 0,
+                "direction": "top",
+            }
+            for x in (18, 129, 240)
+        ],
+        "enter_frames": 10,
+        "radius_px": 10,
+        "border_px": 1,
+        "border_color": "#e6e9ef",
+        "image_fit": "contain",
+    }
+
+
+def picture_entry_frame(config: dict, path: str) -> int:
+    item = config["items"][ENTRY_PATHS.index(path)]
+    if (
+        config.get("profile") != PICTURE_PROFILE
+        or config.get("fps") != PICTURE_FPS
+        or config.get("enter_frames") != 10
+        or item["direction"] != "top"
+        or item["rect"][3] != 150
+    ):
+        raise ValueError("Picture cues require the verified top-entry geometry")
+    # Original easeOut moves a 198px offset to 160.38px at frame one,
+    # outside the 150px clip. Frame two reaches 126.72px and draws ink.
+    return item["entry_frame"] + 2
 
 
 def requires_hypit(semantic: dict[str, Any]) -> bool:

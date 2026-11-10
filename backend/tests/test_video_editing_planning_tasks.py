@@ -160,7 +160,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         UNIFIED_EXPLANATION_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
         LIVE_SPLIT_TEMPLATE_ID,
-        "fruit-introduction-v1",
+        "hypit-picture-scenes-v1",
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         "evidence-judgment-v1",
@@ -170,6 +170,12 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "subtitle-progress-v1",
         "subtitle-foreground-v1",
     }
+    retired = client.post(
+        root + f"/editing-tasks/{task['id']}/planning-tasks",
+        json={"request_id": str(uuid4()), "template_id": "fruit-introduction-v1"},
+    )
+    assert retired.status_code == 409
+    assert retired.json()["error"]["code"] == "EDITING_TEMPLATE_RETIRED"
     assert all(len(row["slots"]) >= 10 for row in options)
     unified = next(row for row in options if row["id"] == UNIFIED_EXPANDED_TEMPLATE_ID)
     previous_unified = overlay_template(UNIFIED_TEMPLATE_ID)
@@ -404,8 +410,15 @@ def test_missing_original_after_preparation_stops_before_model_submission(
     assert fonts[removed] not in json.dumps(frozen)
 
 
-def test_strip_planning_checks_scoped_runtime_and_original_subtitles(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ("template_id", "group_ids"),
+    [
+        ("live-strip-story-v1", ("HY-A5",)),
+        ("hypit-picture-scenes-v1", ("HY-A2", "HY-A3")),
+    ],
+)
+def test_hypit_planning_checks_scoped_runtime_and_original_subtitles(
+    tmp_path, monkeypatch, template_id, group_ids
 ):
     cli = tmp_path / "bin" / "hypit.mjs"
     cli.parent.mkdir()
@@ -422,21 +435,24 @@ def test_strip_planning_checks_scoped_runtime_and_original_subtitles(
         video_editing_hypit_local_module=cli,
         video_editing_hypit_local_chrome=chrome,
     )
-    template = overlay_template("live-strip-story-v1")
-    assert worker.live_strip_blockers(settings, "internal", template, "none") == {}
-    assert worker.live_strip_blockers(settings, "internal", template, "present") == {
-        "HY-A5": ["source-subtitles-must-be-none"]
-    }
-    unavailable = {"HY-A5": ["original-hypit-internal-runtime-unavailable"]}
+    template = overlay_template(template_id)
+    assert worker.hypit_template_blockers(settings, "internal", template, "none") == {}
+    assert worker.hypit_template_blockers(
+        settings, "internal", template, "present"
+    ) == dict.fromkeys(group_ids, ["source-subtitles-must-be-none"])
+    unavailable = dict.fromkeys(
+        group_ids, ["original-hypit-internal-runtime-unavailable"]
+    )
     assert (
-        worker.live_strip_blockers(settings, "other", template, "none") == unavailable
+        worker.hypit_template_blockers(settings, "other", template, "none")
+        == unavailable
     )
     cli.write_bytes(b"changed")
     assert (
-        worker.live_strip_blockers(settings, "internal", template, "none")
+        worker.hypit_template_blockers(settings, "internal", template, "none")
         == unavailable
     )
-    assert worker.live_strip_blockers(settings, "internal", None, "none") == {}
+    assert worker.hypit_template_blockers(settings, "internal", None, "none") == {}
 
 
 def test_one_execution_per_prepared_request_and_valid_response_contract(

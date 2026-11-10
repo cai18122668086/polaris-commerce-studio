@@ -29,8 +29,8 @@ from .video_editing_catalog import (
 from .video_editing_cut_scenes import cut_scene_blockers
 from .video_editing_cxbr import cxbr_blockers, cxbr_windows
 from .video_editing_handoff_scenes import handoff_blockers
-from .video_editing_hypit import hypit_tools
-from .video_editing_hypit_strips import LIVE_STRIP_GROUP
+from .video_editing_hypit import PICTURE_GROUP, hypit_tools
+from .video_editing_hypit_strips import LIVE_STRIP_GROUP, SLANT_GROUP
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest
@@ -54,13 +54,15 @@ from .video_editing_yy6_scenes import yy6_scene_inputs
 from .video_editing_yy_openings import require_clean_yy_source
 
 
-def live_strip_blockers(
+def hypit_template_blockers(
     settings: Settings, workspace_id: str, template: dict | None, source_subtitles: str
 ) -> dict[str, list[str]]:
-    if not any(
-        slot["group_id"] == LIVE_STRIP_GROUP
+    groups = {
+        slot["group_id"]
         for slot in (template or {}).get("slots", [])
-    ):
+        if slot["group_id"] in {LIVE_STRIP_GROUP, SLANT_GROUP, PICTURE_GROUP}
+    }
+    if not groups:
         return {}
     blockers = []
     if source_subtitles != "none":
@@ -69,7 +71,7 @@ def live_strip_blockers(
         hypit_tools(settings, workspace_id)
     except (OSError, ValueError):
         blockers.append("original-hypit-internal-runtime-unavailable")
-    return {LIVE_STRIP_GROUP: blockers} if blockers else {}
+    return {group: list(blockers) for group in sorted(groups)} if blockers else {}
 
 
 def eligible() -> ColumnElement[bool]:
@@ -323,7 +325,7 @@ def process(
                 template,
             )
             runtime["unavailable_template_groups"].update(
-                live_strip_blockers(
+                hypit_template_blockers(
                     settings, workspace_id, template, snapshot["source_subtitles"]
                 )
             )
@@ -481,7 +483,7 @@ def process(
                     ),
                 )
                 current.update(
-                    live_strip_blockers(
+                    hypit_template_blockers(
                         settings, workspace_id, template, snapshot["source_subtitles"]
                     )
                 )

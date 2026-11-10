@@ -42,6 +42,12 @@ from .video_editing_contracts import (
     SemanticPlan,
     Transcript,
 )
+from .video_editing_cut_scenes import (
+    CUT_GROUPS,
+    cut_media_paths,
+    cut_source_paths,
+    validate_cut_anchors,
+)
 from .video_editing_cxbr import (
     CXBR_DEPENDENCIES,
     CXBR_DESIGN_ID,
@@ -1778,7 +1784,18 @@ def _unified_entry(
     config = read_json(inside(package, group["input_template"]))
     if group_id in UNIFIED_VIDEO_VARIANTS:
         config = unified_presenter_template(config)
+    is_cut = group_id in CUT_GROUPS
+    text_paths = set(contract["text_paths"])
+    omitted = {
+        path: "本期中文口播没有对应英文实录，原中文字幕和主字幕继续使用。"
+        for path in text_paths
+        if group_id == "Z-M06" and path.endswith("/en")
+    }
     media_path = UNIFIED_MEDIA_PATHS.get(group_id)
+    source_paths = (
+        cut_source_paths(group_id) if is_cut else (media_path,) if media_path else ()
+    )
+    images = project_image_digests(asset_cards) if is_cut else {}
     presenters = (
         {
             row["id"]
@@ -1786,16 +1803,16 @@ def _unified_entry(
             if row["kind"] == "original_video"
             and row["sha256"] == transcript.source_sha256
         }
-        if media_path
+        if source_paths
         else set()
     )
     try:
-        anchors = word_bindings(beat, transcript, contract, presenters)
+        anchors = word_bindings(beat, transcript, contract, presenters | images.keys())
         bound = {row["path"]: row["asset_id"] for row in anchors["media"]}
         if (
-            set(bound) != ({media_path} if media_path else set())
+            set(bound) != (cut_media_paths(group_id) if is_cut else set(source_paths))
             or set(beat.asset_ids) != set(bound.values())
-            or {row["path"] for row in anchors["text"]} != set(contract["text_paths"])
+            or {row["path"] for row in anchors["text"]} != text_paths - omitted.keys()
             or {row["path"] for row in anchors["events"]}
             != {row["path"] for row in contract["event_paths"]}
             or beat.relation in RELATION_MAPPING
@@ -1804,16 +1821,20 @@ def _unified_entry(
             raise ValueError(
                 "Original scene requires its actual media, words, events and relations"
             )
-        validate_unified_anchors(beat, anchors)
+        if is_cut:
+            validate_cut_anchors(beat, anchors, transcript, presenters, images)
+        else:
+            validate_unified_anchors(beat, anchors)
     except (ValueError, KeyError) as error:
         raise ApiError(
             422,
             "EDITING_TEMPLATE_UNIFIED_INPUTS_REQUIRED",
             f"{group_id} 需要原文字槽对应的实录短语、词点及关系。"
-            "使用人物的场景需绑定同期原片。",
+            "使用人物的场景需绑定同期原片，图片须对应各自实录段落。",
         ) from error
     slots = [
         *(row["path"] for key in ("text", "events", "media") for row in anchors[key]),
+        *omitted,
         *(
             field["path"]
             for field in contract["fields"]
@@ -1824,11 +1845,11 @@ def _unified_entry(
     for path in slots:
         set_native_field(config, path, None)
     config["layout"]["overflow"] = "reject"
-    if media_path:
-        config["media"][media_path.split("/")[2]]["end_policy"] = "error"
+    for path in source_paths:
+        set_native_field(config, path.removesuffix("/path") + "/end_policy", "error")
     reason = "沿用原生文字、人物窗或整帧底板，主字幕和原声使用整片时钟。"
     return NativeEpisodeEntry(
-        carrier="text",
+        carrier="picture" if is_cut else "text",
         placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
         recipe={
             "version": "tengli.native-recipe/1",
@@ -1841,11 +1862,16 @@ def _unified_entry(
             "parameter_decisions": {key: reason for key in config},
             "config": config,
             "placeholders": slots,
+            **({"empty_text": omitted} if omitted else {}),
             "media_clocks": [
-                {"media_path": media_path, "policy": "transcript_source_window"}
-            ]
-            if media_path
-            else [],
+                {
+                    "media_path": path,
+                    "policy": "transcript_cut_window"
+                    if is_cut
+                    else "transcript_source_window",
+                }
+                for path in source_paths
+            ],
         },
     ), anchors
 

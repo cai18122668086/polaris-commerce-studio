@@ -12,6 +12,7 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
 from .video_editing_contracts import SemanticPlan
+from .video_editing_cut_scenes import CUT_GROUPS, CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_DEPENDENCIES, CXBR_PURPOSES, cxbr_binding
 from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
 from .video_editing_hypit_strips import LIVE_STRIP_GROUP
@@ -555,6 +556,24 @@ _TEMPLATES[UNIFIED_EXPANDED_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[CUT_TEMPLATE_ID] = {
+    "id": CUT_TEMPLATE_ID,
+    "name": "实拍与项目素材接力",
+    "slots": [
+        *(
+            {
+                "group_id": group,
+                "purpose": purpose,
+                "layer": "scene",
+                "binding": binding + " 每个 cuts 用对应实录首词，"
+                "relation_items 按同序绑定各词段、素材 ID 及唯一原媒体槽。"
+                "缺少对应图时跳过。",
+            }
+            for group, (purpose, binding) in CUT_GROUPS.items()
+        ),
+        *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[SUBTITLE_RELAY_TEMPLATE_ID] = {
     "id": SUBTITLE_RELAY_TEMPLATE_ID,
     "name": "双层字幕接力",
@@ -657,6 +676,7 @@ def overlay_templates() -> list[dict]:
             AZL_TEMPLATE_ID,
             CXBR_TEMPLATE_ID,
             UNIFIED_EXPANDED_TEMPLATE_ID,
+            CUT_TEMPLATE_ID,
             JUDGMENT_TEMPLATE_ID,
             EXPLAINER_TEMPLATE_ID,
             SUBTITLE_STORY_TEMPLATE_ID,

@@ -19,6 +19,7 @@ from .video_assistance_provider import (
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP
 from .video_editing_catalog import validate_choice_snapshot
 from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_content import PACKAGE_GROUP
 from .video_editing_overlay_templates import (
@@ -74,6 +75,7 @@ def catalog_index(
     live_package: bool = False,
     line_scene: bool = False,
     unified_scene: bool = False,
+    cut_scene: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -102,6 +104,10 @@ def catalog_index(
         )
         if question_a:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
+        if cut_scene and group["id"] == "Z-M06":
+            parameters["text_paths"] = [
+                path for path in parameters["text_paths"] if not path.endswith("/en")
+            ]
         rows.append(
             {
                 "id": group["id"],
@@ -212,6 +218,7 @@ def build_request(
         live_package=live_package,
         line_scene=line_scene,
         unified_scene=bool(template and template["id"] in UNIFIED_TEMPLATES),
+        cut_scene=bool(template and template["id"] == CUT_TEMPLATE_ID),
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:

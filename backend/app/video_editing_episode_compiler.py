@@ -31,6 +31,7 @@ from .video_editing_browser_clocks import CARD_GROUP, NUMBERED_GROUP
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
+from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_CAPTION_INTENT, CXBR_PURPOSES, CXBR_TEMPLATE_ID
 from .video_editing_highlights import apply_highlight_edits
 from .video_editing_hypit import hypit_tools, internal_hypit_available, requires_hypit
@@ -871,7 +872,14 @@ def compile_episode(
                 "sha256": asset["sha256"],
                 "kind": asset.get("kind", "original_material"),
                 "semantic_use": asset.get("semantic_use", ""),
-                "viewed_identity": asset.get("viewed_identity"),
+                "viewed_identity": (
+                    "本期实录讲述者与现场画面"
+                    if authoring.overlay_template_id == CUT_TEMPLATE_ID
+                    and asset.get("kind") == "original_video"
+                    and asset["sha256"] == transcript.source_sha256
+                    and not asset.get("viewed_identity")
+                    else asset.get("viewed_identity")
+                ),
                 "source": asset.get("source"),
                 "license": asset.get("license"),
             }

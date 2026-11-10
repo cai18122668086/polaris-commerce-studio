@@ -25,6 +25,7 @@ from .video_editing_catalog import (
     planning_runtime_snapshot,
     unavailable_template_groups,
 )
+from .video_editing_cut_scenes import cut_scene_blockers
 from .video_editing_cxbr import cxbr_blockers, cxbr_windows
 from .video_editing_hypit import hypit_tools
 from .video_editing_hypit_strips import LIVE_STRIP_GROUP
@@ -336,6 +337,11 @@ def process(
             require_spoken_year(
                 template, transcript, runtime["unavailable_template_groups"]
             )
+            cut_scene_blockers(
+                template,
+                snapshot["asset_cards"],
+                runtime["unavailable_template_groups"],
+            )
             opening_inputs = yy6_scene_inputs(
                 template,
                 transcript,
@@ -460,6 +466,7 @@ def process(
                     template, snapshot["source_subtitles"], current
                 )
                 require_spoken_year(template, transcript, current)
+                cut_scene_blockers(template, snapshot["asset_cards"], current)
                 yy6_scene_inputs(template, transcript, snapshot["asset_cards"], current)
                 motion_blockers(
                     template,

@@ -26,6 +26,7 @@ from app.errors import ApiError
 from app.motion_library import atomic_json, read_json, sha256
 from app.video_editing_azl_panels import azl_blockers
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
+from app.video_editing_cut_scenes import CUT_GROUPS, CUT_TEMPLATE_ID, cut_scene_blockers
 from app.video_editing_cxbr import CXBR_PAPER_GROUPS, CXBR_PURPOSES, cxbr_blockers
 from app.video_editing_judgment import JUDGMENT_EVENTS, judgment_entry_frame
 from app.video_editing_native_sound import verify_rendered_sound
@@ -132,6 +133,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "azl-panels-v1",
         "chenxi-broll-v1",
         UNIFIED_EXPANDED_TEMPLATE_ID,
+        CUT_TEMPLATE_ID,
         "evidence-judgment-v1",
         "explainer-steps-v1",
         "subtitle-story-v1",
@@ -150,11 +152,11 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     } == set(UNIFIED_GROUPS)
     assert {
         row["group_id"] for row in unified["slots"] if row.get("layer") == "scene"
-    } == UNIFIED_SCENE_GROUPS
+    } == UNIFIED_SCENE_GROUPS - CUT_GROUPS.keys()
     unified_blocked = {}
     require_clean_unified_source(unified, "present", unified_blocked)
     assert unified_blocked == dict.fromkeys(
-        UNIFIED_SCENE_GROUPS, ["clean_source_required"]
+        UNIFIED_SCENE_GROUPS - CUT_GROUPS.keys(), ["clean_source_required"]
     )
     progress = next(row for row in options if row["id"] == "subtitle-progress-v1")
     relay = next(row for row in options if row["id"] == "subtitle-relay-v1")
@@ -1125,6 +1127,22 @@ def test_chenxi_preflight_preserves_native_video_and_paper_roles():
     unavailable = {}
     cxbr_blockers(template, "none", [source, paper], "source", unavailable)
     assert unavailable == dict.fromkeys(CXBR_PURPOSES, ["independent_video_required"])
+
+
+def test_cut_scene_preparation_counts_different_project_image_bytes():
+    template = overlay_template(CUT_TEMPLATE_ID)
+    cards = [
+        {"id": "source-a", "kind": "original_video", "sha256": "source"},
+        {"id": "material-a", "kind": "image", "sha256": "first"},
+        {"id": "material-b", "kind": "image", "sha256": "first"},
+    ]
+    unavailable = {}
+    cut_scene_blockers(template, cards, unavailable)
+    assert set(unavailable) == {"W-R08", "W-R10", "W-R16"}
+    cards.append({"id": "material-c", "kind": "image", "sha256": "second"})
+    unavailable = {}
+    cut_scene_blockers(template, cards, unavailable)
+    assert set(unavailable) == {"W-R08", "W-R16"}
 
 
 def test_year_preparation_requires_a_continuous_measured_year():

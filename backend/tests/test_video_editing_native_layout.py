@@ -331,6 +331,14 @@ def test_original_unified_easing_and_text_band_use_real_output_frames(tmp_path):
     }
     assert unified_action_frame(shot, 30, "/timing/events/title") == 13
     assert unified_action_frame(shot, 30, "/timing/events/item0") == 22
+    paper = {
+        **shot,
+        "group_id": "W-R08",
+        "start_seconds": 0.4,
+        "config": {"timing": {"events": {"cuts": [0, 0.3, 0.65]}}},
+    }
+    assert unified_action_frame(paper, 30, "/timing/events/cuts/0") == 12
+    assert unified_action_frame(paper, 30, "/timing/events/cuts/1") == 21
     atomic_json(
         tmp_path / "episode.json",
         {

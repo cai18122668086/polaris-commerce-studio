@@ -5,6 +5,12 @@ from pathlib import Path
 
 from .motion_library import read_json
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from .video_editing_cut_scenes import (
+    CUT_CAPTION_BANDS,
+    CUT_GROUPS,
+    CUT_SOUND_MODES,
+    CUT_TEMPLATE_ID,
+)
 from .video_editing_native_content import (
     NUMBER_GROUP,
     YEAR_GROUP,
@@ -16,7 +22,9 @@ from .video_editing_word_bindings import emphasis_text
 
 UNIFIED_TEMPLATE_ID = "unified-argument-v1"
 UNIFIED_EXPANDED_TEMPLATE_ID = "unified-argument-v2"
-UNIFIED_TEMPLATES = frozenset({UNIFIED_TEMPLATE_ID, UNIFIED_EXPANDED_TEMPLATE_ID})
+UNIFIED_TEMPLATES = frozenset(
+    {UNIFIED_TEMPLATE_ID, UNIFIED_EXPANDED_TEMPLATE_ID, CUT_TEMPLATE_ID}
+)
 UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
 UNIFIED_CAPTION_INTENT = "unified-argument-caption-intent.json"
 UNIFIED_WINDOW_GROUP = "Z-M03"
@@ -93,6 +101,7 @@ UNIFIED_SOUNDS = {
     "Z-M14": {"item0": "ease", "item1": "ease", "item2": "ease"},
     "W-R05": {"first_in": "ease", "second_in": "ease"},
     NUMBER_GROUP: {"black_in": "ease", "second_number": "ease"},
+    **CUT_SOUND_MODES,
 }
 _TEXT_BINDINGS = {
     "Z-M01": {"phrases/0": "phrase0", "phrases/1": "phrase1"},
@@ -125,13 +134,16 @@ _REQUIRED_RELATIONS = {
     "W-R05": ("parallel", ("first", "second")),
     NUMBER_GROUP: ("contrast", ("captions/0", "captions/1")),
 }
-UNIFIED_SCENE_GROUPS = UNIFIED_GROUPS.keys() | UNIFIED_EXPANDED_GROUPS.keys()
+UNIFIED_SCENE_GROUPS = (
+    UNIFIED_GROUPS.keys() | UNIFIED_EXPANDED_GROUPS.keys() | CUT_GROUPS.keys()
+)
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
     UNIFIED_WINDOW_GROUP: (530, 745),
     "Z-M10": (825, 960),
     "Z-M14": (850, 960),
     NUMBER_GROUP: (850, 960),
+    **CUT_CAPTION_BANDS,
 }
 _EVENT_PREFIX = "/timing/events/"
 
@@ -392,7 +404,9 @@ def unified_action_frame(shot: dict, fps: int, path: str) -> int:
         or event not in UNIFIED_SOUNDS[group]
     ):
         raise ValueError("Original unified sound needs its full-frame native action")
-    at = shot["config"]["timing"]["events"][event] * fps
+    name, sep, index = event.partition("/")
+    value = shot["config"]["timing"]["events"][name]
+    at = (value[int(index)] if sep else value) * fps
     mode = UNIFIED_SOUNDS[group][event]
     local = (
         0

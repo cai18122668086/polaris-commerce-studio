@@ -132,13 +132,17 @@ from .video_editing_native_compiler import set_native_field
 from .video_editing_native_content import (
     CHAPTER_PATH,
     PACKAGE_GROUP,
+    TRANSLATION_GROUP,
+    TRANSLATION_PATHS,
     WHY_EVENTS,
     WHY_FONT,
     WHY_GROUP,
     WHY_PROP_PATHS,
     YEAR_GROUP,
+    automatic_translation_labels,
     chapter_ordinal,
     live_package_template,
+    translation_labels,
     why_template,
 )
 from .video_editing_native_layout import (
@@ -2230,6 +2234,7 @@ def _unified_entry(
     is_panel = group_id in PANEL_GROUPS
     is_handoff = group_id in HANDOFF_IMAGE
     is_why = group_id == WHY_GROUP
+    is_translation = group_id == TRANSLATION_GROUP
     videos = (
         project_panel_videos(asset_cards, transcript.source_sha256)
         if group_id == TRIPTYCH
@@ -2257,6 +2262,8 @@ def _unified_entry(
     text_paths = set(contract["text_paths"])
     if chapter_starts is not None:
         text_paths.remove(CHAPTER_PATH)
+    if is_translation:
+        text_paths.difference_update(TRANSLATION_PATHS)
     omitted = {
         path: "本期中文口播没有对应英文实录，原中文字幕和主字幕继续使用。"
         for path in text_paths
@@ -2318,6 +2325,11 @@ def _unified_entry(
             validate_unified_anchors(beat, anchors, transcript)
         if chapter_starts is not None:
             chapter_ordinal(beat, transcript, chapter_starts)
+        translations = (
+            automatic_translation_labels(beat, anchors) if is_translation else None
+        )
+        if translations is not None:
+            translation_labels({"group_id": group_id, **anchors}, translations)
     except (ValueError, KeyError) as error:
         raise ApiError(
             422,
@@ -2329,6 +2341,7 @@ def _unified_entry(
         *(row["path"] for key in ("text", "events", "media") for row in anchors[key]),
         *omitted,
         *((CHAPTER_PATH,) if chapter_starts is not None else ()),
+        *(TRANSLATION_PATHS if is_translation else ()),
         *(
             field["path"]
             for field in contract["fields"]
@@ -2362,6 +2375,9 @@ def _unified_entry(
             "placeholders": slots,
             **({"empty_text": omitted} if omitted else {}),
             **({"dependency_ids": [WHY_FONT]} if is_why else {}),
+            **(
+                {"translation_labels": translations} if translations is not None else {}
+            ),
             **(
                 {"chapter_start_token_ids": chapter_starts}
                 if chapter_starts is not None

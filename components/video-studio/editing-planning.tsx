@@ -210,7 +210,10 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
           {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
         </>}
       </>}
-      {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}</li>)}</ul><p className={styles.note}>语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
+      {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>
+        {beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}
+        {beat.translation_gloss && <p className={styles.note}>英文短译待核对 · {beat.translation_gloss.before} → {beat.translation_gloss.after}</p>}
+      </li>)}</ul><p className={styles.note}>语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
       {job.status === "completed" && job.overlay_template && <>
         {batchErrors[job.id] && <p role="alert" className={styles.error}>{batchErrors[job.id]}</p>}
         {job.preview_task_id && tasks.some(task => task.id === job.preview_task_id)

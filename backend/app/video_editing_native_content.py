@@ -16,6 +16,7 @@ NUMBER_GROUP = "W-R07"
 YEAR_GROUP = "AH-S07"
 YEAR_PATH = "/content/year"
 TRANSLATION_GROUP = "W-R02"
+TRANSLATION_PATHS = ("/content/english_before", "/content/english_after")
 ROLE_CHAIN_GROUP = "W-R15"
 PACKAGE_GROUP = "Z-M12"
 FILM_FEEDBACK_GROUP = "W-R01"
@@ -221,6 +222,21 @@ def translation_labels(native: dict[str, Any], authored: Any) -> list[dict[str, 
             }
         )
     return result
+
+
+def automatic_translation_labels(beat: SemanticBeat, native: dict) -> dict:
+    gloss = beat.translation_gloss
+    if (
+        beat.group_id != TRANSLATION_GROUP
+        or gloss is None
+        or gloss.before == gloss.after
+    ):
+        raise ValueError("Bind two distinct translations to the original contrast")
+    spoken = {row["path"]: row for row in native["text"]}
+    return {
+        side: {"source_text": spoken[f"/content/{side}"]["text"], "display_text": label}
+        for side, label in gloss.model_dump().items()
+    }
 
 
 def film_feedback_entries(

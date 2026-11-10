@@ -2,12 +2,14 @@ import pytest
 from PIL import Image
 
 from app.video_editing_contracts import (
+    BilingualContrastGloss,
     SemanticBeat,
     SemanticPlan,
     Transcript,
     TranscriptToken,
 )
 from app.video_editing_native_content import (
+    automatic_translation_labels,
     chapter_ordinal,
     film_feedback_entries,
     number_glyphs,
@@ -159,6 +161,23 @@ def test_translation_labels_require_matching_spoken_occurrences():
         "before": {"source_text": "每瓶", "display_text": "PER BOTTLE"},
         "after": {"source_text": "到手", "display_text": "TOTAL"},
     }
+    beat = SemanticBeat(
+        id="bilingual",
+        group_id="W-R02",
+        first_token_id="t0",
+        last_token_id="t5",
+        relation="contrast",
+        reason="前后换字",
+        translation_gloss=BilingualContrastGloss(before="PER BOTTLE", after="TOTAL"),
+    )
+    assert automatic_translation_labels(beat, native) == labels
+    duplicate = beat.model_copy(
+        update={
+            "translation_gloss": BilingualContrastGloss(before="TOTAL", after="TOTAL")
+        }
+    )
+    with pytest.raises(ValueError, match="two distinct translations"):
+        automatic_translation_labels(duplicate, native)
     result = translation_labels(native, labels)
     assert [r["display_text"] for r in result] == ["PER BOTTLE", "TOTAL"]
     assert result[0]["source_token_ids"] == ["t0", "t1"]

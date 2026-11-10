@@ -589,6 +589,11 @@ class SemanticRelationItem(StrictVideoModel):
     native_media_paths: list[str] = Field(default_factory=list, max_length=20)
 
 
+class BilingualContrastGloss(StrictVideoModel):
+    before: str = Field(min_length=1, max_length=24, pattern=r"^[A-Z]+(?:[ -][A-Z]+)*$")
+    after: str = Field(min_length=1, max_length=24, pattern=r"^[A-Z]+(?:[ -][A-Z]+)*$")
+
+
 class SemanticBeat(StrictVideoModel):
     """No time values, file paths or executable template; allowlisted pointers only."""
 
@@ -626,6 +631,9 @@ class SemanticBeat(StrictVideoModel):
         max_length=24,
         pattern=r"^[A-Z][A-Z '?-]{0,23}$",
         exclude_if=lambda value: value is None,
+    )
+    translation_gloss: BilingualContrastGloss | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
 
 

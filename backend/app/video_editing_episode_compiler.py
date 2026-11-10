@@ -111,9 +111,11 @@ from .video_editing_render_edits import (
 from .video_editing_story_panels import PANEL_TEMPLATE_ID, TRIPTYCH, triptych_entrance
 from .video_editing_unified_scenes import (
     BROWSER_LIST_SCENES,
+    TRANSLATION_GROUP,
     UNIFIED_CAPTION_INTENT,
     UNIFIED_SCENE_GROUPS,
     UNIFIED_TEMPLATES,
+    UNIFIED_TRANSLATION_CAPTION_BASELINE,
     UNIFIED_WINDOW_CAPTION_BASELINE,
     UNIFIED_WINDOW_GROUP,
     split_unified_caption_lanes,
@@ -858,6 +860,11 @@ def compile_episode(
     }.get(authoring.overlay_template_id or "")
     if caption_lane:
         caption_groups, baseline, lane_reason = caption_lane
+        unified = authoring.overlay_template_id in UNIFIED_TEMPLATES
+        unified_baselines = {
+            UNIFIED_WINDOW_GROUP: UNIFIED_WINDOW_CAPTION_BASELINE,
+            TRANSLATION_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
+        }
         effect_windows = [
             (
                 shot["start_seconds"],
@@ -865,9 +872,8 @@ def compile_episode(
                 YY_OPENING_LOWER_CAPTION_BASELINE
                 if authoring.overlay_template_id in YY_OPENING_TEMPLATES
                 and shot["group_id"] in YY_OPENING_LOWER_TEXT_BANDS
-                else UNIFIED_WINDOW_CAPTION_BASELINE
-                if authoring.overlay_template_id in UNIFIED_TEMPLATES
-                and shot["group_id"] == UNIFIED_WINDOW_GROUP
+                else unified_baselines[shot["group_id"]]
+                if unified and shot["group_id"] in unified_baselines
                 else SPLIT_HORIZONTAL_CAPTION_BASELINE
                 if shot["group_id"] == SPLIT_HORIZONTAL
                 else SLANT_CAPTION_BASELINE
@@ -880,7 +886,6 @@ def compile_episode(
             if shot["group_id"] in caption_groups
         ]
         if effect_windows:
-            unified = authoring.overlay_template_id in UNIFIED_TEMPLATES
             if unified:
                 episode["captions"] = split_unified_caption_lanes(
                     episode["captions"], effect_windows
@@ -903,6 +908,8 @@ def compile_episode(
                         "baseline_y_px": round(episode["output"]["height"] * y / 1280),
                         "reason": "主字幕进入人物窗下缘，避开原生标签和结论。"
                         if unified and y == UNIFIED_WINDOW_CAPTION_BASELINE
+                        else "主字幕放在双语换字的原生释义下方。"
+                        if unified and y == UNIFIED_TRANSLATION_CAPTION_BASELINE
                         else "主字幕放在原横向分屏前两排标签之间。"
                         if y == SPLIT_HORIZONTAL_CAPTION_BASELINE
                         else lane_reason,

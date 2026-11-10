@@ -161,6 +161,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         UNIFIED_EXPLANATION_TEMPLATE_ID,
         "unified-chapter-v1",
         "unified-question-relay-v1",
+        "unified-bilingual-swap-v1",
         HANDOFF_TEMPLATE_ID,
         LIVE_SPLIT_TEMPLATE_ID,
         "hypit-picture-scenes-v1",

@@ -33,7 +33,13 @@ from .video_editing_hypit_strips import (
 )
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
-from .video_editing_native_content import PACKAGE_GROUP, WHY_FONT, WHY_GROUP, YEAR_GROUP
+from .video_editing_native_content import (
+    PACKAGE_GROUP,
+    TRANSLATION_GROUP,
+    WHY_FONT,
+    WHY_GROUP,
+    YEAR_GROUP,
+)
 from .video_editing_presenter_motion import (
     MOTION_FONT,
     MOTION_MATTE,
@@ -47,6 +53,7 @@ from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
 from .video_editing_unified_scenes import (
     CHAPTER_SCENE_GROUP,
     CHAPTER_TEMPLATE_ID,
+    TRANSLATION_TEMPLATE_ID,
     UNIFIED_EXPANDED_GROUPS,
     UNIFIED_EXPANDED_TEMPLATE_ID,
     UNIFIED_EXPLANATION_GROUPS,
@@ -648,6 +655,22 @@ _TEMPLATES[WHY_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[TRANSLATION_TEMPLATE_ID] = {
+    "id": TRANSLATION_TEMPLATE_ID,
+    "name": "双语换字与口播重点",
+    "slots": [
+        {
+            "group_id": TRANSLATION_GROUP,
+            "purpose": "用原生两字换字及同期人物窗呈现实录中的前后对比。",
+            "layer": "scene",
+            "binding": "关系使用 contrast，两项依次绑定实录两字词及各自的原句。"
+            "title_in 取前项两字首词，swap_first 与 swap_second 取后项各字首词。"
+            "settled 取稍后的实录词尾，人物窗绑定同期原片。"
+            "英文通过 translation_gloss 填写前后两条短译，具体数量与条件保留在原句。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[HANDOFF_TEMPLATE_ID] = {
     "id": HANDOFF_TEMPLATE_ID,
     "name": "转场与评论引导",
@@ -886,6 +909,7 @@ def overlay_templates() -> list[dict]:
             UNIFIED_EXPLANATION_TEMPLATE_ID,
             CHAPTER_TEMPLATE_ID,
             WHY_TEMPLATE_ID,
+            TRANSLATION_TEMPLATE_ID,
             HANDOFF_TEMPLATE_ID,
             LIVE_SPLIT_TEMPLATE_ID,
             HY_PICTURE_TEMPLATE_ID,
@@ -931,6 +955,17 @@ def validate_template_plan(
         for beat in plan.beats
     ):
         raise ValueError("English question gloss must match the selected AH-S03 A slot")
+    if any(
+        (beat.translation_gloss is not None)
+        != (
+            template["id"] == TRANSLATION_TEMPLATE_ID
+            and beat.group_id == TRANSLATION_GROUP
+        )
+        for beat in plan.beats
+    ):
+        raise ValueError(
+            "Bilingual glosses require their selected two-sided native slot"
+        )
     groups = {slot["group_id"] for slot in template["slots"]}
     chosen = {beat.group_id for beat in plan.beats if beat.group_id != "Z-M00"}
     chapter_starts = plan.chapter_start_token_ids

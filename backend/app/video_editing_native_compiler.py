@@ -90,6 +90,7 @@ from .video_editing_native_content import (
     WHY_GROUP,
     YEAR_GROUP,
     YEAR_PATH,
+    automatic_translation_labels,
     chapter_ordinal,
     film_feedback_entries,
     live_package_template,
@@ -543,9 +544,20 @@ def compile_native_job(
         assignments[YEAR_PATH] = year["display_text"]
         native["year_glyphs"] = year
     if "translation_labels" in recipe:
+        if beat.translation_gloss is not None and recipe[
+            "translation_labels"
+        ] != automatic_translation_labels(beat, native):
+            raise ValueError(
+                "Native translations differ from the frozen planning glosses"
+            )
         translations = translation_labels(native, recipe["translation_labels"])
+        if beat.translation_gloss is not None:
+            for row in translations:
+                row["origin"] = "tengli_planner"
         assignments.update({row["path"]: row["display_text"] for row in translations})
         native["translation_labels"] = translations
+    elif beat.translation_gloss is not None:
+        raise ValueError("Native translations require their corresponding recipe")
     if question_card_a:
         authored = recipe.get("question_card_gloss")
         if (

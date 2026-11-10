@@ -1550,6 +1550,31 @@
         "title": "BenchmarkSearchRequest",
         "type": "object"
       },
+      "BilingualContrastGloss": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "maxLength": 24,
+            "minLength": 1,
+            "pattern": "^[A-Z]+(?:[ -][A-Z]+)*$",
+            "title": "After",
+            "type": "string"
+          },
+          "before": {
+            "maxLength": 24,
+            "minLength": 1,
+            "pattern": "^[A-Z]+(?:[ -][A-Z]+)*$",
+            "title": "Before",
+            "type": "string"
+          }
+        },
+        "required": [
+          "before",
+          "after"
+        ],
+        "title": "BilingualContrastGloss",
+        "type": "object"
+      },
       "Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post": {
         "properties": {
           "consent": {
@@ -10525,6 +10550,16 @@
             "maxItems": 20,
             "title": "Relation Items",
             "type": "array"
+          },
+          "translation_gloss": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BilingualContrastGloss"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

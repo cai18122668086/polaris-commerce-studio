@@ -27,7 +27,13 @@ from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
 from .video_editing_line_branch import LINE_GROUP
-from .video_editing_native_content import CHAPTER_PATH, PACKAGE_GROUP, WHY_GROUP
+from .video_editing_native_content import (
+    CHAPTER_PATH,
+    PACKAGE_GROUP,
+    TRANSLATION_GROUP,
+    TRANSLATION_PATHS,
+    WHY_GROUP,
+)
 from .video_editing_overlay_templates import (
     LINE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
@@ -47,6 +53,7 @@ from .video_editing_template_materials import runtime_payload, validate_template
 from .video_editing_unified_scenes import (
     CHAPTER_SCENE_GROUP,
     CHAPTER_TEMPLATE_ID,
+    TRANSLATION_TEMPLATE_ID,
     UNIFIED_EXPLANATION_TEMPLATE_ID,
     UNIFIED_TEMPLATES,
     UNIFIED_VIDEO_VARIANTS,
@@ -95,6 +102,7 @@ def catalog_index(
     live_splits: bool = False,
     chapter_scene: bool = False,
     why_scene: bool = False,
+    translation_scene: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -128,6 +136,9 @@ def catalog_index(
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
         if chapter_scene and group["id"] == CHAPTER_SCENE_GROUP:
             parameters["text_paths"].remove(CHAPTER_PATH)
+        if translation_scene and group["id"] == TRANSLATION_GROUP:
+            for path in TRANSLATION_PATHS:
+                parameters["text_paths"].remove(path)
         if (
             (cut_scene and group["id"] == "Z-M06")
             or (panel_scene and group["id"] == "Z-M08")
@@ -247,6 +258,7 @@ def build_request(
     rules = rule_pack(package)
     question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
     chapter_scene = bool(template and template["id"] == CHAPTER_TEMPLATE_ID)
+    translation_scene = bool(template and template["id"] == TRANSLATION_TEMPLATE_ID)
     live_package = bool(template and template["id"] in PACKAGE_TEMPLATES)
     line_scene = bool(template and template["id"] == LINE_TEMPLATE_ID)
     catalog = catalog_index(
@@ -265,6 +277,7 @@ def build_request(
         live_splits=bool(template and template["id"] == LIVE_SPLIT_TEMPLATE_ID),
         chapter_scene=chapter_scene,
         why_scene=bool(template and template["id"] == WHY_TEMPLATE_ID),
+        translation_scene=translation_scene,
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
@@ -272,6 +285,9 @@ def build_request(
         del schema["$defs"]["SemanticBeat"]["properties"]["question_gloss"]
     if not chapter_scene:
         del schema["properties"]["chapter_start_token_ids"]
+    if not translation_scene:
+        del schema["$defs"]["SemanticBeat"]["properties"]["translation_gloss"]
+        del schema["$defs"]["BilingualContrastGloss"]
     if runtime is not None:
         if set(runtime["groups"]) != {row["id"] for row in catalog}:
             raise ValueError(
@@ -392,6 +408,14 @@ def build_request(
             "W-R17 的两个问号从 native_image_slot_ids 对应槽选择不同道具，"
             "直接绑定 native_media，不将道具当成实录并列项。"
             "没有相符道具或实录问句时跳过该槽。"
+        )
+    if translation_scene:
+        message += (
+            "只有 W-R02 可用 translation_gloss，"
+            "before 和 after 分别翻译各自的实录两字词。"
+            "使用最多 24 个字符的大写英文短语，不增加实录没有的事实。"
+            "英文不填写 native_text，前后两句实录仍须各自绑定原生字幕。"
+            "后项的两字须能独立锚定，条件不满足时使用同模板其他动效。"
         )
     if runtime is not None:
         message += (
@@ -767,6 +791,10 @@ def generate(
         )
     if template is None and plan.chapter_start_token_ids:
         raise ValueError("Chapter boundaries require the selected chapter template")
+    if template is None and any(
+        beat.translation_gloss is not None for beat in plan.beats
+    ):
+        raise ValueError("Bilingual glosses require the selected contrast template")
     validate_plan(
         plan,
         transcript,

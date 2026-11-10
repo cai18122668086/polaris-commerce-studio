@@ -45,6 +45,7 @@ from .video_editing_hypit_strips import (
 )
 from .video_editing_native_content import (
     NUMBER_GROUP,
+    TRANSLATION_GROUP,
     WHY_EVENTS,
     WHY_GROUP,
     YEAR_GROUP,
@@ -69,6 +70,7 @@ UNIFIED_EXPLANATION_TEMPLATE_ID = "unified-explanation-v1"
 CHAPTER_TEMPLATE_ID = "unified-chapter-v1"
 CHAPTER_SCENE_GROUP = "Z-M15"
 WHY_TEMPLATE_ID = "unified-question-relay-v1"
+TRANSLATION_TEMPLATE_ID = "unified-bilingual-swap-v1"
 UNIFIED_TEMPLATES = frozenset(
     {
         UNIFIED_TEMPLATE_ID,
@@ -76,6 +78,7 @@ UNIFIED_TEMPLATES = frozenset(
         UNIFIED_EXPLANATION_TEMPLATE_ID,
         CHAPTER_TEMPLATE_ID,
         WHY_TEMPLATE_ID,
+        TRANSLATION_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
@@ -89,6 +92,7 @@ UNIFIED_DESIGN_ID = "tengli-unified-argument-v1"
 UNIFIED_CAPTION_INTENT = "unified-argument-caption-intent.json"
 UNIFIED_WINDOW_GROUP = "Z-M03"
 UNIFIED_WINDOW_CAPTION_BASELINE = 980
+UNIFIED_TRANSLATION_CAPTION_BASELINE = 1266
 UNIFIED_PRESENTER = "/media/presenter/path"
 UNIFIED_VIDEO_VARIANTS = frozenset({"Z-M02", "Z-M03", "Z-M04"})
 PRESENTER_VIDEO_GROUPS = UNIFIED_VIDEO_VARIANTS | PANEL_BOARDS
@@ -101,6 +105,7 @@ UNIFIED_MEDIA_PATHS = {
             "Z-M16",
             CHAPTER_SCENE_GROUP,
             WHY_GROUP,
+            TRANSLATION_GROUP,
             *UNIFIED_VIDEO_VARIANTS,
         ),
         UNIFIED_PRESENTER,
@@ -189,6 +194,11 @@ UNIFIED_SOUNDS = {
     "Z-M10": {"number_in": "ease", "action_in": "ease"},
     "Z-M14": {"item0": "ease", "item1": "ease", "item2": "ease"},
     CHAPTER_SCENE_GROUP: {"ordinal": "ease", "title": "ease"},
+    TRANSLATION_GROUP: {
+        "title_in": "ease",
+        "swap_first": "visible",
+        "swap_second": "ease",
+    },
     WHY_GROUP: dict(
         zip(
             (path.removeprefix("/timing/events/") for path in WHY_EVENTS),
@@ -241,6 +251,7 @@ _REQUIRED_RELATIONS = {
     "Z-M14": ("parallel", ("words/0", "words/1", "words/2")),
     "W-R05": ("parallel", ("first", "second")),
     NUMBER_GROUP: ("contrast", ("captions/0", "captions/1")),
+    TRANSLATION_GROUP: ("contrast", ("before", "after")),
 }
 BROWSER_LIST_SCENES = {FRUIT_LIST_GROUP, *LIVE_SPLIT_GROUPS}
 UNIFIED_SCENE_GROUPS = (
@@ -251,7 +262,14 @@ UNIFIED_SCENE_GROUPS = (
     | PANEL_GROUPS.keys()
     | HANDOFF_GROUPS.keys()
     | BROWSER_LIST_SCENES
-    | {SLANT_GROUP, PICTURE_GROUP, PRICE_CARD_GROUP, CHAPTER_SCENE_GROUP, WHY_GROUP}
+    | {
+        SLANT_GROUP,
+        PICTURE_GROUP,
+        PRICE_CARD_GROUP,
+        CHAPTER_SCENE_GROUP,
+        WHY_GROUP,
+        TRANSLATION_GROUP,
+    }
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -261,6 +279,7 @@ _CAPTION_BANDS = {
     "Z-M14": (850, 960),
     "Z-M16": (850, 960),
     NUMBER_GROUP: (850, 960),
+    TRANSLATION_GROUP: (880, 960),
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
     **HANDOFF_CAPTION_BANDS,
@@ -586,6 +605,36 @@ def validate_unified_anchors(
     times = {
         path.removeprefix(_EVENT_PREFIX): row["value"] for path, row in events.items()
     }
+    if group == TRANSLATION_GROUP:
+        before, after = text["before"], text["after"]
+        after_words = [
+            emphasis_text(token.text, "omit_sentence_punctuation")
+            for token in transcript.tokens
+            if token.id in after["token_ids"]
+        ]
+        title, first, second, settled = (
+            events[_EVENT_PREFIX + key]
+            for key in ("title_in", "swap_first", "swap_second", "settled")
+        )
+        if (
+            any(len(row["text"]) != 2 for row in (before, after))
+            or before["text"] == after["text"]
+            or after_words != list(after["text"])
+            or not _starts(title, before)
+            or [first["token_id"], second["token_id"]] != after["token_ids"]
+            or settled["edge"] != "end"
+            or not title["value"] + 0.32 <= first["value"] < second["value"]
+            or not second["value"] + 0.20 <= settled["value"] <= duration - 0.30
+            or any(
+                not 1 <= len(text[f"caption_{side}"]["text"]) <= 12
+                or f"/content/caption_{side}" not in item.native_text_paths
+                for side, item in zip(
+                    ("before", "after"), beat.relation_items, strict=True
+                )
+            )
+        ):
+            raise ValueError("Each Chinese flip needs its measured word and caption")
+        return
     if group == NUMBER_GROUP:
         first, second = number_glyphs(anchors)
         if (

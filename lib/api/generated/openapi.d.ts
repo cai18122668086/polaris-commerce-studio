@@ -4452,6 +4452,13 @@ export interface components {
              */
             sort: "relevance" | "newest" | "most_liked";
         };
+        /** BilingualContrastGloss */
+        BilingualContrastGloss: {
+            /** After */
+            after: string;
+            /** Before */
+            before: string;
+        };
         /** Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post */
         Body_create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post: {
             /** Consent */
@@ -7824,6 +7831,7 @@ export interface components {
             relation: "explanation" | "parallel" | "contrast" | "cause" | "sequence" | "summary" | "condition" | "negation" | "transformation" | "amount" | "question" | "call_to_action";
             /** Relation Items */
             relation_items?: components["schemas"]["SemanticRelationItem"][];
+            translation_gloss?: components["schemas"]["BilingualContrastGloss"] | null;
         };
         /** SemanticPlan */
         SemanticPlan: {

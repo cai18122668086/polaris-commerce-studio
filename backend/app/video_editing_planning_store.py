@@ -34,6 +34,10 @@ from .video_editing_task_models import (
     EditingSourceRecord,
     EditingTaskRecord,
 )
+from .video_editing_transcript_store import (
+    recorded_source_frame,
+    require_native_source_frame,
+)
 
 FILES = {
     "request": "semantic-request.json",
@@ -258,6 +262,7 @@ def create_planning_task(
         raise ApiError(
             409, "EDITING_PLANNING_TRANSCRIPT_REQUIRED", "原任务缺少实际转录产物。"
         )
+    require_native_source_frame(recorded_source_frame(artifact))
     choices = stored_choice_snapshot(
         session, workspace.workspace_id, workspace.principal.user_id, base.project_id
     )

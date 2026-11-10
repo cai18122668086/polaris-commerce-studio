@@ -44,6 +44,7 @@ from .video_editing_overlay_templates import MIN_OVERLAY_TYPES, motion_counts
 from .video_editing_pipeline import (
     EditingFailure,
     compile_baseline,
+    measured_source_frame,
     native_export,
     prepare,
     prepare_material_frame_clocks,
@@ -786,6 +787,9 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                         "transcript": {
                             "duration_ms": transcript.duration_ms,
                             "analysis_audio_offset_ms": offset,
+                            "source_frame": measured_source_frame(
+                                prepared["probe"]
+                            ).model_dump(),
                         },
                         "transcript_audio": {
                             "duration_ms": clock["analysis_audio_end_ms"] - offset,

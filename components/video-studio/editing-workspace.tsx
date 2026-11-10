@@ -12,11 +12,11 @@ import { EditingNativePlans, type PreviewBaseSelection } from "./editing-native-
 import { EditingPlanning } from "./editing-planning";
 import styles from "./editing-workspace.module.css";
 
-type Artifact = { id: string; role: string; url: string; sha256: string; bytes: number; duration_ms: number | null };
-type EditingTask = { source_origin?: components["schemas"]["EditingSourceOrigin"] | null; motion_counts?: components["schemas"]["EditingMotionCounts"] | null; id: string; source_id: string; status: string; stage: string; error_code: string | null; cancel_requested: boolean; created_at: string; artifacts: Artifact[]; options: components["schemas"]["EditingOptions"] };
+type EditingTask = components["schemas"]["EditingTaskResponse"];
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const stageLabel: Record<string, string> = { queued: "等待剪辑", preparing: "准备原片", transcribing: "识别实际口播", aligning: "按校对文字重新对齐", compiling: "编排画面与字幕", rendering: "生成视频", validating: "检查成片", building_preview: "生成代理预览", storing: "保存产物", transcript_ready: "口播转录已就绪", preview_ready: "代理预览已就绪", completed: "成片已生成" };
 const errorLabel: Record<string, string> = {
+  EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片。请选择符合画幅的原片。",
   EDITING_VIDEO_FRAME_CLOCK_INVALID: "无法核对原片的显示时钟，请更换原片或联系管理员。",
   EDITING_MATERIAL_FRAME_CLOCK_INVALID: "无法核对补充视频的显示时钟，请检查素材或联系管理员。",
   EDITING_MEASURE_VIDEO_FRAME_CLOCK_FAILED: "无法读取原片的显示时间，请检查视频文件。",
@@ -86,7 +86,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     } catch { setError("操作暂未确认，请刷新任务后重试。"); }
     finally { setBusy(false); }
   };
-  const confirmExport = async (task: EditingTask, preview: Artifact) => {
+  const confirmExport = async (task: EditingTask, preview: components["schemas"]["EditingArtifactResponse"]) => {
     setBusy(true); setError("");
     try {
       unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/confirm-export`, {
@@ -112,7 +112,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     <label>选择原片<select aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && (" · 确认稿 " + job.confirmed_version_id.slice(0, 8))}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
     {selected === "upload" && <label>视频文件<input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => setFile(event.target.files?.[0])} /></label>}
     <label>原片已有字幕吗？<select value={subtitles} onChange={event => setSubtitles(event.target.value as typeof subtitles)}><option value="unknown">请先查看原片后选择</option><option value="none">没有，生成主字幕</option><option value="present">已有，保留画面中的字幕</option></select></label>
-    <p className={styles.note}>做动效剪辑可先识别口播，得到词级时间轴后选择组合模板。也可直接生成基础字幕片。</p>
+    <p className={styles.note}>先识别口播可得到词级时间轴。动效模板和基础字幕片目前使用方形像素的 9:16 竖屏原片。</p>
     <div className={styles.correctionActions}>
       <button type="button" onClick={() => void submit("transcript")} disabled={busy || !canSubmit}>识别口播，准备动效剪辑</button>
       <button type="button" onClick={() => void submit("subtitles")} disabled={busy || !canSubmit}>生成基础字幕片</button>
@@ -179,7 +179,9 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
         {task.status === "completed" && task.options.mode === "transcript" && transcript && <>
           {transcriptAudio && <audio id={`editing-transcript-audio-${task.id}`} controls preload="none" src={transcriptAudio.url} aria-label="口播原声试听" />}
           <a href={transcript.url} download>下载逐词转录</a>
-          <button type="button" disabled={busy} onClick={() => planFromTranscript(task.id)}>使用此转录开始规划</button>
+          {task.source_frame?.supports_native_portrait === false
+            ? <p className={styles.note} role="status">原片画幅 {task.source_frame.width}×{task.source_frame.height}。转录可试听和校对。{errorLabel.EDITING_ORIENTATION_REVIEW_REQUIRED}</p>
+            : <button type="button" disabled={busy} onClick={() => planFromTranscript(task.id)}>使用此转录开始规划</button>}
         </>}
         {task.status === "completed" && transcript && (final || task.options.mode === "transcript") && <>
           <button type="button" onClick={() => setCorrectionTask(correctionTask === task.id ? "" : task.id)}>{correctionTask === task.id ? "收起校对" : task.options.mode === "transcript" ? "校对口播转录" : "校对字幕"}</button>

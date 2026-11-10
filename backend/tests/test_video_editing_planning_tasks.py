@@ -588,6 +588,40 @@ def test_one_execution_per_prepared_request_and_valid_response_contract(
     assert result["semantic"] == semantic.model_dump(mode="json")
 
 
+def test_legacy_transcript_is_measured_before_prepared_request_can_bill(
+    video, tmp_path, monkeypatch
+):
+    from app.video_editing_task_models import EditingTaskRecord
+
+    client, _, ws, settings, _, task, semantic = setup(video, tmp_path, monkeypatch)
+    prepared = prepare(client, ws, settings, task)
+    factory = client.app.state.session_factory
+    with factory() as session:
+        base_task = session.get(EditingTaskRecord, task["id"])
+        base_task.options = {**base_task.options, "mode": "transcript"}
+        session.commit()
+    enable_fixture(settings)
+    submitted = create(client, ws, task["id"], "generate", prepared["id"])
+    assert submitted.status_code == 200, submitted.text
+    measurements = []
+
+    def probe(path, _settings):
+        measurements.append(path)
+        return {"streams": [{"codec_type": "video", "width": 1280, "height": 720}]}
+
+    monkeypatch.setattr(worker, "probe", probe)
+    provider = Provider(semantic)
+    task_id = submitted.json()["id"]
+    worker.process(task_id, settings, factory, provider)
+    result = client.get(base(ws) + "/editing-planning-tasks/" + task_id).json()
+    assert (result["status"], result["error_code"], result["call_state"]) == (
+        "failed",
+        "EDITING_ORIENTATION_REVIEW_REQUIRED",
+        "not_submitted",
+    )
+    assert provider.calls == 0 and len(measurements) == 1
+
+
 def test_completed_planning_preview_is_linked_before_dispatch_and_replayed(
     video, tmp_path, monkeypatch
 ):

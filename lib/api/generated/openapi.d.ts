@@ -6335,6 +6335,15 @@ export interface components {
              */
             task_id: string;
         };
+        /** EditingSourceFrame */
+        EditingSourceFrame: {
+            /** Height */
+            height: number;
+            /** Supports Native Portrait */
+            supports_native_portrait: boolean;
+            /** Width */
+            width: number;
+        };
         /** EditingSourceOrigin */
         EditingSourceOrigin: {
             /** Confirmed Version Id */
@@ -6394,6 +6403,7 @@ export interface components {
             };
             /** Revision */
             revision: number;
+            source_frame?: components["schemas"]["EditingSourceFrame"] | null;
             /** Source Id */
             source_id: string;
             source_origin?: components["schemas"]["EditingSourceOrigin"] | null;

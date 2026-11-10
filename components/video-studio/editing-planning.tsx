@@ -11,7 +11,7 @@ import styles from "./editing-workspace.module.css";
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
 type OverlayTemplate = components["schemas"]["EditingOverlayTemplate"];
-type BaseTask = { id: string; status: string; created_at: string; artifacts: { role: string }[] };
+type BaseTask = Pick<PreviewTask, "id" | "status" | "created_at" | "artifacts" | "source_frame">;
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const maxPreviewBatch = 5;
 const retiredTemplate = (job: Job) => job.overlay_template?.id === "fruit-introduction-v1";
@@ -24,7 +24,7 @@ const autoPreviewErrors: Record<string, string> = {
   EDITING_PLANNING_PROVENANCE_CHANGED: "无法核对已保存的规划来源，代理未提交。",
 };
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
-const errors: Record<string, string> = { EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。", EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。", EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。", EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。", EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。", EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "可选动效少于五种。请核对项目备忘、素材或模板后重新准备。", EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。", EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。" };
+const errors: Record<string, string> = { EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片，请选择符合画幅的转录。", EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。", EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。", EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。", EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。", EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。", EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "可选动效少于五种。请核对项目备忘、素材或模板后重新准备。", EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。", EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。" };
 
 export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview }: {
   workspaceId: string; projectId: string; tasks: BaseTask[]; selected: string; onSelect: (taskId: string) => void; onNativePlan: () => void;
@@ -44,7 +44,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const [batchErrors, setBatchErrors] = useState<Record<string, string>>({});
   const [batchCount, setBatchCount] = useState(0);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
-  const candidates = tasks.filter(task => task.status === "completed" && task.artifacts.some(a => a.role === "transcript"));
+  const candidates = tasks.filter(task => task.status === "completed" && task.source_frame?.supports_native_portrait !== false && task.artifacts.some(a => a.role === "transcript"));
+  const selectedCandidate = candidates.some(task => task.id === selected) ? selected : "";
   const eligible = jobs.filter(canBatchPreview);
   const batchIds = batchSelection.filter(id => eligible.some(job => job.id === id));
   const showBatch = eligible.length >= 2 || batchIds.length > 0;
@@ -67,7 +68,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     return () => controller.abort();
   }, [workspaceId]);
   const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
-    const taskId = prepared?.base_task_id || selected;
+    const taskId = prepared?.base_task_id || selectedCandidate;
     if (!taskId || (mode === "prepare" && !templateId)) return;
     setBusy(true); setError("");
     try {
@@ -152,7 +153,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   };
   return <section aria-label="语义规划任务">
     <p className={styles.note}>使用实际口播的转录准备请求，再生成重点与选组候选。准备不会重新配音、识别或调用模型。</p>
-    <label>使用哪条口播的实际转录？<select value={selected} onChange={event => onSelect(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
+    <label>使用哪条口播的实际转录？<select value={selectedCandidate} onChange={event => onSelect(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
     <fieldset className={styles.templatePicker}>
       <legend>选择组合模板</legend>
       <p className={styles.note}>口播声音连续。画面可随模板叠加动效或切换整帧场景。成片至少使用五种不同动效，优先十种以上。同一种动效可在不同词点重复使用。</p>
@@ -164,7 +165,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       {templateError && <p role="alert">暂时无法读取组合模板，请刷新后重试。</p>}
     </fieldset>
     <EditingProjectMaterials workspaceId={workspaceId} projectId={projectId} selected={materialIds} onSelect={setMaterialIds} />
-    <button type="button" disabled={busy || !selected || !templateId} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>
+    <button type="button" disabled={busy || !selectedCandidate || !templateId} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {loadError && <p role="alert" className={styles.error}>{loadError}</p>}
     {showBatch && <div>

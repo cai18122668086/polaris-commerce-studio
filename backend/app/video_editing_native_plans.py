@@ -47,7 +47,11 @@ from .video_editing_task_models import (
     EditingSourceRecord,
     EditingTaskRecord,
 )
-from .video_editing_transcript_store import read_transcript_artifact
+from .video_editing_transcript_store import (
+    read_transcript_artifact,
+    recorded_source_frame,
+    require_native_source_frame,
+)
 from .video_studio_models import VideoProjectRecord
 
 
@@ -377,6 +381,7 @@ def _register_plan(
         artifact, task, settings.video_editing_tasks_dir
     )
     assert artifact is not None
+    require_native_source_frame(recorded_source_frame(artifact))
     if (
         recipes.library_release != MOTION_SHA256
         or recipes.transcript_sha256 != artifact.sha256

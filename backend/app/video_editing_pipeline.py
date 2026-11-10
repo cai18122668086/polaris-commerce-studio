@@ -34,7 +34,12 @@ from .video_editing_captioning import (
     segmentation_metadata,
     write_caption_receipt,
 )
-from .video_editing_contracts import Transcript, TranscriptToken, TranscriptUtterance
+from .video_editing_contracts import (
+    EditingSourceFrame,
+    Transcript,
+    TranscriptToken,
+    TranscriptUtterance,
+)
 from .video_editing_cxbr import CXBR_CAPTION_INTENT, verify_cxbr_captions
 from .video_editing_hypit_strips import HYPIT_SIDECAR_GROUPS
 from .video_editing_native_frame_clock import (
@@ -744,6 +749,22 @@ def layout_captions(plan: dict, captions: list[dict], settings: Settings) -> Non
     plan["editorial"]["caption_line_layout"] = report
 
 
+def measured_source_frame(info: dict[str, Any]) -> EditingSourceFrame:
+    video = next(
+        stream for stream in info["streams"] if stream["codec_type"] == "video"
+    )
+    width, height = video["width"], video["height"]
+    pixel_ratio = video.get("sample_aspect_ratio")
+    return EditingSourceFrame(
+        width=width,
+        height=height,
+        supports_native_portrait=(
+            pixel_ratio in {None, "N/A", "0:1", "1:1"}
+            and abs(width / height - 9 / 16) <= 0.02
+        ),
+    )
+
+
 def baseline_documents(
     root: Path,
     prepared: dict,
@@ -752,11 +773,10 @@ def baseline_documents(
     settings: Settings,
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
     package = settings.video_editing_library_dir
-    video = next(s for s in prepared["probe"]["streams"] if s["codec_type"] == "video")
-    width, height = video["width"], video["height"]
-    if abs(width / height - 9 / 16) > 0.02:
+    frame = measured_source_frame(prepared["probe"])
+    if not frame.supports_native_portrait:
         raise EditingFailure("EDITING_ORIENTATION_REVIEW_REQUIRED")
-    # Keep the input aspect; no portrait crop of a landscape speaker.
+    width, height = frame.width, frame.height
     scale = min(1, _MASTER_MAX_WIDTH / width, _MASTER_MAX_HEIGHT / height)
     width, height = 2 * round(width * scale / 2), 2 * round(height * scale / 2)
     stroke_scale = max(1, height / 1280)

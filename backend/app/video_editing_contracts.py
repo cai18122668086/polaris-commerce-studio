@@ -308,6 +308,12 @@ class EditingSourceOrigin(StrictVideoModel):
     )
 
 
+class EditingSourceFrame(StrictVideoModel):
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    supports_native_portrait: bool
+
+
 class EditingTaskResponse(StrictVideoModel):
     id: str
     project_id: str
@@ -329,6 +335,9 @@ class EditingTaskResponse(StrictVideoModel):
         default=None, exclude_if=lambda value: value is None
     )
     motion_counts: EditingMotionCounts | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    source_frame: EditingSourceFrame | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 

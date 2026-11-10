@@ -4,10 +4,25 @@ from pathlib import Path
 
 from .errors import ApiError
 from .motion_library import read_json, sha256
-from .video_editing_contracts import Transcript
+from .video_editing_contracts import EditingSourceFrame, Transcript
 from .video_editing_task_models import EditingArtifactRecord, EditingTaskRecord
 
 MAX_TRANSCRIPT_BYTES = 2_000_000
+
+
+def recorded_source_frame(record: EditingArtifactRecord) -> EditingSourceFrame | None:
+    data = record.validation.get("source_frame")
+    return EditingSourceFrame.model_validate(data) if data is not None else None
+
+
+def require_native_source_frame(frame: EditingSourceFrame | None) -> None:
+    if frame is not None and not frame.supports_native_portrait:
+        raise ApiError(
+            409,
+            "EDITING_ORIENTATION_REVIEW_REQUIRED",
+            f"当前原片为 {frame.width}×{frame.height}，"
+            "原生模板需要方形像素的 9:16 竖屏原片。",
+        )
 
 
 def read_transcript_artifact(

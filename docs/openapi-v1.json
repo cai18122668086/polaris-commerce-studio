@@ -6573,6 +6573,32 @@
         "title": "EditingPreviewBase",
         "type": "object"
       },
+      "EditingSourceFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "supports_native_portrait": {
+            "title": "Supports Native Portrait",
+            "type": "boolean"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "supports_native_portrait"
+        ],
+        "title": "EditingSourceFrame",
+        "type": "object"
+      },
       "EditingSourceOrigin": {
         "additionalProperties": false,
         "properties": {
@@ -6753,6 +6779,16 @@
           "revision": {
             "title": "Revision",
             "type": "integer"
+          },
+          "source_frame": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingSourceFrame"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source_id": {
             "title": "Source Id",

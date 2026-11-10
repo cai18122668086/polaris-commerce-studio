@@ -67,9 +67,17 @@ def test_task_replay_cancel_retry_and_no_paths_exposed(video, tmp_path):
         assert attempts == []  # Queued cancellation never needs a live worker.
 
 
-@pytest.mark.parametrize("matching_audio", [True, False])
+@pytest.mark.parametrize(
+    ("matching_audio", "width", "height", "pixel_ratio", "can_plan"),
+    [
+        (True, 720, 1280, "1:1", True),
+        (True, 1280, 720, "1:1", False),
+        (True, 720, 1280, "4:3", False),
+        (False, 720, 1280, "1:1", False),
+    ],
+)
 def test_direct_transcription_delivers_checked_words_without_rendering(
-    video, tmp_path, monkeypatch, matching_audio
+    video, tmp_path, monkeypatch, matching_audio, width, height, pixel_ratio, can_plan
 ):
     client, _, ws, _, settings, _, source = setup_source(video, tmp_path)
     url = base(ws) + "/editing-tasks"
@@ -92,6 +100,16 @@ def test_direct_transcription_delivers_checked_words_without_rendering(
             "audio_sha256": sha256(audio),
             "duration_ms": 1000,
             "clock": {"audio_offset_ms": 10, "analysis_audio_end_ms": 1010},
+            "probe": {
+                "streams": [
+                    {
+                        "codec_type": "video",
+                        "width": width,
+                        "height": height,
+                        "sample_aspect_ratio": pixel_ratio,
+                    }
+                ]
+            },
         }
 
     def load(_id, root, prepared, _snapshot, _settings, _guard, stage):
@@ -125,6 +143,11 @@ def test_direct_transcription_delivers_checked_words_without_rendering(
         assert result["error_code"] == "EDITING_TRANSCRIPT_CHANGED"
         return
     assert (result["status"], result["stage"]) == ("completed", "transcript_ready")
+    assert result["source_frame"] == {
+        "width": width,
+        "height": height,
+        "supports_native_portrait": can_plan,
+    }
     artifacts = {a["role"]: a for a in result["artifacts"]}
     assert set(artifacts) == {"transcript", "transcript_audio"}
     view = client.get(endpoint + "/transcript").raise_for_status().json()
@@ -138,6 +161,10 @@ def test_direct_transcription_delivers_checked_words_without_rendering(
     planned = client.post(
         endpoint + "/planning-tasks", json={"request_id": str(uuid4())}
     )
+    if not can_plan:
+        assert planned.status_code == 409
+        assert planned.json()["error"]["code"] == "EDITING_ORIENTATION_REVIEW_REQUIRED"
+        return
     assert planned.status_code == 200, planned.text
     assert planned.json()["base_transcript_sha256"] == artifacts["transcript"]["sha256"]
 

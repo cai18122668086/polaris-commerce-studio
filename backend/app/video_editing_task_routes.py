@@ -44,6 +44,7 @@ from .video_editing_task_models import (
     EditingTaskRecord,
     EditingTranscriptRevisionRecord,
 )
+from .video_editing_transcript_store import recorded_source_frame
 from .video_generation import own_job
 from .video_studio_models import VideoProjectRecord, VideoScriptVersionRecord
 from .video_studio_routes import VideoWorkspace, digest
@@ -141,11 +142,13 @@ def response(
         ),
         None,
     )
+    transcript = next((item for item in artifacts if item.role == "transcript"), None)
     return {
         "id": row.id,
         "project_id": row.project_id,
         "source_id": row.source_id,
         **({"source_origin": source_origin(source)} if source else {}),
+        "source_frame": recorded_source_frame(transcript) if transcript else None,
         "status": row.status,
         "stage": row.stage,
         "revision": row.revision,

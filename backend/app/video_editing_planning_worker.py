@@ -54,6 +54,7 @@ from .video_editing_native_content import (
     WHY_GROUP,
 )
 from .video_editing_native_plans import content_digest
+from .video_editing_pipeline import measured_source_frame, probe
 from .video_editing_planning_preview import pending_auto_preview, resume_auto_preview
 from .video_editing_planning_store import (
     FILES,
@@ -71,7 +72,11 @@ from .video_editing_task_models import (
     EditingTaskRecord,
 )
 from .video_editing_template_materials import template_image_requirements
-from .video_editing_transcript_store import read_transcript_artifact
+from .video_editing_transcript_store import (
+    read_transcript_artifact,
+    recorded_source_frame,
+    require_native_source_frame,
+)
 from .video_editing_unified_scenes import (
     require_clean_unified_source,
     require_spoken_year,
@@ -321,6 +326,11 @@ def process(
                 )
             verified_materials = {}
             if not (root / "provider/semantic-submit-intent.json").exists():
+                if base.options.get("mode") == "transcript":
+                    frame = recorded_source_frame(record) or measured_source_frame(
+                        probe(media_path, settings)
+                    )
+                    require_native_source_frame(frame)
                 verified_materials = verify_material_cards(
                     session,
                     settings,

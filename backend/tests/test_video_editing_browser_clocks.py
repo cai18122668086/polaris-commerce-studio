@@ -181,9 +181,14 @@ def test_rotation_binds_spoken_focuses_and_a_moving_presenter(tmp_path, monkeypa
         "config": config,
     }
     assert [
-        rotation.rotation_entry_frame(shot, 30, path)
+        rotation.browser_card_entry_frame(shot, 30, path)
         for path in rotation.ROTATION_EVENTS
     ] == [1194, 1206, 1224]
+    strip_shot = {**shot, "group_id": rotation.STRIP_CARD_GROUP}
+    assert [
+        rotation.browser_card_entry_frame(strip_shot, 30, path)
+        for path in rotation.ROTATION_EVENTS
+    ] == [1194, 1206, 1223]
     config["items"][0]["at"] = 0.1
     with pytest.raises(ValueError, match="first card starts"):
         rotation.compile_rotation_clock(

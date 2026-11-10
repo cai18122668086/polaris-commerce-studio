@@ -9,9 +9,10 @@ from pydantic import Field, model_validator
 from .motion_library import inside, read_json, sha256
 from .video_editing_azl_panels import AZL_ENTRY, AZL_GROUPS, azl_output_bounds
 from .video_editing_browser_rotation import (
+    BROWSER_CARD_GROUPS,
     ROTATION_EVENTS,
-    ROTATION_GROUP,
-    rotation_entry_frame,
+    STRIP_CARD_GROUP,
+    browser_card_entry_frame,
 )
 from .video_editing_contracts import (
     EditingMusicChoice,
@@ -235,7 +236,12 @@ def compile_sound(
     ):
         raise ValueError("Original scene compositor clock changed")
     if (
-        sync_presenter_motion_entries or sync_cxbr_entries or sync_unified_entries
+        sync_presenter_motion_entries
+        or sync_cxbr_entries
+        or sync_unified_entries
+        or any(
+            shot["group_id"] == STRIP_CARD_GROUP for shot in episode.get("shots", [])
+        )
     ) and (
         sha256(package / "commercial_runtime/episode.py") != MOTION_COMPOSITOR_SHA256
     ):
@@ -335,7 +341,8 @@ def compile_sound(
             # The original parameter is the slide's length. Its start is zero.
             entry_seconds = shot["start_seconds"]
         seconds = entry_seconds
-        question_entry = package_entry = rotation_entry = judgment_entry = None
+        question_entry = package_entry = judgment_entry = None
+        card_entry = {}
         question_card_entry = yy_opening_entry = presenter_motion_entry = azl_entry = (
             cxbr_entry
         ) = None
@@ -436,15 +443,20 @@ def compile_sound(
                 "event_path": cue.event_path,
             }
         if (
-            shot["group_id"] == ROTATION_GROUP
+            shot["group_id"] in BROWSER_CARD_GROUPS
             and cue.event_path in ROTATION_EVENTS
             and cue.phase == "entry"
         ):
             output_fps = episode["output"]["fps"]
-            frame = rotation_entry_frame(shot, output_fps, cue.event_path)
+            frame = browser_card_entry_frame(shot, output_fps, cue.event_path)
             seconds = frame / output_fps
             native_ref = {}
-            rotation_entry = {
+            evidence_key = (
+                "strip_card_entry"
+                if shot["group_id"] == STRIP_CARD_GROUP
+                else "rotation_entry"
+            )
+            card_entry[evidence_key] = {
                 "shot_index": shot_index,
                 "output_frame": frame,
                 "event_path": cue.event_path,
@@ -504,7 +516,7 @@ def compile_sound(
                     else {}
                 ),
                 **({"package_entry": package_entry} if package_entry else {}),
-                **({"rotation_entry": rotation_entry} if rotation_entry else {}),
+                **card_entry,
                 **({"judgment_entry": judgment_entry} if judgment_entry else {}),
                 **({"yy_opening_entry": yy_opening_entry} if yy_opening_entry else {}),
                 **({"azl_entry": azl_entry} if azl_entry else {}),
@@ -675,17 +687,30 @@ def verify_rendered_sound(
                 and package_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
-        elif rotation_entry := cue.get("rotation_entry"):
+        elif card_entry := (cue.get("strip_card_entry") or cue.get("rotation_entry")):
             if episode is None:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
-            shot = episode["shots"][rotation_entry["shot_index"]]
-            frame = rotation_entry_frame(shot, fps, rotation_entry["event_path"])
+            index = card_entry["shot_index"]
+            shot = episode["shots"][index]
+            path = card_entry["event_path"]
+            frame = browser_card_entry_frame(shot, fps, path)
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
-                and rotation_entry["output_frame"] == frame
+                and path == cue["word_binding"]["path"]
+                and card_entry["output_frame"] == frame
                 and cue["anchor_seconds"] == frame / fps
             )
+            if shot["group_id"] == STRIP_CARD_GROUP:
+                clip = native["shots"][index]
+                anchor_valid = (
+                    anchor_valid
+                    and "strip_card_entry" in cue
+                    and clip["group_id"] == STRIP_CARD_GROUP
+                    and clip["native"]["fps"] == fps
+                    and clip["native"]["frames"]
+                    == round(shot["config"]["duration"] * fps)
+                )
         elif judgment_entry := cue.get("judgment_entry"):
             if episode is None:
                 episode = read_json(root / "episode.json")

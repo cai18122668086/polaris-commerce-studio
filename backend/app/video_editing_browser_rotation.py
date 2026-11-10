@@ -25,6 +25,7 @@ from .video_editing_contracts import Transcript
 
 ROTATION_GROUP = "CX-G04"
 STRIP_CARD_GROUP = "CX-G05"
+BROWSER_CARD_GROUPS = (ROTATION_GROUP, STRIP_CARD_GROUP)
 ROTATION_MATTE = "model-01eb6a29a5c4d8edb30b"
 ROTATION_EVENTS = tuple(f"/items/{i}/at" for i in range(3))
 ROTATION_IMAGES = tuple(f"/items/{i}/image" for i in range(3))
@@ -82,12 +83,24 @@ def _first_motion_frame(at: float, index: int) -> int:
     return round(at * 1000) * _FPS // 1000 + (1 if index else 0)
 
 
-def rotation_entry_frame(shot: dict, fps: int, path: str) -> int:
-    if shot["group_id"] != ROTATION_GROUP or shot["layer"] != "scene" or fps != _FPS:
-        raise ValueError("Rotating card sound needs the original 30 fps scene")
+def browser_card_entry_frame(shot: dict, fps: int, path: str) -> int:
+    if (
+        shot["group_id"] not in BROWSER_CARD_GROUPS
+        or shot["layer"] != "scene"
+        or fps != _FPS
+    ):
+        raise ValueError("Browser card sound needs the original 30 fps scene")
     index = ROTATION_EVENTS.index(path)
     start_ms = round(shot["start_seconds"] * 1000)
-    local = _first_motion_frame(shot["config"]["items"][index]["at"], index)
+    config = shot["config"]
+    local = (
+        _strip_card_entries(
+            [item["at"] for item in config["items"]],
+            round(config["duration"] * _FPS),
+        )[index]
+        if shot["group_id"] == STRIP_CARD_GROUP
+        else _first_motion_frame(config["items"][index]["at"], index)
+    )
     # The original overlay enable waits for the first output frame at or after
     # the shot boundary. The secondary stream's setpts truncates its origin.
     return max((start_ms * fps + 999) // 1000, start_ms * fps // 1000 + local)
@@ -309,7 +322,7 @@ def install_rotation_export(package: Path, root: Path) -> None:
     group = job["group_id"]
     split = group in LIVE_SPLIT_GROUPS
     strip = group == STRIP_CARD_GROUP
-    if not split and group not in {ROTATION_GROUP, STRIP_CARD_GROUP}:
+    if not split and group not in BROWSER_CARD_GROUPS:
         return
     prefix = _SPLIT_REF if split else _STRIP_CARD_REF if strip else _ROTATION_REF
     reference = job["config"].get("presenter", "")

@@ -44,6 +44,13 @@ from .video_editing_browser_rotation import (
     compile_rotation_clock,
     rotation_source_clock,
 )
+from .video_editing_collage_scene import (
+    COLLAGE_GROUP,
+    COLLAGE_SOURCE,
+    collage_image_slots,
+    validate_collage_anchors,
+    validate_collage_images,
+)
 from .video_editing_contracts import SemanticBeat, Transcript
 from .video_editing_crowd_scene import (
     CROWD_FULL_FRAME,
@@ -243,6 +250,17 @@ def compile_native_job(
     )
     live_paper = recipe.get("paper_typewriter_live", False)
     live_crowd = recipe.get("crowd_live_source", False)
+    live_collage = recipe.get("collage_live_source", False)
+    if type(live_collage) is not bool or (
+        live_collage
+        and (
+            beat.group_id != COLLAGE_GROUP
+            or config["media"]["background"]["end_policy"] != "error"
+            or recipe.get("media_clocks")
+            != [{"media_path": COLLAGE_SOURCE, "policy": "transcript_source_window"}]
+        )
+    ):
+        raise ValueError("Original collage needs a verified current background")
     if type(live_crowd) is not bool or (
         live_crowd
         and (
@@ -432,6 +450,15 @@ def compile_native_job(
             selected,
             {asset_id: row["sha256"] for asset_id, row in files.items()},
             crowd_image_slots(files),
+        )
+    if live_collage:
+        validate_collage_anchors(beat, native, transcript)
+        selected = {row["path"]: row["asset_id"] for row in native["media"]}
+        files = {asset_id: asset_files[asset_id] for asset_id in selected.values()}
+        validate_collage_images(
+            selected,
+            {asset_id: row["sha256"] for asset_id, row in files.items()},
+            collage_image_slots(files),
         )
     if beat.group_id == ROLE_CHAIN_GROUP:
         native["role_scene_chain"] = role_scene_chain(native, asset_files)

@@ -15,6 +15,13 @@ from .video_editing_browser_clocks import (
     fruit_header_fits,
 )
 from .video_editing_browser_rotation import ROTATION_GROUP
+from .video_editing_collage_scene import (
+    COLLAGE_GROUP,
+    COLLAGE_IMAGES,
+    COLLAGE_TEMPLATE_ID,
+    collage_image_slots,
+    validate_collage_images,
+)
 from .video_editing_contracts import SemanticPlan
 from .video_editing_crowd_scene import (
     CROWD_GROUP,
@@ -69,6 +76,7 @@ _IMAGE_GROUPS = {
     DETAIL_CARDS_TEMPLATE_ID: ((PRICE_CARD_GROUP, 3),),
     WHY_TEMPLATE_ID: ((WHY_GROUP, 2),),
     CROWD_TEMPLATE_ID: ((CROWD_GROUP, len(CROWD_IMAGE_PATHS)),),
+    COLLAGE_TEMPLATE_ID: ((COLLAGE_GROUP, len(COLLAGE_IMAGES)),),
 }
 _ADDITIONAL_IMAGE_PATHS = {
     FRUIT_LIST_GROUP: FRUIT_LIST_HEADER,
@@ -142,8 +150,12 @@ def template_image_requirements(
                     continue
             row["selected_distinct_images"] = len({images[key] for key in eligible})
             row["native_image_slot_ids"] = dict.fromkeys(WHY_PROP_PATHS, eligible)
-        elif group_id == CROWD_GROUP:
-            slots = crowd_image_slots(files)
+        elif group_id in {CROWD_GROUP, COLLAGE_GROUP}:
+            slots = (
+                crowd_image_slots(files)
+                if group_id == CROWD_GROUP
+                else collage_image_slots(files)
+            )
             row["native_image_slot_ids"] = slots
             row["selected_distinct_images"] = len(
                 {images[key] for candidates in slots.values() for key in candidates}
@@ -234,6 +246,13 @@ def validate_template_images(
             continue
         if beat.group_id == CROWD_GROUP:
             validate_crowd_images(
+                {anchor.path: anchor.asset_id for anchor in beat.native_media},
+                images,
+                requirement["native_image_slot_ids"],
+            )
+            continue
+        if beat.group_id == COLLAGE_GROUP:
+            validate_collage_images(
                 {anchor.path: anchor.asset_id for anchor in beat.native_media},
                 images,
                 requirement["native_image_slot_ids"],

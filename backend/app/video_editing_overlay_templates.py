@@ -17,6 +17,7 @@ from .video_editing_browser_clocks import (
     SPLIT_VERTICAL,
 )
 from .video_editing_browser_rotation import ROTATION_GROUP, ROTATION_MATTE
+from .video_editing_collage_scene import COLLAGE_GROUP, COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import SemanticPlan
 from .video_editing_crowd_scene import CROWD_GROUP, CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_GROUPS, CUT_TEMPLATE_ID
@@ -667,6 +668,26 @@ _TEMPLATES[LIVE_CHAPTERS_TEMPLATE_ID] = {
         *_TEMPLATES[CHAPTER_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[COLLAGE_TEMPLATE_ID] = {
+    "id": COLLAGE_TEMPLATE_ID,
+    "name": "同期口播与证据拼贴",
+    "slots": [
+        {
+            "group_id": COLLAGE_GROUP,
+            "purpose": "实录讲到核验过程时，依次展示四份本期证据图。",
+            "layer": "scene",
+            "binding": "关系使用 explanation。四个图层各用 relation_items "
+            "绑定一个本期图位和实录段，入场绑定段首词。"
+            "七个剪影是装饰。标签 3/4 和 5/6 各在后一个标签的词首一起出现。"
+            "其余标签各随首词，背景是同期原片，主字幕连续。",
+        },
+        *(
+            {"group_id": group, "purpose": _SUBTITLE_STORY_SLOTS[group]}
+            for group in ("AH-S08", "JJ-S04")
+        ),
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[CROWD_TEMPLATE_ID] = {
     "id": CROWD_TEMPLATE_ID,
     "name": "原景剪影群像",
@@ -970,6 +991,7 @@ def overlay_templates() -> list[dict]:
             CHAPTER_TEMPLATE_ID,
             LIVE_CHAPTERS_TEMPLATE_ID,
             CROWD_TEMPLATE_ID,
+            COLLAGE_TEMPLATE_ID,
             WHY_TEMPLATE_ID,
             TRANSLATION_TEMPLATE_ID,
             PAPER_TEMPLATE_ID,

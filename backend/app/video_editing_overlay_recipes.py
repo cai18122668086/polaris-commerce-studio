@@ -42,6 +42,12 @@ from .video_editing_browser_rotation import (
     rotation_card_clock,
     rotation_source_clock,
 )
+from .video_editing_collage_scene import (
+    COLLAGE_GROUP,
+    COLLAGE_IMAGES,
+    validate_collage_anchors,
+    validate_collage_images,
+)
 from .video_editing_contracts import (
     EditingOptions,
     SemanticBeat,
@@ -2259,6 +2265,7 @@ def _unified_entry(
     is_paper = group_id == PAPER_GROUP
     moving_alpha = group_id in ALPHA_GROUPS
     is_crowd = group_id == CROWD_GROUP
+    is_collage = group_id == COLLAGE_GROUP
     videos = (
         project_panel_videos(asset_cards, transcript.source_sha256)
         if group_id == TRIPTYCH
@@ -2281,6 +2288,7 @@ def _unified_entry(
         config = why_template(config, embedded_caption=False)
     if is_crowd:
         config["media"]["presenter"]["crop"] = list(CROWD_FULL_FRAME)
+    if is_crowd or is_collage:
         config["media"]["silhouettes"] = [
             {"kind": "image", "path": None, "alpha": True} for _ in CROWD_SILHOUETTES
         ]
@@ -2305,7 +2313,7 @@ def _unified_entry(
     media_clock_paths = () if moving_alpha else source_paths
     images = (
         project_image_digests(asset_cards)
-        if is_cut or is_panel or is_handoff or is_why or is_crowd
+        if is_cut or is_panel or is_handoff or is_why or is_crowd or is_collage
         else {}
     )
     allowed_paths = cut_media_paths(group_id) if is_cut else set(source_paths)
@@ -2317,6 +2325,8 @@ def _unified_entry(
         allowed_paths.update(WHY_PROP_PATHS)
     if is_crowd:
         allowed_paths.update(CROWD_IMAGE_PATHS)
+    if is_collage:
+        allowed_paths.update(COLLAGE_IMAGES)
     presenters = (
         {
             row["id"]
@@ -2356,6 +2366,9 @@ def _unified_entry(
         elif is_crowd:
             validate_crowd_anchors(beat, anchors)
             validate_crowd_images(bound, images, None)
+        elif is_collage:
+            validate_collage_anchors(beat, anchors, transcript)
+            validate_collage_images(bound, images, None)
         else:
             validate_unified_anchors(beat, anchors, transcript)
         if chapter_starts is not None:
@@ -2395,7 +2408,7 @@ def _unified_entry(
         )
     reason = "沿用原生文字、人物窗或整帧底板，主字幕和原声使用整片时钟。"
     return NativeEpisodeEntry(
-        carrier="picture" if is_cut or is_panel or is_handoff else "text",
+        carrier="picture" if is_cut or is_panel or is_handoff or is_collage else "text",
         placement=NativePlacement(layer="scene", rect=[0, 0, 1, 1], reason=reason),
         recipe={
             "version": "tengli.native-recipe/1",
@@ -2411,6 +2424,7 @@ def _unified_entry(
             **({"empty_text": omitted} if omitted else {}),
             **({"dependency_ids": [WHY_FONT]} if is_why else {}),
             **({"crowd_live_source": True} if is_crowd else {}),
+            **({"collage_live_source": True} if is_collage else {}),
             **(
                 {
                     (

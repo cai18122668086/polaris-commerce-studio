@@ -23,6 +23,7 @@ from .video_editing_browser_clocks import (
     SPLIT_VERTICAL,
 )
 from .video_editing_catalog import validate_choice_snapshot
+from .video_editing_collage_scene import COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_crowd_scene import CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
@@ -435,6 +436,15 @@ def build_request(
             "剪影用于视觉装饰，不代表七个真实人物或实证，不填写 relation_items。"
             "选用同期人物原片，承接图必须对应前一段；缺任一槽时跳过本组。"
             "纸面退场后才出现标题，七张剪影分别使用随后七个不同的实测词首。"
+        )
+    if template and template["id"] == COLLAGE_TEMPLATE_ID:
+        message += (
+            "W-R04 的四个证据图按 native_image_slot_ids 选本期素材。"
+            "每图用一个 relation_items 项绑定相关实录范围和对应图位，"
+            "从该范围首词进入。七张剪影仅作装饰，不作为关系项或事实。"
+            "前 3 个标签各按自己的首词，标签 3/4 和 5/6 同步取后一个标签的首词。"
+            "依次安排图层 0、标签 0、图层 1、标签 1/2、图层 2、标签 3/4、"
+            "图层 3、标签 5/6。缺少本期证据时选择同模板其他动效。"
         )
     if translation_scene:
         message += (

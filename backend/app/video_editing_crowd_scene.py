@@ -1,7 +1,6 @@
 """Bind the original W-R09 crowd, its project images and its discrete clock."""
 
 import importlib
-import math
 import sys
 from itertools import pairwise
 from pathlib import Path
@@ -11,6 +10,7 @@ from PIL import Image
 
 from .motion_library import sha256
 from .video_editing_contracts import SemanticBeat
+from .video_editing_virtual_clock import first_visible_frame
 
 CROWD_GROUP = "W-R09"
 CROWD_TEMPLATE_ID = "unified-crowd-v1"
@@ -184,14 +184,4 @@ def crowd_action_frame(timing: dict, event: str, title_frame: int | None = None)
         timing["duration_seconds"],
     ]
     virtual = [0, 0.22, 0.30, *(0.72 + i * 0.035 for i in range(7)), 2]
-    boundary = (required - 0.5) / 30
-    for (a, x), (b, y) in pairwise(zip(actual, virtual, strict=True)):
-        if x <= boundary <= y:
-            frames = (a + (b - a) * (boundary - x) / (y - x)) * 30
-            # Python's native round uses ties to even.
-            return (
-                math.floor(frames + 1e-8) + 1
-                if required % 2
-                else math.ceil(frames - 1e-8)
-            )
-    raise ValueError("Original crowd event lies outside its virtual scene")
+    return first_visible_frame(actual, virtual, required)

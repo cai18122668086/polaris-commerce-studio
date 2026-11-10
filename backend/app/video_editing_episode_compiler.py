@@ -35,6 +35,7 @@ from .video_editing_browser_clocks import (
 )
 from .video_editing_browser_rotation import ROTATION_GROUP
 from .video_editing_captioning import write_caption_receipt
+from .video_editing_collage_scene import COLLAGE_GROUP, COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_CAPTION_INTENT, CXBR_PURPOSES, CXBR_TEMPLATE_ID
@@ -864,6 +865,7 @@ def compile_episode(
         unified_baselines = {
             UNIFIED_WINDOW_GROUP: UNIFIED_WINDOW_CAPTION_BASELINE,
             TRANSLATION_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
+            COLLAGE_GROUP: UNIFIED_TRANSLATION_CAPTION_BASELINE,
         }
         effect_windows = [
             (
@@ -908,6 +910,9 @@ def compile_episode(
                         "baseline_y_px": round(episode["output"]["height"] * y / 1280),
                         "reason": "主字幕进入人物窗下缘，避开原生标签和结论。"
                         if unified and y == UNIFIED_WINDOW_CAPTION_BASELINE
+                        else "主字幕避开原生拼贴标签和短字幕。"
+                        if authoring.overlay_template_id == COLLAGE_TEMPLATE_ID
+                        and y == UNIFIED_TRANSLATION_CAPTION_BASELINE
                         else "主字幕放在双语换字的原生释义下方。"
                         if unified and y == UNIFIED_TRANSLATION_CAPTION_BASELINE
                         else "主字幕放在原横向分屏前两排标签之间。"

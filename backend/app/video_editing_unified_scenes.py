@@ -15,6 +15,13 @@ from .video_editing_browser_clocks import (
     SPLIT_VERTICAL,
     fruit_row_first_frame,
 )
+from .video_editing_collage_scene import (
+    COLLAGE_GROUP,
+    COLLAGE_SOUNDS,
+    COLLAGE_SOURCE,
+    COLLAGE_TEMPLATE_ID,
+    collage_action_frame,
+)
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
 from .video_editing_crowd_scene import (
     CROWD_GROUP,
@@ -96,6 +103,7 @@ UNIFIED_TEMPLATES = frozenset(
         TRANSLATION_TEMPLATE_ID,
         PAPER_TEMPLATE_ID,
         CROWD_TEMPLATE_ID,
+        COLLAGE_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
@@ -132,6 +140,7 @@ UNIFIED_MEDIA_PATHS = {
         UNIFIED_PRESENTER,
     ),
     "W-R05": "/media/background/path",
+    COLLAGE_GROUP: COLLAGE_SOURCE,
     NUMBER_GROUP: "/media/source/path",
     **PANEL_SOURCE,
     **HANDOFF_SOURCE,
@@ -229,6 +238,7 @@ UNIFIED_SOUNDS = {
     },
     GHOST_GROUP: {"ghost": "ease", "phrase0": "ease", "phrase1": "ease"},
     CROWD_GROUP: dict.fromkeys(CROWD_SOUNDS, "crowd_virtual"),
+    COLLAGE_GROUP: dict.fromkeys(COLLAGE_SOUNDS, "collage_virtual"),
     WHY_GROUP: dict(
         zip(
             (path.removeprefix("/timing/events/") for path in WHY_EVENTS),
@@ -303,6 +313,7 @@ UNIFIED_SCENE_GROUPS = (
         PAPER_CHAPTER_GROUP,
         GHOST_GROUP,
         CROWD_GROUP,
+        COLLAGE_GROUP,
     }
 )
 _CAPTION_BANDS = {
@@ -318,6 +329,7 @@ _CAPTION_BANDS = {
     PAPER_CHAPTER_GROUP: (855, 960),
     GHOST_GROUP: (860, 960),
     CROWD_GROUP: (800, 960),
+    COLLAGE_GROUP: (880, 960),
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
     **HANDOFF_CAPTION_BANDS,
@@ -854,6 +866,8 @@ def unified_action_frame(
         if mode == "virtual"
         else crowd_action_frame(shot["config"]["timing"], event, crowd_title_frame)
         if mode == "crowd_virtual"
+        else collage_action_frame(shot["config"]["timing"], event)
+        if mode == "collage_virtual"
         else fruit_row_first_frame(at)
         if mode == "fruit_row"
         else math.floor(at + 1e-7) + 1

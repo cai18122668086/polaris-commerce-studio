@@ -10,6 +10,7 @@ from app.video_editing_azl_panels import (
     azl_output_bounds,
     verify_azl_layout,
 )
+from app.video_editing_collage_scene import COLLAGE_SOUNDS, collage_action_frame
 from app.video_editing_crowd_scene import crowd_action_frame
 from app.video_editing_cxbr import (
     CXBR_CAPTION_INTENT,
@@ -379,6 +380,22 @@ def test_crowd_sound_uses_discrete_original_clock_and_title_ink():
     assert crowd_action_frame(timing, "title_in", 12) == 21
     with pytest.raises(ValueError, match="measured original ink"):
         crowd_action_frame(timing, "title_in")
+
+
+def test_collage_sound_keeps_original_linked_label_clock():
+    timing = {
+        "duration_seconds": 9.3,
+        "events": {
+            "layer_entries": [0.28, 1.56, 3.86, 7.70],
+            "label_entries": [0.62, 2.22, 2.76, 5.12, 5.12, 8.84, 8.84],
+        },
+    }
+    assert [collage_action_frame(timing, event) for event in COLLAGE_SOUNDS] == [
+        9,
+        48,
+        115,
+        240,
+    ]
 
 
 def test_presenter_motion_sound_uses_fixed_and_measured_native_frames():

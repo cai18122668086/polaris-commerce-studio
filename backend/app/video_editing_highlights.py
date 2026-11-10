@@ -13,7 +13,11 @@ from .video_editing_contracts import (
     SemanticPlan,
     Transcript,
 )
-from .video_editing_word_bindings import emphasis_text
+from .video_editing_word_bindings import (
+    drops_explicit_denial,
+    emphasis_text,
+    explicit_denial_spans,
+)
 
 AUTOMATIC_TEXT_PROFILE = "tengli-overlay-recipe-v2"
 # Capacities come from the preserved BG-S04 and AH-S05 native renderers.
@@ -67,6 +71,7 @@ def highlight_targets(
 ) -> list[EditingHighlightTarget]:
     tokens = transcript.tokens
     positions = {token.id: index for index, token in enumerate(tokens)}
+    denials = explicit_denial_spans(tokens)
     result = []
     for beat in plan.beats:
         roles = editable_highlight_roles(beat.model_dump(mode="json"), recipes)
@@ -135,6 +140,7 @@ def highlight_targets(
                     if (
                         len(visible) >= 2
                         and visible != current
+                        and not drops_explicit_denial(a, b, denials)
                         and tokens[b].end_ms <= cutoff
                         and cutoff - tokens[a].start_ms >= max(250, len(visible) * 60)
                     ):

@@ -69,6 +69,7 @@ from .video_editing_task_models import (
     EditingTranscriptRevisionRecord,
 )
 from .video_editing_transcript_store import MAX_TRANSCRIPT_BYTES
+from .video_editing_word_bindings import IncompleteDenial
 from .video_studio_models import VideoScriptVersionRecord
 from .video_writing_provenance import script_digest
 
@@ -914,7 +915,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
     except Exception as error:
         code = (
             error.code
-            if isinstance(error, EditingFailure)
+            if isinstance(error, (EditingFailure, IncompleteDenial))
             else "EDITING_INTERNAL_ERROR"
         )
         status = "cancelled" if code == "EDITING_CANCELLED" else "failed"

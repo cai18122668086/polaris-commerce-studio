@@ -16,6 +16,7 @@ from app.video_editing_contracts import (
 )
 from app.video_editing_pipeline import caption_rows
 from app.video_editing_planner import validate_plan
+from app.video_editing_word_bindings import IncompleteDenial
 
 
 def test_repeated_chinese_words_numbers_and_negation_keep_distinct_audio_anchors():
@@ -108,6 +109,21 @@ def test_planner_cannot_drop_negation_repeat_word_occurrence_or_invent_assets(tm
             validate_plan(
                 SemanticPlan.model_validate(broken), transcript, tmp_path, set()
             )
+    split = {
+        **base,
+        "beats": [
+            {**base["beats"][0], "last_token_id": "t0", "emphasis_token_ids": []},
+            {
+                **base["beats"][0],
+                "id": "after-denial",
+                "first_token_id": "t1",
+                "relation": "explanation",
+                "emphasis_token_ids": ["t1", "t2"],
+            },
+        ],
+    }
+    with pytest.raises(IncompleteDenial):
+        validate_plan(SemanticPlan.model_validate(split), transcript, tmp_path, set())
 
 
 def test_new_editing_migration_roundtrip_preserves_existing_tables(tmp_path):

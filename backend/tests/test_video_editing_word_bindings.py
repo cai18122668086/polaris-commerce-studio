@@ -5,11 +5,16 @@ from app.motion_parameter_contracts import clock_category
 from app.video_editing_contracts import (
     NativeEventAnchor,
     NativeMediaAnchor,
+    NativeTextAnchor,
     SemanticBeat,
     Transcript,
     TranscriptToken,
 )
-from app.video_editing_word_bindings import emphasis_text, word_bindings
+from app.video_editing_word_bindings import (
+    IncompleteDenial,
+    emphasis_text,
+    word_bindings,
+)
 from app.video_editing_yy_openings import validate_yy_opening
 
 
@@ -73,6 +78,54 @@ def test_repeated_words_compile_by_occurrence_and_actual_frame_clock():
         )
         == "不是14.9元每瓶1000克比例2:1含量25%"
     )
+
+
+@pytest.mark.parametrize(
+    ("words", "first", "last", "allowed"),
+    [
+        (["不", "是", "越贵", "越好，"], 2, 3, False),
+        (["不", "是", "越贵", "越好，"], 0, 3, True),
+        (["不", "是", "越贵", "越好，"], 0, 0, False),
+        (["不是", "14.9", "元。"], 2, 2, False),
+        (["不是", "1，000", "元。"], 2, 2, False),
+        (["不是", "越贵越好", "而是", "看用量"], 3, 3, True),
+        (["并非", "洗碗，", "推荐", "刷锅"], 2, 3, True),
+        (["是", "不是", "越贵越好？"], 2, 2, True),
+    ],
+)
+def test_original_native_text_keeps_explicit_denial_even_across_beat_boundaries(
+    words, first, last, allowed
+):
+    measured = transcript().model_copy(
+        update={
+            "tokens": [
+                TranscriptToken(
+                    id=f"t{i}", text=word, start_ms=i * 300, end_ms=i * 300 + 250
+                )
+                for i, word in enumerate(words)
+            ]
+        }
+    )
+    candidate = beat().model_copy(
+        update={
+            "first_token_id": f"t{first}",
+            "last_token_id": f"t{last}",
+            "native_text": [
+                NativeTextAnchor(
+                    path="/content/text",
+                    first_token_id=f"t{first}",
+                    last_token_id=f"t{last}",
+                )
+            ],
+            "native_events": [],
+        }
+    )
+    if not allowed:
+        with pytest.raises(IncompleteDenial):
+            word_bindings(candidate, measured, CONTRACT, set())
+    else:
+        bound = word_bindings(candidate, measured, CONTRACT, set())
+        assert bound["text"][0]["text"] == "".join(words[first : last + 1])
 
 
 def test_model_cannot_use_arbitrary_native_paths_assets_times_or_wrong_occurrences():

@@ -1,9 +1,50 @@
 """Compile allowed native field anchors from measured token occurrences only."""
 
+import re
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterator
+from itertools import accumulate
 from typing import Any
 
 from .video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+
+_DENIAL_OR_CLAUSE_END = re.compile(
+    r"(?P<denial>(?<!是)不是|并非|绝非|不等于|不代表|不意味着|不表示)"
+    r"|[。！？；、!?;]|(?<!\d)[.,，]|[.,，](?!\d)|而是"
+)
+
+
+class IncompleteDenial(ValueError):
+    code = "EDITING_NEGATION_ANCHOR_INCOMPLETE"
+
+
+def explicit_denial_spans(tokens: list[TranscriptToken]) -> list[tuple[int, int, int]]:
+    """Find explicit denial markers and clause ends in actual token coordinates."""
+    text = "".join(token.text for token in tokens)
+    offsets = list(accumulate((len(token.text) for token in tokens), initial=0))
+    result: list[tuple[int, int, int]] = []
+    pending: list[tuple[int, int]] = []
+    for match in _DENIAL_OR_CLAUSE_END.finditer(text):
+        if match.lastgroup == "denial":
+            first = bisect_right(offsets, match.start()) - 1
+            last = bisect_right(offsets, match.end() - 1) - 1
+            pending.append((first, last))
+        elif pending:
+            end = bisect_left(offsets, match.start()) - 1
+            result.extend((first, last, end) for first, last in pending)
+            pending.clear()
+    result.extend((first, last, len(tokens) - 1) for first, last in pending)
+    return result
+
+
+def drops_explicit_denial(
+    first: int, last: int, denials: list[tuple[int, int, int]]
+) -> bool:
+    return any(
+        marker_first < first <= clause_end
+        or first <= marker_first <= last < marker_last
+        for marker_first, marker_last, clause_end in denials
+    )
 
 
 def measured_clause_windows(transcript: Transcript) -> Iterator[list[TranscriptToken]]:
@@ -78,10 +119,15 @@ def word_bindings(
             raise ValueError("Native text/event anchor leaves its meaning span")
         return transcript.tokens[a : b + 1]
 
+    denials = explicit_denial_spans(transcript.tokens) if beat.native_text else []
     texts = []
     for anchor in beat.native_text:
         field(anchor.path, set(contract["text_paths"]))
         tokens = span(anchor.first_token_id, anchor.last_token_id)
+        if drops_explicit_denial(
+            positions[anchor.first_token_id], positions[anchor.last_token_id], denials
+        ):
+            raise IncompleteDenial("原生文字须保留同一实录分句的否定标记")
         text = emphasis_text("".join(t.text for t in tokens), anchor.punctuation)
         if not text:
             raise ValueError("Native text anchor has no visible content")

@@ -81,7 +81,12 @@ from .video_editing_unified_scenes import (
     UNIFIED_VIDEO_VARIANTS,
     WHY_TEMPLATE_ID,
 )
-from .video_editing_word_bindings import word_bindings
+from .video_editing_word_bindings import (
+    IncompleteDenial,
+    drops_explicit_denial,
+    explicit_denial_spans,
+    word_bindings,
+)
 
 RULES_VERSION = "tengli-editorial-rules/1"
 RULES = [
@@ -682,6 +687,7 @@ def validate_plan(
     unavailable_template_groups: dict[str, list[str]] | None = None,
 ) -> None:
     ids = {t.id: i for i, t in enumerate(transcript.tokens)}
+    denials = explicit_denial_spans(transcript.tokens)
     group_rows = {
         g["id"]: g for g in read_json(package / "catalog/groups.json")["groups"]
     }
@@ -725,6 +731,8 @@ def validate_plan(
             raise ValueError("Emphasis must reference one contiguous real word span")
         if emphasis and not start <= emphasis[0] <= emphasis[-1] <= end:
             raise ValueError("Emphasis falls outside its meaning span")
+        if emphasis and drops_explicit_denial(emphasis[0], emphasis[-1], denials):
+            raise IncompleteDenial("强调词须保留同一实录分句的否定标记")
         negations = [
             i
             for i in range(start, end + 1)

@@ -50,9 +50,11 @@ from .video_editing_question_card import (
 )
 from .video_editing_story_panels import PANEL_BOARDS, PANEL_TEMPLATE_ID
 from .video_editing_template_materials import runtime_payload, validate_template_images
+from .video_editing_unified_alpha import GHOST_GROUP, PAPER_CHAPTER_GROUP
 from .video_editing_unified_scenes import (
     CHAPTER_SCENE_GROUP,
     CHAPTER_TEMPLATE_ID,
+    LIVE_CHAPTERS_TEMPLATE_ID,
     TRANSLATION_TEMPLATE_ID,
     UNIFIED_EXPLANATION_TEMPLATE_ID,
     UNIFIED_TEMPLATES,
@@ -101,6 +103,7 @@ def catalog_index(
     explanation_scene: bool = False,
     live_splits: bool = False,
     chapter_scene: bool = False,
+    alpha_chapters: bool = False,
     why_scene: bool = False,
     translation_scene: bool = False,
 ) -> list[dict[str, Any]]:
@@ -134,7 +137,9 @@ def catalog_index(
         )
         if question_a:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
-        if chapter_scene and group["id"] == CHAPTER_SCENE_GROUP:
+        if (chapter_scene and group["id"] == CHAPTER_SCENE_GROUP) or (
+            alpha_chapters and group["id"] == PAPER_CHAPTER_GROUP
+        ):
             parameters["text_paths"].remove(CHAPTER_PATH)
         if translation_scene and group["id"] == TRANSLATION_GROUP:
             for path in TRANSLATION_PATHS:
@@ -143,6 +148,7 @@ def catalog_index(
             (cut_scene and group["id"] == "Z-M06")
             or (panel_scene and group["id"] == "Z-M08")
             or (explanation_scene and group["id"] == "Z-M13")
+            or (alpha_chapters and group["id"] == GHOST_GROUP)
         ):
             parameters["text_paths"] = [
                 path for path in parameters["text_paths"] if not path.endswith("/en")
@@ -257,7 +263,10 @@ def build_request(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rules = rule_pack(package)
     question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
-    chapter_scene = bool(template and template["id"] == CHAPTER_TEMPLATE_ID)
+    alpha_chapters = bool(template and template["id"] == LIVE_CHAPTERS_TEMPLATE_ID)
+    chapter_scene = alpha_chapters or bool(
+        template and template["id"] == CHAPTER_TEMPLATE_ID
+    )
     translation_scene = bool(template and template["id"] == TRANSLATION_TEMPLATE_ID)
     live_package = bool(template and template["id"] in PACKAGE_TEMPLATES)
     line_scene = bool(template and template["id"] == LINE_TEMPLATE_ID)
@@ -276,6 +285,7 @@ def build_request(
         ),
         live_splits=bool(template and template["id"] == LIVE_SPLIT_TEMPLATE_ID),
         chapter_scene=chapter_scene,
+        alpha_chapters=alpha_chapters,
         why_scene=bool(template and template["id"] == WHY_TEMPLATE_ID),
         translation_scene=translation_scene,
     )
@@ -395,13 +405,22 @@ def build_request(
             "该字段是左右两个实录短语的英文释义，不能加新信息。"
             "无需为英文释义或问号填写 native_text。"
         )
-    if chapter_scene:
+    if chapter_scene and not alpha_chapters:
         message += (
             "选择 Z-M15 时，用 chapter_start_token_ids "
             "按 argument_outline 的顺序列出所有章的起始词。"
             "第一个从实录首词起，每章必须是一个 beat 的开始，包括没有选 Z-M15 的章。"
             "Z-M15 只能放在章首，英文序词由编译器按章次生成，不写入 native_text。"
             "没有真实的话题换章或实录章名时，可以不选 Z-M15 并省略章起始词列表。"
+        )
+    if alpha_chapters:
+        message += (
+            "Z-M05 和 Z-M15 只能放在实际章首。选择任意一组时，"
+            "用 chapter_start_token_ids 按 argument_outline 列出所有章的起始词。"
+            "第一章从实录首词起，每章均须对准 beat 的开始，包括未选择章节动效的章。"
+            "序词由编译器按章次生成，不写入 native_text。"
+            "Z-M05 需要两句可分开读的章内原话及后一词作为退场锚点。"
+            "Z-M17 的字幕用后续原话，英文槽不填写，人物取同一时刻实录。"
         )
     if template and template["id"] == WHY_TEMPLATE_ID:
         message += (

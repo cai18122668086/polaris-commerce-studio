@@ -16,11 +16,11 @@ from .motion_library import atomic_json
 from .video_editing_native_compat import install
 from .video_editing_native_layout import install_native_role_review
 from .video_editing_native_shot_recovery import install_shot_recovery
-from .video_editing_paper_typewriter import (
-    install_paper_sequence_audit,
-    stage_paper_sequences,
-)
 from .video_editing_subtitle_sound_clock import install_subtitle_sound_clock
+from .video_editing_unified_alpha import (
+    install_unified_sequence_audit,
+    stage_unified_sequences,
+)
 
 
 def main() -> None:
@@ -91,9 +91,9 @@ def main() -> None:
         str(root / ("native-" + args.command + ".json")),
     ]
     try:
-        sequences = stage_paper_sequences(package, root, args.kind)
+        sequences = stage_unified_sequences(package, root, args.kind)
         if args.kind == "episode":
-            install_paper_sequence_audit(package, sequences)
+            install_unified_sequence_audit(package, sequences)
         if args.command == "export":
             install_native_role_review(package, root)
             install_shot_recovery(package, root)

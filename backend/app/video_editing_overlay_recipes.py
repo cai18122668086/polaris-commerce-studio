@@ -130,6 +130,7 @@ from .video_editing_line_branch import (
 from .video_editing_materials import project_image_digests
 from .video_editing_native_compiler import set_native_field
 from .video_editing_native_content import (
+    CHAPTER_GROUPS,
     CHAPTER_PATH,
     PACKAGE_GROUP,
     TRANSLATION_GROUP,
@@ -200,8 +201,8 @@ from .video_editing_story_panels import (
     validate_panel_anchors,
 )
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
+from .video_editing_unified_alpha import ALPHA_GROUPS, GHOST_GROUP, PAPER_CHAPTER_GROUP
 from .video_editing_unified_scenes import (
-    CHAPTER_SCENE_GROUP,
     PRESENTER_VIDEO_GROUPS,
     UNIFIED_DESIGN_ID,
     UNIFIED_MEDIA_PATHS,
@@ -944,6 +945,13 @@ def _entry_sound(
         selection = _WHY_SOUNDS[path]
     if beat.group_id == PAPER_GROUP:
         selection = _TYPING
+    if beat.group_id == PAPER_CHAPTER_GROUP:
+        if path == "/timing/events/ordinal":
+            selection = _IMPACT
+        elif path != "/timing/events/exit":
+            selection = _SELECT
+    if beat.group_id == GHOST_GROUP and path != "/timing/events/ghost":
+        selection = _SELECT
     event = next(row for row in anchors["events"] if row["path"] == path)
     asset_id, source_start, length, peak = (
         selection if selection[0] not in avoided else _CLICK
@@ -2239,6 +2247,7 @@ def _unified_entry(
     is_why = group_id == WHY_GROUP
     is_translation = group_id == TRANSLATION_GROUP
     is_paper = group_id == PAPER_GROUP
+    moving_alpha = group_id in ALPHA_GROUPS
     videos = (
         project_panel_videos(asset_cards, transcript.source_sha256)
         if group_id == TRIPTYCH
@@ -2271,13 +2280,13 @@ def _unified_entry(
     omitted = {
         path: "本期中文口播没有对应英文实录，原中文字幕和主字幕继续使用。"
         for path in text_paths
-        if group_id in {"Z-M06", "Z-M08", "Z-M13"} and path.endswith("/en")
+        if group_id in {"Z-M06", "Z-M08", "Z-M13", GHOST_GROUP} and path.endswith("/en")
     }
     media_path = UNIFIED_MEDIA_PATHS.get(group_id)
     source_paths = (
         cut_source_paths(group_id) if is_cut else (media_path,) if media_path else ()
     )
-    media_clock_paths = () if is_paper else source_paths
+    media_clock_paths = () if moving_alpha else source_paths
     images = (
         project_image_digests(asset_cards)
         if is_cut or is_panel or is_handoff or is_why
@@ -2382,12 +2391,14 @@ def _unified_entry(
             **({"dependency_ids": [WHY_FONT]} if is_why else {}),
             **(
                 {
-                    "paper_typewriter_live": True,
-                    "dependency_ids": list(
-                        AUTOMATIC_TEMPLATE_DEPENDENCIES[PAPER_GROUP]
-                    ),
+                    (
+                        "paper_typewriter_live"
+                        if is_paper
+                        else "unified_alpha_presenter"
+                    ): True,
+                    "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[group_id]),
                 }
-                if is_paper
+                if moving_alpha
                 else {}
             ),
             **(
@@ -2696,7 +2707,7 @@ def build_overlay_recipes(
                 transcript,
                 asset_cards or [],
                 chapter_starts=semantic.chapter_start_token_ids
-                if beat.group_id == CHAPTER_SCENE_GROUP
+                if beat.group_id in CHAPTER_GROUPS
                 else None,
             )
             paths = unified_sound_paths(beat.group_id)

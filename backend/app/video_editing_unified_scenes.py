@@ -67,6 +67,7 @@ from .video_editing_story_panels import (
     PANEL_SOURCE,
     PANEL_TEMPLATE_ID,
 )
+from .video_editing_unified_alpha import GHOST_GROUP, PAPER_CHAPTER_GROUP
 from .video_editing_word_bindings import emphasis_text
 
 UNIFIED_TEMPLATE_ID = "unified-argument-v1"
@@ -74,6 +75,7 @@ UNIFIED_EXPANDED_TEMPLATE_ID = "unified-argument-v2"
 UNIFIED_EXPLANATION_TEMPLATE_ID = "unified-explanation-v1"
 CHAPTER_TEMPLATE_ID = "unified-chapter-v1"
 CHAPTER_SCENE_GROUP = "Z-M15"
+LIVE_CHAPTERS_TEMPLATE_ID = "unified-live-chapters-v1"
 WHY_TEMPLATE_ID = "unified-question-relay-v1"
 TRANSLATION_TEMPLATE_ID = "unified-bilingual-swap-v1"
 UNIFIED_TEMPLATES = frozenset(
@@ -82,6 +84,7 @@ UNIFIED_TEMPLATES = frozenset(
         UNIFIED_EXPANDED_TEMPLATE_ID,
         UNIFIED_EXPLANATION_TEMPLATE_ID,
         CHAPTER_TEMPLATE_ID,
+        LIVE_CHAPTERS_TEMPLATE_ID,
         WHY_TEMPLATE_ID,
         TRANSLATION_TEMPLATE_ID,
         PAPER_TEMPLATE_ID,
@@ -113,6 +116,8 @@ UNIFIED_MEDIA_PATHS = {
             WHY_GROUP,
             TRANSLATION_GROUP,
             PAPER_GROUP,
+            PAPER_CHAPTER_GROUP,
+            GHOST_GROUP,
             *UNIFIED_VIDEO_VARIANTS,
         ),
         UNIFIED_PRESENTER,
@@ -207,6 +212,13 @@ UNIFIED_SOUNDS = {
         "swap_second": "ease",
     },
     PAPER_GROUP: {"row0": "visible", "row1": "visible"},
+    PAPER_CHAPTER_GROUP: {
+        "ordinal": "ease",
+        "quote0": "ease",
+        "quote1": "ease",
+        "exit": "ease",
+    },
+    GHOST_GROUP: {"ghost": "ease", "phrase0": "ease", "phrase1": "ease"},
     WHY_GROUP: dict(
         zip(
             (path.removeprefix("/timing/events/") for path in WHY_EVENTS),
@@ -278,6 +290,8 @@ UNIFIED_SCENE_GROUPS = (
         WHY_GROUP,
         TRANSLATION_GROUP,
         PAPER_GROUP,
+        PAPER_CHAPTER_GROUP,
+        GHOST_GROUP,
     }
 )
 _CAPTION_BANDS = {
@@ -290,6 +304,8 @@ _CAPTION_BANDS = {
     NUMBER_GROUP: (850, 960),
     TRANSLATION_GROUP: (880, 960),
     PAPER_GROUP: (855, 960),
+    PAPER_CHAPTER_GROUP: (855, 960),
+    GHOST_GROUP: (860, 960),
     **CUT_CAPTION_BANDS,
     **PANEL_CAPTION_BANDS,
     **HANDOFF_CAPTION_BANDS,
@@ -582,6 +598,9 @@ def validate_unified_anchors(
     if group == PAPER_GROUP:
         paper_character_times(beat, anchors, transcript)
         return
+    if group in {PAPER_CHAPTER_GROUP, GHOST_GROUP}:
+        _validate_alpha_scene(beat, text, events, transcript, duration)
+        return
     if group == WHY_GROUP:
         why_question_gloss(anchors)
         if (
@@ -716,6 +735,75 @@ def validate_unified_anchors(
     ):
         raise ValueError(
             "Measured words do not leave time for the original action and reading"
+        )
+
+
+def _validate_alpha_scene(
+    beat: SemanticBeat,
+    text: dict,
+    events: dict,
+    transcript: Transcript,
+    duration: float,
+) -> None:
+    word_ends = {token.id: token.end_ms for token in transcript.tokens}
+    action = {
+        path.removeprefix(_EVENT_PREFIX): row
+        for path, row in events.items()
+        if path.startswith(_EVENT_PREFIX)
+    }
+    if beat.group_id == PAPER_CHAPTER_GROUP:
+        ordinal, title, first, second, exit_row = (
+            action[key] for key in ("ordinal", "title", "quote0", "quote1", "exit")
+        )
+        slots = ("title", "quotes/0", "quotes/1")
+        valid = (
+            ordinal["token_id"] == beat.first_token_id
+            and all(
+                _starts(event, text[key])
+                for event, key in zip((title, first, second), slots, strict=True)
+            )
+            and 0.20 <= title["value"] < first["value"]
+            and title["value"] + _reading_time(text["title"]) <= first["value"]
+            and first["value"] + _reading_time(text["quotes/0"]) <= second["value"]
+            and second["value"] + max(0.40, _reading_time(text["quotes/1"]))
+            <= exit_row["value"]
+            <= duration - 0.27
+        )
+        limits = (8, 12, 12)
+        following_events = (first, second, exit_row)
+    else:
+        ghost, first, second = (action[key] for key in ("ghost", "phrase0", "phrase1"))
+        begin, end = (
+            events[f"/content/captions/0/{edge}"] for edge in ("start", "end")
+        )
+        slots = ("phrases/0", "phrases/1", "captions/0/text")
+        caption = text[slots[-1]]
+        valid = (
+            ghost["value"] + 0.20 <= first["value"]
+            and _starts(first, text[slots[0]])
+            and _starts(second, text[slots[1]])
+            and first["value"] + _reading_time(text[slots[0]]) <= second["value"]
+            and second["value"] + _reading_time(text[slots[1]]) <= begin["value"]
+            and _starts(begin, caption)
+            and (end["edge"], end["token_id"]) == ("end", caption["token_ids"][-1])
+            and begin["value"] + _reading_time(caption) <= end["value"] <= duration
+        )
+        limits = (8, 8, 12)
+        following_events = (second, begin, end)
+    if (
+        beat.relation != "explanation"
+        or not valid
+        or any(
+            not 1 <= len(text[key]["text"]) <= limit or "\n" in text[key]["text"]
+            for key, limit in zip(slots, limits, strict=True)
+        )
+        or any(
+            word_ends[text[key]["token_ids"][-1]] > event["measured_anchor_ms"]
+            for key, event in zip(slots, following_events, strict=True)
+        )
+    ):
+        raise ValueError(
+            "Original alpha scene needs its spoken content and motion order"
         )
 
 

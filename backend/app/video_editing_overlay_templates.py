@@ -34,6 +34,7 @@ from .video_editing_hypit_strips import (
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import (
+    CHAPTER_GROUPS,
     PACKAGE_GROUP,
     TRANSLATION_GROUP,
     WHY_FONT,
@@ -51,9 +52,11 @@ from .video_editing_question_branch import QUESTION_FONT, QUESTION_GROUP
 from .video_editing_question_card import QUESTION_CARD_A_FONTS, QUESTION_CARD_GROUP
 from .video_editing_story_panels import PANEL_GROUPS, PANEL_TEMPLATE_ID
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
+from .video_editing_unified_alpha import ALPHA_GROUPS, GHOST_GROUP, PAPER_CHAPTER_GROUP
 from .video_editing_unified_scenes import (
     CHAPTER_SCENE_GROUP,
     CHAPTER_TEMPLATE_ID,
+    LIVE_CHAPTERS_TEMPLATE_ID,
     TRANSLATION_TEMPLATE_ID,
     UNIFIED_EXPANDED_GROUPS,
     UNIFIED_EXPANDED_TEMPLATE_ID,
@@ -163,7 +166,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     QUESTION_GROUP: (QUESTION_FONT,),
     QUESTION_CARD_GROUP: QUESTION_CARD_A_FONTS,
     WHY_GROUP: (WHY_FONT,),
-    PAPER_GROUP: (FOREGROUND_MATTE,),
+    **dict.fromkeys(ALPHA_GROUPS, (FOREGROUND_MATTE,)),
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     LINE_GROUP: (LINE_BRUSH_FONT,),
     ROTATION_GROUP: (*FRUIT_LIST_FONTS, ROTATION_MATTE),
@@ -640,6 +643,29 @@ _TEMPLATES[CHAPTER_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[LIVE_CHAPTERS_TEMPLATE_ID] = {
+    "id": LIVE_CHAPTERS_TEMPLATE_ID,
+    "name": "同期人物与原生章节",
+    "slots": [
+        {
+            "group_id": PAPER_CHAPTER_GROUP,
+            "purpose": "用方格纸、描边人物和两条实录原话建立新章节。",
+            "layer": "scene",
+            "binding": "关系使用 explanation。ordinal 绑定章首词，由编译器生成序词。"
+            "title、quote0、quote1 各绑定章名或原话首词，exit 绑定读完两句后的实录词。"
+            "两条原话须在章内，人物绑定同期实录。",
+        },
+        {
+            "group_id": GHOST_GROUP,
+            "purpose": "用原景中的同期描边分身强调两个实录短语。",
+            "layer": "scene",
+            "binding": "关系使用 explanation。ghost 绑定第一短语前的实录词，"
+            "phrase0、phrase1 各取一至八字实录并绑定首词。"
+            "原生短字幕取后续原话，其起止对应首词和末词。英文留空，人物绑定同期实录。",
+        },
+        *_TEMPLATES[CHAPTER_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[WHY_TEMPLATE_ID] = {
     "id": WHY_TEMPLATE_ID,
     "name": "问号接力与口播重点",
@@ -925,6 +951,7 @@ def overlay_templates() -> list[dict]:
             UNIFIED_EXPANDED_TEMPLATE_ID,
             UNIFIED_EXPLANATION_TEMPLATE_ID,
             CHAPTER_TEMPLATE_ID,
+            LIVE_CHAPTERS_TEMPLATE_ID,
             WHY_TEMPLATE_ID,
             TRANSLATION_TEMPLATE_ID,
             PAPER_TEMPLATE_ID,
@@ -987,13 +1014,13 @@ def validate_template_plan(
     groups = {slot["group_id"] for slot in template["slots"]}
     chosen = {beat.group_id for beat in plan.beats if beat.group_id != "Z-M00"}
     chapter_starts = plan.chapter_start_token_ids
-    if chapter_starts or CHAPTER_SCENE_GROUP in chosen:
+    if chapter_starts or CHAPTER_GROUPS & chosen:
         positions = {
             beat.first_token_id: index for index, beat in enumerate(plan.beats)
         }
         if (
-            template["id"] != CHAPTER_TEMPLATE_ID
-            or CHAPTER_SCENE_GROUP not in chosen
+            template["id"] not in {CHAPTER_TEMPLATE_ID, LIVE_CHAPTERS_TEMPLATE_ID}
+            or not CHAPTER_GROUPS & chosen
             or not chapter_starts
             or len(chapter_starts) != len(plan.argument_outline)
             or chapter_starts[0] != plan.beats[0].first_token_id
@@ -1003,7 +1030,7 @@ def validate_template_plan(
             or any(
                 beat.first_token_id not in chapter_starts
                 for beat in plan.beats
-                if beat.group_id == CHAPTER_SCENE_GROUP
+                if beat.group_id in CHAPTER_GROUPS
             )
         ):
             raise ValueError("Chapters must map in order to measured plan boundaries")

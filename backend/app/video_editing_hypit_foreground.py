@@ -22,11 +22,9 @@ _MATTE = (
 _SAMPLER = _OWNER / "unified/core/media.py"
 _NATIVE = Path("commercial_runtime/native.py")
 # HY-A2's original fg="mkfg1@483,1014,597,906" is above stagger layer 10.
-_FOREGROUND_SIZE = 598, 906
+SLANT_FOREGROUND_BOX = 483, 1014, 597, 906
+_CANVAS_BOX = 0, 0, 1080, 1920
 _SOURCE_SIZE = 720, 1280
-_STYLE = """
-  media.foreground { stack-order: 11; fit: cover; }
-"""
 
 
 def _foreground_profile(package: Path) -> dict[str, Any]:
@@ -66,10 +64,11 @@ def attach_foreground_track(
         '  <import as="pipeline" from="@hypit/media-pipeline@1"/>\n'
         '  <import as="media-track" from="@hypit/media-track@1"/>\n'
     )
-    left, top = (0, 0) if full_source else (483, 1014)
+    left, top, width, height = _CANVAS_BOX if full_source else SLANT_FOREGROUND_BOX
     track = (
         '  <spatial:Frame id="tengli-fg-frame" within={canvas}\n'
-        f'    left="{left}px" top="{top}px" right="1080px" bottom="1920px"/>\n'
+        f'    left="{left}px" top="{top}px" '
+        f'right="{left + width}px" bottom="{top + height}px"/>\n'
         """  <asset:Video id="tengli-fg-source" src="./inputs/current-foreground.webm"/>
   <pipeline:Normalize id="tengli-fg-media" source={tengli-fg-source}
     video="primary-moving" audio="none" span-authority="video" clock={clock}/>
@@ -83,8 +82,10 @@ def attach_foreground_track(
     styles = style_file.read_text(encoding="utf-8")
     if styles.count("</sheet>") != 1:
         raise ValueError("Original slant card appearance sheet changed")
+    fit = "cover" if full_source else "contain"
+    style = f"\n  media.foreground {{ stack-order: 11; fit: {fit}; }}\n"
     style_file.write_text(
-        styles.replace("</sheet>", _STYLE + "</sheet>"), encoding="utf-8"
+        styles.replace("</sheet>", style + "</sheet>"), encoding="utf-8"
     )
     return (
         scene.replace(asset, asset + imports)
@@ -107,7 +108,8 @@ def render_foreground(
     if sha256(source) != window["source_sha256"]:
         raise ValueError("Slant card presenter differs from the compiled source window")
     profile = _foreground_profile(package)
-    size = _SOURCE_SIZE if full_source else _FOREGROUND_SIZE
+    box = _CANVAS_BOX if full_source else SLANT_FOREGROUND_BOX
+    size = _SOURCE_SIZE if full_source else box[2:]
     identity = {
         "source_window": window,
         "model_sha256": sha256(model),
@@ -234,7 +236,7 @@ def render_foreground(
             "sha256": sha256(clip),
             "alpha": "straight",
             "frames": frames,
-            "native_box": [0, 0, 1080, 1920] if full_source else [483, 1014, 597, 906],
+            "native_box": list(box),
         }
         atomic_json(receipt, result)
         return result

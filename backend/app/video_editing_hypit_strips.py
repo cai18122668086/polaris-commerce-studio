@@ -14,7 +14,11 @@ from .motion_library import atomic_json, read_json, sha256
 from .video_editing_contracts import Transcript
 from .video_editing_hypit import NATIVE_FILES
 from .video_editing_hypit_chart import patch_flow_slices
-from .video_editing_hypit_foreground import attach_foreground_track, render_foreground
+from .video_editing_hypit_foreground import (
+    SLANT_FOREGROUND_BOX,
+    attach_foreground_track,
+    render_foreground,
+)
 
 STRIP_PROFILE = "hypit-original-strips/1"
 SLANT_GROUP = "HY-A2"
@@ -268,6 +272,10 @@ def _native_attributes(package: Path, group: dict, data: dict) -> dict:
             # gap. Keep the black original serif and the right-edge alignment.
             slot.update({"cap-size": "96", "cap-en-size": "100", "cap-dy": "-8"})
     elif slant:
+        foreground = re.search(r'(?<=\s)fg="([^"]+)"', match[0]) if match else None
+        box = ",".join(map(str, SLANT_FOREGROUND_BOX))
+        if not foreground or foreground[1] != f"mkfg1@{box}":
+            raise ValueError("Original slant card presenter window changed")
         labels = data["labels"]
         glosses = data["glosses"]
         if (

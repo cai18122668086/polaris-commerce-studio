@@ -364,6 +364,14 @@ def test_hypit_slant_cards_keep_three_image_slots_and_native_arrivals(
     assets[strips.SLANT_IMAGES[0]]["sha256"] = assets[strips.SLANT_IMAGES[1]]["sha256"]
     with pytest.raises(ValueError, match="distinct current image bytes"):
         strips.compile_strips(tmp_path, group, native, assets)
+    entry.write_text(
+        entry.read_text(encoding="utf-8").replace("483,1014", "0,0"), encoding="utf-8"
+    )
+    monkeypatch.setitem(
+        strips.STAGGER_GROUPS, strips.SLANT_GROUP, ("a2m", strips.sha256(entry))
+    )
+    with pytest.raises(ValueError, match="presenter window changed"):
+        strips._native_attributes(tmp_path, group, data)
 
 
 @pytest.mark.parametrize(
@@ -384,7 +392,8 @@ def test_slant_presenter_placement_keeps_the_foreground_above_cards(
     assert result.index("source={a2m.track}") < result.index(
         "source={tengli-fg-track.visual}"
     )
-    assert "stack-order: 11" in style.read_text(encoding="utf-8")
+    fit = "cover" if full_source else "contain"
+    assert f"stack-order: 11; fit: {fit};" in style.read_text(encoding="utf-8")
 
 
 def test_hypit_sound_anchor_requires_the_rendered_scene_entry(tmp_path):

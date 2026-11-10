@@ -33,7 +33,12 @@ from .video_editing_line_branch import (
     line_sheet_shape,
 )
 from .video_editing_materials import project_image_digests
-from .video_editing_native_content import PACKAGE_GROUP
+from .video_editing_native_content import (
+    PACKAGE_GROUP,
+    WHY_GROUP,
+    WHY_PROP_PATHS,
+    why_prop_shape,
+)
 from .video_editing_overlay_templates import (
     JUDGMENT_TEMPLATE_ID,
     LINE_TEMPLATE_ID,
@@ -42,6 +47,7 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     ROTATION_TEMPLATE_ID,
 )
+from .video_editing_unified_scenes import WHY_TEMPLATE_ID
 
 _IMAGE_GROUPS = {
     PICTURE_TEMPLATE_ID: ((CARD_GROUP, 3),),
@@ -54,6 +60,7 @@ _IMAGE_GROUPS = {
     FRUIT_LIST_TEMPLATE_ID: ((FRUIT_LIST_GROUP, 4),),
     HY_PICTURE_TEMPLATE_ID: ((SLANT_GROUP, 4), (PICTURE_GROUP, 3)),
     DETAIL_CARDS_TEMPLATE_ID: ((PRICE_CARD_GROUP, 3),),
+    WHY_TEMPLATE_ID: ((WHY_GROUP, 2),),
 }
 _ADDITIONAL_IMAGE_PATHS = {
     FRUIT_LIST_GROUP: FRUIT_LIST_HEADER,
@@ -116,6 +123,17 @@ def template_image_requirements(
                     )
                 ]
             }
+        elif group_id == WHY_GROUP:
+            eligible = []
+            for image_id, asset in sorted(files.items()):
+                try:
+                    with Image.open(asset["path"]) as image:
+                        if why_prop_shape(image):
+                            eligible.append(image_id)
+                except (OSError, ValueError):
+                    continue
+            row["selected_distinct_images"] = len({images[key] for key in eligible})
+            row["native_image_slot_ids"] = dict.fromkeys(WHY_PROP_PATHS, eligible)
         result.append(row)
     return result
 
@@ -187,6 +205,17 @@ def validate_template_images(
             ):
                 raise ValueError(
                     "Line scene needs its selected art, frame sheet and previous still"
+                )
+            continue
+        if beat.group_id == WHY_GROUP:
+            media = {anchor.path: anchor.asset_id for anchor in beat.native_media}
+            slots = requirement["native_image_slot_ids"]
+            if (
+                any(media.get(path) not in slots[path] for path in WHY_PROP_PATHS)
+                or len({images[media[path]] for path in WHY_PROP_PATHS}) != 2
+            ):
+                raise ValueError(
+                    "Question relay needs two distinct verified alpha props"
                 )
             continue
         bound = [

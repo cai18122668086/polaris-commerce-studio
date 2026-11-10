@@ -24,6 +24,10 @@ WHY_FONT = "font-baa251526d686271"
 WHY_TEXT = "/content/english_question"
 WHY_PROPS = ("media-33e4cf54d9f6175ef4cd", "media-4eba1bafe09821cb8a23")
 WHY_PROP_PATHS = tuple(f"/media/question_props/{i}/path" for i in range(2))
+WHY_EVENTS = tuple(
+    "/timing/events/" + key
+    for key in ("props_in/0", "props_in/1", "english_in", "blur_exit")
+)
 _WHY_GLOSSES = {
     "为什么": "Why?",
     "为何": "Why?",
@@ -289,19 +293,15 @@ def why_template(template: dict, *, embedded_caption: bool = True) -> dict:
     }
 
 
-def why_word_bindings(native: dict, assets: dict[str, dict]) -> dict:
+def why_question_gloss(native: dict) -> dict:
     source = next((row for row in native["text"] if row["path"] == WHY_TEXT), None)
     events = {row["path"]: row for row in native["events"]}
-    keys = tuple(
-        "/timing/events/" + key
-        for key in ("props_in/0", "props_in/1", "english_in", "blur_exit")
-    )
     duration = (native["clock"]["end_ms"] - native["clock"]["start_ms"]) / 1000
-    if not source or not all(key in events for key in keys):
+    if not source or not all(key in events for key in WHY_EVENTS):
         raise ValueError("Anchor both props, the spoken question and the blur exit")
     display = _WHY_GLOSSES.get(source["text"].rstrip("?？"), source["text"])
-    times = [events[key]["value"] for key in keys]
-    english = events[keys[2]]
+    times = [events[key]["value"] for key in WHY_EVENTS]
+    english = events[WHY_EVENTS[2]]
     if (
         not re.fullmatch(r"[A-Za-z]{1,3}\?", display)
         or english["edge"] != "start"
@@ -309,7 +309,25 @@ def why_word_bindings(native: dict, assets: dict[str, dict]) -> dict:
         or not 0 < times[0] < times[1] < times[2] < times[3] < duration
     ):
         raise ValueError("Use a short spoken question and four ordered W-R17 events")
+    return {
+        "path": WHY_TEXT,
+        "source_text": source["text"],
+        "source_token_ids": source["token_ids"],
+        "display_text": display,
+    }
 
+
+def why_prop_shape(image: Image.Image) -> bool:
+    return (
+        image.format == "PNG"
+        and image.size == (540, 960)
+        and "A" in image.getbands()
+        and image.getchannel("A").getextrema() == (0, 255)
+    )
+
+
+def why_word_bindings(native: dict, assets: dict[str, dict]) -> dict:
+    question = why_question_gloss(native)
     media = {row["path"]: row["asset_id"] for row in native["media"]}
     props = []
     for path in WHY_PROP_PATHS:
@@ -318,21 +336,13 @@ def why_word_bindings(native: dict, assets: dict[str, dict]) -> dict:
         if asset.get("kind") != "image" or asset.get("source") != "project_upload":
             raise ValueError("Select two registered transparent question props")
         with Image.open(Path(asset["path"])) as image:
-            if (
-                image.format != "PNG"
-                or image.size != (540, 960)
-                or "A" not in image.getbands()
-                or image.getchannel("A").getextrema() != (0, 255)
-            ):
+            if not why_prop_shape(image):
                 raise ValueError("Question props need the native 540×960 alpha canvas")
         props.append({"path": path, "asset_id": aid, "sha256": asset["sha256"]})
     if len({row["sha256"] for row in props}) != 2:
         raise ValueError("Select two distinct question prop images")
     return {
-        "path": WHY_TEXT,
-        "source_text": source["text"],
-        "source_token_ids": source["token_ids"],
-        "display_text": display,
+        **question,
         "props": props,
         "semantic_review": "unreviewed",
     }

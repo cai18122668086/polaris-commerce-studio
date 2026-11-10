@@ -33,7 +33,7 @@ from .video_editing_hypit_strips import (
 )
 from .video_editing_judgment import JUDGMENT_BRUSH_FONT, JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
-from .video_editing_native_content import PACKAGE_GROUP, YEAR_GROUP
+from .video_editing_native_content import PACKAGE_GROUP, WHY_FONT, WHY_GROUP, YEAR_GROUP
 from .video_editing_presenter_motion import (
     MOTION_FONT,
     MOTION_MATTE,
@@ -53,6 +53,7 @@ from .video_editing_unified_scenes import (
     UNIFIED_EXPLANATION_TEMPLATE_ID,
     UNIFIED_GROUPS,
     UNIFIED_TEMPLATES,
+    WHY_TEMPLATE_ID,
     YEAR_BINDING,
     YEAR_FONT,
     unified_binding,
@@ -153,6 +154,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     SPLIT_HORIZONTAL: (SPLIT_TITLE_FONT, ROTATION_MATTE),
     QUESTION_GROUP: (QUESTION_FONT,),
     QUESTION_CARD_GROUP: QUESTION_CARD_A_FONTS,
+    WHY_GROUP: (WHY_FONT,),
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
     LINE_GROUP: (LINE_BRUSH_FONT,),
     ROTATION_GROUP: (*FRUIT_LIST_FONTS, ROTATION_MATTE),
@@ -629,6 +631,23 @@ _TEMPLATES[CHAPTER_TEMPLATE_ID] = {
         *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
     ],
 }
+_TEMPLATES[WHY_TEMPLATE_ID] = {
+    "id": WHY_TEMPLATE_ID,
+    "name": "问号接力与口播重点",
+    "slots": [
+        {
+            "group_id": WHY_GROUP,
+            "purpose": "围绕真实问句，先后出现两个问号，再显示短问词并虚化同期画面。",
+            "layer": "scene",
+            "binding": "关系使用 question。两个道具各绑定一张本期 540×960 透明 PNG，"
+            "按实录先后在短问词前入场，人物底板使用同期原片。"
+            "english_question 绑定实际说出的短问词，例如「谁」「怎么」「为什么」，"
+            "english_in 绑定其首词，英文由编译器映射。"
+            "blur_exit 用随后词点并留出退场时间。",
+        },
+        *_TEMPLATES[UNIFIED_TEMPLATE_ID]["slots"],
+    ],
+}
 _TEMPLATES[HANDOFF_TEMPLATE_ID] = {
     "id": HANDOFF_TEMPLATE_ID,
     "name": "转场与评论引导",
@@ -866,6 +885,7 @@ def overlay_templates() -> list[dict]:
             UNIFIED_EXPANDED_TEMPLATE_ID,
             UNIFIED_EXPLANATION_TEMPLATE_ID,
             CHAPTER_TEMPLATE_ID,
+            WHY_TEMPLATE_ID,
             HANDOFF_TEMPLATE_ID,
             LIVE_SPLIT_TEMPLATE_ID,
             HY_PICTURE_TEMPLATE_ID,

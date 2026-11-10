@@ -132,9 +132,14 @@ from .video_editing_native_compiler import set_native_field
 from .video_editing_native_content import (
     CHAPTER_PATH,
     PACKAGE_GROUP,
+    WHY_EVENTS,
+    WHY_FONT,
+    WHY_GROUP,
+    WHY_PROP_PATHS,
     YEAR_GROUP,
     chapter_ordinal,
     live_package_template,
+    why_template,
 )
 from .video_editing_native_layout import (
     BACKDROP_GROUP,
@@ -289,6 +294,7 @@ _JUDGMENT_SOUNDS = dict(
         strict=True,
     )
 )
+_WHY_SOUNDS = dict(zip(WHY_EVENTS, (_SELECT, _SELECT, _CLICK, _SLIDE), strict=True))
 _OPENING_PRESENTER = "/media/presenter/path"
 _PACKAGE_LABELS = tuple(f"/content/items/{i}/label" for i in range(4))
 _PACKAGE_IMAGES = tuple(f"/media/product_images/{i}/path" for i in range(4))
@@ -929,6 +935,8 @@ def _entry_sound(
     )
     if beat.group_id == COMMENT and path == "/timing/events/submitted_in":
         selection = _CLICK
+    if beat.group_id == WHY_GROUP and path is not None:
+        selection = _WHY_SOUNDS[path]
     event = next(row for row in anchors["events"] if row["path"] == path)
     asset_id, source_start, length, peak = (
         selection if selection[0] not in avoided else _CLICK
@@ -2221,6 +2229,7 @@ def _unified_entry(
     is_cut = group_id in CUT_GROUPS
     is_panel = group_id in PANEL_GROUPS
     is_handoff = group_id in HANDOFF_IMAGE
+    is_why = group_id == WHY_GROUP
     videos = (
         project_panel_videos(asset_cards, transcript.source_sha256)
         if group_id == TRIPTYCH
@@ -2232,9 +2241,15 @@ def _unified_entry(
         if anchor.path in TRIPTYCH_PROJECT and anchor.asset_id in videos
     }
     contract = input_contract(
-        package, group, current_unified_presenter=True, triptych_video_slots=video_slots
+        package,
+        group,
+        current_unified_presenter=True,
+        triptych_video_slots=video_slots,
+        embedded_why_caption=not is_why,
     )
     config = read_json(inside(package, group["input_template"]))
+    if is_why:
+        config = why_template(config, embedded_caption=False)
     if group_id in PRESENTER_VIDEO_GROUPS:
         config = unified_presenter_template(config)
     if video_slots:
@@ -2252,13 +2267,17 @@ def _unified_entry(
         cut_source_paths(group_id) if is_cut else (media_path,) if media_path else ()
     )
     images = (
-        project_image_digests(asset_cards) if is_cut or is_panel or is_handoff else {}
+        project_image_digests(asset_cards)
+        if is_cut or is_panel or is_handoff or is_why
+        else {}
     )
     allowed_paths = cut_media_paths(group_id) if is_cut else set(source_paths)
     if is_panel:
         allowed_paths.update(panel_project_paths(group_id))
     if is_handoff:
         allowed_paths.add(HANDOFF_IMAGE[group_id])
+    if is_why:
+        allowed_paths.update(WHY_PROP_PATHS)
     presenters = (
         {
             row["id"]
@@ -2278,6 +2297,8 @@ def _unified_entry(
             set(bound) != allowed_paths
             or set(beat.asset_ids) != set(bound.values())
             or any(bound[path] not in presenters for path in source_paths)
+            or is_why
+            and len({images[bound[path]] for path in WHY_PROP_PATHS}) != 2
             or {row["path"] for row in anchors["text"]} != text_paths - omitted.keys()
             or {row["path"] for row in anchors["events"]}
             != {row["path"] for row in contract["event_paths"]}
@@ -2340,6 +2361,7 @@ def _unified_entry(
             "config": config,
             "placeholders": slots,
             **({"empty_text": omitted} if omitted else {}),
+            **({"dependency_ids": [WHY_FONT]} if is_why else {}),
             **(
                 {"chapter_start_token_ids": chapter_starts}
                 if chapter_starts is not None

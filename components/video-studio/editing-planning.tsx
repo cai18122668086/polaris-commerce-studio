@@ -188,6 +188,9 @@ export function EditingPlanning({ workspaceId, projectId, tasks, onNativePlan, o
           ? " 当前实录主题或原库依赖尚不满足，编排可选同模板其他动效。"
           : (requirement.selected_distinct_images < requirement.required_distinct_images || !requirement.native_image_slot_ids?.["/presenter"]?.length)
           && " 补齐图片后可重新准备。"}
+      </p> : requirement.group_id === "W-R17" ? <p key={requirement.group_id} className={styles.note}>
+        W-R17 · 两个问号需要两张不同的 540×960 透明 PNG。本期已选 {requirement.selected_distinct_images} 张符合要求的图片。
+        {requirement.selected_distinct_images < requirement.required_distinct_images && " 补齐道具后可重新准备。"}
       </p> : requirement.native_image_slot_ids ? <p key={requirement.group_id} className={styles.note}>
         {requirement.group_id} · 本期线描素材需要不透明过渡图、透明线描图及六列四行的透明手势帧图。
         {Object.values(requirement.native_image_slot_ids).every(ids => ids.length > 0)

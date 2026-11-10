@@ -33,6 +33,7 @@ from .video_editing_hypit import PICTURE_GROUP, hypit_tools
 from .video_editing_hypit_strips import LIVE_STAGE_GROUPS, SLANT_GROUP
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import verify_material_cards
+from .video_editing_native_content import WHY_GROUP
 from .video_editing_native_plans import content_digest
 from .video_editing_planning_store import FILES, execution_available, planning_root
 from .video_editing_presenter_motion import motion_blockers, motion_word_windows
@@ -417,6 +418,14 @@ def process(
             )
             if image_requirements:
                 runtime["project_image_requirements"] = image_requirements
+            if any(
+                row["group_id"] == WHY_GROUP
+                and row["selected_distinct_images"] < row["required_distinct_images"]
+                for row in image_requirements
+            ):
+                runtime["unavailable_template_groups"].setdefault(WHY_GROUP, []).append(
+                    "current_question_props_required"
+                )
             if (
                 template
                 and template["id"] == FRUIT_LIST_TEMPLATE_ID

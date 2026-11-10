@@ -45,8 +45,11 @@ from .video_editing_hypit_strips import (
 )
 from .video_editing_native_content import (
     NUMBER_GROUP,
+    WHY_EVENTS,
+    WHY_GROUP,
     YEAR_GROUP,
     number_glyphs,
+    why_question_gloss,
     year_display,
     year_glyphs,
 )
@@ -65,12 +68,14 @@ UNIFIED_EXPANDED_TEMPLATE_ID = "unified-argument-v2"
 UNIFIED_EXPLANATION_TEMPLATE_ID = "unified-explanation-v1"
 CHAPTER_TEMPLATE_ID = "unified-chapter-v1"
 CHAPTER_SCENE_GROUP = "Z-M15"
+WHY_TEMPLATE_ID = "unified-question-relay-v1"
 UNIFIED_TEMPLATES = frozenset(
     {
         UNIFIED_TEMPLATE_ID,
         UNIFIED_EXPANDED_TEMPLATE_ID,
         UNIFIED_EXPLANATION_TEMPLATE_ID,
         CHAPTER_TEMPLATE_ID,
+        WHY_TEMPLATE_ID,
         CUT_TEMPLATE_ID,
         PANEL_TEMPLATE_ID,
         HANDOFF_TEMPLATE_ID,
@@ -95,6 +100,7 @@ UNIFIED_MEDIA_PATHS = {
             "Z-M14",
             "Z-M16",
             CHAPTER_SCENE_GROUP,
+            WHY_GROUP,
             *UNIFIED_VIDEO_VARIANTS,
         ),
         UNIFIED_PRESENTER,
@@ -183,6 +189,13 @@ UNIFIED_SOUNDS = {
     "Z-M10": {"number_in": "ease", "action_in": "ease"},
     "Z-M14": {"item0": "ease", "item1": "ease", "item2": "ease"},
     CHAPTER_SCENE_GROUP: {"ordinal": "ease", "title": "ease"},
+    WHY_GROUP: dict(
+        zip(
+            (path.removeprefix("/timing/events/") for path in WHY_EVENTS),
+            ("ease", "ease", "visible", "ease"),
+            strict=True,
+        )
+    ),
     "W-R05": {"first_in": "ease", "second_in": "ease"},
     "Z-M13": {"table": "ease"},
     "Z-M16": {
@@ -238,7 +251,7 @@ UNIFIED_SCENE_GROUPS = (
     | PANEL_GROUPS.keys()
     | HANDOFF_GROUPS.keys()
     | BROWSER_LIST_SCENES
-    | {SLANT_GROUP, PICTURE_GROUP, PRICE_CARD_GROUP, CHAPTER_SCENE_GROUP}
+    | {SLANT_GROUP, PICTURE_GROUP, PRICE_CARD_GROUP, CHAPTER_SCENE_GROUP, WHY_GROUP}
 )
 _CAPTION_BANDS = {
     "Z-M02": (800, 960),
@@ -536,6 +549,17 @@ def validate_unified_anchors(
         raise ValueError("Original unified scene needs measured motion entrances")
     if group == "Z-M02":
         _validate_judgment(text, events, duration)
+        return
+    if group == WHY_GROUP:
+        why_question_gloss(anchors)
+        if (
+            beat.relation != "question"
+            or beat.relation_items
+            or events[WHY_EVENTS[-1]]["value"] + 0.25 > duration
+        ):
+            raise ValueError(
+                "Question relay needs a spoken question and room for the exit"
+            )
         return
     if group == CHAPTER_SCENE_GROUP:
         ordinal, move, title = (

@@ -27,7 +27,7 @@ from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
 from .video_editing_line_branch import LINE_GROUP
-from .video_editing_native_content import CHAPTER_PATH, PACKAGE_GROUP
+from .video_editing_native_content import CHAPTER_PATH, PACKAGE_GROUP, WHY_GROUP
 from .video_editing_overlay_templates import (
     LINE_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
@@ -50,6 +50,7 @@ from .video_editing_unified_scenes import (
     UNIFIED_EXPLANATION_TEMPLATE_ID,
     UNIFIED_TEMPLATES,
     UNIFIED_VIDEO_VARIANTS,
+    WHY_TEMPLATE_ID,
 )
 from .video_editing_word_bindings import word_bindings
 
@@ -93,6 +94,7 @@ def catalog_index(
     explanation_scene: bool = False,
     live_splits: bool = False,
     chapter_scene: bool = False,
+    why_scene: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -116,6 +118,7 @@ def catalog_index(
             original_input_a=question_a,
             live_package_presenter=live_package and group["id"] == PACKAGE_GROUP,
             embedded_line_caption=not (line_scene and group["id"] == LINE_GROUP),
+            embedded_why_caption=not (why_scene and group["id"] == WHY_GROUP),
             current_unified_presenter=(
                 unified_scene and group["id"] in UNIFIED_VIDEO_VARIANTS
             )
@@ -261,6 +264,7 @@ def build_request(
         ),
         live_splits=bool(template and template["id"] == LIVE_SPLIT_TEMPLATE_ID),
         chapter_scene=chapter_scene,
+        why_scene=bool(template and template["id"] == WHY_TEMPLATE_ID),
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
@@ -382,6 +386,12 @@ def build_request(
             "第一个从实录首词起，每章必须是一个 beat 的开始，包括没有选 Z-M15 的章。"
             "Z-M15 只能放在章首，英文序词由编译器按章次生成，不写入 native_text。"
             "没有真实的话题换章或实录章名时，可以不选 Z-M15 并省略章起始词列表。"
+        )
+    if template and template["id"] == WHY_TEMPLATE_ID:
+        message += (
+            "W-R17 的两个问号从 native_image_slot_ids 对应槽选择不同道具，"
+            "直接绑定 native_media，不将道具当成实录并列项。"
+            "没有相符道具或实录问句时跳过该槽。"
         )
     if runtime is not None:
         message += (

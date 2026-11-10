@@ -256,6 +256,32 @@ def catalog_index(
     return rows
 
 
+def _request_bytes(value: dict[str, Any]) -> bytes:
+    return json.dumps(value, sort_keys=True, ensure_ascii=False).encode()
+
+
+def _with_frozen_request(
+    body: dict[str, Any], payload: dict[str, Any], frozen: dict[str, Any]
+) -> dict[str, Any]:
+    # JSONB reorders nested object keys. The user message is JSON inside a
+    # string, so compare its parsed values before reusing the frozen string.
+    try:
+        messages = list(frozen["messages"])
+        user = messages[1]
+        messages[1] = {**user, "content": json.loads(user["content"])}
+        rebuilt = {
+            **body,
+            "messages": [body["messages"][0], {"role": "user", "content": payload}],
+        }
+        if _request_bytes({**frozen, "messages": messages}) == _request_bytes(rebuilt):
+            return frozen
+    except (KeyError, IndexError, TypeError, ValueError):
+        pass
+    raise ApiError(
+        409, "EDITING_PLAN_INPUT_CHANGED", "请求与已准备版本不一致，请重新准备。"
+    )
+
+
 def build_request(
     transcript: Transcript,
     package: Path,
@@ -266,6 +292,7 @@ def build_request(
     runtime: dict | None = None,
     *,
     public_copy_only: bool = False,
+    prepared_request: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rules = rule_pack(package)
     question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
@@ -578,7 +605,9 @@ def build_request(
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ],
     }
-    encoded = json.dumps(body, sort_keys=True, ensure_ascii=False).encode()
+    if prepared_request is not None:
+        body = _with_frozen_request(body, payload, prepared_request)
+    encoded = _request_bytes(body)
     evidence = {
         "request_sha256": hashlib.sha256(encoded).hexdigest(),
         "rules": rules,
@@ -757,6 +786,7 @@ def generate(
     runtime: dict | None = None,
     *,
     public_copy_only: bool = False,
+    prepared_request: dict[str, Any] | None = None,
 ) -> SemanticPlan:
     """Single paid submission only after explicit operational authorization.
 
@@ -778,6 +808,7 @@ def generate(
         template,
         runtime,
         public_copy_only=public_copy_only,
+        prepared_request=prepared_request,
     )
     if (
         expected_request_sha256

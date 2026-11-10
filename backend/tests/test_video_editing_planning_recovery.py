@@ -39,6 +39,7 @@ def setup_request(tmp_path, monkeypatch):
         runtime=None,
         *,
         public_copy_only=False,
+        prepared_request=None,
     ):
         body = {"transcript": t.model_dump(), "model": m, "assets": assets}
         if template is not None:

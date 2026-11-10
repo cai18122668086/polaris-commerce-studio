@@ -90,8 +90,9 @@ def setup(video, tmp_path, monkeypatch):
         runtime=None,
         *,
         public_copy_only=False,
+        prepared_request=None,
     ):
-        body = {
+        payload = {
             "model": model,
             "words": [{"id": t.id, "text": t.text} for t in transcript.tokens],
             "cards": cards,
@@ -100,6 +101,15 @@ def setup(video, tmp_path, monkeypatch):
             **({"overlay_template": template} if template else {}),
             **({"runtime": runtime} if runtime else {}),
         }
+        body = {
+            **payload,
+            "messages": [
+                {"role": "system", "content": "planning protocol fixture"},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            ],
+        }
+        if prepared_request is not None:
+            body = worker.planner._with_frozen_request(body, payload, prepared_request)
         data = json.dumps(body, sort_keys=True, ensure_ascii=False).encode()
         return body, {
             "request_sha256": hashlib.sha256(data).hexdigest(),
@@ -491,8 +501,9 @@ def test_hypit_planning_checks_scoped_runtime_and_original_subtitles(
     assert worker.hypit_template_blockers(settings, "internal", None, "none") == {}
 
 
+@pytest.mark.parametrize("snapshot_roundtrip", ["original", "reordered", "changed"])
 def test_one_execution_per_prepared_request_and_valid_response_contract(
-    video, tmp_path, monkeypatch
+    video, tmp_path, monkeypatch, snapshot_roundtrip
 ):
     client, _, ws, settings, _, task, semantic = setup(video, tmp_path, monkeypatch)
     prepared = prepare(client, ws, settings, task)
@@ -503,7 +514,49 @@ def test_one_execution_per_prepared_request_and_valid_response_contract(
         create(client, ws, task["id"], "generate", prepared["id"]).json()["id"]
         == submitted.json()["id"]
     )
-    provider = Provider(semantic)
+    factory = client.app.state.session_factory
+    with factory() as session:
+        parent = session.get(EditingPlanningTaskRecord, prepared["id"])
+        frozen = read_json(
+            Path(
+                next(
+                    a["path"]
+                    for a in parent.result["artifacts"]
+                    if a["role"] == "request"
+                )
+            )
+        )
+        pending = session.get(EditingPlanningTaskRecord, submitted.json()["id"])
+        if snapshot_roundtrip != "original":
+            from sqlalchemy import update
+
+            # JSONB returns object keys ordered by their length and bytes.
+            snapshot = json.loads(
+                json.dumps(pending.snapshot),
+                object_pairs_hook=lambda pairs: dict(
+                    sorted(
+                        pairs,
+                        key=lambda item: (len(item[0].encode()), item[0].encode()),
+                    )
+                ),
+            )
+            assert snapshot == pending.snapshot
+            assert json.dumps(snapshot) != json.dumps(pending.snapshot)
+            if snapshot_roundtrip == "changed":
+                snapshot["planning_runtime"]["version"] += "-changed"
+            session.execute(
+                update(EditingPlanningTaskRecord)
+                .where(EditingPlanningTaskRecord.id == pending.id)
+                .values(snapshot=snapshot)
+            )
+            session.commit()
+
+    class ExactProvider(Provider):
+        def request(self, *args, **kwargs):
+            assert kwargs["json"] == frozen
+            return super().request(*args, **kwargs)
+
+    provider = ExactProvider(semantic)
     worker.process(
         submitted.json()["id"], settings, client.app.state.session_factory, provider
     )
@@ -513,6 +566,10 @@ def test_one_execution_per_prepared_request_and_valid_response_contract(
     result = client.get(
         base(ws) + "/editing-planning-tasks/" + submitted.json()["id"]
     ).json()
+    if snapshot_roundtrip == "changed":
+        assert result["error_code"] == "EDITING_PLAN_INPUT_CHANGED"
+        assert provider.calls == 0 and result["call_state"] == "not_submitted"
+        return
     assert result["status"] == "completed", result
     assert (
         result["semantic_origin"] == "tengli_gateway"

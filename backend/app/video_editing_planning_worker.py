@@ -16,7 +16,13 @@ from .celery_app import celery_app
 from .config import Settings
 from .database import build_database
 from .errors import ApiError
-from .motion_library import MOTION_SHA256, atomic_json, sha256, verify_package
+from .motion_library import (
+    MOTION_SHA256,
+    atomic_json,
+    read_json,
+    sha256,
+    verify_package,
+)
 from .motion_local_dependencies import dependency_state, local_dependencies
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
 from .video_editing_azl_panels import azl_blockers, azl_panel_windows
@@ -125,15 +131,18 @@ def artifacts(root: Path, attempt: Path, mode: str) -> list[dict]:
     return output
 
 
-def verify_prepared(snapshot: dict, settings: Settings, prepared_id: str) -> None:
+def verify_prepared(snapshot: dict, settings: Settings, prepared_id: str) -> dict:
     parent = planning_root(settings, prepared_id)
-    if not {"request", "request_evidence", "transcript"} <= {
-        a["role"] for a in snapshot["prepared_artifacts"]
-    }:
+    captured = snapshot["prepared_artifacts"]
+    files = {item["role"]: item for item in captured}
+    if (
+        len(files) != len(captured)
+        or not {"request", "request_evidence", "transcript"} <= files.keys()
+    ):
         raise ApiError(
             409, "EDITING_PREPARED_REQUEST_CHANGED", "准备记录缺少完整输入产物。"
         )
-    for item in snapshot["prepared_artifacts"]:
+    for item in files.values():
         path = Path(item["path"]).resolve()
         if (
             not path.is_relative_to(parent)
@@ -147,6 +156,12 @@ def verify_prepared(snapshot: dict, settings: Settings, prepared_id: str) -> Non
                 "EDITING_PREPARED_REQUEST_CHANGED",
                 "已准备的请求产物发生变化，请恢复原产物。",
             )
+    request = read_json(Path(files["request"]["path"]))
+    if not isinstance(request, dict):
+        raise ApiError(
+            409, "EDITING_PREPARED_REQUEST_CHANGED", "准备请求格式不完整，请重新准备。"
+        )
+    return request
 
 
 def process(
@@ -500,6 +515,13 @@ def process(
                     FRUIT_LIST_GROUP, []
                 ).append("fruit-topic-missing-from-recorded-speech")
             snapshot = {**snapshot, "planning_runtime": runtime}
+        prepared_request = None
+        if mode == "generate":
+            if not prepared_id:
+                raise ApiError(
+                    409, "EDITING_PREPARED_REQUEST_INVALID", "缺少准备记录。"
+                )
+            prepared_request = verify_prepared(snapshot, settings, prepared_id)
         body, evidence = planner.build_request(
             transcript,
             settings.video_editing_library_dir,
@@ -509,6 +531,7 @@ def process(
             template,
             runtime,
             public_copy_only=snapshot.get("public_copy_only", False),
+            prepared_request=prepared_request,
         )
         result = {**evidence, "text_status": transcript.text_status}
         if mode == "prepare":
@@ -516,11 +539,6 @@ def process(
             atomic_json(attempt / FILES["request_evidence"], evidence)
             status = "prepared"
         else:
-            if not prepared_id:
-                raise ApiError(
-                    409, "EDITING_PREPARED_REQUEST_INVALID", "缺少准备记录。"
-                )
-            verify_prepared(snapshot, settings, prepared_id)
             if not (
                 root / "provider/semantic-submit-intent.json"
             ).exists() and snapshot.get("gateway") != planner_endpoint(settings):
@@ -616,6 +634,7 @@ def process(
                 template=template,
                 runtime=runtime,
                 public_copy_only=snapshot.get("public_copy_only", False),
+                prepared_request=prepared_request,
             )
             atomic_json(root / "provider" / FILES["request_evidence"], evidence)
             result.update(

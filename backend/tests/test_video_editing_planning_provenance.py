@@ -135,6 +135,7 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
         runtime=None,
         *,
         public_copy_only=False,
+        prepared_request=None,
     ):
         # Explicit 132-group wire fixture; not a real Tengli result or library.
         payload = {
@@ -163,6 +164,10 @@ def captured_job(video, tmp_path, monkeypatch, template=False, missing_event=Fal
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
         }
+        if prepared_request is not None:
+            body = planning_worker.planner._with_frozen_request(
+                body, payload, prepared_request
+            )
         encoded = json.dumps(body, sort_keys=True, ensure_ascii=False).encode()
         return body, {
             "request_sha256": hashlib.sha256(encoded).hexdigest(),

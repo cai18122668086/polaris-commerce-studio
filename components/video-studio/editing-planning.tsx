@@ -30,6 +30,7 @@ const autoPreviewErrors: Record<string, string> = {
 };
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = {
+  EDITING_TASK_STORAGE_UNAVAILABLE: "规划服务暂时无法写入工作目录。请在存储恢复后重试此任务。",
   EDITING_CONDITION_ANCHOR_INCOMPLETE: "候选中的动效文字遗漏了实录适用条件。请核对转录并保留完整前提。",
   EDITING_ROLE_ACTION_ANCHOR_INVALID: "角色场景的关门、交接或禁行切点没有对应实录词首。请选择对应的动作词或其他动效。",
   EDITING_NEGATION_ANCHOR_INCOMPLETE: "候选中的动效文字遗漏了实录的否定表达。请核对转录或使用保留完整否定的编排。",

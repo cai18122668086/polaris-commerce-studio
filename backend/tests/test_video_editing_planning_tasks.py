@@ -144,6 +144,41 @@ def prepare(client, ws, settings, task):
     return result.json()
 
 
+def test_attempt_storage_failure_releases_planning_lease(video, tmp_path, monkeypatch):
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    created = create(client, ws, task["id"]).raise_for_status().json()
+    task_id = created["id"]
+    endpoint = f"{base(ws)}/editing-planning-tasks/{task_id}"
+    blocked = worker.planning_root(settings, task_id) / "attempts"
+    blocked.parent.mkdir(parents=True)
+    blocked.touch()
+    factory = client.app.state.session_factory
+
+    worker.process(task_id, settings, factory)
+
+    failed = client.get(endpoint).raise_for_status().json()
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "EDITING_TASK_STORAGE_UNAVAILABLE"
+    assert failed["call_state"] == "not_submitted"
+    assert failed["artifacts"] == []
+    with factory() as session:
+        task = session.get(EditingPlanningTaskRecord, task_id)
+        attempt = session.scalar(
+            select(EditingPlanningAttemptRecord).where(
+                EditingPlanningAttemptRecord.task_id == task_id
+            )
+        )
+        assert task.owner_token is None and task.lease_until is None
+        assert (attempt.status, attempt.error_code) == ("failed", failed["error_code"])
+
+    blocked.unlink()
+    client.post(endpoint + "/retry").raise_for_status()
+    worker.process(task_id, settings, factory)
+    ready = client.get(endpoint).raise_for_status().json()
+    assert (ready["status"], ready["attempts"]) == ("prepared", 2)
+    assert ready["call_state"] == "not_submitted"
+
+
 def test_selected_overlay_template_is_frozen_in_preparation(
     video, tmp_path, monkeypatch
 ):

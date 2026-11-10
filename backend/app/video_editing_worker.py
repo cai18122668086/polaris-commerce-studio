@@ -532,8 +532,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                         "source_sha256": correction.details.get("source_sha256"),
                         "audio_sha256": correction.details.get("audio_sha256"),
                     }
-    root = (settings.video_editing_tasks_dir / task_id / token[:8]).resolve()
-    root.mkdir(parents=True, exist_ok=True)
+    root = settings.video_editing_tasks_dir / task_id / token[:8]
     last_heartbeat = [datetime.min.replace(tzinfo=UTC)]
 
     def guard(force: bool = False) -> None:
@@ -643,6 +642,11 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
 
     try:
         guard(True)
+        try:
+            root = root.resolve()
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise EditingFailure("EDITING_TASK_STORAGE_UNAVAILABLE") from error
         if not settings.video_editing_enabled:
             raise EditingFailure("EDITING_DISABLED")
         correction = snapshot["correction"]
@@ -966,11 +970,13 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 .values(status=status, error_code=code, finished_at=datetime.now(UTC))
             )
             session.commit()
-        # Fixed code only: no environment, credentials or raw provider response.
-        atomic_json(
-            root / "failure.json",
-            {"code": code, "exception_type": type(error).__name__},
-        )
+        # The database is authoritative when the task volume cannot store a receipt.
+        with suppress(OSError):
+            if root.is_dir():
+                atomic_json(
+                    root / "failure.json",
+                    {"code": code, "exception_type": type(error).__name__},
+                )
 
 
 @celery_app.task(

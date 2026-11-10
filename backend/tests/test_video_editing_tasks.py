@@ -365,6 +365,38 @@ def test_recovery_reserves_delivery_and_broker_loss_keeps_durable_job(
         assert row.status == "queued" and row.checkpoint["dispatch_not_before"] > 0
 
 
+def test_attempt_storage_failure_releases_editing_lease(video, tmp_path):
+    client, _, ws, _, settings, _, source = setup_source(video, tmp_path)
+    tasks = base(ws) + "/editing-tasks"
+    created = (
+        client.post(tasks, json={"request_id": str(uuid4()), "source_id": source})
+        .raise_for_status()
+        .json()
+    )
+    task_id = created["id"]
+    blocked = settings.video_editing_tasks_dir / task_id
+    blocked.touch()
+    factory = client.app.state.session_factory
+
+    process(task_id, settings, factory)
+
+    failed = client.get(f"{tasks}/{task_id}").raise_for_status().json()
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "EDITING_TASK_STORAGE_UNAVAILABLE"
+    assert failed["artifacts"] == []
+    with factory() as session:
+        task = session.get(EditingTaskRecord, task_id)
+        attempt = session.scalar(
+            select(EditingAttemptRecord).where(EditingAttemptRecord.task_id == task_id)
+        )
+        assert task.owner_token is None and task.lease_until is None
+        assert (attempt.status, attempt.error_code) == ("failed", failed["error_code"])
+
+    blocked.unlink()
+    retry = client.post(f"{tasks}/{task_id}/retry").raise_for_status().json()
+    assert (retry["id"], retry["status"], retry["attempts"]) == (task_id, "queued", 1)
+
+
 def test_create_task_never_connects_to_broker_in_request_thread(
     video, tmp_path, monkeypatch
 ):

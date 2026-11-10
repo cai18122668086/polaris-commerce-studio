@@ -1,6 +1,7 @@
 """Separate semantic queue; preparation is free, billed response recovery is durable."""
 
 import shutil
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -247,9 +248,7 @@ def process(
             row.project_id,
         )
         release, source_id = row.library_release, row.source_id
-    root = planning_root(settings, task_id)
-    attempt = root / "attempts" / token[:8]
-    attempt.mkdir(parents=True, exist_ok=True)
+    attempt: Path | None = None
     result: dict[str, Any] = {}
 
     def guard(stage: str | None = None) -> None:
@@ -287,6 +286,16 @@ def process(
 
     try:
         guard()
+        try:
+            root = planning_root(settings, task_id)
+            attempt = root / "attempts" / token[:8]
+            attempt.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise ApiError(
+                503,
+                "EDITING_TASK_STORAGE_UNAVAILABLE",
+                "剪辑任务暂时无法写入工作目录。",
+            ) from error
         if not settings.video_editing_enabled or release != MOTION_SHA256:
             raise ApiError(
                 503, "EDITING_PLANNING_DISABLED", "剪辑原库或任务配置不匹配。"
@@ -756,7 +765,10 @@ def process(
             else "EDITING_PLANNING_INTERNAL_ERROR"
         )
         status = "cancelled" if code == "EDITING_PLAN_CANCELLED" else "failed"
-        result["artifacts"] = artifacts(root, attempt, mode)
+        result["artifacts"] = []
+        if attempt is not None:
+            with suppress(OSError):
+                result["artifacts"] = artifacts(root, attempt, mode)
         with factory() as session:
             session.execute(
                 update(EditingPlanningTaskRecord)
@@ -783,10 +795,12 @@ def process(
                 .values(status=status, error_code=code, finished_at=datetime.now(UTC))
             )
             session.commit()
-        atomic_json(
-            attempt / "failure.json",
-            {"code": code, "exception_type": type(error).__name__},
-        )
+        with suppress(OSError):
+            if attempt is not None and attempt.is_dir():
+                atomic_json(
+                    attempt / "failure.json",
+                    {"code": code, "exception_type": type(error).__name__},
+                )
     else:
         if status == "completed":
             resume_auto_preview(task_id, settings, factory)

@@ -27,6 +27,20 @@ from .video_editing_collage_scene import COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_crowd_scene import CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
+from .video_editing_first_groups import (
+    DENSITY_OUTPUT_TOKENS,
+    DENSITY_POLICY,
+    DENSITY_PROMPT,
+    FIRST_MOTION_GROUPS,
+    GROUP_PROMPT,
+    OPENING_PROMPT,
+    PREFLIGHT_POLICY,
+    PREFLIGHT_PROMPT,
+    READABLE_POLICIES,
+    READABLE_PROMPT,
+    compact_payload,
+    expand_group_plan,
+)
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
 from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID
 from .video_editing_hypit_strips import SLANT_INSET_PURPOSE
@@ -595,14 +609,46 @@ def build_request(
             "count和unit从同一词对绑定，撕纸的两个背景须用不同图片。"
             "选择与场景相符的素材与完整短语。"
         )
+    max_output_tokens = 5000
+    if template and template["id"] in FIRST_MOTION_GROUPS:
+        group_policy = (runtime or {}).get("first_groups_policy")
+        readable_policy = group_policy in READABLE_POLICIES
+        preflight_policy = group_policy == PREFLIGHT_POLICY or readable_policy
+        density_policy = group_policy == DENSITY_POLICY or preflight_policy
+        opening_policy = group_policy == 2 or density_policy
+        payload = compact_payload(
+            payload,
+            transcript,
+            template,
+            opening_policy=opening_policy,
+            density_policy=density_policy,
+            preflight_policy=preflight_policy,
+        )
+        message = GROUP_PROMPT + (OPENING_PROMPT if opening_policy else "")
+        if density_policy:
+            message += DENSITY_PROMPT
+            max_output_tokens = DENSITY_OUTPUT_TOKENS
+        if preflight_policy:
+            message += PREFLIGHT_PROMPT
+        if readable_policy:
+            message += READABLE_PROMPT
     body = {
         "model": model,
         "stream": False,
-        "max_tokens": 5000,
+        "max_tokens": max_output_tokens,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": message},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    separators=(",", ":")
+                    if template and template["id"] in FIRST_MOTION_GROUPS
+                    else None,
+                ),
+            },
         ],
     }
     if prepared_request is not None:
@@ -617,8 +663,8 @@ def build_request(
             transcript.model_dump_json().encode()
         ).hexdigest(),
         "model": model,
-        "max_output_tokens": 5000,
-        "no_timestamps_sent": True,
+        "max_output_tokens": max_output_tokens,
+        "no_timestamps_sent": not (template and template["id"] in FIRST_MOTION_GROUPS),
         "request_bytes": len(encoded),
         "choice_snapshot_sha256": choices["sha256"] if choices else None,
         "choice_project_id": choices["project_id"] if choices else None,
@@ -868,7 +914,14 @@ def generate(
         atomic_json(root / "semantic-request.json", body)
         if guard:
             guard()
-        data = provider.request("planner", "POST", "/v1/chat/completions", json=body)
+        gateway_options = (
+            {"read_timeout": min(210, settings.video_editing_lease_seconds - 5)}
+            if template and template["id"] in FIRST_MOTION_GROUPS
+            else {}
+        )
+        data = provider.request(
+            "planner", "POST", "/v1/chat/completions", json=body, **gateway_options
+        )
         choices = data.get("choices")
         message = (
             choices[0].get("message")
@@ -891,7 +944,18 @@ def generate(
     if guard:
         guard()
     content = response["content"]
-    plan = SemanticPlan.model_validate_json(content)
+    if template and template["id"] in FIRST_MOTION_GROUPS:
+        plan = expand_group_plan(
+            content,
+            transcript,
+            settings.video_editing_library_dir,
+            template,
+            asset_cards or [],
+            choice_snapshot,
+            runtime,
+        )
+    else:
+        plan = SemanticPlan.model_validate_json(content)
     if template is None and any(beat.question_gloss is not None for beat in plan.beats):
         raise ValueError(
             "English question gloss requires the selected AH-S03 A template"

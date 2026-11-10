@@ -186,6 +186,7 @@ from .video_editing_overlay_templates import (
     OPENING_GROUPS,
     PICTURE_TEMPLATE_ID,
     PRESENTER_LABEL_TEMPLATE_ID,
+    PRODUCT_GROUP_ID,
     validate_template_plan,
 )
 from .video_editing_paper_typewriter import PAPER_GROUP
@@ -484,7 +485,12 @@ def _foreground_anchors(group: str, anchors: dict, text: dict, config: dict) -> 
 
 
 def _entry(
-    package: Path, group: dict, beat: SemanticBeat, transcript: Transcript
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    *,
+    template_id: str,
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
     if beat.relation in RELATION_MAPPING and not beat.relation_items:
         raise ApiError(
@@ -622,6 +628,9 @@ def _entry(
                 )
     for role, size in _FONT_SIZES.get(beat.group_id, {}).items():
         config["fonts"][role]["size"] = size
+    if template_id == PRODUCT_GROUP_ID and beat.group_id == "SG-S03":
+        for role in ("prefix", "keyword"):
+            config["fonts"][role]["size"] = 57
     if beat.group_id == "BG-S06":
         config["geometry"].update(left=156, upper_top=76, lower_top=134, mask_top=124)
         config["fonts"]["lower"].update(
@@ -2673,6 +2682,131 @@ def _opening_entry(
     ), anchors
 
 
+def _overlay_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict] | None,
+    template_id: str,
+    *,
+    chapter_starts: list[str] | None = None,
+) -> tuple[NativeEpisodeEntry, dict[str, Any], tuple[str | None, ...]]:
+    paths: tuple[str | None, ...]
+    if beat.group_id == CARD_GROUP:
+        entry, anchors = _card_entry(
+            package,
+            group,
+            beat,
+            transcript,
+            asset_cards or [],
+            live_background=template_id == PICTURE_TEMPLATE_ID,
+        )
+        paths = _CARD_ENTRY_PATHS
+    elif beat.group_id == ROTATION_GROUP:
+        entry, anchors = _rotation_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = ROTATION_EVENTS
+    elif beat.group_id in (NUMBERED_GROUP, *LIVE_SPLIT_GROUPS):
+        entry, anchors = _browser_split_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = NUMBERED_EVENTS
+    elif beat.group_id == FRUIT_LIST_GROUP:
+        entry, anchors = _fruit_list_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = NUMBERED_EVENTS
+    elif beat.group_id in {SLANT_GROUP, PICTURE_GROUP}:
+        entry, anchors = _hypit_picture_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = STRIP_EVENTS if beat.group_id == SLANT_GROUP else tuple(ENTRY_PATHS)
+    elif beat.group_id == PRICE_CARD_GROUP:
+        entry, anchors = _detail_cards_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = CARD_EVENTS
+    elif beat.group_id in {LIVE_STRIP_GROUP, PRESENTER_LABEL_GROUP, FLOW_GROUP}:
+        entry, anchors = _live_strip_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = STRIP_EVENTS
+    elif beat.group_id == JUDGMENT_GROUP:
+        entry, anchors = _judgment_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = JUDGMENT_EVENTS[:5]
+    elif beat.group_id == PACKAGE_GROUP:
+        entry, anchors = _package_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = _PACKAGE_EVENTS
+    elif beat.group_id == LINE_GROUP:
+        entry, anchors = _line_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = (None,)
+    elif beat.group_id == QUESTION_CARD_GROUP:
+        entry, anchors = _question_card_entry(package, group, beat, transcript)
+        paths = (None,)
+    elif beat.group_id in OPENING_GROUPS:
+        entry, anchors = _opening_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = (
+            tuple(YY6_SOUND_EVENTS[beat.group_id])
+            if beat.group_id in YY6_GROUPS
+            else (None,)
+        )
+    elif beat.group_id in PRESENTER_MOTION_GROUPS:
+        entry, anchors = _presenter_motion_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = motion_sound_paths(beat.group_id)
+    elif beat.group_id in AZL_GROUPS:
+        entry, anchors = _azl_entry(package, group, beat, transcript, asset_cards or [])
+        paths = (None,)
+    elif beat.group_id in CXBR_PURPOSES:
+        entry, anchors = _cxbr_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = tuple(CXBR_SOUNDS[beat.group_id])
+    elif beat.group_id in UNIFIED_SCENE_GROUPS:
+        entry, anchors = _unified_entry(
+            package,
+            group,
+            beat,
+            transcript,
+            asset_cards or [],
+            chapter_starts=chapter_starts if beat.group_id in CHAPTER_GROUPS else None,
+        )
+        paths = unified_sound_paths(beat.group_id)
+    else:
+        if beat.group_id == QUESTION_GROUP:
+            entry, anchors = _question_entry(package, group, beat, transcript)
+        else:
+            entry, anchors = _entry(
+                package, group, beat, transcript, template_id=template_id
+            )
+        paths = (None,)
+    return entry, anchors, paths
+
+
+def check_overlay_beat(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    asset_cards: list[dict],
+) -> None:
+    try:
+        _overlay_entry(package, group, beat, transcript, asset_cards, "")
+    except ApiError as error:
+        raise ValueError(error.message) from error
+
+
 def build_overlay_recipes(
     package: Path,
     semantic: SemanticPlan,
@@ -2708,107 +2842,15 @@ def build_overlay_recipes(
     cues: list[NativeSoundCue] = []
     for beat in beats:
         group = groups[beat.group_id]
-        paths: tuple[str | None, ...]
-        if beat.group_id == CARD_GROUP:
-            entries[beat.id], anchors = _card_entry(
-                package,
-                group,
-                beat,
-                transcript,
-                asset_cards or [],
-                live_background=template["id"] == PICTURE_TEMPLATE_ID,
-            )
-            paths = _CARD_ENTRY_PATHS
-        elif beat.group_id == ROTATION_GROUP:
-            entries[beat.id], anchors = _rotation_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = ROTATION_EVENTS
-        elif beat.group_id in (NUMBERED_GROUP, *LIVE_SPLIT_GROUPS):
-            entries[beat.id], anchors = _browser_split_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = NUMBERED_EVENTS
-        elif beat.group_id == FRUIT_LIST_GROUP:
-            entries[beat.id], anchors = _fruit_list_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = NUMBERED_EVENTS
-        elif beat.group_id in {SLANT_GROUP, PICTURE_GROUP}:
-            entries[beat.id], anchors = _hypit_picture_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = STRIP_EVENTS if beat.group_id == SLANT_GROUP else tuple(ENTRY_PATHS)
-        elif beat.group_id == PRICE_CARD_GROUP:
-            entries[beat.id], anchors = _detail_cards_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = CARD_EVENTS
-        elif beat.group_id in {LIVE_STRIP_GROUP, PRESENTER_LABEL_GROUP, FLOW_GROUP}:
-            entries[beat.id], anchors = _live_strip_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = STRIP_EVENTS
-        elif beat.group_id == JUDGMENT_GROUP:
-            entries[beat.id], anchors = _judgment_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = JUDGMENT_EVENTS[:5]
-        elif beat.group_id == PACKAGE_GROUP:
-            entries[beat.id], anchors = _package_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = _PACKAGE_EVENTS
-        elif beat.group_id == LINE_GROUP:
-            entries[beat.id], anchors = _line_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = (None,)
-        elif beat.group_id == QUESTION_CARD_GROUP:
-            entries[beat.id], anchors = _question_card_entry(
-                package, group, beat, transcript
-            )
-            paths = (None,)
-        elif beat.group_id in OPENING_GROUPS:
-            entries[beat.id], anchors = _opening_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = (
-                tuple(YY6_SOUND_EVENTS[beat.group_id])
-                if beat.group_id in YY6_GROUPS
-                else (None,)
-            )
-        elif beat.group_id in PRESENTER_MOTION_GROUPS:
-            entries[beat.id], anchors = _presenter_motion_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = motion_sound_paths(beat.group_id)
-        elif beat.group_id in AZL_GROUPS:
-            entries[beat.id], anchors = _azl_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = (None,)
-        elif beat.group_id in CXBR_PURPOSES:
-            entries[beat.id], anchors = _cxbr_entry(
-                package, group, beat, transcript, asset_cards or []
-            )
-            paths = tuple(CXBR_SOUNDS[beat.group_id])
-        elif beat.group_id in UNIFIED_SCENE_GROUPS:
-            entries[beat.id], anchors = _unified_entry(
-                package,
-                group,
-                beat,
-                transcript,
-                asset_cards or [],
-                chapter_starts=semantic.chapter_start_token_ids
-                if beat.group_id in CHAPTER_GROUPS
-                else None,
-            )
-            paths = unified_sound_paths(beat.group_id)
-        else:
-            make_entry = _question_entry if beat.group_id == QUESTION_GROUP else _entry
-            entries[beat.id], anchors = make_entry(package, group, beat, transcript)
-            paths = (None,)
+        entries[beat.id], anchors, paths = _overlay_entry(
+            package,
+            group,
+            beat,
+            transcript,
+            asset_cards,
+            template["id"],
+            chapter_starts=semantic.chapter_start_token_ids,
+        )
         cues.extend(
             _entry_sound(beat, anchors, transcript.duration_ms, avoided, path)
             for path in paths

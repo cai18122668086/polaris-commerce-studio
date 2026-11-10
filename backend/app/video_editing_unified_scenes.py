@@ -36,6 +36,7 @@ from .video_editing_cut_scenes import (
     CUT_SOUND_MODES,
     CUT_TEMPLATE_ID,
 )
+from .video_editing_first_groups import FIRST_MOTION_GROUPS
 from .video_editing_handoff_scenes import (
     HANDOFF_CAPTION_BANDS,
     HANDOFF_GROUPS,
@@ -101,6 +102,7 @@ WHY_TEMPLATE_ID = "unified-question-relay-v1"
 TRANSLATION_TEMPLATE_ID = "unified-bilingual-swap-v1"
 UNIFIED_TEMPLATES = frozenset(
     {
+        *FIRST_MOTION_GROUPS,
         UNIFIED_TEMPLATE_ID,
         UNIFIED_EXPANDED_TEMPLATE_ID,
         UNIFIED_EXPLANATION_TEMPLATE_ID,

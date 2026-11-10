@@ -151,6 +151,8 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     root = base(ws)
     options = client.get(root + "/editing-templates").json()
     assert {row["id"] for row in options} == {
+        "product-explainer-v1",
+        "knowledge-talk-v1",
         "label-compare-v1",
         "roll-compare-v2",
         "question-story-v1",

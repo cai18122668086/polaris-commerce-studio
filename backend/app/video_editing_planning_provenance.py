@@ -16,6 +16,7 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256, read_json, sha256
 from .video_editing_contracts import SemanticPlan, Transcript
+from .video_editing_first_groups import FIRST_MOTION_GROUPS, expand_group_plan
 from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest, source_assets
 from .video_editing_planner import validate_plan
@@ -194,6 +195,13 @@ def _verify(
         raise ValueError("Captured input, response and validation hashes disagree")
     payload = json.loads(data["request"]["messages"][1]["content"])
     runtime = row.snapshot.get("planning_runtime")
+    template = row.snapshot.get("overlay_template")
+    compact = bool(template and template["id"] in FIRST_MOTION_GROUPS)
+    selected = (
+        {slot["group_id"] for slot in template["slots"]}
+        if template and compact
+        else None
+    )
     if runtime is not None and (
         payload.get("template_runtime") != runtime_payload(runtime)
         or {
@@ -202,8 +210,13 @@ def _verify(
                 "dependencies": group.get("known_original_dependencies", []),
             }
             for group in payload["full_library"]
+            if selected is None or group["id"] in selected
         }
-        != runtime["groups"]
+        != {
+            key: value
+            for key, value in runtime["groups"].items()
+            if selected is None or key in selected
+        }
     ):
         raise ValueError("Captured runtime evidence differs from the prepared snapshot")
     groups = read_json(settings.video_editing_library_dir / "catalog/groups.json")
@@ -211,14 +224,34 @@ def _verify(
         len(payload["full_library"]) != 132
         or {g["id"] for g in payload["full_library"]}
         != {g["id"] for g in groups["groups"]}
-        or payload["transcript"]["tokens"]
-        != [{"id": t.id, "text": t.text} for t in transcript.tokens]
+        or (
+            payload.get("word_clock")
+            != [
+                [i, t.text, t.start_ms, t.end_ms]
+                for i, t in enumerate(transcript.tokens)
+            ]
+            if compact
+            else payload["transcript"]["tokens"]
+            != [{"id": t.id, "text": t.text} for t in transcript.tokens]
+        )
         or payload["project_library_choices"] != row.snapshot["choice_snapshot"]
         or payload["available_project_materials"] != row.snapshot["asset_cards"]
         or payload.get("overlay_template") != row.snapshot.get("overlay_template")
     ):
         raise ValueError("Captured full-library request does not match scoped inputs")
-    semantic = SemanticPlan.model_validate_json(data["response"]["content"])
+    content = data["response"]["content"]
+    if template and template["id"] in FIRST_MOTION_GROUPS:
+        semantic = expand_group_plan(
+            content,
+            transcript,
+            settings.video_editing_library_dir,
+            template,
+            row.snapshot["asset_cards"],
+            row.snapshot["choice_snapshot"],
+            runtime,
+        )
+    else:
+        semantic = SemanticPlan.model_validate_json(content)
     value = semantic.model_dump(mode="json")
     if (
         value != data["semantic_plan"]

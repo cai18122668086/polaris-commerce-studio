@@ -24,6 +24,11 @@ from .video_editing_crowd_scene import CROWD_GROUP, CROWD_TEMPLATE_ID
 from .video_editing_cut_scenes import CUT_GROUPS, CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_DEPENDENCIES, CXBR_PURPOSES, cxbr_binding
 from .video_editing_cxbr import CXBR_TEMPLATE_ID as CXBR_TEMPLATE_ID
+from .video_editing_first_groups import (
+    FIRST_MOTION_GROUPS,
+    KNOWLEDGE_GROUP_ID,
+    PRODUCT_GROUP_ID,
+)
 from .video_editing_handoff_scenes import HANDOFF_GROUPS, HANDOFF_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
 from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID
@@ -123,6 +128,7 @@ TEXT_HANDOFF_TEMPLATES = frozenset(
 )
 SYNC_SUBTITLE_TEMPLATES = frozenset(
     {
+        *FIRST_MOTION_GROUPS,
         SUBTITLE_STORY_TEMPLATE_ID,
         PRESENTER_MOTION_TEMPLATE_ID,
         AZL_TEMPLATE_ID,
@@ -286,7 +292,7 @@ _EXPLAINER_SLOTS = [
     {"group_id": "SG-S10", "purpose": "让背景概念承托前景行动建议"},
     {"group_id": "AHG-S02", "purpose": "标记分类或行动的实录短语"},
 ]
-_TEMPLATES = {
+_TEMPLATES: dict[str, dict] = {
     PRESENTER_LABEL_TEMPLATE_ID: {
         "id": PRESENTER_LABEL_TEMPLATE_ID,
         "name": "人物身上标签与口播重点",
@@ -1032,10 +1038,81 @@ _TEMPLATES[LINE_TEMPLATE_ID] = {
 }
 
 
+def _group_slots(ids: tuple[str, ...], templates: tuple[str, ...]) -> list[dict]:
+    available = {
+        slot["group_id"]: slot
+        for template_id in reversed(templates)
+        for slot in _TEMPLATES[template_id]["slots"]
+    }
+    return [available[group] for group in ids]
+
+
+_TEMPLATES[PRODUCT_GROUP_ID] = {
+    "id": PRODUCT_GROUP_ID,
+    "name": "产品讲解",
+    "slots": _group_slots(
+        (
+            "YYP01",
+            "YYO08",
+            "BG-S06",
+            "SG-S09",
+            "YY6O04",
+            "AHG-S02",
+            "SG-S03",
+            "AH-S05",
+            "CX-G01",
+            "CX-G02",
+            "W-R08",
+            "W-R10",
+            "W-R03",
+            "AH-S09",
+            "SG-S06",
+            "BG-S04",
+        ),
+        (
+            PRESENTER_MOTION_TEMPLATE_ID,
+            YY_OPENING_ALL_TEMPLATE_ID,
+            LIVE_SPLIT_TEMPLATE_ID,
+            CUT_TEMPLATE_ID,
+            HANDOFF_TEMPLATE_ID,
+            EXPLAINER_TEMPLATE_ID,
+            PICTURE_TEMPLATE_ID,
+        ),
+    ),
+}
+_TEMPLATES[KNOWLEDGE_GROUP_ID] = {
+    "id": KNOWLEDGE_GROUP_ID,
+    "name": "知识口播",
+    "slots": _group_slots(
+        (
+            "W-R18",
+            "Z-M16",
+            "Z-M01",
+            "Z-M03",
+            "Z-M09",
+            "Z-M13",
+            "Z-M14",
+            "SG-S02",
+            "JJ-S03",
+            "JJ-S02",
+            "AH-S08",
+            "Z-M10",
+            "Z-M02",
+            "Z-M04",
+            "SG-S06",
+            "BG-S04",
+        ),
+        (UNIFIED_EXPLANATION_TEMPLATE_ID, EXPLAINER_TEMPLATE_ID, PICTURE_TEMPLATE_ID),
+    ),
+}
+
+
 def overlay_templates() -> list[dict]:
     return [
         overlay_template(key)
         for key in (
+            PRODUCT_GROUP_ID,
+            KNOWLEDGE_GROUP_ID,
             "label-compare-v1",
             "roll-compare-v2",
             "question-story-v1",

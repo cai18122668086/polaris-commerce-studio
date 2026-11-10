@@ -44,6 +44,7 @@ from .video_editing_collage_scene import COLLAGE_GROUP, COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_cut_scenes import CUT_TEMPLATE_ID
 from .video_editing_cxbr import CXBR_CAPTION_INTENT, CXBR_PURPOSES, CXBR_TEMPLATE_ID
+from .video_editing_first_groups import PRODUCT_GROUP_ID
 from .video_editing_handoff_scenes import HANDOFF_TEMPLATE_ID
 from .video_editing_highlights import apply_highlight_edits
 from .video_editing_hypit import (
@@ -880,6 +881,11 @@ def compile_episode(
                 "月云川整帧开场在下方保留统一主字幕阅读区。",
             ),
         ),
+        PRODUCT_GROUP_ID: (
+            (*UNIFIED_SCENE_GROUPS, *PRESENTER_MOTION_GROUPS, *YY_OPENING_ALL_GROUPS),
+            1230,
+            "主字幕放在原生镜头的底部读区。",
+        ),
         ROTATION_TEMPLATE_ID: (
             (ROTATION_GROUP,),
             1257,
@@ -978,7 +984,12 @@ def compile_episode(
                 "viewed_identity": (
                     "本期实录讲述者与现场画面"
                     if authoring.overlay_template_id
-                    in {CUT_TEMPLATE_ID, PANEL_TEMPLATE_ID, HANDOFF_TEMPLATE_ID}
+                    in {
+                        CUT_TEMPLATE_ID,
+                        PANEL_TEMPLATE_ID,
+                        HANDOFF_TEMPLATE_ID,
+                        PRODUCT_GROUP_ID,
+                    }
                     and asset.get("kind") == "original_video"
                     and asset["sha256"] == transcript.source_sha256
                     and not asset.get("viewed_identity")
@@ -1028,9 +1039,9 @@ def compile_episode(
                 sync_subtitle_entries=authoring.overlay_template_id
                 in SYNC_SUBTITLE_TEMPLATES,
                 sync_yy_opening_entries=authoring.overlay_template_id
-                in YY_OPENING_TEMPLATES,
+                in (YY_OPENING_TEMPLATES | {PRODUCT_GROUP_ID}),
                 sync_presenter_motion_entries=authoring.overlay_template_id
-                == PRESENTER_MOTION_TEMPLATE_ID,
+                in {PRESENTER_MOTION_TEMPLATE_ID, PRODUCT_GROUP_ID},
                 sync_azl_entries=authoring.overlay_template_id == AZL_TEMPLATE_ID,
                 sync_cxbr_entries=authoring.overlay_template_id == CXBR_TEMPLATE_ID,
                 sync_unified_entries=authoring.overlay_template_id in UNIFIED_TEMPLATES,

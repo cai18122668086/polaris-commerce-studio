@@ -36,6 +36,7 @@ from .video_editing_collage_scene import COLLAGE_GROUP
 from .video_editing_crowd_scene import CROWD_GROUP
 from .video_editing_cut_scenes import cut_scene_blockers
 from .video_editing_cxbr import cxbr_blockers, cxbr_windows
+from .video_editing_first_groups import FIRST_MOTION_GROUPS, SCOPED_POOL_POLICY
 from .video_editing_handoff_scenes import handoff_blockers
 from .video_editing_hypit import PICTURE_GROUP, hypit_tools
 from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID, confirmed_chart_words
@@ -519,6 +520,8 @@ def process(
                 runtime["unavailable_template_groups"].setdefault(
                     FRUIT_LIST_GROUP, []
                 ).append("fruit-topic-missing-from-recorded-speech")
+            if template and template["id"] in FIRST_MOTION_GROUPS:
+                runtime["first_groups_policy"] = SCOPED_POOL_POLICY
             snapshot = {**snapshot, "planning_runtime": runtime}
         prepared_request = None
         if mode == "generate":

@@ -107,7 +107,13 @@ class VideoAssistanceProvider:
         self.settings, self.transport = settings, transport
 
     def request(
-        self, service: str, method: str, path: str, **kwargs: Any
+        self,
+        service: str,
+        method: str,
+        path: str,
+        *,
+        read_timeout: float = 100,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         if service == "planner":
             enabled, key = (
@@ -128,7 +134,7 @@ class VideoAssistanceProvider:
             raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "文案服务地址未配置。")
         try:
             with httpx.Client(
-                timeout=httpx.Timeout(100, connect=15),
+                timeout=httpx.Timeout(read_timeout, connect=15),
                 follow_redirects=False,
                 transport=self.transport,
             ) as client:

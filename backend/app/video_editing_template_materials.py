@@ -30,6 +30,7 @@ from .video_editing_crowd_scene import (
     crowd_image_slots,
     validate_crowd_images,
 )
+from .video_editing_first_groups import PRODUCT_GROUP_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
 from .video_editing_hypit_strips import (
     DETAIL_CARDS_TEMPLATE_ID,
@@ -78,6 +79,7 @@ _IMAGE_GROUPS = {
     LINE_TEMPLATE_ID: ((LINE_GROUP, 3), (PACKAGE_GROUP, 4)),
     NUMBERED_TEMPLATE_ID: ((NUMBERED_GROUP, 3),),
     LIVE_SPLIT_TEMPLATE_ID: tuple((group, 3) for group in LIVE_SPLIT_GROUPS),
+    PRODUCT_GROUP_ID: tuple((group, 3) for group in LIVE_SPLIT_GROUPS),
     FRUIT_LIST_TEMPLATE_ID: ((FRUIT_LIST_GROUP, 4),),
     HY_PICTURE_TEMPLATE_ID: ((SLANT_GROUP, 4), (PICTURE_GROUP, 3)),
     DETAIL_CARDS_TEMPLATE_ID: ((PRICE_CARD_GROUP, 3),),

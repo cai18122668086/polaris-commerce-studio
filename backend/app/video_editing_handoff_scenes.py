@@ -5,6 +5,7 @@ import re
 from itertools import pairwise
 
 from .video_editing_contracts import SemanticBeat, Transcript
+from .video_editing_first_groups import PRODUCT_GROUP_ID
 from .video_editing_materials import project_image_digests
 
 HANDOFF_TEMPLATE_ID = "unified-handoff-v1"
@@ -56,13 +57,14 @@ def handoff_blockers(
     cards: list[dict],
     unavailable: dict,
 ) -> None:
-    if not template or template["id"] != HANDOFF_TEMPLATE_ID:
+    if not template or template["id"] not in {HANDOFF_TEMPLATE_ID, PRODUCT_GROUP_ID}:
         return
+    selected = {slot["group_id"] for slot in template["slots"]}
     if not project_image_digests(cards):
-        for group in HANDOFF_GROUPS:
+        for group in HANDOFF_GROUPS.keys() & selected:
             unavailable.setdefault(group, []).append("handoff_image_required")
     recorded = "".join(token.text for token in transcript.tokens)
-    if not (
+    if COMMENT in selected and not (
         any(word in recorded for word in _INVITATION)
         and any(word in recorded for word in _INPUT)
     ):

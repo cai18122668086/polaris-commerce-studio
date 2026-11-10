@@ -29,8 +29,16 @@ from tests.test_video_projects import base
 pytest_plugins = ["tests.test_video_projects"]
 
 
-def test_native_export_identifies_layout_failure_on_the_replaced_shot(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ("shot", "expected", "beat"),
+    [
+        (0, "EDITING_EFFECT_LAYOUT_FAILED", "replacement"),
+        (1, "EDITING_NATIVE_LAYOUT_FAILED", "first-plan"),
+        (2, "EDITING_NATIVE_EXPORT_FAILED", None),
+    ],
+)
+def test_native_export_identifies_layout_failure_on_the_measured_shot(
+    tmp_path, monkeypatch, shot, expected, beat
 ):
     def reject_export(*args):
         if args[-1] == "native_export":
@@ -39,16 +47,36 @@ def test_native_export_identifies_layout_failure_on_the_replaced_shot(
     monkeypatch.setattr("app.video_editing_pipeline.run", reject_export)
     atomic_json(
         tmp_path / "compile-diagnostics.json",
-        {"applied_effect_edits": [{"beat_id": "replacement", "shot_index": 2}]},
+        {
+            "applied_effect_edits": [
+                {
+                    "beat_id": "replacement",
+                    "shot_index": 0,
+                    "applied_group_id": "BG-S02",
+                }
+            ],
+            "compiled_native_jobs": [
+                {"beat_id": "first-plan", "shot_index": 1, "group_id": "BG-S02"}
+            ],
+        },
+    )
+    atomic_json(
+        tmp_path / "episode.json",
+        {"shots": [{"group_id": "BG-S02"}, {"group_id": "BG-S02"}]},
     )
     settings = Settings(_env_file=None)
-    report = tmp_path / "layout/review.json"
-    atomic_json(report, {"status": "failed", "errors": [{"shot": 3}]})
-    with pytest.raises(EditingFailure, match="EDITING_NATIVE_EXPORT_FAILED"):
+    atomic_json(
+        tmp_path / "layout/review.json",
+        {"status": "failed", "errors": [{"shot": shot, "seconds": 3.1833333333}]},
+    )
+    with pytest.raises(EditingFailure, match=expected) as error:
         native_export(tmp_path, settings, lambda: None)
-    atomic_json(report, {"status": "failed", "errors": [{"shot": 2}]})
-    with pytest.raises(EditingFailure, match="EDITING_EFFECT_LAYOUT_FAILED"):
-        native_export(tmp_path, settings, lambda: None)
+    if beat is None:
+        assert error.value.layout_findings is None
+    else:
+        (finding,) = error.value.layout_findings
+        assert finding.beat_id == beat and finding.first_ms == 3183
+        assert finding.group_id == "BG-S02" and finding.finding_count == 1
 
 
 def test_preview_base_is_bound_to_the_exact_artifact_source_and_plan(video, tmp_path):

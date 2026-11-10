@@ -161,6 +161,9 @@ def response(
         "library_release": row.library_release,
         "options": row.options,
         "motion_counts": counts,
+        "layout_findings": row.checkpoint.get("layout_findings")
+        if row.status == "failed"
+        else None,
         "review": {
             "semantic": "unreviewed",
             "visual": "unreviewed",
@@ -794,6 +797,8 @@ def retry_task(
     require_workspace_write(workspace)
     enabled(request)
     row = own_task(session, workspace, str(task_id))
+    checkpoint = {**row.checkpoint, "dispatch_not_before": 0}
+    checkpoint.pop("layout_findings", None)
     result = session.execute(
         update(EditingTaskRecord)
         .where(
@@ -807,7 +812,7 @@ def retry_task(
             error_code=None,
             owner_token=None,
             lease_until=None,
-            checkpoint={**row.checkpoint, "dispatch_not_before": 0},
+            checkpoint=checkpoint,
             revision=EditingTaskRecord.revision + 1,
         )
     )

@@ -18,6 +18,7 @@ from app.video_editing_cxbr import (
     verify_cxbr_captions,
 )
 from app.video_editing_native_layout import (
+    failed_layout_shots,
     intentional_role_overlaps,
     projected_scene_end,
     review_with_native_roles,
@@ -85,15 +86,37 @@ def test_documented_backdrop_preserves_original_evidence(tmp_path):
     assert review["original_report_sha256"] == sha256(report_path)
     assert read_json(report_path) == original_report
     assert read_json(tmp_path / "layout/adapter-review.json") == review
+    assert failed_layout_shots(tmp_path) == ([], False)
 
 
 @pytest.mark.parametrize(
     "against", ["main_caption", "protected:face", "subtitle:1", "subtitle_safe_rect"]
 )
-def test_backdrop_does_not_hide_other_collisions(against):
+def test_backdrop_does_not_hide_other_collisions(against, tmp_path):
     episode, report = example()
     report["errors"].append({**report["errors"][0], "against": against})
     assert not intentional_role_overlaps(episode, report, {0})
+
+    def original(data, root, receipts):
+        atomic_json(root / "layout/review.json", report)
+        raise ValueError("Layout collisions: fixture")
+
+    with pytest.raises(ValueError, match="Layout collisions:"):
+        review_with_native_roles(original, episode, tmp_path, None, {0})
+    adapted = read_json(tmp_path / "layout/adapter-review.json")
+    assert adapted["status"] == "failed" and adapted["errors"] == report["errors"][1:]
+    assert adapted["intentional_role_overlaps"][0]["frame"] == 42
+    atomic_json(tmp_path / "episode.json", episode)
+    atomic_json(
+        tmp_path / "compile-diagnostics.json",
+        {
+            "compiled_native_jobs": [
+                {"shot_index": 0, "beat_id": "b", "group_id": "SG-S10"}
+            ]
+        },
+    )
+    (finding,), replaced = failed_layout_shots(tmp_path)
+    assert finding.beat_id == "b" and finding.finding_count == 1 and not replaced
 
 
 def test_backdrop_requires_opt_in_exact_role_pair_and_foreground_phase():

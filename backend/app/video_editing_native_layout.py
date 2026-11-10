@@ -10,6 +10,7 @@ from typing import Any, cast
 from .motion_library import atomic_json, read_json, sha256
 from .video_editing_browser_clocks import NUMBERED_GROUP
 from .video_editing_browser_live import CARD_LIVE_PREFIX
+from .video_editing_contracts import EditingLayoutFinding
 from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_shot
 from .video_editing_render_edits import NATIVE_PORTRAIT_INSETS, boxes_intersect
 from .video_editing_subtitle_foreground import (
@@ -228,17 +229,16 @@ def verified_effect_occurrences(episode: dict, delivery: dict) -> list[str]:
     return visible
 
 
-def intentional_role_overlaps(
+def _classified_role_overlaps(
     data: dict,
     report: dict,
     backdrop_shots: set[int],
     question_shots: set[int] | None = None,
     handoff_shots: set[int] | None = None,
     progress_shots: set[int] | None = None,
-) -> list[dict]:
-    """Return documented overlaps only when every failed frame is accounted for."""
+) -> dict[int, dict]:
     if report.get("status") != "failed" or not report.get("errors"):
-        return []
+        return {}
     approved: dict[tuple[int, float], list[dict]] = {}
     for check in report["subtitle_checks"]:
         index = check["shot"]
@@ -302,15 +302,31 @@ def intentional_role_overlaps(
                 approved.setdefault((index, seconds), []).append(
                     {**overlap, "group_id": group_id}
                 )
-    classified = []
-    for error in report["errors"]:
+    classified = {}
+    for index, error in enumerate(report["errors"]):
         if error["against"] != "native_roles":
-            return []
+            continue
         matches = approved.get((error["shot"], error["seconds"]))
-        if not matches:
-            return []
-        classified.append({**error, **matches.pop()})
+        if matches:
+            classified[index] = {**error, **matches.pop()}
     return classified
+
+
+def intentional_role_overlaps(
+    data: dict,
+    report: dict,
+    backdrop_shots: set[int],
+    question_shots: set[int] | None = None,
+    handoff_shots: set[int] | None = None,
+    progress_shots: set[int] | None = None,
+) -> list[dict]:
+    """Return documented overlaps only when every failed frame is accounted for."""
+    matches = _classified_role_overlaps(
+        data, report, backdrop_shots, question_shots, handoff_shots, progress_shots
+    )
+    return (
+        list(matches.values()) if len(matches) == len(report.get("errors", [])) else []
+    )
 
 
 def review_with_native_roles(
@@ -333,11 +349,13 @@ def review_with_native_roles(
         ):
             raise
         report = read_json(report_path)
-        overlaps = intentional_role_overlaps(
+        matches = _classified_role_overlaps(
             data, report, backdrop_shots, question_shots, handoff_shots, progress_shots
         )
-        if not overlaps:
+        if not matches:
             raise
+        overlaps = list(matches.values())
+        errors = [item for i, item in enumerate(report["errors"]) if i not in matches]
         groups = {row["group_id"] for row in overlaps}
         reasons = {
             BACKDROP_GROUP: "SG-S10 的前景横句叠在原机制指定的灰色背衬字上。",
@@ -348,14 +366,72 @@ def review_with_native_roles(
         }
         result = {
             **report,
-            "status": "passed",
-            "errors": [],
+            "status": "failed" if errors else "passed",
+            "errors": errors,
             "original_report_sha256": sha256(report_path),
             "intentional_role_overlaps": overlaps,
             "role_overlap_reason": "".join(reasons[group] for group in sorted(groups)),
         }
         atomic_json(root / "layout/adapter-review.json", result)
+        if errors:
+            raise
         return result
+
+
+def failed_layout_shots(root: Path) -> tuple[list[EditingLayoutFinding], bool]:
+    """Summarize unresolved engine findings without exposing the private report."""
+    try:
+        report_path = root / "layout/review.json"
+        report = read_json(report_path)
+        adapted_path = root / "layout/adapter-review.json"
+        if adapted_path.is_file():
+            adapted = read_json(adapted_path)
+            if adapted.get("original_report_sha256") == sha256(report_path):
+                report = adapted
+        if report["status"] != "failed":
+            return [], False
+        diagnostics = read_json(root / "compile-diagnostics.json")
+        shots = read_json(root / "episode.json")["shots"]
+        replacements = {
+            row["shot_index"]: row
+            for row in diagnostics.get("applied_effect_edits", [])
+        }
+        compiled = {
+            row["shot_index"]: row
+            for row in diagnostics.get("compiled_native_jobs", [])
+            if "shot_index" in row
+        }
+        times: dict[int, list[int]] = {}
+        for item in report["errors"]:
+            index, seconds = item.get("shot"), item.get("seconds")
+            if (
+                type(index) is int
+                and 0 <= index < len(shots)
+                and type(seconds) in {int, float}
+                and math.isfinite(seconds)
+                and seconds >= 0
+            ):
+                times.setdefault(index, []).append(round(seconds * 1000))
+        findings = []
+        for index, positions in sorted(times.items()):
+            group = shots[index]["group_id"]
+            job = compiled.get(index, {})
+            replacement = replacements.get(index, {})
+            beat_id = job.get("beat_id") if job.get("group_id") == group else None
+            if replacement.get("applied_group_id") == group:
+                beat_id = replacement.get("beat_id")
+            findings.append(
+                EditingLayoutFinding(
+                    shot_index=index,
+                    group_id=group,
+                    beat_id=beat_id,
+                    first_ms=min(positions),
+                    finding_count=len(positions),
+                )
+            )
+        return findings, bool(times.keys() & replacements.keys())
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return [], False
 
 
 def install_native_role_review(package: Path, root: Path) -> None:

@@ -5211,6 +5211,49 @@
         "title": "EditingImageTarget",
         "type": "object"
       },
+      "EditingLayoutFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beat Id"
+          },
+          "finding_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Finding Count",
+            "type": "integer"
+          },
+          "first_ms": {
+            "minimum": 0.0,
+            "title": "First Ms",
+            "type": "integer"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "shot_index": {
+            "minimum": 0.0,
+            "title": "Shot Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shot_index",
+          "group_id",
+          "first_ms",
+          "finding_count"
+        ],
+        "title": "EditingLayoutFinding",
+        "type": "object"
+      },
       "EditingLibraryNoteCreate": {
         "additionalProperties": false,
         "properties": {
@@ -6747,6 +6790,20 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "layout_findings": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EditingLayoutFinding"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout Findings"
           },
           "library_release": {
             "title": "Library Release",

@@ -35,6 +35,7 @@ from .video_editing_captioning import (
     write_caption_receipt,
 )
 from .video_editing_contracts import (
+    EditingLayoutFinding,
     EditingSourceFrame,
     Transcript,
     TranscriptToken,
@@ -53,7 +54,7 @@ from .video_editing_native_frame_clock import (
     project_video_inputs,
     variable_frame_clock,
 )
-from .video_editing_native_layout import verify_inset_layout
+from .video_editing_native_layout import failed_layout_shots, verify_inset_layout
 from .video_editing_native_sound import verify_rendered_sound
 from .video_editing_unified_scenes import (
     UNIFIED_CAPTION_INTENT,
@@ -69,8 +70,11 @@ _MASTER_MAX_HEIGHT = 1920
 
 
 class EditingFailure(Exception):
-    def __init__(self, code: str):
+    def __init__(
+        self, code: str, *, layout_findings: list[EditingLayoutFinding] | None = None
+    ):
         self.code = code
+        self.layout_findings = layout_findings
         super().__init__(code)
 
 
@@ -992,22 +996,6 @@ def stop_hypit_runtimes(root: Path, settings: Settings) -> None:
                     break
 
 
-def _effect_layout_failed(root: Path) -> bool:
-    try:
-        replacements = read_json(root / "compile-diagnostics.json").get(
-            "applied_effect_edits", []
-        )
-        if not replacements:
-            return False
-        shots = {row["shot_index"] for row in replacements}
-        layout = read_json(root / "layout/review.json")
-        return layout["status"] == "failed" and any(
-            row["shot"] in shots for row in layout["errors"]
-        )
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return False
-
-
 def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> Path:
     python = settings.video_editing_python or sys.executable
     try:
@@ -1033,8 +1021,15 @@ def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> 
                 "native_" + command,
             )
     except EditingFailure as error:
-        if error.code == "EDITING_NATIVE_EXPORT_FAILED" and _effect_layout_failed(root):
-            raise EditingFailure("EDITING_EFFECT_LAYOUT_FAILED") from error
+        if error.code == "EDITING_NATIVE_EXPORT_FAILED":
+            findings, replaced = failed_layout_shots(root)
+            if findings:
+                raise EditingFailure(
+                    "EDITING_EFFECT_LAYOUT_FAILED"
+                    if replaced
+                    else "EDITING_NATIVE_LAYOUT_FAILED",
+                    layout_findings=findings,
+                ) from error
         raise
     finally:
         stop_hypit_runtimes(root, settings)

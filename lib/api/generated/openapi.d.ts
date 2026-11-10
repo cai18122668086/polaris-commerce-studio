@@ -5858,6 +5858,19 @@ export interface components {
             /** Requires Transparency */
             requires_transparency: boolean;
         };
+        /** EditingLayoutFinding */
+        EditingLayoutFinding: {
+            /** Beat Id */
+            beat_id?: string | null;
+            /** Finding Count */
+            finding_count: number;
+            /** First Ms */
+            first_ms: number;
+            /** Group Id */
+            group_id: string;
+            /** Shot Index */
+            shot_index: number;
+        };
         /** EditingLibraryNoteCreate */
         EditingLibraryNoteCreate: {
             /**
@@ -6391,6 +6404,8 @@ export interface components {
             error_code: string | null;
             /** Id */
             id: string;
+            /** Layout Findings */
+            layout_findings?: components["schemas"]["EditingLayoutFinding"][] | null;
             /** Library Release */
             library_release: string;
             motion_counts?: components["schemas"]["EditingMotionCounts"] | null;

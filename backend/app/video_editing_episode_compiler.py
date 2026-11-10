@@ -735,6 +735,7 @@ def compile_episode(
                     {
                         "beat_id": beat.id,
                         "group_id": beat.group_id,
+                        "shot_index": shot_indices[-1],
                         "job_sha256": sha256(directory / "job.json"),
                         "compile_receipt_sha256": sha256(
                             directory / "compile-receipt.json"

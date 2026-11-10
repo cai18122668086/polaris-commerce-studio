@@ -314,6 +314,14 @@ class EditingSourceFrame(StrictVideoModel):
     supports_native_portrait: bool
 
 
+class EditingLayoutFinding(StrictVideoModel):
+    shot_index: int = Field(ge=0)
+    group_id: str
+    beat_id: str | None = None
+    first_ms: int = Field(ge=0)
+    finding_count: int = Field(gt=0)
+
+
 class EditingTaskResponse(StrictVideoModel):
     id: str
     project_id: str
@@ -338,6 +346,9 @@ class EditingTaskResponse(StrictVideoModel):
         default=None, exclude_if=lambda value: value is None
     )
     source_frame: EditingSourceFrame | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    layout_findings: list[EditingLayoutFinding] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 

@@ -8,7 +8,7 @@ import type { GenerationJob } from "@/features/video-studio/library";
 import type { components } from "@/lib/api/generated/openapi";
 import { TranscriptEditor } from "./transcript-editor";
 import { EditingLibrary } from "./editing-library";
-import { EditingNativePlans, type PreviewBaseSelection } from "./editing-native-plans";
+import { EditingNativePlans, type EditingRevisionSelection } from "./editing-native-plans";
 import { EditingPlanning } from "./editing-planning";
 import styles from "./editing-workspace.module.css";
 
@@ -37,7 +37,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
   const [planningTask, setPlanningTask] = useState("");
   const planningPanel = useRef<HTMLDetailsElement>(null);
   const [plansVersion, setPlansVersion] = useState(0);
-  const [previewBase, setPreviewBase] = useState<PreviewBaseSelection>();
+  const [revisionSelection, setRevisionSelection] = useState<EditingRevisionSelection>();
   const pending = useRef<{ key: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
@@ -106,6 +106,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
       planningPanel.current.scrollIntoView({ block: "start" });
     }
   };
+  const revise = (selection: EditingRevisionSelection) => {
+    setRevisionSelection(selection);
+    (document.getElementById(`editing-native-plan-${selection.planId}`) ?? document.getElementById("editing-native-plans"))?.scrollIntoView({ block: "start" });
+  };
   return <section className={styles.panel} aria-label="口播剪辑">
     <div className={styles.intro}><b>口播剪辑 · 试运行</b><p>从已有口播或上传视频开始，识别实际语音，保留原声节奏。</p></div>
     {!saved && <p role="status">请先保存当前项目，再开始剪辑。</p>}
@@ -120,7 +124,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
     {saved && <EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion}
-      previewBase={previewBase} onClearPreviewBase={() => setPreviewBase(undefined)}
+      revisionSelection={revisionSelection} onClearRevisionSelection={() => setRevisionSelection(undefined)}
       onCreated={async () => { setTasks(await reload()); }} />}
     {saved && <details ref={planningPanel} onToggle={event => { if (event.currentTarget.open) setPlanningOpened(true); }}><summary>语义规划任务</summary>{planningOpened && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} selected={planningTask} onSelect={setPlanningTask} onNativePlan={() => setPlansVersion(value => value + 1)} onPreview={previews => {
       const ids = previews.map(task => task.id);
@@ -139,6 +143,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
       const layoutReceipt = task.artifacts.find(a => a.role === "layout_receipt");
       const editReceipt = (task.options.native_edits || task.options.preview_base) && task.artifacts.find(a => a.role === "compile_receipt");
       const parent = task.options.preview_base;
+      const planId = task.options.native_plan_id;
+      const layoutFailed = task.status === "failed" && (task.error_code === "EDITING_EFFECT_LAYOUT_FAILED" || task.error_code === "EDITING_NATIVE_LAYOUT_FAILED");
       return <article key={task.id} id={`editing-task-${task.id}`}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
           原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>
@@ -158,20 +164,25 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           {!!task.options.native_edits.source_only_beat_ids?.length && `保留原景 ${task.options.native_edits.source_only_beat_ids.length} 段。`}
         </p>}
         {layoutReceipt && <p className={styles.note}>本次保留了原组设计里的前后叠字。 <a href={layoutReceipt.url} download>下载叠字版式记录</a></p>}
-        {task.status === "failed" && <p role="alert">{task.error_code === "EDITING_EFFECT_LAYOUT_FAILED"
-          ? "替换动效在此段发生排版碰撞。请沿用上版预览，换另一种动效。"
+        {task.status === "failed" && <p role="alert">{layoutFailed
+          ? "原生画面排版未通过。可沿用本次编排调整出错片段，再生成代理。"
           : errorLabel[task.error_code || ""] || "本次剪辑未完成，可以重试；已完成的配音不会重新生成。"}</p>}
+        {layoutFailed && !!task.layout_findings?.length && <ul aria-label="原生排版问题">
+          {task.layout_findings.map(finding => <li key={finding.shot_index}>
+            {(finding.first_ms / 1000).toFixed(2)} 秒起 · {finding.group_id} · {finding.finding_count} 处排版问题
+          </li>)}
+        </ul>}
+        {layoutFailed && planId && <button type="button" disabled={busy} onClick={() => revise({
+          planId, taskId: task.id, kind: "layout_failure", preview: parent, edits: task.options.native_edits, layoutFindings: task.layout_findings,
+        })}>调整出错片段</button>}
         {task.status === "awaiting_review" && preview && <>
           <video id={`editing-preview-${task.id}`} controls preload="metadata" src={preview.url} aria-label="剪辑代理预览" />
           <p className={styles.note}>代理使用较小画幅，保留本版编排和音轨。</p>
           <button type="button" disabled={busy} onClick={() => void confirmExport(task, preview)}>确认并开放高清下载</button>
         </>}
-        {preview && (task.status === "awaiting_review" || task.status === "completed") && task.options.native_plan_id && <button type="button" disabled={busy} onClick={() => {
-          const planId = task.options.native_plan_id;
-          if (!planId) return;
-          setPreviewBase({ planId, preview: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 }, edits: task.options.native_edits });
-          (document.getElementById(`editing-native-plan-${planId}`) ?? document.getElementById("editing-native-plans"))?.scrollIntoView({ block: "start" });
-        }}>沿用此版继续调整</button>}
+        {preview && (task.status === "awaiting_review" || task.status === "completed") && planId && <button type="button" disabled={busy} onClick={() => revise({
+          planId, taskId: task.id, kind: "preview", preview: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 }, edits: task.options.native_edits,
+        })}>沿用此版继续调整</button>}
         {final && <><video id={`editing-film-${task.id}`} controls preload="metadata" src={final.url} aria-label="剪辑成片预览" /><p className={styles.note}>成片已通过文件与音视频检查，字幕准确性和画面效果请预览验收。</p><a href={final.url} download>下载成片</a>
           {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
           {audioReceipt && <><p className={styles.note}>原生混音已通过技术检查，听感待验收。</p><a href={audioReceipt.url} download>下载声音校验记录</a></>}
@@ -188,7 +199,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs }: { work
           {correctionTask === task.id && <TranscriptEditor key={task.id} workspaceId={workspaceId} taskId={task.id} options={task.options} onCreated={async () => { setTasks(await reload()); }} />}
         </>}
         {["queued", "running"].includes(task.status) && <button type="button" disabled={busy || task.cancel_requested} onClick={() => void action(task, "cancel")}>{task.cancel_requested ? "正在取消" : "取消"}</button>}
-        {["failed", "cancelled"].includes(task.status) && task.error_code !== "EDITING_EFFECT_LAYOUT_FAILED" && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
+        {["failed", "cancelled"].includes(task.status) && !layoutFailed && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
       </article>;
     })}</div>
   </section>;

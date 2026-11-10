@@ -17,13 +17,20 @@ type EffectEdit = components["schemas"]["NativeEffectEdit"];
 type EffectTarget = components["schemas"]["EditingEffectTarget"];
 type MusicOptions = components["schemas"]["EditingMusicOptions"];
 type Controls = { music: "keep" | "lower" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
-export type PreviewBaseSelection = { planId: string; preview: components["schemas"]["EditingPreviewBase"]; edits?: NativeEdits | null };
+export type EditingRevisionSelection = {
+  planId: string;
+  taskId: string;
+  kind: "preview" | "layout_failure";
+  preview?: components["schemas"]["EditingPreviewBase"] | null;
+  edits?: NativeEdits | null;
+  layoutFindings?: components["schemas"]["EditingLayoutFinding"][] | null;
+};
 const defaultControls: Controls = { music: "keep", musicTrackId: "", segments: [], highlights: [], images: [], effects: [] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
-export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion, previewBase, onClearPreviewBase }: {
+export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion, revisionSelection, onClearRevisionSelection }: {
   workspaceId: string; projectId: string; onCreated: () => Promise<void>; plansVersion: number;
-  previewBase?: PreviewBaseSelection; onClearPreviewBase: () => void;
+  revisionSelection?: EditingRevisionSelection; onClearRevisionSelection: () => void;
 }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [busy, setBusy] = useState("");
@@ -38,7 +45,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
   const [loadingMusic, setLoadingMusic] = useState<string[]>([]);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const live = useRef(true);
-  const selectedPlan = previewBase?.planId;
+  const selectedPlan = revisionSelection?.planId;
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => {
     const controller = new AbortController();
@@ -94,7 +101,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       if (live.current) setLoadingMusic(previous => previous.filter(id => id !== plan.id));
     }
   };
-  const render = async (plan: Plan, selected: Controls, earlier?: PreviewBaseSelection) => {
+  const render = async (plan: Plan, selected: Controls, earlier?: EditingRevisionSelection) => {
     setBusy(plan.id); setError("");
     try {
       const segments = selected.segments.slice().sort();
@@ -121,7 +128,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         body: { request_id: intent.current.id, source_id: plan.source_id, options: {
           mode: "native_plan", native_plan_id: plan.id, language: "zh",
           source_subtitles: plan.source_subtitles, caption_font_id: "font-d1961be1161ea1be",
-          native_edits: edits, delivery: "preview_first", preview_base: earlier?.preview,
+          native_edits: edits, delivery: "preview_first", preview_base: earlier?.preview ?? undefined,
         } },
       }));
       intent.current = undefined;
@@ -134,8 +141,9 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
     <p className={styles.note}>每份候选绑定原片、逐词转录和选组版本。先看代理预览，再确认并下载对应的高清文件。</p>
     {plans.length === 0 && !error && <p>当前项目还没有保存的编排。</p>}
     {plans.map(plan => {
-      const earlier = previewBase?.planId === plan.id ? previewBase : undefined;
-      const key = earlier ? `${plan.id}/${earlier.preview.task_id}` : plan.id;
+      const earlier = revisionSelection?.planId === plan.id ? revisionSelection : undefined;
+      const key = earlier ? `${plan.id}/${earlier.taskId}` : plan.id;
+      const failedBeats = new Set(earlier?.layoutFindings?.map(finding => finding.beat_id));
       const initial = earlier?.edits ? {
         music: earlier.edits.music ?? "keep",
         musicTrackId: earlier.edits.music_track_id ?? "",
@@ -164,8 +172,8 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       return <article key={plan.id} id={`editing-native-plan-${plan.id}`}>
       <b>{plan.audience_question}</b>
       {earlier && <p className={styles.note}>
-        继续调整预览 <a href={`#editing-task-${earlier.preview.task_id}`}>{earlier.preview.task_id.slice(0, 8)}</a>
-        {" "}<button type="button" disabled={!!busy} onClick={onClearPreviewBase}>退出上版调整</button>
+        {earlier.kind === "layout_failure" ? "调整排版未通过的版本" : "继续调整预览"} <a href={`#editing-task-${earlier.taskId}`}>{earlier.taskId.slice(0, 8)}</a>
+        {" "}<button type="button" disabled={!!busy} onClick={onClearRevisionSelection}>退出本次调整</button>
       </p>}
       {plan.overlay_template && <p className={styles.note}>组合模板 · {plan.overlay_template.name}</p>}
       <p>{plan.origin === "operator_candidate" ? "人工工程候选 · 未经人工验收" : "腾力模型候选 · 待核对"}</p>
@@ -211,9 +219,9 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
             images: event.target.checked ? selected.images.filter(edit => edit.beat_id !== beat.id) : selected.images,
             effects: event.target.checked ? selected.effects.filter(edit => edit.beat_id !== beat.id) : selected.effects,
           })} />
-          保留原景 · {beat.group_id} · {beat.text}
+          保留原景 · {beat.group_id} · {beat.text}{failedBeats.has(beat.id) && " · 排版待调整"}
         </label>)}
-        {plan.overlay_template && <details onToggle={event => {
+        {plan.overlay_template && <details open={earlier?.kind === "layout_failure" ? true : undefined} onToggle={event => {
           if (event.currentTarget.open) void loadEffects(plan);
         }}>
           <summary>单段更换动效</summary>
@@ -223,7 +231,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
           {effectTargets[plan.id]?.map(target => {
             const beat = plan.beats.find(item => item.id === target.beat_id);
             if (!beat) return null;
-            return <label key={beat.id}>{beat.text}
+            return <label key={beat.id}>{beat.text}{failedBeats.has(beat.id) && " · 排版待调整"}
               <select aria-label={`更换动效 · ${beat.text}`} disabled={!!busy || selected.segments.includes(beat.id)}
                 value={replacements.get(beat.id) ?? ""} onChange={event => {
                   const next = selected.effects.filter(edit => edit.beat_id !== beat.id);

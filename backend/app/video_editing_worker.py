@@ -919,6 +919,16 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         )
         status = "cancelled" if code == "EDITING_CANCELLED" else "failed"
         with factory() as session:
+            failure_values: dict[str, Any] = {}
+            if isinstance(error, EditingFailure) and error.layout_findings:
+                saved = session.get(EditingTaskRecord, task_id)
+                if saved is not None:
+                    failure_values["checkpoint"] = {
+                        **saved.checkpoint,
+                        "layout_findings": [
+                            item.model_dump() for item in error.layout_findings
+                        ],
+                    }
             session.execute(
                 update(EditingTaskRecord)
                 .where(
@@ -931,6 +941,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     owner_token=None,
                     lease_until=None,
                     revision=EditingTaskRecord.revision + 1,
+                    **failure_values,
                 )
             )
             session.execute(

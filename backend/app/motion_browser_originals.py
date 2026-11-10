@@ -1,15 +1,24 @@
 """Verify original browser images and freeze supplemental originals per attempt."""
 
 import hashlib
+import json
 import os
 import re
+from collections import Counter
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 from PIL import Image
 
-from .motion_library import MOTION_SHA256, inside, read_json, sha256
+from .motion_library import (
+    MOTION_SHA256,
+    atomic_json,
+    inside,
+    read_json,
+    sha256,
+    verify_package,
+)
 
 _G05_BACKGROUND = ("g05-assets/base-{i:03d}.jpg", 69)
 _G05_ACTOR = ("g05-assets/actor-{i:03d}.png", 69)
@@ -38,6 +47,7 @@ RENDER_GROUPS = frozenset(_ALWAYS_DRAWN | _DRAWN_WITHOUT_PRESENTER)
 BROWSER_ORIGINALS_REQUIRED = "EDITING_ORIGINAL_BROWSER_ASSETS_REQUIRED"
 BROWSER_ORIGINALS_KEY = "tengli_browser_originals"
 _IMAGE_LIMIT = 16 * 1024 * 1024
+_MANIFEST_LIMIT = 1_000_000
 
 
 class BrowserOriginalsMissing(ValueError):
@@ -191,14 +201,18 @@ def verified_image_bytes(path: Path, digest: str) -> bytes:
     return data
 
 
-def _registered_originals(manifest: Path | None) -> dict:
+def _manifest_document(manifest: Path | None) -> dict:
     if manifest is None or not manifest.is_file():
         return {}
-    if manifest.stat().st_size > 1_000_000:
+    if manifest.stat().st_size > _MANIFEST_LIMIT:
         raise ValueError("Private original dependency manifest is too large")
     document = read_json(manifest)
     if not isinstance(document, dict):
         raise ValueError("Invalid private original dependency manifest")
+    return document
+
+
+def _registry_files(document: dict) -> dict:
     registry = document.get("browser_startup_originals")
     if registry is None:
         return {}
@@ -209,6 +223,132 @@ def _registered_originals(manifest: Path | None) -> dict:
     ):
         raise ValueError("Browser originals belong to another library release")
     return registry["files"]
+
+
+def _registered_originals(manifest: Path | None) -> dict:
+    return _registry_files(_manifest_document(manifest))
+
+
+def _incoming_image(source: Path, relative: str, origin: str) -> dict | None:
+    path = inside(source, relative)
+    if not path.exists():
+        return None
+    if not path.is_file() or path.stat().st_size > _IMAGE_LIMIT:
+        raise ValueError("Invalid supplemental browser image file")
+    return {"path": str(path), "sha256": sha256(path), "original_source": origin}
+
+
+def _save_intake(manifest: Path, previous: dict, files: dict) -> None:
+    updated = {
+        **previous,
+        "browser_startup_originals": {
+            **(previous.get("browser_startup_originals") or {}),
+            "library_release": MOTION_SHA256,
+            "files": files,
+        },
+    }
+    payload = json.dumps(updated, ensure_ascii=False, indent=2) + "\n"
+    if len(payload.replace("\n", os.linesep).encode("utf-8")) > _MANIFEST_LIMIT:
+        raise ValueError("Private original dependency manifest is too large")
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    lock = manifest.with_name(manifest.name + ".browser-intake.lock")
+    lock.open("x", encoding="utf-8").close()
+    try:
+        if _manifest_document(manifest) != previous:
+            raise ValueError("Private bindings changed during intake; run again")
+        atomic_json(manifest, updated)
+    finally:
+        lock.unlink()
+
+
+def intake_browser_originals(
+    package: Path,
+    manifest: Path,
+    *,
+    source: Path | None = None,
+    origin: str = "",
+    apply: bool = False,
+) -> dict:
+    """Check a private delivery tree at the package-relative native paths."""
+    package, manifest = package.resolve(), manifest.resolve()
+    source = source.resolve() if source is not None else None
+    origin = origin.strip()
+    if manifest.is_relative_to(package) or manifest.is_dir():
+        raise ValueError("Private bindings must be a file outside the original library")
+    if source is not None and (
+        source.is_relative_to(package)
+        or not source.is_dir()
+        or not 0 < len(origin) <= 240
+    ):
+        raise ValueError("Supply an external delivery directory and its provenance")
+    if apply and source is None:
+        raise ValueError("Registering originals requires a delivery directory")
+    verify_package(package)
+    document = _manifest_document(manifest)
+    registered = _registry_files(document)
+    index = _original_index(package)
+    archived, aliases, identities = index
+    slots: dict[str, list[str]] = {}
+    for group in read_json(package / "catalog/groups.json")["groups"]:
+        for pattern, count in STARTUP_ASSETS.get(group["id"], ()):
+            for i in range(count):
+                relative = f"{group['browser_directory']}/{pattern.format(i=i)}"
+                slots.setdefault(relative, []).append(group["id"])
+
+    accepted = {}
+    report = []
+    for relative, groups in sorted(slots.items()):
+        row: dict = {"native_path": relative, "groups": groups, "status": "missing"}
+        report.append(row)
+        if relative in archived:
+            row["status"] = "verified_bundled"
+            continue
+        alias = aliases.get(relative, "")
+        if alias.startswith("input://"):
+            identity = identities[alias[8:]]
+            row["catalog_identity"] = {
+                key: identity[key] for key in ("id", "sha256", "bytes")
+            }
+        if relative in registered:
+            try:
+                checked = _original_image(package, relative, index, registered, None)
+            except _IMAGE_ERRORS:
+                row["status"] = "invalid_registration"
+            else:
+                assert checked is not None
+                row.update(
+                    status="verified_registered",
+                    identity=checked["identity"],
+                    sha256=checked["sha256"],
+                )
+                continue
+        if source is None:
+            continue
+        try:
+            candidate = _incoming_image(source, relative, origin)
+            if candidate is None:
+                continue
+            checked = _original_image(
+                package, relative, index, {relative: candidate}, None
+            )
+        except _IMAGE_ERRORS:
+            row["status"] = "rejected_candidate"
+        else:
+            assert checked is not None
+            accepted[relative] = candidate
+            row.update(
+                status="registered" if apply else "ready_to_register",
+                identity=checked["identity"],
+                sha256=checked["sha256"],
+            )
+    if apply and accepted:
+        _save_intake(manifest, document, {**registered, **accepted})
+    return {
+        "scope": "browser_original_intake",
+        "library_release": MOTION_SHA256,
+        "counts": dict(Counter(row["status"] for row in report)),
+        "files": report,
+    }
 
 
 def original_startup_assets(

@@ -1,13 +1,15 @@
 import pytest
 from PIL import Image
 
+from app import motion_browser_originals as browser_originals
 from app.motion_browser_originals import (
     BrowserOriginalsMissing,
     compile_browser_originals,
+    intake_browser_originals,
     original_startup_assets,
     require_browser_originals,
 )
-from app.motion_library import MOTION_SHA256, atomic_json, sha256
+from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 
 
 @pytest.mark.parametrize(
@@ -168,3 +170,73 @@ def test_supplement_freezes_bytes_and_checks_indexed_originals(tmp_path, indexed
         with pytest.raises(BrowserOriginalsMissing) as caught:
             require_browser_originals(package, group, config, frozen, stage)
         assert caught.value.missing == {"assets/material-{i}.png": 1}
+
+
+def test_intake_preserves_private_bindings_and_rejects_wrong_indexed_bytes(
+    tmp_path, monkeypatch
+):
+    package, source = tmp_path / "package", tmp_path / "delivery"
+    groups = [
+        {"id": group_id, "browser_directory": "shared"}
+        for group_id in ("CX-G08", "CX-G09", "CX-G10")
+    ]
+    atomic_json(package / "catalog/groups.json", {"groups": groups})
+    atomic_json(package / "integrity.json", {"files": {}})
+    monkeypatch.setattr(browser_originals, "verify_package", lambda _: None)
+    folder = source / "shared/assets"
+    folder.mkdir(parents=True)
+    first = folder / "material-0.png"
+    indexed = folder / "G10-background-clean.jpg"
+    Image.new("RGB", (8, 8), "blue").save(first)
+    Image.new("RGB", (8, 8), "green").save(indexed)
+    key = indexed.relative_to(source).as_posix()
+    identity = {
+        "id": "media-original",
+        "kind": "media",
+        "bytes": indexed.stat().st_size,
+        "sha256": sha256(indexed),
+    }
+    atomic_json(package / "catalog/external-resources.json", {"resources": [identity]})
+    atomic_json(
+        package / "catalog/native-relative-assets.json", {key: "input://media-original"}
+    )
+    exact = indexed.read_bytes()
+    Image.new("RGB", (8, 8), "red").save(indexed)
+    manifest = tmp_path / "bindings.json"
+    previous = {"tools": {"ffmpeg": "private"}, "resources": {"font-a": "private"}}
+    atomic_json(manifest, previous)
+    initial_sha = sha256(manifest)
+    options = {"source": source, "origin": "delivery provenance"}
+    preview = intake_browser_originals(package, manifest, **options)
+    assert preview["counts"] == {
+        "ready_to_register": 1,
+        "missing": 69,
+        "rejected_candidate": 1,
+    }
+    rejected = next(row for row in preview["files"] if row["native_path"] == key)
+    assert rejected["groups"] == ["CX-G08", "CX-G09", "CX-G10"]
+    assert rejected["catalog_identity"]["sha256"] == identity["sha256"]
+    assert sha256(manifest) == initial_sha
+    assert str(source) not in str(preview) and options["origin"] not in str(preview)
+
+    intake_browser_originals(package, manifest, **options, apply=True)
+    data = read_json(manifest)
+    assert {k: data[k] for k in previous} == previous
+    first_key = first.relative_to(source).as_posix()
+    assert set(data["browser_startup_originals"]["files"]) == {first_key}
+    indexed.write_bytes(exact)
+    report = intake_browser_originals(package, manifest, **options, apply=True)
+    assert (
+        report["counts"]["verified_registered"] == report["counts"]["registered"] == 1
+    )
+    indexed_row = next(row for row in report["files"] if row["native_path"] == key)
+    assert indexed_row["identity"] == "catalog_sha256"
+    locked = manifest.with_name(manifest.name + ".browser-intake.lock")
+    locked.touch()
+    Image.new("RGB", (8, 8), "red").save(folder / "material-1.png")
+    with pytest.raises(FileExistsError):
+        intake_browser_originals(package, manifest, **options, apply=True)
+    assert set(read_json(manifest)["browser_startup_originals"]["files"]) == {
+        first_key,
+        key,
+    }

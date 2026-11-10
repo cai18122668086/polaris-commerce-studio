@@ -1751,3 +1751,17 @@ HY-A2 单组测试实际渲染了 120 帧。缺少 Hyperframes 包时，原生 B
 同一条真实口播和已核对的词级编排在隔离网站 API 及独立 worker 重渲。任务 `3e4ec9a5-faad-455d-9145-7ac2cc342057` 完成 48.475 秒母版，含 11 种原生动效、16 条原库提示音和一条背景乐。A2 原生段有 120 帧。母版在 39.43、40.40、42.00 秒实测两轴缩放均约 47%，横纵倍率之差小于 1%。前后保持原片画幅。连续抽查 108 帧的人物区域得到 107 个不同帧，八处抽帧均更接近同期原片而非冻结参考帧。原声分轨波形误差为 −146.37 dBFS。Chromium 实播 768×1366 母版，代理和母版范围请求均返回 206，下载摘要与服务端一致，母版完整解码。
 
 供验收的成片为 `C:/tl/hypit-a2-original-frame-20261110/website-a2-original-frame.mp4`。同目录保留 `delivery-evidence.json`、`geometry-evidence.json` 及 `presenter-clock-evidence.json`。315 项相关回归、目标 Ruff 与 mypy 通过。本轮沿用本地编排复验，无新增付费调用或部署，整片视听待用户验收。
+
+## 浏览器原件批量补交
+
+在 `backend` 目录运行下列命令，按原包列出浏览器图片的完整相对路径。`--bindings` 指向 API 和 worker 已使用的 `POLARIS_VIDEO_EDITING_NATIVE_BINDINGS_FILE`。清单按原路径去重，并列出使用共用入口的组。补交文件的本机绝对路径、登记来源和工具配置均留在私有绑定文件，报告可独立传给交付者。
+
+```sh
+python scripts/register_motion_browser_originals.py --package <已安装原包> --bindings <私有绑定文件>
+```
+
+收到原件后，将文件按报告的 `native_path` 放在独立、持久的交付目录。加上 `--source <交付目录> --provenance <交付批次或归档记录>` 可预检。加 `--apply` 才原子更新私有绑定，现有 `resources`、`tools` 和通过核验的图片记录继续保留。路径越界、格式错误、超限和已索引的字节身份不符都会拒绝。已索引文件标记 `catalog_sha256`，其余文件标记 `operator_attested` 并记录交付来源。剪辑任务仍按当前使用分支冻结所需原件。原 ZIP 和安装目录保持只读。
+
+实际原包的空绑定预检列出 212 个路径。CX-G05 有 141 个，CX-G08 至 G10 的共用入口有 71 个，其中 G10 两张图有目录摘要和字节数。补查原包内 990 个源文本和清单文件，未找到这批已索引资源的内嵌 Base64 原件。交付索引见 `C:/tl/motion-original-drop-20261110/browser-original-request.json`。四份字体的原始名称、字节数、摘要及原库权利标记见同目录 `font-original-request.json`。
+
+在独立测试绑定中批量预检并登记 69 张诊断帧，复跑时清单摘要一致。一张同路径异字节的 G10 JPEG 被拒绝。新登记进入真实 CX-G05 编译冻结和浏览器原生渲染，回执记录 69 个实际加载的文件，组件独立解码 100 帧、89 个不同画面。原包 1,426 项完整性复核通过。`diagnostic-native-evidence.json` 仅登记导入和渲染验证，四个浏览器组及 HY-A1 的真实原件状态仍待补齐，AH-S03 B 版单列。316 项剪辑、原库与文稿回归通过，最终 14 项专项、目标 Ruff 和 mypy 通过。

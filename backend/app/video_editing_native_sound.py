@@ -22,7 +22,12 @@ from .video_editing_contracts import (
     TranscriptToken,
 )
 from .video_editing_cxbr import CXBR_SOUNDS, cxbr_entry_frame
-from .video_editing_hypit_strips import verify_stagger_entry
+from .video_editing_hypit_label_cards import LABEL_CARD_GROUP
+from .video_editing_hypit_strips import (
+    stagger_events,
+    stagger_output_frame,
+    verify_stagger_entry,
+)
 from .video_editing_judgment import (
     JUDGMENT_EVENTS,
     JUDGMENT_GROUP,
@@ -470,10 +475,9 @@ def compile_sound(
                 "event_path": cue.event_path,
             }
         if hypit_entry:
-            # The original compositor applies setpts in the output frame time
-            # base. Its positive fractional shot origin truncates to a frame.
-            start_ms = round(shot["start_seconds"] * 1000)
-            output_frame = start_ms * 30 // 1000 + hypit_entry["audible_frame"]
+            output_frame = stagger_output_frame(
+                shot["start_seconds"], hypit_entry["audible_frame"]
+            )
             hypit_entry = {**hypit_entry, "output_frame": output_frame}
             seconds = output_frame / 30
         if (
@@ -645,6 +649,22 @@ def verify_rendered_sound(
         elif hypit_entry := cue.get("hypit_entry"):
             verify_stagger_entry(root, hypit_entry)
             anchor_valid = anchor["kind"] == "explicit_current_clock"
+            if hypit_entry["group_id"] == LABEL_CARD_GROUP:
+                if episode is None:
+                    episode = read_json(root / "episode.json")
+                shot = episode["shots"][int(hypit_entry["shot"].split("-", 1)[0])]
+                frame = stagger_output_frame(
+                    shot["start_seconds"], hypit_entry["audible_frame"]
+                )
+                anchor_valid = (
+                    anchor_valid
+                    and shot["group_id"] == LABEL_CARD_GROUP
+                    and episode["output"]["fps"] == 30
+                    and cue["word_binding"]["path"]
+                    == stagger_events(LABEL_CARD_GROUP)[hypit_entry["index"]]
+                    and hypit_entry["output_frame"] == frame
+                    and cue["anchor_seconds"] == frame / 30
+                )
         elif question_entry := cue.get("question_entry"):
             if episode is None:
                 episode = read_json(root / "episode.json")

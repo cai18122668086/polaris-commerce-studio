@@ -59,11 +59,52 @@ def test_original_label_card_slides_keep_their_key_distances_and_order(
     data = strips.compile_strips(tmp_path, group, native, {})
     attributes = label_cards.label_card_attributes(tmp_path, group, data)
     assert data["plate"] == clock and attributes["t"] == {"end": "60f"}
+    assert data["caption_lane"] == {
+        "reference_height": 1280,
+        "min_ink_y": 1102,
+        "baseline_y": 1230,
+    }
     assert attributes["xiu"]["move"] == "0:423,12:423,23:1005,33:1045,43:1554,60:1554"
     assert attributes["ti"]["move"] == "16:497,23:498,33:498,43:959,60:959"
     assert attributes["li"]["move"] == "37:470,38:435,43:402,60:402"
     current = label_cards.patch_label_cards(scene, attributes)
     assert 'text="洗水果" reveal="38" from="37" layer="12" shift="-9.5"' in current
+    assert label_cards.label_card_scene_entries(current) == [0, 16, 37]
+    assert strips.stagger_output_frame(39.77, 0) == 1194
+    assert strips.stagger_output_frame(39.77, 16) == 1209
+
+    stem = "000-HY-A1"
+    sidecar = tmp_path / "hypit-strips" / f"{stem}.json"
+    atomic_json(sidecar, data)
+    work = tmp_path / "hypit-strips" / "work" / stem
+    materialized = work / "hypit" / label_cards.LABEL_CARD_GROUP / "scene.svml"
+    materialized.parent.mkdir(parents=True)
+    materialized.write_text(current, encoding="utf-8")
+    receipt = work / "tengli-strip-materialization.json"
+    ref = {
+        "group_id": label_cards.LABEL_CARD_GROUP,
+        "shot": stem,
+        "sidecar_sha256": strips.sha256(sidecar),
+        "index": 0,
+        "frame": 0,
+        "audible_frame": 0,
+    }
+    record = {
+        "sidecar_sha256": ref["sidecar_sha256"],
+        "scene_sha256": strips.sha256(materialized),
+        "first_visible_frames": [0, 16, 37],
+    }
+    atomic_json(receipt, record)
+    strips.verify_stagger_entry(tmp_path, ref)
+    materialized.write_text(
+        current.replace('id="xiu"', 'id="xiu" from="1"'),
+        encoding="utf-8",
+    )
+    record["scene_sha256"] = strips.sha256(materialized)
+    atomic_json(receipt, record)
+    with pytest.raises(ValueError, match="card entries differ"):
+        strips.verify_stagger_entry(tmp_path, ref)
+
     native["events"][2]["value"] = 26
     with pytest.raises(ValueError, match="leave room for original moves"):
         strips.compile_strips(tmp_path, group, native, {})

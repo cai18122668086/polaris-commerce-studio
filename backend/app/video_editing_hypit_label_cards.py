@@ -20,6 +20,11 @@ LABEL_CARD_EVENTS = tuple(f"/hypit_label_cards/{i}/entry_frame" for i in range(3
 _NODES = ("xiu", "ti", "li")
 _ORIGINAL_ENTRY = (0, 22, 43)
 _ORIGINAL_END = 63
+# Original label-card BOX bottom and half the dashed border's stroke.
+_CARD_BOTTOM = 194.5 - 98.5 + 3.5 / 2
+_CANVAS_HEIGHT = 1920
+_CAPTION_REFERENCE_HEIGHT = 1280
+_CAPTION_BASELINE = 1230
 _SOURCE_SHA256 = "36b68002e858de5901f2516b15157b595bd3a2487eaf11c0c0a20024b929c9a7"
 _COMPONENTS = {
     "s03.svs": "1fbf037597f57041055dfbd674316a229c0904cdba9ca6c835faf3878fcc8c18",
@@ -57,11 +62,13 @@ def _card_tag(node: str) -> re.Pattern[str]:
     return re.compile(rf'<card:Card id="{node}"[^>]*?/>')
 
 
-def _card_attribute(tag: str, name: str) -> str:
+def _card_attribute(tag: str, name: str, default: str | None = None) -> str:
     found = re.search(rf'(?<=\s){name}="([^"]+)"', tag)
-    if not found:
-        raise ValueError("Original label card parameter is unavailable")
-    return found[1]
+    if found:
+        return found[1]
+    if default is not None:
+        return default
+    raise ValueError("Original label card parameter is unavailable")
 
 
 def label_card_attributes(package: Path, group: dict, data: dict) -> dict:
@@ -143,7 +150,19 @@ def compile_label_cards(package: Path, group: dict, native: dict) -> dict:
         "frames": math.ceil((clock["end_ms"] - clock["start_ms"]) * 30 / 1000),
         "plate": native["media_clocks"][0],
     }
-    label_card_attributes(package, group, data)
+    attrs = label_card_attributes(package, group, data)
+    lowest_center = max(
+        float(pair.split(":", 1)[1])
+        for node in _NODES
+        for pair in attrs[node]["move"].split(",")
+    )
+    data["caption_lane"] = {
+        "reference_height": _CAPTION_REFERENCE_HEIGHT,
+        "min_ink_y": math.ceil(
+            (lowest_center + _CARD_BOTTOM) * _CAPTION_REFERENCE_HEIGHT / _CANVAS_HEIGHT
+        ),
+        "baseline_y": _CAPTION_BASELINE,
+    }
     return data
 
 
@@ -161,3 +180,20 @@ def patch_label_cards(scene: str, attributes: dict) -> str:
             tag = tag.replace(f'{key}="{old}"', f'{key}="{value}"', 1)
         scene = scene[: match.start()] + tag + scene[match.end() :]
     return scene
+
+
+def label_card_scene_entries(scene: str) -> list[int]:
+    """Read the first visible panel frames from the actual materialized tracks."""
+    entries = []
+    for node in _NODES:
+        matches = list(_card_tag(node).finditer(scene))
+        if len(matches) != 1:
+            raise ValueError("Original Hypit label card track must occur once")
+        entries.append(
+            int(
+                _card_attribute(
+                    matches[0][0], "from", "0" if node == _NODES[0] else None
+                )
+            )
+        )
+    return entries

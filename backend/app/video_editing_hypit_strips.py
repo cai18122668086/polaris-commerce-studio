@@ -27,6 +27,7 @@ from .video_editing_hypit_label_cards import (
     LABEL_CARD_TEXT,
     compile_label_cards,
     label_card_attributes,
+    label_card_scene_entries,
     patch_label_cards,
 )
 
@@ -116,6 +117,13 @@ def stagger_audio_frame(group_id: str, entry_frame: int) -> int:
     # In the pinned wipe and zoom profiles, the entry marker still has zero
     # visibility. The original component first changes pixels on the next frame.
     return entry_frame + int(group_id in STAGGER_GROUPS)
+
+
+def stagger_output_frame(start_seconds: float, local_frame: int) -> int:
+    # setpts truncates the component origin, while the compositor enables the
+    # shot on the first whole frame at or after the spoken window's start.
+    ticks = round(start_seconds * 1000) * 30
+    return max((ticks + 999) // 1000, ticks // 1000 + local_frame)
 
 
 def strip_fields(group_id: str) -> list[dict[str, str]]:
@@ -464,7 +472,7 @@ def verify_stagger_entry(root: Path, ref: dict) -> None:
     """Verify a sound anchor against the task-local scene that was rendered."""
     group_id, stem, index = ref["group_id"], ref["shot"], ref["index"]
     if (
-        group_id not in STAGGER_GROUPS
+        group_id not in HYPIT_SIDECAR_GROUPS
         or not re.fullmatch(rf"\d{{3,}}-{group_id}", stem)
         or type(index) is not int
         or not 0 <= index < 3
@@ -484,7 +492,15 @@ def verify_stagger_entry(root: Path, ref: dict) -> None:
         or sha256(scene) != receipt["scene_sha256"]
     ):
         raise ValueError("Rendered Hypit sound reference no longer matches the scene")
-    tag = _stagger_tag(STAGGER_GROUPS[group_id][0]).search(scene.read_text("utf-8"))
+    scene_text = scene.read_text("utf-8")
+    if group_id == LABEL_CARD_GROUP:
+        if (
+            label_card_scene_entries(scene_text) != data["entry_frames"]
+            or receipt.get("first_visible_frames") != data["entry_frames"]
+        ):
+            raise ValueError("Native Hypit card entries differ from the sound plan")
+        return
+    tag = _stagger_tag(STAGGER_GROUPS[group_id][0]).search(scene_text)
     attribute = re.search(r'(?<=\s)frames="([^"]+)"', tag[0]) if tag else None
     if not attribute or attribute[1] != ",".join(map(str, data["entry_frames"])):
         raise ValueError("Native Hypit entry frames differ from the sound plan")
@@ -683,6 +699,11 @@ def install_native_strips(package: Path, root: Path) -> None:
             updated = attach_foreground_track(updated, scene.parent / "s03.svs")
         if card["id"] == FLOW_GROUP and (chart := data.get("flow_chart")):
             updated = patch_flow_slices(updated, chart)
+        first_visible = (
+            label_card_scene_entries(updated) if card["id"] == LABEL_CARD_GROUP else []
+        )
+        if first_visible and first_visible != data["entry_frames"]:
+            raise ValueError("Hypit label-card entries changed during materialization")
         scene.write_text(updated, encoding="utf-8")
         atomic_json(
             receipt,
@@ -690,6 +711,7 @@ def install_native_strips(package: Path, root: Path) -> None:
                 "sidecar_sha256": digest,
                 "scene_sha256": sha256(scene),
                 "materialized_attributes": attrs,
+                **({"first_visible_frames": first_visible} if first_visible else {}),
                 **({"plate": plate} if plate is not None else {}),
                 **({"foreground": foreground} if foreground is not None else {}),
             },

@@ -23,6 +23,7 @@ const errorLabel: Record<string, string> = {
   EDITING_DECODE_SOUND_CHECK_FAILED: "暂时无法核对成片声音。请重试剪辑。",
   EDITING_CONDITION_ANCHOR_INCOMPLETE: "本次动效文字遗漏了实录适用条件。请核对原转录和动效强调词。",
   EDITING_NEGATION_ANCHOR_INCOMPLETE: "本次动效文字遗漏了实录的否定表达。请核对原转录和动效强调词。",
+  EDITING_PARALLEL_ITEMS_INVALID: "并列动效的事项重复使用实录词点或缺少原生绑定。请返回编排核对。",
   EDITING_QUANTITY_ANCHOR_INCOMPLETE: "本次动效文字截断了实录数量或单位。请核对原转录和动效强调词。",
   EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片。请选择符合画幅的原片。",
   EDITING_VIDEO_FRAME_CLOCK_INVALID: "无法核对原片的显示时钟，请更换原片或联系管理员。",

@@ -240,7 +240,11 @@ from .video_editing_unified_scenes import (
     validate_unified_anchors,
     validate_year_anchors,
 )
-from .video_editing_word_bindings import IncompleteDenial, word_bindings
+from .video_editing_word_bindings import (
+    IncompleteDenial,
+    ParallelItemsMismatch,
+    word_bindings,
+)
 from .video_editing_yy6_scenes import (
     YY6_GROUPS,
     YY6_SOUND_EVENTS,
@@ -2807,7 +2811,13 @@ def check_overlay_beat(
         _overlay_entry(package, group, beat, transcript, asset_cards, "")
     except ApiError as error:
         if isinstance(
-            error.__cause__, (IncompleteCondition, IncompleteDenial, IncompleteQuantity)
+            error.__cause__,
+            (
+                IncompleteCondition,
+                IncompleteDenial,
+                IncompleteQuantity,
+                ParallelItemsMismatch,
+            ),
         ):
             raise error.__cause__ from None
         raise ValueError(error.message) from error

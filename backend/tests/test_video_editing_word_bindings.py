@@ -8,6 +8,7 @@ from app.video_editing_contracts import (
     NativeMediaAnchor,
     NativeTextAnchor,
     SemanticBeat,
+    SemanticRelationItem,
     Transcript,
     TranscriptToken,
 )
@@ -18,6 +19,7 @@ from app.video_editing_quantity_anchors import (
 )
 from app.video_editing_word_bindings import (
     IncompleteDenial,
+    ParallelItemsMismatch,
     emphasis_text,
     word_bindings,
 )
@@ -86,6 +88,59 @@ def test_repeated_words_compile_by_occurrence_and_actual_frame_clock():
             "不是14.9元，每瓶1000克，比例2:1，含量25%。", "omit_sentence_punctuation"
         )
         == "不是14.9元每瓶1000克比例2:1含量25%"
+    )
+
+
+def test_parallel_items_need_separate_spoken_occurrences_and_visible_native_slots():
+    source = measured_transcript(["洗碗", "刷锅", "洗碗", "最后"])
+    fields = [
+        NativeTextAnchor(
+            path=f"/content/item{i}", first_token_id=f"t{i}", last_token_id=f"t{i}"
+        )
+        for i in range(3)
+    ]
+    items = [
+        SemanticRelationItem(
+            id=f"item-{i}",
+            first_token_id=f"t{i}",
+            last_token_id=f"t{i}",
+            native_text_paths=[field.path],
+        )
+        for i, field in enumerate(fields)
+    ]
+    chosen = beat().model_copy(
+        update={
+            "last_token_id": "t3",
+            "relation": "parallel",
+            "native_text": fields,
+            "native_events": [],
+            "relation_items": items,
+        }
+    )
+    contract = {**CONTRACT, "text_paths": [field.path for field in fields]}
+    assert [
+        row["text"] for row in word_bindings(chosen, source, contract, set())["text"]
+    ] == ["洗碗", "刷锅", "洗碗"]
+    shared = [items[0].model_copy(update={"last_token_id": "t1"}), *items[1:]]
+    extra = [
+        *items,
+        SemanticRelationItem(id="unbound", first_token_id="t3", last_token_id="t3"),
+    ]
+    for invalid in (items[:1], shared, list(reversed(items)), extra):
+        with pytest.raises(ParallelItemsMismatch):
+            word_bindings(
+                chosen.model_copy(update={"relation_items": invalid}),
+                source,
+                contract,
+                set(),
+            )
+
+    # Original role sequences can use several illustrations in one spoken line.
+    word_bindings(
+        chosen.model_copy(update={"relation": "sequence", "relation_items": shared}),
+        source,
+        contract,
+        set(),
     )
 
 

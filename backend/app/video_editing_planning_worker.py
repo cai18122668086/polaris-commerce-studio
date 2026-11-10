@@ -84,7 +84,7 @@ from .video_editing_unified_scenes import (
     require_clean_unified_source,
     require_spoken_year,
 )
-from .video_editing_word_bindings import IncompleteDenial
+from .video_editing_word_bindings import IncompleteDenial, ParallelItemsMismatch
 from .video_editing_yy6_scenes import yy6_scene_inputs
 from .video_editing_yy_openings import require_clean_yy_source
 
@@ -748,6 +748,7 @@ def process(
                     IncompleteCondition,
                     IncompleteDenial,
                     IncompleteQuantity,
+                    ParallelItemsMismatch,
                     RoleActionMismatch,
                 ),
             )

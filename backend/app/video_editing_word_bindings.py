@@ -27,6 +27,32 @@ class IncompleteDenial(ValueError):
     code = "EDITING_NEGATION_ANCHOR_INCOMPLETE"
 
 
+class ParallelItemsMismatch(ValueError):
+    code = "EDITING_PARALLEL_ITEMS_INVALID"
+
+
+def validate_parallel_items(beat: SemanticBeat, positions: dict[str, int]) -> None:
+    """Each displayed parallel item owns a distinct, ordered speech occurrence."""
+    if (
+        beat.relation != "parallel"
+        or beat.group_id == "Z-M00"
+        or not beat.relation_items
+    ):
+        return
+    if len(beat.relation_items) < 2:
+        raise ParallelItemsMismatch("并列动效至少需要两个独立的实录事项。")
+    previous_last = positions[beat.first_token_id] - 1
+    beat_last = positions[beat.last_token_id]
+    for item in beat.relation_items:
+        first = positions.get(item.first_token_id, -1)
+        last = positions.get(item.last_token_id, -1)
+        if not previous_last < first <= last <= beat_last:
+            raise ParallelItemsMismatch("并列事项须按本段实录顺序使用互不重叠的词点。")
+        if not (item.native_text_paths or item.native_media_paths):
+            raise ParallelItemsMismatch("每个并列事项都须绑定原生文字或素材槽。")
+        previous_last = last
+
+
 def explicit_denial_spans(tokens: list[TranscriptToken]) -> list[tuple[int, int, int]]:
     """Find explicit denial markers and clause ends in actual token coordinates."""
     text = "".join(token.text for token in tokens)
@@ -116,6 +142,7 @@ def word_bindings(
     first, last = positions[beat.first_token_id], positions[beat.last_token_id]
     if first > last:
         raise ValueError("Native meaning span is reversed")
+    validate_parallel_items(beat, positions)
     start_ms, end_ms = transcript.tokens[first].start_ms, transcript.tokens[last].end_ms
     fps = contract["native_fps"]
     if type(fps) not in {int, float} or fps <= 0:

@@ -94,6 +94,7 @@ from .video_editing_word_bindings import (
     IncompleteDenial,
     drops_explicit_denial,
     explicit_denial_spans,
+    validate_parallel_items,
     word_bindings,
 )
 
@@ -868,6 +869,8 @@ def validate_plan(
                 input_contract(package, group_rows[beat.group_id]),
                 allowed_assets,
             )
+        else:
+            validate_parallel_items(beat, ids)
     if position != len(transcript.tokens):
         raise ValueError("Model omitted the end of the actual speech")
 

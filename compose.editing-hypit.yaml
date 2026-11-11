@@ -1,0 +1,26 @@
+# Opt in only for a single internal development workspace.
+x-hypit-environment: &hypit-environment
+  PATH: /hypit-runtime/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  POLARIS_VIDEO_EDITING_HYPIT_INTERNAL_WORKSPACE: ${POLARIS_HYPIT_INTERNAL_WORKSPACE:?Set the single internal development workspace}
+  POLARIS_VIDEO_EDITING_HYPIT_LOCAL_MODULE: /hypit-runtime/node_modules/@hypit/hypit/bin/hypit.mjs
+  POLARIS_VIDEO_EDITING_HYPIT_LOCAL_CHROME: /hypit-runtime/chromium/chrome
+
+x-hypit-volumes: &hypit-volumes
+  - type: bind
+    source: ${POLARIS_HYPIT_RUNTIME_HOST:?Set the private Hypit runtime directory}
+    target: /hypit-runtime
+    read_only: true
+    bind:
+      create_host_path: false
+
+services:
+  api:
+    environment: *hypit-environment
+    volumes: *hypit-volumes
+  editing-worker:
+    init: true
+    environment: *hypit-environment
+    volumes: *hypit-volumes
+  editing-planning-worker:
+    environment: *hypit-environment
+    volumes: *hypit-volumes

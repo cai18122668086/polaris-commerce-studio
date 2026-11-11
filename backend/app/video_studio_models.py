@@ -24,6 +24,7 @@ class VideoProjectRecord(TimestampMixin, Base):
     )
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[dict] = mapped_column(json_type(), nullable=False)
+    writing_origin: Mapped[dict | None] = mapped_column(json_type(), nullable=True)
 
 
 class VideoScriptVersionRecord(Base):
@@ -40,6 +41,7 @@ class VideoScriptVersionRecord(Base):
     )
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     snapshot: Mapped[dict] = mapped_column(json_type(), nullable=False)
+    writing_origin: Mapped[dict | None] = mapped_column(json_type(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

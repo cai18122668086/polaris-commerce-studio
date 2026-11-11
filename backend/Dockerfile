@@ -6,6 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+ARG POLARIS_INCLUDE_EDITING_PROBE=0
+RUN if [ "$POLARIS_INCLUDE_EDITING_PROBE" = "1" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+      && rm -rf /var/lib/apt/lists/* \
+      && mkdir -p /app/.data/editing-tasks; \
+    fi
+
 COPY pyproject.toml README.md alembic.ini ./
 COPY app ./app
 COPY skill_sources ./skill_sources

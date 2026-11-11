@@ -1,0 +1,6 @@
+# Verified local editing environment, 2026-11-09. Do not upgrade API packages
+# merely to install this worker. kombu[redis] 5.7 pins packaging 26.3, which
+# conflicts with the existing supertokens-python 0.31.3 requirement (<26).
+celery==5.6.3
+kombu==5.6.2
+packaging==25.0

@@ -46,7 +46,7 @@
 .noticeToast p { color: #e6e0ed; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .noticeToast > button { cursor: pointer; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; margin-left: 12px; border: 0; background: #ffffff10; color: #ded5ea; border-radius: 5px; flex-shrink: 0; }
 .assistantPanel { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
-.assistantTools { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; padding: 5px; border: 1px solid #e6e1ed; border-radius: 10px; background: #f6f4f9; flex-shrink: 0; }
+.assistantTools { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 5px; padding: 5px; border: 1px solid #e6e1ed; border-radius: 10px; background: #f6f4f9; flex-shrink: 0; }
 .assistantTools button { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 3px; border: 1px solid transparent; color: #6e637a; background: transparent; border-radius: 7px; font-size: 12px; white-space: nowrap; }
 .assistantTools button[aria-pressed=true] { color: #fff; background: #71558a; border-color: #71558a; box-shadow: 0 2px 6px #5e3d7d28; }
 .assistantTools button:hover:not([aria-pressed=true]) { background: #eae4f1; color: #403149; }
@@ -136,3 +136,5 @@
 .assistantSubmit small { line-height:1.7; max-width:60%; }
 .versionDetail header { flex-wrap:wrap; }
 @media(max-width:480px) { .toolIntro h2 { font-size:17px; } .toolIntro p { font-size:12px; } .assistantSubmit small { font-size:11px; } .historyFilters { flex-wrap:wrap; } }
+
+@media (max-width: 440px) { .assistantTools { grid-template-columns: repeat(2,minmax(0,1fr)); } }

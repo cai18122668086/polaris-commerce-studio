@@ -35,7 +35,9 @@ from .video_studio_schemas import (
     VideoTaskResponse,
     VideoVersionResponse,
     VideoWriteResponse,
+    VideoWritingOrigin,
 )
+from .video_writing_provenance import matching_writing_origin
 
 router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}",
@@ -70,6 +72,9 @@ def project_response(project: VideoProjectRecord) -> VideoProjectResponse:
         content=VideoProjectContent.model_validate(project.content),
         created_at=project.created_at,
         updated_at=project.updated_at,
+        writing_origin=VideoWritingOrigin.model_validate(project.writing_origin)
+        if project.writing_origin is not None
+        else None,
     )
 
 
@@ -80,6 +85,9 @@ def version_response(version: VideoScriptVersionRecord) -> VideoVersionResponse:
         kind=cast(Literal["draft", "library", "confirmed"], version.kind),
         snapshot=VideoProjectContent.model_validate(version.snapshot),
         created_at=version.created_at,
+        writing_origin=VideoWritingOrigin.model_validate(version.writing_origin)
+        if version.writing_origin is not None
+        else None,
     )
 
 
@@ -141,9 +149,15 @@ def append_version(
     project_id: str,
     content: dict[str, Any],
     kind: Literal["draft", "library", "confirmed"],
+    *,
+    writing_origin: dict[str, Any] | None = None,
 ) -> VideoScriptVersionRecord:
     version = VideoScriptVersionRecord(
-        id=str(uuid4()), project_id=project_id, kind=kind, snapshot=content
+        id=str(uuid4()),
+        project_id=project_id,
+        kind=kind,
+        snapshot=content,
+        writing_origin=writing_origin,
     )
     session.add(version)
     session.flush()
@@ -151,9 +165,15 @@ def append_version(
 
 
 def append_demo(
-    session: Session, project_id: str, content: dict[str, Any]
+    session: Session,
+    project_id: str,
+    content: dict[str, Any],
+    *,
+    writing_origin: dict[str, Any] | None = None,
 ) -> tuple[VideoScriptVersionRecord, VideoTaskRecord]:
-    version = append_version(session, project_id, content, "confirmed")
+    version = append_version(
+        session, project_id, content, "confirmed", writing_origin=writing_origin
+    )
     task = VideoTaskRecord(
         id=str(uuid4()),
         project_id=project_id,
@@ -210,7 +230,7 @@ def save_project(
     previous = replay(session, workspace, body.request_id, fingerprint)
     if previous:
         return previous
-    row = session.get(VideoProjectRecord, str(project_id))
+    row = session.get(VideoProjectRecord, str(project_id), with_for_update=True)
     if row and (
         row.workspace_id != workspace.workspace_id
         or row.owner_user_id != workspace.principal.user_id
@@ -224,6 +244,30 @@ def save_project(
         raise ApiError(422, "VIDEO_SCRIPT_EMPTY", "请先填写文案。")
     content = body.content.model_dump(mode="json")
     old_content = row.content if row else None
+    restored = None
+    if body.restore_version_id is not None:
+        if body.action != "save":
+            raise ApiError(
+                422, "VIDEO_SCRIPT_RESTORE_ACTION", "请先将历史版本恢复为草稿。"
+            )
+        restored = session.get(VideoScriptVersionRecord, str(body.restore_version_id))
+        if row is None or restored is None or restored.project_id != row.id:
+            raise ApiError(
+                404, "VIDEO_SCRIPT_VERSION_NOT_FOUND", "未找到该项目的文案版本。"
+            )
+        snapshot = VideoProjectContent.model_validate(restored.snapshot).model_dump(
+            mode="json"
+        )
+        if content != snapshot:
+            raise ApiError(
+                409, "VIDEO_SCRIPT_RESTORE_CHANGED", "恢复内容与历史版本不一致。"
+            )
+    source = restored if restored is not None else row
+    origin = matching_writing_origin(source.writing_origin, content) if source else None
+    if restored is not None and restored.writing_origin is not None and origin is None:
+        raise ApiError(
+            409, "VIDEO_SCRIPT_RESTORE_CHANGED", "历史文案与写稿来源不一致。"
+        )
     try:
         if row is None:
             if body.expected_revision != 0:
@@ -248,6 +292,7 @@ def save_project(
                 )
                 .values(
                     content=content,
+                    writing_origin=origin,
                     revision=body.expected_revision + 1,
                     updated_at=utc_now(),
                 )
@@ -266,12 +311,18 @@ def save_project(
             session.refresh(row)
         version = None
         task = None
-        if old_content != content:
-            append_version(session, row.id, content, "draft")
+        if old_content != content or restored is not None:
+            draft = append_version(
+                session, row.id, content, "draft", writing_origin=origin
+            )
+            if restored is not None:
+                version = draft
         if body.action == "library":
-            version = append_version(session, row.id, content, "library")
+            version = append_version(
+                session, row.id, content, "library", writing_origin=origin
+            )
         if body.action == "demo":
-            version, task = append_demo(session, row.id, content)
+            version, task = append_demo(session, row.id, content, writing_origin=origin)
         response = VideoWriteResponse(
             project=project_response(row),
             version=version_response(version) if version else None,

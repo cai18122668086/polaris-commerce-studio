@@ -1,0 +1,1332 @@
+{
+  "schema_version": "tengli.native-media-clock-profiles/1",
+  "library_release": "c10429057a862cd8bd9e24280e5dd3f04448a3829b8b10646dd5d341ca0969bc",
+  "profiles": {
+    "Z-M01": {
+      "id": "unified-page-presenter-local-seconds/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited original presenter sampling and pagination; separate native output and review evidence required",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/frozen/runtime.py": "f176a05795075c8a47f93fc5219c4713d01388b834b367b6f043736c111c1133",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/adapter.py": "c13662347510845861aaee2049fafaaab7792867758c6664e1a7a92ab429a18e"
+      },
+      "native_fps": 30
+    },
+    "Z-M02": {
+      "id": "unified-z-m02-measured-presenter/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited native video alternative to the original sample still; retain existing geometry and continuous source sampling",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/typography.py": "5fbf8fff517ff0d9fd551d9d661356499950a2cd246258e0eef1d2ed07b83333",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/frozen/runtime.py": "f176a05795075c8a47f93fc5219c4713d01388b834b367b6f043736c111c1133",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/adapter.py": "c13662347510845861aaee2049fafaaab7792867758c6664e1a7a92ab429a18e"
+      },
+      "native_fps": 30
+    },
+    "Z-M03": {
+      "id": "unified-z-m03-measured-presenter/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited native video alternative to the original sample still; retain existing geometry and continuous source sampling",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/typography.py": "5fbf8fff517ff0d9fd551d9d661356499950a2cd246258e0eef1d2ed07b83333",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/frozen/runtime.py": "f176a05795075c8a47f93fc5219c4713d01388b834b367b6f043736c111c1133",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M01-M03/adapter.py": "c13662347510845861aaee2049fafaaab7792867758c6664e1a7a92ab429a18e"
+      },
+      "native_fps": 30
+    },
+    "Z-M04": {
+      "id": "unified-z-m04-measured-presenter/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited native video alternative to the original sample still; retain existing geometry and continuous source sampling",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/typography.py": "5fbf8fff517ff0d9fd551d9d661356499950a2cd246258e0eef1d2ed07b83333",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M04-M06/frozen/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M04-M06/adapter.py": "a34ab525ae6310ee7cc782c026e2c6ad79c45ed0ebe4572a382eea7618a51b86"
+      },
+      "native_fps": 30
+    },
+    "Z-M12": {
+      "id": "unified-package-window-source-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "original Z-M12 round presenter window with current source; package entries and visual review are separate",
+      "local_sample_seconds": "original window passes local frame / 30 to the unified presenter loader; compiled page start and source offset apply once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M10-M12/frozen/runtime.py": "5f76eb669347a44f4391ac3c44cadf9b33a329ab1e998d8195d169b33d1bc43f",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M10-M12/adapter.py": "9cc4d5b965422641f6c5a94f9526ac0a8d5f0aaefa179a2b4fe14c10213f9bfb"
+      },
+      "native_fps": 30
+    },
+    "W-R05": {
+      "id": "unified-build12-live-background/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/background/path"
+      ],
+      "scope": "audited original LiveFrames clock for this background slot; separate native output and review evidence required",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; virtual motion frame changes events only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/arguments-cta-clock/build.py": "cca1c8cec3a8423124b29c17058dffc88b460ac5468c3fa85e75ae56445b938c",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/media-carriers/runtime.py": "1fe655fbb657fb799ea7e542d7a4e6242723d0b56aecc13ba37856c38637ab47"
+      },
+      "native_fps": 30
+    },
+    "W-R06": {
+      "id": "wr06-comment-live-background/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/background_before/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited original CTA clock for the video before submission; the after-submission image remains an independent project asset",
+      "local_sample_seconds": "CtaFrames uses actual_t = local frame / 30 before submitted_in; afterward it samples the separately bound image",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/arguments-cta-clock/build.py": "cca1c8cec3a8423124b29c17058dffc88b460ac5468c3fa85e75ae56445b938c",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/media-carriers/runtime.py": "1fe655fbb657fb799ea7e542d7a4e6242723d0b56aecc13ba37856c38637ab47"
+      },
+      "native_fps": 30
+    },
+    "W-R04": {
+      "id": "w-r04-live-evidence-background/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/background/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited original LiveFrames clock for the evidence scene background",
+      "local_sample_seconds": "LiveFrames samples actual_t = local frame / 30; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/media-carriers/runtime.py": "1fe655fbb657fb799ea7e542d7a4e6242723d0b56aecc13ba37856c38637ab47",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/collage-image-rework/build.py": "02e1297605c789e1e7e88bcedb0266a72d5b7aeb331aa19e96ba3867cb5dad65",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/editable_glyphs.py": "a463e8ec0c5eec7a36e45ed14b4997b630432e86ac54da6a5bdd0d3f57e3aac3"
+      },
+      "native_fps": 30
+    },
+    "W-R14": {
+      "id": "w-r14-live-evidence-background/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/background/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "audited original LiveFrames clock for the evidence scene background",
+      "local_sample_seconds": "LiveFrames samples actual_t = local frame / 30; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/media-carriers/runtime.py": "1fe655fbb657fb799ea7e542d7a4e6242723d0b56aecc13ba37856c38637ab47",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/judgment-glyph-rework/build.py": "299a2ff640a3104d72a66187336bc9b4da53c618509e5ed250658c4d0e1d7d4a",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/editable_glyphs.py": "a463e8ec0c5eec7a36e45ed14b4997b630432e86ac54da6a5bdd0d3f57e3aac3"
+      },
+      "native_fps": 30
+    },
+    "YYP01": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_7个画面处理技巧_20261105/render.py": "37a24954b16d3bf44a3a77d6b81cab238f57446f84477b701e35f23fc938a23d"
+      },
+      "native_fps": 30
+    },
+    "YYP02": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_7个画面处理技巧_20261105/render.py": "37a24954b16d3bf44a3a77d6b81cab238f57446f84477b701e35f23fc938a23d"
+      },
+      "native_fps": 30
+    },
+    "YYP03": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_7个画面处理技巧_20261105/render.py": "37a24954b16d3bf44a3a77d6b81cab238f57446f84477b701e35f23fc938a23d"
+      },
+      "native_fps": 30
+    },
+    "YYP04": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_7个画面处理技巧_20261105/render.py": "37a24954b16d3bf44a3a77d6b81cab238f57446f84477b701e35f23fc938a23d"
+      },
+      "native_fps": 30
+    },
+    "YYP05": {
+      "id": "native-yyp05-presenter-and-independent-clips/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_clip_event_frames": {
+        "/media/broll1/path": 32,
+        "/media/broll2/path": 40
+      },
+      "project_clip_settle_frame": 47,
+      "scope": "presenter clock plus two original independent start-of-clip sampling expressions; visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_7个画面处理技巧_20261105/render.py": "37a24954b16d3bf44a3a77d6b81cab238f57446f84477b701e35f23fc938a23d"
+      },
+      "native_fps": 30
+    },
+    "YYP06": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_7个画面处理技巧_20261105/render.py": "37a24954b16d3bf44a3a77d6b81cab238f57446f84477b701e35f23fc938a23d"
+      },
+      "native_fps": 30
+    },
+    "YYP07": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_7个画面处理技巧_20261105/render.py": "37a24954b16d3bf44a3a77d6b81cab238f57446f84477b701e35f23fc938a23d"
+      },
+      "native_fps": 30
+    },
+    "LYO01": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/老于_4种口播开场_20261105/render.py": "bf9530d59b1b41ee8c9c1b2726ccbfec2f885b6f2ffa493c1c7df3f255e711d0"
+      },
+      "native_fps": 30
+    },
+    "LYO02": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/老于_4种口播开场_20261105/render-circle-final.py": "b4dabf700d91ae9a9108d31d3518170f441db6acb203bde380793dd46fd05126",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/老于_4种口播开场_20261105/render.py": "bf9530d59b1b41ee8c9c1b2726ccbfec2f885b6f2ffa493c1c7df3f255e711d0"
+      },
+      "native_fps": 30
+    },
+    "LYO03": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/老于_4种口播开场_20261105/render.py": "bf9530d59b1b41ee8c9c1b2726ccbfec2f885b6f2ffa493c1c7df3f255e711d0"
+      },
+      "native_fps": 30
+    },
+    "LYO04": {
+      "id": "native-presenter-local-seconds/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited source-time expression only; native rendering and visual acceptance separate",
+      "local_sample_seconds": "frame / 30; offset applied exactly once by original inspect_asset/asset_frame",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/老于_4种口播开场_20261105/render.py": "bf9530d59b1b41ee8c9c1b2726ccbfec2f885b6f2ffa493c1c7df3f255e711d0"
+      },
+      "native_fps": 30
+    },
+    "Z-M00": {
+      "id": "unified-runtime11-presenter-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "original audited source frame clock only; current render and review remain separate",
+      "local_sample_seconds": "frame / 30 + original page start; asset_frame adds selected source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/郑涵文_商业口播_三条拆解_20261103/experiments/mechanism-library/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa"
+      },
+      "native_fps": 30
+    },
+    "Z-M13": {
+      "id": "unified-runtime11-presenter-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "original audited source frame clock only; current render and review remain separate",
+      "local_sample_seconds": "frame / 30 + original page start; asset_frame adds selected source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/郑涵文_商业口播_三条拆解_20261103/experiments/mechanism-library/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa"
+      },
+      "native_fps": 30
+    },
+    "Z-M14": {
+      "id": "unified-runtime11-presenter-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "original audited source frame clock only; current render and review remain separate",
+      "local_sample_seconds": "frame / 30 + original page start; asset_frame adds selected source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/郑涵文_商业口播_三条拆解_20261103/experiments/mechanism-library/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa"
+      },
+      "native_fps": 30
+    },
+    "Z-M16": {
+      "id": "unified-runtime11-presenter-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "original audited source frame clock only; current render and review remain separate",
+      "local_sample_seconds": "frame / 30 + original page start; asset_frame adds selected source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/郑涵文_商业口播_三条拆解_20261103/experiments/mechanism-library/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa"
+      },
+      "native_fps": 30
+    },
+    "W-R03": {
+      "id": "unified-build12-live-frame-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/before/path"
+      ],
+      "scope": "original audited source frame clock only; current render and review remain separate",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/pending-three-rework/build.py": "321a1235b2d47b2e1b9435b734ca4d2973d34571f9fbef9980b501ef016eeeb8",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80"
+      },
+      "native_fps": 30
+    },
+    "W-R09": {
+      "id": "unified-build12-live-frame-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "original audited source frame clock only; current render and review remain separate",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/pending-three-rework/build.py": "321a1235b2d47b2e1b9435b734ca4d2973d34571f9fbef9980b501ef016eeeb8",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80"
+      },
+      "native_fps": 30
+    },
+    "W-R11": {
+      "id": "wr11-line-live-portrait/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "original W-R11 line portrait uses actual source frames; selected line art is separate",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/pending-three-rework/build.py": "321a1235b2d47b2e1b9435b734ca4d2973d34571f9fbef9980b501ef016eeeb8",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80"
+      },
+      "native_fps": 30
+    },
+    "Z-M07": {
+      "id": "z-m07-live-picture-board/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "original picture board uses the measured current presenter video for its native picture carrier",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/typography.py": "5fbf8fff517ff0d9fd551d9d661356499950a2cd246258e0eef1d2ed07b83333",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M07-M09/frozen/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M07-M09/adapter.py": "0e43ce63a20f97c567af1abc433e66435b070761e6a898fb59e325a27a2eed4b"
+      },
+      "native_fps": 30
+    },
+    "Z-M08": {
+      "id": "z-m08-live-picture-board/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "original picture board uses the measured current presenter video for its native picture carrier",
+      "local_sample_seconds": "native local frame / 30 + compiled page start; original asset_frame applies source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/typography.py": "5fbf8fff517ff0d9fd551d9d661356499950a2cd246258e0eef1d2ed07b83333",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M07-M09/frozen/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M07-M09/adapter.py": "0e43ce63a20f97c567af1abc433e66435b070761e6a898fb59e325a27a2eed4b"
+      },
+      "native_fps": 30
+    },
+    "W-R13": {
+      "id": "unified-build12-live-frame-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/clips/0/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/clips/1/path": null,
+        "/media/clips/2/path": null
+      },
+      "scope": "original audited source frame clock only; current render and review remain separate",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/triptych/build.py": "d86aef92d727e45bcaa83156fd69b9710afc883aeb53ee4b823a7b6fb82e61a5",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80"
+      },
+      "native_fps": 30
+    },
+    "W-R17": {
+      "id": "wr17-question-live-portrait/1",
+      "backend": "unified",
+      "media_paths": ["/media/presenter/path"],
+      "require_source_end_error": true,
+      "scope": "original presenter keeps the source clock through both question props, lettering and blur",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/final-three-rework/build.py": "2d0d58ca90ddb14c1353604a5d891ee8fea3c69e07120cf25fb1d6dcba737777"
+      },
+      "native_fps": 30
+    },
+    "W-R18": {
+      "id": "unified-build12-live-frame-clock/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path",
+        "/media/question_background/path"
+      ],
+      "scope": "original audited source frame clock only; current render and review remain separate",
+      "local_sample_seconds": "LiveFrames uses actual_t = local frame / 30; the original virtual clock retimes actions only, and asset_frame adds source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/final-three-rework/build.py": "2d0d58ca90ddb14c1353604a5d891ee8fea3c69e07120cf25fb1d6dcba737777",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80"
+      },
+      "native_fps": 30
+    },
+    "Z-M06": {
+      "id": "unified-native-source-cut-clock/1",
+      "backend": "unified",
+      "media_paths": [],
+      "transcript_cut_media": {
+        "/media/shots/0/path": [
+          "/timing/events/cuts/0",
+          "/timing/events/cuts/1"
+        ],
+        "/media/shots/2/path": [
+          "/timing/events/cuts/2",
+          null
+        ]
+      },
+      "scope": "measured source window for each audited native cut-relative video slot; current encoding and visual acceptance separate",
+      "local_sample_seconds": "original frame / 30 minus the selected native cut; asset_frame applies that cut’s measured source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/engine.py": "fc4d362751ec1f7adbe1ebcaee2481193805da3e5ee1b15239292235d5b3386c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M04-M06/frozen/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/batch-Z-M04-M06/adapter.py": "a34ab525ae6310ee7cc782c026e2c6ad79c45ed0ebe4572a382eea7618a51b86"
+      },
+      "native_fps": 30
+    },
+    "W-R10": {
+      "id": "unified-native-source-cut-clock/1",
+      "backend": "unified",
+      "media_paths": [],
+      "transcript_cut_media": {
+        "/media/screen_clips/0/path": [
+          "/timing/events/cuts/0",
+          "/timing/events/cuts/1"
+        ]
+      },
+      "scope": "measured source window for each audited native cut-relative video slot; current encoding and visual acceptance separate",
+      "local_sample_seconds": "original frame / 30 minus the selected native cut; asset_frame applies that cut’s measured source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/media-carriers/runtime.py": "1fe655fbb657fb799ea7e542d7a4e6242723d0b56aecc13ba37856c38637ab47"
+      },
+      "native_fps": 30
+    },
+    "W-R16": {
+      "id": "unified-native-source-cut-clock/1",
+      "backend": "unified",
+      "media_paths": [],
+      "transcript_cut_media": {
+        "/media/background_clips/0/path": [
+          "/timing/events/cuts/0",
+          "/timing/events/cuts/1"
+        ],
+        "/media/background_clips/4/path": [
+          "/timing/events/cuts/4",
+          null
+        ]
+      },
+      "scope": "measured source window for each audited native cut-relative video slot; current encoding and visual acceptance separate",
+      "local_sample_seconds": "original frame / 30 minus the selected native cut; asset_frame applies that cut’s measured source offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/task_bridge.py": "6c284076221fe74ccb669bc1474ab0fb5b3af92496f372a71d92005578fd6d4c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/registry.py": "907b364d0304b9a755d0f1f5714489f6ad778f35099419d6d527ef4c42abd5eb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/build12.py": "b705afe1a6e29bc02289f5065836fd8e10206617b10eb764764445dbf6fd3c80",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/arguments-cta-clock/build.py": "cca1c8cec3a8423124b29c17058dffc88b460ac5468c3fa85e75ae56445b938c"
+      },
+      "native_fps": 30
+    },
+    "CXBR01": {
+      "id": "cxbr01-measured-room-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "source_reference_aliases": {
+        "/reference": "/media/presenter/path"
+      },
+      "project_scene_clip_start_events": {
+        "/media/room/path": "/timing/room_in"
+      },
+      "require_source_end_error": true,
+      "scope": "audited original scene source windows; the top-level reference is metadata, and draw samples the presenter, room, and paper slots",
+      "local_sample_seconds": "frame / 30 for the presenter; original asset_frame applies the measured presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR01/render-media.py": "6cd18505e78910e69dd47f9ad6330c7910d92058bb740bddd9d12d872535faa6",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR01/render.py": "dd23984484a1f9444f554c8161ee069da9288bc1dffb08a22900fe7a8d1a5e2b",
+        "src/engines/workspace/motion-replica-coach/scripts/render_layers.py": "4eef24b0ab17c744b0f7d343c3958cfc9d5be1caf4d44d87efdd4dddc34a8c91"
+      },
+      "native_fps": 30
+    },
+    "CXBR02": {
+      "id": "cxbr02-measured-broll-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/broll/path": "/timing/broll_in"
+      },
+      "scope": "audited original scene source windows; no substitution of the original renderer or media slots",
+      "local_sample_seconds": "frame / 30 for the presenter; original asset_frame applies the measured presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/render.py": "5cac10d2d030f927986e5acd565926fe838cc1ff5101bdbed2e19932963db1bd",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12"
+      },
+      "native_fps": 30
+    },
+    "CXBR03": {
+      "id": "cxbr03-measured-broll-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/broll/path": "/timing/window_in"
+      },
+      "scope": "audited original scene source windows; no substitution of the original renderer or media slots",
+      "local_sample_seconds": "frame / 30 for the presenter; original asset_frame applies the measured presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR03/render.py": "01799eed0b690bcf4bb2cc1ab67ea6e79734ca5a601fe92f47e3f58315f7b9a9",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR01/render.py": "dd23984484a1f9444f554c8161ee069da9288bc1dffb08a22900fe7a8d1a5e2b"
+      },
+      "native_fps": 30
+    },
+    "CXBR04": {
+      "id": "cxbr04-measured-broll-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/broll/path": null
+      },
+      "scope": "audited original scene source windows; no substitution of the original renderer or media slots",
+      "local_sample_seconds": "frame / 30 for the presenter; original asset_frame applies the measured presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR04/render.py": "23a1eaecc224db419590cea01bb22f4f8011893fdba95e9f688ace6aebd8d492",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR01/render.py": "dd23984484a1f9444f554c8161ee069da9288bc1dffb08a22900fe7a8d1a5e2b"
+      },
+      "native_fps": 30
+    },
+    "CXBR05": {
+      "id": "cxbr05-measured-broll-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/broll/path": "/timing/band_in"
+      },
+      "scope": "audited original scene source windows; no substitution of the original renderer or media slots",
+      "local_sample_seconds": "frame / 30 for the presenter; original asset_frame applies the measured presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR05/render.py": "645e8d76b38bfbaa6d445de33306963b702e25e9d0ebe1a57d5f6239fc15832c",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR01/render.py": "dd23984484a1f9444f554c8161ee069da9288bc1dffb08a22900fe7a8d1a5e2b"
+      },
+      "native_fps": 30
+    },
+    "AZL01": {
+      "id": "azl01-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL02": {
+      "id": "azl02-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null,
+        "/media/secondary/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path",
+        "/media/secondary/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL03": {
+      "id": "azl03-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/secondary/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/secondary/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL04": {
+      "id": "azl04-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null,
+        "/media/secondary/path": null,
+        "/media/lower/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path",
+        "/media/secondary/path",
+        "/media/lower/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL05": {
+      "id": "azl05-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null,
+        "/media/secondary/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path",
+        "/media/secondary/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL06": {
+      "id": "azl06-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d"
+      },
+      "native_fps": 30
+    },
+    "AZL07": {
+      "id": "azl07-measured-scene-windows/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "project_scene_clip_start_events": {
+        "/media/main/path": null
+      },
+      "project_scene_implicit_extent_paths": [
+        "/media/main/path"
+      ],
+      "scope": "original AZL slots sample each local frame from the presenter or the independently registered supplement",
+      "local_sample_seconds": "actual frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render.py": "1d857d8a6387d4ba0fe5d490743c08e03732ed9001df680f4093db81946bef27",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-native-v4.py": "d31301a4a2a07233d773eeb584de82e40069f0fb150f22b88f5b3222efd91ead",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v3.py": "100c777d46f32a86089d12c5ab9446d69294ad3e12c46ce68429c67a852e5f0d",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/阿哲_7种口播板式_20261105/render-azl07-v6.py": "44365c828fb6579f2c2de15a06b952dd058449c2be8d4bf3afe05afec3f473e3"
+      },
+      "native_fps": 30
+    },
+    "Z-M15": {
+      "id": "z-m15-transcript-source-window/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited original video sampler and registered source window",
+      "local_sample_seconds": "frame / 30 + native page start through runtime11.z_asset",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/郑涵文_商业口播_三条拆解_20261103/experiments/mechanism-library/runtime.py": "8f716e5cfcd6ae297c0f0050ef1b0b9fdf5598827f97b7cd7f59de55e9b7c2aa"
+      },
+      "native_fps": 30
+    },
+    "W-R07": {
+      "id": "w-r07-transcript-source-window/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/source/path"
+      ],
+      "scope": "audited original video sampler and registered source window",
+      "local_sample_seconds": "frame / 30 through runtime11.pilot_media; the source also fills the digit mask",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/editable-pilot/runtime.py": "dd29402129d3efb090d147a6ff765b2ff1aa646ed55fd928a4b70aa5cb58e92b"
+      },
+      "native_fps": 30
+    },
+    "YYO01": {
+      "id": "yyo01-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render.py": "de17e1a92bf4a718f28bac56616e1013ee8383df17b9f149b069b36a169a2288"
+      },
+      "native_fps": 30
+    },
+    "YYO02": {
+      "id": "yyo02-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render-yyo02-v9.py": "b7015a3d5d25cda3b3f4f83f16813d39f7b3da22c05ee08ab96608e995a48efb",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render.py": "de17e1a92bf4a718f28bac56616e1013ee8383df17b9f149b069b36a169a2288"
+      },
+      "native_fps": 30
+    },
+    "YYO03": {
+      "id": "yyo03-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render.py": "de17e1a92bf4a718f28bac56616e1013ee8383df17b9f149b069b36a169a2288"
+      },
+      "native_fps": 30
+    },
+    "YYO04": {
+      "id": "yyo04-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render.py": "de17e1a92bf4a718f28bac56616e1013ee8383df17b9f149b069b36a169a2288"
+      },
+      "native_fps": 30
+    },
+    "YYO05": {
+      "id": "yyo05-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render.py": "de17e1a92bf4a718f28bac56616e1013ee8383df17b9f149b069b36a169a2288"
+      },
+      "native_fps": 30
+    },
+    "YYO06": {
+      "id": "yyo06-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render.py": "de17e1a92bf4a718f28bac56616e1013ee8383df17b9f149b069b36a169a2288"
+      },
+      "native_fps": 30
+    },
+    "YYO07": {
+      "id": "yyo07-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render.py": "de17e1a92bf4a718f28bac56616e1013ee8383df17b9f149b069b36a169a2288"
+      },
+      "native_fps": 30
+    },
+    "YYO08": {
+      "id": "yyo08-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_8种口播开场_20261105/render.py": "de17e1a92bf4a718f28bac56616e1013ee8383df17b9f149b069b36a169a2288"
+      },
+      "native_fps": 30
+    },
+    "YY6O03": {
+      "id": "yy6o03-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render-v2.py": "d06d6133a535a2a1987a7bb7ab7758307d59c85241ab435c343493bad3e6c501",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render.py": "c622313a8c45431c39f2f308c0d2889be5e1260c18d83ebfc5f8c6313bf98599"
+      },
+      "native_fps": 30
+    },
+    "YY6O04": {
+      "id": "yy6o04-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render-yy6o04-v2.py": "6478ac8297aa3ccd78e676bdd8d15677ffc532487843f547430e3d4ecd15f53b",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render.py": "c622313a8c45431c39f2f308c0d2889be5e1260c18d83ebfc5f8c6313bf98599"
+      },
+      "native_fps": 30
+    },
+    "YY6O05": {
+      "id": "yy6o05-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render-v2.py": "d06d6133a535a2a1987a7bb7ab7758307d59c85241ab435c343493bad3e6c501",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render.py": "c622313a8c45431c39f2f308c0d2889be5e1260c18d83ebfc5f8c6313bf98599"
+      },
+      "native_fps": 30
+    },
+    "YY6O06": {
+      "id": "yy6o06-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render-v2.py": "d06d6133a535a2a1987a7bb7ab7758307d59c85241ab435c343493bad3e6c501",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render.py": "c622313a8c45431c39f2f308c0d2889be5e1260c18d83ebfc5f8c6313bf98599"
+      },
+      "native_fps": 30
+    },
+    "YY6O01": {
+      "id": "yy6o01-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render-v2.py": "d06d6133a535a2a1987a7bb7ab7758307d59c85241ab435c343493bad3e6c501",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render.py": "c622313a8c45431c39f2f308c0d2889be5e1260c18d83ebfc5f8c6313bf98599"
+      },
+      "native_fps": 30
+    },
+    "YY6O02": {
+      "id": "yy6o02-transcript-source-window/1",
+      "backend": "scene",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "require_source_end_error": true,
+      "scope": "Original continuous presenter source, using the audited scene clock. Any background supplied as a separate project still.",
+      "local_sample_seconds": "local frame / 30; original asset_frame applies the presenter offset once",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "commercial_runtime/paths.py": "fb5030c889dc44a38589bd0622ac9ecdd3c4c5b935c02d2257f1c490cd423656",
+        "commercial_runtime/worker.py": "6c05875480b9ce6a3ad74c578d6fb1431cc98b20f255f62265a86530323d8bb7",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/common_api.py": "84405bff72530e243672b2553a3f83f7f828c769da47d25999faacda290021dc",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/晨曦_Broll画面排版_7704151605411546024/trial-CXBR02/matting.py": "6c02b92b3d8588d7e4c947bd9adbe3440d1d491a676456a80cc08d3beb00ea12",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render-v2.py": "d06d6133a535a2a1987a7bb7ab7758307d59c85241ab435c343493bad3e6c501",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render.py": "c622313a8c45431c39f2f308c0d2889be5e1260c18d83ebfc5f8c6313bf98599",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/新增批次/月云川_6种开场画面_20261105/render-yy6o02-v3.py": "33e8298ba880a11460f3ad94a2ae06157c9101c0694f8775b0d0d09d6e3b5765"
+      },
+      "native_fps": 30
+    },
+    "W-R02": {
+      "id": "w-r02-transcript-source-window/1",
+      "backend": "unified",
+      "media_paths": [
+        "/media/presenter/path"
+      ],
+      "scope": "audited original video sampler and registered source window",
+      "local_sample_seconds": "frame / 30 through runtime11.pilot_media; the same source fills the inset and blurred background",
+      "source_files": {
+        "commercial_runtime/native.py": "2b1c213087a59ada597fda3d9fd7c412b857d920fb04635278ae180b46bfafea",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/planning.py": "fad65d736665ab5198df3776d9c04103cdd38fb7e123ce4dfc9fe19eebba10b1",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/runtime11.py": "0991fd851fb222f8b56ca427cc69e678b0bb8034668802b6b1fc7258d7c33310",
+        "src/engines/workspace/商业口播_可编辑改造_20261104/unified/core/media.py": "3838f78d7e7062bda2365ff870dc64cb02493567b90378e09bb220712bd49fdf",
+        "src/engines/workspace/雯羽_小羽毛_两条拆解_20261103/experiments/editable-pilot/runtime.py": "dd29402129d3efb090d147a6ff765b2ff1aa646ed55fd928a4b70aa5cb58e92b"
+      },
+      "native_fps": 30,
+      "require_source_end_error": true
+    }
+  },
+  "unsupported_policy": "retain original groups; require dedicated audited native media clock binding, no offset guessing"
+}

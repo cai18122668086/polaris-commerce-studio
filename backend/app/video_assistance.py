@@ -24,10 +24,12 @@ from .video_assistance_provider import (
     transcript_result,
     video_source_url,
 )
+from .video_benchmark import BENCHMARK_KIND, benchmark_page
 from .video_stage_timing import transition
 from .video_studio_models import VideoProjectRecord
 from .video_studio_routes import VideoWorkspace, scope
 from .video_studio_schemas import StrictVideoModel
+from .video_writing_models import VideoWritingDocument
 
 router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}", tags=["video-assistance"]
@@ -44,6 +46,14 @@ class AssistanceRequest(StrictVideoModel):
     reference_id: UUID | None = None
 
 
+class BenchmarkExtractionSource(StrictVideoModel):
+    search_task_id: UUID
+    platform_id: str
+    source_url: str
+    keyword: str
+    captured_at: datetime
+
+
 class AssistanceResponse(StrictVideoModel):
     id: UUID
     request_id: UUID
@@ -55,6 +65,8 @@ class AssistanceResponse(StrictVideoModel):
     source_revision: int
     result: dict
     can_resume: bool
+    benchmark_source: BenchmarkExtractionSource | None = None
+    writing_document_saved: bool | None = None
     stage_history: list[dict] = Field(default_factory=list)
     receipt: dict = Field(default_factory=dict)
 
@@ -65,7 +77,9 @@ def provider(request: Request) -> VideoAssistanceProvider:
     ) or VideoAssistanceProvider(request.app.state.settings)
 
 
-def response(row: VideoAssistanceRecord) -> AssistanceResponse:
+def response(
+    row: VideoAssistanceRecord, *, writing_document_saved: bool | None = None
+) -> AssistanceResponse:
     return AssistanceResponse(
         id=UUID(row.id),
         request_id=UUID(row.request_id),
@@ -77,6 +91,8 @@ def response(row: VideoAssistanceRecord) -> AssistanceResponse:
         source_revision=row.inputs["revision"],
         result=row.result,
         can_resume=row.status in {"queued", "awaiting_resume"},
+        benchmark_source=row.inputs.get("benchmark_source"),
+        writing_document_saved=writing_document_saved,
         stage_history=row.receipt.get("stage_history", []),
         receipt={},  # Supplier receipts remain server-side.
     )
@@ -116,7 +132,15 @@ def process(
         session.commit()
         checkpoint(session, row, "extracting" if row.provider_task_id else row.stage)
         try:
-            if row.kind != "extract":
+            if row.kind == BENCHMARK_KIND:
+                checkpoint(session, row, "submitting")
+                captured_at = utc_now()
+                data = service.benchmark_search(row.inputs["search_params"])
+                result, receipt = benchmark_page(data, row.id, row.inputs, captured_at)
+                row.status = "completed"
+                checkpoint(session, row, "completed", result=result, receipt=receipt)
+                return
+            elif row.kind != "extract":
                 checkpoint(session, row, "submitting")
                 result, receipt = service.plan(row.kind, row.inputs)
                 checkpoint(session, row, "received", result=result, receipt=receipt)
@@ -219,7 +243,12 @@ def process(
                 or (
                     row.stage == "submitting"
                     and code
-                    not in {"VIDEO_ASSISTANCE_REJECTED", "VIDEO_ASSISTANCE_DISABLED"}
+                    not in {
+                        "VIDEO_ASSISTANCE_REJECTED",
+                        "VIDEO_ASSISTANCE_DISABLED",
+                        "VIDEO_TRANSCRIPT_EMPTY",
+                        "VIDEO_TRANSCRIPT_TOO_LONG",
+                    }
                 )
                 else "failed"
             )
@@ -362,7 +391,23 @@ def tasks(
                 else "unknown"
             )
     session.commit()
-    return [response(row) for row in rows]
+    saved = (
+        set(
+            session.scalars(
+                select(VideoWritingDocument.assistance_task_id).where(
+                    VideoWritingDocument.workspace_id == workspace.workspace_id,
+                    VideoWritingDocument.owner_user_id == workspace.principal.user_id,
+                    VideoWritingDocument.project_id == str(project_id),
+                    VideoWritingDocument.assistance_task_id.in_(
+                        [row.id for row in rows]
+                    ),
+                )
+            )
+        )
+        if rows
+        else set()
+    )
+    return [response(row, writing_document_saved=row.id in saved) for row in rows]
 
 
 @router.post("/assistance-tasks/{task_id}/resume", response_model=AssistanceResponse)

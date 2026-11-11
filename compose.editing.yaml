@@ -1,0 +1,92 @@
+# Explicit local opt-in overlay. No changes to production compose or provider keys.
+# docker compose -f compose.yaml -f compose.editing.yaml config (review only)
+x-editing-planner-environment: &editing-planner-environment
+  POLARIS_VIDEO_EDITING_LIBRARY_EVIDENCE_DIR:
+  POLARIS_VIDEO_EDITING_PLANNING_ENABLED: ${POLARIS_VIDEO_EDITING_PLANNING_ENABLED:-false}
+  POLARIS_VIDEO_EDITING_PLAN_MODEL: ${POLARIS_VIDEO_EDITING_PLAN_MODEL:-gpt-6.1-sol}
+  POLARIS_VIDEO_SCRIPT_PLANNING_ENABLED: ${POLARIS_VIDEO_SCRIPT_PLANNING_ENABLED:-false}
+  POLARIS_VIDEO_SCRIPT_BASE_URL: ${POLARIS_VIDEO_SCRIPT_BASE_URL:-https://api.tengliapi.xyz}
+  POLARIS_VIDEO_SCRIPT_API_KEY: ${POLARIS_VIDEO_SCRIPT_API_KEY:-}
+services:
+  api:
+    build:
+      args:
+        POLARIS_INCLUDE_EDITING_PROBE: "1"
+    environment:
+      <<: *editing-planner-environment
+      POLARIS_VIDEO_EDITING_ENABLED: "true"
+      POLARIS_VIDEO_EDITING_NATIVE_PLAN_ENABLED: ${POLARIS_VIDEO_EDITING_NATIVE_PLAN_ENABLED:-false}
+      POLARIS_VIDEO_EDITING_LIBRARY_DIR: /motion
+      POLARIS_VIDEO_EDITING_TASKS_DIR: /app/.data/editing-tasks
+      POLARIS_VIDEO_MEDIA_DIR: /app/.data/video-studio
+    volumes:
+      - type: bind
+        source: ${POLARIS_MOTION_LIBRARY_HOST:?Set the verified original Motion directory}
+        target: /motion
+        read_only: true
+        bind:
+          create_host_path: false
+      - polaris_editing_tasks:/app/.data/editing-tasks
+      - type: bind
+        source: ${POLARIS_VIDEO_MEDIA_HOST:?Set the existing video media directory}
+        target: /app/.data/video-studio
+        bind:
+          create_host_path: false
+
+  editing-worker: &editing-worker
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.editing-worker
+    environment: &editing-environment
+      POLARIS_DATABASE_URL: postgresql+psycopg://polaris:${POLARIS_POSTGRES_PASSWORD:-polaris_dev_only}@postgres:5432/polaris
+      POLARIS_CELERY_BROKER_URL: redis://redis:6379/0
+      POLARIS_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      POLARIS_VIDEO_EDITING_ENABLED: "true"
+      POLARIS_VIDEO_EDITING_NATIVE_PLAN_ENABLED: ${POLARIS_VIDEO_EDITING_NATIVE_PLAN_ENABLED:-false}
+      POLARIS_VIDEO_EDITING_LIBRARY_DIR: /motion
+      POLARIS_VIDEO_EDITING_TASKS_DIR: /app/.data/editing-tasks
+      POLARIS_VIDEO_EDITING_ASR_PROVIDER: funasr
+      POLARIS_VIDEO_EDITING_ASR_MODEL: /asr
+      POLARIS_VIDEO_EDITING_ASR_DEVICE: cpu
+      POLARIS_VIDEO_MEDIA_DIR: /app/.data/video-studio
+      POLARIS_ECOMMERCE_STARTUP_RECOVERY_ENABLED: "false"
+    volumes:
+      - type: bind
+        source: ${POLARIS_MOTION_LIBRARY_HOST:?Set the verified original Motion directory}
+        target: /motion
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${POLARIS_EDITING_ASR_HOST:?Set the pinned paraformer/vad/punc bundle root}
+        target: /asr
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${POLARIS_VIDEO_MEDIA_HOST:?Set the existing video media directory}
+        target: /app/.data/video-studio
+        read_only: true
+        bind:
+          create_host_path: false
+      - polaris_editing_tasks:/app/.data/editing-tasks
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  editing-maintenance:
+    <<: *editing-worker
+    environment: *editing-environment
+    command: ["python", "-m", "app.video_editing_maintenance", "--interval", "30"]
+
+  editing-planning-worker:
+    <<: *editing-worker
+    environment:
+      <<: [*editing-environment, *editing-planner-environment]
+    command: ["python", "-m", "celery", "-A", "app.celery_app:celery_app", "worker", "--queues=editing-planning", "--concurrency=1", "--loglevel=INFO"]
+
+volumes:
+  polaris_editing_tasks:

@@ -59,16 +59,19 @@ class EditingEvent(StrictVideoModel):
 
 
 def utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def token_for(row: VideoEditingHandoffRecord, settings: Settings) -> str:
+def token_for(
+    row: VideoEditingHandoffRecord, settings: Settings, *, legacy_offset: bool = False
+) -> str:
     key = settings.video_editing_handoff_secret.get_secret_value()
     if len(key) < 32:
         raise ApiError(503, "VIDEO_EDITING_NOT_CONFIGURED", "剪辑服务交接尚未配置。")
+    expires_at = row.expires_at if legacy_offset else utc(row.expires_at)
     message = (
         f"editing-v1:{row.id}:{row.generation_task_id}:{row.workspace_id}:"
-        f"{row.owner_user_id}:{utc(row.expires_at).isoformat()}"
+        f"{row.owner_user_id}:{expires_at.isoformat()}"
     )
     return "vh1." + hmac.new(key.encode(), message.encode(), hashlib.sha256).hexdigest()
 
@@ -113,12 +116,15 @@ def service_record(
     row = session.get(VideoEditingHandoffRecord, str(handoff_id))
     if not row or not authorization or not authorization.startswith("Bearer "):
         raise ApiError(401, "VIDEO_EDITING_UNAUTHORIZED", "剪辑访问凭据无效。")
-    expected = token_for(row, request.app.state.settings)
-    if (
-        row.revoked
-        or utc(row.expires_at) <= datetime.now(UTC)
-        or not hmac.compare_digest(authorization[7:], expected)
-    ):
+    settings = request.app.state.settings
+    supplied = authorization[7:]
+    matches = hmac.compare_digest(supplied, token_for(row, settings))
+    if not matches and row.expires_at.utcoffset():
+        # Previously issued v1 tokens may have used the database's offset.
+        matches = hmac.compare_digest(
+            supplied, token_for(row, settings, legacy_offset=True)
+        )
+    if row.revoked or utc(row.expires_at) <= datetime.now(UTC) or not matches:
         raise ApiError(401, "VIDEO_EDITING_UNAUTHORIZED", "剪辑访问凭据无效或已过期。")
     owner = session.get(UserRecord, row.owner_user_id)
     workspace = session.get(WorkspaceRecord, row.workspace_id)

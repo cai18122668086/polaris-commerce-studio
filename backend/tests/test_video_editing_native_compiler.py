@@ -1,0 +1,359 @@
+import copy
+
+import pytest
+
+from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
+from app.motion_parameter_contracts import SILHOUETTE_PATHS, input_contract
+from app.video_editing_contracts import (
+    NativeMediaAnchor,
+    SemanticBeat,
+    Transcript,
+    TranscriptToken,
+)
+from app.video_editing_native_compiler import compile_native_job
+
+
+def inputs(tmp_path):
+    package = tmp_path / "library"
+    group = {
+        "id": "G1",
+        "backend": "subtitle",
+        "input_template": "template.json",
+        "input_schema": "schema.json",
+    }
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    atomic_json(package / "catalog/external-resources.json", {"resources": []})
+    atomic_json(
+        package / "template.json",
+        {
+            "content": {"text": "历史示例"},
+            "frames": 60,
+            "fps": 30,
+            "events": {"start_frame": 5},
+            "output": "input://historical-output",
+            "style": {"fill": "#ffffff"},
+        },
+    )
+    atomic_json(
+        package / "schema.json",
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "content": {
+                    "type": "object",
+                    "properties": {"text": {"type": "string", "maxLength": 8}},
+                },
+                "frames": {"type": "number"},
+                "fps": {"type": "number"},
+                "events": {"type": "object"},
+                "output": {"type": "string"},
+                "style": {"type": "object"},
+            },
+        },
+    )
+    contract = input_contract(package, group)
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=5000,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        utterances=[],
+        tokens=[
+            TranscriptToken(id="t0", text="不是", start_ms=1000, end_ms=1300),
+            TranscriptToken(id="t1", text="越贵越好", start_ms=1300, end_ms=2000),
+        ],
+    )
+    beat = SemanticBeat(
+        id="b",
+        first_token_id="t0",
+        last_token_id="t1",
+        group_id="G1",
+        relation="negation",
+        reason="保留完整否定",
+        native_text=[
+            {"path": "/content/text", "first_token_id": "t0", "last_token_id": "t1"}
+        ],
+        native_events=[
+            {"path": "/events/start_frame", "token_id": "t1", "edge": "start"}
+        ],
+    )
+    config = read_json(package / "template.json")
+    config["content"]["text"] = None
+    config["events"]["start_frame"] = None
+    recipe = {
+        "version": "tengli.native-recipe/1",
+        "release": MOTION_SHA256,
+        "group_id": "G1",
+        "template_sha256": contract["template_sha256"],
+        "schema_sha256": contract["schema_sha256"],
+        "design_id": "current-design",
+        "design_reason": "本期判断的文字层",
+        "parameter_decisions": {"style": "本期明确选择白字"},
+        "placeholders": ["/content/text", "/events/start_frame"],
+        "config": config,
+    }
+    return package, transcript, beat, recipe
+
+
+def test_opening_keeps_only_original_question_glyph(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="YY6O01", backend="scene")
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    template = read_json(package / "template.json")
+    template["content"]["question"] = "?"
+    atomic_json(package / "template.json", template)
+    contract = input_contract(package, group)
+    beat.group_id = "YY6O01"
+    recipe.update(group_id=beat.group_id, template_sha256=contract["template_sha256"])
+    recipe["config"]["content"]["question"] = "?"
+    path = "/content/question"
+    assert path not in contract["text_paths"]
+    with pytest.raises(ValueError, match="original design glyph"):
+        compile_native_job(
+            package, tmp_path / "missing_reason", beat, transcript, recipe, {}
+        )
+    recipe["parameter_decisions"][path] = "Keep the original decoration."
+    root = tmp_path / "kept"
+    job = compile_native_job(package, root, beat, transcript, recipe, {})
+    assert job["config"]["content"]["question"] == "?"
+    assert read_json(root / "compile-receipt.json")["retained_design_glyphs"] == {
+        path: "?"
+    }
+    recipe["config"]["content"]["question"] = "改"
+    with pytest.raises(ValueError, match="original design glyph"):
+        compile_native_job(
+            package, tmp_path / "substituted", beat, transcript, recipe, {}
+        )
+
+
+def test_current_bound_content_and_clock_replace_history_without_mutating_library(
+    tmp_path,
+):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    original = read_json(package / "template.json")
+    root = tmp_path / "current-instance"
+    job = compile_native_job(package, root, beat, transcript, recipe, {})
+    assert job["config"]["content"]["text"] == "不是越贵越好"
+    assert job["config"]["events"]["start_frame"] == 9
+    assert job["config"]["frames"] == 30
+    assert job["config"]["output"] == str(root / "renders/component.mp4")
+    assert read_json(package / "template.json") == original
+    receipt = read_json(root / "compile-receipt.json")
+    assert receipt["schema_validation"] == "passed"
+    assert receipt["native_execution"] == "not_performed"
+    assert receipt["semantic_review"] == "unreviewed"
+
+
+def test_wr09_only_extends_original_shape_with_seven_explicit_alpha_slots(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="W-R09", backend="unified")
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    original = read_json(package / "template.json")
+    original["media"] = {}
+    atomic_json(package / "template.json", original)
+    schema = read_json(package / "schema.json")
+    schema["properties"]["media"] = {"type": "object"}
+    atomic_json(package / "schema.json", schema)
+    contract = input_contract(package, group)
+    beat.group_id = "W-R09"
+    recipe.update(
+        group_id=beat.group_id,
+        template_sha256=contract["template_sha256"],
+        schema_sha256=contract["schema_sha256"],
+    )
+    recipe["config"]["media"] = {
+        "silhouettes": [
+            {"kind": "image", "alpha": True, "path": None} for _ in SILHOUETTE_PATHS
+        ]
+    }
+    recipe["placeholders"].extend(SILHOUETTE_PATHS)
+    assets = {}
+    for index, path in enumerate(SILHOUETTE_PATHS):
+        file = tmp_path / f"{index}.png"
+        file.write_bytes(f"fixture bytes {index}".encode())
+        asset_id = f"image-{index}"
+        assets[asset_id] = {
+            "path": str(file),
+            "kind": "image",
+            "source": "project_upload",
+            "sha256": sha256(file),
+        }
+        beat.asset_ids.append(asset_id)
+        beat.native_media.append(NativeMediaAnchor(path=path, asset_id=asset_id))
+    job = compile_native_job(
+        package, tmp_path / "valid", beat, transcript, recipe, assets
+    )
+    assert len(job["config"]["media"]["silhouettes"]) == 7
+    assert all(
+        slot["alpha"] and slot["path"].startswith("input://tengli-")
+        for slot in job["config"]["media"]["silhouettes"]
+    )
+    assert read_json(package / "template.json") == original
+    recipe["config"]["media"]["silhouettes"][0]["alpha"] = False
+    with pytest.raises(ValueError, match="seven explicit native alpha image slots"):
+        compile_native_job(
+            package, tmp_path / "invalid-alpha", beat, transcript, recipe, assets
+        )
+    recipe["config"]["media"]["silhouettes"][0]["alpha"] = True
+    beat.native_media[0].asset_id = beat.native_media[1].asset_id
+    with pytest.raises(ValueError, match="seven distinct current project"):
+        compile_native_job(
+            package, tmp_path / "reused", beat, transcript, recipe, assets
+        )
+
+
+def test_registered_native_dependency_is_explicit_and_rechecked(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    model = tmp_path / "exact.onnx"
+    model.write_bytes(b"protocol fixture for original dependency")
+    rid = "model-test"
+    atomic_json(
+        package / "catalog/external-resources.json",
+        {
+            "resources": [
+                {
+                    "id": rid,
+                    "kind": "model",
+                    "sha256": sha256(model),
+                    "bytes": model.stat().st_size,
+                },
+            ]
+        },
+    )
+    template = read_json(package / "template.json")
+    template["model"] = "input://" + rid
+    atomic_json(package / "template.json", template)
+    schema = read_json(package / "schema.json")
+    schema["properties"]["model"] = {"type": "string"}
+    atomic_json(package / "schema.json", schema)
+    contract = input_contract(
+        package, read_json(package / "catalog/groups.json")["groups"][0]
+    )
+    recipe.update(
+        template_sha256=contract["template_sha256"],
+        schema_sha256=contract["schema_sha256"],
+    )
+    recipe["config"]["model"] = template["model"]
+    recipe["parameter_decisions"]["model"] = "Require exact original model"
+    manifest = tmp_path / "bindings.json"
+    atomic_json(manifest, {"resources": {rid: str(model)}, "tools": {}})
+    with pytest.raises(ValueError, match="not bound"):
+        compile_native_job(
+            package,
+            tmp_path / "no_selection",
+            beat,
+            transcript,
+            recipe,
+            {},
+            native_bindings_file=manifest,
+        )
+    recipe["dependency_ids"] = [rid]
+    with pytest.raises(ValueError, match="not registered"):
+        compile_native_job(
+            package, tmp_path / "no_registry", beat, transcript, recipe, {}
+        )
+    root = tmp_path / "exact_binding"
+    compile_native_job(
+        package, root, beat, transcript, recipe, {}, native_bindings_file=manifest
+    )
+    assert read_json(root / "bindings.json")["resources"] == {rid: str(model.resolve())}
+    assert read_json(root / "compile-receipt.json")["local_dependency_ids"] == [rid]
+    model.write_bytes(b"X" * model.stat().st_size)
+    with pytest.raises(ValueError, match="bytes do not match"):
+        compile_native_job(
+            package,
+            tmp_path / "changed",
+            beat,
+            transcript,
+            recipe,
+            {},
+            native_bindings_file=manifest,
+        )
+
+
+def test_incomplete_or_old_recipe_cannot_silently_fill_native_inputs(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    variants = []
+    old_content = copy.deepcopy(recipe)
+    old_content["config"]["content"]["text"] = "历史示例"
+    variants.append(old_content)
+    old_timing = copy.deepcopy(recipe)
+    old_timing["config"]["events"]["start_frame"] = 5
+    variants.append(old_timing)
+    no_design = copy.deepcopy(recipe)
+    no_design["parameter_decisions"] = {}
+    variants.append(no_design)
+    other_release = copy.deepcopy(recipe)
+    other_release["release"] = "0" * 64
+    variants.append(other_release)
+    for index, candidate in enumerate(variants):
+        with pytest.raises(ValueError):
+            compile_native_job(
+                package, tmp_path / f"rejected-{index}", beat, transcript, candidate, {}
+            )
+        assert not (tmp_path / f"rejected-{index}" / "job.json").exists()
+
+
+def test_scene_camera_events_are_measured_on_the_unshifted_local_clock(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="YYP06", backend="scene")
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    template = read_json(package / "template.json")
+    template["events"] = {"shift_frames": -5}
+    template["style"]["geometry"] = {"camera_start_frame": 15}
+    atomic_json(package / "template.json", template)
+    contract = input_contract(package, group)
+    path = "/style/geometry/camera_start_frame"
+    assert contract["event_paths"] == [{"path": path, "unit": "frames"}]
+    beat.group_id = "YYP06"
+    beat.native_events[0].path = path
+    template["content"]["text"] = None
+    template["style"]["geometry"]["camera_start_frame"] = None
+    recipe.update(
+        group_id="YYP06",
+        template_sha256=contract["template_sha256"],
+        config=template,
+        placeholders=["/content/text", path],
+    )
+    recipe["parameter_decisions"]["events"] = "Scene choreography shift selected"
+    with pytest.raises(ValueError, match="zero native shift_frames"):
+        compile_native_job(package, tmp_path / "shifted", beat, transcript, recipe, {})
+    template["events"]["shift_frames"] = 0
+    job = compile_native_job(
+        package, tmp_path / "measured", beat, transcript, recipe, {}
+    )
+    assert job["config"]["style"]["geometry"]["camera_start_frame"] == 9
+
+
+def test_original_photo_slots_are_internal_keys_not_spoken_text(tmp_path):
+    package, transcript, beat, recipe = inputs(tmp_path)
+    group = read_json(package / "catalog/groups.json")["groups"][0]
+    group.update(id="Z-M08", backend="unified")
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    template = read_json(package / "template.json")
+    template["content"]["items"] = [{"image": "first_original_slot"}]
+    atomic_json(package / "template.json", template)
+    contract = input_contract(package, group)
+    assert "/content/items/0/image" not in contract["text_paths"]
+    assert (
+        next(f for f in contract["fields"] if f["path"] == "/content/items/0/image")[
+            "category"
+        ]
+        == "native_media_key"
+    )
+    beat.group_id = "Z-M08"
+    recipe.update(group_id="Z-M08", template_sha256=contract["template_sha256"])
+    recipe["parameter_decisions"]["content"] = (
+        "Use the original slot while replacing the media"
+    )
+    recipe["config"]["content"]["items"] = [{"image": "relabelled"}]
+    with pytest.raises(ValueError, match="original named media slot mapping"):
+        compile_native_job(
+            package, tmp_path / "rejected-slot", beat, transcript, recipe, {}
+        )

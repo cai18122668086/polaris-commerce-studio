@@ -10,7 +10,7 @@ import { uploadWithProgress, type UploadProgress } from "@/lib/api/upload";
 export type VideoAvatar = { id: string; name: string; gender: string; tag: string; source: "quanyu_public" | "self_owned"; cover_url: string; preview_url?: string | null; ready: boolean };
 export type VideoVoice = { id: string; name: string; gender: string; tag: string; description: string; source?: "own" | "public"; available?: boolean; language?: string; preview_url?: string | null; emotions?: VideoContent["draft"]["emotion"][]; languages?: Record<string, string> };
 export type StageTiming = { stage: string; started_at: string; finished_at: string | null; duration_seconds: number | null; outcome?: string };
-export type GenerationJob = { id: string; request_id?: string; kind: "lipsync" | "h3_template"; avatar_id: string; project_id: string | null; status: string; stage: string; can_resume?: boolean; error_code?: string | null; lipsync_routing?: { long_wait?: boolean; switch_reason?: string; selected_provider?: string }; created_at: string; video_url?: string | null; audio_url?: string | null; snapshot?: VideoContent | null; handoff_url?: string | null; stage_history?: StageTiming[]; tts?: { voice_name?: string }; audio_duration_seconds?: number | null };
+export type GenerationJob = { id: string; request_id?: string; kind: "lipsync" | "h3_template"; avatar_id: string; project_id: string | null; confirmed_version_id?: string | null; status: string; stage: string; can_resume?: boolean; error_code?: string | null; lipsync_routing?: { long_wait?: boolean; switch_reason?: string; selected_provider?: string }; created_at: string; video_url?: string | null; audio_url?: string | null; snapshot?: VideoContent | null; handoff_url?: string | null; stage_history?: StageTiming[]; tts?: { voice_name?: string }; audio_duration_seconds?: number | null };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
 export function useVideoLibrary(workspaceId: string) {
@@ -24,10 +24,14 @@ export function useVideoLibrary(workspaceId: string) {
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000), cache: "no-store" as const }), [workspaceId]);
   const reload = useCallback(async () => {
     try {
-      const [a, v, j] = await Promise.all([
-        apiClient.GET(`${root}/avatars`, options()), apiClient.GET(`${root}/voices`, options()), apiClient.GET(`${root}/generation-tasks`, options()),
+      const [a, v, j] = await Promise.allSettled([
+        apiClient.GET(`${root}/avatars`, options()).then(unwrapApiResponse), apiClient.GET(`${root}/voices`, options()).then(unwrapApiResponse), apiClient.GET(`${root}/generation-tasks`, options()).then(unwrapApiResponse),
       ]);
-      setAvatars(unwrapApiResponse(a) as VideoAvatar[]); setVoices(unwrapApiResponse(v) as VideoVoice[]); setJobs(unwrapApiResponse(j) as GenerationJob[]); setError("");
+      if (a.status === "fulfilled") setAvatars(a.value as VideoAvatar[]);
+      if (v.status === "fulfilled") setVoices(v.value as VideoVoice[]);
+      if (j.status === "fulfilled") setJobs(j.value as GenerationJob[]);
+      const unavailable = [a.status === "rejected" && "数字人形象", v.status === "rejected" && "音色", j.status === "rejected" && "生成记录"].filter(Boolean);
+      setError(unavailable.length ? `${unavailable.join("、")}暂时无法读取，可重试。已读取的口播与上传剪辑仍可使用。` : "");
     } catch { setError("数字人库暂时无法读取，请重试。"); }
     finally { setLoading(false); }
   }, [options]);

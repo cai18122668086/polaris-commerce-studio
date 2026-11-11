@@ -19,7 +19,7 @@ export class VideoProjectSession {
   private saved = "";
   private needsHistory = false;
   private queue: Promise<unknown> = Promise.resolve();
-  private actionFlight?: { action: VideoWrite["action"]; promise: Promise<VideoWriteResult | undefined> };
+  private actionFlight?: { key: string; promise: Promise<VideoWriteResult | undefined> };
   private timer?: ReturnType<typeof setTimeout>;
   private disposed = false;
   constructor(private api: VideoProjectApi, private storage: Pick<Storage, "getItem" | "setItem" | "removeItem">, readonly recoveryKey: string) {}
@@ -81,12 +81,16 @@ export class VideoProjectSession {
     const conflict = (error as { status?: number }).status === 409;
     this.publish({ status: conflict ? "conflict" : "error", error: conflict ? "另一设备已更新，当前内容已保留在本机。请另存项目或重新载入。" : "暂时无法确认同步结果，当前内容保留在本机，请重试。" });
   }
-  save(action: VideoWrite["action"] = "save"): Promise<VideoWriteResult | undefined> {
-    if (action !== "save" && this.actionFlight?.action === action) return this.actionFlight.promise;
+  restoreVersion(version: VideoVersion) { return this.enqueueWrite("save", version); }
+  save(action: VideoWrite["action"] = "save") { return this.enqueueWrite(action); }
+  private enqueueWrite(action: VideoWrite["action"], version?: VideoVersion): Promise<VideoWriteResult | undefined> {
+    const key = version ? `restore:${version.id}` : action === "save" ? undefined : action;
+    if (key && this.actionFlight?.key === key) return this.actionFlight.promise;
     clearTimeout(this.timer);
     const operation = this.queue.catch(() => undefined).then(async () => {
       if (this.disposed || !this.state.projectId || this.state.status === "loading") return;
       if (this.state.recovery) throw new Error("请先处理本机未保存内容。");
+      if (version && version.project_id !== this.state.projectId) throw new Error("此版本属于其他项目，请重新打开文案版本。");
       this.publish({ status: "saving", error: undefined });
       try {
         if (this.importing) {
@@ -102,12 +106,16 @@ export class VideoProjectSession {
         let response: VideoWriteResult | undefined;
         // A pending action is already a user request; retries never submit it twice.
         const nextAction = this.pending?.action === action ? "save" : action;
+        const restore = version && this.pending?.restore_version_id !== version.id ? version : undefined;
         if (this.pending) response = await this.commit(this.pending);
         if (this.disposed) return response;
         if (nextAction !== "save" || JSON.stringify(this.state.content) !== this.saved) {
-          this.pending = { request_id: crypto.randomUUID(), expected_revision: this.state.revision, content: structuredClone(this.state.content), action: nextAction };
-          this.checkpoint();
-          response = await this.commit(this.pending);
+          response = await this.writeDraft(nextAction);
+        }
+        if (this.disposed) return response;
+        if (restore) {
+          this.publish({ content: restore.snapshot });
+          response = await this.writeDraft("save", restore.id);
         }
         if (this.disposed) return response;
         if (this.needsHistory) { await this.refreshHistory(); this.needsHistory = false; }
@@ -118,20 +126,37 @@ export class VideoProjectSession {
       } catch (error) { this.checkpoint(); this.fail(error); throw error; }
     });
     this.queue = operation;
-    if (action !== "save") {
-      this.actionFlight = { action, promise: operation };
+    if (key) {
+      this.actionFlight = { key, promise: operation };
       const clear = () => { if (this.actionFlight?.promise === operation) this.actionFlight = undefined; };
       void operation.then(clear, clear);
     }
     return operation;
   }
+  private async writeDraft(action: VideoWrite["action"], restoreId?: string) {
+    const body: VideoWrite = {
+      request_id: crypto.randomUUID(),
+      expected_revision: this.state.revision,
+      content: structuredClone(this.state.content),
+      action,
+      ...(restoreId ? { restore_version_id: restoreId } : {}),
+    };
+    this.pending = body;
+    this.checkpoint();
+    return this.commit(body);
+  }
   private async commit(body: VideoWrite) {
     const response = await this.api.write(this.state.projectId, body);
     if (this.disposed) return response;
     this.pending = undefined;
-    if (response.version || response.task) this.needsHistory = true;
+    const restored = body.restore_version_id ? response.version : undefined;
+    if (!restored && (response.version || response.task)) this.needsHistory = true;
     this.saved = JSON.stringify(body.content);
-    this.publish({ revision: response.project.revision, projects: [response.project, ...this.state.projects.filter(p => p.id !== response.project.id)] });
+    this.publish({
+      revision: response.project.revision,
+      projects: [response.project, ...this.state.projects.filter(p => p.id !== response.project.id)],
+      ...(restored ? { history: [restored, ...this.state.history.filter(v => v.id !== restored.id)] } : {}),
+    });
     return response;
   }
   async refreshHistory() {

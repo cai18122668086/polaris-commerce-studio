@@ -1,11 +1,14 @@
 import hashlib
-from datetime import UTC, datetime, timedelta
+import hmac
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
+from fastapi import Request
 from pydantic import SecretStr
 
 from app.models import WorkspaceMemberRecord
 from app.video_editing_models import VideoEditingHandoffRecord
+from app.video_editing_routes import metadata, service_record, token_for
 from tests.test_video_generation import request_body
 
 pytest_plugins = ["tests.test_video_generation"]
@@ -65,6 +68,39 @@ def test_handoff_grant_replay_scope_expiry_and_revocation(video_gen):
         ).status_code
         == 401
     )
+
+
+def test_handoff_token_survives_database_timezone_round_trip(video_gen):
+    client, _, _, root, pid, _ = video_gen
+    _, _, grant = complete_and_grant(client, root, pid)
+    settings = client.app.state.settings
+    request = Request({"type": "http", "app": client.app})
+    with client.app.state.session_factory() as session:
+        row = session.get(VideoEditingHandoffRecord, grant["id"])
+        row.expires_at = row.expires_at.replace(tzinfo=UTC).astimezone(
+            timezone(timedelta(hours=8))
+        )
+        same_token = hmac.compare_digest(
+            token_for(row, settings), grant["access_token"]
+        )
+        assert same_token
+        assert metadata(row)["expires_at"] == grant["expires_at"]
+        legacy_message = (
+            f"editing-v1:{row.id}:{row.generation_task_id}:{row.workspace_id}:"
+            f"{row.owner_user_id}:{row.expires_at.isoformat()}"
+        )
+        legacy = (
+            "vh1."
+            + hmac.new(
+                settings.video_editing_handoff_secret.get_secret_value().encode(),
+                legacy_message.encode(),
+                hashlib.sha256,
+            ).hexdigest()
+        )
+        same_legacy_token = hmac.compare_digest(legacy, grant["access_token"])
+        assert not same_legacy_token
+        for token in (grant["access_token"], legacy):
+            assert service_record(request, session, row.id, f"Bearer {token}") is row
 
 
 def test_editing_callbacks_deduplicate_check_order_and_bind_exact_confirmed_script(

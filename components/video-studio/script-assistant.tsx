@@ -1,18 +1,20 @@
 "use client";
 
-import { AlertCircle, ArrowDownToLine, ArrowRight, Copy, FilePenLine, LoaderCircle, Send, Sparkles } from "lucide-react";
-import { assistanceMessage, type AssistanceJob, type AssistanceKind } from "@/features/video-studio/assistance";
+import { AlertCircle, ArrowDownToLine, ArrowRight, Copy, FilePenLine, LoaderCircle, Search, Send, Sparkles } from "lucide-react";
+import type { ReactNode } from "react";
+import { assistanceMessage, type AssistanceJob, type AssistantMode } from "@/features/video-studio/assistance";
 import { Disclosure, TextDocument } from "./studio-content";
 import styles from "./studio-workflow.module.css";
 
 const tools = [
+  { id: "benchmark", label: "找对标", icon: Search, title: "按方向找抖音对标", hint: "" },
   { id: "extract", label: "视频提取", icon: ArrowDownToLine, title: "从视频开始创作", hint: "粘贴公开抖音链接，提取语音文案后核对、改写。" },
   { id: "create", label: "文案原创", icon: Sparkles, title: "把想法写成好文案", hint: "告诉我产品和受众，生成一段自然的口播文案。" },
   { id: "rewrite", label: "文案二创", icon: FilePenLine, title: "让表达更适合你", hint: "结合真实产品信息，重新组织参考文案。" },
 ] as const;
 
 export function ScriptAssistant(props: {
-  mode: AssistanceKind; onModeChange: (mode: AssistanceKind) => void;
+  mode: AssistantMode; onModeChange: (mode: AssistantMode) => void;
   prompt: string; onPromptChange: (text: string) => void;
   style: string; onStyleChange: (style: string) => void;
   facts: string; onFactsChange: (facts: string) => void;
@@ -21,6 +23,8 @@ export function ScriptAssistant(props: {
   result: string; onResultChange: (text: string) => void;
   job?: AssistanceJob; busy: boolean; onSubmit: () => void; onResume: () => void;
   onUseResult: () => void; onUseOriginal: () => void; onCopy: (text: string) => void;
+  workflow?: ReactNode;
+  benchmark?: ReactNode;
 }) {
   const tool = tools.find(item => item.id === props.mode)!;
   const Icon = tool.icon;
@@ -30,9 +34,16 @@ export function ScriptAssistant(props: {
   const canSubmit = props.mode === "create" ? !!props.prompt.trim() : props.mode === "extract" ? !!props.sourceLink.trim() : !!props.sourceText.trim();
   const result = props.mode === "extract" ? props.sourceText : props.result;
 
+  const navigation = <div className={styles.assistantTools} role="group" aria-label="文案助手工具">{tools.map(item => <button key={item.id} type="button" aria-pressed={props.mode === item.id} onClick={() => props.onModeChange(item.id)}><item.icon size={16} />{item.label}</button>)}</div>;
+  if (props.mode === "benchmark") return <div className={styles.assistantPanel}>
+    {navigation}
+    <div className={styles.assistantScroll}>{props.benchmark}</div>
+  </div>;
+
   return <div className={styles.assistantPanel}>
-    <div className={styles.assistantTools} role="group" aria-label="文案助手工具">{tools.map(item => <button key={item.id} type="button" aria-pressed={props.mode === item.id} onClick={() => props.onModeChange(item.id)}><item.icon size={16} />{item.label}</button>)}</div>
+    {navigation}
     <div className={styles.assistantScroll}>
+      {props.workflow}
       <div className={styles.toolIntro}><span><Icon size={25} /></span><h2>{tool.title}</h2><p>{tool.hint}</p></div>
       {props.mode === "extract" ? <label className={styles.assistantField}>参考视频链接<input type="url" aria-label="参考视频链接" value={props.sourceLink} onChange={event => props.onSourceLinkChange(event.target.value)} placeholder="粘贴公开抖音视频链接" maxLength={2048} /><small>当前支持公开抖音视频，提取后请核对转写内容。</small></label>
         : props.mode === "rewrite" ? <label className={styles.assistantField}><span>参考文案<button type="button" onClick={() => props.onModeChange("extract")}>从视频提取 <ArrowRight size={12} /></button></span><textarea aria-label="原始文案" rows={5} value={props.sourceText} onChange={event => props.onSourceTextChange(event.target.value)} maxLength={6000} placeholder="粘贴参考文案，也可以先从视频提取" /></label>

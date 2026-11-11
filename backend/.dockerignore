@@ -3,3 +3,8 @@ __pycache__/
 .data/
 .pytest_cache/
 tests/
+.env
+.env.*
+.venv/
+.mypy_cache/
+.ruff_cache/

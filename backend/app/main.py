@@ -69,10 +69,20 @@ from .task_runner import build_task_runner, validate_task_runner_settings
 from .thumbnails import ThumbnailCache
 from .video_assistance import router as video_assistance_router
 from .video_avatar_uploads import router as video_avatar_uploads_router
+from .video_benchmark_routes import router as video_benchmark_router
+from .video_editing_library_note_routes import (
+    router as video_editing_library_note_router,
+)
+from .video_editing_material_routes import router as video_editing_material_router
+from .video_editing_native_plan_routes import router as video_editing_native_plan_router
+from .video_editing_planning_routes import router as video_editing_planning_router
 from .video_editing_routes import router as video_editing_router
+from .video_editing_task_routes import router as video_editing_task_router
+from .video_editing_transcript_routes import router as video_editing_transcript_router
 from .video_generation import router as video_generation_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router
+from .video_writing_routes import router as video_writing_router
 
 logger = logging.getLogger(__name__)
 
@@ -544,7 +554,15 @@ def create_app(
     application.include_router(video_generation_router)
     application.include_router(video_avatar_uploads_router)
     application.include_router(video_editing_router)
+    application.include_router(video_editing_native_plan_router)
+    application.include_router(video_editing_planning_router)
+    application.include_router(video_editing_task_router)
+    application.include_router(video_editing_material_router)
+    application.include_router(video_editing_library_note_router)
+    application.include_router(video_editing_transcript_router)
     application.include_router(video_assistance_router)
+    application.include_router(video_benchmark_router)
+    application.include_router(video_writing_router)
     application.include_router(credit_router)
     application.include_router(processing_consent_router)
     application.include_router(creation_summary_router)

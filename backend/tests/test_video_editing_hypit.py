@@ -1,0 +1,752 @@
+import subprocess
+
+import pytest
+
+from app import video_editing_hypit as hypit
+from app import video_editing_hypit_label_cards as label_cards
+from app import video_editing_hypit_strips as strips
+from app.config import Settings
+from app.motion_library import atomic_json
+from app.video_editing_contracts import SemanticBeat, Transcript, TranscriptToken
+from app.video_editing_hypit_chart import compile_flow_chart, patch_flow_slices
+from app.video_editing_hypit_foreground import attach_foreground_track
+from app.video_editing_pipeline import stop_hypit_runtimes
+from app.video_editing_unified_scenes import unified_action_frame
+from app.video_editing_word_bindings import word_bindings
+
+
+def test_original_label_card_slides_keep_their_key_distances_and_order(
+    tmp_path, monkeypatch
+):
+    scene = (
+        '<card:Card id="xiu" text="修心性" reveal="3" layer="10" '
+        'move="0:423,18:423,29:1005,39:1045,49:1554,63:1554"/>\n'
+        '<card:Card id="ti" text="提能力" reveal="24" from="22" layer="11" '
+        'move="22:497,29:498,39:498,49:959,63:959"/>\n'
+        '<card:Card id="li" text="立目标" reveal="44" from="43" layer="12" '
+        'shift="-9.5" move="43:470,44:435,49:402,63:402"/>'
+    )
+    path = tmp_path / "a1.svml"
+    path.write_text(scene, encoding="utf-8")
+    monkeypatch.setattr(label_cards, "_SOURCE_SHA256", strips.sha256(path))
+    monkeypatch.setattr(label_cards, "_COMPONENTS", {})
+    special = tmp_path / "commercial_runtime/special.py"
+    special.parent.mkdir()
+    special.write_text("# fixture", encoding="utf-8")
+    monkeypatch.setitem(
+        hypit.NATIVE_FILES, "commercial_runtime/special.py", strips.sha256(special)
+    )
+    group = {"id": label_cards.LABEL_CARD_GROUP, "entry": path.name}
+    clock = {"source_start_ms": 1200, "frames": 60}
+    native = {
+        "text": [
+            {"path": path, "text": label, "token_ids": [f"t{i}"]}
+            for i, (path, label) in enumerate(
+                zip(
+                    label_cards.LABEL_CARD_TEXT, ("洗碗", "刷锅", "洗水果"), strict=True
+                )
+            )
+        ],
+        "events": [
+            {"path": path, "edge": "start", "token_id": f"t{i}", "value": value}
+            for i, (path, value) in enumerate(
+                zip(label_cards.LABEL_CARD_EVENTS, (0, 16, 37), strict=True)
+            )
+        ],
+        "clock": {"start_ms": 1200, "end_ms": 3200},
+        "media_clocks": [clock],
+    }
+    data = strips.compile_strips(tmp_path, group, native, {})
+    attributes = label_cards.label_card_attributes(tmp_path, group, data)
+    assert data["plate"] == clock and attributes["t"] == {"end": "60f"}
+    assert data["caption_lane"] == {
+        "reference_height": 1280,
+        "min_ink_y": 1102,
+        "baseline_y": 1230,
+    }
+    assert attributes["xiu"]["move"] == "0:423,12:423,23:1005,33:1045,43:1554,60:1554"
+    assert attributes["ti"]["move"] == "16:497,23:498,33:498,43:959,60:959"
+    assert attributes["li"]["move"] == "37:470,38:435,43:402,60:402"
+    current = label_cards.patch_label_cards(scene, attributes)
+    assert 'text="洗水果" reveal="38" from="37" layer="12" shift="-9.5"' in current
+    assert label_cards.label_card_scene_entries(current) == [0, 16, 37]
+    assert strips.stagger_output_frame(39.77, 0) == 1194
+    assert strips.stagger_output_frame(39.77, 16) == 1209
+
+    stem = "000-HY-A1"
+    sidecar = tmp_path / "hypit-strips" / f"{stem}.json"
+    atomic_json(sidecar, data)
+    work = tmp_path / "hypit-strips" / "work" / stem
+    materialized = work / "hypit" / label_cards.LABEL_CARD_GROUP / "scene.svml"
+    materialized.parent.mkdir(parents=True)
+    materialized.write_text(current, encoding="utf-8")
+    receipt = work / "tengli-strip-materialization.json"
+    ref = {
+        "group_id": label_cards.LABEL_CARD_GROUP,
+        "shot": stem,
+        "sidecar_sha256": strips.sha256(sidecar),
+        "index": 0,
+        "frame": 0,
+        "audible_frame": 0,
+    }
+    record = {
+        "sidecar_sha256": ref["sidecar_sha256"],
+        "scene_sha256": strips.sha256(materialized),
+        "first_visible_frames": [0, 16, 37],
+    }
+    atomic_json(receipt, record)
+    strips.verify_stagger_entry(tmp_path, ref)
+    materialized.write_text(
+        current.replace('id="xiu"', 'id="xiu" from="1"'),
+        encoding="utf-8",
+    )
+    record["scene_sha256"] = strips.sha256(materialized)
+    atomic_json(receipt, record)
+    with pytest.raises(ValueError, match="card entries differ"):
+        strips.verify_stagger_entry(tmp_path, ref)
+
+    native["events"][2]["value"] = 26
+    with pytest.raises(ValueError, match="leave room for original moves"):
+        strips.compile_strips(tmp_path, group, native, {})
+    native["events"][2]["token_id"] = "t1"
+    with pytest.raises(ValueError, match="its own spoken label"):
+        strips.compile_strips(tmp_path, group, native, {})
+
+
+def test_picture_sound_uses_the_first_visible_top_entry_frame():
+    config = hypit.automatic_picture_config()
+    config["items"][0]["entry_frame"] = 20
+    shot = {
+        "group_id": hypit.PICTURE_GROUP,
+        "layer": "scene",
+        "rect": [0, 0, 1, 1],
+        "start_seconds": 39.11,
+        "end_seconds": 43.11,
+        "config": config,
+    }
+    path = hypit.ENTRY_PATHS[0]
+    assert unified_action_frame(shot, 30, path) == 1195
+    config["items"][0]["direction"] = "left"
+    with pytest.raises(ValueError, match="verified top-entry geometry"):
+        unified_action_frame(shot, 30, path)
+
+
+def test_hypit_cleanup_retries_the_same_task_after_timeout(tmp_path, monkeypatch):
+    workspace = tmp_path / "hypit/HY-A3-picture-parallel-3-test"
+    (workspace / ".hypit").mkdir(parents=True)
+    (workspace / "hypit.runtime.json").write_text("{}", encoding="utf-8")
+    settings = Settings(
+        _env_file=None, video_editing_hypit_local_module=tmp_path / "cli"
+    )
+    calls = []
+
+    def down(argv, **kwargs):
+        calls.append(argv)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr("app.video_editing_pipeline.subprocess.run", down)
+    stop_hypit_runtimes(tmp_path, settings)
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert str(workspace.resolve()) in calls[0]
+    assert (workspace / "tengli-runtime-down.log").read_text() == (
+        "\ncleanup_error=TimeoutExpired\n\nexit=0\n"
+    )
+
+
+def test_hypit_strips_keep_directions_and_bind_entrances_to_words(
+    tmp_path, monkeypatch
+):
+    entry = tmp_path / "scene.svml"
+    entry.write_text(
+        '<stagger:Entry id="a4m"\n'
+        '    items="旧@1,2,3,4>left; 旧@5,6,7,8>right; 旧@9,10,11,12>left"\n'
+        '    frames="1,20,30"/>',
+        encoding="utf-8",
+    )
+    special = tmp_path / "commercial_runtime/special.py"
+    special.parent.mkdir()
+    special.write_text("# Original materializer stand-in")
+    monkeypatch.setitem(
+        strips.NATIVE_FILES, "commercial_runtime/special.py", strips.sha256(special)
+    )
+    monkeypatch.setitem(strips.STAGGER_GROUPS, "HY-A4", ("a4m", strips.sha256(entry)))
+    group = {"id": "HY-A4", "entry": entry.name}
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 5000},
+        "text": [
+            {"path": path, "text": word, "token_ids": [f"t{i}"]}
+            for i, (path, word) in enumerate(
+                zip(strips.STRIP_TEXT, ("甲", "乙", "丙"), strict=True)
+            )
+        ],
+        "events": [
+            {"path": path, "value": i * 25, "token_id": f"t{i}", "edge": "start"}
+            for i, path in enumerate(strips.STRIP_EVENTS)
+        ],
+        "media": [{"path": strips.STRIP_IMAGE, "asset_id": "stage"}],
+    }
+    assets = {"stage": {"kind": "image", "source": "project_upload"}}
+    data = strips.compile_strips(tmp_path, group, native, assets)
+    assert strips._native_attributes(tmp_path, group, data) == {
+        "a4m": {
+            "items": "甲@1,2,3,4>left; 乙@5,6,7,8>right; 丙@9,10,11,12>left",
+            "frames": "0,25,50",
+        },
+        "t": {"end": "120f"},
+    }
+    native["media_clocks"] = [{"media_path": strips.STRIP_IMAGE, "frames": 120}]
+    moving = strips.compile_strips(
+        tmp_path, group, native, {"stage": {"kind": "original_video"}}, live_stage=True
+    )
+    assert strips._native_attributes(tmp_path, group, moving)["a4m"] == {
+        "items": "甲@1,2,3,4>left; 乙@5,6,7,8>right; 丙@9,10,11,12>left",
+        "frames": "0,25,50",
+        "bg": "",
+    }
+    assert strips.stagger_audio_frame(strips.PRESENTER_LABEL_GROUP, 25) == 26
+    native["events"][1]["token_id"] = "t2"
+    with pytest.raises(ValueError, match="spoken label start"):
+        strips.compile_strips(tmp_path, group, native, assets)
+    native["events"][1]["token_id"] = "t1"
+    native["text"][1]["text"] = "乙;frame"
+    with pytest.raises(ValueError, match="short labels"):
+        strips.compile_strips(tmp_path, group, native, assets)
+
+
+def test_hypit_price_cards_anchor_numbers_to_distinct_current_images(
+    tmp_path, monkeypatch
+):
+    entry = tmp_path / "price.svml"
+    entry.write_text(
+        '<stagger:Entry id="a6m"\n'
+        '    items="pic3@1,2,3,4>zoom; pic2@5,6,7,8>zoom; pic1@9,10,11,12>zoom"\n'
+        '    caps="旧价|99; 旧重|99克; 旧量|99斤" frames="1,20,30"/>',
+        encoding="utf-8",
+    )
+    special = tmp_path / "commercial_runtime/special.py"
+    special.parent.mkdir()
+    special.write_text("# Original materializer stand-in")
+    monkeypatch.setitem(
+        strips.NATIVE_FILES, "commercial_runtime/special.py", strips.sha256(special)
+    )
+    monkeypatch.setitem(strips.STAGGER_GROUPS, "HY-A6", ("a6m", strips.sha256(entry)))
+    group = {"id": "HY-A6", "entry": entry.name}
+    paths = (strips.STRIP_IMAGE, *strips.CARD_IMAGES)
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 5000},
+        "text": [
+            {"path": path, "text": label, "token_ids": [f"t{i}"]}
+            for i, (path, label) in enumerate(
+                zip(
+                    strips.CARD_TITLES + strips.CARD_DETAILS,
+                    ("链接", "每瓶", "两瓶", "14块9", "1000克", "4斤"),
+                    strict=True,
+                )
+            )
+        ],
+        "events": [
+            {"path": path, "value": i * 25, "token_id": f"t{i + 3}", "edge": "start"}
+            for i, path in enumerate(strips.CARD_EVENTS)
+        ],
+        "media": [{"path": path, "asset_id": path} for path in paths],
+    }
+    assets = {
+        path: {"kind": "image", "source": "project_upload", "sha256": str(i)}
+        for i, path in enumerate(paths)
+    }
+    data = strips.compile_strips(tmp_path, group, native, assets)
+    assert strips._native_attributes(tmp_path, group, data)["a6m"] == {
+        "caps": "链接|14块9; 每瓶|1000克; 两瓶|4斤",
+        "frames": "0,25,50",
+    }
+    bigger = strips.compile_strips(
+        tmp_path, group, native, assets, price_card_layout=strips.PRICE_CARD_INSET_TYPE
+    )
+    assert strips._native_attributes(tmp_path, group, bigger)["a6m"] == {
+        "caps": "链接|14块9; 每瓶|1000克; 两瓶|4斤",
+        "frames": "0,25,50",
+        "cap-size": "96",
+        "cap-en-size": "100",
+        "cap-dy": "-8",
+    }
+    native["events"][0]["token_id"] = "t0"
+    with pytest.raises(ValueError, match="spoken label start"):
+        strips.compile_strips(tmp_path, group, native, assets)
+    native["events"][0]["token_id"] = "t3"
+    assets[paths[1]]["sha256"] = assets[paths[2]]["sha256"]
+    with pytest.raises(ValueError, match="distinct current image bytes"):
+        strips.compile_strips(tmp_path, group, native, assets)
+
+
+def test_hypit_flow_keeps_original_rearrangement_and_checks_source_duration():
+    moves = (
+        'moves="0:0:208,25,7; 0:19:-220,-37,18; 0:50:12,11,12; '
+        '1:24:-584,632,7; 1:51:263,-162,9; 1:61:321,-470,9; 2:52:0,0,9"'
+    )
+    assert strips._flow_moves(" " + moves, [20, 32, 50], 120) == (
+        "0:20:208,25,7; 0:27:-220,-37,18; 0:48:12,11,12; "
+        "1:32:-584,632,7; 1:49:263,-162,9; 1:59:321,-470,9; 2:50:0,0,9"
+    )
+    with pytest.raises(ValueError, match="too little room"):
+        strips._flow_moves(" " + moves, [20, 31, 40], 120)
+    with pytest.raises(ValueError, match="too little room"):
+        strips._flow_moves(" " + moves, [20, 32, 50], 68)
+
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=5000,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        utterances=[],
+        tokens=[],
+    )
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 5000},
+        "media": [{"path": strips.FLOW_PLATE, "asset_id": "source"}],
+    }
+    assets = {"source": {"kind": "original_video", "sha256": transcript.source_sha256}}
+    assert strips.compile_flow_plate(native, assets, transcript)["frames"] == 120
+    native["clock"]["start_ms"] = 1001
+    with pytest.raises(ValueError, match="actual moving source window"):
+        strips.compile_flow_plate(native, assets, transcript)
+    native["clock"]["start_ms"] = 1000
+    assets["source"]["sha256"] = "c" * 64
+    with pytest.raises(ValueError, match="actual moving source window"):
+        strips.compile_flow_plate(native, assets, transcript)
+
+
+def test_hypit_flow_chart_uses_corrected_counts_with_one_unit_and_exact_total():
+    tokens = [
+        TranscriptToken(id=str(i), text=word, start_ms=i * 100, end_ms=(i + 1) * 100)
+        for i, word in enumerate(
+            (
+                "共一百三十二组。",
+                "动画",
+                "五十二组，",
+                "实景",
+                "37组，",
+                "字幕",
+                "四十三组。",
+            )
+        )
+    ]
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=800,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        utterances=[],
+        tokens=tokens,
+        text_status="user_corrected",
+        text_revision_id="test-revision",
+    )
+    first = tokens[1::2]
+    last = tokens[2::2]
+    beat = SemanticBeat.model_validate(
+        {
+            "id": "chart",
+            "group_id": strips.FLOW_GROUP,
+            "first_token_id": tokens[0].id,
+            "last_token_id": tokens[-1].id,
+            "relation": "parallel",
+            "reason": "测试分项数量",
+            "relation_items": [
+                {
+                    "id": a.id,
+                    "first_token_id": a.id,
+                    "last_token_id": b.id,
+                    "native_text_paths": [path],
+                }
+                for a, b, path in zip(first, last, strips.STRIP_TEXT, strict=True)
+            ],
+        }
+    )
+    native = {
+        "text": [
+            {"path": path, "token_ids": [a.id], "text": a.text}
+            for path, a in zip(strips.STRIP_TEXT, first, strict=True)
+        ]
+    }
+    chart = compile_flow_chart(beat, native, transcript, strips.STRIP_TEXT)
+    assert chart["unit"] == "组" and chart["total"] == 132
+    assert [part["count"] for part in chart["parts"]] == [52, 37, 43]
+    scene = (
+        '<pie:View id="b1" slices="rgb(1,2,3):142.5@red;'
+        'rgb(4,5,6):110.5@green;rgb(7,8,9):104.8@blue"/>'
+    )
+    assert patch_flow_slices(scene, chart) == scene.replace("142.5", "52").replace(
+        "110.5", "37"
+    ).replace("104.8", "43")
+    for wrong, message in (
+        ("三十六组，", "sum to the spoken total"),
+        ("三十七条，", "same unit"),
+    ):
+        transcript.tokens[4].text = wrong
+        with pytest.raises(ValueError, match=message):
+            compile_flow_chart(beat, native, transcript, strips.STRIP_TEXT)
+    transcript.text_status = "operator_candidate"
+    with pytest.raises(ValueError, match="corrected transcript"):
+        compile_flow_chart(beat, native, transcript, strips.STRIP_TEXT)
+
+
+def test_hypit_slant_cards_keep_three_image_slots_and_native_arrivals(
+    tmp_path, monkeypatch
+):
+    entry = tmp_path / "slant.svml"
+    entry.write_text(
+        '<stagger:Entry id="a2m" fg="mkfg1@483,1014,597,906"\n'
+        ' items="mkpic1@1,2,3,4,7.3>left; mkpic2@5,6,7,8,-4.1>left; '
+        'mkpic3@9,10,11,12,5.3>left" caps="旧字" frames="1,20,39"/>',
+        encoding="utf-8",
+    )
+    for name in ("commercial_runtime/special.py", "packages/stagger/dist/render.js"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# fixture\n", encoding="utf-8")
+        mapping = (
+            strips.NATIVE_FILES
+            if name.startswith("commercial")
+            else strips._FLOW_COMPONENTS
+        )
+        monkeypatch.setitem(mapping, name, strips.sha256(path))
+    monkeypatch.setitem(
+        strips.STAGGER_GROUPS, strips.SLANT_GROUP, ("a2m", strips.sha256(entry))
+    )
+    group = {"id": strips.SLANT_GROUP, "entry": entry.name}
+    paths = (strips.SLANT_BACKGROUND, strips.SLANT_FOREGROUND, *strips.SLANT_IMAGES)
+    names = ("洗碗", "刷锅", "洗水果")
+    native = {
+        "clock": {"start_ms": 1000, "end_ms": 5000},
+        "text": [
+            {"path": path, "text": label, "token_ids": [f"t{i}"]}
+            for i, (path, label) in enumerate(
+                zip(strips.STRIP_TEXT, names, strict=True)
+            )
+        ],
+        "events": [
+            {"path": path, "value": frame, "token_id": f"t{i}", "edge": "start"}
+            for i, (path, frame) in enumerate(
+                zip(strips.STRIP_EVENTS, (20, 32, 50), strict=True)
+            )
+        ],
+        "media": [{"path": path, "asset_id": path} for path in paths],
+        "media_clocks": [{"media_path": strips.SLANT_FOREGROUND, "frames": 120}],
+    }
+    assets = {
+        path: {"kind": "image", "source": "project_upload", "sha256": str(i)}
+        for i, path in enumerate(paths)
+    }
+    assets[strips.SLANT_FOREGROUND]["kind"] = "original_video"
+    glosses = [
+        {"source_text": a, "display_text": b}
+        for a, b in zip(names, ("DISHES", "PANS", "FRUIT"), strict=True)
+    ]
+    data = strips.compile_strips(tmp_path, group, native, assets, slant_glosses=glosses)
+    assert strips._native_attributes(tmp_path, group, data)["a2m"] == {
+        "caps": "洗碗|DISHES; 刷锅|PANS; 洗水果|FRUIT",
+        "fg": "",
+        "frames": "20,32,50",
+    }
+    assert strips.stagger_audio_frame(strips.SLANT_GROUP, 20) == 21
+    assert "full_source_foreground" not in data
+    website = strips.compile_strips(tmp_path, group, native, assets)
+    assert website == {**data, "glosses": ["", "", ""]}
+    glosses[0]["source_text"] = "刷锅"
+    with pytest.raises(ValueError, match="its own spoken title"):
+        strips.compile_strips(tmp_path, group, native, assets, slant_glosses=glosses)
+    assets[strips.SLANT_IMAGES[0]]["sha256"] = assets[strips.SLANT_IMAGES[1]]["sha256"]
+    with pytest.raises(ValueError, match="distinct current image bytes"):
+        strips.compile_strips(tmp_path, group, native, assets)
+    entry.write_text(
+        entry.read_text(encoding="utf-8").replace("483,1014", "0,0"), encoding="utf-8"
+    )
+    monkeypatch.setitem(
+        strips.STAGGER_GROUPS, strips.SLANT_GROUP, ("a2m", strips.sha256(entry))
+    )
+    with pytest.raises(ValueError, match="presenter window changed"):
+        strips._native_attributes(tmp_path, group, data)
+
+
+def test_slant_presenter_placement_keeps_the_foreground_above_cards(tmp_path):
+    scene = (
+        '  <import as="asset" from="@hypit/media@1"/>\n'
+        '  <spatial:Canvas id="canvas" width="1080" height="1920"/>\n'
+        "    <film:Track source={a2m.track}/>\n"
+    )
+    style = tmp_path / "s03.svs"
+    style.write_text("<sheet></sheet>", encoding="utf-8")
+    result = attach_foreground_track(scene, style)
+    assert 'left="483px" top="1014px" right="1080px" bottom="1920px"' in result
+    assert result.index("source={a2m.track}") < result.index(
+        "source={tengli-fg-track.visual}"
+    )
+    assert "stack-order: 11; fit: contain;" in style.read_text(encoding="utf-8")
+
+
+def test_slant_legacy_full_source_job_requires_recompiling(tmp_path, monkeypatch):
+    job = tmp_path / "plans/slant.json"
+    job.parent.mkdir()
+    output = tmp_path / "renders/001-HY-A2.mp4"
+    config = {"attributes": {}}
+    atomic_json(
+        job, {"group_id": strips.SLANT_GROUP, "output": str(output), "config": config}
+    )
+    sidecar = tmp_path / "hypit-strips/001-HY-A2.json"
+    sidecar.parent.mkdir()
+    atomic_json(
+        sidecar,
+        {
+            "profile": strips.SLANT_PROFILE,
+            "group_id": strips.SLANT_GROUP,
+            "config_sha256": strips.strip_config_sha256(config),
+            "full_source_foreground": True,
+        },
+    )
+    atomic_json(
+        tmp_path / "bindings.json",
+        {"tengli_hypit_strips": {output.stem: strips.sha256(sidecar)}},
+    )
+    monkeypatch.setattr(strips.sys, "argv", ["render.py", "--job", str(job)])
+    with pytest.raises(
+        ValueError, match="Recompile HY-A2 for its original presenter window"
+    ):
+        strips.install_native_strips(tmp_path / "original", tmp_path)
+
+
+def test_hypit_sound_anchor_requires_the_rendered_scene_entry(tmp_path):
+    stem = "001-HY-A6"
+    sidecar = tmp_path / "hypit-strips" / f"{stem}.json"
+    atomic_json(sidecar, {"group_id": "HY-A6", "entry_frames": [10, 20, 30]})
+    work = tmp_path / "hypit-strips" / "work" / stem
+    scene = work / "hypit/HY-A6/scene.svml"
+    scene.parent.mkdir(parents=True)
+    scene.write_text('<stagger:Entry id="a6m" items="picture>zoom" frames="10,20,30"/>')
+    receipt = work / "tengli-strip-materialization.json"
+    ref = {
+        "group_id": "HY-A6",
+        "shot": stem,
+        "sidecar_sha256": strips.sha256(sidecar),
+        "index": 1,
+        "frame": 20,
+        "audible_frame": 21,
+    }
+    atomic_json(
+        receipt,
+        {"sidecar_sha256": ref["sidecar_sha256"], "scene_sha256": strips.sha256(scene)},
+    )
+    strips.verify_stagger_entry(tmp_path, ref)
+    scene.write_text('<stagger:Entry id="a6m" items="picture>zoom" frames="10,21,30"/>')
+    atomic_json(
+        receipt,
+        {"sidecar_sha256": ref["sidecar_sha256"], "scene_sha256": strips.sha256(scene)},
+    )
+    with pytest.raises(ValueError, match="entry frames differ"):
+        strips.verify_stagger_entry(tmp_path, ref)
+
+
+def test_hypit_tools_only_for_the_configured_internal_workspace(tmp_path, monkeypatch):
+    module = tmp_path / "hypit" / "bin" / "hypit.mjs"
+    module.parent.mkdir(parents=True)
+    module.write_bytes(b"audited fixture")
+    (module.parent.parent / "package.json").write_text('{"version":"0.2.12"}')
+    chrome = tmp_path / "chrome"
+    chrome.touch()
+    settings = Settings(
+        environment="test",
+        auth_mode="development",
+        video_editing_hypit_internal_workspace="internal",
+        video_editing_hypit_local_module=module,
+        video_editing_hypit_local_chrome=chrome,
+    )
+    monkeypatch.setattr(hypit, "CLI_SHA256", hypit.sha256(module))
+    monkeypatch.setattr(hypit.shutil, "which", lambda _: str(tmp_path / "node"))
+    monkeypatch.setattr(hypit, "hypit_node_version", lambda: "v24.13.0")
+    monkeypatch.setattr(hypit, "_check_hyperframes", lambda _: None)
+    assert hypit.hypit_tools(settings, "internal")["hypit_module"] == str(module)
+    assert hypit.hypit_runtime_blocker(settings, "internal") is None
+    for unavailable, workspace in (
+        (settings, "external-workspace"),
+        (settings.model_copy(update={"environment": "production"}), "internal"),
+        (settings.model_copy(update={"auth_mode": "external"}), "internal"),
+        (Settings(), "internal"),
+    ):
+        with pytest.raises(ValueError, match="internal development workspace"):
+            hypit.hypit_tools(unavailable, workspace)
+        assert (
+            hypit.hypit_runtime_blocker(unavailable, workspace)
+            == hypit.HYPIT_INTERNAL_ONLY
+        )
+    module.write_bytes(b"changed")
+    with pytest.raises(ValueError, match="bytes changed"):
+        hypit.hypit_tools(settings, "internal")
+    assert (
+        hypit.hypit_runtime_blocker(settings, "internal")
+        == hypit.HYPIT_RUNTIME_UNAVAILABLE
+    )
+    (module.parent.parent / "package.json").write_text("[]")
+    assert (
+        hypit.hypit_runtime_blocker(settings, "internal")
+        == hypit.HYPIT_RUNTIME_UNAVAILABLE
+    )
+
+
+@pytest.mark.parametrize("version,supported", [("v22.14.0", False), ("v22.15.0", True)])
+def test_hypit_node_version_checks_the_original_cli_requirement(
+    monkeypatch, version, supported
+):
+    monkeypatch.setattr(hypit.shutil, "which", lambda _: "node")
+
+    def run(args, **kwargs):
+        assert args == ["node", "--version"]
+        assert "POLARIS_VIDEO_SCRIPT_API_KEY" not in kwargs["env"]
+        return hypit.subprocess.CompletedProcess(args, 0, stdout=version + "\n")
+
+    monkeypatch.setenv("POLARIS_VIDEO_SCRIPT_API_KEY", "fixture")
+    monkeypatch.setattr(hypit.subprocess, "run", run)
+    if supported:
+        assert hypit.hypit_node_version() == version
+    else:
+        with pytest.raises(ValueError, match="Node.js 22.15.0"):
+            hypit.hypit_node_version()
+
+
+def test_hypit_checks_pinned_renderer_packages_from_local_or_host_install(
+    tmp_path, monkeypatch
+):
+    node_modules = tmp_path / "node_modules"
+    module = node_modules / "@hypit/hypit/bin/hypit.mjs"
+    host = tmp_path / "host-packages"
+    monkeypatch.setattr(hypit, "_hypit_host_packages", lambda: host)
+    local = node_modules / "@hyperframes/engine/package.json"
+    managed = (
+        host
+        / "@hyperframes/producer/0.7.101/node_modules"
+        / "@hyperframes/producer/package.json"
+    )
+
+    atomic_json(local, {"version": "0.7.101"})
+    with pytest.raises(ValueError, match="@hyperframes/producer 0.7.101"):
+        hypit._check_hyperframes(module)
+    atomic_json(managed, {"version": "0.7.101"})
+    hypit._check_hyperframes(module)
+    atomic_json(local, {"version": "0.7.100"})
+    with pytest.raises(ValueError, match="@hyperframes/engine 0.7.101"):
+        hypit._check_hyperframes(module)
+
+
+def test_hypit_uses_real_source_windows_and_keeps_each_image_on_its_word(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(hypit, "NATIVE_FILES", {})
+    tokens = [
+        TranscriptToken(
+            id=f"t{i}", text=word, start_ms=1000 + i * 1000, end_ms=2000 + i * 1000
+        )
+        for i, word in enumerate(("甲", "乙", "丙"))
+    ]
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=4100,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        utterances=[],
+        tokens=tokens,
+    )
+    asset_ids = ["source", "p0", "p1", "p2"]
+    media_paths = ["/background/path", *hypit.PICTURE_PATHS]
+    beat = SemanticBeat.model_validate(
+        {
+            "id": "triad",
+            "first_token_id": "t0",
+            "last_token_id": "t2",
+            "group_id": hypit.PICTURE_GROUP,
+            "relation": "parallel",
+            "reason": "三项同级并列",
+            "asset_ids": asset_ids,
+            "native_events": [
+                {"path": path, "token_id": t.id, "edge": "start"}
+                for path, t in zip(hypit.ENTRY_PATHS, tokens, strict=True)
+            ],
+            "native_media": [
+                {"path": path, "asset_id": a}
+                for path, a in zip(media_paths, asset_ids, strict=True)
+            ],
+            "relation_items": [
+                {
+                    "id": a,
+                    "first_token_id": t.id,
+                    "last_token_id": t.id,
+                    "asset_ids": [a],
+                    "native_media_paths": [path],
+                }
+                for a, t, path in zip(
+                    asset_ids[1:], tokens, hypit.PICTURE_PATHS, strict=True
+                )
+            ],
+        }
+    )
+    contract = {
+        "group_id": hypit.PICTURE_GROUP,
+        "native_fps": 30,
+        "text_paths": [],
+        "event_paths": [{"path": path, "unit": "frames"} for path in hypit.ENTRY_PATHS],
+        "resource_paths": [{"path": path} for path in media_paths],
+    }
+    bindings = word_bindings(beat, transcript, contract, set(asset_ids))
+    assets = {
+        "source": {"kind": "original_video", "sha256": transcript.source_sha256},
+        **{
+            a: {"kind": "image", "source": "project_upload", "sha256": a}
+            for a in asset_ids[1:]
+        },
+    }
+    config = {"enter_frames": 10}
+    starts, receipts = hypit.compile_picture_clocks(
+        tmp_path, config, bindings, assets, transcript, beat
+    )
+    assert starts == {"/background/start_seconds": 1.0}
+    assert receipts[0]["source_end_ms"] == 4000
+    assert [row["value"] for row in bindings["events"]] == [0, 30, 60]
+    wrong = beat.model_copy(
+        update={"relation_items": list(reversed(beat.relation_items))}
+    )
+    with pytest.raises(ValueError, match="its own spoken relation item"):
+        hypit.compile_picture_clocks(
+            tmp_path, config, bindings, assets, transcript, wrong
+        )
+    with pytest.raises(ValueError, match="reading interval"):
+        hypit.compile_picture_clocks(
+            tmp_path, {"enter_frames": 30}, bindings, assets, transcript, beat
+        )
+    assets["p2"]["sha256"] = assets["p1"]["sha256"]
+    with pytest.raises(ValueError, match="three distinct"):
+        hypit.compile_picture_clocks(
+            tmp_path, config, bindings, assets, transcript, beat
+        )
+
+
+def test_full_canvas_keeps_strip_directions_and_card_anchors():
+    strips_before = (
+        "甲@31,386,654,111>wipe-right; 乙@447,736,602,111>wipe-right; "
+        "丙@14,1094,618,111>wipe-left"
+    )
+    assert strips._live_stage_items(strips_before, price_cards=False) == (
+        "甲@31,851,654,111>wipe-right; 乙@447,1201,602,111>wipe-right; "
+        "丙@14,1559,618,111>wipe-left"
+    )
+    cards_before = (
+        "mka6c3@45,1239,938,271>zoom; mka6c2@45,851,938,271>zoom; "
+        "mka6c1@45,475,938,271>zoom"
+    )
+    assert strips._live_stage_items(cards_before, price_cards=True) == (
+        "mka6c3@45,1420,938,238>zoom; mka6c2@45,1148,938,238>zoom; "
+        "mka6c1@45,876,938,238>zoom"
+    )

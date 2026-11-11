@@ -133,6 +133,9 @@
 .copyList p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.9; margin: 15px 0; color: #6b6274; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
 .studio .textButton { border: 0; background: transparent; color: #6b6274; padding: 0; display: inline-flex; align-items: center; gap: 7px; font-size: 11px; }
 .worksGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+.editingWorks { display: grid; gap: 14px; margin-bottom: 28px; }
+.editingWorks > p { color: #756a80; font-size: 13px; }
+.editingWorkVideo { display: block; width: 100%; aspect-ratio: 9 / 16; max-height: 300px; background: #17131d; }
 .workCard { border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: #fff; }
 .studio .workImage { padding: 0; background: #ece8f2; border: 0; width: 100%; aspect-ratio: 3/3.3; position: relative; display: block; }
 .workImage > img { width: 100%; height: 100%; display: block; object-fit: contain; object-position: center; }
@@ -191,7 +194,7 @@
 .editorFooter select { padding: 7px; font-size: 10px; color: #6b6274; border: 0; }
 .studio .generateButton { display: flex; align-items: center; justify-content: center; gap: 10px; flex: 1; max-width: 290px; min-width: 140px; height: 42px; border: 0; border-radius: 6px; background: #29262e; color: #fff; font-size: 13px; transition: background .18s, color .18s; }
 .studio .generateButton:hover { background: #d8ff00; color: #302b37; }
-.editLater { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 10px; color: #6b6274; }
+.editLater { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 10px; color: #6b6274; border: 1px solid var(--border); border-radius: 7px; padding: 8px; background: #fff; cursor: pointer; }
 .editLater i { width: 22px; height: 13px; background: #e8e2ee; border-radius: 9px; position: relative; }
 .editLater i::after { content: ""; position: absolute; height: 9px; width: 9px; border-radius: 50%; background: #fff; left: 2px; top: 2px; }
 .editLater small { font-size: 8px; }
@@ -559,3 +562,15 @@
   .statusCard { padding:30px 20px; }
   .helpContent { padding-bottom:22px; }
 }
+
+.editingStudio .workspace { grid-template-columns:minmax(0,1fr); }
+.editingStudio .sidebar { display:none; }
+.editingStudio .main { padding:14px 18px 20px; }
+.editingStudio .pageHeading { display:none; }
+.editingStudio .main>.editorHeader { margin-bottom:14px; min-height:46px; padding:8px 12px; border:1px solid #e9e4ef; border-radius:9px; }
+@media(max-width:640px) { .editingStudio .main { padding:10px; } }
+
+.editingStudio .projectName { margin-left:0; flex:0 1 300px; min-width:160px; }
+.editingStudio .projectName input { width:100%; }
+.editingStudio .editorHeader>select { flex:0 1 220px; max-width:240px; min-width:140px; }
+@media(max-width:640px) { .editingStudio .projectName { flex:1 1 100%; min-width:0; } .editingStudio .editorHeader>select { flex:1; min-width:0; max-width:none; } }

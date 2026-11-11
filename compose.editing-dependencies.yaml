@@ -1,0 +1,22 @@
+# Optional original dependency registry for local editing Compose.
+x-dependency-environment: &dependency-environment
+  POLARIS_VIDEO_EDITING_NATIVE_BINDINGS_FILE: /motion-dependencies/bindings.json
+
+x-dependency-volumes: &dependency-volumes
+  - type: bind
+    source: ${POLARIS_MOTION_DEPENDENCIES_HOST:?Set the private original dependency directory}
+    target: /motion-dependencies
+    read_only: true
+    bind:
+      create_host_path: false
+
+services:
+  api:
+    environment: *dependency-environment
+    volumes: *dependency-volumes
+  editing-worker:
+    environment: *dependency-environment
+    volumes: *dependency-volumes
+  editing-planning-worker:
+    environment: *dependency-environment
+    volumes: *dependency-volumes

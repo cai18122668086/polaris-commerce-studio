@@ -297,6 +297,13 @@ def test_intake_preserves_private_bindings_and_rejects_wrong_indexed_bytes(
     rejected = next(row for row in preview["files"] if row["native_path"] == key)
     assert rejected["groups"] == ["CX-G08", "CX-G09", "CX-G10"]
     assert rejected["catalog_identity"]["sha256"] == identity["sha256"]
+    subtree = intake_browser_originals(
+        package,
+        manifest,
+        **{**options, "source": folder},
+        native_prefix="shared/assets",
+    )
+    assert subtree == preview
     assert sha256(manifest) == initial_sha
     assert str(source) not in str(preview) and options["origin"] not in str(preview)
 
@@ -339,8 +346,9 @@ def test_intake_preserves_private_bindings_and_rejects_wrong_indexed_bytes(
     }
 
 
+@pytest.mark.parametrize("prefix", [None, "shared/legacy"])
 def test_portable_browser_registration_survives_move_without_promoting_diagnostics(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, prefix
 ):
     package, bundle, target = (
         tmp_path / name for name in ("package", "portable", "moved")
@@ -363,7 +371,27 @@ def test_portable_browser_registration_survives_move_without_promoting_diagnosti
         "portable": True,
         "apply": True,
     }
-    result = intake_browser_originals(package, manifest, source=source, **options)
+    actual_source = source / prefix if prefix is not None else source
+    if prefix is not None:
+        with pytest.raises(ValueError, match="contains no cataloged"):
+            intake_browser_originals(
+                package,
+                manifest,
+                source=actual_source,
+                native_prefix="shared/leg",
+                **options,
+            )
+        with pytest.raises(ValueError, match="package-relative"):
+            intake_browser_originals(
+                package,
+                manifest,
+                source=actual_source,
+                native_prefix="../shared",
+                **options,
+            )
+    result = intake_browser_originals(
+        package, manifest, source=actual_source, native_prefix=prefix, **options
+    )
     assert result["counts"]["registered"] == 1
     raw = read_json(manifest)["browser_startup_originals"]["files"]
     assert raw[relative]["path"] == "registry://incoming/" + relative

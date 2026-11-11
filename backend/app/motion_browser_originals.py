@@ -323,12 +323,13 @@ def intake_browser_originals(
     manifest: Path,
     *,
     source: Path | None = None,
+    native_prefix: str | None = None,
     origin: str = "",
     scope: DeliveryScope | None = None,
     apply: bool = False,
     portable: bool = False,
 ) -> dict:
-    """Check a private delivery tree at the package-relative native paths."""
+    """Check a private delivery tree rooted at the package or a native subfolder."""
     package, manifest = package.resolve(), manifest.resolve()
     source = source.resolve() if source is not None else None
     origin = origin.strip()
@@ -346,6 +347,13 @@ def intake_browser_originals(
         raise ValueError("Portable deliveries must be under the bindings directory")
     if apply and source is None:
         raise ValueError("Registering originals requires a delivery directory")
+    if native_prefix is not None and (
+        source is None
+        or any(part in {"", ".", ".."} for part in native_prefix.split("/"))
+        or "\\" in native_prefix
+        or ":" in native_prefix
+    ):
+        raise ValueError("Supply --source and a package-relative native directory")
     verify_package(package)
     document = read_dependency_manifest(manifest)
     registered = _registry_files(document)
@@ -357,6 +365,9 @@ def intake_browser_originals(
             for i in range(count):
                 relative = f"{group['browser_directory']}/{pattern.format(i=i)}"
                 slots.setdefault(relative, []).append(group["id"])
+    prefix = native_prefix + "/" if native_prefix is not None else ""
+    if prefix and not any(relative.startswith(prefix) for relative in slots):
+        raise ValueError("Native directory contains no cataloged browser originals")
 
     accepted = {}
     report = []
@@ -400,10 +411,12 @@ def intake_browser_originals(
                 )
                 if not diagnostic or scope != "original_delivery":
                     continue
-        if source is None or scope is None:
+        if source is None or scope is None or not relative.startswith(prefix):
             continue
         try:
-            candidate = _incoming_image(source, relative, origin, scope)
+            candidate = _incoming_image(
+                source, relative.removeprefix(prefix), origin, scope
+            )
             if candidate is None:
                 continue
             checked = _original_image(

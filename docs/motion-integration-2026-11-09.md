@@ -2377,3 +2377,16 @@ Chrome 在 430 像素宽窗口选中新组合，并在原库详情核对字体�
 在 430 像素宽的 Chrome 中，从「同期人物与原生三图卡」实际播放已交付的 HY-A2 右下人物窗母版。48.475 秒成片记录 11 种动效、11 次出现。快进至 39.35 秒后带声播至 40.6 秒，分辨率 768×1366，媒体返回 HTTP 206，摘要与实际下载件一致。模板选择与收起播放分别核对。回执见 `C:/tl/motion-template-samples-20261111/browser-evidence.json`。沿用原生整片下载件 `C:/tl/hypit-a2-native-window-20261111/website-a2-original-window-hd.mp4`，右下窗、层级、人物比例和同期原声沿用该版的原生回执。本期验证模板播放，成片画面及听感待用户验收。
 
 475 项相关回归通过，覆盖新文件损坏、未确认导出、少于五种动效、仍在待确认、历史直接导出和跨项目读取。OpenAPI 及 TypeScript 契约复算一致。本轮无新增付费调用或部署。
+
+## 从原工程子目录接收浏览器素材
+
+以 `4288492` 为基线。浏览器补件工具增加 `--native-prefix`，对应 `--source` 所指的原工程子目录。原工程只交付 `g05-assets` 或 `assets` 时，可直接读取该文件夹。私有清单保留完整的原生相对路径作为资源键。工具核对原目录前缀和文件边界，继续校验原索引摘要、交付来源和使用范围。旧方式仍可按完整包目录核对。省略 `--apply` 只生成核对结果。
+
+```powershell
+$env:PYTHONPATH = 'backend'
+./.venv/Scripts/python.exe backend/scripts/register_motion_browser_originals.py --package '<已安装原包>' --bindings '<私有绑定文件>' --source '<收到的g05-assets目录>' --native-prefix 'src/engines/workspace/晨曦_接手复刻_20261104/editable-library/reuse-G04-G06/g05-assets' --original-delivery --provenance '<原工程版本与导出来源>'
+```
+
+在隔离私有目录内将 69 张已有诊断底板按上述子目录结构重新接收。旧命令对该目录找到 0 张，新命令干跑找到 69 张并核对每张摘要。应用后保留完整原路径和便携引用，重复应用时清单摘要一致。原正式绑定摘要未变。使用正式交付模式重登同一批诊断图片时 69 张均被拒绝。实际网站目录在原绑定与新诊断清单下均报告 69 张正式原底板缺失。
+
+使用已保存的真实口播词轴复跑 CX-G05 的原生浏览器组件。正式编译仍在生成任务前提示缺件。隔离诊断首次未继承剪辑 worker 提供的工具搜索路径，原引擎未找到 FFprobe。按现有 worker 的工具路径重跑，100 帧完整解码。四处同期人物的横纵倍率均约 0.61，原生图卡入场为局部第 1、13、30 帧。原包 1,426 项摘要复核通过。回执为 `C:/tl/motion-native-subtree-intake-20261111/intake-proof.json`、`catalog-proof.json` 和 `verification.json`。476 项相关回归、最终 25 项专项、目标 Ruff 和 mypy 通过。本期为补件和隔离组件验证，正式状态仍为 127 组已有编码样本、5 组待原件，无部署或新增付费请求。

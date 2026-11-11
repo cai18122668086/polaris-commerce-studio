@@ -12,6 +12,10 @@ def main() -> None:
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--bindings", type=Path, required=True)
     parser.add_argument("--source", type=Path)
+    parser.add_argument(
+        "--native-prefix",
+        help="Original package-relative directory that corresponds to --source",
+    )
     parser.add_argument("--provenance", default="")
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument(
@@ -35,6 +39,7 @@ def main() -> None:
             args.package,
             args.bindings,
             source=args.source,
+            native_prefix=args.native_prefix,
             origin=args.provenance,
             scope=args.scope,
             apply=args.apply,

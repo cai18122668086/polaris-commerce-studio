@@ -158,6 +158,18 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
 
   const attempt = (operation: () => Promise<unknown>) => { void operation().catch(error => notify(error instanceof Error ? error.message : "操作未完成，请重试", "error")); };
   const go = (next: StudioScreen) => attempt(async () => { await session.save(); router.push(hrefOf(next) + (session.state.revision ? `?project=${session.state.projectId}` : "")); });
+  const continueWithAvatar = (job: GenerationJob) => {
+    if (job.kind !== "h3_template" || job.status !== "completed") return;
+    updateDraft({ avatarId: job.avatar_id });
+    setModal(null); go("create"); revealScript();
+  };
+  const editGeneratedVideo = (job: GenerationJob) => attempt(async () => {
+    if (job.kind !== "lipsync" || job.status !== "completed" || !job.project_id) return;
+    await session.save();
+    if (session.state.projectId !== job.project_id) await session.select(job.project_id);
+    setModal(null);
+    router.push(`/video-studio/editing?project=${encodeURIComponent(job.project_id)}&generation=${encodeURIComponent(job.id)}`);
+  });
   const addReference = () => {
     if (sourceLink.trim()) {
       try {
@@ -401,7 +413,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     </fieldset>
     {modal === "avatar-preview" && avatarPreview && <Dialog title={avatarPreview.name} onClose={() => setModal(null)}>{avatarPreview.preview_url ? <video controls playsInline preload="metadata" src={avatarPreview.preview_url} style={{ width: "100%", maxHeight: "60vh" }} /> : <img src={imageOf(avatarPreview)} alt={avatarPreview.name} style={{ width: "100%", maxHeight: "60vh", objectFit: "contain" }} />}<p>{avatarPreview.source === "quanyu_public" ? "公共数字人，可直接用于口播生成" : avatarPreview.ready ? "极光原创数字人，动作模板已就绪" : "原创参考形象，生成动作模板后可用于口播"}</p><footer className={styles.dialogFooter}><button className={styles.primaryButton} onClick={() => { updateDraft({ avatarId: avatarPreview.id }); setModal(null); go("create"); }}>使用此形象</button></footer></Dialog>}
     {modal === "h3-template" && templateAvatar && <Dialog title="生成形象动作" onClose={() => setModal(null)}><div className={styles.templateReview}><img src={imageOf(templateAvatar)} alt={templateAvatar.name} /><div><h3>{templateAvatar.name}</h3><span>15 秒 · 自然讲述动作</span></div></div><MetadataGrid items={[{label:"拍摄方式",value:"固定机位"},{label:"动作衔接",value:"正向首尾循环"}]} /><Notice>生成后先预览，确认人物与动作满意再加入形象库。</Notice>{generationError && <Notice tone="warning">{generationError}</Notice>}<footer className={styles.dialogFooter}><button type="button" className={styles.outlineButton} onClick={() => setModal(null)}>取消</button><button type="button" className={styles.primaryButton} disabled={submitting} onClick={createTemplate}>{submitting ? "正在提交" : generationError ? "查询原提交" : "确认生成"}</button></footer></Dialog>}
-    {modal === "real-preview" && realPreview && <GenerationPreview job={realPreview} resuming={library.resumingIds.includes(realPreview.id)} submitting={submitting} onClose={() => setModal(null)} onResume={() => attempt(() => library.resume(realPreview.id))} onCopy={copyText} onApprove={() => attempt(async () => { setSubmitting(true); try { await library.approveTemplate(realPreview.id); setModal(null); } catch (error) { submissionError(error); } finally { setSubmitting(false); } })} onReject={() => attempt(async () => { setSubmitting(true); try { await library.rejectTemplate(realPreview.id); setModal(null); } finally { setSubmitting(false); } })} />}
+    {modal === "real-preview" && realPreview && <GenerationPreview job={realPreview} resuming={library.resumingIds.includes(realPreview.id)} submitting={submitting} onClose={() => setModal(null)} onResume={() => attempt(() => library.resume(realPreview.id))} onCopy={copyText} onUseAvatar={() => continueWithAvatar(realPreview)} onEdit={() => editGeneratedVideo(realPreview)} onApprove={() => attempt(async () => { setSubmitting(true); try { await library.approveTemplate(realPreview.id); } catch (error) { submissionError(error); } finally { setSubmitting(false); } })} onReject={() => attempt(async () => { setSubmitting(true); try { await library.rejectTemplate(realPreview.id); setModal(null); } finally { setSubmitting(false); } })} />}
     {modal === "proofread" && <ScriptProofread original={rawReference?.original_text || ""} text={draft.text} onChange={text => updateDraft({ text })} onClose={() => setModal(null)} onSave={() => attempt(async () => { await session.save(); setModal(null); notify("校对稿已保存，原始参考文稿保留"); })} />}
     {modal === "history" && <ScriptHistory workspaceId={workspaceId} versions={persisted.history} currentText={draft.text} saving={status === "saving"} onRestore={restoreVersion} onCopy={copyText} onClose={() => setModal(null)} />}
     {screen === "create" && <div className={styles.editorBrand}><Brand small /><span>灰度测试 · 仅指定账号可用</span></div>}

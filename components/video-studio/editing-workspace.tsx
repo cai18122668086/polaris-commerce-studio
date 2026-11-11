@@ -1,6 +1,7 @@
 "use client";
 
 import { UserRound, PackageOpen } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
 import { projectApi, type VideoVersion } from "@/features/video-studio/projects";
@@ -56,7 +57,8 @@ const errorLabel: Record<string, string> = {
 
 export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact = false, onSaveProject }: { workspaceId: string; projectId: string; saved: boolean; jobs: GenerationJob[]; compact?: boolean; onSaveProject?: () => Promise<void> }) {
   const [tasks, setTasks] = useState<EditingTask[]>([]);
-  const [selected, setSelected] = useState("");
+  const [sourceChoice, setSelected] = useState<string>();
+  const requestedGeneration = useSearchParams().get("generation");
   const [file, setFile] = useState<File>();
   const [sourcePreview, setSourcePreview] = useState("");
   const [referenceVersion, setReferenceVersion] = useState("");
@@ -93,23 +95,29 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const pending = useRef<{ key: string; requestId: string } | undefined>(undefined);
   const upload = useRef<{ workspaceId: string; projectId: string; file: File; versionId: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
+  const selected = sourceChoice ?? candidates.find(job => job.id === requestedGeneration)?.id ?? "";
   const selectedGeneration = candidates.find(job => job.id === selected);
   const restoredSource = selected.startsWith("source:") ? selected.slice(7) : "";
   const restoredProject = useRef("");
   useEffect(() => {
     if (restoredProject.current === projectId || selected || file || !tasks.length) return;
-    restoredProject.current = projectId;
     const previous = tasks.find(task => task.status === "completed" && task.source_origin?.kind === "upload_asset" && task.artifacts.some(a => a.role === "transcript"));
     if (!previous) return;
-    setSelected(`source:${previous.source_id}`);
-    setPlanningTask(previous.id);
-    setSubtitles(previous.options.source_subtitles);
+    let live = true;
+    void Promise.resolve().then(() => {
+      if (!live) return;
+      restoredProject.current = projectId;
+      setSelected(`source:${previous.source_id}`);
+      setPlanningTask(previous.id);
+      setSubtitles(previous.options.source_subtitles);
+    });
+    return () => { live = false; };
   }, [file, projectId, selected, tasks]);
   useEffect(() => {
-    if (!file) { setSourcePreview(""); return; }
-    const url = URL.createObjectURL(file);
-    setSourcePreview(url);
-    return () => URL.revokeObjectURL(url);
+    const url = file ? URL.createObjectURL(file) : "";
+    let live = true;
+    void Promise.resolve().then(() => { if (live) setSourcePreview(url); });
+    return () => { live = false; if (url) URL.revokeObjectURL(url); };
   }, [file]);
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000) }), [workspaceId]);
   const [linkedPreviews, setLinkedPreviews] = useState<{ projectId: string; ids: string[] }>();
@@ -272,10 +280,14 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const sourceTask = tasks.find(task => task.id === planningTask);
   const recognizing = !!sourceTask && ["queued", "running"].includes(sourceTask.status);
   useEffect(() => {
-    if (continueAfterRecognition && transcriptReady && primaryState?.phase === "prepare" && !primaryState.disabled) {
+    if (!continueAfterRecognition || !transcriptReady || primaryState?.phase !== "prepare" || primaryState.disabled) return;
+    let live = true;
+    void Promise.resolve().then(() => {
+      if (!live) return;
       setContinueAfterRecognition(false);
       primaryAction.current?.run();
-    }
+    });
+    return () => { live = false; };
   }, [continueAfterRecognition, transcriptReady, primaryState]);
   const begin = () => {
     if (!saved) {

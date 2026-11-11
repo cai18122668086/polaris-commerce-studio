@@ -59,7 +59,11 @@ from .video_editing_question_branch import (
     QUESTION_GROUP,
     question_variant_template,
 )
-from .video_editing_question_card import QUESTION_CARD_GLYPH, question_card_a_input
+from .video_editing_question_card import (
+    QUESTION_CARD_GLYPH,
+    question_card_a_input,
+    question_card_b_input,
+)
 from .video_editing_story_panels import TRIPTYCH, triptych_template
 from .video_editing_unified_scenes import (
     PRESENTER_VIDEO_GROUPS,
@@ -143,6 +147,7 @@ def input_contract(
     current_why_props: bool = True,
     embedded_why_caption: bool = True,
     original_input_a: bool = False,
+    original_input_b: bool = False,
     current_unified_presenter: bool = False,
     triptych_video_slots: set[int] | None = None,
     hypit_label_cards: bool = True,
@@ -152,6 +157,8 @@ def input_contract(
     template_path = (
         question_card_a_input(package, group)
         if original_input_a
+        else question_card_b_input(package, group)
+        if original_input_b
         else package / group["input_template"]
     )
     template = read_json(template_path)
@@ -223,7 +230,7 @@ def input_contract(
         ):
             category = "native_media_key"
         elif (
-            original_input_a
+            (original_input_a or original_input_b)
             and pointer(parts) == QUESTION_CARD_GLYPH
             or group["id"] == "YY6O01"
             and parts == ["content", "question"]

@@ -20,6 +20,7 @@ from app.video_editing_overlay_templates import (
 )
 from app.video_editing_question_card import (
     QUESTION_CARD_A_FONTS,
+    QUESTION_CARD_B_FONTS,
     QUESTION_CARD_EVENTS,
     QUESTION_CARD_LABELS,
     automatic_question_card_gloss,
@@ -69,16 +70,21 @@ def test_gloss_requires_adjacent_current_words():
         question_card_gloss(missing_word, {**gloss, "source_text": "你谁"}, transcript)
 
 
-def test_native_entry_clock_uses_first_visible_frame():
-    english, question = QUESTION_CARD_A_FONTS
+@pytest.mark.parametrize("font_ids", [QUESTION_CARD_A_FONTS, QUESTION_CARD_B_FONTS])
+def test_native_entry_clock_uses_first_visible_frame(font_ids):
+    roles = (
+        ("english", "question")
+        if len(font_ids) == 2
+        else ("chinese", "english", "question")
+    )
     shot = {
         "group_id": "AH-S03",
         "layer": "subtitle",
         "start_seconds": 4.870,
         "config": {
             "fonts": {
-                "english": {"path": "input://" + english},
-                "question": {"path": "input://" + question},
+                role: {"path": "input://" + rid}
+                for role, rid in zip(roles, font_ids, strict=True)
             },
             "events": {"question_frame": 10, "exit_frame": 22},
         },

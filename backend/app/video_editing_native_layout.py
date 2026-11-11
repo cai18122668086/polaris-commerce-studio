@@ -11,7 +11,11 @@ from .motion_library import atomic_json, read_json, sha256
 from .video_editing_browser_clocks import NUMBERED_GROUP
 from .video_editing_browser_live import CARD_LIVE_PREFIX
 from .video_editing_contracts import EditingLayoutFinding
-from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_shot
+from .video_editing_question_card import (
+    QUESTION_CARD_GROUP,
+    question_card_a_shot,
+    question_card_b_shot,
+)
 from .video_editing_render_edits import NATIVE_PORTRAIT_INSETS, boxes_intersect
 from .video_editing_subtitle_foreground import (
     FOREGROUND_ROLE_REASONS,
@@ -256,7 +260,7 @@ def _classified_role_overlaps(
             question_shots
             and index in question_shots
             and group_id == QUESTION_CARD_GROUP
-            and question_card_a_shot(shot)
+            and (question_card_a_shot(shot) or question_card_b_shot(shot))
         ):
             fps = 30
             windows = [
@@ -359,7 +363,7 @@ def review_with_native_roles(
         groups = {row["group_id"] for row in overlaps}
         reasons = {
             BACKDROP_GROUP: "SG-S10 的前景横句叠在原机制指定的灰色背衬字上。",
-            QUESTION_CARD_GROUP: "原 AH-S03 A 版问号覆盖英文释义。",
+            QUESTION_CARD_GROUP: "原 AH-S03 问号覆盖英文释义。",
             TEXT_HANDOFF_GROUP: "JJ-S06 仅在原生同位置淡入淡出交接期间叠放。",
             **_PROGRESS_ROLE_REASONS,
             **FOREGROUND_ROLE_REASONS,
@@ -440,7 +444,9 @@ def install_native_role_review(package: Path, root: Path) -> None:
         return
     spec = read_json(intent)
     backdrop = set(spec.get("sg_s10_backdrop_shots", []))
-    question = set(spec.get("ah_s03_input_a_shots", []))
+    question = set(spec.get("ah_s03_input_a_shots", [])) | set(
+        spec.get("ah_s03_input_b_shots", [])
+    )
     numbered = set(spec.get("numbered_alpha_shots", []))
     handoff = set(spec.get("jj_s06_handoff_shots", []))
     progress = set(spec.get("progress_role_shots", []))

@@ -6339,7 +6339,7 @@ export interface components {
             /** Layer */
             layer?: ("scene" | "overlay") | null;
             /** Native Branch */
-            native_branch?: ("question" | "input-A") | null;
+            native_branch?: ("question" | "input-A" | "input-B") | null;
             /** Purpose */
             purpose: string;
         };

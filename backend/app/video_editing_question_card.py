@@ -1,19 +1,24 @@
-"""Original AH-S03 input A and its recorded bilingual question binding."""
+"""Original AH-S03 inputs and their recorded bilingual question binding."""
 
 import math
 import re
 from pathlib import Path
 from typing import Any
 
-from .motion_library import inside, sha256
+from .motion_library import inside, read_json, sha256
+from .motion_local_dependencies import dependency_state, local_dependencies
 from .video_editing_contracts import SemanticBeat, Transcript
 
 QUESTION_CARD_GROUP = "AH-S03"
 QUESTION_CARD_A_DESIGN = "original-ah-s03-input-a"
+QUESTION_CARD_B_DESIGN = "original-ah-s03-input-b"
 QUESTION_CARD_A_SHA256 = (
     "947afceebfcaafa4cae09229c0cbb6f4e56d35e53b54c28ab454eb91de164e1e"
 )
 QUESTION_CARD_A_FONTS = ("font-baa251526d686271", "font-dab883d69fb71323")
+QUESTION_CARD_B_SHA256 = (
+    "dea5f092f20183f6c808c0a88332bcc3a74cdabfc0127756cd0d339e7f68f2ac"
+)
 QUESTION_CARD_B_FONTS = (
     "font-bc9cadc3746b487c",
     "font-56735cfcb1d3feac",
@@ -41,18 +46,31 @@ def question_card_a_shot(shot: dict) -> bool:
     )
 
 
+def question_card_b_shot(shot: dict) -> bool:
+    return (
+        shot["group_id"] == QUESTION_CARD_GROUP
+        and shot["layer"] == "subtitle"
+        and all(
+            shot["config"]["fonts"][role]["path"] == "input://" + rid
+            for role, rid in zip(
+                ("chinese", "english", "question"), QUESTION_CARD_B_FONTS, strict=True
+            )
+        )
+    )
+
+
 def question_card_entry_frame(shot: dict, fps: int, path: str) -> int:
     if (
-        not question_card_a_shot(shot)
+        not (question_card_a_shot(shot) or question_card_b_shot(shot))
         or fps != 30
         or path not in QUESTION_CARD_ENTRANCES
     ):
-        raise ValueError("AH-S03 A sound requires a 30 fps native entrance")
+        raise ValueError("AH-S03 sound requires a 30 fps native entrance")
     events = shot["config"]["events"]
     frame = events[path.rsplit("/", 1)[1]]
     # The original easing starts at zero. Its first nonempty frame is the next one.
     if type(frame) is not int or not 0 <= frame < events["exit_frame"] - 1:
-        raise ValueError("AH-S03 A entrance has no visible frame")
+        raise ValueError("AH-S03 entrance has no visible frame")
     start_ms = round(shot["start_seconds"] * 1000)
     return start_ms * fps // 1000 + frame + 1
 
@@ -64,6 +82,52 @@ def question_card_a_input(package: Path, group: dict[str, Any]) -> Path:
     if sha256(path) != QUESTION_CARD_A_SHA256:
         raise ValueError("Original AH-S03 input A bytes changed")
     return path
+
+
+def question_card_b_input(package: Path, group: dict[str, Any]) -> Path:
+    if group["id"] != QUESTION_CARD_GROUP:
+        raise ValueError("Original AH-S03 input B only belongs to AH-S03")
+    path = inside(package, group["input_template"])
+    archived = inside(package, str(Path(group["entry"]).with_name("input-B.json")))
+    if (
+        sha256(path) != QUESTION_CARD_B_SHA256
+        or sha256(archived) != QUESTION_CARD_B_SHA256
+    ):
+        raise ValueError("Original AH-S03 input B bytes changed")
+    return path
+
+
+def require_question_card_fonts(
+    package: Path, group: dict, config: dict, manifest: Path
+) -> str:
+    """Check the role identities before attributing a render to input A or B."""
+    fonts = config.get("fonts")
+    original_a = read_json(question_card_a_input(package, group))["fonts"]
+    original_b = read_json(question_card_b_input(package, group))["fonts"]
+    font_ids: tuple[str, ...]
+    if fonts == original_a:
+        branch, font_ids = "input-A", QUESTION_CARD_A_FONTS
+    elif fonts == original_b:
+        branch, font_ids = "input-B", QUESTION_CARD_B_FONTS
+    else:
+        raise ValueError(
+            "AH-S03 evidence requires the exact original A or B font roles"
+        )
+    registered = local_dependencies(manifest)
+    identities = {
+        row["id"]: row
+        for row in read_json(package / "catalog/external-resources.json")["resources"]
+    }
+    missing = [
+        rid
+        for rid in font_ids
+        if dependency_state(identities[rid], registered.get(rid)) != "verified"
+    ]
+    if missing:
+        raise ValueError(
+            f"AH-S03 {branch} original fonts unavailable: {', '.join(missing)}"
+        )
+    return branch
 
 
 def question_card_gloss(

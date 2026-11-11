@@ -25,6 +25,7 @@ from .video_editing_line_branch import LINE_BRUSH_FONT, LINE_GROUP
 from .video_editing_native_content import WHY_FONT, WHY_GROUP, WHY_PROPS
 from .video_editing_overlay_templates import (
     AUTOMATIC_TEMPLATE_DEPENDENCIES,
+    QUESTION_CARD_B_TEMPLATE_ID,
     QUESTION_CARD_TEMPLATE_ID,
 )
 from .video_editing_question_card import (
@@ -32,6 +33,7 @@ from .video_editing_question_card import (
     QUESTION_CARD_B_FONTS,
     QUESTION_CARD_GROUP,
     question_card_a_input,
+    question_card_b_input,
 )
 
 _MATTING_MODEL = "model-01eb6a29a5c4d8edb30b"
@@ -344,7 +346,7 @@ def original_input_variants(
         }
         for variant, template, font_ids in (
             ("input-A", a_path, QUESTION_CARD_A_FONTS),
-            ("input-B", package / group["input_template"], QUESTION_CARD_B_FONTS),
+            ("input-B", question_card_b_input(package, group), QUESTION_CARD_B_FONTS),
         )
     ]
 
@@ -355,11 +357,12 @@ def unavailable_template_groups(
     unavailable = {}
     for slot in (template or {}).get("slots", []):
         gid = slot["group_id"]
-        missing = [
-            rid
-            for rid in AUTOMATIC_TEMPLATE_DEPENDENCIES.get(gid, ())
-            if state_for(rid) != "verified"
-        ]
+        dependencies = (
+            QUESTION_CARD_B_FONTS
+            if gid == QUESTION_CARD_GROUP and slot.get("native_branch") == "input-B"
+            else AUTOMATIC_TEMPLATE_DEPENDENCIES.get(gid, ())
+        )
+        missing = [rid for rid in dependencies if state_for(rid) != "verified"]
         if missing:
             unavailable[gid] = missing
     return unavailable
@@ -385,7 +388,17 @@ def planning_runtime_snapshot(
         "version": "tengli.planning-runtime/1",
         "groups": {
             group["id"]: {
-                "sample": group_status(state, group["id"])["runtime_validation"],
+                "sample": group_status(
+                    state,
+                    group["id"],
+                    native_branch="input-B"
+                    if (
+                        template
+                        and template["id"] == QUESTION_CARD_B_TEMPLATE_ID
+                        and group["id"] == QUESTION_CARD_GROUP
+                    )
+                    else None,
+                )["runtime_validation"],
                 "dependencies": [
                     {
                         "id": row["id"],

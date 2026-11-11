@@ -506,7 +506,7 @@ class EditingOverlaySlot(StrictVideoModel):
     layer: Literal["scene", "overlay"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
-    native_branch: Literal["question", "input-A"] | None = Field(
+    native_branch: Literal["question", "input-A", "input-B"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     binding: str | None = Field(default=None, exclude_if=lambda value: value is None)

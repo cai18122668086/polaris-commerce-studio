@@ -195,6 +195,7 @@ from .video_editing_overlay_templates import (
     PICTURE_TEMPLATE_ID,
     PRESENTER_LABEL_TEMPLATE_ID,
     PRODUCT_GROUP_ID,
+    QUESTION_CARD_B_TEMPLATE_ID,
     validate_template_plan,
 )
 from .video_editing_paper_typewriter import PAPER_GROUP
@@ -217,12 +218,15 @@ from .video_editing_question_branch import (
 )
 from .video_editing_question_card import (
     QUESTION_CARD_A_DESIGN,
+    QUESTION_CARD_B_DESIGN,
+    QUESTION_CARD_B_FONTS,
     QUESTION_CARD_ENGLISH,
     QUESTION_CARD_GLYPH,
     QUESTION_CARD_GROUP,
     QUESTION_CARD_SOUND,
     automatic_question_card_gloss,
     question_card_a_input,
+    question_card_b_input,
 )
 from .video_editing_role_scene import ROLE_IMAGES, bind_role_scene
 from .video_editing_story_panels import (
@@ -829,10 +833,24 @@ def _question_entry(
 
 
 def _question_card_entry(
-    package: Path, group: dict, beat: SemanticBeat, transcript: Transcript
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    *,
+    original_input_b: bool = False,
 ) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
-    contract = input_contract(package, group, original_input_a=True)
-    config = read_json(question_card_a_input(package, group))
+    contract = input_contract(
+        package,
+        group,
+        original_input_a=not original_input_b,
+        original_input_b=original_input_b,
+    )
+    config = read_json(
+        question_card_b_input(package, group)
+        if original_input_b
+        else question_card_a_input(package, group)
+    )
     anchors = word_bindings(beat, transcript, contract, set())
     gloss = automatic_question_card_gloss(beat, anchors, transcript)
     slots = [
@@ -855,15 +873,25 @@ def _question_card_entry(
             "group_id": beat.group_id,
             "template_sha256": contract["template_sha256"],
             "schema_sha256": contract["schema_sha256"],
-            "design_id": QUESTION_CARD_A_DESIGN,
-            "design_reason": "沿用原 A 版字形与动画，绑定本期实录追问及短释义。",
+            "design_id": QUESTION_CARD_B_DESIGN
+            if original_input_b
+            else QUESTION_CARD_A_DESIGN,
+            "design_reason": (
+                "沿用原 B 版字形与动画，绑定本期实录追问及短释义。"
+                if original_input_b
+                else "沿用原 A 版字形与动画，绑定本期实录追问及短释义。"
+            ),
             "config": config,
             "placeholders": slots,
             "parameter_decisions": {
                 **{key: "沿用原生构图与参数。" for key in config},
                 QUESTION_CARD_GLYPH: "保留原设计问号。",
             },
-            "dependency_ids": list(AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]),
+            "dependency_ids": list(
+                QUESTION_CARD_B_FONTS
+                if original_input_b
+                else AUTOMATIC_TEMPLATE_DEPENDENCIES[beat.group_id]
+            ),
             "question_card_gloss": gloss,
         },
     ), anchors
@@ -2849,7 +2877,13 @@ def _overlay_entry(
         )
         paths = (None,)
     elif beat.group_id == QUESTION_CARD_GROUP:
-        entry, anchors = _question_card_entry(package, group, beat, transcript)
+        entry, anchors = _question_card_entry(
+            package,
+            group,
+            beat,
+            transcript,
+            original_input_b=template_id == QUESTION_CARD_B_TEMPLATE_ID,
+        )
         paths = (None,)
     elif beat.group_id in OPENING_GROUPS:
         entry, anchors = _opening_entry(

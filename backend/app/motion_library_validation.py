@@ -38,7 +38,10 @@ from .video_editing_hypit_label_cards import (
 )
 from .video_editing_pipeline import environment
 from .video_editing_question_branch import QUESTION_BRANCH, QUESTION_GROUP
-from .video_editing_question_card import QUESTION_CARD_GROUP, question_card_a_input
+from .video_editing_question_card import (
+    QUESTION_CARD_GROUP,
+    require_question_card_fonts,
+)
 
 EVIDENCE_SCHEMA = "tengli.motion-runtime-evidence/1"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -198,13 +201,9 @@ def record_native(
     if job["group_id"] == QUESTION_GROUP and branch in (QUESTION_BRANCH, "smoke"):
         evidence["native_branch"] = branch
     if group_id == QUESTION_CARD_GROUP:
-        fonts = job.get("config", {}).get("fonts")
-        input_a = read_json(question_card_a_input(package, groups[group_id]))
-        input_b = read_json(package / groups[group_id]["input_template"])
-        if fonts == input_a["fonts"]:
-            evidence["native_branch"] = "input-A"
-        elif fonts == input_b["fonts"]:
-            evidence["native_branch"] = "input-B"
+        evidence["native_branch"] = require_question_card_fonts(
+            package, groups[group_id], job["config"], instance / "bindings.json"
+        )
     _validate_evidence(evidence, group_id, evidence["id"])
     atomic_json(inside(state, f"{group_id}/{evidence['id']}.json"), evidence)
     return evidence
@@ -344,7 +343,9 @@ def _validate_evidence(record: Any, group_id: str, evidence_id: str) -> None:
             raise ValueError("Invalid native evidence digest")
 
 
-def group_status(state: Path, group_id: str) -> dict[str, Any]:
+def group_status(
+    state: Path, group_id: str, *, native_branch: str | None = None
+) -> dict[str, Any]:
     # Called only after resolving group_id against the original catalog.
     directory = inside(state, group_id)
     records = []
@@ -366,7 +367,8 @@ def group_status(state: Path, group_id: str) -> dict[str, Any]:
             except (OSError, ValueError, OverflowError):
                 rejected += 1
                 continue
-            records.append(value)
+            if native_branch is None or value.get("native_branch") == native_branch:
+                records.append(value)
     records.sort(key=lambda r: datetime.fromisoformat(r["recorded_at"]), reverse=True)
     passed = sum(r["runtime_validation"] == "sample_rendered" for r in records)
     failed = len(records) - passed

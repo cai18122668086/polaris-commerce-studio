@@ -192,6 +192,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "roll-compare-v2",
         "question-story-v1",
         "question-card-story-v1",
+        "question-card-b-story-v1",
         "picture-compare-v2",
         "rotation-cards-v1",
         "strip-and-rotation-cards-v1",
@@ -312,6 +313,9 @@ def test_selected_overlay_template_is_frozen_in_preparation(
     assert scene["layer"] == "scene" and scene["native_branch"] == "question"
     card = next(row for row in options if row["id"] == "question-card-story-v1")
     assert card["slots"][0]["group_id"] == "AH-S03"
+    card_b = next(row for row in options if row["id"] == "question-card-b-story-v1")
+    assert card_b["slots"][0] == {**card["slots"][0], "native_branch": "input-B"}
+    assert card_b["slots"][1:] == card["slots"][1:]
     assert card["slots"][0]["native_branch"] == "input-A"
     url = root + f"/editing-tasks/{task['id']}/planning-tasks"
     body = {"request_id": str(uuid4()), "template_id": template["id"]}

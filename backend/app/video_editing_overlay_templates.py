@@ -125,6 +125,8 @@ YY_OPENING_TEMPLATES = frozenset(
 )
 JUDGMENT_TEMPLATE_ID = "evidence-judgment-v1"
 QUESTION_CARD_TEMPLATE_ID = "question-card-story-v1"
+QUESTION_CARD_B_TEMPLATE_ID = "question-card-b-story-v1"
+QUESTION_CARD_TEMPLATES = (QUESTION_CARD_TEMPLATE_ID, QUESTION_CARD_B_TEMPLATE_ID)
 EXPLAINER_TEMPLATE_ID = "explainer-steps-v1"
 PACKAGE_TEMPLATE_ID = "package-specs-v1"
 LINE_TEMPLATE_ID = "line-story-v1"
@@ -524,6 +526,18 @@ _TEMPLATES: dict[str, dict] = {
             _ACTION_SLOT,
         ],
     },
+}
+
+_TEMPLATES[QUESTION_CARD_B_TEMPLATE_ID] = {
+    "id": QUESTION_CARD_B_TEMPLATE_ID,
+    "name": "透明问号 B 版与口播重点",
+    "slots": [
+        {
+            **_TEMPLATES[QUESTION_CARD_TEMPLATE_ID]["slots"][0],
+            "native_branch": "input-B",
+        },
+        *_TEMPLATES[QUESTION_CARD_TEMPLATE_ID]["slots"][1:],
+    ],
 }
 
 _TEMPLATES[STRIP_CARD_TEMPLATE_ID] = {
@@ -1182,6 +1196,7 @@ def overlay_templates() -> list[dict]:
             "roll-compare-v2",
             "question-story-v1",
             QUESTION_CARD_TEMPLATE_ID,
+            QUESTION_CARD_B_TEMPLATE_ID,
             PICTURE_TEMPLATE_ID,
             ROTATION_TEMPLATE_ID,
             STRIP_CARD_TEMPLATE_ID,
@@ -1254,13 +1269,16 @@ def validate_template_plan(
 ) -> None:
     if not template_snapshot_matches(template):
         raise ValueError("Overlay template version or slots changed")
-    allow_question_gloss = template["id"] == QUESTION_CARD_TEMPLATE_ID
+    allow_question_gloss = template["id"] in QUESTION_CARD_TEMPLATES
     if any(
         (beat.question_gloss is not None)
         != (allow_question_gloss and beat.group_id == QUESTION_CARD_GROUP)
         for beat in plan.beats
     ):
-        raise ValueError("English question gloss must match the selected AH-S03 A slot")
+        variant = "B" if template["id"] == QUESTION_CARD_B_TEMPLATE_ID else "A"
+        raise ValueError(
+            f"English question gloss must match the selected AH-S03 {variant} slot"
+        )
     if any(
         (beat.translation_gloss is not None)
         != (

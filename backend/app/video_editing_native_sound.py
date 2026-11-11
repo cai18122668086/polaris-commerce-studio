@@ -48,6 +48,7 @@ from .video_editing_question_branch import (
 from .video_editing_question_card import (
     QUESTION_CARD_ENTRANCES,
     question_card_a_shot,
+    question_card_b_shot,
     question_card_entry_frame,
 )
 from .video_editing_render_edits import MUSIC_REDUCTION_DB
@@ -409,7 +410,7 @@ def compile_sound(
             native_ref = {}
             yy_opening_entry = {"shot_index": shot_index, "output_frame": frame}
         if (
-            question_card_a_shot(shot)
+            (question_card_a_shot(shot) or question_card_b_shot(shot))
             and cue.event_path in QUESTION_CARD_ENTRANCES
             and cue.phase == "entry"
         ):

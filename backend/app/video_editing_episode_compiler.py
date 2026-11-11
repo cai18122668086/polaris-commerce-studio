@@ -119,7 +119,7 @@ from .video_editing_pipeline import (
 )
 from .video_editing_planner import validate_plan
 from .video_editing_presenter_motion import PRESENTER_MOTION_GROUPS
-from .video_editing_question_card import question_card_a_shot
+from .video_editing_question_card import question_card_a_shot, question_card_b_shot
 from .video_editing_render_edits import (
     FULL_FRAME,
     NATIVE_PORTRAIT_INSETS,
@@ -1211,6 +1211,9 @@ def compile_episode(
     question_shots = [
         i for i, shot in enumerate(episode["shots"]) if question_card_a_shot(shot)
     ]
+    question_b_shots = [
+        i for i, shot in enumerate(episode["shots"]) if question_card_b_shot(shot)
+    ]
     numbered_shots = [
         i
         for i, shot in enumerate(episode["shots"])
@@ -1232,6 +1235,7 @@ def compile_episode(
     if (
         backdrop_shots
         or question_shots
+        or question_b_shots
         or numbered_shots
         or handoff_shots
         or progress_role_shots
@@ -1241,6 +1245,11 @@ def compile_episode(
             {
                 "sg_s10_backdrop_shots": backdrop_shots,
                 "ah_s03_input_a_shots": question_shots,
+                **(
+                    {"ah_s03_input_b_shots": question_b_shots}
+                    if question_b_shots
+                    else {}
+                ),
                 **({"numbered_alpha_shots": numbered_shots} if numbered_shots else {}),
                 **({"jj_s06_handoff_shots": handoff_shots} if handoff_shots else {}),
                 **(

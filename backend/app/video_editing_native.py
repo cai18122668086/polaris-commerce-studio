@@ -33,6 +33,10 @@ from .video_editing_native_compat import install
 from .video_editing_native_frame_clock import install_native_frame_clocks
 from .video_editing_native_layout import install_native_role_review
 from .video_editing_native_shot_recovery import install_shot_recovery
+from .video_editing_question_card import (
+    QUESTION_CARD_GROUP,
+    require_question_card_fonts,
+)
 from .video_editing_subtitle_sound_clock import install_subtitle_sound_clock
 from .video_editing_unified_alpha import (
     install_unified_sequence_audit,
@@ -75,6 +79,20 @@ def main() -> None:
                 root / "bindings.json",
                 args.native_bindings,
             )
+        question_cards = [
+            shot for shot in shots if shot["group_id"] == QUESTION_CARD_GROUP
+        ]
+        if question_cards:
+            verify_package(package)
+            group = next(
+                row
+                for row in read_json(package / "catalog/groups.json")["groups"]
+                if row["id"] == QUESTION_CARD_GROUP
+            )
+            for shot in question_cards:
+                require_question_card_fonts(
+                    package, group, shot["config"], root / "bindings.json"
+                )
         original_shots = [
             (index, shot)
             for index, shot in enumerate(shots)

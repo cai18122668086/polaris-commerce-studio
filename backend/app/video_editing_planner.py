@@ -62,7 +62,8 @@ from .video_editing_overlay_templates import (
     MIN_OVERLAY_TYPES,
     PACKAGE_TEMPLATES,
     PREFERRED_OVERLAY_TYPES,
-    QUESTION_CARD_TEMPLATE_ID,
+    QUESTION_CARD_B_TEMPLATE_ID,
+    QUESTION_CARD_TEMPLATES,
     template_snapshot_matches,
     validate_template_plan,
 )
@@ -131,6 +132,7 @@ def catalog_index(
     package: Path,
     *,
     question_card: bool = False,
+    question_card_b: bool = False,
     live_package: bool = False,
     line_scene: bool = False,
     unified_scene: bool = False,
@@ -158,12 +160,13 @@ def catalog_index(
             read_json(package / group["contract"]) if group.get("contract") else None
         )
         target = (contract or {}).get("target", {})
-        question_a = question_card and group["id"] == QUESTION_CARD_GROUP
+        question_variant = question_card and group["id"] == QUESTION_CARD_GROUP
         parameters = input_contract(
             package,
             group,
             hypit_label_cards=False,
-            original_input_a=question_a,
+            original_input_a=question_variant and not question_card_b,
+            original_input_b=question_variant and question_card_b,
             live_package_presenter=live_package and group["id"] == PACKAGE_GROUP,
             embedded_line_caption=not (line_scene and group["id"] == LINE_GROUP),
             embedded_why_caption=not (why_scene and group["id"] == WHY_GROUP),
@@ -172,7 +175,7 @@ def catalog_index(
             )
             or (panel_scene and group["id"] in PANEL_BOARDS),
         )
-        if question_a:
+        if question_variant:
             parameters["text_paths"].remove(QUESTION_CARD_ENGLISH)
         if (chapter_scene and group["id"] == CHAPTER_SCENE_GROUP) or (
             alpha_chapters and group["id"] == PAPER_CHAPTER_GROUP
@@ -326,7 +329,7 @@ def build_request(
     prepared_request: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rules = rule_pack(package)
-    question_card = bool(template and template["id"] == QUESTION_CARD_TEMPLATE_ID)
+    question_card = bool(template and template["id"] in QUESTION_CARD_TEMPLATES)
     alpha_chapters = bool(template and template["id"] == LIVE_CHAPTERS_TEMPLATE_ID)
     chapter_scene = alpha_chapters or bool(
         template and template["id"] == CHAPTER_TEMPLATE_ID
@@ -337,6 +340,9 @@ def build_request(
     catalog = catalog_index(
         package,
         question_card=question_card,
+        question_card_b=bool(
+            template and template["id"] == QUESTION_CARD_B_TEMPLATE_ID
+        ),
         live_package=live_package,
         line_scene=line_scene,
         unified_scene=bool(template and template["id"] in UNIFIED_TEMPLATES),
@@ -880,7 +886,7 @@ def validate_plan(
                 )
         if beat.question_gloss is not None:
             if beat.group_id != QUESTION_CARD_GROUP:
-                raise ValueError("English question gloss only belongs to AH-S03 A")
+                raise ValueError("English question gloss only belongs to AH-S03")
             contract = input_contract(
                 package, group_rows[beat.group_id], original_input_a=True
             )
@@ -1040,9 +1046,7 @@ def generate(
     else:
         plan = SemanticPlan.model_validate_json(content)
     if template is None and any(beat.question_gloss is not None for beat in plan.beats):
-        raise ValueError(
-            "English question gloss requires the selected AH-S03 A template"
-        )
+        raise ValueError("English question gloss requires an AH-S03 template")
     if template is None and plan.chapter_start_token_ids:
         raise ValueError("Chapter boundaries require the selected chapter template")
     if template is None and any(

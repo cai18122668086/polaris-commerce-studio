@@ -148,9 +148,11 @@ from .video_editing_question_branch import (
 )
 from .video_editing_question_card import (
     QUESTION_CARD_A_DESIGN,
+    QUESTION_CARD_B_DESIGN,
     QUESTION_CARD_ENGLISH,
     automatic_question_card_gloss,
     question_card_a_input,
+    question_card_b_input,
     question_card_gloss,
 )
 from .video_editing_role_scene import bind_role_scene
@@ -253,6 +255,7 @@ def compile_native_job(
     group = groups[beat.group_id]
     config = copy.deepcopy(recipe["config"])
     question_card_a = recipe.get("design_id") == QUESTION_CARD_A_DESIGN
+    question_card_b = recipe.get("design_id") == QUESTION_CARD_B_DESIGN
     branch = config.get("branch") if beat.group_id == QUESTION_GROUP else None
     if beat.group_id == QUESTION_GROUP and branch not in (QUESTION_BRANCH, "smoke"):
         raise ValueError("Select an original W-R18 branch")
@@ -337,6 +340,7 @@ def compile_native_job(
         current_why_props=why_props,
         embedded_why_caption=embedded_why_caption,
         original_input_a=question_card_a,
+        original_input_b=question_card_b,
         current_unified_presenter=current_unified_presenter,
         triptych_video_slots=triptych_slots,
     )
@@ -353,13 +357,15 @@ def compile_native_job(
     template = read_json(
         question_card_a_input(package, group)
         if question_card_a
+        else question_card_b_input(package, group)
+        if question_card_b
         else package / group["input_template"]
     )
+    if (question_card_a or question_card_b) and (
+        beat.relation != "question" or config.get("fonts") != template["fonts"]
+    ):
+        raise ValueError("AH-S03 needs a spoken question and the exact variant fonts")
     if question_card_a:
-        if beat.relation != "question" or config.get("fonts") != template["fonts"]:
-            raise ValueError(
-                "AH-S03 input A requires a spoken question and its exact fonts"
-            )
         _bundled_font(package, config["fonts"]["chinese"]["path"])
     if live_package_presenter:
         template = live_package_template(template)
@@ -716,20 +722,20 @@ def compile_native_job(
         native["translation_labels"] = translations
     elif beat.translation_gloss is not None:
         raise ValueError("Native translations require their corresponding recipe")
-    if question_card_a:
+    if question_card_a or question_card_b:
         authored = recipe.get("question_card_gloss")
         if (
             beat.question_gloss is not None
             and authored != automatic_question_card_gloss(beat, native, transcript)
         ):
-            raise ValueError("AH-S03 A recipe differs from the frozen planning gloss")
+            raise ValueError("AH-S03 recipe differs from the frozen planning gloss")
         gloss = question_card_gloss(native, authored, transcript)
         if beat.question_gloss is not None:
             gloss["origin"] = "tengli_planner"
         assignments[QUESTION_CARD_ENGLISH] = gloss["display_text"]
         native["question_gloss"] = gloss
     elif beat.question_gloss is not None:
-        raise ValueError("English question gloss requires the original AH-S03 A recipe")
+        raise ValueError("English question gloss requires an original AH-S03 recipe")
     if why_props:
         question = why_word_bindings(native, asset_files)
         assignments[question["path"]] = question["display_text"]

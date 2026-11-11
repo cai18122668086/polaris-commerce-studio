@@ -6233,7 +6233,8 @@
               {
                 "enum": [
                   "question",
-                  "input-A"
+                  "input-A",
+                  "input-B"
                 ],
                 "type": "string"
               },

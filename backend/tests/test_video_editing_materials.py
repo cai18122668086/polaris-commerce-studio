@@ -6,6 +6,8 @@ from json import dumps
 from uuid import uuid4
 
 import pytest
+from PIL import Image
+
 from app.errors import ApiError
 from app.models import AssetRecord, JobAssetRecord, JobItemRecord, JobRecord
 from app.services import new_id
@@ -18,8 +20,6 @@ from app.video_editing_materials import (
 from app.video_editing_pipeline import EditingFailure
 from app.video_editing_task_models import EditingSourceRecord
 from app.video_editing_worker import stage_plan_materials
-from PIL import Image
-
 from tests.test_auth_external import verified_identity
 from tests.test_processing_consent import CHOICE
 from tests.test_processing_consent import PATH as CONSENT_PATH

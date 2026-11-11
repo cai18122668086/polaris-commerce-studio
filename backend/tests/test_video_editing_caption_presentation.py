@@ -1,6 +1,7 @@
 import copy
 
 import pytest
+
 from app.motion_library import atomic_json
 from app.video_editing_caption_presentation import (
     bridge_scene_gaps,

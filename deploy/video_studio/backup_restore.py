@@ -84,7 +84,7 @@ with TestClient(app) as client:
 print(json.dumps(dict(restored=True,objects=len(records),verified_db_assets=len(rows),schema_before=before,schema_after='20261105_0039',api_ready=True,mock_job_completed=True)))
 """
 
-def main(revision,image):
+def main(revision,image,expected_before='20261030_0034',expected_after='20261105_0039',preserve_existing_voices=False):
     assert re.fullmatch(r"[0-9a-f]{40}",revision) and re.fullmatch(r"sha256:[0-9a-f]{64}",image)
     root=Path('/opt/polaris/backups/video-studio-'+revision[:12]);root.mkdir(mode=0o700)
     baseline={role:inspect('polaris-production-'+role+'-1') for role in ['api','postgres','minio','detail-api','detail-worker']}
@@ -112,10 +112,14 @@ def main(revision,image):
     for key in list(env):
         if key.endswith(('API_KEY','API_TOKEN','PROVIDER_ENABLED')):env[key]='false' if key.endswith('PROVIDER_ENABLED') else ''
     private(root/'restore.env','\n'.join(key+'='+value for key,value in env.items())+'\n')
-    with (root/'restore-result.log').open('x') as stream:run(['docker','run','--rm','--pull=never','-i','--network',network,'--memory','768m','--cpus','1','--read-only','--tmpfs','/tmp:uid=10001,gid=10001,mode=0700','--env-file',str(root/'restore.env'),'-v',str(root/'objects.tar')+':/backup/objects.tar:ro',image,'python','-'],input=RESTORE_CODE.encode(),stdout=stream,stderr=subprocess.STDOUT)
+    restore_code=RESTORE_CODE.replace("assert before=='20261030_0034'",'assert before=='+repr(expected_before)).replace("'20261105_0039'",repr(expected_after))
+    if preserve_existing_voices:
+        voice_count=int(subprocess.check_output(['docker','exec','polaris-production-postgres-1','psql','-U','polaris','-d','polaris','-Atc','select count(*) from video_cloned_voices;']).strip())
+        restore_code=restore_code.replace("assert connection.execute(text('SELECT count(*) FROM video_cloned_voices')).scalar()==0", "assert connection.execute(text('SELECT count(*) FROM video_cloned_voices')).scalar()=="+str(voice_count))
+    with (root/'restore-result.log').open('x') as stream:run(['docker','run','--rm','--pull=never','-i','--network',network,'--memory','1024m','--cpus','1','--read-only','--tmpfs','/tmp:uid=10001,gid=10001,mode=0700','--env-file',str(root/'restore.env'),'-v',str(root/'objects.tar')+':/backup/objects.tar:ro',image,'python','-'],input=restore_code.encode(),stdout=stream,stderr=subprocess.STDOUT)
     for role in ['api','detail-api','detail-worker']:
         assert inspect('polaris-production-'+role+'-1')['Id']==baseline[role]['Id']
-    manifest={'revision':revision,'method':'database snapshot then immutable object copy; isolated DB/object restore with live-asset checksum verification','schema_before':'20261030_0034','schema_after_rehearsal':'20261105_0039','restore_passed':True,'production_unchanged':True,'artifacts':{p.name:{'bytes':p.stat().st_size,'sha256':digest(p)} for p in [root/'postgres.dump',root/'objects.tar']}}
+    manifest={'revision':revision,'method':'database snapshot then immutable object copy; isolated DB/object restore with live-asset checksum verification','schema_before':expected_before,'schema_after_rehearsal':expected_after,'restore_passed':True,'production_unchanged':True,'artifacts':{p.name:{'bytes':p.stat().st_size,'sha256':digest(p)} for p in [root/'postgres.dump',root/'objects.tar']}}
     private(root/'manifest.json',json.dumps(manifest,indent=2))
     for name in [pg,mini]:
         assert inspect(name)['Id'] not in {v['Id'] for v in baseline.values()}

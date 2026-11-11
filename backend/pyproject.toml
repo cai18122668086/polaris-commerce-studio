@@ -53,6 +53,7 @@ editing-zh = [
 dev = [
   "jieba==0.42.1",
   "numpy==2.5.4",
+  "fonttools==4.68.0",
   "fakeredis[lua]>=2.40,<3",
   "mypy>=1.16,<2",
   "pytest>=8,<10",

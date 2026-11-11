@@ -113,6 +113,15 @@ from .video_editing_hypit import (
     compile_picture_clocks,
 )
 from .video_editing_hypit_chart import FLOW_CHART_DESIGN, compile_flow_chart
+from .video_editing_hypit_label_cards import (
+    LABEL_CARD_EVENTS,
+    LABEL_CARD_FONT,
+    LABEL_CARD_GROUP,
+    LABEL_CARD_PROFILE,
+    LABEL_CARD_TEMPLATE_ID,
+    LABEL_CARD_TEXT,
+    compile_label_cards,
+)
 from .video_editing_hypit_strips import (
     CARD_DETAILS,
     CARD_EVENTS,
@@ -1072,6 +1081,7 @@ def _entry_sound(
             NUMBERED_GROUP: "各项原生编号标签进入时给一次短提示，口播继续。",
             LIVE_STRIP_GROUP: "每道斜切标签开始出现时给一次短提示，口播继续。",
             PRESENTER_LABEL_GROUP: "每项人物标签开始出现时给一次短提示，口播继续。",
+            LABEL_CARD_GROUP: "三张原文字卡各自首次出现时播放原库提示音。",
             ROTATION_GROUP: "图卡首次聚焦时给一次短提示，口播继续。",
             STRIP_CARD_GROUP: "原生特写条首次可见时给一次短提示，口播继续。",
             **dict.fromkeys(
@@ -1658,6 +1668,71 @@ def _live_strip_entry(
             "config": config,
             "placeholders": [plate],
             **({"dependency_ids": [FLOW_FONT]} if flow else {"hypit_live_stage": True}),
+        },
+    ), anchors
+
+
+def _label_card_entry(
+    package: Path,
+    group: dict,
+    beat: SemanticBeat,
+    transcript: Transcript,
+    cards: list[dict],
+) -> tuple[NativeEpisodeEntry, dict[str, Any]]:
+    contract = input_contract(package, group)
+    assets = {
+        row["id"]: row
+        for row in cards
+        if row["kind"] == "original_video" and row["id"].startswith("source-")
+    }
+    try:
+        anchors = word_bindings(beat, transcript, contract, set(assets))
+        texts = {row["path"]: row["token_ids"] for row in anchors["text"]}
+        if (
+            beat.relation != "parallel"
+            or len(beat.relation_items) != len(LABEL_CARD_TEXT)
+            or set(texts) != set(LABEL_CARD_TEXT)
+            or any(
+                item.native_text_paths != [path]
+                or item.asset_ids
+                or item.native_media_paths
+                or item.first_token_id != texts[path][0]
+                or item.last_token_id != texts[path][-1]
+                for item, path in zip(beat.relation_items, LABEL_CARD_TEXT, strict=True)
+            )
+        ):
+            raise ValueError("Map all three original text tracks to spoken items")
+        anchors["media_clocks"] = [
+            compile_flow_plate(
+                anchors, assets, transcript, profile_id=LABEL_CARD_PROFILE
+            )
+        ]
+        compile_label_cards(package, group, anchors)
+    except (KeyError, ValueError) as error:
+        raise ApiError(
+            422,
+            "EDITING_TEMPLATE_LABEL_CARD_INPUTS_REQUIRED",
+            "原生文字卡需要同期原片和三个实录短词，各自的首词须留出入场间隔。",
+        ) from error
+    config = read_json(inside(package, group["input_template"]))
+    set_native_field(config, FLOW_PLATE, None)
+    return NativeEpisodeEntry(
+        carrier="text",
+        placement=NativePlacement(
+            layer="scene", rect=[0, 0, 1, 1], reason="保留原卡片轨迹和同期口播底板。"
+        ),
+        recipe={
+            "version": "tengli.native-recipe/1",
+            "release": MOTION_SHA256,
+            "group_id": LABEL_CARD_GROUP,
+            "template_sha256": contract["template_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "design_id": LABEL_CARD_TEMPLATE_ID,
+            "design_reason": "三条实录短词分别驱动原文字卡和原生移动时钟。",
+            "parameter_decisions": {"fonts": "沿用原俊雅字体。"},
+            "config": config,
+            "placeholders": [FLOW_PLATE],
+            "dependency_ids": [LABEL_CARD_FONT],
         },
     ), anchors
 
@@ -2861,6 +2936,11 @@ def _overlay_entry(
             package, group, beat, transcript, asset_cards or []
         )
         paths = STRIP_EVENTS
+    elif beat.group_id == LABEL_CARD_GROUP:
+        entry, anchors = _label_card_entry(
+            package, group, beat, transcript, asset_cards or []
+        )
+        paths = LABEL_CARD_EVENTS
     elif beat.group_id == JUDGMENT_GROUP:
         entry, anchors = _judgment_entry(
             package, group, beat, transcript, asset_cards or []
@@ -3023,6 +3103,7 @@ def build_overlay_recipes(
             NUMBERED_GROUP,
             LIVE_STRIP_GROUP,
             PRESENTER_LABEL_GROUP,
+            LABEL_CARD_GROUP,
             *YY_OPENING_ALL_GROUPS,
             *PRESENTER_MOTION_GROUPS,
             *AZL_GROUPS,

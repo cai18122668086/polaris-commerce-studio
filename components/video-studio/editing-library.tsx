@@ -28,7 +28,7 @@ type OriginalStartupAsset = {
   indexed_external_ids: string[];
 };
 type Detail = {
-  template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; original_rights?: string; local_dependency_state?: LocalDependencyState; component_use_state?: ComponentUseState }[];
+  template_dependencies: { id: string; kind: string; display_name: string; binding_scope: string; original_rights?: string; local_dependency_state?: LocalDependencyState; component_use_state?: ComponentUseState; episode_use_state?: ComponentUseState }[];
   runtime_evidence: { id: string; runtime_validation: string; recorded_at: string; native_branch?: string }[];
   runtime_evidence_rejected?: number;
   original_input_variants?: { id: string; template_sha256: string; has_encoded_sample: boolean;
@@ -63,6 +63,10 @@ const localDependencyLabel: Record<LocalDependencyState, string> = {
 const componentUseLabel: Record<ComponentUseState, string> = {
   reference_required: "组件验证待登记使用凭据",
   reference_recorded: "已登记组件验证使用凭据",
+};
+const episodeUseLabel: Record<ComponentUseState, string> = {
+  reference_required: "整片出片待登记使用凭据",
+  reference_recorded: "已登记整片出片使用凭据",
 };
 const startupUsageLabel: Record<OriginalStartupAsset["usage"], string> = {
   drawn: "本组画面需要",
@@ -201,8 +205,8 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
           {detail.parameter_contract.website_sidecar_scope === "component_only_until_chart_facts_are_bound" && (
             <p>经典入口已有原生组件样本。组合模板「同期口播与三项占比」使用已校对口播的总数和三个同单位数量。</p>
           )}
-          {detail.parameter_contract.website_sidecar_scope === "component_only_pending_original_font_review" && (
-            <p>三张原卡已接入实录词点和同期画面。当前限组件验证，原俊雅字节和使用凭据需分别核对。</p>
+          {detail.parameter_contract.website_sidecar_scope === "episode_requires_exact_font_and_recorded_use" && (
+            <p>三张原卡按实录词点入场。整片出片需核对原俊雅字体和对应的使用凭据。</p>
           )}
           {detail.parameter_contract.native_branches?.question && (
             <p>
@@ -237,7 +241,7 @@ export function EditingLibrary({ workspaceId, projectId, saved }: { workspaceId:
             </li>)}</ul>
           </section>}
           {!detail.original_input_variants?.length && (detail.template_dependencies.length ? <ul>{detail.template_dependencies.map(d => <li key={d.id}>
-            {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}{d.local_dependency_state && ` · ${localDependencyLabel[d.local_dependency_state]}`}{d.component_use_state && ` · ${componentUseLabel[d.component_use_state]}`}{d.original_rights === "noncommercial_marked_no_commercial_or_redistribution_claim" && " · 原件标注仅非商用，商用需核对授权"}
+            {kindLabel[d.kind] || d.kind}：{d.display_name} · {dependencyLabel[d.binding_scope] || "需绑定原指定依赖"}{d.local_dependency_state && ` · ${localDependencyLabel[d.local_dependency_state]}`}{d.component_use_state && ` · ${componentUseLabel[d.component_use_state]}`}{d.episode_use_state && ` · ${episodeUseLabel[d.episode_use_state]}`}{d.original_rights === "noncommercial_marked_no_commercial_or_redistribution_claim" && " · 原件标注仅非商用，商用需核对授权"}
           </li>)}</ul> : <p>暂未登记外部输入引用。</p>)}
           <p>已登记 {detail.runtime_evidence.length} 份具体运行记录，画面和听感未验收。</p>
           {!!detail.runtime_evidence_rejected && <p>本组有 {detail.runtime_evidence_rejected} 份运行回执无法核验，请核对原记录。</p>}

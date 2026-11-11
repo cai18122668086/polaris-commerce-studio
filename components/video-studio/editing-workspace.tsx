@@ -31,6 +31,7 @@ const errorLabel: Record<string, string> = {
   EDITING_UPLOAD_SCRIPT_CHANGED: "这条原片的参考确认稿无法核对，请重新选择确认稿并上传。",
   EDITING_HYPIT_INTERNAL_ONLY: "Hypit 原生出片仅在已配置的内部联调工作区开放。",
   EDITING_HYPIT_RUNTIME_UNAVAILABLE: "原 Hypit 运行环境未通过预检，请在环境恢复后重试。",
+  EDITING_LABEL_CARD_CAPTION_LANE_REQUIRED: "这段主字幕与原生文字卡的读区冲突。请调整该段动效或字幕排版。",
   EDITING_ORIGINAL_NATIVE_DEPENDENCY_REQUIRED: "所选动效的原库字体或模型无法核验，请在原库目录核对后重试。",
   EDITING_TASK_STORAGE_UNAVAILABLE: "剪辑服务暂时无法写入工作目录。请在存储恢复后重试此任务。",
   EDITING_PREVIEW_REPAIR_MASTER_CHANGED: "恢复代理时无法核验高清母版。请从原编排重新生成预览。",

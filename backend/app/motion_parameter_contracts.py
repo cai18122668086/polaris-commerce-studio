@@ -417,7 +417,7 @@ def input_contract(
             else {}
         ),
         **(
-            {"website_sidecar_scope": "component_only_pending_original_font_review"}
+            {"website_sidecar_scope": "episode_requires_exact_font_and_recorded_use"}
             if label_card_sidecar
             else {}
         ),

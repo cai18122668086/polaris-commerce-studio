@@ -26,7 +26,7 @@ from .video_editing_browser_boot import (
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP
 from .video_editing_hypit_label_cards import (
     LABEL_CARD_GROUP,
-    require_label_card_component_font,
+    require_label_card_font,
 )
 from .video_editing_native_audio_channels import install_native_stereo_composition
 from .video_editing_native_compat import install
@@ -67,18 +67,17 @@ def main() -> None:
     if args.command != "plan":
         native_input = read_json(input_file)
         shots = native_input["shots"] if args.kind == "episode" else [native_input]
-        if any(shot["group_id"] == LABEL_CARD_GROUP for shot in shots):
-            if args.kind != "group" or args.command not in ("check", "render-group"):
-                raise ValueError(
-                    "HY-A1 is limited to original-font component validation"
-                )
+        label_cards = [shot for shot in shots if shot["group_id"] == LABEL_CARD_GROUP]
+        if label_cards:
             verify_package(package)
-            require_label_card_component_font(
-                package,
-                native_input["config"],
-                root / "bindings.json",
-                args.native_bindings,
-            )
+            for shot in label_cards:
+                require_label_card_font(
+                    package,
+                    shot["config"],
+                    root / "bindings.json",
+                    args.native_bindings,
+                    scope="episode" if args.kind == "episode" else "component",
+                )
         question_cards = [
             shot for shot in shots if shot["group_id"] == QUESTION_CARD_GROUP
         ]

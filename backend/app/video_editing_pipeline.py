@@ -1173,6 +1173,14 @@ def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> 
                     command,
                     "--instance",
                     str(root),
+                    *(
+                        [
+                            "--native-bindings",
+                            str(settings.video_editing_native_bindings_file.resolve()),
+                        ]
+                        if settings.video_editing_native_bindings_file
+                        else []
+                    ),
                 ],
                 root,
                 settings,

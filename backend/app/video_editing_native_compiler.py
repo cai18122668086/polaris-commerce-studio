@@ -78,7 +78,11 @@ from .video_editing_hypit import (
 )
 from .video_editing_hypit_chart import FLOW_CHART_DESIGN, compile_flow_chart
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
-from .video_editing_hypit_label_cards import LABEL_CARD_GROUP, LABEL_CARD_PROFILE
+from .video_editing_hypit_label_cards import (
+    LABEL_CARD_FONT,
+    LABEL_CARD_GROUP,
+    LABEL_CARD_PROFILE,
+)
 from .video_editing_hypit_strips import (
     FLOW_GROUP,
     HYPIT_SIDECAR_GROUPS,
@@ -440,8 +444,6 @@ def compile_native_job(
         and config.get("profile") == PICTURE_PROFILE
     )
     label_card_variant = group["id"] == LABEL_CARD_GROUP
-    if label_card_variant and not component_validation:
-        raise ValueError("HY-A1 is limited to original-font component validation")
     strip_variant = group["id"] in HYPIT_SIDECAR_GROUPS
     live_stage = recipe.get("hypit_live_stage", False)
     if type(live_stage) is not bool or (
@@ -771,6 +773,8 @@ def compile_native_job(
     dependency_ids = recipe.get("dependency_ids", [])
     registered = local_dependencies(native_bindings_file) if dependency_ids else {}
     dependencies = recipe_dependency_paths(recipe, registered)
+    if label_card_variant and LABEL_CARD_FONT not in dependencies:
+        raise ValueError("Bind the exact original HY-A1 font")
     if group["id"] == SLANT_GROUP and FOREGROUND_MATTE not in dependencies:
         raise ValueError("Bind the original slant card presenter matte")
     if live_alpha and FOREGROUND_MATTE not in dependencies:
@@ -790,6 +794,7 @@ def compile_native_job(
             rid,
             group["id"],
             native_bindings_file,
+            component_validation=component_validation,
         )
     for row in native["media"]:
         asset = asset_files[row["asset_id"]]

@@ -26,7 +26,11 @@ from .motion_library import (
     verify_package,
 )
 from .motion_library_validation import motion_evidence_directory
-from .motion_local_dependencies import dependency_state, local_dependencies
+from .motion_local_dependencies import (
+    dependency_state,
+    font_use_state,
+    local_dependencies,
+)
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
 from .video_editing_azl_panels import azl_blockers, azl_panel_windows
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP, FRUIT_LIST_TEMPLATE_ID
@@ -50,6 +54,7 @@ from .video_editing_first_groups import FIRST_MOTION_GROUPS, SCOPED_POOL_POLICY
 from .video_editing_handoff_scenes import handoff_blockers
 from .video_editing_hypit import PICTURE_GROUP, hypit_tools
 from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID, confirmed_chart_words
+from .video_editing_hypit_label_cards import LABEL_CARD_FONT, LABEL_CARD_GROUP
 from .video_editing_hypit_strips import (
     FLOW_FONT,
     FLOW_GROUP,
@@ -105,7 +110,8 @@ def hypit_template_blockers(
         slot["group_id"]
         for slot in (template or {}).get("slots", [])
         if slot["group_id"]
-        in LIVE_STAGE_GROUPS | {SLANT_GROUP, PICTURE_GROUP, FLOW_GROUP}
+        in LIVE_STAGE_GROUPS
+        | {SLANT_GROUP, PICTURE_GROUP, FLOW_GROUP, LABEL_CARD_GROUP}
     }
     if not groups:
         return {}
@@ -117,14 +123,30 @@ def hypit_template_blockers(
     except (OSError, ValueError):
         blockers.append("original-hypit-internal-runtime-unavailable")
     result = {group: list(blockers) for group in sorted(groups)} if blockers else {}
-    if FLOW_GROUP in groups:
+    if groups & {FLOW_GROUP, LABEL_CARD_GROUP}:
         resources = external_dependencies(settings.video_editing_library_dir)
         bindings = local_dependencies(settings.video_editing_native_bindings_file)
-        if (
-            dependency_state(resources[FLOW_FONT], bindings.get(FLOW_FONT))
-            != "verified"
+        for group, rid in (
+            (FLOW_GROUP, FLOW_FONT),
+            (LABEL_CARD_GROUP, LABEL_CARD_FONT),
         ):
-            result.setdefault(FLOW_GROUP, []).append(FLOW_FONT)
+            if (
+                group in groups
+                and dependency_state(resources[rid], bindings.get(rid)) != "verified"
+            ):
+                result.setdefault(group, []).append(rid)
+        if (
+            LABEL_CARD_GROUP in groups
+            and font_use_state(
+                resources[LABEL_CARD_FONT],
+                settings.video_editing_native_bindings_file,
+                "episode",
+            )
+            != "reference_recorded"
+        ):
+            result.setdefault(LABEL_CARD_GROUP, []).append(
+                "original-font-episode-use-reference-required"
+            )
     return result
 
 

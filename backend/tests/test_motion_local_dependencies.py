@@ -6,13 +6,14 @@ from app.motion_library import MOTION_SHA256, atomic_json, read_json, sha256
 from app.motion_local_dependencies import (
     NONCOMMERCIAL_FONT,
     component_use_state,
+    font_use_state,
     intake_local_dependencies,
     local_dependencies,
     resolve_local_binding,
 )
 from app.video_editing_hypit_label_cards import (
     LABEL_CARD_FONT,
-    require_label_card_component_font,
+    require_label_card_font,
 )
 
 
@@ -112,7 +113,7 @@ def test_restricted_font_bytes_and_component_reference_are_separate(
     assert recorded["resources"][0]["candidate"] == "verified"
     assert recorded["resources"][0]["component_use_state"] == "reference_required"
     with pytest.raises(ValueError, match="component use reference"):
-        require_label_card_component_font(package, config, task, registry)
+        require_label_card_font(package, config, task, registry)
 
     reference = "private-component-approval-1"
     supplied = intake_local_dependencies(
@@ -127,9 +128,24 @@ def test_restricted_font_bytes_and_component_reference_are_separate(
     assert supplied["resources"][0]["component_use_state"] == "reference_recorded"
     assert reference not in str(supplied)
     assert local_dependencies(registry) == paths
-    require_label_card_component_font(package, config, task, registry)
+    require_label_card_font(package, config, task, registry)
+    assert font_use_state(identity, registry, "episode") == "reference_required"
+    with pytest.raises(ValueError, match="episode use reference"):
+        require_label_card_font(package, config, task, registry, scope="episode")
+    episode_reference = "private-episode-approval-fixture"
+    granted = intake_local_dependencies(
+        package,
+        registry,
+        candidates,
+        episode_references={LABEL_CARD_FONT: episode_reference},
+        **options,
+    )
+    assert granted["resources"][0]["episode_use_state"] == "reference_recorded"
+    assert episode_reference not in str(granted)
+    assert component_use_state(identity, registry) == "reference_recorded"
+    require_label_card_font(package, config, task, registry, scope="episode")
     with pytest.raises(ValueError, match="original Junya font slot"):
-        require_label_card_component_font(package, {"fonts": {}}, task, registry)
+        require_label_card_font(package, {"fonts": {}}, task, registry)
     assert not intake_local_dependencies(package, registry, candidates, **options)[
         "manifest_updated"
     ]
@@ -140,12 +156,12 @@ def test_restricted_font_bytes_and_component_reference_are_separate(
     atomic_json(registry, document)
     assert component_use_state(identity, registry) == "reference_required"
     with pytest.raises(ValueError, match="component use reference"):
-        require_label_card_component_font(package, config, task, registry)
+        require_label_card_font(package, config, task, registry)
     receipt["sha256"] = identity["sha256"]
     atomic_json(registry, document)
     font.write_bytes(b"different font contents")
     with pytest.raises(ValueError, match="exact original font bytes"):
-        require_label_card_component_font(package, config, task, registry)
+        require_label_card_font(package, config, task, registry)
 
 
 def test_portable_intake_relocates_exact_bytes_and_keeps_legacy_entries(

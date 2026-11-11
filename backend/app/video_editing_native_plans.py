@@ -25,6 +25,7 @@ from .video_editing_hypit import (
     requires_hypit,
 )
 from .video_editing_hypit_chart import FLOW_CHART_DESIGN, FLOW_CHART_TEMPLATE_ID
+from .video_editing_hypit_label_cards import LABEL_CARD_GROUP
 from .video_editing_hypit_strips import FLOW_GROUP
 from .video_editing_image_edits import (
     apply_image_edits,
@@ -754,7 +755,8 @@ def admit_render_plan(
         beat for beat in effective_semantic["beats"] if beat["id"] not in excluded
     ]
     if options.source_subtitles != "none" and any(
-        beat["group_id"] in CLEAN_BROWSER_SCENE_GROUPS for beat in active_beats
+        beat["group_id"] in (*CLEAN_BROWSER_SCENE_GROUPS, LABEL_CARD_GROUP)
+        for beat in active_beats
     ):
         raise ApiError(
             422,

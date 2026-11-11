@@ -14,6 +14,7 @@ from .motion_local_dependencies import (
     DependencyState,
     component_use_state,
     dependency_state,
+    font_use_state,
 )
 from .video_editing_browser_clocks import CARD_GROUP
 from .video_editing_contracts import LibraryChoiceSnapshot
@@ -207,9 +208,12 @@ def template_dependencies(
         lambda rid: dependency_state(external[rid], (bindings or {}).get(rid)),
     )
     for row in rows:
-        usage = component_use_state(external.get(row["id"], {}), manifest)
+        identity = external.get(row["id"], {})
+        usage = component_use_state(identity, manifest)
         if usage is not None:
             row["component_use_state"] = usage
+        if group["id"] == LABEL_CARD_GROUP and row["id"] == LABEL_CARD_FONT:
+            row["episode_use_state"] = font_use_state(identity, manifest, "episode")
     return rows
 
 

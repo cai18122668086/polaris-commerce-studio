@@ -47,6 +47,7 @@ from .video_editing_first_groups import (
 )
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID
 from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID
+from .video_editing_hypit_label_cards import LABEL_CARD_TEMPLATE_ID
 from .video_editing_hypit_strips import SLANT_INSET_PURPOSE
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_content import (
@@ -133,6 +134,7 @@ def catalog_index(
     *,
     question_card: bool = False,
     question_card_b: bool = False,
+    label_cards: bool = False,
     live_package: bool = False,
     line_scene: bool = False,
     unified_scene: bool = False,
@@ -164,7 +166,7 @@ def catalog_index(
         parameters = input_contract(
             package,
             group,
-            hypit_label_cards=False,
+            hypit_label_cards=label_cards,
             original_input_a=question_variant and not question_card_b,
             original_input_b=question_variant and question_card_b,
             live_package_presenter=live_package and group["id"] == PACKAGE_GROUP,
@@ -343,6 +345,7 @@ def build_request(
         question_card_b=bool(
             template and template["id"] == QUESTION_CARD_B_TEMPLATE_ID
         ),
+        label_cards=bool(template and template["id"] == LABEL_CARD_TEMPLATE_ID),
         live_package=live_package,
         line_scene=line_scene,
         unified_scene=bool(template and template["id"] in UNIFIED_TEMPLATES),

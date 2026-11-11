@@ -200,6 +200,7 @@ def test_selected_overlay_template_is_frozen_in_preparation(
         "numbered-pictures-v1",
         "live-strip-story-v1",
         "hypit-presenter-labels-v1",
+        "hypit-original-label-cards-v1",
         "package-specs-v1",
         "line-story-v1",
         "presenter-openings-v1",

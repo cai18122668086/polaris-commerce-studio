@@ -10,8 +10,9 @@ from .motion_browser_originals import (
 )
 from .motion_library import read_json
 from .motion_local_dependencies import (
-    component_use_state,
+    FontUseScope,
     dependency_state,
+    font_use_state,
     local_dependencies,
 )
 from .video_editing_browser_boot import (
@@ -21,7 +22,7 @@ from .video_editing_browser_boot import (
     require_browser_boot_fonts,
 )
 from .video_editing_browser_rotation import STRIP_CARD_GROUP, TEXTURE_WORD_GROUP
-from .video_editing_hypit_label_cards import LABEL_CARD_GROUP
+from .video_editing_hypit_label_cards import LABEL_CARD_FONT, LABEL_CARD_GROUP
 
 ORIGINAL_DEPENDENCY_REQUIRED = "EDITING_ORIGINAL_NATIVE_DEPENDENCY_REQUIRED"
 _DRAWN_GROUPS = frozenset((STRIP_CARD_GROUP, TEXTURE_WORD_GROUP))
@@ -57,19 +58,26 @@ def recipe_dependency_paths(recipe: dict, registered: dict[str, str]) -> dict[st
 
 
 def verified_recipe_dependency(
-    identity: dict, path: str, resource_id: str, group_id: str, manifest: Path | None
+    identity: dict,
+    path: str,
+    resource_id: str,
+    group_id: str,
+    manifest: Path | None,
+    *,
+    component_validation: bool = False,
 ) -> str:
     source = str(Path(path).resolve())
     if dependency_state(identity, source) != "verified":
         raise NativeDependencyError(
             resource_id, "Original font/model dependency bytes do not match"
         )
-    usage = component_use_state(identity, manifest)
+    scope: FontUseScope = "component" if component_validation else "episode"
+    usage = font_use_state(identity, manifest, scope)
     if usage is not None and (
         group_id != LABEL_CARD_GROUP or usage != "reference_recorded"
     ):
         raise NativeDependencyError(
-            resource_id, "Restricted original font needs a component use reference"
+            resource_id, f"Restricted original font needs an {scope} use reference"
         )
     return source
 
@@ -155,6 +163,8 @@ class NativeDependencyPreflight:
             )
         except (OSError, ValueError, KeyError, TypeError):
             return ORIGINAL_DEPENDENCY_REQUIRED, f"{group_id} 的原库依赖记录无法核验。"
+        if group_id == LABEL_CARD_GROUP and LABEL_CARD_FONT not in resolved:
+            return ORIGINAL_DEPENDENCY_REQUIRED, f"{group_id} 需要绑定原俊雅字体。"
         if group_id in BROWSER_BOOT_FONT_GROUPS:
             missing = self._missing_boot(group_id, resolved)
             if missing:

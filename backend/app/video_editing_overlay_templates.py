@@ -43,6 +43,11 @@ from .video_editing_handoff_scenes import HANDOFF_GROUPS, HANDOFF_TEMPLATE_ID
 from .video_editing_hypit import HY_PICTURE_TEMPLATE_ID, PICTURE_GROUP
 from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID
 from .video_editing_hypit_foreground import FOREGROUND_MATTE
+from .video_editing_hypit_label_cards import (
+    LABEL_CARD_FONT,
+    LABEL_CARD_GROUP,
+    LABEL_CARD_TEMPLATE_ID,
+)
 from .video_editing_hypit_strips import (
     DETAIL_CARDS_TEMPLATE_ID,
     FLOW_GROUP,
@@ -198,6 +203,7 @@ AUTOMATIC_TEMPLATE_DEPENDENCIES = {
     SPLIT_HORIZONTAL: (SPLIT_TITLE_FONT, ROTATION_MATTE),
     QUESTION_GROUP: (QUESTION_FONT,),
     QUESTION_CARD_GROUP: QUESTION_CARD_A_FONTS,
+    LABEL_CARD_GROUP: (LABEL_CARD_FONT,),
     WHY_GROUP: (WHY_FONT,),
     **dict.fromkeys(ALPHA_GROUPS, (FOREGROUND_MATTE,)),
     JUDGMENT_GROUP: (JUDGMENT_BRUSH_FONT,),
@@ -1069,6 +1075,22 @@ _TEMPLATES[SUBTITLE_FOREGROUND_TEMPLATE_ID] = {
     ],
 }
 
+_TEMPLATES[LABEL_CARD_TEMPLATE_ID] = {
+    "id": LABEL_CARD_TEMPLATE_ID,
+    "name": "三张原生文字卡与口播重点",
+    "slots": [
+        {
+            "group_id": LABEL_CARD_GROUP,
+            "purpose": "同期口播画面上依次出现三个原生文字卡。",
+            "layer": "scene",
+            "binding": "用于连续说出的三个并列短项。每项取一至四个汉字，"
+            "按顺序分别绑定标签和首词入场。第一项首词即本镜头首词，"
+            "为原卡片移动留出间隔及结束时间，底板用同期原片。",
+        },
+        *_TEMPLATES[SUBTITLE_STORY_TEMPLATE_ID]["slots"],
+    ],
+}
+
 _TEMPLATES[PICTURE_TEMPLATE_ID] = {
     "id": PICTURE_TEMPLATE_ID,
     "name": "三图卡与口播重点",
@@ -1204,6 +1226,7 @@ def overlay_templates() -> list[dict]:
             NUMBERED_TEMPLATE_ID,
             LIVE_STRIP_TEMPLATE_ID,
             PRESENTER_LABEL_TEMPLATE_ID,
+            LABEL_CARD_TEMPLATE_ID,
             PACKAGE_TEMPLATE_ID,
             LINE_TEMPLATE_ID,
             PRESENTER_TEMPLATE_ID,

@@ -6,14 +6,16 @@ from pathlib import Path
 
 from .motion_library import inside, read_json, sha256
 from .motion_local_dependencies import (
-    component_use_state,
+    FontUseScope,
     dependency_state,
+    font_use_state,
     local_dependencies,
 )
 from .video_editing_hypit import NATIVE_FILES
 
 LABEL_CARD_GROUP = "HY-A1"
 LABEL_CARD_PROFILE = "hypit-original-label-cards/1"
+LABEL_CARD_TEMPLATE_ID = "hypit-original-label-cards-v1"
 LABEL_CARD_FONT = "font-6dbc774369f7c6ee"
 LABEL_CARD_TEXT = tuple(f"/hypit_label_cards/{i}/text" for i in range(3))
 LABEL_CARD_EVENTS = tuple(f"/hypit_label_cards/{i}/entry_frame" for i in range(3))
@@ -37,8 +39,13 @@ _COMPONENTS = {
 }
 
 
-def require_label_card_component_font(
-    package: Path, config: dict, task_bindings: Path, registry: Path | None
+def require_label_card_font(
+    package: Path,
+    config: dict,
+    task_bindings: Path,
+    registry: Path | None,
+    *,
+    scope: FontUseScope = "component",
 ) -> None:
     if config.get("fonts") != {"junya": "input://" + LABEL_CARD_FONT}:
         raise ValueError("HY-A1 needs the original Junya font slot")
@@ -54,8 +61,14 @@ def require_label_card_component_font(
         != "verified"
     ):
         raise ValueError("HY-A1 needs the exact original font bytes")
-    if component_use_state(identity, registry) != "reference_recorded":
-        raise ValueError("HY-A1 needs an original-font component use reference")
+    if font_use_state(identity, registry, scope) != "reference_recorded":
+        raise ValueError(f"HY-A1 needs an original-font {scope} use reference")
+
+
+def require_label_card_component_font(
+    package: Path, config: dict, task_bindings: Path, registry: Path | None
+) -> None:
+    require_label_card_font(package, config, task_bindings, registry)
 
 
 def _card_tag(node: str) -> re.Pattern[str]:

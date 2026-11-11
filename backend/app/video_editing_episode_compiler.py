@@ -64,14 +64,15 @@ from .video_editing_hypit import (
     requires_hypit,
 )
 from .video_editing_hypit_chart import FLOW_CHART_CAPTION_BASELINE
+from .video_editing_hypit_label_cards import LABEL_CARD_GROUP
 from .video_editing_hypit_strips import (
     FLOW_GROUP,
+    HYPIT_SIDECAR_GROUPS,
     LIVE_STRIP_GROUP,
     PRESENTER_LABEL_GROUP,
     PRICE_CARD_GROUP,
     SLANT_CAPTION_BASELINE,
     SLANT_GROUP,
-    STAGGER_GROUPS,
     STRIP_SIDECAR,
     stagger_audio_frame,
     stagger_events,
@@ -346,7 +347,8 @@ def compile_episode(
         )
     excluded_beats = set(edits.source_only_beat_ids) if edits else set()
     if options["source_subtitles"] != "none" and any(
-        beat.group_id in CLEAN_BROWSER_SCENE_GROUPS and beat.id not in excluded_beats
+        beat.group_id in (*CLEAN_BROWSER_SCENE_GROUPS, LABEL_CARD_GROUP)
+        and beat.id not in excluded_beats
         for beat in semantic.beats
     ):
         raise EditingFailure("EDITING_SOURCE_SUBTITLES_REVIEW_REQUIRED")
@@ -450,6 +452,7 @@ def compile_episode(
     issues: list[dict[str, Any]] = []
     compiled: list[dict[str, Any]] = []
     sound_events: dict[tuple[str, str], tuple[int, dict]] = {}
+    label_card_windows: list[tuple[float, float, dict]] = []
     applied_edits = []
     prior_end = 0
     for index, beat in enumerate(semantic.beats):
@@ -492,6 +495,21 @@ def compile_episode(
                     "beat_id": beat.id,
                     "group_id": beat.group_id,
                     "code": "RELATION_MAPPING_REQUIRED",
+                }
+            )
+            continue
+        if (
+            entry
+            and beat.group_id == LABEL_CARD_GROUP
+            and (
+                entry.placement.layer != "scene" or entry.placement.rect != [0, 0, 1, 1]
+            )
+        ):
+            issues.append(
+                {
+                    "beat_id": beat.id,
+                    "group_id": beat.group_id,
+                    "code": "ORIGINAL_LABEL_CARD_CANVAS_REQUIRED",
                 }
             )
             continue
@@ -629,7 +647,7 @@ def compile_episode(
                 part_bindings = read_json(directory / "bindings.json")
                 hypit_entries = {}
                 stagger_frames = None
-                if beat.group_id in STAGGER_GROUPS:
+                if beat.group_id in HYPIT_SIDECAR_GROUPS:
                     stem = f"{len(episode['shots']):03}-{beat.group_id}"
                     part = directory / STRIP_SIDECAR
                     if (
@@ -699,6 +717,14 @@ def compile_episode(
                 if beat.id in backdrop_beats:
                     backdrop_shots.append(shot_indices[-1])
                 picture_end = end
+                if beat.group_id == LABEL_CARD_GROUP:
+                    assert stagger_frames is not None
+                    picture_end = projected_scene_end(
+                        start, end, stagger_frames, episode["output"]["fps"]
+                    )
+                    label_card_windows.append(
+                        (start, picture_end, strip["caption_lane"])
+                    )
                 if (
                     authoring.overlay_template_id in UNIFIED_TEMPLATES
                     and beat.group_id in UNIFIED_SCENE_GROUPS
@@ -965,8 +991,12 @@ def compile_episode(
             "主字幕放在原生镜头的底部读区。",
         ),
     }.get(authoring.overlay_template_id or "")
-    if caption_lane:
-        caption_groups, baseline, lane_reason = caption_lane
+    if caption_lane or label_card_windows:
+        caption_groups, baseline, lane_reason = caption_lane or (
+            (),
+            0,
+            "主字幕位于原生文字卡的下方。",
+        )
         unified = authoring.overlay_template_id in UNIFIED_TEMPLATES
         unified_baselines = {
             UNIFIED_WINDOW_GROUP: UNIFIED_WINDOW_CAPTION_BASELINE,
@@ -995,6 +1025,9 @@ def compile_episode(
             for shot in episode["shots"]
             if shot["group_id"] in caption_groups
         ]
+        effect_windows.extend(
+            (start, end, lane["baseline_y"]) for start, end, lane in label_card_windows
+        )
         if effect_windows:
             if any(shot["group_id"] == FLOW_GROUP for shot in episode["shots"]):
                 safe = episode["layout_policy"]["subtitle_safe_rect"]
@@ -1016,11 +1049,31 @@ def compile_episode(
                 if not caption_baselines:
                     continue
                 y = max(caption_baselines)
+                height = episode["output"]["height"]
+                baseline_y = round(height * y / 1280)
+                for start, end, lane in label_card_windows:
+                    if (
+                        caption["start_seconds"] < end
+                        and start < caption["end_seconds"]
+                    ):
+                        lines = caption["text"].count("\n") + 1
+                        top = (
+                            baseline_y
+                            - lines * caption_role["size_px"]
+                            - (
+                                caption_role.get("outline_px", 2.2 * height / 1280)
+                                + caption_role.get("shadow_px", 1)
+                            )
+                        )
+                        if top < height * lane["min_ink_y"] / lane["reference_height"]:
+                            raise EditingFailure(
+                                "EDITING_LABEL_CARD_CAPTION_LANE_REQUIRED"
+                            )
                 overrides.append(
                     {
                         "start_seconds": caption["start_seconds"],
                         "end_seconds": caption["end_seconds"],
-                        "baseline_y_px": round(episode["output"]["height"] * y / 1280),
+                        "baseline_y_px": baseline_y,
                         "reason": "主字幕置于饼图和流式标签上方。"
                         if y == FLOW_CHART_CAPTION_BASELINE
                         else "主字幕进入人物窗下缘，避开原生标签和结论。"

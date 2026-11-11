@@ -28,6 +28,13 @@ def main() -> None:
     )
     parser.add_argument("--apply", action="store_true")
     parser.add_argument(
+        "--episode-use-reference",
+        nargs=2,
+        metavar=("RESOURCE_ID", "REFERENCE"),
+        action="append",
+        default=[],
+    )
+    parser.add_argument(
         "--portable",
         action="store_true",
         help="Store paths relative to the bindings directory",
@@ -37,8 +44,11 @@ def main() -> None:
     if len(candidates) != len(args.candidate):
         parser.error("Supply each original resource only once")
     references = dict(args.component_use_reference)
-    if len(references) != len(args.component_use_reference):
-        parser.error("Supply each component use reference only once")
+    episode_references = dict(args.episode_use_reference)
+    if len(references) != len(args.component_use_reference) or len(
+        episode_references
+    ) != len(args.episode_use_reference):
+        parser.error("Supply each use reference once per scope")
     try:
         report = intake_local_dependencies(
             args.package,
@@ -46,6 +56,7 @@ def main() -> None:
             candidates,
             origin=args.provenance,
             component_references=references,
+            episode_references=episode_references,
             apply=args.apply,
             portable=args.portable,
         )

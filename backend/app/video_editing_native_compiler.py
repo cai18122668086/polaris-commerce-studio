@@ -19,11 +19,7 @@ from .motion_browser_originals import (
     compile_browser_originals,
 )
 from .motion_library import MOTION_SHA256, atomic_json, inside, read_json, sha256
-from .motion_local_dependencies import (
-    component_use_state,
-    dependency_state,
-    local_dependencies,
-)
+from .motion_local_dependencies import local_dependencies
 from .motion_parameter_contracts import (
     SHIFTED_GEOMETRY_EVENTS,
     SILHOUETTE_GROUPS,
@@ -134,6 +130,10 @@ from .video_editing_native_content import (
     why_template,
     why_word_bindings,
     year_glyphs,
+)
+from .video_editing_native_dependencies import (
+    recipe_dependency_paths,
+    verified_recipe_dependency,
 )
 from .video_editing_paper_typewriter import (
     PAPER_GROUP,
@@ -768,19 +768,9 @@ def compile_native_job(
         r["id"]: r
         for r in read_json(package / "catalog/external-resources.json")["resources"]
     }
-    direct = recipe.get("dependency_bindings", {})
     dependency_ids = recipe.get("dependency_ids", [])
-    if (
-        not isinstance(dependency_ids, list)
-        or any(not isinstance(rid, str) for rid in dependency_ids)
-        or len(set(dependency_ids)) != len(dependency_ids)
-        or set(dependency_ids) & set(direct)
-    ):
-        raise ValueError("Choose a single explicit binding per original dependency")
     registered = local_dependencies(native_bindings_file) if dependency_ids else {}
-    if set(dependency_ids) - set(registered):
-        raise ValueError("Selected original dependency is not registered on this host")
-    dependencies = {**direct, **{rid: registered[rid] for rid in dependency_ids}}
+    dependencies = recipe_dependency_paths(recipe, registered)
     if group["id"] == SLANT_GROUP and FOREGROUND_MATTE not in dependencies:
         raise ValueError("Bind the original slant card presenter matte")
     if live_alpha and FOREGROUND_MATTE not in dependencies:
@@ -794,20 +784,13 @@ def compile_native_job(
     if why_props and WHY_FONT not in dependencies:
         raise ValueError("Bind the original W-R17 Arial dependency")
     for rid, declared_path in dependencies.items():
-        identity = dependency_rows.get(rid, {})
-        source = Path(declared_path).resolve()
-        if dependency_state(identity, str(source)) != "verified":
-            raise ValueError(
-                "Original font/model dependency bytes do not match: " + rid
-            )
-        usage = component_use_state(identity, native_bindings_file)
-        if usage is not None and (
-            not label_card_variant or usage != "reference_recorded"
-        ):
-            raise ValueError(
-                "Restricted original font needs a component use reference: " + rid
-            )
-        resources[rid] = str(source)
+        resources[rid] = verified_recipe_dependency(
+            dependency_rows.get(rid, {}),
+            declared_path,
+            rid,
+            group["id"],
+            native_bindings_file,
+        )
     for row in native["media"]:
         asset = asset_files[row["asset_id"]]
         source = Path(asset["path"]).resolve()

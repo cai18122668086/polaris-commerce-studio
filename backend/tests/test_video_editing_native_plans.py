@@ -396,6 +396,97 @@ def task_owner(session, task_id):
     return session.get(EditingTaskRecord, task_id).owner_user_id
 
 
+@pytest.mark.parametrize("registered", [False, True])
+def test_saved_plan_rechecks_exact_dependencies_and_allows_explicit_source_only(
+    video, tmp_path, monkeypatch, registered
+):
+    client, _, ws, settings, source, task, semantic, recipe = saved_plan(
+        video, tmp_path, monkeypatch
+    )
+    settings.video_editing_native_plan_enabled = True
+    font_id = "font-frozen-test"
+    original = tmp_path / "original.ttf"
+    original.write_bytes(b"original")
+    atomic_json(
+        settings.video_editing_library_dir / "catalog/external-resources.json",
+        {
+            "resources": [
+                {
+                    "id": font_id,
+                    "kind": "font",
+                    "bytes": original.stat().st_size,
+                    "sha256": sha256(original),
+                }
+            ]
+        },
+    )
+    dependency_recipe = {"dependency_bindings": {font_id: str(original)}}
+    if registered:
+        manifest = tmp_path / "bindings.json"
+        atomic_json(manifest, {"resources": {font_id: str(original)}})
+        settings.video_editing_native_bindings_file = manifest
+        dependency_recipe = {"dependency_ids": [font_id]}
+    beat_id = semantic.beats[0].id
+    with client.app.state.session_factory() as session:
+        row = register_operator_plan(
+            session,
+            settings,
+            ws,
+            task_owner(session, task["id"]),
+            task["id"],
+            str(uuid4()),
+            semantic,
+            recipe,
+        )
+        plan_id, project_id = row.id, row.project_id
+        recipes = row.recipes
+        previous = recipes["entries"][beat_id]
+        entry = {**previous, "recipe": {**previous["recipe"], **dependency_recipe}}
+        row.recipes = {**recipes, "entries": {**recipes["entries"], beat_id: entry}}
+        session.commit()
+
+    listing = base(ws) + f"/projects/{project_id}/editing-native-plans"
+    url = base(ws) + "/editing-tasks"
+    body = {
+        "request_id": str(uuid4()),
+        "source_id": source,
+        "options": {
+            "mode": "native_plan",
+            "native_plan_id": plan_id,
+            "source_subtitles": "none",
+        },
+    }
+    assert "dependency_blocker" not in client.get(listing).json()[0]["beats"][0]
+    original.write_bytes(b"modified")
+    view = client.get(listing).raise_for_status()
+    assert str(tmp_path) not in view.text
+    assert font_id in view.json()[0]["beats"][0]["dependency_blocker"]
+    rejected = client.post(url, json=body)
+    assert rejected.status_code == 503, rejected.text
+    assert (
+        rejected.json()["error"]["code"]
+        == "EDITING_ORIGINAL_NATIVE_DEPENDENCY_REQUIRED"
+    )
+    assert (
+        client.post(
+            url,
+            json={
+                **body,
+                "options": {
+                    **body["options"],
+                    "native_edits": {"source_only_beat_ids": [beat_id]},
+                },
+            },
+        ).status_code
+        == 200
+    )
+    original.write_bytes(b"original")
+    assert "dependency_blocker" not in client.get(listing).json()[0]["beats"][0]
+    assert (
+        client.post(url, json={**body, "request_id": str(uuid4())}).status_code == 200
+    )
+
+
 def test_continuous_combinations_count_types_allow_repetition_and_reject_scene_layers():
     from app.video_editing_overlay_templates import MIN_OVERLAY_TYPES, overlay_template
     from app.video_editing_render_edits import continuous_overlay_groups

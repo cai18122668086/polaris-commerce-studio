@@ -21,6 +21,7 @@ from .video_editing_episode_compiler import EpisodeRecipeBundle
 from .video_editing_highlights import highlight_targets
 from .video_editing_hypit import hypit_runtime_blocker, requires_hypit
 from .video_editing_image_edits import image_edit_targets
+from .video_editing_native_dependencies import NativeDependencyPreflight
 from .video_editing_native_plans import (
     native_edit_transcript,
     plan_response,
@@ -65,7 +66,10 @@ def list_native_plans(
         if any(requires_hypit(row.semantic) for row in rows)
         else None
     )
-    return [plan_response(row, settings, groups, blocker) for row in rows]
+    dependencies = NativeDependencyPreflight(
+        settings.video_editing_library_dir, settings.video_editing_native_bindings_file
+    )
+    return [plan_response(row, settings, groups, blocker, dependencies) for row in rows]
 
 
 @router.get(

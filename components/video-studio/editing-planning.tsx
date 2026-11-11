@@ -29,6 +29,9 @@ const autoPreviewErrors: Record<string, string> = {
   EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已变化，代理未提交。已保存本次候选。",
   EDITING_PLANNING_PROVENANCE_CHANGED: "无法核对已保存的规划来源，代理未提交。",
   EDITING_PLANNING_RULES_CHANGED: "现行词点规则改变了候选，可重核已保存的响应后再生成代理。",
+  EDITING_ORIGINAL_NATIVE_DEPENDENCY_REQUIRED: "候选使用的原库字体或模型无法核验，代理未提交。请打开候选查看对应段落。",
+  EDITING_ORIGINAL_BROWSER_ASSETS_REQUIRED: "候选使用的原库底板或纹理无法核验，代理未提交。请打开候选查看对应段落。",
+  EDITING_ORIGINAL_BROWSER_FONTS_REQUIRED: "候选使用的原库启动字体无法核验，代理未提交。请打开候选查看对应段落。",
 };
 const labels: Record<string, string> = { queued: "等待处理", reading_inputs: "核对原片与实际转录", building_request: "准备全库规划请求", planning: "理解重点与关系", storing: "保存候选", prepared: "请求已准备 · 未调用模型", completed: "规划候选已返回 · 待核对", failed: "规划未完成", cancelled: "已取消" };
 const errors: Record<string, string> = {

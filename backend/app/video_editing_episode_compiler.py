@@ -81,6 +81,10 @@ from .video_editing_judgment import JUDGMENT_GROUP
 from .video_editing_line_branch import LINE_GROUP
 from .video_editing_native_compiler import compile_native_job
 from .video_editing_native_content import PACKAGE_GROUP, ROLE_CHAIN_GROUP
+from .video_editing_native_dependencies import (
+    ORIGINAL_DEPENDENCY_REQUIRED,
+    NativeDependencyError,
+)
 from .video_editing_native_layout import (
     BACKDROP_GROUP,
     LAYERED_SUBTITLE_ROLE_GROUPS,
@@ -783,6 +787,16 @@ def compile_episode(
                     }
                 )
                 continue
+            except NativeDependencyError as error:
+                issues.append(
+                    {
+                        "beat_id": beat.id,
+                        "group_id": beat.group_id,
+                        "code": ORIGINAL_DEPENDENCY_REQUIRED,
+                        "resource_id": error.resource_id,
+                    }
+                )
+                continue
             except (
                 ValueError,
                 KeyError,
@@ -1191,6 +1205,8 @@ def compile_episode(
             raise EditingFailure(BROWSER_ORIGINALS_REQUIRED)
         if any(row["code"] == BROWSER_BOOT_FONTS_REQUIRED for row in issues):
             raise EditingFailure(BROWSER_BOOT_FONTS_REQUIRED)
+        if any(row["code"] == ORIGINAL_DEPENDENCY_REQUIRED for row in issues):
+            raise EditingFailure(ORIGINAL_DEPENDENCY_REQUIRED)
         if any(row["code"] == "EDITING_SOUND_INPUTS_REQUIRED" for row in issues):
             raise EditingFailure("EDITING_SOUND_INPUTS_REQUIRED")
         raise EditingFailure("EDITING_NATIVE_INPUTS_REQUIRED")

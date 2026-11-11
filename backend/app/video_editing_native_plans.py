@@ -13,16 +13,8 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .errors import ApiError
-from .motion_browser_originals import (
-    BROWSER_ORIGINALS_REQUIRED,
-    require_drawn_browser_assets,
-)
 from .motion_library import MOTION_SHA256, read_json
-from .video_editing_browser_rotation import (
-    CLEAN_BROWSER_SCENE_GROUPS,
-    STRIP_CARD_GROUP,
-    TEXTURE_WORD_GROUP,
-)
+from .video_editing_browser_rotation import CLEAN_BROWSER_SCENE_GROUPS
 from .video_editing_contracts import EditingOptions, SemanticPlan, Transcript
 from .video_editing_effect_edits import apply_effect_edits
 from .video_editing_episode_compiler import EpisodeRecipeBundle
@@ -41,6 +33,7 @@ from .video_editing_image_edits import (
 )
 from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import project_material_files, verify_material_cards
+from .video_editing_native_dependencies import NativeDependencyPreflight
 from .video_editing_native_sound import music_replacement_options
 from .video_editing_overlay_templates import (
     MIN_OVERLAY_TYPES,
@@ -125,6 +118,7 @@ def plan_response(
     settings: Settings,
     transparent_groups: set[str],
     hypit_blocker: str | None,
+    dependency_preflight: NativeDependencyPreflight | None = None,
 ) -> dict[str, Any]:
     editable, has_music = available_render_edits(
         row.semantic, row.recipes, row.choice_snapshot
@@ -146,6 +140,12 @@ def plan_response(
     template_unavailable = bool(template_id and template is None)
     if template_unavailable:
         warnings = [*warnings, f"原编排使用的模板 {template_id} 在当前版本不可用。"]
+    if dependency_preflight is None:
+        dependency_preflight = NativeDependencyPreflight(
+            settings.video_editing_library_dir,
+            settings.video_editing_native_bindings_file,
+        )
+    entries = row.recipes["entries"]
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -161,6 +161,13 @@ def plan_response(
                 **detail,
                 "id": beat["id"],
                 "source_only_available": beat["id"] in editable,
+                "dependency_blocker": blocked[1]
+                if (
+                    blocked := dependency_preflight.blocker(
+                        beat["group_id"], entries.get(beat["id"], {}).get("recipe", {})
+                    )
+                )
+                else None,
                 **(
                     {"question_gloss": beat["question_gloss"]}
                     if beat.get("question_gloss")
@@ -742,33 +749,28 @@ def admit_render_plan(
             ) from error
         effective_semantic = semantic.model_dump(mode="json")
         effective_recipes = revised.model_dump(mode="json")
-    excluded = set(edits.source_only_beat_ids) if edits else None
-    browser_scenes = {
-        beat["group_id"]
-        for beat in effective_semantic["beats"]
-        if beat["group_id"] in CLEAN_BROWSER_SCENE_GROUPS
-        and beat["id"] not in (excluded or ())
-    }
-    if browser_scenes:
-        if options.source_subtitles != "none":
-            raise ApiError(
-                422,
-                "EDITING_SOURCE_SUBTITLES_REVIEW_REQUIRED",
-                "同期人物动效需要无内嵌字幕的原片。",
-            )
-        try:
-            for gid in browser_scenes & {STRIP_CARD_GROUP, TEXTURE_WORD_GROUP}:
-                require_drawn_browser_assets(
-                    settings.video_editing_library_dir,
-                    gid,
-                    settings.video_editing_native_bindings_file,
-                )
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            raise ApiError(
-                503,
-                BROWSER_ORIGINALS_REQUIRED,
-                "所选动效需要可核对的原模板底板或纹理。",
-            ) from error
+    excluded = set(edits.source_only_beat_ids) if edits else set()
+    active_beats = [
+        beat for beat in effective_semantic["beats"] if beat["id"] not in excluded
+    ]
+    if options.source_subtitles != "none" and any(
+        beat["group_id"] in CLEAN_BROWSER_SCENE_GROUPS for beat in active_beats
+    ):
+        raise ApiError(
+            422,
+            "EDITING_SOURCE_SUBTITLES_REVIEW_REQUIRED",
+            "同期人物动效需要无内嵌字幕的原片。",
+        )
+    dependencies = NativeDependencyPreflight(
+        settings.video_editing_library_dir, settings.video_editing_native_bindings_file
+    )
+    entries = effective_recipes["entries"]
+    for beat in active_beats:
+        blocked = dependencies.blocker(
+            beat["group_id"], entries.get(beat["id"], {}).get("recipe", {})
+        )
+        if blocked:
+            raise ApiError(503, *blocked)
     needs_hypit = requires_hypit(effective_semantic, excluded)
     if needs_hypit and (
         blocker := hypit_runtime_blocker(settings, source.workspace_id)

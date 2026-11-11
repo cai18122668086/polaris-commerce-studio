@@ -5895,6 +5895,17 @@
       "EditingNativeBeatResponse": {
         "additionalProperties": false,
         "properties": {
+          "dependency_blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dependency Blocker"
+          },
           "group_id": {
             "title": "Group Id",
             "type": "string"
@@ -6033,6 +6044,7 @@
             "type": "string"
           },
           "render_available": {
+            "description": "Whether the plan can use the render workflow. Active beats with a dependency_blocker require adjustment or restored originals.",
             "title": "Render Available",
             "type": "boolean"
           },

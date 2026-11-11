@@ -161,6 +161,9 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       const activeEffects = plan.beats.filter(beat => beat.group_id !== "Z-M00" && !selected.segments.includes(beat.id))
         .map(beat => ({ ...beat, group_id: replacements.get(beat.id) ?? beat.group_id }));
       const activeGroups = new Set(activeEffects.map(beat => beat.group_id));
+      const missingDependencies = activeEffects.some(beat =>
+        beat.dependency_blocker && !replacements.has(beat.id),
+      );
       const repeated = repeatedEffectsForReduction(activeEffects, new Set([
         ...selected.highlights.map(edit => edit.beat_id), ...selected.images.map(edit => edit.beat_id), ...replacements.keys(),
       ]));
@@ -177,7 +180,12 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       </p>}
       {plan.overlay_template && <p className={styles.note}>组合模板 · {plan.overlay_template.name}</p>}
       <p>{plan.origin === "operator_candidate" ? "人工工程候选 · 未经人工验收" : "腾力模型候选 · 待核对"}</p>
-      <ul>{plan.beats.map(beat => <li key={beat.id}>{beat.group_id} · {beat.text}<br />{beat.reason}{beat.question_gloss && <p className={styles.note}>问号英文释义 · {beat.question_gloss} · 待核对</p>}</li>)}</ul>
+      <ul>{plan.beats.map(beat => <li key={beat.id}>
+        {beat.group_id} · {beat.text}<br />{beat.reason}
+        {beat.question_gloss && <p className={styles.note}>问号英文释义 · {beat.question_gloss} · 待核对</p>}
+        {beat.dependency_blocker && !selected.segments.includes(beat.id) && !replacements.has(beat.id) &&
+          <p className={styles.error}>{beat.dependency_blocker}</p>}
+      </li>)}</ul>
       {(plan.warnings.length > 0 || plan.missing_materials.length > 0) && <p>{[...plan.warnings, ...plan.missing_materials].join("；")}</p>}
       {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available) && <details key={key} open={earlier ? true : undefined}>
         <summary>调整本次出片</summary>
@@ -278,7 +286,8 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       </details>}
       {available ? <>
         <p className={styles.note}>本次计划使用 {activeGroups.size} 种动效，共出现 {activeEffects.length} 次。{activeGroups.size < minDistinctMotionGroups && "请保留至少五种不同动效。"}</p>
-        <button type="button" onClick={() => void render(plan, selected, earlier)} disabled={!!busy || activeGroups.size < minDistinctMotionGroups}>{busy === plan.id ? "正在提交…" : earlier ? "生成新版代理预览" : "生成代理预览"}</button>
+        {missingDependencies && <p className={styles.note}>请补齐标出的原库依赖，或在「调整本次出片」中调整对应段落。</p>}
+        <button type="button" onClick={() => void render(plan, selected, earlier)} disabled={!!busy || missingDependencies || activeGroups.size < minDistinctMotionGroups}>{busy === plan.id ? "正在提交…" : earlier ? "生成新版代理预览" : "生成代理预览"}</button>
       </> : <p className={styles.note}>{plan.render_available
         ? "历史验证候选 · 待适配连续人物底片与组合动效"
         : "该编排当前不可出片。"}</p>}

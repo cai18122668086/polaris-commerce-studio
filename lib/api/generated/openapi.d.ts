@@ -6208,6 +6208,8 @@ export interface components {
         };
         /** EditingNativeBeatResponse */
         EditingNativeBeatResponse: {
+            /** Dependency Blocker */
+            dependency_blocker?: string | null;
             /** Group Id */
             group_id: string;
             /** Id */
@@ -6270,7 +6272,10 @@ export interface components {
             overlay_template?: components["schemas"]["EditingOverlayTemplate"] | null;
             /** Project Id */
             project_id: string;
-            /** Render Available */
+            /**
+             * Render Available
+             * @description Whether the plan can use the render workflow. Active beats with a dependency_blocker require adjustment or restored originals.
+             */
             render_available: boolean;
             /**
              * Semantic Review

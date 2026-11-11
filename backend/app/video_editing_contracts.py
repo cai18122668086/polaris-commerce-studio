@@ -495,6 +495,9 @@ class EditingNativeBeatResponse(StrictVideoModel):
     text: str
     reason: str
     source_only_available: bool
+    dependency_blocker: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     question_gloss: str | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -536,7 +539,12 @@ class EditingNativePlanResponse(StrictVideoModel):
     caption_font_id: str
     choice_snapshot_sha256: str
     semantic_review: Literal["unreviewed"] = "unreviewed"
-    render_available: bool
+    render_available: bool = Field(
+        description=(
+            "Whether the plan can use the render workflow. Active beats with a "
+            "dependency_blocker require adjustment or restored originals."
+        )
+    )
     continuous_preview_available: bool
     music_edit_available: bool
     highlight_edit_available: bool = False

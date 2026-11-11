@@ -1,7 +1,7 @@
 """Versioned contracts: models refer to word IDs; only the compiler owns time."""
 
 from datetime import UTC, datetime
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
 from pydantic import AwareDatetime, Field, field_validator, model_validator
@@ -368,6 +368,15 @@ class EditingFilmReviewWrite(StrictVideoModel):
 
 
 class EditingTaskResponse(StrictVideoModel):
+    template_id: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    template_name: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    planning_origin: Literal["tengli_gateway", "operator_candidate"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     id: str
     project_id: str
     source_id: str
@@ -743,6 +752,9 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     )
     aligned_spans: list[EditingPlanningSpan] = Field(default_factory=list)
     semantic_origin: Literal["tengli_gateway"] | None
+    semantic_adaptation: dict[str, Any] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     semantic_review: Literal["unreviewed"] = "unreviewed"
     native_render_state: Literal["not_compiled", "preview_requested"] = "not_compiled"
     preview_task_id: str | None = Field(
@@ -763,6 +775,9 @@ class EditingPlanningTaskResponse(StrictVideoModel):
     )
     available_template_group_count: int | None = Field(
         default=None, exclude_if=lambda value: value is None, ge=0
+    )
+    template_style_blockers: list[str] | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
     project_image_requirements: list[EditingTemplateImageRequirement] | None = Field(
         default=None, exclude_if=lambda value: value is None

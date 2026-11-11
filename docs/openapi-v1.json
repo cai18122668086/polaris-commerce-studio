@@ -6751,6 +6751,18 @@
               }
             ]
           },
+          "semantic_adaptation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Adaptation"
+          },
           "semantic_origin": {
             "anyOf": [
               {
@@ -6788,6 +6800,20 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "template_style_blockers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Style Blockers"
           },
           "text_status": {
             "anyOf": [
@@ -7134,6 +7160,21 @@
           "options": {
             "$ref": "#/components/schemas/EditingOptions"
           },
+          "planning_origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tengli_gateway",
+                  "operator_candidate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planning Origin"
+          },
           "project_id": {
             "title": "Project Id",
             "type": "string"
@@ -7188,6 +7229,28 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "template_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Name"
           }
         },
         "required": [
@@ -12075,6 +12138,13 @@
             "title": "Sampled Group Count",
             "type": "integer"
           },
+          "signature_group_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Signature Group Ids",
+            "type": "array"
+          },
           "status": {
             "enum": [
               "sample_backed",
@@ -12088,6 +12158,16 @@
           "status_label": {
             "title": "Status Label",
             "type": "string"
+          },
+          "style_preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TemplateStylePreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "version": {
             "title": "Version",
@@ -12115,7 +12195,8 @@
           "sampled_group_count",
           "pending_original_group_ids",
           "status",
-          "status_label"
+          "status_label",
+          "signature_group_ids"
         ],
         "title": "TemplateCatalogCard",
         "type": "object"
@@ -12138,6 +12219,21 @@
             "title": "Occurrences",
             "type": "integer"
           },
+          "origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tengli_gateway",
+                  "operator_candidate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
           "poster_url": {
             "anyOf": [
               {
@@ -12153,7 +12249,8 @@
             "enum": [
               "first",
               "replan",
-              "recorded_response_replay"
+              "recorded_response_replay",
+              "operator_authored"
             ],
             "title": "Round",
             "type": "string"
@@ -12182,6 +12279,76 @@
           "height"
         ],
         "title": "TemplateExample",
+        "type": "object"
+      },
+      "TemplateStylePreview": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_ms": {
+            "exclusiveMinimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "native_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Branch"
+          },
+          "poster_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Url"
+          },
+          "scope": {
+            "const": "native_sample",
+            "default": "native_sample",
+            "title": "Scope",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "title",
+          "url",
+          "group_id",
+          "width",
+          "height",
+          "duration_ms"
+        ],
+        "title": "TemplateStylePreview",
         "type": "object"
       },
       "UsageCompleteness": {
@@ -22044,6 +22211,61 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-sources/{source_id}/video": {
+      "get": {
+        "operationId": "source_video_api_v1_video_studio_workspaces__workspace_id__editing_sources__source_id__video_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Source Video",
+        "tags": [
+          "video-editing-tasks"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks": {
       "get": {
         "operationId": "list_tasks_api_v1_video_studio_workspaces__workspace_id__editing_tasks_get",
@@ -22982,6 +23204,69 @@
           }
         ],
         "summary": "Get Template Example",
+        "tags": [
+          "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-template-catalog/{template_id}/style-preview/{kind}": {
+      "get": {
+        "operationId": "get_template_style_preview_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog__template_id__style_preview__kind__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Template Style Preview",
         "tags": [
           "video-editing-planning"
         ]

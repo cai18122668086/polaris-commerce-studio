@@ -52,12 +52,12 @@ from .video_editing_task_routes import (
 from .video_editing_task_routes import (
     response as editing_response,
 )
-from .video_studio_routes import VideoWorkspace
 from .video_editing_template_catalog import (
     TemplateCatalogCard,
     example_file,
     template_catalog,
 )
+from .video_studio_routes import VideoWorkspace
 
 router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}",
@@ -92,6 +92,24 @@ def get_template_example(
             404, "EDITING_TEMPLATE_EXAMPLE_UNAVAILABLE", "此模板的示例暂不可用。"
         )
     _, path = example_file(enabled(request), template_id, kind)
+    return FileResponse(
+        path,
+        media_type="video/mp4" if kind == "video" else "image/jpeg",
+        headers={"Cache-Control": "private, no-cache"},
+    )
+
+
+@router.get("/editing-template-catalog/{template_id}/style-preview/{kind}")
+def get_template_style_preview(
+    template_id: str, kind: str, request: Request, workspace: VideoWorkspace
+) -> FileResponse:
+    if template_id not in {item["id"] for item in overlay_templates()}:
+        raise ApiError(
+            404, "EDITING_TEMPLATE_EXAMPLE_UNAVAILABLE", "此模板的样式片段暂不可用。"
+        )
+    _, path = example_file(
+        enabled(request), template_id, kind, collection="style_previews"
+    )
     return FileResponse(
         path,
         media_type="video/mp4" if kind == "video" else "image/jpeg",

@@ -58,6 +58,7 @@ from .video_editing_task_models import (
     EditingTaskRecord,
     EditingTranscriptRevisionRecord,
 )
+from .video_editing_template_styles import STYLES
 from .video_editing_transcript_store import recorded_source_frame
 from .video_generation import own_job
 from .video_studio_models import VideoProjectRecord, VideoScriptVersionRecord
@@ -146,6 +147,19 @@ def response(
     *,
     artifacts: Sequence[EditingArtifactRecord] | None = None,
 ) -> dict[str, Any]:
+    native = (
+        session.get(EditingNativePlanRecord, row.options.get("native_plan_id"))
+        if row.options.get("native_plan_id")
+        else None
+    )
+    if native and (native.workspace_id, native.owner_user_id, native.project_id) != (
+        row.workspace_id,
+        row.owner_user_id,
+        row.project_id,
+    ):
+        native = None
+    template_id = native.recipes.get("overlay_template_id") if native else None
+    template_name = STYLES.get(template_id, {}).get("name") if template_id else None
     if source is None:
         source = session.get(EditingSourceRecord, row.source_id)
     if artifacts is None:
@@ -182,6 +196,9 @@ def response(
     return {
         "id": row.id,
         "project_id": row.project_id,
+        "template_id": template_id,
+        "template_name": template_name,
+        "planning_origin": native.origin if native else None,
         "source_id": row.source_id,
         **({"source_origin": source_origin(source)} if source else {}),
         "source_frame": recorded_source_frame(transcript) if transcript else None,
@@ -415,6 +432,33 @@ async def upload_source(
         "sha256": row.media_sha256,
         "bytes": length,
     }
+
+
+@router.get("/editing-sources/{source_id}/video")
+def source_video(
+    source_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> FileResponse:
+    enabled(request)
+    row = session.get(EditingSourceRecord, str(source_id))
+    if (
+        not row
+        or row.workspace_id != workspace.workspace_id
+        or row.owner_user_id != workspace.principal.user_id
+    ):
+        raise ApiError(404, "EDITING_SOURCE_NOT_FOUND", "未找到此原片。")
+    own_project(session, workspace, row.project_id)
+    path = Path(row.media_path)
+    if not path.is_file() or sha256(path) != row.media_sha256:
+        raise ApiError(409, "EDITING_SOURCE_CHANGED", "原片已变化，请重新选择视频。")
+    mime = row.details.get("mime")
+    if mime not in {"video/mp4", "video/quicktime", "video/webm"}:
+        mime = "video/mp4"
+    return FileResponse(
+        path, media_type=mime, headers={"Cache-Control": "private, no-cache"}
+    )
 
 
 @router.get("/editing-library/groups/{group_id}")

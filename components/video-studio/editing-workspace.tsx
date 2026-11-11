@@ -87,6 +87,17 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const upload = useRef<{ workspaceId: string; projectId: string; file: File; versionId: string; requestId: string; sourceId?: string } | undefined>(undefined);
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const selectedGeneration = candidates.find(job => job.id === selected);
+  const restoredSource = selected.startsWith("source:") ? selected.slice(7) : "";
+  const restoredProject = useRef("");
+  useEffect(() => {
+    if (restoredProject.current === projectId || selected || file || !tasks.length) return;
+    restoredProject.current = projectId;
+    const previous = tasks.find(task => task.status === "completed" && task.source_origin?.kind === "upload_asset" && task.artifacts.some(a => a.role === "transcript"));
+    if (!previous) return;
+    setSelected(`source:${previous.source_id}`);
+    setPlanningTask(previous.id);
+    setSubtitles(previous.options.source_subtitles);
+  }, [file, projectId, selected, tasks]);
   useEffect(() => {
     if (!file) { setSourcePreview(""); return; }
     const url = URL.createObjectURL(file);
@@ -168,7 +179,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     setBusy(true); setError("");
     let uploadPending = false;
     try {
-      let sourceId: string | undefined;
+      let sourceId: string | undefined = restoredSource || undefined;
       if (selected === "upload" && file) {
         if (upload.current?.file !== file || upload.current.projectId !== projectId || upload.current.workspaceId !== workspaceId || upload.current.versionId !== referenceVersion) {
           upload.current = { workspaceId, projectId, file, versionId: referenceVersion, requestId: crypto.randomUUID() };
@@ -235,6 +246,12 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     document.getElementById("editing-arrange")?.scrollIntoView({ block: "start" });
   };
   const planFromTranscript = (taskId: string) => {
+    const previous = tasks.find(task => task.id === taskId);
+    if (previous?.source_origin?.kind === "upload_asset") {
+      setSelected(`source:${previous.source_id}`);
+      setFile(undefined);
+      setSubtitles(previous.options.source_subtitles);
+    }
     setPlanningTask(taskId);
     openPlanning();
   };
@@ -259,11 +276,12 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   return <section className={`${styles.panel} ${flow.workbench} ${compact ? flow.compact : ""}`} aria-label="口播剪辑">
     <EditingTemplateGallery key={`gallery:${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={saved ? projectId : ""} selected={template?.id || ""} onRestore={setTemplate} sampleRevision={tasks.flatMap(task => task.artifacts.filter(a => a.role === "final").map(a => a.sha256)).join(",")} onSelect={setTemplate} />
     <section id="editing-source" className={`${flow.step} ${flow.source}`} aria-label="准备口播"><div className={flow.sourceHeading}><h2>口播视频</h2><label className={flow.uploadButton}>手动上传视频<input aria-label="上传口播视频" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => { setSelected("upload"); setFile(event.target.files?.[0]); setPlanningTask(""); setReferenceVersion(""); setSubtitles("unknown"); }} /></label></div>
-    {!sourcePreview && !selectedGeneration && <button type="button" className={flow.dropzone} onClick={() => { sourcePicker.current?.focus(); sourcePicker.current?.showPicker?.(); }}><UserRound size={36} strokeWidth={1.5} /><b>选择口播视频</b><small>我的视频 · 或手动上传</small></button>}
+    {!sourcePreview && !selectedGeneration && !restoredSource && <button type="button" className={flow.dropzone} onClick={() => { sourcePicker.current?.focus(); sourcePicker.current?.showPicker?.(); }}><UserRound size={36} strokeWidth={1.5} /><b>选择口播视频</b><small>我的视频 · 或手动上传</small></button>}
 
     {!saved && <p role="status">请先保存当前项目，再开始剪辑。</p>}
-    <label>选择原片<select ref={sourcePicker} aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); setReferenceVersion(""); setPlanningTask(""); setSubtitles("unknown"); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && (" · 确认稿 " + job.confirmed_version_id.slice(0, 8))}</option>)}<option value="upload">上传真人口播或已有视频</option></select></label>
+    <label>选择原片<select ref={sourcePicker} aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); setReferenceVersion(""); setPlanningTask(""); setSubtitles("unknown"); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && (" · 确认稿 " + job.confirmed_version_id.slice(0, 8))}</option>)}{restoredSource && <option value={`source:${restoredSource}`}>已保存的上传原片</option>}<option value="upload">上传真人口播或已有视频</option></select></label>
     {selectedGeneration?.video_url && <video src={selectedGeneration.video_url} controls playsInline preload="metadata" aria-label="已生成口播原片预览" style={{ width: "100%", maxWidth: 280, maxHeight: 400 }} />}
+    {restoredSource && <video src={`/api/v1/video-studio/workspaces/${workspaceId}/editing-sources/${restoredSource}/video`} controls playsInline preload="metadata" aria-label="已保存口播原片预览" />}
     {selected === "upload" && <>
 
       {sourcePreview && <video src={sourcePreview} controls playsInline preload="metadata" aria-label="上传口播原片预览" style={{ width: "100%", maxWidth: 280, maxHeight: 400 }} />}
@@ -312,8 +330,9 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       const parent = task.options.preview_base;
       const planId = task.options.native_plan_id;
       const layoutFailed = task.status === "failed" && (task.error_code === "EDITING_EFFECT_LAYOUT_FAILED" || task.error_code === "EDITING_NATIVE_LAYOUT_FAILED");
-      return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{task.status === "failed" ? "未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleDateString("zh-CN")}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
+      return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{task.template_name && `${task.template_name} · `}{task.status === "failed" ? "未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleDateString("zh-CN")}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {["queued", "running"].includes(task.status) && <p role="status" className={styles.note}>当前阶段：{stageLabel[task.stage] || "正在处理"} · 已发起 {task.attempts} 次处理。进度来自服务端任务状态，每 5 秒刷新。</p>}
+        {task.planning_origin === "operator_candidate" && <p className={styles.note}>本地人工调整版 · 待视听核对</p>}
         <details><summary>来源与技术记录</summary>
         {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
           原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>

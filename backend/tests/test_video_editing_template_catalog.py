@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import atomic_json, sha256
@@ -12,6 +11,7 @@ from app.video_editing_overlay_templates import (
     template_snapshot_matches,
 )
 from app.video_editing_template_catalog import example_file, template_catalog
+
 from tests.test_video_projects import base
 
 pytest_plugins = ["tests.test_video_projects"]
@@ -21,20 +21,18 @@ def test_catalog_retains_all_templates_without_changing_snapshots(tmp_path):
     settings = Settings(_env_file=None, video_editing_tasks_dir=tmp_path)
     before = overlay_templates()
     cards = template_catalog(settings, "ws_test")
-    assert len(cards) == len(before) == 46
-    assert {c["id"] for c in cards} == {t["id"] for t in before}
+    assert len(before) == 46
+    assert len(cards) == 8
+    assert {c["id"] for c in cards} < {t["id"] for t in before}
     assert all(template_snapshot_matches(t) for t in before)
     assert overlay_templates() == before
-    assert [c["id"] for c in cards if c["featured"]] == [
-        "product-explainer-v1",
-        "knowledge-talk-v1",
-        "chenxi-broll-v1",
-    ]
+    assert len([c for c in cards if c["featured"]]) == 8
+    assert next(c for c in cards if c["id"] == "rotation-cards-v1")["featured"]
+    assert len({tuple(c["visual_features"]) for c in cards}) == 8
+    assert all(set(c["signature_group_ids"]) <= set(c["group_ids"]) for c in cards)
     assert all(c["business_review"] == "pending" for c in cards)
     assert all(c["sampled_group_count"] == 0 for c in cards)
-    assert next(c for c in cards if c["id"] == "question-card-b-story-v1")[
-        "pending_original_group_ids"
-    ] == ["AH-S03"]
+    assert "question-card-b-story-v1" not in {c["id"] for c in cards}
 
 
 def install_example(tmp_path: Path):

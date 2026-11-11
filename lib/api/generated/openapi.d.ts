@@ -2002,6 +2002,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-sources/{source_id}/video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Video */
+        get: operations["source_video_api_v1_video_studio_workspaces__workspace_id__editing_sources__source_id__video_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-tasks": {
         parameters: {
             query?: never;
@@ -2217,6 +2234,23 @@ export interface paths {
         };
         /** Get Template Example */
         get: operations["get_template_example_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog__template_id__example__kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-template-catalog/{template_id}/style-preview/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Template Style Preview */
+        get: operations["get_template_style_preview_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog__template_id__style_preview__kind__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6565,6 +6599,10 @@ export interface components {
             /** Revision */
             revision: number;
             semantic: components["schemas"]["SemanticPlan"] | null;
+            /** Semantic Adaptation */
+            semantic_adaptation?: {
+                [key: string]: unknown;
+            } | null;
             /** Semantic Origin */
             semantic_origin: "tengli_gateway" | null;
             /**
@@ -6582,6 +6620,8 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "prepared" | "completed" | "failed" | "cancelled";
+            /** Template Style Blockers */
+            template_style_blockers?: string[] | null;
             /** Text Status */
             text_status: string | null;
             /** Unavailable Template Group Ids */
@@ -6683,6 +6723,8 @@ export interface components {
             manual_review?: components["schemas"]["EditingFilmReview"] | null;
             motion_counts?: components["schemas"]["EditingMotionCounts"] | null;
             options: components["schemas"]["EditingOptions"];
+            /** Planning Origin */
+            planning_origin?: ("tengli_gateway" | "operator_candidate") | null;
             /** Project Id */
             project_id: string;
             /** Review */
@@ -6702,6 +6744,10 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "awaiting_review" | "completed" | "failed" | "cancelled";
+            /** Template Id */
+            template_id?: string | null;
+            /** Template Name */
+            template_name?: string | null;
         };
         /** EditingTemplateImageRequirement */
         EditingTemplateImageRequirement: {
@@ -8507,6 +8553,8 @@ export interface components {
             pending_original_group_ids: string[];
             /** Sampled Group Count */
             sampled_group_count: number;
+            /** Signature Group Ids */
+            signature_group_ids: string[];
             /**
              * Status
              * @enum {string}
@@ -8514,6 +8562,7 @@ export interface components {
             status: "sample_backed" | "unverified" | "pending_originals" | "internal_only";
             /** Status Label */
             status_label: string;
+            style_preview?: components["schemas"]["TemplateStylePreview"] | null;
             /** Version */
             version: string;
             /** Visual Features */
@@ -8527,13 +8576,40 @@ export interface components {
             height: number;
             /** Occurrences */
             occurrences: number;
+            /** Origin */
+            origin?: ("tengli_gateway" | "operator_candidate") | null;
             /** Poster Url */
             poster_url?: string | null;
             /**
              * Round
              * @enum {string}
              */
-            round: "first" | "replan" | "recorded_response_replay";
+            round: "first" | "replan" | "recorded_response_replay" | "operator_authored";
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Width */
+            width: number;
+        };
+        /** TemplateStylePreview */
+        TemplateStylePreview: {
+            /** Duration Ms */
+            duration_ms: number;
+            /** Group Id */
+            group_id: string;
+            /** Height */
+            height: number;
+            /** Native Branch */
+            native_branch?: string | null;
+            /** Poster Url */
+            poster_url?: string | null;
+            /**
+             * Scope
+             * @default native_sample
+             * @constant
+             */
+            scope: "native_sample";
             /** Title */
             title: string;
             /** Url */
@@ -13483,6 +13559,38 @@ export interface operations {
             };
         };
     };
+    source_video_api_v1_video_studio_workspaces__workspace_id__editing_sources__source_id__video_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tasks_api_v1_video_studio_workspaces__workspace_id__editing_tasks_get: {
         parameters: {
             query?: {
@@ -13960,6 +14068,39 @@ export interface operations {
         };
     };
     get_template_example_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog__template_id__example__kind__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+                kind: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_template_style_preview_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog__template_id__style_preview__kind__get: {
         parameters: {
             query?: never;
             header?: never;

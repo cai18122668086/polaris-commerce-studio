@@ -11,15 +11,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-import uvicorn  # noqa: E402
-
-from app.config import Settings  # noqa: E402
-from app.main import create_app  # noqa: E402
+import uvicorn
+from app.config import Settings
+from app.main import create_app
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--run", type=Path, required=True)
 parser.add_argument("--examples", type=Path, required=True)
 parser.add_argument("--port", type=int, default=8017)
+parser.add_argument(
+    "--prepare-task",
+    action="append",
+    default=[],
+    help="Process only these existing free preparation tasks, then exit",
+)
 args = parser.parse_args()
 root = args.run.resolve()
 settings = Settings(
@@ -100,6 +105,7 @@ def dispatch(task_id: str, script: str) -> None:
     }
     env.update({"POLARIS_" + key.upper(): str(getattr(settings, key)) for key in keys})
     env["PYTHONUTF8"] = "1"
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "backend")
     with (root / ("local-worker-" + task_id + ".log")).open("ab") as log:
         command = (
             [sys.executable, "-B", "backend/scripts/" + script, "--once", task_id]
@@ -108,7 +114,12 @@ def dispatch(task_id: str, script: str) -> None:
                 sys.executable,
                 "-B",
                 "-c",
-                "from app.config import Settings; from app.database import build_database; from app.video_editing_planning_worker import process; import sys; s=Settings(_env_file=None); e,f=build_database(s.database_url); process(sys.argv[1],s,f); e.dispose()",
+                        "from app.config import Settings; "
+                        "from app.database import build_database; "
+                        "from app.video_editing_planning_worker import process; "
+                        "import sys; s=Settings(_env_file=None); "
+                        "e,f=build_database(s.database_url); "
+                        "process(sys.argv[1],s,f); e.dispose()",
                 task_id,
             ]
         )
@@ -126,4 +137,20 @@ def dispatch(task_id: str, script: str) -> None:
 
 app.state.editing_dispatcher = lambda task: dispatch(task, "run_editing_worker.py")
 app.state.editing_planning_dispatcher = lambda task: dispatch(task, "planning")
-uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)
+if args.prepare_task:
+    from app.database import build_database
+    from app.video_editing_planning_worker import process
+    from app.video_editing_task_models import EditingPlanningTaskRecord
+
+    engine, factory = build_database(settings.database_url)
+    for task_id in args.prepare_task:
+        with factory() as session:
+            row = session.get(EditingPlanningTaskRecord, task_id)
+            if row is None or row.mode != "prepare":
+                raise ValueError(
+                    "This harness command only processes free prepare tasks"
+                )
+        process(task_id, settings, factory)
+    engine.dispose()
+else:
+    uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)

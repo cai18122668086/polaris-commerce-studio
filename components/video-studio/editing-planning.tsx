@@ -47,6 +47,7 @@ const errors: Record<string, string> = {
   EDITING_TEMPLATE_LABEL_CARD_INPUTS_REQUIRED: "原生文字卡需要三个实录短词及各自的入场间隔，请核对对应段落。",
   EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片，请选择符合画幅的转录。",
   EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。",
+  VIDEO_ASSISTANCE_OUTCOME_UNKNOWN: "模型请求已提交，但结果尚未确认。已保留原提交记录，请先核对，避免重复计费。",
   EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。",
   EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。",
   EDITING_CHOICES_CHANGED_REPLAN_REQUIRED: "项目选组备忘已更新，请重新准备后核对。",
@@ -112,9 +113,9 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const prepared = preparation?.status === "prepared" ? preparation : undefined;
   const submitted = prepared && jobs.some(job => job.prepared_task_id === prepared.id);
   const waiting = !!preparation && ["queued", "running"].includes(preparation.status);
-  const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || !!submitted || !!(prepared && (!prepared.execution_available || (prepared.available_template_group_count ?? 5) < 5));
+  const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || !!submitted || !!(prepared && (!prepared.execution_available || !!prepared.template_style_blockers?.length || (prepared.available_template_group_count ?? 5) < 5));
   const primaryLabel = waiting ? "正在检查素材…" : submitted ? "本次剪辑已提交" : "开始智能剪辑";
-  const primaryHint = waiting ? labels[preparation?.stage || ""] || "正在核对口播与素材" : prepared ? !prepared.execution_available ? `本次可选 ${prepared.available_template_group_count ?? "待核对"} 种动效 · 模型执行未开放` : `本次可选 ${prepared.available_template_group_count ?? "待核对"} 种动效 · 将调用付费模型，按项目网关计费` : "先核对实际口播与素材，准备过程不调用模型";
+  const primaryHint = waiting ? labels[preparation?.stage || ""] || "正在核对口播与素材" : prepared?.template_style_blockers?.[0] || (prepared ? !prepared.execution_available ? `本次可选 ${prepared.available_template_group_count ?? "待核对"} 种动效 · 模型执行未开放` : `本次可选 ${prepared.available_template_group_count ?? "待核对"} 种动效 · 将调用付费模型，按项目网关计费` : "先核对实际口播与素材，准备过程不调用模型");
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: waiting || submitted ? "waiting" : prepared ? "generate" : "prepare" }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, waiting, submitted, prepared?.id]);
   useImperativeHandle(actionRef, () => ({ run: () => { void submit(prepared ? "generate" : "prepare", prepared); } }));
   const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
@@ -247,11 +248,13 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
         <input type="checkbox" checked={batchIds.includes(job.id)} disabled={busy || (!batchIds.includes(job.id) && batchIds.length >= maxPreviewBatch)} onChange={event => setBatchSelection(event.target.checked ? [...batchIds, job.id] : batchIds.filter(id => id !== job.id))} />加入批量预览
       </label>}
       {available != null && <p className={styles.note}>本次有 {available} 种可选动效。</p>}
+      {job.template_style_blockers?.map(message => <p key={message} role="alert" className={styles.note}>{message}</p>)}
       {available != null && !insufficient && available < preferredDistinctMotionGroups && <p className={styles.note}>本次可选种类低于优先目标 {preferredDistinctMotionGroups} 种。</p>}
       {job.motion_counts && <p className={styles.note}>
         候选选中 {job.motion_counts.distinct_groups} 种动效，共 {job.motion_counts.occurrences} 次。
         {belowMinimumForPreview ? "至少五种才可出片。" : job.motion_counts.distinct_groups < preferredDistinctMotionGroups && `低于优先目标 ${preferredDistinctMotionGroups} 种。`}
       </p>}
+      {job.semantic_adaptation && <p className={styles.note}>已保存响应经关系字段适配，非无修改首轮直出；画面与词点待预览核对。</p>}
       <details><summary>素材条件与运行详情</summary>
       {!!job.excluded_template_group_ids?.length && <p className={styles.note}>按项目备忘避用 · {job.excluded_template_group_ids.join("、")}</p>}
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>当前运行条件未满足的动效 · {job.unavailable_template_group_ids.join("、")}</p>}
@@ -319,7 +322,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
             }} />
             编排通过后自动生成预览
           </label>}
-          <button type="button" disabled={busy || insufficient || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>开始自动剪辑（调用付费模型）</button>
+          <button type="button" disabled={busy || insufficient || !!job.template_style_blockers?.length || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>开始自动剪辑（调用付费模型）</button>
           {insufficient && <p className={styles.note}>可选动效少于五种，请核对项目备忘、素材或更换模板后重新准备。</p>}
           {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
         </>}

@@ -4,6 +4,7 @@ import base64
 import importlib
 import importlib.util
 import math
+import mimetypes
 import re
 import sys
 from io import BytesIO
@@ -491,6 +492,9 @@ def install_rotation_export(package: Path, root: Path) -> None:
         raise ValueError(
             "Live browser scenes must use the pinned original browser and sampler"
         )
+    # Windows registry MIME tables may omit WebP. The preserved browser loader
+    # builds a data URI using mimetypes; bind the standard type before it runs.
+    mimetypes.add_type("image/webp", ".webp")
     browser_drawer, evaluate = special.browser_drawer, Page.evaluate
 
     def with_live_person(card: dict, config: dict) -> tuple[Any, dict]:

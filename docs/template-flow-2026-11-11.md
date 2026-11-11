@@ -1,5 +1,7 @@
 # 模板产品化与在线剪辑前端 · 2026-11-11
 
+后续用户已将产品目录收敛为八款，并授权一批最多七次的网站介绍样片调用。最新状态见 [八款模板与网站样片接续记录](eight-template-site-demos-2026-11-11.md)。以下保留首次交付时的历史状态。
+
 本轮基于主实现 `0edc879dd26ff22dab1964eb942cc8e02c8d301b`，在隔离分支 `codex/template-flow-20261111` 实施。工作树为 `C:/Users/a1726/.codex/worktrees/tengli-template-flow-20261111/tengli-motion-20261109`。完整读取了用户指定的 00、01 和 03 交接文件。
 
 ## 基线与保留范围

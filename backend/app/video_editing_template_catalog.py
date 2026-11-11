@@ -10,6 +10,7 @@ from .errors import ApiError
 from .motion_library import read_json, sha256
 from .motion_library_validation import group_status, motion_evidence_directory
 from .video_editing_overlay_templates import overlay_templates
+from .video_editing_template_styles import FEATURED, PUBLIC_TEMPLATE_IDS, STYLES
 from .video_studio_schemas import StrictVideoModel
 
 
@@ -17,7 +18,8 @@ class TemplateExample(StrictVideoModel):
     title: str
     url: str
     poster_url: str | None = None
-    round: Literal["first", "replan", "recorded_response_replay"]
+    round: Literal["first", "replan", "recorded_response_replay", "operator_authored"]
+    origin: Literal["tengli_gateway", "operator_candidate"] | None = None
     distinct_groups: int = Field(ge=5)
     occurrences: int = Field(ge=5)
     width: int = Field(gt=0)
@@ -41,45 +43,28 @@ class TemplateCatalogCard(StrictVideoModel):
     status_label: str
     business_review: Literal["pending"] = "pending"
     example: TemplateExample | None = None
+    signature_group_ids: list[str]
+    style_preview: "TemplateStylePreview | None" = None
 
 
-_CURATED = {
-    "product-explainer-v1": {
-        "description": "让商品看点、规格和使用场景跟着口播展开，适合产品介绍与功能讲解。",
-        "visual_features": ["金色重点", "横竖分屏", "撕纸与手机图卡"],
-        "material_requirements": [
-            "9:16 竖屏口播，建议无内嵌字幕",
-            "建议准备 3 张不同的商品或界面图，并说明各自用途；无配图时仅选适用成员",
-        ],
-        "material_mode": "images",
-        "category": "产品与案例",
-    },
-    "knowledge-talk-v1": {
-        "description": "用追问、分层论点和结论卡，把观点与方法讲清楚。适合知识分享和判断分析。",
-        "visual_features": ["黑白资料板", "分层论点", "圆窗与结论接力"],
-        "material_requirements": [
-            "9:16 竖屏口播，建议无内嵌字幕",
-            "无需补充图片；数字、并列事项与条件以实际口播为准",
-        ],
-        "material_mode": "speech",
-        "category": "观点与知识",
-    },
-    "chenxi-broll-v1": {
-        "description": "操作画面与同期讲解人物交替出现，适合软件教程和真实操作演示。",
-        "visual_features": ["实景分屏", "人物圆窗", "纸条说明"],
-        "material_requirements": [
-            "9:16 竖屏、无内嵌字幕的讲解口播",
-            "上传已分好步骤的短录屏，并说明每段操作；短片需覆盖使用段",
-            "纸纹版式另需一张底图；长录屏自动找操作起止尚未接入",
-        ],
-        "material_mode": "clips",
-        "category": "实景与教程",
-    },
-}
+class TemplateStylePreview(StrictVideoModel):
+    title: str
+    url: str
+    poster_url: str | None = None
+    group_id: str
+    native_branch: str | None = None
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    duration_ms: int = Field(gt=0)
+    scope: Literal["native_sample"] = "native_sample"
+
+
 _PENDING = {"CX-G05", "CX-G08", "CX-G09", "CX-G10", "HY-A1"}
 
 
-def example_file(settings: Settings, template_id: str, kind: str) -> tuple[dict, Path]:
+def example_file(
+    settings: Settings, template_id: str, kind: str, *, collection: str = "examples"
+) -> tuple[dict, Path]:
     """Only explicitly installed, hash-bound examples may cross project boundaries."""
     try:
         directory = settings.video_editing_template_examples_dir
@@ -87,7 +72,9 @@ def example_file(settings: Settings, template_id: str, kind: str) -> tuple[dict,
             raise ValueError("No installed example")
         root = directory.resolve()
         manifest = read_json(root / "manifest.json")
-        entry = manifest["examples"][template_id]
+        if collection not in {"examples", "style_previews"}:
+            raise ValueError("Invalid media collection")
+        entry = manifest[collection][template_id]
         relative = Path(entry[kind]["file"])
         path = (root / relative).resolve()
         if (
@@ -108,7 +95,8 @@ def example_file(settings: Settings, template_id: str, kind: str) -> tuple[dict,
 
 
 def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
-    templates = overlay_templates()
+    all_templates = {template["id"]: template for template in overlay_templates()}
+    templates = [all_templates[tid] for tid in PUBLIC_TEMPLATE_IDS]
     evidence = motion_evidence_directory(settings)
     sampled = {
         gid: group_status(evidence, gid)["runtime_validation"]
@@ -124,31 +112,17 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
         b_variant = tid == "question-card-b-story-v1"
         pending = sorted(set(groups) & _PENDING | ({"AH-S03"} if b_variant else set()))
         internal = any(gid.startswith("HY-") for gid in groups)
-        meta = _CURATED.get(tid)
-        if meta is None:
-            mode = (
-                "special"
-                if internal
-                else "images"
-                if any(g.startswith(("W-", "CX-", "AZL")) for g in groups)
-                else "speech"
+        profile = STYLES[tid]
+        meta = {
+            key: profile[key]
+            for key in (
+                "description",
+                "visual_features",
+                "material_requirements",
+                "material_mode",
+                "category",
             )
-            meta = {
-                "description": " · ".join(
-                    slot["purpose"].split("。")[0] for slot in template["slots"][:2]
-                ),
-                "visual_features": ["原生版式", "按实录词点入场"],
-                "material_requirements": [
-                    "9:16 竖屏口播",
-                    "依所选版式补充本期素材；准备剪辑后会核对实际可选成员",
-                ],
-                "material_mode": mode,
-                "category": "内部原生场景"
-                if internal
-                else "图片与资料"
-                if mode == "images"
-                else "文字与叙事",
-            }
+        }
         count = sum(sampled[gid] for gid in groups)
         if b_variant and sampled.get("AH-S03"):
             count -= 1
@@ -167,7 +141,10 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
         example = None
         try:
             entry, _ = example_file(settings, tid, "video")
-            base = f"/api/v1/video-studio/workspaces/{workspace_id}/editing-template-catalog/{tid}/example"
+            base = (
+                f"/api/v1/video-studio/workspaces/{workspace_id}"
+                f"/editing-template-catalog/{tid}/example"
+            )
             poster = None
             try:
                 example_file(settings, tid, "poster")
@@ -179,13 +156,37 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
             ).model_dump()
         except (ApiError, ValueError, KeyError, TypeError):
             pass
+        preview = None
+        try:
+            entry, _ = example_file(settings, tid, "video", collection="style_previews")
+            if entry["metadata"]["group_id"] not in profile["signature_group_ids"]:
+                raise ValueError("Preview does not show this style's signature")
+            if b_variant and entry["metadata"].get("native_branch") != "input-B":
+                raise ValueError("Preview must match the B branch")
+            base = (
+                f"/api/v1/video-studio/workspaces/{workspace_id}"
+                f"/editing-template-catalog/{tid}/style-preview"
+            )
+            poster = None
+            try:
+                example_file(settings, tid, "poster", collection="style_previews")
+                poster = base + "/poster"
+            except ApiError:
+                pass
+            preview = TemplateStylePreview.model_validate(
+                {**entry["metadata"], "url": base + "/video", "poster_url": poster}
+            ).model_dump()
+        except (ApiError, ValueError, KeyError, TypeError):
+            pass
         cards.append(
             TemplateCatalogCard.model_validate(
                 {
                     "id": tid,
                     "version": tid.rsplit("-", 1)[-1],
-                    "name": template["name"],
-                    "featured": tid in _CURATED,
+                    "name": profile["name"],
+                    "featured": tid in FEATURED,
+                    "signature_group_ids": profile["signature_group_ids"],
+                    "style_preview": preview,
                     "group_ids": groups,
                     "sampled_group_count": count,
                     "pending_original_group_ids": pending,

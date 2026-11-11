@@ -89,6 +89,7 @@ from .video_editing_task_models import (
     EditingTaskRecord,
 )
 from .video_editing_template_materials import template_image_requirements
+from .video_editing_template_styles import style_policy
 from .video_editing_transcript_store import (
     read_transcript_artifact,
     recorded_source_frame,
@@ -635,6 +636,9 @@ def process(
             if template and template["id"] in FIRST_MOTION_GROUPS:
                 runtime["first_groups_policy"] = SCOPED_POOL_POLICY
             runtime["protect_compound_quantities"] = True
+            profile = style_policy(template)
+            if profile is not None:
+                runtime["template_style"] = profile
             snapshot = {**snapshot, "planning_runtime": runtime}
         prepared_request = None
         if mode == "generate":
@@ -772,6 +776,11 @@ def process(
                 semantic_review="unreviewed",
                 native_render_state="not_compiled",
             )
+            adaptation = read_json(root / "provider" / FILES["receipt"]).get(
+                "semantic_adaptation"
+            )
+            if adaptation:
+                result["semantic_adaptation"] = adaptation
             positions = {t.id: i for i, t in enumerate(transcript.tokens)}
             result["aligned_spans"] = [
                 {

@@ -28,6 +28,11 @@ from .video_editing_task_models import (
     EditingTaskRecord,
 )
 from .video_editing_template_materials import runtime_payload, validate_template_images
+from .video_editing_template_styles import (
+    adapt_style_text_relations,
+    style_candidate_ids,
+    validate_template_style,
+)
 from .video_editing_transcript_store import read_transcript_artifact
 
 
@@ -203,10 +208,13 @@ def _verify(
     runtime = row.snapshot.get("planning_runtime")
     template = row.snapshot.get("overlay_template")
     compact = bool(template and template["id"] in FIRST_MOTION_GROUPS)
+    scoped_candidates = style_candidate_ids(
+        template, runtime, row.snapshot["choice_snapshot"]
+    )
     selected = (
         {slot["group_id"] for slot in template["slots"]}
         if template and compact
-        else None
+        else scoped_candidates
     )
     if runtime is not None and (
         payload.get("template_runtime") != runtime_payload(runtime)
@@ -226,10 +234,20 @@ def _verify(
     ):
         raise ValueError("Captured runtime evidence differs from the prepared snapshot")
     groups = read_json(settings.video_editing_library_dir / "catalog/groups.json")
+    expected_groups = (
+        scoped_candidates
+        if scoped_candidates is not None
+        else {g["id"] for g in groups["groups"]}
+    )
+    if (runtime or {}).get("template_style", {}).get(
+        "measured_word_clock"
+    ) and payload.get("measured_word_clock") != [
+        [t.id, t.text, t.start_ms, t.end_ms] for t in transcript.tokens
+    ]:
+        raise ValueError("Captured style word clock differs from the real transcript")
     if (
-        len(payload["full_library"]) != 132
-        or {g["id"] for g in payload["full_library"]}
-        != {g["id"] for g in groups["groups"]}
+        len(payload["full_library"]) != len(expected_groups)
+        or {g["id"] for g in payload["full_library"]} != expected_groups
         or (
             payload.get("word_clock")
             != [
@@ -265,6 +283,13 @@ def _verify(
         )
     else:
         semantic = SemanticPlan.model_validate_json(content)
+    semantic, relation_adaptation = adapt_style_text_relations(
+        semantic, transcript, runtime
+    )
+    if data["receipt"].get("semantic_adaptation") != relation_adaptation:
+        raise ValueError(
+            "Captured text-slot adaptation receipt differs from the derived metadata"
+        )
     value = semantic.model_dump(mode="json")
     changed = value != saved_semantic
     if changed:
@@ -287,6 +312,7 @@ def _verify(
         (runtime or {}).get("unavailable_template_groups"),
     )
     validate_template_images(semantic, runtime, row.snapshot["asset_cards"])
+    validate_template_style(semantic, runtime)
     return VerifiedPlanning(
         row,
         transcript,

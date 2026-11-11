@@ -21,6 +21,8 @@ _DENIAL_OR_CLAUSE_END = re.compile(
     r"(?P<denial>(?<!是)不是|并非|绝非|不等于|不代表|不意味着|不表示)"
     r"|[。！？；、!?;]|(?<!\d)[.,，]|[.,，](?!\d)|而是"
 )
+_NEGATION_MARKER = re.compile(r"不|没|无|勿|(?<!分)别|未|并非|不是")
+_ENGLISH_NEGATION = re.compile(r"\b(?:not|never)\b", re.I)
 
 
 class IncompleteDenial(ValueError):
@@ -29,6 +31,18 @@ class IncompleteDenial(ValueError):
 
 class ParallelItemsMismatch(ValueError):
     code = "EDITING_PARALLEL_ITEMS_INVALID"
+
+
+def negation_token_positions(tokens: list[TranscriptToken]) -> set[int]:
+    """Read lexical context across ASR tokens: 分别 is not an imperative 别."""
+    text = "".join(token.text for token in tokens)
+    offsets = list(accumulate((len(token.text) for token in tokens), initial=0))
+    return {
+        bisect_right(offsets, match.start()) - 1
+        for match in _NEGATION_MARKER.finditer(text)
+    } | {
+        i for i, token in enumerate(tokens) if _ENGLISH_NEGATION.search(token.text)
+    }
 
 
 def validate_parallel_items(beat: SemanticBeat, positions: dict[str, int]) -> None:

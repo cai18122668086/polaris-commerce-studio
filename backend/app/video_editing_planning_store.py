@@ -34,6 +34,7 @@ from .video_editing_task_models import (
     EditingSourceRecord,
     EditingTaskRecord,
 )
+from .video_editing_template_styles import style_blockers
 from .video_editing_transcript_store import (
     recorded_source_frame,
     require_native_source_frame,
@@ -104,6 +105,9 @@ def _template_availability(snapshot: dict) -> tuple[int | None, list[str]]:
 
 
 def require_template_group_capacity(snapshot: dict) -> None:
+    blockers = style_blockers(snapshot)
+    if blockers:
+        raise ApiError(409, "EDITING_TEMPLATE_STYLE_UNAVAILABLE", blockers[0])
     available, _ = _template_availability(snapshot)
     if available is not None and available < MIN_OVERLAY_TYPES:
         raise ApiError(
@@ -155,7 +159,7 @@ def planning_response(
         "request_sha256": row.result.get("request_sha256"),
         "request_bytes": row.result.get("request_bytes"),
         "catalog_group_count": row.result.get("catalog_group_count"),
-        "max_output_tokens": 5000,
+        "max_output_tokens": row.result.get("max_output_tokens", 5000),
         "text_status": row.result.get("text_status"),
         "semantic": semantic,
         "motion_counts": motion_counts(beat["group_id"] for beat in semantic["beats"])
@@ -164,6 +168,7 @@ def planning_response(
         "aligned_spans": row.result.get("aligned_spans", []),
         "semantic_origin": "tengli_gateway" if row.status == "completed" else None,
         "semantic_review": "unreviewed",
+        "semantic_adaptation": row.result.get("semantic_adaptation"),
         "native_render_state": "preview_requested"
         if row.result.get("preview_task_id")
         else "not_compiled",
@@ -181,6 +186,7 @@ def planning_response(
         ),
         "overlay_template": row.snapshot.get("overlay_template"),
         "available_template_group_count": available,
+        "template_style_blockers": style_blockers(row.snapshot) or None,
         "excluded_template_group_ids": excluded or None,
         "unavailable_template_group_ids": sorted(
             row.snapshot["planning_runtime"]["unavailable_template_groups"]

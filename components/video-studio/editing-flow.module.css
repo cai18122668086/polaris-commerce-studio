@@ -12,6 +12,8 @@
 .cover { position:relative; aspect-ratio:9/16; background:#25202e; overflow:hidden; display:grid; place-items:center; }
 .cover img,.cover video { width:100%; height:100%; object-fit:cover; }
 .cover video { object-fit:contain; }
+.templateSearch { width:100%; min-width:0; padding:9px 12px; border:1px solid #ebe5f1; border-radius:7px; background:#fbf9fd; color:#645471; font-size:12px; }
+.previewCaption { position:absolute; top:8px; left:6px; right:6px; border-radius:4px; padding:4px; text-align:center; color:#fff; background:#21192bcc; font-size:9px; pointer-events:none; }
 .cover[data-style="speech"] { background:linear-gradient(150deg,#252834,#716079); }
 .cover[data-style="images"] { background:linear-gradient(150deg,#48305a,#a87f98); }
 .cover[data-style="clips"] { background:linear-gradient(150deg,#1c545a,#88aaa7); }

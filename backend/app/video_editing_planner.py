@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -81,6 +80,11 @@ from .video_editing_question_card import (
 from .video_editing_role_scene import ROLE_TEMPLATE_ID
 from .video_editing_story_panels import PANEL_BOARDS, PANEL_TEMPLATE_ID
 from .video_editing_template_materials import runtime_payload, validate_template_images
+from .video_editing_template_styles import (
+    adapt_style_text_relations,
+    style_candidate_ids,
+    validate_template_style,
+)
 from .video_editing_unified_alpha import GHOST_GROUP, PAPER_CHAPTER_GROUP
 from .video_editing_unified_scenes import (
     CHAPTER_SCENE_GROUP,
@@ -96,6 +100,7 @@ from .video_editing_word_bindings import (
     IncompleteDenial,
     drops_explicit_denial,
     explicit_denial_spans,
+    negation_token_positions,
     validate_parallel_items,
     word_bindings,
 )
@@ -146,6 +151,7 @@ def catalog_index(
     alpha_chapters: bool = False,
     why_scene: bool = False,
     translation_scene: bool = False,
+    native_role_capacities: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -229,7 +235,12 @@ def catalog_index(
                     .get("content", {})
                     .get("properties", {})
                 ),
-                "capacity": (contract or {}).get("capacity")
+                "capacity": (
+                    (contract or {}).get("content_capacity")
+                    if native_role_capacities
+                    else None
+                )
+                or (contract or {}).get("capacity")
                 or (contract or {}).get("caption_capacity")
                 or target.get("runtime_capabilities"),
                 "declared_limits": (contract or {}).get("limits"),
@@ -361,6 +372,9 @@ def build_request(
         alpha_chapters=alpha_chapters,
         why_scene=bool(template and template["id"] == WHY_TEMPLATE_ID),
         translation_scene=translation_scene,
+        native_role_capacities=bool(
+            (runtime or {}).get("template_style", {}).get("native_role_capacities")
+        ),
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
@@ -386,6 +400,7 @@ def build_request(
         if choice_snapshot is not None
         else None
     )
+    scoped_candidates = style_candidate_ids(template, runtime, choices)
     payload = {
         "transcript": {
             "quality": {
@@ -407,7 +422,9 @@ def build_request(
         },
         "available_project_materials": asset_cards or [],
         "project_library_choices": choices,
-        "full_library": catalog,
+        "full_library": [row for row in catalog if row["id"] in scoped_candidates]
+        if scoped_candidates is not None
+        else catalog,
         "rules": rules["rules"],
         "output_schema": schema,
     }
@@ -417,6 +434,13 @@ def build_request(
         payload["overlay_template"] = template
     if runtime is not None:
         payload["template_runtime"] = runtime_payload(runtime)
+    style_clock = bool(
+        (runtime or {}).get("template_style", {}).get("measured_word_clock")
+    )
+    if style_clock:
+        payload["measured_word_clock"] = [
+            [t.id, t.text, t.start_ms, t.end_ms] for t in transcript.tokens
+        ]
     compound_quantities = (
         measured_compound_quantities(transcript.tokens)
         if runtime and runtime.get("protect_compound_quantities")
@@ -650,6 +674,28 @@ def build_request(
             "选择与场景相符的素材与完整短语。"
         )
     max_output_tokens = 5000
+    if runtime and runtime.get("template_style"):
+        max_output_tokens = 12000
+        message += (
+            "template_runtime.template_style是本次选定风格的合同。"
+            "必须在本期真实词点中至少使用一次signature_group_ids里的招牌组，"
+            "按narrative组织开场、正文和收口；不能全用共享字幕冒充本款风格。"
+            "所有组仍只限overlay_template.slots，至少五种、优先十种以上。"
+            "招牌组只在语义、素材和原生字段条件匹配时使用；不匹配应报告缺失，不能伪造内容。"
+        )
+        if style_clock:
+            message += (
+                "measured_word_clock为实录词ID、原词、开始与结束毫秒。"
+                "用它核对每个原生动作的完成时间和文字读时，输出仍只给词ID，禁止输出时间数值。"
+                "优先十种以上，但不拆坏并列信息、否定与条件来凑数。"
+            )
+        if (runtime or {}).get("template_style", {}).get("native_role_capacities"):
+            message += (
+                "capacity中的角色上限来自原生合同，必须逐个核对，标题字槽不能装整段口播。"
+                "同一原生文字槽只登记一个relation_item，其范围须覆盖该槽完整实录文字。"
+                "原生槽不能分别呈现多个分项时，使用完整短句说明，不伪造多个独立图卡。"
+                "CX-G04三个标签各1至4字，relation_item边界与标签的实际词边界一致，说明由主字幕保留。"
+            )
     if template and template["id"] in FIRST_MOTION_GROUPS:
         group_policy = (runtime or {}).get("first_groups_policy")
         readable_policy = group_policy in READABLE_POLICIES
@@ -721,12 +767,19 @@ def build_request(
         "rules": rules,
         "catalog_sha256": sha256(package / "catalog/groups.json"),
         "catalog_group_count": len(catalog),
+        **(
+            {"model_candidate_group_count": len(scoped_candidates)}
+            if scoped_candidates is not None
+            else {}
+        ),
         "transcript_sha256": hashlib.sha256(
             transcript.model_dump_json().encode()
         ).hexdigest(),
         "model": model,
         "max_output_tokens": max_output_tokens,
-        "no_timestamps_sent": not (template and template["id"] in FIRST_MOTION_GROUPS),
+        "no_timestamps_sent": not (
+            style_clock or (template and template["id"] in FIRST_MOTION_GROUPS)
+        ),
         "request_bytes": len(encoded),
         "choice_snapshot_sha256": choices["sha256"] if choices else None,
         "choice_project_id": choices["project_id"] if choices else None,
@@ -746,6 +799,7 @@ def validate_plan(
 ) -> None:
     ids = {t.id: i for i, t in enumerate(transcript.tokens)}
     denials = explicit_denial_spans(transcript.tokens)
+    negation_positions = negation_token_positions(transcript.tokens)
     conditions = measured_conditions(transcript.tokens)
     quantities = measured_quantities(transcript.tokens)
     group_rows = {
@@ -814,15 +868,7 @@ def validate_plan(
             quantity.cut_by((emphasis[0], emphasis[-1])) for quantity in quantities
         ):
             raise IncompleteQuantity("强调词须保留同一次实录的完整数值和单位")
-        negations = [
-            i
-            for i in range(start, end + 1)
-            if re.search(
-                r"不|没|无|勿|别|未|并非|不是|not\b|never\b",
-                transcript.tokens[i].text,
-                re.I,
-            )
-        ]
+        negations = sorted(i for i in negation_positions if start <= i <= end)
         if emphasis and negations and not set(negations).issubset(emphasis):
             raise ValueError(
                 "Negation needs explicit emphasis review; do not reverse the claim"
@@ -1008,7 +1054,11 @@ def generate(
             guard()
         gateway_options = (
             {"read_timeout": min(210, settings.video_editing_lease_seconds - 5)}
-            if template and template["id"] in FIRST_MOTION_GROUPS
+            if template
+            and (
+                template["id"] in FIRST_MOTION_GROUPS
+                or (runtime or {}).get("template_style")
+            )
             else {}
         )
         data = provider.request(
@@ -1056,6 +1106,7 @@ def generate(
         beat.translation_gloss is not None for beat in plan.beats
     ):
         raise ValueError("Bilingual glosses require the selected contrast template")
+    plan, relation_adaptation = adapt_style_text_relations(plan, transcript, runtime)
     validate_plan(
         plan,
         transcript,
@@ -1066,6 +1117,7 @@ def generate(
         require_yy08_question=True,
     )
     validate_template_images(plan, runtime, asset_cards or [])
+    validate_template_style(plan, runtime)
     if template is not None:
         validate_template_plan(plan, template, complete=False)
     plan_path = root / "semantic-plan.json"
@@ -1079,6 +1131,11 @@ def generate(
             "validation": "contract_only",
             "semantic_review": "unreviewed",
             "visual_review": "unreviewed",
+            **(
+                {"semantic_adaptation": relation_adaptation}
+                if relation_adaptation
+                else {}
+            ),
         },
     )
     return plan

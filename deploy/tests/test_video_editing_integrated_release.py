@@ -30,7 +30,7 @@ class IntegratedVideoReleaseTests(unittest.TestCase):
                 "reverse_proxy video-api:8000\n"
             )
             env = {
-                "POLARIS_AUTH_MODE": "supertokens",
+                "POLARIS_AUTH_MODE": "external",
                 "POLARIS_VIDEO_MEDIA_DIR": "/app/.data/video-studio",
                 "POLARIS_CELERY_BROKER_URL": "redis://redis:6379/0",
                 "POLARIS_CELERY_RESULT_BACKEND": "redis://redis:6379/1",
@@ -112,7 +112,7 @@ class IntegratedVideoReleaseTests(unittest.TestCase):
             )
             self.assertEqual(live, baseline)
             self.assertEqual(
-                services["video-api"]["environment"]["POLARIS_AUTH_MODE"], "supertokens"
+                services["video-api"]["environment"]["POLARIS_AUTH_MODE"], "external"
             )
             self.assertEqual(
                 services["video-api"]["environment"]["POLARIS_WUYE_API_KEY"],

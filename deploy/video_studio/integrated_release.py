@@ -206,7 +206,7 @@ def prepare(root, revision, assets, backend, frontend):
             "XDG_CACHE_HOME": "/app/.data/editing-tasks/.cache",
         }
     )
-    if runtime.get("POLARIS_AUTH_MODE") != "supertokens":
+    if runtime.get("POLARIS_AUTH_MODE") != "external":
         raise ValueError("Production authentication must be preserved")
     if any("\n" in str(value) or "\r" in str(value) for value in runtime.values()):
         raise ValueError("Multiline runtime values require explicit env-file encoding")
@@ -264,8 +264,10 @@ def prepare(root, revision, assets, backend, frontend):
     worker["healthcheck"] = {
         "test": [
             "CMD-SHELL",
-            "celery -A app.celery_app:celery_app inspect ping "
-            "-d editing@$$(hostname) --timeout 5 >/dev/null",
+            (
+                "celery -A app.celery_app:celery_app inspect ping "
+                "-d editing@$$(hostname) --timeout 5 >/dev/null"
+            ),
         ],
         "interval": "30s",
         "timeout": "15s",
@@ -459,7 +461,7 @@ def verify(root):
         == manifest["backend_image"]
     )
     assert current["frontend"]["Image"] == manifest["frontend_image"]
-    assert environment(current["video-api"])["POLARIS_AUTH_MODE"] == "supertokens"
+    assert environment(current["video-api"])["POLARIS_AUTH_MODE"] == "external"
     assert query("select version_num from alembic_version;") == "20261110_0051"
     save(
         root / "deployment-result.json",

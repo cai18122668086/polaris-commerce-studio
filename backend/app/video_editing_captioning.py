@@ -91,12 +91,13 @@ def _split_clause(
     offsets: list[int],
     begin: int,
     end: int,
+    max_chars: int = MAX_CHARS,
 ) -> list[list[TranscriptToken]]:
     """Choose balanced pages among actual-token and lexical boundaries."""
-    if offsets[end] - offsets[begin] <= MAX_CHARS:
+    if offsets[end] - offsets[begin] <= max_chars:
         return [tokens[begin:end]]
     target = (offsets[end] - offsets[begin]) / math.ceil(
-        (offsets[end] - offsets[begin]) / MAX_CHARS
+        (offsets[end] - offsets[begin]) / max_chars
     )
     best: dict[int, tuple[float, int]] = {begin: (0, begin)}
     for stop in range(begin + 1, end + 1):
@@ -105,7 +106,7 @@ def _split_clause(
         choices = []
         for start in range(stop - 1, begin - 1, -1):
             length = offsets[stop] - offsets[start]
-            if length > MAX_CHARS:
+            if length > max_chars:
                 break
             if length <= 0 or start not in best:
                 continue
@@ -151,7 +152,9 @@ def text_boundaries(text: str) -> tuple[set[int], set[int]]:
     return safe, preferred
 
 
-def measured_caption_rows(transcript: Transcript) -> list[dict[str, Any]]:
+def measured_caption_rows(
+    transcript: Transcript, *, max_chars: int = MAX_CHARS
+) -> list[dict[str, Any]]:
     tokens = transcript.tokens
     if not tokens:
         raise CaptionFailure("EDITING_CAPTION_TEXT_REVIEW_REQUIRED")
@@ -176,7 +179,9 @@ def measured_caption_rows(transcript: Transcript) -> list[dict[str, Any]]:
         if stop == len(tokens) or (
             stop in safe and has_content and (punctuation or actual_pause)
         ):
-            rows.extend(_split_clause(tokens, safe, preferred, offsets, begin, stop))
+            rows.extend(
+                _split_clause(tokens, safe, preferred, offsets, begin, stop, max_chars)
+            )
             begin = stop
             has_content = False
     result: list[dict[str, Any]] = []
@@ -206,6 +211,15 @@ def write_caption_receipt(
         root / "caption-segmentation.json",
         {
             **segmentation_metadata(),
+            **(
+                {
+                    "display_policy": "tengli.caption-presentation/1",
+                    "timing_basis": "measured speech bounds + recorded display holds",
+                    "speech_bounds_field": "speech_end_seconds",
+                }
+                if any("speech_end_seconds" in row for row in captions)
+                else {}
+            ),
             "source_sha256": transcript.source_sha256,
             "transcript_sha256": sha256(root / "transcript.json"),
             "caption_anchors_sha256": sha256(root / "caption-anchors.json"),

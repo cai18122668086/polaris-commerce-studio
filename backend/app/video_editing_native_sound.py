@@ -14,6 +14,7 @@ from .video_editing_browser_rotation import (
     browser_sound_entry_key,
     three_item_entry_frame,
 )
+from .video_editing_caption_presentation import native_clock_shot
 from .video_editing_contracts import (
     EditingMusicChoice,
     EditingMusicOptions,
@@ -755,7 +756,7 @@ def verify_rendered_sound(
             if episode is None:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
-            shot = episode["shots"][yy_entry["shot_index"]]
+            shot = native_clock_shot(episode, yy_entry["shot_index"])
             path = cue["word_binding"]["path"]
             frame = yy_opening_entry_frame(shot, fps, path)
             anchor_valid = (
@@ -771,7 +772,7 @@ def verify_rendered_sound(
             if episode is None:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
-            shot = episode["shots"][motion_entry["shot_index"]]
+            shot = native_clock_shot(episode, motion_entry["shot_index"])
             frame = motion_entry_frame(shot, fps, cue["word_binding"]["path"])
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
@@ -782,7 +783,7 @@ def verify_rendered_sound(
             if episode is None:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
-            shot = episode["shots"][panel_entry["shot_index"]]
+            shot = native_clock_shot(episode, panel_entry["shot_index"])
             frame, _ = azl_output_bounds(shot, fps)
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
@@ -794,7 +795,7 @@ def verify_rendered_sound(
             if episode is None:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
-            shot = episode["shots"][cxbr_entry["shot_index"]]
+            shot = native_clock_shot(episode, cxbr_entry["shot_index"])
             frame = cxbr_entry_frame(shot, fps, cue["word_binding"]["path"])
             anchor_valid = (
                 anchor["kind"] == "explicit_current_clock"
@@ -805,7 +806,7 @@ def verify_rendered_sound(
             if episode is None:
                 episode = read_json(root / "episode.json")
             fps = episode["output"]["fps"]
-            shot = episode["shots"][unified_entry["shot_index"]]
+            shot = native_clock_shot(episode, unified_entry["shot_index"])
             frame = unified_action_frame(
                 shot, fps, cue["word_binding"]["path"], package
             )

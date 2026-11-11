@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
-COPY backend/requirements.lock /tmp/requirements.lock
+COPY backend/requirements.editing-api.lock /tmp/requirements.lock
 RUN python -m pip install --no-cache-dir --require-hashes --only-binary=:all: -r /tmp/requirements.lock
 COPY backend/pyproject.toml backend/README.md backend/editing-constraints.txt ./
 COPY backend/app ./app

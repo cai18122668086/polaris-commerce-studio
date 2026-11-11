@@ -387,6 +387,10 @@ def cxbr_entry_frame(shot: dict, fps: int, path: str) -> int:
 def verify_cxbr_captions(root: Path, report: dict) -> dict:
     episode = read_json(root / "episode.json")
     indices = read_json(root / CXBR_CAPTION_INTENT)["shots"]
+    from .video_editing_caption_presentation import verify_reserved_caption_lane
+
+    if contained := verify_reserved_caption_lane(root, report, indices):
+        return contained
     rows = report["caption_ink"]
     if (
         not indices

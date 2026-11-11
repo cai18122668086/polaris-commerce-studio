@@ -48,6 +48,13 @@ from .video_editing_browser_rotation import (
     ROTATION_GROUP,
     THREE_ITEM_SCENE_GROUPS,
 )
+from .video_editing_caption_presentation import (
+    bridge_scene_gaps,
+    readable_caption_rows,
+    register_caption_backings,
+    remove_duplicate_captions,
+    reserve_caption_lane,
+)
 from .video_editing_captioning import write_caption_receipt
 from .video_editing_collage_scene import COLLAGE_GROUP, COLLAGE_TEMPLATE_ID
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
@@ -135,6 +142,7 @@ from .video_editing_render_edits import (
 )
 from .video_editing_role_scene import ROLE_TEMPLATE_ID
 from .video_editing_story_panels import PANEL_TEMPLATE_ID, TRIPTYCH, triptych_entrance
+from .video_editing_template_styles import PUBLIC_TEMPLATE_IDS
 from .video_editing_unified_scenes import (
     BROWSER_LIST_SCENES,
     TRANSLATION_GROUP,
@@ -405,6 +413,16 @@ def compile_episode(
     episode, selection, captions = baseline_documents(
         root, prepared, transcript, options, settings
     )
+    readable = (
+        authoring.overlay_template_id in PUBLIC_TEMPLATE_IDS
+        and options["source_subtitles"] == "none"
+    )
+    if readable:
+        captions = readable_caption_rows(transcript)
+        episode["captions"] = [
+            {key: row[key] for key in ("text", "start_seconds", "end_seconds")}
+            for row in captions
+        ]
     source_shot = copy.deepcopy(episode["shots"][0])
     episode["shots"] = []
     selection["decisions"] = []
@@ -1174,6 +1192,25 @@ def compile_episode(
             )
         except (ValueError, KeyError, IndexError, TypeError, OSError):
             issues.append({"code": "EDITING_SOUND_INPUTS_REQUIRED"})
+    if readable and not issues:
+        bridges = bridge_scene_gaps(episode, bindings)
+        # Re-layout the display pages after deduplication, rather than keeping
+        # stale pagination/ink evidence from before the presentation changes.
+        episode["captions"] = [
+            {key: row[key] for key in ("text", "start_seconds", "end_seconds")}
+            for row in captions
+        ]
+        removed = remove_duplicate_captions(episode, captions)
+        display = copy.deepcopy(episode["captions"])
+        layout_captions(episode, display, settings)
+        reserve_caption_lane(episode, removed, bridges)
+        register_caption_backings(episode, selection)
+        for index in azl_shots:
+            replacement = azl_backing(episode["shots"][index], episode, index)
+            episode["visual_scenes"] = [
+                replacement if row["id"] == replacement["id"] else row
+                for row in episode["visual_scenes"]
+            ]
     try:
         Draft202012Validator(read_json(package / "params.schema.json")).validate(
             episode

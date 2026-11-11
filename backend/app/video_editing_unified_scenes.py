@@ -15,6 +15,7 @@ from .video_editing_browser_clocks import (
     SPLIT_VERTICAL,
     fruit_row_first_frame,
 )
+from .video_editing_caption_presentation import verify_reserved_caption_lane
 from .video_editing_collage_scene import (
     COLLAGE_GROUP,
     COLLAGE_SOUNDS,
@@ -934,6 +935,8 @@ def split_unified_caption_lanes(
 def verify_unified_captions(root: Path, report: dict) -> dict:
     episode = read_json(root / "episode.json")
     indices = read_json(root / UNIFIED_CAPTION_INTENT)["shots"]
+    if contained := verify_reserved_caption_lane(root, report, indices):
+        return contained
     ink = report["caption_ink"]
     captions = episode["captions"]
     if (

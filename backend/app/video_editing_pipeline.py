@@ -1425,6 +1425,16 @@ def validate_result(
             validation["caption_layout"] = verify_native_caption_layout(root)
         except CaptionFailure as error:
             raise EditingFailure(error.code) from None
+    from .video_editing_caption_presentation import KEY, verify_reserved_caption_lane
+
+    if episode.get("editorial", {}).get(KEY):
+        try:
+            indices = [row["shot_index"] for row in episode["editorial"][KEY]["scenes"]]
+            validation["caption_presentation"] = verify_reserved_caption_lane(
+                root, native["layout_review"], indices
+            )
+        except (ValueError, KeyError, IndexError, TypeError, OSError):
+            raise EditingFailure("EDITING_NATIVE_INSET_LAYOUT_INVALID") from None
     if (root / "inset-layout-intent.json").is_file():
         try:
             if native["sha256"] != validation["sha256"]:

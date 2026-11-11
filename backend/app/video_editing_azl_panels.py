@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 from .motion_library import read_json, sha256
+from .video_editing_caption_presentation import KEY, verify_reserved_caption_lane
 from .video_editing_contracts import Transcript
 from .video_editing_materials import PREFIX
 from .video_editing_presenter_motion import MOTION_COMPOSITOR_SHA256
@@ -214,12 +215,14 @@ def validate_azl_anchors(
         )
 
 
-def azl_output_bounds(shot: dict, fps: int) -> tuple[int, int]:
+def azl_output_bounds(
+    shot: dict, fps: int, rect: tuple | None = None
+) -> tuple[int, int]:
     if (
         fps != 30
         or shot["group_id"] not in AZL_GROUPS
         or shot["layer"] != "scene"
-        or tuple(shot["rect"]) != AZL_RECT
+        or tuple(shot["rect"]) != (rect or AZL_RECT)
         or shot["config"]["events"]["subtitle_in"][0] != 0
     ):
         raise ValueError("Expected the original portrait-adapted AZL panel")
@@ -233,7 +236,16 @@ def azl_backing(shot: dict, episode: dict, index: int) -> dict:
     fps = fmt["fps"]
     if fmt["height"] * AZL_RECT[3] != fmt["width"] * 1.5:
         raise ValueError("Original AZL board needs an uncropped 2:3 projection")
-    first, end = azl_output_bounds(shot, fps)
+    presentation = episode.get("editorial", {}).get(KEY)
+    rect = None
+    if presentation:
+        expected = next(
+            row for row in presentation["scenes"] if row["shot_index"] == index
+        )
+        if tuple(expected["original_rect"]) != AZL_RECT:
+            raise ValueError("Contained AZL panel requires its original projection")
+        rect = tuple(expected["rect"])
+    first, end = azl_output_bounds(shot, fps, rect)
     duration = episode["source"]["duration_seconds"]
     return {
         "id": f"azl-backing-{index}",
@@ -261,6 +273,7 @@ def verify_azl_layout(root: Path, delivery: dict) -> dict:
     episode = read_json(root / "episode.json")
     indices = read_json(root / AZL_LAYOUT_INTENT)["shots"]
     layout = delivery["layout_review"]
+    contained = verify_reserved_caption_lane(root, layout, indices)
     ink, captions = layout["caption_ink"], episode["captions"]
     if (
         not indices
@@ -274,7 +287,14 @@ def verify_azl_layout(root: Path, delivery: dict) -> dict:
         )
     ):
         raise ValueError("AZL main subtitle ink must match the original layout")
-    bottom = round(episode["output"]["height"] * AZL_RECT[3])
+    bottom = round(
+        episode["output"]["height"]
+        * (
+            max(sum(episode["shots"][i]["rect"][j] for j in (1, 3)) for i in indices)
+            if contained
+            else AZL_RECT[3]
+        )
+    )
     receipts = {row["scene_id"]: row for row in delivery["visual_scene_receipts"]}
     expected = []
     checks = []
@@ -284,7 +304,9 @@ def verify_azl_layout(root: Path, delivery: dict) -> dict:
         expected.append(backing)
         receipt = receipts[backing["id"]]
         fps = episode["output"]["fps"]
-        first, end = azl_output_bounds(shot, fps)
+        first, end = azl_output_bounds(
+            shot, fps, tuple(shot["rect"]) if contained else None
+        )
         end = min(end, round(episode["source"]["duration_seconds"] * fps))
         if (
             receipt["frames"] != end - first
@@ -310,6 +332,11 @@ def verify_azl_layout(root: Path, delivery: dict) -> dict:
                 - bottom,
             }
         )
-    if episode["visual_scenes"] != expected or len(receipts) != len(indices):
+    azl_scenes = [
+        row for row in episode["visual_scenes"] if row["id"].startswith("azl-backing-")
+    ]
+    if (azl_scenes if contained else episode["visual_scenes"]) != expected or len(
+        [key for key in receipts if key.startswith("azl-backing-")]
+    ) != len(indices):
         raise ValueError("Original AZL backing plan differs from its rendered receipt")
     return {"status": "passed", "panel_bottom_px": bottom, "shots": checks}

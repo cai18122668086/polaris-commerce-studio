@@ -337,3 +337,49 @@ def test_intake_preserves_private_bindings_and_rejects_wrong_indexed_bytes(
         first_key,
         key,
     }
+
+
+def test_portable_browser_registration_survives_move_without_promoting_diagnostics(
+    tmp_path, monkeypatch
+):
+    package, bundle, target = (
+        tmp_path / name for name in ("package", "portable", "moved")
+    )
+    group = {"id": "CX-G06", "browser_directory": "shared"}
+    atomic_json(package / "catalog/groups.json", {"groups": [group]})
+    atomic_json(package / "catalog/native-relative-assets.json", {})
+    atomic_json(package / "catalog/external-resources.json", {"resources": []})
+    atomic_json(package / "integrity.json", {"files": {}})
+    monkeypatch.setattr(browser_originals, "verify_package", lambda _: None)
+    relative = "shared/legacy/assets/img/g06-bg.png"
+    source = bundle / "incoming"
+    background = source / relative
+    background.parent.mkdir(parents=True)
+    Image.new("RGB", (8, 8), "green").save(background)
+    manifest = bundle / "bindings.json"
+    options = {
+        "origin": "diagnostic",
+        "scope": "diagnostic",
+        "portable": True,
+        "apply": True,
+    }
+    result = intake_browser_originals(package, manifest, source=source, **options)
+    assert result["counts"]["registered"] == 1
+    raw = read_json(manifest)["browser_startup_originals"]["files"]
+    assert raw[relative]["path"] == "registry://incoming/" + relative
+    bundle.rename(target)
+    moved = target / manifest.name
+    assert (
+        intake_browser_originals(package, moved)["counts"]["diagnostic_registered"] == 1
+    )
+    stage = tmp_path / "staged"
+    config = {"presenter": "current"}
+    with pytest.raises(BrowserOriginalsMissing):
+        compile_browser_originals(package, group, config, moved, stage)
+    selected = compile_browser_originals(
+        package, group, config, moved, stage, allow_diagnostic=True
+    )
+    assert selected[relative]["use_scope"] == "diagnostic"
+    assert sha256(stage / (selected[relative]["sha256"] + ".png")) == sha256(
+        target / "incoming" / relative
+    )

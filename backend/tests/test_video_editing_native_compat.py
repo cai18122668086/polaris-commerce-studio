@@ -1,4 +1,5 @@
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -7,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import video_editing_native_compat as compat
+from app import video_editing_pipeline as pipeline
 from app.config import Settings
 from app.motion_library import atomic_json, sha256
 from app.video_editing_pipeline import environment
@@ -22,6 +24,23 @@ def test_native_subprocess_keeps_worker_browser_path_without_provider_credential
     child = environment(Settings())
     assert child["PLAYWRIGHT_BROWSERS_PATH"] == browsers
     assert "POLARIS_VIDEO_SCRIPT_API_KEY" not in child
+
+
+def test_exited_linux_process_preserves_native_failure_code(tmp_path, monkeypatch):
+    process = SimpleNamespace(pid=123, poll=lambda: 1, returncode=1, wait=lambda: 1)
+
+    def group_already_exited(*args):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(pipeline, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(pipeline.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(pipeline.os, "killpg", group_already_exited, raising=False)
+    monkeypatch.setattr(signal, "SIGKILL", 9, raising=False)
+    with pytest.raises(pipeline.EditingFailure) as error:
+        pipeline.run(
+            ["native-export"], tmp_path, Settings(), lambda: None, "native_export"
+        )
+    assert error.value.code == "EDITING_NATIVE_EXPORT_FAILED"
 
 
 def test_readonly_original_tree_stays_unchanged_but_task_copies_can_be_edited(tmp_path):

@@ -13,6 +13,7 @@ import sys
 import time
 import wave
 from collections.abc import Callable
+from contextlib import suppress
 from fractions import Fraction
 from itertools import pairwise
 from pathlib import Path
@@ -172,7 +173,8 @@ def run(
             else:
                 import signal
 
-                os.killpg(process.pid, signal.SIGKILL)
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
             process.wait()
             raise
     return output

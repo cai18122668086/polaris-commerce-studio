@@ -24,6 +24,11 @@ def main() -> None:
         "--diagnostic", dest="scope", action="store_const", const="diagnostic"
     )
     parser.add_argument("--apply", action="store_true", help="Register verified files")
+    parser.add_argument(
+        "--portable",
+        action="store_true",
+        help="Store paths relative to the bindings directory",
+    )
     args = parser.parse_args()
     try:
         report = intake_browser_originals(
@@ -33,6 +38,7 @@ def main() -> None:
             origin=args.provenance,
             scope=args.scope,
             apply=args.apply,
+            portable=args.portable,
         )
     except (OSError, ValueError) as exc:
         parser.error(str(exc))

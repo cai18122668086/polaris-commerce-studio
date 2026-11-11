@@ -27,6 +27,11 @@ def main() -> None:
         default=[],
     )
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--portable",
+        action="store_true",
+        help="Store paths relative to the bindings directory",
+    )
     args = parser.parse_args()
     candidates = {rid: Path(path) for rid, path in args.candidate}
     if len(candidates) != len(args.candidate):
@@ -42,6 +47,7 @@ def main() -> None:
             origin=args.provenance,
             component_references=references,
             apply=args.apply,
+            portable=args.portable,
         )
     except OSError:
         parser.error("Unable to access the private intake files or registry lock")

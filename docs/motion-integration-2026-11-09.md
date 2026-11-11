@@ -818,7 +818,7 @@ LYO02 使用本期口播 0.410 至 3.590 秒，沿用原圆窗、虚线边、前
 
 原生剪辑子进程保留 worker 的 `PLAYWRIGHT_BROWSERS_PATH`，继续使用固定环境白名单。实际通过 worker 子进程入口从指定目录启动 Chromium 156.0.8078.4 并读取本地测试页。回归覆盖浏览器路径传入和文稿服务凭据隔离。
 
-额外需要原字体或原模型的本地 Compose 可合并 `compose.editing-dependencies.yaml`。将已校验且可供当前项目使用的原件和 `bindings.json` 放进同一私有目录，令 `POLARIS_MOTION_DEPENDENCIES_HOST` 指向该目录。清单的 `resources` 对象仍以原资源 ID 为键，值填写容器内绝对路径，例如 `/motion-dependencies/fonts/original.ttf`。用 `docker compose -f compose.yaml -f compose.editing.yaml -f compose.editing-dependencies.yaml config` 查看合并配置。API 和剪辑 worker 共用只读依赖目录和原有可写任务卷。文件进入运行时仍按原包登记核验字节数及 SHA256。Compose 合并实测通过，Linux 镜像构建和容器实跑待验证。
+额外需要原字体或原模型的本地 Compose 可合并 `compose.editing-dependencies.yaml`。将已校验且可供当前项目使用的原件和 `bindings.json` 放进同一私有目录，令 `POLARIS_MOTION_DEPENDENCIES_HOST` 指向该目录。清单的 `resources` 对象以原资源 ID 为键，支持容器内绝对路径（如 `/motion-dependencies/fonts/original.ttf`），以及相对该清单目录的 `registry://fonts/original.ttf`。用 `docker compose -f compose.yaml -f compose.editing.yaml -f compose.editing-dependencies.yaml config` 查看合并配置。API 和剪辑 worker 共用只读依赖目录和原有可写任务卷。文件进入运行时仍按原包登记核验字节数及 SHA256。
 
 18 项相关回归、Ruff 和目标 mypy 通过。原 Motion 1426 项及原写稿 33 项完整性复核通过。
 
@@ -2335,3 +2335,17 @@ Chrome 实播并下载 768×1366、4.833 秒的基础字幕验证片。范围请
 另用该实录和 A 版原配方注册工程候选，并采用既有的完整数量表达校正。依赖在入队后改变时，worker 拒绝任务 b231a643-a84b-498c-81f8-4ebaf028655e，未发布产物。恢复正式原件后，从重试入口以同一编号重新编码 48.475 秒，包含 9 种原生动效、11 次出现、11 条原库提示音和一首背景乐。抽帧核对问号在零基第 157 帧出现，原音效于同帧起音。原声分轨峰值误差为 −138.491 dBFS。代理和母版范围请求均返回 206，下载件完整解码且摘要核对通过。
 
 Chrome 从本地网站实播重试后的 768×1366 高清至 5.77 秒，下载件摘要与母版一致。联调文件在 `C:/tl/motion-saved-dependencies-20261111`，其中 `before.json`、`after.json`、`restored.json`、`browser-evidence.json`、`worker-evidence.json`、`recovery-evidence.json`、`recovery-pixels.json` 与 `recovery-browser.json` 记录接口、浏览器、worker 和新成片像素验证。新母版为 `website-restored-original-a-hd.mp4`，SHA256 为 `867442478d7c37f77b23bf162b3c47e444a3bd9a67187585e09990b088eff999`。原包 1,426 项摘要、469 项相关回归、目标 Ruff、mypy、前端类型、ESLint 与 OpenAPI 复算通过。本轮验证原件依赖故障与恢复，沿用既有实录和编排，成片视听待用户验收。
+
+## Windows 登记的私有原件在 Linux 只读挂载
+
+以 a868c2b 为基线。字体、模型和浏览器原图的登记命令均增加 `--portable`。将准备登记的原件放在 `bindings.json` 同目录下的子目录，并用现有 `--candidate` 或 `--source` 参数指定它们。登记沿用原件字节校验、来源记录和用途限制，路径采用 `registry://` 加目录内相对路径。当前运行端在打开文件前解析为本机绝对路径，并拒绝向上跳转及离开私有目录的链接。已有绝对路径仍可读取。浏览器收件工具保留有效旧绑定，新目录可单独登记一份可移动的清单。两个登记命令均支持先省略 `--apply` 核对。任务交给原引擎的绑定仍使用已核验的本机路径。
+
+同一份从 Windows 登记的私有清单直接挂载到断网 Linux 容器的 `/motion-dependencies`。两端 AH-S03 A 版核对到相同两份原字体，均完整原生编码 36 帧。逐帧解码后 36 帧 RGBA 像素完全一致，组件编码文件摘要按平台分别登记。仅含 Windows 绝对路径的副本在 Linux 预检无法定位原字体。另用 69 张已登记诊断用途的底板验证路径解析和冻结。两端均只允许隔离诊断读取，并拒绝作为 CX-G05 正式原件。私有清单在两端使用前后摘要一致，原 Motion 包 1,426 项摘要复核通过。
+
+整片联调时，Linux 上相同源片生成的 16 kHz 分析音频比 Windows 多 80 个样本。重叠区内有 15 个样本相差 1 个 PCM 量化级。旧词轴因此在原声摘要校验被拒绝。通过网站任务在断网容器重新执行 FunASR 和 fa-zh 对齐，240 个词的文本和入点逐项一致。工程编排重新绑定实际 Linux 词 ID。用 Windows 挂载作为可写任务盘时，原生 exporter 返回权限错误。子进程退出后 Linux 清理失败曾盖掉原错误码，现保留 `EDITING_NATIVE_EXPORT_FAILED`，在实际 Linux 进程中复验通过。
+
+联调回执在 `C:/tl/motion-portable-dependencies-20261111`，包含两种收件回执、`windows/proof.json`、`linux/proof.json`、`cross-platform-component-pixels.json` 和 `linux/alignment-proof.json`。待补原件组及 AH-S03 B 版继续保持原登记状态。
+
+切换到 Compose 所用的 Linux 原生任务卷后，用同一编号 `95004346-7150-4f31-8031-6bd80e76f687` 从网站重试。独立 worker 生成 48.475 秒成片，含 9 种原生动效、11 次出现、11 条原库提示音和一首背景乐。代理与确认后的高清请求均返回 206，下载件完整解码。画面抽帧显示问号在零基第 157 帧进入，与提示音一致。实录分轨峰值误差为 −138.491 dBFS。新母版为 `C:/tl/motion-portable-dependencies-20261111/linux/website-portable-original-a-hd.mp4`，SHA256 为 `1f487cd7dfa03b43acdefbfc3cc7eadd744a7dd5aa92cbf70e4649da9ba907d0`。整片回执在同目录的 `film-proof.json` 和 `film-pixels.json`。
+
+Chrome 在 430 像素宽窗口通过本地网站实播这份 Linux 母版至 5.77 秒，播放分辨率为 768×1366，下载摘要一致。浏览器回执为 `C:/tl/motion-portable-dependencies-20261111/browser-proof.json`。474 项相关回归、Ruff、mypy 与差异检查通过。本轮使用已保存的工程编排和实际本地转录对齐，无新模型网关调用或部署。整片仍待用户视听验收。

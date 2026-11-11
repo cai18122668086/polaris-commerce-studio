@@ -19,7 +19,9 @@ from .motion_library import (
     verify_package,
 )
 from .motion_local_dependencies import (
+    local_binding_reference,
     read_dependency_manifest,
+    resolve_local_binding,
     save_dependency_manifest,
 )
 from .video_editing_browser_clocks import (
@@ -275,8 +277,17 @@ def _registry_files(document: dict) -> dict:
     return registry["files"]
 
 
+def _resolve_browser_registration(manifest: Path | None, row: object) -> object:
+    if not isinstance(row, dict):
+        return row
+    return {**row, "path": resolve_local_binding(manifest, row.get("path")) or ""}
+
+
 def _registered_originals(manifest: Path | None) -> dict:
-    return _registry_files(read_dependency_manifest(manifest))
+    return {
+        relative: _resolve_browser_registration(manifest, row)
+        for relative, row in _registry_files(read_dependency_manifest(manifest)).items()
+    }
 
 
 def _incoming_image(
@@ -315,6 +326,7 @@ def intake_browser_originals(
     origin: str = "",
     scope: DeliveryScope | None = None,
     apply: bool = False,
+    portable: bool = False,
 ) -> dict:
     """Check a private delivery tree at the package-relative native paths."""
     package, manifest = package.resolve(), manifest.resolve()
@@ -330,6 +342,8 @@ def intake_browser_originals(
         raise ValueError("Supply an external delivery directory and its provenance")
     if source is not None and scope not in ("original_delivery", "diagnostic"):
         raise ValueError("Classify the delivery as original or diagnostic")
+    if portable and (source is None or not source.is_relative_to(manifest.parent)):
+        raise ValueError("Portable deliveries must be under the bindings directory")
     if apply and source is None:
         raise ValueError("Registering originals requires a delivery directory")
     verify_package(package)
@@ -361,7 +375,16 @@ def intake_browser_originals(
         if relative in registered:
             try:
                 checked = _original_image(
-                    package, relative, index, registered, None, allow_diagnostic=True
+                    package,
+                    relative,
+                    index,
+                    {
+                        relative: _resolve_browser_registration(
+                            manifest, registered[relative]
+                        )
+                    },
+                    None,
+                    allow_diagnostic=True,
                 )
             except _IMAGE_ERRORS:
                 row["status"] = "invalid_registration"
@@ -404,7 +427,12 @@ def intake_browser_originals(
             ):
                 row["status"] = "rejected_diagnostic_candidate"
                 continue
-            accepted[relative] = candidate
+            accepted[relative] = {
+                **candidate,
+                "path": local_binding_reference(
+                    manifest, Path(candidate["path"]), portable=portable
+                ),
+            }
             row.update(
                 status="registered" if apply else "ready_to_register",
                 identity=checked["identity"],

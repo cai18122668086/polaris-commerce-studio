@@ -8,6 +8,7 @@ from typing import Any, Literal
 from .motion_library import (
     MOTION_SHA256,
     atomic_json,
+    inside,
     read_json,
     sha256,
     verify_package,
@@ -19,6 +20,7 @@ DependencyState = Literal[
 ComponentUseState = Literal["reference_required", "reference_recorded"]
 NONCOMMERCIAL_FONT = "noncommercial_marked_no_commercial_or_redistribution_claim"
 _MANIFEST_LIMIT = 1_000_000
+_REGISTRY_PREFIX = "registry://"
 
 
 def read_dependency_manifest(manifest: Path | None) -> dict[str, Any]:
@@ -48,6 +50,41 @@ def save_dependency_manifest(manifest: Path, previous: dict, updated: dict) -> N
         lock.unlink()
 
 
+def resolve_local_binding(manifest: Path | None, value: object) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    if Path(value).is_absolute():
+        return value
+    if manifest is None or not value.startswith(_REGISTRY_PREFIX):
+        return None
+    relative = value.removeprefix(_REGISTRY_PREFIX)
+    if (
+        not relative
+        or "\\" in relative
+        or any(part in {"", ".", ".."} for part in relative.split("/"))
+    ):
+        return None
+    try:
+        return str(inside(manifest.resolve().parent, relative))
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
+def local_binding_reference(manifest: Path, path: Path, *, portable: bool) -> str:
+    if not portable:
+        return str(path)
+    try:
+        relative = path.relative_to(manifest.parent).as_posix()
+    except ValueError as exc:
+        raise ValueError(
+            "Portable dependencies must be stored under the bindings directory"
+        ) from exc
+    reference = _REGISTRY_PREFIX + relative
+    if resolve_local_binding(manifest, reference) != str(path):
+        raise ValueError("Portable dependency path escapes the registry")
+    return reference
+
+
 def local_dependencies(manifest: Path | None) -> dict[str, str]:
     try:
         resources = read_dependency_manifest(manifest).get("resources")
@@ -56,9 +93,9 @@ def local_dependencies(manifest: Path | None) -> dict[str, str]:
     if not isinstance(resources, dict):
         return {}
     return {
-        rid: value
+        rid: path
         for rid, value in resources.items()
-        if isinstance(value, str) and Path(value).is_absolute()
+        if (path := resolve_local_binding(manifest, value)) is not None
     }
 
 
@@ -129,6 +166,7 @@ def intake_local_dependencies(
     origin: str = "",
     component_references: dict[str, str] | None = None,
     apply: bool = False,
+    portable: bool = False,
 ) -> dict[str, Any]:
     """Match explicitly supplied font/model bytes and merge an all-valid batch."""
     package, manifest = package.resolve(), manifest.resolve()
@@ -166,14 +204,12 @@ def intake_local_dependencies(
         candidate = candidate.resolve()
         if candidate.is_relative_to(package):
             raise ValueError("Original deliveries must remain outside the library")
+        binding = local_binding_reference(manifest, candidate, portable=portable)
         identity = identities[rid]
         state = dependency_state(identity, str(candidate))
-        current = resources.get(rid)
-        retain = (
-            isinstance(current, str)
-            and Path(current).is_absolute()
-            and dependency_state(identity, current) == "verified"
-        )
+        current = resolve_local_binding(manifest, resources.get(rid))
+        retain = dependency_state(identity, current) == "verified"
+        change_path = not retain or (portable and resources.get(rid) != binding)
         rows.append(
             {
                 "id": rid,
@@ -182,14 +218,14 @@ def intake_local_dependencies(
                 "bytes": identity.get("bytes"),
                 "original_rights": identity.get("rights"),
                 "candidate": state,
-                "retains_verified_binding": retain,
+                "retains_verified_binding": not change_path,
             }
         )
         if state != "verified":
             continue
-        if not retain:
-            merged[rid] = str(candidate)
-        if not retain or rid in references:
+        if change_path:
+            merged[rid] = binding
+        if change_path or rid in references:
             prior = receipts.get(rid) if retain else None
             reference = references.get(rid) or _component_reference(identity, receipts)
             intake[rid] = {

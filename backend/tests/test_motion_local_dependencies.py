@@ -8,6 +8,7 @@ from app.motion_local_dependencies import (
     component_use_state,
     intake_local_dependencies,
     local_dependencies,
+    resolve_local_binding,
 )
 from app.video_editing_hypit_label_cards import (
     LABEL_CARD_FONT,
@@ -145,3 +146,59 @@ def test_restricted_font_bytes_and_component_reference_are_separate(
     font.write_bytes(b"different font contents")
     with pytest.raises(ValueError, match="exact original font bytes"):
         require_label_card_component_font(package, config, task, registry)
+
+
+def test_portable_intake_relocates_exact_bytes_and_keeps_legacy_entries(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("app.motion_local_dependencies.verify_package", lambda _: None)
+    package, bundle, destination = (
+        tmp_path / name for name in ("package", "portable", "relocated")
+    )
+    font = bundle / "fonts" / "received.ttf"
+    font.parent.mkdir(parents=True)
+    font.write_bytes(b"original")
+    manifest = bundle / "bindings.json"
+    unrelated = tmp_path / "legacy.ttf"
+    unrelated.write_bytes(font.read_bytes())
+    atomic_json(
+        manifest, {"resources": {"original": str(unrelated), "legacy": str(unrelated)}}
+    )
+    atomic_json(
+        package / "catalog/external-resources.json",
+        {"resources": [{"id": "original", "kind": "font", "sha256": sha256(font)}]},
+    )
+    with pytest.raises(ValueError, match="under the bindings directory"):
+        intake_local_dependencies(
+            package, manifest, {"original": unrelated}, portable=True
+        )
+    options = {"apply": True, "origin": "original-delivery", "portable": True}
+    assert intake_local_dependencies(package, manifest, {"original": font}, **options)[
+        "manifest_updated"
+    ]
+    assert not intake_local_dependencies(
+        package, manifest, {"original": font}, **options
+    )["manifest_updated"]
+    assert (
+        read_json(manifest)["resources"]["original"] == "registry://fonts/received.ttf"
+    )
+    bundle.rename(destination)
+    moved = destination / manifest.name
+    bindings = local_dependencies(moved)
+    assert Path(bindings["original"]) == destination / "fonts" / font.name
+    assert sha256(Path(bindings["original"])) == sha256(unrelated)
+    assert Path(bindings["legacy"]) == unrelated
+    for invalid in (
+        "../legacy.ttf",
+        "registry://../legacy.ttf",
+        "registry://fonts/../../legacy.ttf",
+        "registry:///legacy.ttf",
+        "registry://C:/legacy.ttf",
+        "registry://fonts\\..\\legacy.ttf",
+    ):
+        assert resolve_local_binding(moved, invalid) is None
+    try:
+        (destination / "link.ttf").symlink_to(unrelated)
+    except OSError:
+        return
+    assert resolve_local_binding(moved, "registry://link.ttf") is None

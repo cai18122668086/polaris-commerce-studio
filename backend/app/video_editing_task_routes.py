@@ -38,10 +38,12 @@ from .video_editing_contracts import (
     EditingSourceUploadResponse,
     EditingTaskCreate,
     EditingTaskResponse,
+    EditingTemplateSample,
     EditingWorksResponse,
 )
 from .video_editing_delivery_checkpoint import verified_delivery_file
 from .video_editing_native_plans import admit_render_plan
+from .video_editing_overlay_templates import MIN_OVERLAY_TYPES, overlay_templates
 from .video_editing_preview_base import preview_base_attempt
 from .video_editing_source_lineage import (
     freeze_generation_source,
@@ -900,6 +902,83 @@ def list_editing_works(
                 }
             )
     return {"items": items, "next_before": None}
+
+
+@router.get(
+    "/projects/{project_id}/editing-template-samples",
+    response_model=list[EditingTemplateSample],
+)
+def list_template_samples(
+    project_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> list[dict[str, Any]]:
+    settings = enabled(request)
+    own_project(session, workspace, str(project_id))
+    active_templates = {template["id"] for template in overlay_templates()}
+    template_id = EditingNativePlanRecord.recipes["overlay_template_id"].as_string()
+    query = (
+        select(EditingTaskRecord, EditingArtifactRecord, template_id)
+        .select_from(EditingTaskRecord)
+        .join(
+            EditingNativePlanRecord,
+            and_(
+                EditingNativePlanRecord.id
+                == EditingTaskRecord.options["native_plan_id"].as_string(),
+                EditingNativePlanRecord.project_id == EditingTaskRecord.project_id,
+                EditingNativePlanRecord.workspace_id == EditingTaskRecord.workspace_id,
+                EditingNativePlanRecord.owner_user_id
+                == EditingTaskRecord.owner_user_id,
+                EditingNativePlanRecord.source_id == EditingTaskRecord.source_id,
+                EditingNativePlanRecord.library_release == MOTION_SHA256,
+            ),
+        )
+        .join(
+            EditingArtifactRecord, EditingArtifactRecord.task_id == EditingTaskRecord.id
+        )
+        .where(
+            EditingTaskRecord.project_id == str(project_id),
+            EditingTaskRecord.workspace_id == workspace.workspace_id,
+            EditingTaskRecord.owner_user_id == workspace.principal.user_id,
+            EditingTaskRecord.library_release == MOTION_SHA256,
+            EditingTaskRecord.status == "completed",
+            EditingTaskRecord.options["mode"].as_string() == "native_plan",
+            EditingTaskRecord.options["delivery"].as_string() == "preview_first",
+            EditingArtifactRecord.role == "final",
+            EditingArtifactRecord.mime == "video/mp4",
+            EditingArtifactRecord.validation["decoded"].as_boolean().is_(True),
+            template_id.in_(active_templates),
+        )
+        .order_by(EditingTaskRecord.created_at.desc(), EditingTaskRecord.id.desc())
+    )
+    samples: dict[str, dict[str, Any]] = {}
+    with session.execute(query, execution_options={"yield_per": 32}) as results:
+        for row, final, chosen_template in results.tuples():
+            if chosen_template in samples or not artifact_visible(row, final):
+                continue
+            counts = final.validation.get("motion_counts")
+            if (
+                not isinstance(counts, dict)
+                or type(counts.get("distinct_groups")) is not int
+                or type(counts.get("occurrences")) is not int
+                or not counts["occurrences"]
+                >= counts["distinct_groups"]
+                >= MIN_OVERLAY_TYPES
+                or not verified_delivery_file(
+                    final, (settings.video_editing_tasks_dir / row.id).resolve()
+                )
+            ):
+                continue
+            samples[chosen_template] = {
+                "template_id": chosen_template,
+                "task_id": row.id,
+                "motion_counts": counts,
+                "final": artifact_response(row, final),
+            }
+            if len(samples) == len(active_templates):
+                break
+    return list(samples.values())
 
 
 @router.post("/editing-tasks/{task_id}/cancel", response_model=EditingTaskResponse)

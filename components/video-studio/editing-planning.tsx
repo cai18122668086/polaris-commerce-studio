@@ -11,6 +11,7 @@ import styles from "./editing-workspace.module.css";
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
 type OverlayTemplate = components["schemas"]["EditingOverlayTemplate"];
+type TemplateSample = components["schemas"]["EditingTemplateSample"];
 type BaseTask = Pick<PreviewTask, "id" | "status" | "created_at" | "artifacts" | "source_frame">;
 export type CarrySelection = {
   projectId: string;
@@ -62,6 +63,10 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const [jobs, setJobs] = useState<Job[]>([]);
   const [materialIds, setMaterialIds] = useState<string[]>([]);
   const [templates, setTemplates] = useState<OverlayTemplate[]>([]);
+  const [templateSamples, setTemplateSamples] = useState<TemplateSample[]>([]);
+  const [openSample, setOpenSample] = useState<TemplateSample>();
+  const [sampleError, setSampleError] = useState(false);
+  const [samplesUnavailable, setSamplesUnavailable] = useState(false);
   const [templateId, setTemplateId] = useState("");
   const [templateError, setTemplateError] = useState(false);
   const [manualPreviewIds, setManualPreviewIds] = useState<string[]>([]);
@@ -75,6 +80,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const candidates = tasks.filter(task => task.status === "completed" && task.source_frame?.supports_native_portrait !== false && task.artifacts.some(a => a.role === "transcript"));
   const selectedCandidate = candidates.some(task => task.id === selected) ? selected : "";
+  const sampleRevision = tasks.flatMap(task => task.artifacts.filter(artifact => artifact.role === "final")
+    .map(artifact => `${artifact.id}:${artifact.sha256}`)).sort().join(",");
   const eligible = jobs.filter(canBatchPreview);
   const batchIds = batchSelection.filter(id => eligible.some(job => job.id === id));
   const showBatch = eligible.length >= 2 || batchIds.length > 0;
@@ -96,6 +103,18 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       .catch(() => { if (!controller.signal.aborted) setTemplateError(true); });
     return () => controller.abort();
   }, [workspaceId]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiClient.GET(`${root}/projects/{project_id}/editing-template-samples`, {
+      params: { path: { workspace_id: workspaceId, project_id: projectId } },
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]),
+    }).then(result => {
+      if (controller.signal.aborted) return;
+      setTemplateSamples(unwrapApiResponse(result));
+      setSamplesUnavailable(false);
+    }).catch(() => { if (!controller.signal.aborted) setSamplesUnavailable(true); });
+    return () => controller.abort();
+  }, [workspaceId, projectId, sampleRevision]);
   const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
     const taskId = prepared?.base_task_id || selectedCandidate;
     if (!taskId || (mode === "prepare" && !templateId)) return;
@@ -200,12 +219,30 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     <fieldset className={styles.templatePicker}>
       <legend>选择组合模板</legend>
       <p className={styles.note}>口播声音连续。画面可随模板叠加动效或切换整帧场景。成片至少使用五种不同动效，优先十种以上。同一种动效可在不同词点重复使用。</p>
-      <div className={styles.templateGrid}>{templates.map(template => <label key={template.id} className={styles.templateOption}>
-        <span><input type="radio" name="editing-template" value={template.id} checked={templateId === template.id} disabled={busy} onChange={() => setTemplateId(template.id)} /> <b>{template.name}</b></span>
-        <small>{template.slots.length} 种可选动效</small>
-        <small>{template.slots.slice(0, 3).map(slot => slot.purpose).join(" · ")}</small>
-      </label>)}</div>
+      <div className={styles.templateGrid}>{templates.map(template => {
+        const sample = templateSamples.find(item => item.template_id === template.id);
+        const playing = openSample?.template_id === template.id ? openSample : undefined;
+        return <div key={template.id} className={styles.templateOption}>
+          <label>
+            <span><input type="radio" name="editing-template" value={template.id} checked={templateId === template.id} disabled={busy} onChange={() => setTemplateId(template.id)} /> <b>{template.name}</b></span>
+            <small>{template.slots.length} 种可选动效</small>
+            <small>{template.slots.slice(0, 3).map(slot => slot.purpose).join(" · ")}</small>
+          </label>
+          {(sample || playing) && <button type="button" aria-expanded={!!playing}
+            aria-label={`${playing ? "收起" : "播放"}本项目成片 · ${template.name}`}
+            onClick={() => { setSampleError(false); setOpenSample(playing ? undefined : sample); }}>
+            {playing ? "收起成片" : "播放本项目成片"}
+          </button>}
+          {playing && <div className={styles.templateSample}>
+            <small>{playing.motion_counts.distinct_groups} 种动效 · {playing.motion_counts.occurrences} 次出现</small>
+            <video key={playing.final.id} src={playing.final.url} aria-label={`${template.name}成片`}
+              controls autoPlay playsInline preload="metadata" onError={() => setSampleError(true)} />
+            {sampleError && <p role="alert" className={styles.error}>暂时无法播放此成片。</p>}
+          </div>}
+        </div>;
+      })}</div>
       {templateError && <p role="alert">暂时无法读取组合模板，请刷新后重试。</p>}
+      {samplesUnavailable && <p className={styles.note}>暂时无法读取本项目的模板成片。</p>}
     </fieldset>
     <EditingProjectMaterials workspaceId={workspaceId} projectId={projectId} selected={materialIds} onSelect={setMaterialIds} />
     <button type="button" disabled={busy || !selectedCandidate || !templateId} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>

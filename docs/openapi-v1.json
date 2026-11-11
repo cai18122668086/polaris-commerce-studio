@@ -7298,6 +7298,33 @@
         "title": "EditingTemplateImageRequirement",
         "type": "object"
       },
+      "EditingTemplateSample": {
+        "additionalProperties": false,
+        "properties": {
+          "final": {
+            "$ref": "#/components/schemas/EditingArtifactResponse"
+          },
+          "motion_counts": {
+            "$ref": "#/components/schemas/EditingMotionCounts"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "task_id",
+          "motion_counts",
+          "final"
+        ],
+        "title": "EditingTemplateSample",
+        "type": "object"
+      },
       "EditingTranscriptRevisionCreate": {
         "additionalProperties": false,
         "properties": {
@@ -24754,6 +24781,67 @@
         "summary": "List Tasks",
         "tags": [
           "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-template-samples": {
+      "get": {
+        "operationId": "list_template_samples_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_template_samples_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingTemplateSample"
+                  },
+                  "title": "Response List Template Samples Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Template Samples Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Template Samples",
+        "tags": [
+          "video-editing-tasks"
         ]
       }
     },

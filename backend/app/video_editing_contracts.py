@@ -303,6 +303,13 @@ class EditingWorksResponse(StrictVideoModel):
     next_before: str | None
 
 
+class EditingTemplateSample(StrictVideoModel):
+    template_id: str
+    task_id: str
+    motion_counts: EditingMotionCounts
+    final: EditingArtifactResponse
+
+
 class EditingSourceUploadResponse(StrictVideoModel):
     id: UUID
     project_id: UUID

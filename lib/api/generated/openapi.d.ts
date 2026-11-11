@@ -2654,6 +2654,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-template-samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Template Samples */
+        get: operations["list_template_samples_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_template_samples_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/versions/{version_id}/writing-sources": {
         parameters: {
             query?: never;
@@ -6674,6 +6691,15 @@ export interface components {
             selected_distinct_images: number;
             /** Transparent Image Ids */
             transparent_image_ids?: string[] | null;
+        };
+        /** EditingTemplateSample */
+        EditingTemplateSample: {
+            final: components["schemas"]["EditingArtifactResponse"];
+            motion_counts: components["schemas"]["EditingMotionCounts"];
+            /** Task Id */
+            task_id: string;
+            /** Template Id */
+            template_id: string;
         };
         /** EditingTranscriptRevisionCreate */
         EditingTranscriptRevisionCreate: {
@@ -14851,6 +14877,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingPlanningTaskResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_template_samples_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_template_samples_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingTemplateSample"][];
                 };
             };
             /** @description Validation Error */

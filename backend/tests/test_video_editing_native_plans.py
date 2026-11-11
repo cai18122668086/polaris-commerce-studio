@@ -1,6 +1,7 @@
 """Frozen plan ownership, idempotence and fail-closed provenance; no real renderer."""
 
 import importlib.util
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -24,8 +25,9 @@ from app.video_editing_task_models import (
     EditingTaskRecord,
 )
 from app.video_editing_worker import load_plan_transcript
+from tests.test_auth_external import verified_identity
 from tests.test_video_editing_transcript_revisions import completed_transcript
-from tests.test_video_projects import base
+from tests.test_video_projects import base, payload
 
 pytest_plugins = ["tests.test_video_projects"]
 
@@ -331,6 +333,90 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
         ]
         == "EDITING_TEMPLATE_CHANGED"
     )
+
+
+def test_template_sample_uses_latest_intact_confirmed_project_master(
+    video, tmp_path, monkeypatch
+):
+    client, auth, ws, settings, source, task, semantic, recipe = saved_plan(
+        video, tmp_path, monkeypatch
+    )
+    template = "subtitle-story-v1"
+    task_url = base(ws) + "/editing-tasks"
+    cases = ("intact", "corrupt", "unconfirmed", "too_few", "waiting", "direct")
+    task_ids = [
+        client.post(task_url, json={"request_id": str(uuid4()), "source_id": source})
+        .raise_for_status()
+        .json()["id"]
+        for _ in cases
+    ]
+    with client.app.state.session_factory() as session:
+        plan = register_operator_plan(
+            session,
+            settings,
+            ws,
+            task_owner(session, task["id"]),
+            task["id"],
+            str(uuid4()),
+            semantic,
+            recipe,
+        )
+        project = plan.project_id
+        plan.recipes = {**plan.recipes, "overlay_template_id": template}
+        for index, (case, tid) in enumerate(zip(cases, task_ids, strict=True)):
+            row = session.get(EditingTaskRecord, tid)
+            path = settings.video_editing_tasks_dir / tid / "master.mp4"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"master fixture")
+            aid, digest = str(uuid4()), sha256(path)
+            row.created_at = datetime(2026, 11, 9, 6, index, tzinfo=UTC)
+            row.options = {
+                **row.options,
+                "mode": "native_plan",
+                "native_plan_id": plan.id,
+                "delivery": "direct" if case == "direct" else "preview_first",
+            }
+            row.status = "awaiting_review" if case == "waiting" else "completed"
+            if case != "unconfirmed":
+                row.checkpoint = {
+                    "export_confirmation": {"final_id": aid, "final_sha256": digest}
+                }
+            session.add(
+                EditingArtifactRecord(
+                    id=aid,
+                    task_id=tid,
+                    role="final",
+                    path=str(path),
+                    mime="video/mp4",
+                    sha256=digest,
+                    bytes=path.stat().st_size,
+                    duration_ms=2000,
+                    validation={
+                        "decoded": True,
+                        "motion_counts": {
+                            "distinct_groups": 4 if case == "too_few" else 5,
+                            "occurrences": 6,
+                        },
+                    },
+                )
+            )
+            if case == "corrupt":
+                path.write_bytes(b"x" * path.stat().st_size)
+        session.commit()
+
+    url = base(ws) + f"/projects/{project}/editing-template-samples"
+    (sample,) = client.get(url).raise_for_status().json()
+    assert (sample["template_id"], sample["task_id"]) == (template, task_ids[0])
+    assert sample["motion_counts"] == {"distinct_groups": 5, "occurrences": 6}
+    media = client.get(sample["final"]["url"], headers={"Range": "bytes=0-5"})
+    assert (media.status_code, media.content) == (206, b"master")
+    other_project = base(ws) + f"/projects/{uuid4()}"
+    client.put(other_project, json=payload()).raise_for_status()
+    assert client.get(other_project + "/editing-template-samples").json() == []
+    auth.identity = verified_identity(
+        primary_user_id="template-sample-other", email="1474953130@qq.com"
+    )
+    assert client.get(url).status_code in {403, 404}
 
 
 def test_hypit_preflight_controls_saved_plan_and_submission(

@@ -18,6 +18,14 @@ def digest(path):
         while block:=stream.read(1024*1024):h.update(block)
     return h.hexdigest()
 
+def wait_postgres(name):
+    # The official image briefly starts a socket-only initialization server.
+    # Only the final TCP listener is safe for restoring the copied database.
+    for _ in range(40):
+        if subprocess.run(['docker','exec',name,'pg_isready','-h','127.0.0.1','-U','polaris','-d','polaris'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0:return
+        time.sleep(1)
+    raise RuntimeError('Isolated PostgreSQL did not become ready')
+
 BACKUP_CODE = r"""
 import os,boto3,tarfile,sys,json,hashlib,io
 s=boto3.client('s3',endpoint_url=os.environ['POLARIS_S3_ENDPOINT_URL'],aws_access_key_id=os.environ['POLARIS_S3_ACCESS_KEY'],aws_secret_access_key=os.environ['POLARIS_S3_SECRET_KEY'],region_name=os.environ['POLARIS_S3_REGION'])
@@ -102,10 +110,7 @@ def main(revision,image,expected_before='20261030_0034',expected_after='20261105
     for name in [pg,mini]:run(['docker','volume','create',name],stdout=subprocess.DEVNULL)
     run(['docker','run','-d','--pull=never','--name',pg,'--network',network,'--memory','384m','--cpus','0.5','--env-file',str(root/'postgres.env'),'-v',pg+':/var/lib/postgresql',baseline['postgres']['Image']],stdout=subprocess.DEVNULL)
     run(['docker','run','-d','--pull=never','--name',mini,'--network',network,'--memory','384m','--cpus','0.5','--env-file',str(root/'minio.env'),'-v',mini+':/data',baseline['minio']['Image'],'server','/data'],stdout=subprocess.DEVNULL)
-    for _ in range(40):
-        if subprocess.run(['docker','exec',pg,'pg_isready','-U','polaris'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0:break
-        time.sleep(1)
-    else:raise RuntimeError('Isolated PostgreSQL did not become ready')
+    wait_postgres(pg)
     with (root/'postgres.dump').open('rb') as stream:run(['docker','exec','-i',pg,'pg_restore','-U','polaris','-d','polaris','--no-owner','--no-acl'],stdin=stream)
     env=dict(item.split('=',1) for item in baseline['api']['Config']['Env'])
     env.update(POLARIS_ENVIRONMENT='test',POLARIS_AUTH_MODE='development',POLARIS_DATABASE_URL='postgresql+psycopg://polaris:'+password+'@'+pg+':5432/polaris',POLARIS_STORAGE_BACKEND='s3',POLARIS_S3_ENDPOINT_URL='http://'+mini+':9000',POLARIS_S3_ACCESS_KEY='video_restore',POLARIS_S3_SECRET_KEY=password,POLARIS_S3_AUTO_CREATE_BUCKET='false',POLARIS_AUTO_CREATE_SCHEMA='false',POLARIS_TASK_RUNNER='mock',POLARIS_TASK_DISPATCHER='inline',POLARIS_AUTO_PROCESS_JOBS='false',POLARIS_ECOMMERCE_STARTUP_RECOVERY_ENABLED='false',POLARIS_ECOMMERCE_LOGIN_ENABLED='false',POLARIS_RETENTION_ENABLED='false',POLARIS_PROVIDER_QUOTA_ENABLED='false',POLARIS_WORKSPACE_CREDIT_ENFORCEMENT_ENABLED='false',POLARIS_AURORA_WORK_ROOT='/tmp/aurora-work',POLARIS_DEVELOPMENT_USER_ID='usr_video_restore',POLARIS_DEVELOPMENT_WORKSPACE_ID='ws_video_restore',POLARIS_MOCK_JOB_DELAY_SECONDS='0')

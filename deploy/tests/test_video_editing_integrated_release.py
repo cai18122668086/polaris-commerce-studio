@@ -7,6 +7,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -19,6 +20,27 @@ def module():
 
 
 class IntegratedVideoReleaseTests(unittest.TestCase):
+    def test_restore_waits_for_final_tcp_server_after_socket_only_initialization(self):
+        path = Path(__file__).parents[1] / "video_studio/backup_restore.py"
+        spec = importlib.util.spec_from_file_location("video_backup_restore", path)
+        backup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(backup)
+        tcp_attempts = []
+
+        def probe(arguments, **kwargs):
+            if "-h" not in arguments:
+                return SimpleNamespace(returncode=0)  # Temporary init server.
+            self.assertEqual(arguments[arguments.index("-h") + 1], "127.0.0.1")
+            tcp_attempts.append(arguments)
+            return SimpleNamespace(returncode=0 if len(tcp_attempts) == 2 else 1)
+
+        with (
+            patch.object(backup.subprocess, "run", side_effect=probe),
+            patch.object(backup.time, "sleep"),
+        ):
+            backup.wait_postgres("polaris-video-restore-isolated-postgres")
+        self.assertEqual(len(tcp_attempts), 2)
+
     def test_preparation_preserves_auth_other_services_and_native_media(self):
         release = module()
         with tempfile.TemporaryDirectory() as temporary:

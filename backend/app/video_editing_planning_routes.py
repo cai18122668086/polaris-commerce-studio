@@ -53,6 +53,11 @@ from .video_editing_task_routes import (
     response as editing_response,
 )
 from .video_studio_routes import VideoWorkspace
+from .video_editing_template_catalog import (
+    TemplateCatalogCard,
+    example_file,
+    template_catalog,
+)
 
 router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}",
@@ -71,6 +76,27 @@ def dispatch(request: Request, task_id: str) -> None:
 def list_templates(request: Request, workspace: VideoWorkspace) -> list[dict]:
     enabled(request)
     return overlay_templates()
+
+
+@router.get("/editing-template-catalog", response_model=list[TemplateCatalogCard])
+def list_template_catalog(request: Request, workspace: VideoWorkspace) -> list[dict]:
+    return template_catalog(enabled(request), workspace.workspace_id)
+
+
+@router.get("/editing-template-catalog/{template_id}/example/{kind}")
+def get_template_example(
+    template_id: str, kind: str, request: Request, workspace: VideoWorkspace
+) -> FileResponse:
+    if template_id not in {item["id"] for item in overlay_templates()}:
+        raise ApiError(
+            404, "EDITING_TEMPLATE_EXAMPLE_UNAVAILABLE", "此模板的示例暂不可用。"
+        )
+    _, path = example_file(enabled(request), template_id, kind)
+    return FileResponse(
+        path,
+        media_type="video/mp4" if kind == "video" else "image/jpeg",
+        headers={"Cache-Control": "private, no-cache"},
+    )
 
 
 @router.post(

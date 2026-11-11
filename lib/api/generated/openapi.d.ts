@@ -2191,6 +2191,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-template-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Template Catalog */
+        get: operations["list_template_catalog_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-template-catalog/{template_id}/example/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Template Example */
+        get: operations["get_template_example_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog__template_id__example__kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-templates": {
         parameters: {
             query?: never;
@@ -8441,6 +8475,72 @@ export interface components {
             /** Workspace Id */
             workspace_id: string;
         };
+        /** TemplateCatalogCard */
+        TemplateCatalogCard: {
+            /**
+             * Business Review
+             * @default pending
+             * @constant
+             */
+            business_review: "pending";
+            /** Category */
+            category: string;
+            /** Description */
+            description: string;
+            example?: components["schemas"]["TemplateExample"] | null;
+            /** Featured */
+            featured: boolean;
+            /** Group Ids */
+            group_ids: string[];
+            /** Id */
+            id: string;
+            /**
+             * Material Mode
+             * @enum {string}
+             */
+            material_mode: "speech" | "images" | "clips" | "special";
+            /** Material Requirements */
+            material_requirements: string[];
+            /** Name */
+            name: string;
+            /** Pending Original Group Ids */
+            pending_original_group_ids: string[];
+            /** Sampled Group Count */
+            sampled_group_count: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sample_backed" | "unverified" | "pending_originals" | "internal_only";
+            /** Status Label */
+            status_label: string;
+            /** Version */
+            version: string;
+            /** Visual Features */
+            visual_features: string[];
+        };
+        /** TemplateExample */
+        TemplateExample: {
+            /** Distinct Groups */
+            distinct_groups: number;
+            /** Height */
+            height: number;
+            /** Occurrences */
+            occurrences: number;
+            /** Poster Url */
+            poster_url?: string | null;
+            /**
+             * Round
+             * @enum {string}
+             */
+            round: "first" | "replan" | "recorded_response_replay";
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Width */
+            width: number;
+        };
         /**
          * UsageCompleteness
          * @enum {string}
@@ -13815,6 +13915,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingTranscriptRevisionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_template_catalog_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateCatalogCard"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_template_example_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog__template_id__example__kind__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+                kind: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

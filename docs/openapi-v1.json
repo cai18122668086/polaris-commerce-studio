@@ -12001,6 +12001,189 @@
         "title": "SupportResponse",
         "type": "object"
       },
+      "TemplateCatalogCard": {
+        "additionalProperties": false,
+        "properties": {
+          "business_review": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Business Review",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "example": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TemplateExample"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "featured": {
+            "title": "Featured",
+            "type": "boolean"
+          },
+          "group_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Group Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "material_mode": {
+            "enum": [
+              "speech",
+              "images",
+              "clips",
+              "special"
+            ],
+            "title": "Material Mode",
+            "type": "string"
+          },
+          "material_requirements": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Material Requirements",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pending_original_group_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pending Original Group Ids",
+            "type": "array"
+          },
+          "sampled_group_count": {
+            "title": "Sampled Group Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "sample_backed",
+              "unverified",
+              "pending_originals",
+              "internal_only"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "visual_features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Visual Features",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "category",
+          "featured",
+          "description",
+          "visual_features",
+          "material_requirements",
+          "material_mode",
+          "group_ids",
+          "sampled_group_count",
+          "pending_original_group_ids",
+          "status",
+          "status_label"
+        ],
+        "title": "TemplateCatalogCard",
+        "type": "object"
+      },
+      "TemplateExample": {
+        "additionalProperties": false,
+        "properties": {
+          "distinct_groups": {
+            "minimum": 5.0,
+            "title": "Distinct Groups",
+            "type": "integer"
+          },
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "occurrences": {
+            "minimum": 5.0,
+            "title": "Occurrences",
+            "type": "integer"
+          },
+          "poster_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Url"
+          },
+          "round": {
+            "enum": [
+              "first",
+              "replan",
+              "recorded_response_replay"
+            ],
+            "title": "Round",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "title",
+          "url",
+          "round",
+          "distinct_groups",
+          "occurrences",
+          "width",
+          "height"
+        ],
+        "title": "TemplateExample",
+        "type": "object"
+      },
       "UsageCompleteness": {
         "enum": [
           "none",
@@ -22687,6 +22870,120 @@
         "summary": "Save Revision",
         "tags": [
           "video-editing-transcripts"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-template-catalog": {
+      "get": {
+        "operationId": "list_template_catalog_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateCatalogCard"
+                  },
+                  "title": "Response List Template Catalog Api V1 Video Studio Workspaces  Workspace Id  Editing Template Catalog Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Template Catalog",
+        "tags": [
+          "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-template-catalog/{template_id}/example/{kind}": {
+      "get": {
+        "operationId": "get_template_example_api_v1_video_studio_workspaces__workspace_id__editing_template_catalog__template_id__example__kind__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Template Example",
+        "tags": [
+          "video-editing-planning"
         ]
       }
     },

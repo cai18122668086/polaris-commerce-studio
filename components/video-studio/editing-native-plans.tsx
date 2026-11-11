@@ -33,6 +33,18 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
   revisionSelection?: EditingRevisionSelection; onClearRevisionSelection: () => void;
 }) {
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const revealedRevision = useRef("");
+  useEffect(() => {
+    if (!revisionSelection) { revealedRevision.current = ""; return; }
+    const key = `${revisionSelection.planId}:${revisionSelection.taskId}`;
+    const target = document.getElementById(`editing-native-plan-${revisionSelection.planId}`);
+    if (target && revealedRevision.current !== key) {
+      revealedRevision.current = key;
+      target.scrollIntoView({ block: "start" });
+    }
+  }, [plans, revisionSelection]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
@@ -52,7 +64,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
     void apiClient.GET(`${root}/projects/{project_id}/editing-native-plans`, {
       params: { path: { workspace_id: workspaceId, project_id: projectId }, query: { include_plan_id: selectedPlan } },
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]),
-    }).then(result => { if (!controller.signal.aborted) { setPlans(unwrapApiResponse(result)); setError(""); } })
+    }).then(result => { if (!controller.signal.aborted) { setPlans(unwrapApiResponse(result)); setLoaded(true); setError(""); } })
       .catch(() => { if (!controller.signal.aborted) setError("暂时无法读取动效编排，请重试。"); });
     return () => controller.abort();
   }, [workspaceId, projectId, reload, plansVersion, selectedPlan]);
@@ -123,7 +135,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         : undefined;
       const key = JSON.stringify([plan.id, edits, earlier?.preview]);
       if (intent.current?.key !== key) intent.current = { key, id: crypto.randomUUID() };
-      unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks`, {
+      const created = unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks`, {
         params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000),
         body: { request_id: intent.current.id, source_id: plan.source_id, options: {
           mode: "native_plan", native_plan_id: plan.id, language: "zh",
@@ -132,15 +144,16 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         } },
       }));
       intent.current = undefined;
-      if (live.current) await onCreated();
+      if (live.current) { await onCreated(); requestAnimationFrame(() => document.getElementById(`editing-task-${created.id}`)?.scrollIntoView({ block: "start" })); }
     } catch (caught) { if (live.current) setError(caught instanceof Error ? caught.message : "出片请求暂未确认，再次点击会查询同一请求。"); }
     finally { if (live.current) setBusy(""); }
   };
   return <section id="editing-native-plans" aria-label="动效编排候选">
     <b>已有动效编排候选</b>
     <p className={styles.note}>每份候选绑定原片、逐词转录和选组版本。先看代理预览，再确认并下载对应的高清文件。</p>
-    {plans.length === 0 && !error && <p>当前项目还没有保存的编排。</p>}
-    {plans.map(plan => {
+    {!loaded && !error && <p role="status">正在读取本版编排…</p>}
+    {loaded && plans.length === 0 && !error && <p>当前项目还没有保存的编排。</p>}
+    {plans.filter((plan, index) => revisionSelection ? plan.id === revisionSelection.planId : showHistory || index < 4).map(plan => {
       const earlier = revisionSelection?.planId === plan.id ? revisionSelection : undefined;
       const key = earlier ? `${plan.id}/${earlier.taskId}` : plan.id;
       const failedBeats = new Set(earlier?.layoutFindings?.map(finding => finding.beat_id));
@@ -180,13 +193,14 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       </p>}
       {plan.overlay_template && <p className={styles.note}>组合模板 · {plan.overlay_template.name}</p>}
       <p>{plan.origin === "operator_candidate" ? "人工工程候选 · 未经人工验收" : "腾力模型候选 · 待核对"}</p>
-      <ul>{plan.beats.map(beat => <li key={beat.id}>
+      <details><summary>编排与原生诊断详情</summary><ul>{plan.beats.map(beat => <li key={beat.id}>
         {beat.group_id} · {beat.text}<br />{beat.reason}
         {beat.question_gloss && <p className={styles.note}>问号英文释义 · {beat.question_gloss} · 待核对</p>}
         {beat.dependency_blocker && !selected.segments.includes(beat.id) && !replacements.has(beat.id) &&
           <p className={styles.error}>{beat.dependency_blocker}</p>}
       </li>)}</ul>
       {(plan.warnings.length > 0 || plan.missing_materials.length > 0) && <p>{[...plan.warnings, ...plan.missing_materials].join("；")}</p>}
+      </details>
       {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available) && <details key={key} open={earlier ? true : undefined}>
         <summary>调整本次出片</summary>
         <p className={styles.note}>调整随这次出片保存。勾选保留原景的段落仍显示主字幕，该段动效和绑定音效会关闭。</p>
@@ -227,7 +241,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
             images: event.target.checked ? selected.images.filter(edit => edit.beat_id !== beat.id) : selected.images,
             effects: event.target.checked ? selected.effects.filter(edit => edit.beat_id !== beat.id) : selected.effects,
           })} />
-          保留原景 · {beat.group_id} · {beat.text}{failedBeats.has(beat.id) && " · 排版待调整"}
+          保留原景 · {beat.text}{failedBeats.has(beat.id) && " · 排版待调整"}
         </label>)}
         {plan.overlay_template && <details open={earlier?.kind === "layout_failure" ? true : undefined} onToggle={event => {
           if (event.currentTarget.open) void loadEffects(plan);
@@ -292,6 +306,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         ? "历史验证候选 · 待适配连续人物底片与组合动效"
         : "该编排当前不可出片。"}</p>}
     </article>})}
+    {!revisionSelection && plans.length > 4 && <button type="button" onClick={() => setShowHistory(value => !value)}>{showHistory ? "收起历史编排" : "查看其他历史编排"}</button>}
     {error && <p role="alert" className={styles.error}>{error} <button type="button" onClick={() => setReload(n => n + 1)}>重新读取编排</button></p>}
   </section>;
 }

@@ -562,3 +562,10 @@
   .statusCard { padding:30px 20px; }
   .helpContent { padding-bottom:22px; }
 }
+
+.editingStudio .workspace { grid-template-columns:minmax(0,1fr); }
+.editingStudio .sidebar { display:none; }
+.editingStudio .main { padding:14px 18px 20px; }
+.editingStudio .pageHeading { display:none; }
+.editingStudio .main>.editorHeader { margin-bottom:14px; min-height:46px; padding:8px 12px; border:1px solid #e9e4ef; border-radius:9px; }
+@media(max-width:640px) { .editingStudio .main { padding:10px; } }

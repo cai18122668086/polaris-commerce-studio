@@ -1,0 +1,13 @@
+# Optional explicit example installation; combine after compose.editing.yaml.
+# Register and verify the selected real films before mounting this directory.
+services:
+  api:
+    environment:
+      POLARIS_VIDEO_EDITING_TEMPLATE_EXAMPLES_DIR: /template-examples
+    volumes:
+      - type: bind
+        source: ${POLARIS_EDITING_EXAMPLES_HOST:?Set the registered template-example directory}
+        target: /template-examples
+        read_only: true
+        bind:
+          create_host_path: false

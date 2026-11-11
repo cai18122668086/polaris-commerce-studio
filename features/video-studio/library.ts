@@ -24,10 +24,14 @@ export function useVideoLibrary(workspaceId: string) {
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000), cache: "no-store" as const }), [workspaceId]);
   const reload = useCallback(async () => {
     try {
-      const [a, v, j] = await Promise.all([
-        apiClient.GET(`${root}/avatars`, options()), apiClient.GET(`${root}/voices`, options()), apiClient.GET(`${root}/generation-tasks`, options()),
+      const [a, v, j] = await Promise.allSettled([
+        apiClient.GET(`${root}/avatars`, options()).then(unwrapApiResponse), apiClient.GET(`${root}/voices`, options()).then(unwrapApiResponse), apiClient.GET(`${root}/generation-tasks`, options()).then(unwrapApiResponse),
       ]);
-      setAvatars(unwrapApiResponse(a) as VideoAvatar[]); setVoices(unwrapApiResponse(v) as VideoVoice[]); setJobs(unwrapApiResponse(j) as GenerationJob[]); setError("");
+      if (a.status === "fulfilled") setAvatars(a.value as VideoAvatar[]);
+      if (v.status === "fulfilled") setVoices(v.value as VideoVoice[]);
+      if (j.status === "fulfilled") setJobs(j.value as GenerationJob[]);
+      const unavailable = [a.status === "rejected" && "数字人形象", v.status === "rejected" && "音色", j.status === "rejected" && "生成记录"].filter(Boolean);
+      setError(unavailable.length ? `${unavailable.join("、")}暂时无法读取，可重试。已读取的口播与上传剪辑仍可使用。` : "");
     } catch { setError("数字人库暂时无法读取，请重试。"); }
     finally { setLoading(false); }
   }, [options]);

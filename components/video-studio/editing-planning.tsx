@@ -1,18 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { minDistinctMotionGroups, preferredDistinctMotionGroups } from "@/features/video-studio/editing-density";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
 import { EditingProjectMaterials } from "./editing-project-materials";
 import styles from "./editing-workspace.module.css";
+import flow from "./editing-flow.module.css";
+import type { TemplateCard } from "./editing-template-gallery";
 
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
-type OverlayTemplate = components["schemas"]["EditingOverlayTemplate"];
-type TemplateSample = components["schemas"]["EditingTemplateSample"];
 type BaseTask = Pick<PreviewTask, "id" | "status" | "created_at" | "artifacts" | "source_frame">;
+export type EditingPrimaryState = { label: string; hint: string; disabled: boolean; phase: "prepare" | "generate" | "waiting" };
+export type EditingPrimaryAction = { run: () => void };
 export type CarrySelection = {
   projectId: string;
   sourceId: string;
@@ -54,21 +56,34 @@ const errors: Record<string, string> = {
   EDITING_PLAN_CONTRACT_INVALID: "响应未通过词点与原库字段合同检查，不能作为可用编排。",
 };
 
-export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry }: {
+export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState }: {
+  actionRef?: Ref<EditingPrimaryAction>;
+  onPrimaryState?: (state: EditingPrimaryState) => void;
+  template?: TemplateCard;
   workspaceId: string; projectId: string; tasks: BaseTask[]; selected: string; onSelect: (taskId: string) => void; onNativePlan: () => void;
   onPreview: (tasks: PreviewTask[]) => void;
   carryFrom?: CarrySelection;
   onClearCarry: () => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [activePreparation, setActivePreparation] = useState<{id: string; signature: string}>();
   const [materialIds, setMaterialIds] = useState<string[]>([]);
-  const [templates, setTemplates] = useState<OverlayTemplate[]>([]);
-  const [templateSamples, setTemplateSamples] = useState<TemplateSample[]>([]);
-  const [openSample, setOpenSample] = useState<TemplateSample>();
-  const [sampleError, setSampleError] = useState(false);
-  const [samplesUnavailable, setSamplesUnavailable] = useState(false);
-  const [templateId, setTemplateId] = useState("");
-  const [templateError, setTemplateError] = useState(false);
+  const [materialPreferenceLoaded, setMaterialPreferenceLoaded] = useState(false);
+  const materialPreferenceKey = `tengli-editing-materials:${workspaceId}:${projectId}`;
+  useEffect(() => {
+    try {
+      const ids: unknown = JSON.parse(localStorage.getItem(materialPreferenceKey) || "[]");
+      if (Array.isArray(ids)) setMaterialIds([...new Set(ids.filter((id): id is string => typeof id === "string" && /^[a-f0-9-]{36}$/i.test(id)))].slice(0, 24));
+    } catch { /* Optional selection preference; saved requests keep their own materials. */ }
+    setMaterialPreferenceLoaded(true);
+  }, [materialPreferenceKey]);
+  useEffect(() => {
+    if (materialPreferenceLoaded) {
+      try { localStorage.setItem(materialPreferenceKey, JSON.stringify(materialIds)); } catch { /* Server snapshots stay authoritative. */ }
+    }
+  }, [materialIds, materialPreferenceKey, materialPreferenceLoaded]);
+  const templateId = template?.id || "";
   const [manualPreviewIds, setManualPreviewIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -80,8 +95,6 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const candidates = tasks.filter(task => task.status === "completed" && task.source_frame?.supports_native_portrait !== false && task.artifacts.some(a => a.role === "transcript"));
   const selectedCandidate = candidates.some(task => task.id === selected) ? selected : "";
-  const sampleRevision = tasks.flatMap(task => task.artifacts.filter(artifact => artifact.role === "final")
-    .map(artifact => `${artifact.id}:${artifact.sha256}`)).sort().join(",");
   const eligible = jobs.filter(canBatchPreview);
   const batchIds = batchSelection.filter(id => eligible.some(job => job.id === id));
   const showBatch = eligible.length >= 2 || batchIds.length > 0;
@@ -94,27 +107,16 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     reload(); const timer = setInterval(reload, 5000);
     return () => { live = false; clearInterval(timer); };
   }, [refresh]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void apiClient.GET(`${root}/editing-templates`, {
-      params: { path: { workspace_id: workspaceId } },
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]),
-    }).then(result => { if (!controller.signal.aborted) setTemplates(unwrapApiResponse(result)); })
-      .catch(() => { if (!controller.signal.aborted) setTemplateError(true); });
-    return () => controller.abort();
-  }, [workspaceId]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void apiClient.GET(`${root}/projects/{project_id}/editing-template-samples`, {
-      params: { path: { workspace_id: workspaceId, project_id: projectId } },
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]),
-    }).then(result => {
-      if (controller.signal.aborted) return;
-      setTemplateSamples(unwrapApiResponse(result));
-      setSamplesUnavailable(false);
-    }).catch(() => { if (!controller.signal.aborted) setSamplesUnavailable(true); });
-    return () => controller.abort();
-  }, [workspaceId, projectId, sampleRevision]);
+  const formSignature = JSON.stringify([selectedCandidate, templateId, [...materialIds].sort()]);
+  const preparation = activePreparation?.signature === formSignature ? jobs.find(job => job.id === activePreparation.id) : undefined;
+  const prepared = preparation?.status === "prepared" ? preparation : undefined;
+  const submitted = prepared && jobs.some(job => job.prepared_task_id === prepared.id);
+  const waiting = !!preparation && ["queued", "running"].includes(preparation.status);
+  const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || !!submitted || !!(prepared && (!prepared.execution_available || (prepared.available_template_group_count ?? 5) < 5));
+  const primaryLabel = waiting ? "正在检查素材…" : submitted ? "本次剪辑已提交" : "开始智能剪辑";
+  const primaryHint = waiting ? labels[preparation?.stage || ""] || "正在核对口播与素材" : prepared ? !prepared.execution_available ? `本次可选 ${prepared.available_template_group_count ?? "待核对"} 种动效 · 模型执行未开放` : `本次可选 ${prepared.available_template_group_count ?? "待核对"} 种动效 · 将调用付费模型，按项目网关计费` : "先核对实际口播与素材，准备过程不调用模型";
+  useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: waiting || submitted ? "waiting" : prepared ? "generate" : "prepare" }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, waiting, submitted, prepared?.id]);
+  useImperativeHandle(actionRef, () => ({ run: () => { void submit(prepared ? "generate" : "prepare", prepared); } }));
   const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
     const taskId = prepared?.base_task_id || selectedCandidate;
     if (!taskId || (mode === "prepare" && !templateId)) return;
@@ -125,10 +127,11 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       const shouldPreview = Boolean(prepared?.auto_preview_available && !manualPreviewIds.includes(prepared.id));
       const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials, selectedTemplate, shouldPreview]);
       if (!intent.current || intent.current.key !== key) intent.current = { key, id: crypto.randomUUID() };
-      unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/planning-tasks`, {
+      const created = unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/planning-tasks`, {
         params: { path: { workspace_id: workspaceId, task_id: taskId } }, signal: AbortSignal.timeout(12000),
         body: { request_id: intent.current.id, mode, template_id: selectedTemplate, auto_preview: shouldPreview, ...(prepared ? { prepared_task_id: prepared.id } : {}), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
       }));
+      if (mode === "prepare") setActivePreparation({ id: created.id, signature: formSignature });
       intent.current = undefined; setJobs(await refresh());
     } catch (caught) { setError(caught instanceof Error ? caught.message : "提交暂未确认，再次点击会查询同一请求。"); }
     finally { setBusy(false); }
@@ -213,41 +216,13 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     } catch (caught) { setError(caught instanceof Error ? caught.message : "批量提交暂未确认，请刷新核对后重试。"); }
     finally { setBusy(false); }
   };
-  return <section aria-label="语义规划任务">
-    <p className={styles.note}>使用实际口播的转录准备请求，再生成重点与选组候选。准备不会重新配音、识别或调用模型。</p>
-    <label>使用哪条口播的实际转录？<select value={selectedCandidate} onChange={event => onSelect(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>
-    <fieldset className={styles.templatePicker}>
-      <legend>选择组合模板</legend>
-      <p className={styles.note}>口播声音连续。画面可随模板叠加动效或切换整帧场景。成片至少使用五种不同动效，优先十种以上。同一种动效可在不同词点重复使用。</p>
-      <div className={styles.templateGrid}>{templates.map(template => {
-        const sample = templateSamples.find(item => item.template_id === template.id);
-        const playing = openSample?.template_id === template.id ? openSample : undefined;
-        return <div key={template.id} className={styles.templateOption}>
-          <label>
-            <span><input type="radio" name="editing-template" value={template.id} checked={templateId === template.id} disabled={busy} onChange={() => setTemplateId(template.id)} /> <b>{template.name}</b></span>
-            <small>{template.slots.length} 种可选动效</small>
-            <small>{template.slots.slice(0, 3).map(slot => slot.purpose).join(" · ")}</small>
-          </label>
-          {(sample || playing) && <button type="button" aria-expanded={!!playing}
-            aria-label={`${playing ? "收起" : "播放"}本项目成片 · ${template.name}`}
-            onClick={() => { setSampleError(false); setOpenSample(playing ? undefined : sample); }}>
-            {playing ? "收起成片" : "播放本项目成片"}
-          </button>}
-          {playing && <div className={styles.templateSample}>
-            <small>{playing.motion_counts.distinct_groups} 种动效 · {playing.motion_counts.occurrences} 次出现</small>
-            <video key={playing.final.id} src={playing.final.url} aria-label={`${template.name}成片`}
-              controls autoPlay playsInline preload="metadata" onError={() => setSampleError(true)} />
-            {sampleError && <p role="alert" className={styles.error}>暂时无法播放此成片。</p>}
-          </div>}
-        </div>;
-      })}</div>
-      {templateError && <p role="alert">暂时无法读取组合模板，请刷新后重试。</p>}
-      {samplesUnavailable && <p className={styles.note}>暂时无法读取本项目的模板成片。</p>}
-    </fieldset>
-    <EditingProjectMaterials workspaceId={workspaceId} projectId={projectId} selected={materialIds} onSelect={setMaterialIds} />
-    <button type="button" disabled={busy || !selectedCandidate || !templateId} onClick={() => void submit("prepare")}>准备语义请求（不调用模型）</button>
+  return <section id="editing-arrange" className={`${flow.step} ${flow.planning}`} aria-label="自动剪辑"><h2>素材与剪辑设置</h2>
+    <details><summary>口播转录与模板要求{selectedCandidate ? " · 已选" : ""}</summary><label>使用哪条口播的实际转录？<select value={selectedCandidate} onChange={event => onSelect(event.target.value)}><option value="">请选择已有转录</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")} · {task.id.slice(0, 8)}</option>)}</select></label>{template ? <p className={flow.chosen}>{template.name} · {template.material_requirements.join("。")}</p> : <p>请先选择模板。</p>}</details>
+    <EditingProjectMaterials workspaceId={workspaceId} projectId={projectId} selected={materialIds} onSelect={setMaterialIds} materialMode={template?.material_mode} />
+    <button type="button" disabled={busy || !selectedCandidate || !templateId} onClick={() => void submit("prepare")}>检查素材并准备剪辑（不调用模型）</button>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {loadError && <p role="alert" className={styles.error}>{loadError}</p>}
+    <details><summary>规划记录与高级选项{jobs.length ? `（${jobs.length}）` : ""}</summary>
     {carryFrom && <div className={styles.correction}>
       <b>保留预览 {carryFrom.base.task_id.slice(0, 8)} 的人工调整</b>
       <p className={styles.note}>从同一原片的已完成规划中选择新版本。实录词段和槽位须兼容，原版可继续查看。</p>
@@ -258,13 +233,15 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       <button type="button" disabled={busy || batchIds.length < 2} onClick={() => void batchPreview()}>批量生成代理预览（{batchIds.length} 条）</button>
     </div>}
     {batchCount > 0 && <p role="status">已关联 {batchCount} 条代理预览任务。</p>}
-    <div className={styles.tasks}>{jobs.map(job => {
+    <div className={styles.tasks}>{(showHistory ? jobs : jobs.slice(0, 4)).map(job => {
       const available = job.available_template_group_count;
       const insufficient = available != null && available < minDistinctMotionGroups;
       const belowMinimumForPreview = belowMinimum(job);
       return <article key={job.id} data-planning-job={job.id}>
       <div className={styles.taskHeading}><b>{labels[job.status === "running" ? job.stage : job.status] || "正在处理规划"}</b><time>{new Date(job.created_at).toLocaleString("zh-CN")}</time></div>
+      <details><summary>模型与输入版本</summary>
       <p className={styles.note}>模型：{job.model} · 网关：{job.gateway_host || "尚未固定"} · 转录版本 {job.base_transcript_sha256.slice(0, 12)}{job.text_status && ` · ${job.text_status === "user_corrected" ? "用户已校对文字，词点待验" : "转录文字待核对"}`}</p>
+      </details>
       {job.overlay_template && <p className={styles.note}>组合模板 · {job.overlay_template.name}{retiredTemplate(job) && "（已下架）"}</p>}
       {showBatch && canBatchPreview(job) && <label className={styles.reviewCheck}>
         <input type="checkbox" checked={batchIds.includes(job.id)} disabled={busy || (!batchIds.includes(job.id) && batchIds.length >= maxPreviewBatch)} onChange={event => setBatchSelection(event.target.checked ? [...batchIds, job.id] : batchIds.filter(id => id !== job.id))} />加入批量预览
@@ -275,6 +252,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
         候选选中 {job.motion_counts.distinct_groups} 种动效，共 {job.motion_counts.occurrences} 次。
         {belowMinimumForPreview ? "至少五种才可出片。" : job.motion_counts.distinct_groups < preferredDistinctMotionGroups && `低于优先目标 ${preferredDistinctMotionGroups} 种。`}
       </p>}
+      <details><summary>素材条件与运行详情</summary>
       {!!job.excluded_template_group_ids?.length && <p className={styles.note}>按项目备忘避用 · {job.excluded_template_group_ids.join("、")}</p>}
       {!!job.unavailable_template_group_ids?.length && <p className={styles.note}>当前运行条件未满足的动效 · {job.unavailable_template_group_ids.join("、")}</p>}
       {job.overlay_template?.id === "question-card-b-story-v1" && job.unavailable_template_group_ids?.includes("AH-S03") && <p className={styles.note}>问号 B 版需要原 Aa 研宋、Times New Roman Bold 和 Impact。各字体的状态可在原库目录查看。</p>}
@@ -329,6 +307,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
         {(requirement.selected_distinct_images < requirement.required_distinct_images || requirement.transparent_image_ids?.length === 0) && " 本次编排跳过该图卡，仍可使用同模板的其他动效。补图后可重新准备。"}
       </p>)}
       {job.request_bytes !== null && <p>{job.catalog_group_count} 组原库 · 请求 {job.request_bytes.toLocaleString()} 字节 · 输入版本 {job.request_sha256?.slice(0, 12)}</p>}
+      </details>
       {job.status === "prepared" && <>
         <p className={styles.note}>尚未调用模型，没有规划结果。执行时最大输出 5000 token，输入另计，实际费用按腾力网关账单。</p>
         {job.artifacts.filter(a => a.role === "request").map(a => <a key={a.id} href={a.url} download>下载已准备请求</a>)}
@@ -338,17 +317,17 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
               const checked = event.target.checked;
               setManualPreviewIds(ids => checked ? ids.filter(id => id !== job.id) : [...ids, job.id]);
             }} />
-            候选通过后自动生成代理预览
+            编排通过后自动生成预览
           </label>}
-          <button type="button" disabled={busy || insufficient || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>生成重点与选组候选（付费）</button>
+          <button type="button" disabled={busy || insufficient || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>开始自动剪辑（调用付费模型）</button>
           {insufficient && <p className={styles.note}>可选动效少于五种，请核对项目备忘、素材或更换模板后重新准备。</p>}
           {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
         </>}
       </>}
-      {job.semantic && job.semantic_origin === "tengli_gateway" && <><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>
+      {job.semantic && job.semantic_origin === "tengli_gateway" && <details><summary>查看本次内容重点与动效编排</summary><b>{job.semantic.audience_question}</b><ol>{job.semantic.argument_outline.map((line, i) => <li key={i}>{line}</li>)}</ol><ul>{job.semantic.beats.map(beat => <li key={beat.id}>
         {beat.group_id} · {beat.relation}<br />{job.aligned_spans?.find(span => span.beat_id === beat.id)?.text}<br />{beat.reason}
         {beat.translation_gloss && <p className={styles.note}>英文短译待核对 · {beat.translation_gloss.before} → {beat.translation_gloss.after}</p>}
-      </li>)}</ul><p className={styles.note}>{belowMinimumForPreview ? "可先核对候选语义和事实。" : "语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。"}</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</>}
+      </li>)}</ul><p className={styles.note}>{belowMinimumForPreview ? "可先核对候选语义和事实。" : "语义与事实待核对。可先按默认编排生成代理，也可保存编排后调整。"}</p>{[...(job.semantic.warnings ?? []), ...(job.semantic.missing_materials ?? [])].map((line, i) => <p key={i} className={styles.note}>{line}</p>)}</details>}
       {job.status === "completed" && job.overlay_template && <>
         {carryFrom?.sourceId === job.source_id && !retiredTemplate(job) && !belowMinimumForPreview && <button type="button" disabled={busy} onClick={() => void carryPreview(job)}>保留调整并按此规划生成代理</button>}
         {batchErrors[job.id] && <p role="alert" className={styles.error}>{batchErrors[job.id]}</p>}
@@ -368,5 +347,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       {["failed", "cancelled"].includes(job.status) && !retiredTemplate(job) && job.call_state !== "intent_saved" && <button type="button" disabled={busy || (job.mode === "generate" && job.call_state === "not_submitted" && !job.execution_available)} onClick={() => void action(job, "retry")}>{job.call_state === "response_saved" ? "重新校验已保存响应" : "重试任务"}</button>}
       </article>;
     })}</div>
+    {jobs.length > 4 && <button type="button" onClick={() => setShowHistory(value => !value)}>{showHistory ? "收起历史规划" : `查看历史规划（${jobs.length - 4} 条）`}</button>}
+    </details>
   </section>;
 }

@@ -12,7 +12,9 @@ type Material = components["schemas"]["EditingMaterialResponse"];
 const path = "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials" as const;
 const importPath = `${path}/image-results` as const;
 
-export function EditingProjectMaterials({ workspaceId, projectId, selected, onSelect }: {
+export function EditingProjectMaterials({ workspaceId, projectId, selected, onSelect, expanded = false, materialMode }: {
+  expanded?: boolean;
+  materialMode?: "speech" | "images" | "clips" | "special";
   workspaceId: string;
   projectId: string;
   selected: string[];
@@ -33,6 +35,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
   const [observed, setObserved] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const intent = useRef<{ file: File; label: string; description: string; feedback: string; id: string } | undefined>(undefined);
   const importIntent = useRef<{ signature: string; id: string } | undefined>(undefined);
@@ -89,6 +92,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       const material = source === "creative" ? chosen && await saveImport() : file && await saveUpload(file);
       if (!material) return;
       setRows(previous => [material, ...previous.filter(row => row.id !== material.id)]);
+      if (!selected.includes(material.id) && selected.length < 24) onSelect([...selected, material.id]);
       intent.current = undefined; importIntent.current = undefined;
       setFile(undefined); setAssetId(""); setLabel(""); setDescription("");
       setFeedbackLabel(""); setLikes(""); setSourceRef(""); setObservedAt(""); setObserved(false);
@@ -110,8 +114,9 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
     finally { setBusy(false); }
   };
 
-  return <details><summary>本期补充素材</summary>
+  return <details open={expanded || undefined}><summary>本期补充素材（上传后自动选用）</summary>
     <section aria-label="本期补充素材" className={styles.materials}>
+      <p className={styles.note}>{materialMode === "speech" ? "此模板可仅用口播出片，补充素材为可选。" : materialMode === "clips" ? "请上传已分好步骤的短录屏，每段从开头使用，并覆盖对应解说时长。长录屏自动定位尚未接入。" : "按模板要求选择商品、界面或资料图，并说明各自对应内容。"}</p>
       <p className={styles.note}>上传实拍或导入已完成的创意图。素材名称和说明供规划选材。成片会使用素材原件，请选用画面里没有内部备注的版本。</p>
       <label>素材来源<select value={source} disabled={busy} onChange={event => { const value = event.target.value; setSource(value === "creative" || value === "feedback" ? value : "upload"); setFile(undefined); setObserved(false); setError(""); }}>
         <option value="upload">上传文件</option><option value="creative">已有创意图</option><option value="feedback">上传互动证据图片</option>
@@ -141,13 +146,15 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       <button type="button" onClick={() => void save()} disabled={busy || !(source === "creative" ? chosen : file) || !label.trim() || !description.trim() || (source === "feedback" && !feedbackReady)}>{source === "creative" ? "导入成品图片" : "保存补充素材"}</button>
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {!!rows.length && <p role="status">本次规划已选 {selected.length} / 24 项</p>}
-      <ul className={styles.materialList}>{rows.map(row => <li key={row.id} data-material-id={row.id}>
+      <ul className={styles.materialList}>{rows.filter((row, index) => showAll || index < 6 || selected.includes(row.id)).map(row => <li key={row.id} data-material-id={row.id}>
+        {row.mime.startsWith("image/") ? <img src={row.url} alt={row.label} loading="lazy" className={styles.materialPreview} /> : <video src={row.url} controls playsInline preload="none" aria-label={`${row.label}素材预览`} className={styles.materialPreview} />}
         <label className={styles.reviewCheck}><input type="checkbox" checked={selected.includes(row.id)} disabled={!selected.includes(row.id) && selected.length >= 24} onChange={event => onSelect(event.target.checked ? [...selected, row.id] : selected.filter(id => id !== row.id))} />{row.label}</label>
         <p className={styles.note}>{row.description} · {row.width} × {row.height}{row.duration_ms !== null && ` · ${row.duration_ms / 1000} 秒`}</p>
         {row.source_job_id && <p className={styles.note}>创意示意图 · 来自任务 {row.source_job_id}</p>}
         {row.feedback_observation && <p className={styles.note}>已登记互动记录 · {row.feedback_observation.label} · {row.feedback_observation.likes} 赞 · {new Date(row.feedback_observation.observed_at).toLocaleString()} · {row.feedback_observation.source_ref}</p>}
         <a href={row.url} target="_blank" rel="noreferrer">查看素材原件</a>
       </li>)}</ul>
+      {rows.length > 6 && <button type="button" onClick={() => setShowAll(value => !value)}>{showAll ? "收起其他素材" : `查看本期其他素材（${rows.length - 6} 项）`}</button>}
       {offset !== null && <button type="button" disabled={busy} onClick={() => void more()}>加载更多素材</button>}
     </section>
   </details>;

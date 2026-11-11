@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
+import { editingMessage } from "@/features/video-studio/editing-presentation";
 import styles from "./editing-workspace.module.css";
 
 type ImageTarget = components["schemas"]["EditingImageTarget"];
@@ -72,8 +73,8 @@ export function EditingImageEdits({ workspaceId, projectId, planId, selected, so
       <p className={styles.note}>从本期素材选图。可先在「本期补充素材」上传实拍或导入创意图。只替换图片，沿用原口播词点和卡片动画。</p>
       {open && !targets && !error && <p role="status">正在读取配图位置和本期素材…</p>}
       {targets?.length === 0 && <p>本编排暂无可替换的配图。</p>}
-      {targets?.map(target => {
-        const label = "配图 · " + target.label;
+      {targets?.map((target, index) => {
+        const label = `配图 ${index + 1}`;
         const belongs = (edit: ImageEdit) => edit.beat_id === target.beat_id && edit.path === target.path;
         const active = selected.find(belongs);
         const original = images.find(row => row.id === target.current_material_id);
@@ -100,7 +101,7 @@ export function EditingImageEdits({ workspaceId, projectId, planId, selected, so
         </div>;
       })}
       {offset !== null && <button type="button" disabled={busy || disabled} onClick={() => void more()}>加载更多素材</button>}
-      {error && <p className={styles.error} role="alert">{error}</p>}
+      {error && <p className={styles.error} role="alert">{editingMessage(error, "暂时无法读取配图选项，请稍后重试。")}</p>}
     </div>
   </details>;
 }

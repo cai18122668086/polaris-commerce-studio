@@ -157,7 +157,26 @@ def style_blockers(snapshot: dict) -> list[str]:
         for note in snapshot["choice_snapshot"]["notes"]
         if note["target_kind"] == "group" and note["choice"] == "avoid"
     )
+    missing_images = []
+    for requirement in snapshot["planning_runtime"].get(
+        "project_image_requirements", []
+    ):
+        if (
+            requirement["group_id"] in policy["signature_group_ids"]
+            and requirement["selected_distinct_images"]
+            < requirement["required_distinct_images"]
+        ):
+            unavailable.add(requirement["group_id"])
+            missing_images.append(requirement)
     if set(policy["signature_group_ids"]) <= unavailable:
+        if len(policy["signature_group_ids"]) == 1 and missing_images:
+            images = missing_images[0]
+            required = images["required_distinct_images"]
+            return [
+                f"{policy['name']}需要 {required} 张不同图片，"
+                f"当前已选 {images['selected_distinct_images']} 张。"
+                "请勾选素材后重新检查。"
+            ]
         return [
             f"{policy['name']}的招牌画面条件未满足，请补齐素材、原件或调整避用设置后重新准备。"
         ]

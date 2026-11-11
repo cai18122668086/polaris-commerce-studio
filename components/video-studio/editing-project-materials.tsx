@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { JobAssetPreview } from "@/components/job-asset-preview";
 import { useJob, useJobs } from "@/features/jobs/api/jobs";
+import { editingMessage } from "@/features/video-studio/editing-presentation";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
@@ -97,7 +98,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       setFile(undefined); setAssetId(""); setLabel(""); setDescription("");
       setFeedbackLabel(""); setLikes(""); setSourceRef(""); setObservedAt(""); setObserved(false);
       if (fileInput.current) fileInput.current.value = "";
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "素材保存暂未确认，可重试同一请求。"); }
+    } catch (caught) { setError(editingMessage(caught, "素材保存尚未确认，请重试同一次上传。")); }
     finally { setBusy(false); }
   };
 
@@ -114,7 +115,8 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
     finally { setBusy(false); }
   };
 
-  return <details open={expanded || undefined}><summary>本期补充素材（上传后自动选用）</summary>
+  return <div>
+    <details open={expanded || undefined}><summary>＋ 添加图片或录屏</summary>
     <section aria-label="本期补充素材" className={styles.materials}>
       <p className={styles.note}>{materialMode === "speech" ? "此模板可仅用口播出片，补充素材为可选。" : materialMode === "clips" ? "请上传已分好步骤的短录屏，每段从开头使用，并覆盖对应解说时长。长录屏自动定位尚未接入。" : "按模板要求选择商品、界面或资料图，并说明各自对应内容。"}</p>
       <p className={styles.note}>上传实拍或导入已完成的创意图。素材名称和说明供规划选材。成片会使用素材原件，请选用画面里没有内部备注的版本。</p>
@@ -124,7 +126,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       {source !== "creative" ? <label>素材文件<input key={source} ref={fileInput} type="file" accept={source === "feedback" ? "image/jpeg,image/png,image/webp" : "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"} disabled={busy} onChange={event => { setFile(event.target.files?.[0]); setObserved(false); }} /></label> : <>
         <label>创意图任务<select value={jobId} disabled={busy || jobs.isPending} onChange={event => { setJobId(event.target.value); setAssetId(""); }}>
           <option value="">选择有成品的任务</option>
-          {jobs.data?.items.filter(item => item.output_asset_count > 0).map(item => <option key={item.id} value={item.id}>{item.display_name || item.id} · {item.output_asset_count} 张</option>)}
+          {jobs.data?.items.filter(item => item.output_asset_count > 0).map((item, index) => <option key={item.id} value={item.id}>{item.display_name || `创意图任务 ${index + 1}`} · {item.output_asset_count} 张</option>)}
         </select></label>
         <label>创意图成品<select value={assetId} disabled={busy || !outputs.length} onChange={event => setAssetId(event.target.value)}>
           <option value="">选择成品图片</option>
@@ -134,8 +136,8 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
         {jobs.data && !jobs.data.items.some(item => item.output_asset_count > 0) && <p className={styles.note}>当前工作区没有可导入的创意图成品。</p>}
         {chosen && <JobAssetPreview workspaceId={workspaceId} relation={chosen} />}
       </>}
-      <label>素材名称<input value={label} maxLength={120} disabled={busy} onChange={event => setLabel(event.target.value)} /></label>
-      <label>实际画面说明<textarea value={description} maxLength={400} disabled={busy} onChange={event => setDescription(event.target.value)} /></label>
+      <label>素材名称<input value={label} placeholder="例如：商品正面、上传步骤" maxLength={120} disabled={busy} onChange={event => setLabel(event.target.value)} /></label>
+      <label>画面说明<textarea value={description} placeholder="例如：展示商品外观，对应口播中介绍外形的部分" maxLength={400} disabled={busy} onChange={event => setDescription(event.target.value)} /></label>
       {source === "feedback" && <>
         <label>反馈短标签<input value={feedbackLabel} maxLength={16} disabled={busy} onChange={event => { setFeedbackLabel(event.target.value); setObserved(false); }} /></label>
         <label>观察到的点赞数<input value={likes} type="number" min={0} max={999999999} step={1} disabled={busy} onChange={event => { setLikes(event.target.value); setObserved(false); }} /></label>
@@ -144,18 +146,21 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
         <label className={styles.reviewCheck}><input type="checkbox" checked={observed} disabled={busy || !file} onChange={event => setObserved(event.target.checked)} />我已核对上传图片及来源对应上述记录</label>
       </>}
       <button type="button" onClick={() => void save()} disabled={busy || !(source === "creative" ? chosen : file) || !label.trim() || !description.trim() || (source === "feedback" && !feedbackReady)}>{source === "creative" ? "导入成品图片" : "保存补充素材"}</button>
-      {error && <p role="alert" className={styles.error}>{error}</p>}
-      {!!rows.length && <p role="status">本次规划已选 {selected.length} / 24 项</p>}
-      <ul className={styles.materialList}>{rows.filter((row, index) => showAll || index < 6 || selected.includes(row.id)).map(row => <li key={row.id} data-material-id={row.id}>
+    </section></details>
+    {error && <p role="alert" className={styles.error}>{error}</p>}
+    <section className={styles.materials} aria-label="已上传素材">
+      <p role="status">{rows.length ? `已选 ${selected.length} 项素材` : materialMode === "speech" ? "尚未添加图片，可直接继续" : "还没有补充素材，点击上方添加"}</p>
+      <ul className={styles.materialTiles}>{rows.filter((row, index) => showAll || index < 6 || selected.includes(row.id)).map(row => <li key={row.id} data-material-id={row.id}>
         {row.mime.startsWith("image/") ? <img src={row.url} alt={row.label} loading="lazy" className={styles.materialPreview} /> : <video src={row.url} controls playsInline preload="none" aria-label={`${row.label}素材预览`} className={styles.materialPreview} />}
         <label className={styles.reviewCheck}><input type="checkbox" checked={selected.includes(row.id)} disabled={!selected.includes(row.id) && selected.length >= 24} onChange={event => onSelect(event.target.checked ? [...selected, row.id] : selected.filter(id => id !== row.id))} />{row.label}</label>
-        <p className={styles.note}>{row.description} · {row.width} × {row.height}{row.duration_ms !== null && ` · ${row.duration_ms / 1000} 秒`}</p>
-        {row.source_job_id && <p className={styles.note}>创意示意图 · 来自任务 {row.source_job_id}</p>}
+        <details><summary>素材说明</summary><p className={styles.note}>{row.description} · {row.width} × {row.height}{row.duration_ms !== null && ` · ${row.duration_ms / 1000} 秒`}</p>
+        {row.source_job_id && <p className={styles.note}>来自已有创意图</p>}
         {row.feedback_observation && <p className={styles.note}>已登记互动记录 · {row.feedback_observation.label} · {row.feedback_observation.likes} 赞 · {new Date(row.feedback_observation.observed_at).toLocaleString()} · {row.feedback_observation.source_ref}</p>}
         <a href={row.url} target="_blank" rel="noreferrer">查看素材原件</a>
+        </details>
       </li>)}</ul>
       {rows.length > 6 && <button type="button" onClick={() => setShowAll(value => !value)}>{showAll ? "收起其他素材" : `查看本期其他素材（${rows.length - 6} 项）`}</button>}
       {offset !== null && <button type="button" disabled={busy} onClick={() => void more()}>加载更多素材</button>}
     </section>
-  </details>;
+  </div>;
 }

@@ -39,3 +39,12 @@
 .panel .utterances button { width:100%; text-align:left; display:flex; gap:10px; line-height:1.7; background:#f0eaf7; color:#49345e; }
 .utterances time { flex:none; font-variant-numeric:tabular-nums; color:#78618c; }
 @media(max-width:640px) { .panel { padding:16px; } }
+
+.materialTiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(115px,1fr)); gap:9px; list-style:none; margin:0; padding:0; }
+.materialTiles li { min-width:0; display:grid; align-content:start; gap:7px; border:1px solid #e8e1ee; border-radius:8px; padding:8px; background:#fdfbff; }
+.materialTiles li:has(input:checked) { border-color:#a77ecb; background:#faf6ff; }
+.materialTiles .materialPreview { width:100%; height:90px; max-width:none; }
+.materialTiles label { font-size:11px; }
+.materialTiles details { font-size:10px; color:#9986a6; }
+.materialTiles details p { font-size:11px; overflow-wrap:anywhere; }
+.panel .materialTiles a { color:#704795; background:transparent; padding:0; font-size:11px; }

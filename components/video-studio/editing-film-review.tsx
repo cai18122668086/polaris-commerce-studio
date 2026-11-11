@@ -4,6 +4,7 @@ import { useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import type { components } from "@/lib/api/generated/openapi";
 import { unwrapApiResponse } from "@/lib/api/request";
+import { editingMessage } from "@/features/video-studio/editing-presentation";
 import styles from "./editing-workspace.module.css";
 
 type Assessment = components["schemas"]["EditingFilmAssessment"];
@@ -64,7 +65,7 @@ export function EditingFilmReview({ workspaceId, task, final }: {
       setAcknowledged(result);
       setDraft(undefined);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "验收保存结果暂未确认，请重试。");
+      setError(editingMessage(caught, "验收保存结果暂未确认，请重试。"));
     } finally {
       setBusy(false);
     }

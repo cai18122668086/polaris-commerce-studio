@@ -569,3 +569,8 @@
 .editingStudio .pageHeading { display:none; }
 .editingStudio .main>.editorHeader { margin-bottom:14px; min-height:46px; padding:8px 12px; border:1px solid #e9e4ef; border-radius:9px; }
 @media(max-width:640px) { .editingStudio .main { padding:10px; } }
+
+.editingStudio .projectName { margin-left:0; flex:0 1 300px; min-width:160px; }
+.editingStudio .projectName input { width:100%; }
+.editingStudio .editorHeader>select { flex:0 1 220px; max-width:240px; min-width:140px; }
+@media(max-width:640px) { .editingStudio .projectName { flex:1 1 100%; min-width:0; } .editingStudio .editorHeader>select { flex:1; min-width:0; max-width:none; } }

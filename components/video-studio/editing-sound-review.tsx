@@ -35,8 +35,7 @@ function readCues(value: unknown, durationMs: number | null): Cue[] {
         cues.push({ assetId, start, end, label: "背景乐" });
       } else {
         const phase = typeof item.phase === "string" ? phases.get(item.phase) : undefined;
-        const group = typeof item.group_id === "string" ? item.group_id : "原生动效";
-        cues.push({ assetId, start, label: phase ? `${group} · ${phase}音效` : `${group} · 音效` });
+        cues.push({ assetId, start, label: phase ? `${phase}音效` : "画面音效" });
       }
     }
   }
@@ -87,10 +86,10 @@ export function EditingSoundReview({ workspaceId, receipt, media, playerId }: {
     if (!event.currentTarget.open) audio.current?.pause();
     else if (!cues && !loadError) void load();
   }}>
-    <summary>按点位试听音效与配乐</summary>
+    <summary>试听音效与配乐</summary>
     <fieldset className={styles.correction}>
       <legend>本版混音点位</legend>
-      <p className={styles.note}>音效时间取自原生混音回执。定位时提前约 0.7 秒播放，便于核对动作和起音。</p>
+      <p className={styles.note}>点击时间位置试听，检查声音是否与画面合拍。</p>
       {!cues && !loadError && <p role="status">正在读取声音校验记录…</p>}
       {loadError && <p role="alert">暂时无法读取本版混音点位。 <button type="button" onClick={() => void load()}>重试读取</button></p>}
       {playError && <p className={styles.error} role="alert">{playError}</p>}
@@ -103,11 +102,11 @@ export function EditingSoundReview({ workspaceId, receipt, media, playerId }: {
             <button type="button" aria-expanded={original === i} onClick={() => {
               setPlayError("");
               setOriginal(original === i ? undefined : i);
-            }}>{original === i ? "收起原包音频" : "打开原包音频"}</button>
+            }}>{original === i ? "收起音频" : "单独试听音效"}</button>
           </div>
           {original === i && <audio ref={audio} controls preload="none" aria-label={`${cue.label}原包音频`}
             src={`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-library/assets/${cue.assetId}/audio`}
-            onPlay={() => player()?.pause()} onError={() => setPlayError("原包音频暂不可用，请检查资源完整性。")} />}
+            onPlay={() => player()?.pause()} onError={() => setPlayError("音频暂不可用，请稍后重试。")} />}
         </li>)}
       </ol>}
       <a href={receipt.url} download>下载声音校验记录</a>

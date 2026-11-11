@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
+import { editingMessage } from "@/features/video-studio/editing-presentation";
 import styles from "./editing-workspace.module.css";
 
 type Revision = components["schemas"]["EditingTranscriptRevisionResponse"];
@@ -67,7 +68,7 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
       setSelected(result); setRevisions(rows => [result, ...rows.filter(r => r.id !== result.id)]);
       saveIntent.current = undefined;
       setMessage("文字新版本已保存，可以用此版本重新对齐。");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "保存结果暂未确认，再次保存会查询同一请求。"); }
+    } catch (caught) { setError(editingMessage(caught, "保存结果暂未确认，再次保存会查询同一请求。")); }
     finally { setBusy(false); }
   };
   const render = async () => {
@@ -84,7 +85,7 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
       renderIntent.current = undefined;
       setMessage(transcriptionOnly ? "已提交口播重新对齐任务。" : "已提交字幕重新对齐与出片任务。");
       await onCreated();
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "任务提交暂未确认，再次点击会查询同一请求。"); }
+    } catch (caught) { setError(editingMessage(caught, "任务提交暂未确认，再次点击会查询同一请求。")); }
     finally { setBusy(false); }
   };
   const seek = (ms: number) => {

@@ -60,6 +60,34 @@ def test_signature_is_required_only_for_new_preparations():
     assert style_policy(overlay_template("knowledge-talk-v1")) is None
 
 
+@pytest.mark.parametrize("selected", [0, 1, 2])
+def test_rotation_image_shortage_blocks_billing_even_with_shared_groups(selected):
+    template = overlay_template("rotation-cards-v1")
+    snapshot = {
+        "overlay_template": template,
+        "choice_snapshot": {"notes": []},
+        "planning_runtime": {
+            "template_style": style_policy(template),
+            "unavailable_template_groups": {},
+            "project_image_requirements": [
+                {
+                    "group_id": "CX-G04",
+                    "selected_distinct_images": selected,
+                    "required_distinct_images": 3,
+                }
+            ],
+        },
+    }
+    with pytest.raises(ApiError) as error:
+        require_template_group_capacity(snapshot)
+    assert error.value.code == "EDITING_TEMPLATE_STYLE_UNAVAILABLE"
+    assert "3 张不同图片" in error.value.message
+    snapshot["planning_runtime"]["project_image_requirements"][0][
+        "selected_distinct_images"
+    ] = 3
+    require_template_group_capacity(snapshot)
+
+
 @pytest.mark.parametrize(
     "words, expected",
     [

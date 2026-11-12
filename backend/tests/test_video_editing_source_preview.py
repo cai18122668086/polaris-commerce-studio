@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from app.video_editing_task_models import EditingSourceRecord
-
 from tests.test_video_editing_tasks import setup_source
 
 pytest_plugins = ["tests.test_video_projects"]

@@ -58,7 +58,8 @@ const errors: Record<string, string> = {
   EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。",
   EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "没有适用的成套动效。请核对项目备忘、素材或模板后重新准备。",
   EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。",
-  EDITING_PLAN_CONTRACT_INVALID: "这次编排未能正确匹配口播。请检查口播或更换模板后重新生成。",
+  EDITING_PLAN_CONTRACT_INVALID: "模型编排未通过模板校验。响应已保存，重新校验不会再次调用计费模型。",
+  EDITING_TRANSCRIPT_REVIEW_REQUIRED: "自动字幕与已确认原稿差异较大，请先校对字幕并重新对齐，再继续编排。此检查不计模型费用。",
 };
 
 export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, referenceConfirmed = false, creativeOptions, onCreativeChange, onInputsChanged }: {
@@ -83,6 +84,9 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const [activePreparation, setActivePreparation] = useState<{id: string; signature: string}>();
   const preparationKey = `tengli-editing-preparation:${workspaceId}:${projectId}`;
   const [preparationLoaded, setPreparationLoaded] = useState(false);
+  // Browser storage is unavailable during SSR. The parent keys this component
+  // by workspace/project, so these effects hydrate each mounted editor once.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(preparationKey) || "null");
@@ -106,6 +110,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     } catch { /* Optional selection preference; saved requests keep their own materials. */ }
     setMaterialPreferenceLoaded(true);
   }, [materialPreferenceKey]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (materialPreferenceLoaded) {
       try { localStorage.setItem(materialPreferenceKey, JSON.stringify(materialIds)); } catch { /* Server snapshots stay authoritative. */ }
@@ -163,15 +168,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const primaryHint = submissionUncertain ? "请等待结果确认，避免重复提交和计费" : submitted?.status === "completed" ? "查看本次结果，满意后下载高清" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "重新检查素材不会再次调用模型" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
   const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase]);
-  useImperativeHandle(actionRef, () => ({ cancel: () => { automatic.current.cancel(); }, run: () => {
-    if (primaryDisabled) return;
-    if (nextAction === "preview" && submitted) void preview(submitted);
-    else if (nextAction === "generate" && prepared) void submit("generate", prepared);
-    else if (nextAction === "prepare") {
-      automatic.current.start(formSignature);
-      void submit("prepare");
-    }
-  } }));
+
   const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
     const taskId = prepared?.base_task_id || selectedCandidate;
     if (!taskId || (mode === "prepare" && !templateId)) return;
@@ -254,6 +251,15 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     } catch (caught) { setError(editingMessage(caught, "预览提交尚未确认，再次点击会查询同一任务。")); }
     finally { setBusy(false); }
   };
+  useImperativeHandle(actionRef, () => ({ cancel: () => { automatic.current.cancel(); }, run: () => {
+    if (primaryDisabled) return;
+    if (nextAction === "preview" && submitted) void preview(submitted);
+    else if (nextAction === "generate" && prepared) void submit("generate", prepared);
+    else if (nextAction === "prepare") {
+      automatic.current.start(formSignature);
+      void submit("prepare");
+    }
+  } }));
   const carryPreview = async (job: Job) => {
     if (!carryFrom) return;
     setBusy(true); setError("");

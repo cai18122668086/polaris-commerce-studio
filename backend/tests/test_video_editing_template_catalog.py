@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+
 from app.config import Settings
 from app.errors import ApiError
 from app.motion_library import atomic_json, sha256
@@ -11,7 +12,6 @@ from app.video_editing_overlay_templates import (
     template_snapshot_matches,
 )
 from app.video_editing_template_catalog import example_file, template_catalog
-
 from tests.test_video_projects import base
 
 pytest_plugins = ["tests.test_video_projects"]

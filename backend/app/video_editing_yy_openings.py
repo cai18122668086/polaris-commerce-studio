@@ -302,6 +302,10 @@ def verify_yy_opening_captions(root: Path, report: dict) -> dict:
     """Keep actual native libass ink below the audited scene text band."""
     episode = read_json(root / "episode.json")
     indices = read_json(root / YY_OPENING_CAPTION_INTENT)["shots"]
+    from .video_editing_caption_presentation import verify_reserved_caption_lane
+
+    if contained := verify_reserved_caption_lane(root, report, indices):
+        return contained
     if not indices or report["status"] != "passed":
         raise ValueError("The original layout report must be available")
     captions = episode["captions"]

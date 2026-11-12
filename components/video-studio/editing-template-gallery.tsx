@@ -33,10 +33,9 @@ export function EditingTemplateGallery({ workspaceId, projectId, selected, onSel
   }, [cards, onRestore, selected, selectionKey]);
   useEffect(() => {
     const controller = new AbortController();
-    setError("");
     void apiClient.GET(`${root}/editing-template-catalog`, {
       params: { path: { workspace_id: workspaceId } }, signal: controller.signal,
-    }).then(result => { if (!controller.signal.aborted) setCards(unwrapApiResponse(result)); })
+    }).then(result => { if (!controller.signal.aborted) { setCards(unwrapApiResponse(result)); setError(""); } })
       .catch(() => { if (!controller.signal.aborted) setError("模板暂时无法读取，请重试。"); });
     return () => controller.abort();
   }, [workspaceId, retry]);

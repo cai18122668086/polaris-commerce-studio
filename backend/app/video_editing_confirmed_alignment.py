@@ -82,6 +82,7 @@ def normalize_confirmed(
         identity,
         version,
         binding["text"],
+        preserve_surface=True,
     )
     data = transcript.model_dump()
     prefix = hashlib.sha256(

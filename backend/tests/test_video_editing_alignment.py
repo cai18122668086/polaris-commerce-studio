@@ -1,5 +1,7 @@
+import sys
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -117,3 +119,55 @@ def test_numeric_subtokens_join_measured_bounds_without_guessing_character_time(
         normalize(
             [{"text": "洗碗", "timestamp": [[100, 700]]}], "洗碗。", parent, prepared
         )
+
+
+@pytest.mark.parametrize("text", ["洗 碗。", "洗\n碗。", "洗\r\n碗。"])
+def test_native_alignment_keeps_first_phrase_and_all_lines(tmp_path, monkeypatch, text):
+    from app import video_editing_alignment as alignment
+
+    parent, prepared = evidence()
+    audio = tmp_path / "speech.wav"
+    audio.write_bytes(b"fixed-audio-fixture")
+    prepared["audio_sha256"] = parent.audio_sha256 = alignment.sha256(audio)
+    before = parent.model_dump()
+
+    class Model:
+        def generate(self, *, input, **kwargs):
+            document = Path(input[1])
+            supplied = document.read_text(encoding="utf-8")
+            # Reproduce the native manifest parser's first-record behavior.
+            # A .txt input loses the first phrase and truncates multiline text.
+            if document.suffix in {".txt", ".text", ".scp"}:
+                supplied = supplied.splitlines()[0].split(maxsplit=1)[-1]
+            units = [m.group() for m in alignment.UNIT.finditer(supplied)]
+            return [{"text": " ".join(units), "timestamp": [[100, 400], [400, 700]]}]
+
+    monkeypatch.setattr(
+        alignment, "sys", SimpleNamespace(flags=SimpleNamespace(utf8_mode=1))
+    )
+    monkeypatch.setattr(alignment, "bundle_identity", lambda *a, **k: "d" * 64)
+    monkeypatch.setattr(alignment.importlib.metadata, "version", lambda _: "1.4.24")
+    monkeypatch.setitem(
+        sys.modules, "funasr", SimpleNamespace(AutoModel=lambda **k: Model())
+    )
+    output = tmp_path / "output"
+    result = alignment.align_transcript(
+        audio,
+        prepared,
+        parent,
+        "c" * 64,
+        text,
+        "correction-one",
+        "operator_candidate",
+        tmp_path / "model",
+        output,
+    )
+    assert "".join(t.text for t in result.tokens) == "洗碗。"
+    assert result.tokens[0].start_ms == 100
+    assert parent.model_dump() == before
+    assert (output / "alignment-input.txt").read_text(encoding="utf-8") == text.replace(
+        "\r\n", "\n"
+    )
+    assert (output / "alignment-native-input.utf8").read_bytes() == (
+        output / "alignment-input.txt"
+    ).read_bytes()

@@ -135,7 +135,7 @@ def hypit_node_version() -> str:
             encoding="utf-8",
             timeout=5,
             check=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise ValueError("Unable to verify the local Hypit Node.js runtime") from error

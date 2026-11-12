@@ -1,13 +1,16 @@
 """Compare the delivery's decoded audio with the original and the native stems."""
 
+from __future__ import annotations
+
 import math
 from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
 
-import numpy as np
-import numpy.typing as npt
+if TYPE_CHECKING:
+    import numpy as np
+    import numpy.typing as npt
 
 RATE = 48_000
 CHANNELS = 2
@@ -24,6 +27,8 @@ _MIN_PLANNED_STEM_RMS = 10 ** (-90 / 20)
 
 
 def _read(stream: BinaryIO, frames: int) -> npt.NDArray[np.float64]:
+    import numpy as np
+
     values = np.frombuffer(stream.read(frames * _SAMPLE_BYTES), dtype="<f4")
     if len(values) != frames * CHANNELS or not np.isfinite(values).all():
         raise ValueError("Decoded audio is truncated or nonfinite")
@@ -37,6 +42,8 @@ def _db(level: float) -> float:
 def _mapped_voice(
     source: BinaryIO, start: int, width: int, offset: int, frames: int
 ) -> npt.NDArray[np.float64]:
+    import numpy as np
+
     begin = max(0, start - offset)
     padding = min(width, max(0, offset - start))
     count = min(width - padding, max(0, frames - begin))
@@ -55,6 +62,8 @@ def compare_audio_samples(
     source_offset_samples: int = 0,
 ) -> dict:
     """Verify stream content in bounded windows on the rendered sample clock."""
+    import numpy as np
+
     lengths = {}
     for name, path in decoded.items():
         length, tail = divmod(path.stat().st_size, _SAMPLE_BYTES)

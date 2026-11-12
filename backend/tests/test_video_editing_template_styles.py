@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
+
 from app.errors import ApiError
 from app.motion_library import atomic_json
 from app.video_editing_contracts import SemanticPlan, Transcript, TranscriptToken

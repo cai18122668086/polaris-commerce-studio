@@ -139,6 +139,12 @@ def test_worker_default_and_recovery_require_complete_hashed_fa_evidence(
         video_editing_alignment_model_dir=Path("model"),
     )
     monkeypatch.setattr(module, "bundle_identity", lambda *a, **k: "c" * 64)
+    installed_version = module.importlib.metadata.version
+    monkeypatch.setattr(
+        module.importlib.metadata,
+        "version",
+        lambda name: "1" if name == "funasr" else installed_version(name),
+    )
     calls = []
     stages = []
 

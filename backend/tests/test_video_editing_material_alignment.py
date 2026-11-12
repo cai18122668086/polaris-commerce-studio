@@ -125,6 +125,72 @@ def test_named_action_is_preserved_when_the_picture_noun_is_a_synonym():
     assert "上传" in result["materials"][0]["candidates"][0]["matched_terms"]
 
 
+def clause_transcript(clauses, pause=0):
+    source = transcript()
+    source.tokens = [
+        TranscriptToken(
+            id=f"w{i}",
+            text=text,
+            start_ms=i * (1000 + pause),
+            end_ms=i * (1000 + pause) + 1000,
+        )
+        for i, text in enumerate(clauses)
+    ]
+    source.duration_ms = len(clauses) * (1000 + pause)
+    source.utterances = [
+        TranscriptUtterance(
+            id=f"u{i}",
+            text=t.text,
+            token_ids=[t.id],
+            start_ms=t.start_ms,
+            end_ms=t.end_ms,
+        )
+        for i, t in enumerate(source.tokens)
+    ]
+    return source
+
+
+def main_image_card():
+    return {
+        "id": "main-image",
+        "kind": "image",
+        "sha256": "f" * 64,
+        "viewed_identity": "商品主图展示",
+        "semantic_use": (
+            "商品主体、主图构图和卖点排版示例，说明产品是否清楚、卖点能否一眼看懂。"
+        ),
+    }
+
+
+def test_adjacent_clauses_describing_one_main_image_are_one_candidate_not_ambiguity():
+    source = clause_transcript(
+        ["先看主图，", "产品是否清楚，", "核心卖点能不能一眼看懂。", "再看详情规格。"]
+    )
+    result = alignment_input(source, [main_image_card()])["materials"][0]
+    assert result["status"] == "candidate"
+    assert result["candidates"][0]["sentence_ids"] == ["u0", "u1", "u2"]
+    assert result["candidates"][0]["first_token_id"] == "w0"
+    assert result["candidates"][0]["last_token_id"] == "w2"
+
+
+@pytest.mark.parametrize(
+    "clauses,pause",
+    [
+        (["先看主图构图。", "检查主图构图。"], 0),
+        (["先看主图构图，", "检查主图构图，"], 1000),
+        (["先看主图构图，", "再讲团队分工。", "检查主图构图。"], 0),
+    ],
+)
+def test_nonadjacent_separate_sentences_and_long_pauses_remain_separate_candidates(
+    clauses, pause
+):
+    result = alignment_input(clause_transcript(clauses, pause), [main_image_card()])[
+        "materials"
+    ][0]
+    assert len(result["candidates"]) >= 2
+    assert all(len(row["sentence_ids"]) == 1 for row in result["candidates"])
+
+
 @pytest.mark.parametrize(
     "template_id", ["rotation-cards-v1", "presenter-openings-v1", "chenxi-broll-v1"]
 )

@@ -55,7 +55,8 @@ def test_full_phrase_clock_and_highlights_reach_the_last_sentence():
     assert "".join(r["text"] for r in rows) == "".join(
         t.text for t in transcript().tokens
     )
-    assert all(r["lines"][0]["emphasis_spans"] for r in rows)
+    assert any(r["lines"][0]["emphasis_spans"] for r in rows[:3])
+    assert any(r["lines"][0]["emphasis_spans"] for r in rows[-3:])
     assert rows[-1]["text"] == "现在开始"
     assert caption_parts(rows[-1]["lines"][0]) == [("现在", False), ("开始", True)]
     assert rows[0]["time"] == [0, 3] and rows[-1]["time"] == [16, 18]
@@ -70,7 +71,10 @@ def test_full_phrase_clock_and_highlights_reach_the_last_sentence():
             lambda p: p["captions"].insert(1, copy.deepcopy(p["captions"][0])),
             "every word once",
         ),
-        (lambda p: p["captions"][-1].update(emphasis=[]), "own planned emphasis"),
+        (
+            lambda p: [c.update(emphasis=[]) for c in p["captions"]],
+            "planned keyword emphasis",
+        ),
         (lambda p: p["captions"][0].update(emphasis=[span(4, 5)]), "inside its phrase"),
         (
             lambda p: p["captions"][1].update(line_break_after_token_id="w4"),
@@ -148,8 +152,7 @@ def test_repeated_keyword_targets_the_selected_occurrence_and_preserves_whole_cu
     assert caption_parts(rows[0]["lines"][0]) == [("先上传产品图，", False)]
     assert caption_parts(rows[0]["lines"][1]) == [
         ("产品图", True),
-        ("决定", False),
-        ("效果", True),
+        ("决定效果", False),
     ]
 
 

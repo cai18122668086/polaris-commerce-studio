@@ -33,6 +33,7 @@ browser = [
 ]
 editing = [
   "jieba==0.42.1",
+  "pypinyin==0.55.0",
   "numpy==2.5.4",
   "opencv-python-headless==5.0.0.93",
   "fonttools==4.68.0",
@@ -42,6 +43,7 @@ editing = [
   "onnxruntime==1.31.1",
 ]
 editing-zh = [
+  "pypinyin==0.55.0",
   "funasr==1.4.24",
   "modelscope==1.40.2",
   "torch==2.5.1",
@@ -52,6 +54,7 @@ editing-zh = [
 ]
 dev = [
   "jieba==0.42.1",
+  "pypinyin==0.55.0",
   "fakeredis[lua]>=2.40,<3",
   "mypy>=1.16,<2",
   "pytest>=8,<10",

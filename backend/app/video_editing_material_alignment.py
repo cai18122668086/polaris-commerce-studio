@@ -13,7 +13,7 @@ import unicodedata
 
 from .video_editing_contracts import SemanticPlan, Transcript, TranscriptToken
 
-ALIGNMENT_VERSION = "tengli.material-alignment/1"
+ALIGNMENT_VERSION = "tengli.material-alignment/2"
 # Action names often are the only description of a screen recording. Keep
 # 上传/点击/复制: removing them loses legitimate matches such as 上传实拍图.
 STOP = frozenset(
@@ -97,21 +97,99 @@ def alignment_input(transcript: Transcript, cards: list[dict]) -> dict:
         name = str(card.get("viewed_identity", ""))
         description = str(card.get("semantic_use", ""))
         query = terms(name + " " + description)
+        subject = name
+        for generic in (
+            "商品",
+            "展示",
+            "官网",
+            "示例",
+            "案例",
+            "素材",
+            "图片",
+            "视频",
+            "截图",
+            "参考",
+            "画面",
+        ):
+            subject = subject.replace(generic, " ")
+        named = terms(subject)
         ranked = []
         for row, words in zip(rows, vocab, strict=True):
             common = query & words
             if not common:
                 continue
-            score = sum(idf[t] for t in common) / max(
-                1, sum(idf.get(t, 1) for t in query)
+            score = sum(idf[t] * (4 if t in named else 1) for t in common) / max(
+                1, sum(idf.get(t, 1) * (4 if t in named else 1) for t in query)
             )
             ranked.append(
-                {**row, "score": round(score, 4), "matched_terms": sorted(common)}
+                {
+                    **row,
+                    "score": round(score, 4),
+                    "matched_terms": sorted(common),
+                    "name_matched_terms": sorted(named & words),
+                }
             )
+        # Adjacent clauses describing the same asset are one context, rather
+        # than competing locations. Never join across a sentence or long pause.
+        by_index = {
+            next(i for i, row in enumerate(rows) if row["id"] == r["id"]): r
+            for r in ranked
+        }
+        clocks = {token.id: token for token in transcript.tokens}
+        grouped = []
+        consumed = set()
+        for index in sorted(by_index):
+            if index in consumed:
+                continue
+            indices = [index]
+            cursor = index
+            while cursor + 1 in by_index:
+                current, following = rows[cursor], rows[cursor + 1]
+                gap = (
+                    clocks[following["first_token_id"]].start_ms
+                    - clocks[current["last_token_id"]].end_ms
+                )
+                proposed = indices + [cursor + 1]
+                members = [by_index[j] for j in proposed]
+                if (
+                    re.search(r"[。！？!?；;]", current["text"])
+                    or not members[0]["name_matched_terms"]
+                    or gap > 650
+                    or by_index[cursor + 1]["score"] < 0.06
+                    or len(proposed) > 3
+                    or sum(len(rows[j]["text"]) for j in proposed) > 80
+                    or clocks[following["last_token_id"]].end_ms
+                    - clocks[rows[index]["first_token_id"]].start_ms
+                    > 12000
+                ):
+                    break
+                indices = proposed
+                cursor += 1
+            consumed.update(indices)
+            members = [by_index[j] for j in indices]
+            common = set().union(*(set(m["matched_terms"]) for m in members))
+            score = sum(idf[t] * (4 if t in named else 1) for t in common) / max(
+                1, sum(idf.get(t, 1) * (4 if t in named else 1) for t in query)
+            )
+            grouped.append(
+                {
+                    **members[0],
+                    "id": "+".join(m["id"] for m in members),
+                    "sentence_ids": [m["id"] for m in members],
+                    "text": "".join(m["text"] for m in members),
+                    "last_token_id": members[-1]["last_token_id"],
+                    "score": round(score, 4),
+                    "matched_terms": sorted(common),
+                    "name_matched_terms": sorted(
+                        set().union(*(set(m["name_matched_terms"]) for m in members))
+                    ),
+                }
+            )
+        ranked = grouped
         ranked.sort(
             key=lambda r: (
                 -r["score"],
-                next(i for i, s in enumerate(rows) if s["id"] == r["id"]),
+                next(i for i, s in enumerate(rows) if s["id"] == r["sentence_ids"][0]),
             )
         )
         top = ranked[:3]
@@ -147,6 +225,7 @@ def alignment_input(transcript: Transcript, cards: list[dict]) -> dict:
         **inputs,
         "policy": (
             "候选仅为检索提示。先理解完整台词及素材名称说明，再在同一次规划中确定位置；"
+            "sentence_ids内相邻分句是同一连续语义段，不是互相竞争的歧义位置。明确相关的命名素材应使用；"
             "歧义或不相关素材跳过。禁止逐帧API查看或渲染后重新规划。"
         ),
     }

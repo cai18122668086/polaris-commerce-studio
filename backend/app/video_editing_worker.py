@@ -118,6 +118,10 @@ def asr_profile(settings: Settings, language: str, reference: str | None) -> str
         "language": language,
         "reference": reference,
     }
+    if reference:
+        from .video_editing_reference_text import reference_profile
+
+        payload["reference_reconciliation"] = reference_profile()
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
@@ -228,6 +232,27 @@ def load_transcript(
                     for name, item in evidence.items():
                         shutil.copyfile(item["path"], root / name)
                     transcript = candidate
+            elif candidate.reference_reconciliation:
+                evidence = cached.get("reference_evidence", {})
+                if (
+                    set(evidence)
+                    == {"asr-transcript.json", "reference-reconciliation.json"}
+                    and all(
+                        Path(item["path"])
+                        .resolve()
+                        .is_relative_to(
+                            (settings.video_editing_tasks_dir / task_id).resolve()
+                        )
+                        and Path(item["path"]).is_file()
+                        and sha256(Path(item["path"])) == item["sha256"]
+                        for item in evidence.values()
+                    )
+                    and evidence["asr-transcript.json"]["sha256"]
+                    == candidate.parent_transcript_sha256
+                ):
+                    for name, item in evidence.items():
+                        shutil.copyfile(item["path"], root / name)
+                    transcript = candidate
             else:
                 transcript = candidate
     if transcript is None:
@@ -283,6 +308,22 @@ def load_transcript(
             "path": str(root / "transcript.json"),
             "sha256": sha256(root / "transcript.json"),
             "profile": profile,
+            **(
+                {
+                    "reference_evidence": {
+                        name: {"path": str(root / name), "sha256": sha256(root / name)}
+                        for name in (
+                            "asr-transcript.json",
+                            "reference-reconciliation.json",
+                        )
+                    }
+                }
+                if all(
+                    (root / name).is_file()
+                    for name in ("asr-transcript.json", "reference-reconciliation.json")
+                )
+                else {}
+            ),
             **(
                 {
                     "alignment_evidence": {

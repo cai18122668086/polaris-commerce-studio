@@ -282,6 +282,9 @@ class Transcript(StrictVideoModel):
     utterances: list[TranscriptUtterance]
     reference_text: str | None = None
     reference_matches: bool | None = None
+    reference_reconciliation: dict[str, Any] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
     differences: list[dict] = Field(default_factory=list)
     timing_review: Literal["unreviewed", "reviewed"] = "unreviewed"
     parent_transcript_sha256: str | None = None

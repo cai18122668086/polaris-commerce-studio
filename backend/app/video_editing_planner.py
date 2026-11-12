@@ -67,6 +67,7 @@ from .video_editing_overlay_templates import (
     template_snapshot_matches,
     validate_template_plan,
 )
+from .video_editing_planning_quality import NATIVE_BINDING_POLICY, NATIVE_BINDING_PROMPT
 from .video_editing_quantity_anchors import (
     IncompleteQuantity,
     measured_compound_quantities,
@@ -465,6 +466,8 @@ def build_request(
         "不能把用途、用量和条件凑为同一并列关系；图片项必须有本期素材ID，并绑定对应native_media_paths。"
         "禁止任何时间数值、文件路径和可执行代码；原生参数由后续编译器根据本期输入和schema生成。"
     )
+    if (runtime or {}).get("native_binding_policy") == NATIVE_BINDING_POLICY:
+        message += NATIVE_BINDING_PROMPT
     if template is not None and any(
         slot.get("layer") == "scene" for slot in template["slots"]
     ):

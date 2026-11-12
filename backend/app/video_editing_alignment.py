@@ -15,7 +15,7 @@ from .video_editing_funasr import MANIFEST, UNIT, bundle_identity, normalize_res
 from .video_editing_pipeline import EditingFailure
 
 ALIGNMENT_MANIFEST = MANIFEST.with_name("editing_alignment_models.json")
-PROCESSING_VERSION = "funasr-force-align/1"
+PROCESSING_VERSION = "funasr-force-align/2"
 
 
 def normalize_alignment(
@@ -194,7 +194,12 @@ def align_transcript(
         )
     if any(
         (output / name).exists()
-        for name in ("alignment-input.txt", "alignment-raw.json", "transcript.json")
+        for name in (
+            "alignment-input.txt",
+            "alignment-native-input.utf8",
+            "alignment-raw.json",
+            "transcript.json",
+        )
     ):
         raise FileExistsError(
             "Preserve previous alignment; choose a new revision output"
@@ -202,7 +207,13 @@ def align_transcript(
     identity = bundle_identity(model_root, manifest_path=ALIGNMENT_MANIFEST)
     output.mkdir(parents=True, exist_ok=True)
     text_file = output / "alignment-input.txt"
-    text_file.write_text(text, encoding="utf-8")
+    text_file.write_bytes(text.encode("utf-8"))
+    # FunASR treats .txt as a key/value manifest: the first phrase before a
+    # space becomes the record key, and newlines create separate records.
+    # Its literal-text loader reads other suffixes as one UTF-8 document.
+    # Keep the existing audit file and pass an identical literal document.
+    native_text_file = output / "alignment-native-input.utf8"
+    native_text_file.write_bytes(text_file.read_bytes())
     from funasr import AutoModel
 
     model = AutoModel(
@@ -213,7 +224,7 @@ def align_transcript(
         trust_remote_code=False,
     )
     result = model.generate(
-        input=(str(audio), str(text_file)),
+        input=(str(audio), str(native_text_file)),
         data_type=("sound", "text"),
         batch_size=1,
     )
@@ -241,6 +252,8 @@ def align_transcript(
             "text_revision_id": revision_id,
             "text_status": text_status,
             "input_text_sha256": sha256(text_file),
+            "native_input_text_sha256": sha256(native_text_file),
+            "native_input_text_policy": "literal_utf8_document",
             "model_bundle_sha256": identity,
             "raw_file_sha256": sha256(output / "alignment-raw.json"),
             "transcript_sha256": sha256(output / "transcript.json"),

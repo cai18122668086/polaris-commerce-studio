@@ -66,3 +66,21 @@ TypeScript、production build、8项前端行为测试通过。新合同15项、
 37项字幕/合同/队列glue测试通过，4个改动运行模块ruff/mypy通过。真实7.6秒新合同队列记录C:/tl/bihuo-editing-20261112/queue-caption-verification-v3/queue-verification.json：一次本地协议fixture、25/25词覆盖、实际编码到高清确认及Range下载通过，外部模型调用0。正式付费模型的语义质量仍未在隔离环境验收。
 
 网站独立examples目录已安装新的52秒例片，manifest的扩展审计字段放在caption_repair，不传给严格TemplateExample元数据模型。内置浏览器已验证原预览页转向、B05后半段视频完整播放和网站新示例52.24秒可播放。8019本任务API已重启载入新版；3018/8018保持原有服务，未部署线上。
+
+## 新人物、新稿真实首版 · 同日追加
+
+用户认可字幕修复后，要求换人物和稿件，真实剪一版验证接入。新建独立目录C:/tl/bihuo-editing-20261112/live-case-v1，通过SQLite备份复制本任务只读基线，不复用历史七次调用额度。8019改为此独立项目的真实手动服务；3018/8018未改。
+
+新项目a5e7f950-4230-4cbc-a066-dd800779e7ac。115字新稿主题“新品上架前，商品图先检查这三件事”，使用公共数字人qy-model-255（尔东）、精英青年男声、1.1倍语速。通过网页确认生成，配音21.043438秒；因公共动作只有10.88秒，既有正向延长流程登记一次后生成口播。生成任务3d480748-d812-462d-9387-4d51fe5aa59c，真实新源SHA256为57b21573a5875dc620c42d74dd33712139f046ae5ae5fc4b06ce09755683f3b4。
+
+网页上传两份命名素材“商品主图展示”“商品详情页展示”，采用既有官网公开案例。新口播及稿件自动带入剪辑页面，选择Apple模板后点击一次开始。实际流程：离线FunASR识别101词→免费准备→一次真实gpt-6.1-sol规划→自动创建渲染任务→实际1080×1920/25fps编码→预览→网页确认高清→网页下载。源记录kind=generation_task，未伪造上传来源；本次计划和字幕没有人工改写。
+
+规划任务c6f58afc-1c6d-411a-a85f-2490c957d8fc，供应商响应resp_0f6fd527d8d7afac016af5c0945d1887d1b7a280176f2ec3c0，实际用量9537输入/2211输出/11748总token。四种收费阶段各实际提交一次：配音、动作登记、数字人口播、全文规划；没有额外规划、付费重试或逐帧API。金额未核实，不推算。
+
+实测修复了本地手动服务两处接入问题：transport原来只允许旧overlay请求，现允许具有正确引擎与v2合同的新模板；规划worker自动持久化预览后，本地没有生产维护进程来消费出站队列，现包装规划worker自动投递其保存的queued预览，并提供显式--resume-preview恢复一个已保存预览。恢复本次af211118-2a44-402c-8d4e-2d96dccbc669没有再次调用模型或重建口播。7项手动服务回归和Ruff通过。生产Celery维护原有实现未改，不冒称完整生产基础设施验收。
+
+真实首版为21.04秒、11组全片字幕，完整解码通过。网页实际下载到C:/Users/a1726/Downloads/af211118-2a44-402c-8d4e-2d96dccbc669-final.mp4，与服务端高清记录逐字节SHA一致，Range 206也通过。便于查看的副本为C:/tl/bihuo-editing-20261112/live-case-v1/新人物_新口播稿_自动剪辑首版.mp4。证据delivery-verification.json；review/contact.jpg来自实际编码帧，review/website-result.png为真实网页可下载状态。
+
+这是链路通过而质量仍有问题的首版，不能记录为用户效果认可：主图在连续的“主图产品是否清楚”“核心卖点能不能一眼看懂”两句都有匹配，检索标为ambiguous，模型因此跳过，只用了详情素材（7.59秒起）；FunASR把“逐张核对”写成“主张核对”，并漏掉“是不是统一。检查完成”中间停顿，模型分句沿用了不佳边界。后续应先改善相邻分句的素材检索与口播参考稿校对，再谈稳定质量。此次保留自动首版和原始响应，不用人工改片掩盖实测结果；正式听审和用户审核仍待进行。
+
+本机运行：python tools/tengli_manual_flow_runtime.py --root C:/tl/bihuo-editing-20261112/live-case-v1 --provider-env D:/Desktop/cyh/tengli/polaris-commerce-studio/backend/.env --examples C:/tl/bihuo-editing-20261112/examples --enable-user-submissions --port 8019。启动不提交付费任务；--resume-preview只恢复已保存的本地预览。预备新案例工具tools/prepare_apple_live_case.py不调用生成，仅下载公共人物原片和可选新建项目。

@@ -4,15 +4,19 @@ import { UserRound, PackageOpen } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
+import { matchesReferenceScript, referenceScript, type EditingMusicPreference } from "@/features/video-studio/editing-options";
 import { projectApi, type VideoVersion } from "@/features/video-studio/projects";
 import { ApiError } from "@/lib/api/api-error";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { GenerationJob } from "@/features/video-studio/library";
 import type { components } from "@/lib/api/generated/openapi";
+import { Dialog } from "./studio-primitives";
 import { TranscriptEditor } from "./transcript-editor";
 import { EditingFilmReview } from "./editing-film-review";
 import { EditingSoundReview } from "./editing-sound-review";
+import { EditingMusicPicker } from "./editing-music-picker";
+import { EditingCoverPicker, defaultAppleOptions, type AppleCreativeOptions } from "./editing-creative-options";
 import { EditingLibrary } from "./editing-library";
 import { EditingNativePlans, type EditingRevisionSelection } from "./editing-native-plans";
 import { EditingPlanning, type CarrySelection, type EditingPrimaryAction, type EditingPrimaryState } from "./editing-planning";
@@ -57,15 +61,35 @@ const errorLabel: Record<string, string> = {
 
 export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact = false, onSaveProject }: { workspaceId: string; projectId: string; saved: boolean; jobs: GenerationJob[]; compact?: boolean; onSaveProject?: () => Promise<void> }) {
   const [tasks, setTasks] = useState<EditingTask[]>([]);
+  const [sourceDialog, setSourceDialog] = useState(false);
   const [sourceChoice, setSelected] = useState<string>();
   const requestedGeneration = useSearchParams().get("generation");
   const [file, setFile] = useState<File>();
   const [sourcePreview, setSourcePreview] = useState("");
   const [referenceVersion, setReferenceVersion] = useState("");
+  const [referenceText, setReferenceText] = useState("");
+  const [music, setMusic] = useState<EditingMusicPreference>("template");
+  const [creativeOptions, setCreativeOptions] = useState<AppleCreativeOptions>(defaultAppleOptions);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const preferenceKey = `tengli-editing-options:${workspaceId}:${projectId}`;
+  useEffect(() => {
+    try {
+      const prior: unknown = JSON.parse(localStorage.getItem(preferenceKey) || "null");
+      if (prior && typeof prior === "object") {
+        if ("music" in prior && ["template", "lower", "off"].includes(String(prior.music))) setMusic(prior.music as EditingMusicPreference);
+        if ("creativeOptions" in prior && prior.creativeOptions && typeof prior.creativeOptions === "object" && "schema_version" in prior.creativeOptions && prior.creativeOptions.schema_version === "tengli.apple-creative/1") setCreativeOptions({ ...defaultAppleOptions, ...prior.creativeOptions } as AppleCreativeOptions);
+      }
+    } catch { /* Saved task snapshots remain authoritative. */ }
+    setPreferencesLoaded(true);
+  }, [preferenceKey]);
+  useEffect(() => {
+    if (preferencesLoaded) {
+      try { localStorage.setItem(preferenceKey, JSON.stringify({ music, creativeOptions })); } catch { /* Optional preference. */ }
+    }
+  }, [music, creativeOptions, preferenceKey, preferencesLoaded]);
   const [confirmedVersions, setConfirmedVersions] = useState<VideoVersion[] | "unavailable">();
-  const [subtitles, setSubtitles] = useState<"none" | "present" | "unknown">("unknown");
+  const [subtitles, setSubtitles] = useState<"none" | "present" | "unknown">("none");
   const [busy, setBusy] = useState(false);
-  const sourcePicker = useRef<HTMLSelectElement>(null);
   const sourceUpload = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -77,8 +101,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const [libraryOpened, setLibraryOpened] = useState(false);
   const [nativeOpened, setNativeOpened] = useState(false);
   const [showTaskHistory, setShowTaskHistory] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
   const [template, setTemplate] = useState<TemplateCard>();
   const primaryAction = useRef<EditingPrimaryAction>(null);
+  const resumeAfterSave = useRef(false);
   const [primaryState, setPrimaryState] = useState<EditingPrimaryState>();
   const [continueAfterRecognition, setContinueAfterRecognition] = useState(false);
   const [planningTask, setPlanningTask] = useState("");
@@ -86,6 +112,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const [plansVersion, setPlansVersion] = useState(0);
   const [revisionSelection, setRevisionSelection] = useState<EditingRevisionSelection>();
   const [carrySelection, setCarrySelection] = useState<CarrySelection>();
+  const cancelAutomatic = () => { resumeAfterSave.current = false; setContinueAfterRecognition(false); primaryAction.current?.cancel(); };
+  const chooseTemplate = (card: TemplateCard) => { cancelAutomatic(); setTemplate(card); };
   useEffect(() => {
     if (nativeOpened && nativePanel.current) {
       nativePanel.current.open = true;
@@ -97,6 +125,17 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const selected = sourceChoice ?? candidates.find(job => job.id === requestedGeneration)?.id ?? "";
   const selectedGeneration = candidates.find(job => job.id === selected);
+  const initializedReference = useRef("");
+  useEffect(() => {
+    if (!selectedGeneration || initializedReference.current === selectedGeneration.id) return;
+    let live = true;
+    void Promise.resolve().then(() => {
+      if (!live) return;
+      initializedReference.current = selectedGeneration.id;
+      setReferenceText(selectedGeneration.snapshot?.draft.text || "");
+    });
+    return () => { live = false; };
+  }, [selectedGeneration]);
   const restoredSource = selected.startsWith("source:") ? selected.slice(7) : "";
   const restoredProject = useRef("");
   useEffect(() => {
@@ -110,6 +149,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       setSelected(`source:${previous.source_id}`);
       setPlanningTask(previous.id);
       setSubtitles(previous.options.source_subtitles);
+      setReferenceText(previous.options.reference_script || "");
     });
     return () => { live = false; };
   }, [file, projectId, selected, tasks]);
@@ -215,9 +255,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         }
         sourceId = original.sourceId;
       }
-      const key = JSON.stringify([workspaceId, projectId, sourceId ?? selected, subtitles, mode]);
+      const suppliedReference = referenceScript(referenceText);
+      const key = JSON.stringify([workspaceId, projectId, sourceId ?? selected, subtitles, mode, suppliedReference]);
       if (!pending.current || pending.current.key !== key) pending.current = { key, requestId: crypto.randomUUID() };
-      const body = { request_id: pending.current.requestId, ...(sourceId ? { source_id: sourceId } : { generation_task_id: selected }), options: { mode, source_subtitles: subtitles, language: "zh" as const, caption_font_id: "font-d1961be1161ea1be" as const } };
+      const body = { request_id: pending.current.requestId, ...(sourceId ? { source_id: sourceId } : { generation_task_id: selected }), options: { mode, source_subtitles: subtitles, language: "zh" as const, caption_font_id: "font-d1961be1161ea1be" as const, ...(suppliedReference ? { reference_script: suppliedReference } : {}) } };
       const task = unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks`, { ...options(), body }));
       if (mode === "transcript") setPlanningTask(task.id);
       pending.current = undefined;
@@ -267,6 +308,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       setFile(undefined);
       setSubtitles(previous.options.source_subtitles);
     }
+    if (previous) setReferenceText(previous.options.reference_script || "");
     setPlanningTask(taskId);
     openPlanning();
   };
@@ -276,7 +318,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     if (nativePanel.current) nativePanel.current.open = true;
     (document.getElementById(`editing-native-plan-${selection.planId}`) ?? document.getElementById("editing-native-plans"))?.scrollIntoView({ block: "start" });
   };
-  const transcriptReady = tasks.some(task => task.id === planningTask && task.status === "completed" && task.artifacts.some(a => a.role === "transcript"));
+  const transcriptReady = tasks.some(task => task.id === planningTask && task.status === "completed" && matchesReferenceScript(task.options, referenceText) && task.artifacts.some(a => a.role === "transcript"));
   const sourceTask = tasks.find(task => task.id === planningTask);
   const recognizing = !!sourceTask && ["queued", "running"].includes(sourceTask.status);
   useEffect(() => {
@@ -292,8 +334,9 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const begin = () => {
     if (!saved) {
       if (onSaveProject) {
+        resumeAfterSave.current = true;
         setBusy(true);
-        void onSaveProject().catch(caught => setError(editingMessage(caught, "项目暂未保存，请稍后重试。"))).finally(() => setBusy(false));
+        void onSaveProject().catch(caught => { resumeAfterSave.current = false; setError(editingMessage(caught, "项目暂未保存，请稍后重试。")); }).finally(() => setBusy(false));
       }
       return;
     }
@@ -301,36 +344,50 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     if (!selected || (selected === "upload" && !file)) {
       document.getElementById("editing-source")?.scrollIntoView({ block: "start" });
       if (selected === "upload") sourceUpload.current?.click();
-      else { sourcePicker.current?.focus(); sourcePicker.current?.showPicker?.(); }
+      else setSourceDialog(true);
       return;
     }
-    if (subtitles === "unknown") { document.getElementById("editing-subtitles")?.focus(); return; }
+    if (template.engine === "apple-minimal-suite" && subtitles === "present") {
+      cancelAutomatic();
+      setError("请选择无内嵌字幕的口播视频。");
+      document.getElementById("editing-source")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (subtitles === "unknown") {
+      const more = document.getElementById("editing-source-options") as HTMLDetailsElement | null;
+      if (more) more.open = true;
+      document.getElementById("editing-subtitles")?.focus();
+      return;
+    }
     if (!transcriptReady) { setContinueAfterRecognition(true); void submit("transcript"); }
     else primaryAction.current?.run();
   };
-  const historyTasks = tasks.filter(task => task.options.mode !== "transcript" || task.id === focusedTaskId);
-  const activeStep = nativeOpened ? 4 : !template ? 1 : !canSubmit ? 2 : primaryState?.phase === "preview" ? 4 : 3;
-  const steps = [
-    { id: "editing-templates", title: "选模板", summary: template?.name || "选择喜欢的风格" },
-    { id: "editing-source", title: "准备口播", summary: canSubmit ? "视频已就绪" : "上传或选取视频" },
-    { id: "editing-arrange", title: "添加素材", summary: template?.material_mode === "speech" ? "这款可只用口播" : "图片或分段录屏" },
-    { id: "editing-results", title: "预览与下载", summary: "预览、调整、下载" },
-  ];
-  const actionLabel = busy ? "正在提交…" : !saved ? "保存并继续" : !template ? "选择一个模板" : !selected || (selected === "upload" && !file) ? "上传或选择口播" : subtitles === "unknown" ? "确认原片字幕" : recognizing ? "正在识别口播…" : transcriptReady ? primaryState?.label || "检查素材并继续" : "检查口播与素材";
+  useEffect(() => {
+    if (!saved || busy || !resumeAfterSave.current) return;
+    resumeAfterSave.current = false;
+    begin();
+  }, [saved, busy, begin]);
+  const historyTasks = tasks.filter(task => (task.options.mode !== "transcript" || task.id === focusedTaskId) && (!historyQuery.trim() || `${task.template_name || ""} ${stageLabel[task.stage] || task.status} ${new Date(task.created_at).toLocaleDateString("zh-CN")}`.includes(historyQuery.trim())));
+  const actionLabel = busy || recognizing || primaryState?.phase === "waiting" ? "正在剪辑…" : transcriptReady && primaryState?.phase === "preview" ? "查看剪辑结果" : "开始智能剪辑";
   return <section className={`${styles.panel} ${flow.workbench} ${compact ? flow.compact : ""}`} aria-label="口播剪辑">
-    <nav className={flow.workflowSteps} aria-label="剪辑步骤">{steps.map((step, index) => <button type="button" key={step.id} aria-current={activeStep === index + 1 ? "step" : undefined} onClick={() => document.getElementById(step.id)?.scrollIntoView({ block: "start" })}><span>{index + 1}</span><div><b>{step.title}</b><small>{step.summary}</small></div></button>)}</nav>
-    <EditingTemplateGallery key={`gallery:${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={saved ? projectId : ""} selected={template?.id || ""} onRestore={setTemplate} sampleRevision={tasks.flatMap(task => task.artifacts.filter(a => a.role === "final").map(a => a.sha256)).join(",")} onSelect={setTemplate} />
-    <section id="editing-source" className={`${flow.step} ${flow.source}`} aria-label="准备口播"><div className={flow.sourceHeading}><h2>口播视频</h2><label className={flow.uploadButton}>手动上传视频<input ref={sourceUpload} disabled={busy || recognizing} aria-label="上传口播视频" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => { setSelected("upload"); setFile(event.target.files?.[0]); setPlanningTask(""); setReferenceVersion(""); setSubtitles("unknown"); }} /></label></div>
-    {!sourcePreview && !selectedGeneration && !restoredSource && <button type="button" className={flow.dropzone} onClick={() => { sourcePicker.current?.focus(); sourcePicker.current?.showPicker?.(); }}><UserRound size={36} strokeWidth={1.5} /><b>选择口播视频</b><small>我的视频 · 或手动上传</small></button>}
+    <EditingTemplateGallery key={`gallery:${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={saved ? projectId : ""} selected={template?.id || ""} onRestore={chooseTemplate} sampleRevision={tasks.flatMap(task => task.artifacts.filter(a => a.role === "final").map(a => a.sha256)).join(",")} onSelect={chooseTemplate} />
+    <section id="editing-source" className={`${flow.step} ${flow.source}`} aria-label="准备口播"><div className={flow.sourceHeading}><h2>剪辑</h2><label className={flow.uploadButton}>手动上传视频<input ref={sourceUpload} disabled={busy || recognizing} aria-label="上传口播视频" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => { cancelAutomatic(); setSelected("upload"); setFile(event.target.files?.[0]); setPlanningTask(""); setReferenceVersion(""); setReferenceText(""); setSubtitles("none"); }} /></label></div>
+    {!sourcePreview && !selectedGeneration && !restoredSource && <button type="button" className={flow.dropzone} onClick={() => setSourceDialog(true)}><UserRound size={36} strokeWidth={1.5} /><b>选择口播视频</b><small>我的视频</small></button>}
 
-    {!saved && <p role="status">请先保存当前项目，再开始剪辑。</p>}
-    <label>选择原片<select ref={sourcePicker} disabled={busy || recognizing} aria-label="选择原片" value={selected} onChange={event => { setSelected(event.target.value); setFile(undefined); setReferenceVersion(""); setPlanningTask(""); setSubtitles("unknown"); }}><option value="">请选择已完成的口播</option>{candidates.map(job => <option key={job.id} value={job.id}>{job.snapshot?.draft.name || "口播视频"} · {new Date(job.created_at).toLocaleString("zh-CN")}{job.confirmed_version_id && " · 已确认文案"}</option>)}{restoredSource && <option value={`source:${restoredSource}`}>已保存的上传原片</option>}<option value="upload">上传真人口播或已有视频</option></select></label>
+    {selected && <button type="button" className={flow.changeSource} onClick={() => setSourceDialog(true)}>更换口播视频</button>}
+    {sourceDialog && <Dialog title="我的视频" onClose={() => setSourceDialog(false)}>
+      <div className={flow.sourceChoices}>{candidates.map(job => <button type="button" key={job.id} onClick={() => { cancelAutomatic(); setSelected(job.id); setFile(undefined); setReferenceVersion(""); setReferenceText(job.snapshot?.draft.text || ""); setPlanningTask(""); setSubtitles("none"); setSourceDialog(false); }}>
+        {job.video_url && <video src={job.video_url} preload="metadata" muted playsInline />}<span><b>{job.snapshot?.draft.name || "口播视频"}</b><small>{new Date(job.created_at).toLocaleDateString("zh-CN")}</small></span>
+      </button>)}</div>
+      {!candidates.length && <p className={flow.chosen}>还没有已生成的口播视频，可直接上传已有视频。</p>}
+      <footer className={flow.modalFooter}><button type="button" onClick={() => { setSourceDialog(false); sourceUpload.current?.click(); }}>手动上传视频</button></footer>
+    </Dialog>}
     {selectedGeneration?.video_url && <video src={selectedGeneration.video_url} controls playsInline preload="metadata" aria-label="已生成口播原片预览" style={{ width: "100%", maxWidth: 280, maxHeight: 400 }} />}
     {restoredSource && <video src={`/api/v1/video-studio/workspaces/${workspaceId}/editing-sources/${restoredSource}/video`} controls playsInline preload="metadata" aria-label="已保存口播原片预览" />}
     {selected === "upload" && <>
 
       {sourcePreview && <video src={sourcePreview} controls playsInline preload="metadata" aria-label="上传口播原片预览" style={{ width: "100%", maxWidth: 280, maxHeight: 400 }} />}
-      <details><summary>绑定参考稿（可选）</summary><label>参考确认稿（可选）<select value={referenceVersion} onChange={event => setReferenceVersion(event.target.value)} disabled={busy || !Array.isArray(confirmedVersions) || !confirmedVersions.length}>
+      <details><summary>绑定参考稿（可选）</summary><label>参考确认稿（可选）<select value={referenceVersion} onChange={event => { cancelAutomatic(); setReferenceVersion(event.target.value); setPlanningTask(""); }} disabled={busy || !Array.isArray(confirmedVersions) || !confirmedVersions.length}>
         <option value="">不绑定确认稿</option>
         {Array.isArray(confirmedVersions) && confirmedVersions.map(version => <option key={version.id} value={version.id}>
           {version.snapshot.draft.name || "确认稿"} · {new Date(version.created_at).toLocaleString("zh-CN")} · 已确认
@@ -339,19 +396,19 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       <p className={styles.note}>{confirmedVersions === "unavailable" ? "暂时无法读取确认稿。重新选择上传原片可重试。" : confirmedVersions === undefined && saved ? "正在读取本项目确认稿。" : "参考稿用于回查写稿来源，字幕和词级时间轴以原片实际口播为准。"}</p>
       </details>
     </>}
-    <label>原片已有字幕吗？<select id="editing-subtitles" disabled={busy || recognizing} value={subtitles} onChange={event => setSubtitles(event.target.value as typeof subtitles)}><option value="unknown">请先查看原片后选择</option><option value="none">没有，生成主字幕</option><option value="present">已有，保留画面中的字幕</option></select></label>
-    <p className={styles.note}>动效剪辑使用 9:16 竖屏，保留原声。</p>
     {recognizing && <p role="status">{stageLabel[sourceTask?.stage || ""] || "正在识别口播"}，完成后自动检查素材。</p>}
     {sourceTask?.status === "failed" && <p role="alert" className={styles.error}>{editingMessage(errorLabel[sourceTask.error_code || ""], "口播识别未完成，请检查原片声音后重新开始。")}</p>}
-    <details><summary>单独识别与基础字幕</summary><div className={styles.correctionActions}>
+    <details id="editing-source-options" hidden={!selected}><summary>更多选项</summary><label className={flow.sourceSubtitleChoice}><input id="editing-subtitles" type="checkbox" disabled={busy || recognizing} checked={subtitles === "present"} onChange={event => { cancelAutomatic(); setSubtitles(event.target.checked ? "present" : "none"); setPlanningTask(""); setError(""); }} />原片已有字幕</label><div className={styles.correctionActions}>
       <button type="button" onClick={() => void submit("transcript")} disabled={busy || !canSubmit}>识别口播，准备动效剪辑</button>
       <button type="button" onClick={() => void submit("subtitles")} disabled={busy || !canSubmit}>生成基础字幕片</button>
     </div></details>
+    <EditingMusicPicker value={music} onChange={value => { cancelAutomatic(); setMusic(value); }} disabled={busy || recognizing} voiceOnly={template?.engine === "apple-minimal-suite"} />
+    {template?.engine === "apple-minimal-suite" && <EditingCoverPicker value={creativeOptions.cover || "auto"} onChange={cover => { cancelAutomatic(); setCreativeOptions(current => ({ ...current, cover })); }} disabled={busy || recognizing} />}
     </section>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
     {taskLinkError && taskLinkError.id === focusedTaskId && <p className={styles.error} role="alert">{taskLinkError.message}</p>}
-    {saved && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} actionRef={primaryAction} onPrimaryState={setPrimaryState} selected={planningTask} onSelect={setPlanningTask} template={template} onNativePlan={() => { setPlansVersion(value => value + 1); setNativeOpened(true); if (nativePanel.current) { nativePanel.current.open = true; nativePanel.current.scrollIntoView({ block: "start" }); } }}
+    {saved && template && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} actionRef={primaryAction} onPrimaryState={setPrimaryState} selected={transcriptReady ? planningTask : ""} onSelect={planFromTranscript} template={template} music={music} creativeOptions={creativeOptions} onCreativeChange={value => { cancelAutomatic(); setCreativeOptions(value); }} onInputsChanged={cancelAutomatic} referenceText={referenceText} referenceDisabled={busy || recognizing} onReferenceChange={value => { cancelAutomatic(); setReferenceText(value); setPlanningTask(""); }} onNativePlan={() => { setPlansVersion(value => value + 1); setNativeOpened(true); if (nativePanel.current) { nativePanel.current.open = true; nativePanel.current.scrollIntoView({ block: "start" }); } }}
       carryFrom={carrySelection?.projectId === projectId ? carrySelection : undefined} onClearCarry={() => setCarrySelection(undefined)} onPreview={previews => {
         const ids = previews.map(task => task.id);
         setTasks(rows => [...previews, ...rows.filter(row => !ids.includes(row.id))]);
@@ -362,11 +419,12 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     {saved && nativeOpened && <details className={flow.native} ref={nativePanel}><summary>调整当前视频</summary><EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion}
       revisionSelection={revisionSelection} onClearRevisionSelection={() => { setRevisionSelection(undefined); setNativeOpened(false); document.getElementById("editing-results")?.scrollIntoView({ block: "start" }); }}
       onCreated={async () => { applyTasks(await reload()); }} /></details>}
-    <details className={flow.library} onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>帮助与技术详情</summary><p>排查素材、字体或服务问题时使用。</p><button type="button" onClick={() => setNativeOpened(true)}>查看历史编排</button>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
-    <section id="editing-results" className={`${flow.step} ${flow.history}`} aria-label="预览与下载"><h2>预览与下载 <small>{historyTasks.length} 个版本</small></h2>
-    {!historyTasks.length && <div className={flow.emptyHistory}><PackageOpen size={42} strokeWidth={1.2} /><span>视频会出现在这里</span><small>先选模板和口播，再生成预览</small></div>}
+    <details hidden className={flow.library} onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>帮助与技术详情</summary><p>排查素材、字体或服务问题时使用。</p><button type="button" onClick={() => setNativeOpened(true)}>查看历史编排</button>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
+    <section id="editing-results" className={`${flow.step} ${flow.history}`} aria-label="预览与下载"><h2>历史记录 <small>{historyTasks.length} 个版本</small></h2><input type="search" className={flow.templateSearch} aria-label="搜索历史视频" placeholder="搜索历史视频" value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} />
+    {!historyTasks.length && <div className={flow.emptyHistory}><PackageOpen size={42} strokeWidth={1.2} /><span>视频会出现在这里</span><small>选择口播和模板，开始智能剪辑</small></div>}
     <div className={styles.tasks}>{historyTasks.filter((task, index) => showTaskHistory || index < 3 || task.id === focusedTaskId || ["queued", "running", "awaiting_review"].includes(task.status)).map(task => {
       const final = task.artifacts.find(a => a.role === "final");
+      const poster = task.artifacts.find(a => a.role === "poster");
       const preview = task.artifacts.find(a => a.role === "preview");
       const audioReceipt = task.artifacts.find(a => a.role === "audio_receipt");
       const transcript = task.artifacts.find(a => a.role === "transcript");
@@ -380,7 +438,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{task.template_name && `${task.template_name} · `}{task.status === "failed" ? "未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {["queued", "running"].includes(task.status) && <p role="status" className={styles.note}>{stageLabel[task.stage] || "正在处理"}，完成后会自动更新。</p>}
         {task.planning_origin === "operator_candidate" && <p className={styles.note}>人工调整版</p>}
-        {final ? <video id={`editing-film-${task.id}`} controls playsInline preload="metadata" src={final.url} aria-label="剪辑成片预览" /> : task.status === "awaiting_review" && preview && <video key={preview.id} id={`editing-preview-${task.id}`} controls playsInline preload="metadata" src={preview.url} aria-label="剪辑视频预览" onError={() => markPreviewFailure(preview.id)} />}
+        {final ? <video id={`editing-film-${task.id}`} controls playsInline preload="metadata" src={final.url} poster={poster?.url} aria-label="剪辑成片预览" /> : task.status === "awaiting_review" && preview && <video key={preview.id} id={`editing-preview-${task.id}`} controls playsInline preload="metadata" src={preview.url} poster={poster?.url} aria-label="剪辑视频预览" onError={() => markPreviewFailure(preview.id)} />}
         {final && <a href={final.url} download>下载高清视频</a>}
         {task.status === "awaiting_review" && preview && <><p className={styles.note}>先看预览，不满意可调整，确认后下载高清。</p><button type="button" disabled={busy} onClick={() => void previewAction(task, preview, "confirm")}>确认效果，获取高清</button></>}
         {preview && (task.status === "awaiting_review" || task.status === "completed") && planId && <button type="button" disabled={busy} onClick={() => revise({
@@ -450,6 +508,6 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         {["failed", "cancelled"].includes(task.status) && !layoutFailed && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
       </article></details>;
     })}</div>{historyTasks.length > 3 && <button type="button" onClick={() => setShowTaskHistory(value => !value)}>{showTaskHistory ? "收起历史版本" : `查看全部 ${historyTasks.length} 个版本`}</button>}</section>
-    <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || (!saved && !onSaveProject) || recognizing || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))} onClick={begin}>{actionLabel}</button><small>{!saved ? "保存后即可开始剪辑" : !template ? "先挑选一种风格，可播放示例对比" : !canSubmit ? "上传或选取 9:16 口播，并确认是否已有字幕" : recognizing ? "识别完成后自动检查素材，无需重复点击" : transcriptReady ? primaryState?.hint : "先检查口播与素材，这一步不计模型费用"}</small></>}</div>
+    <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || (!saved && !onSaveProject) || recognizing || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))} onClick={begin}>{actionLabel}</button><small className={flow.feeHint}>按实际用量计费，完成后可预览并下载</small></>}</div>
   </section>;
 }

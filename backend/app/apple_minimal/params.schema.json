@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Apple minimal compiled composition",
+  "type": "object",
+  "required": ["schema_version", "size", "fps", "duration", "source", "fonts", "visual_keys", "captions"],
+  "properties": {
+    "schema_version": { "const": "apple-minimal-render/1" },
+    "size": { "type": "array", "prefixItems": [{ "type": "integer", "minimum": 270 }, { "type": "integer", "minimum": 480 }], "minItems": 2, "maxItems": 2 },
+    "fps": { "const": 25 },
+    "duration": { "type": "number", "exclusiveMinimum": 0, "maximum": 600 },
+    "source": { "type": "string", "minLength": 1 },
+    "fonts": { "type": "object", "required": ["main", "support", "caption", "caption_bold"], "additionalProperties": { "type": "string" } },
+    "title": { "type": "string", "maxLength": 60 },
+    "subtitle": { "type": "string", "maxLength": 100 },
+    "visual_keys": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["time", "matrix", "rect", "radius", "background_opacity"] } },
+    "captions": { "type": "array", "items": { "type": "object", "required": ["time", "text"] } },
+    "information": { "type": "array" },
+    "media": { "type": "array" }
+  }
+}

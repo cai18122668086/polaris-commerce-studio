@@ -798,5 +798,5 @@ def admit_render_plan(
         raise ApiError(
             422,
             "EDITING_CONTINUOUS_COMBINATION_REQUIRED",
-            "连续口播预览需要保留至少五种不同的原生动效。",
+            "预览需要至少一个适用于当前口播的成套动效。",
         )

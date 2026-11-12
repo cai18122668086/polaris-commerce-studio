@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Dialog } from "./studio-primitives";
 import { JobAssetPreview } from "@/components/job-asset-preview";
 import { useJob, useJobs } from "@/features/jobs/api/jobs";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
@@ -21,6 +22,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
   selected: string[];
   onSelect: (ids: string[]) => void;
 }) {
+  const [adding, setAdding] = useState(expanded);
   const [rows, setRows] = useState<Material[]>([]);
   const [offset, setOffset] = useState<number | null>(null);
   const [source, setSource] = useState<"upload" | "creative" | "feedback">("upload");
@@ -58,7 +60,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
   }, [workspaceId, projectId]);
 
   const save = async () => {
-    if (!label.trim() || !description.trim() || (source === "feedback" && !feedbackReady)) return;
+    if (!label.trim() || (source === "feedback" && !feedbackReady)) return;
     const params = { path: { workspace_id: workspaceId, project_id: projectId } };
     const signal = AbortSignal.timeout(600000);
     const saveUpload = async (file: File) => {
@@ -71,7 +73,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       }
       const form = new FormData();
       form.append("file", file); form.append("request_id", intent.current.id);
-      form.append("label", label); form.append("description", description);
+      form.append("label", label); form.append("description", description.trim() || label.trim());
       if (feedback) form.append("feedback_observation", feedback);
       return unwrapApiResponse(await apiClient.POST(path, {
         params, signal,
@@ -85,7 +87,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       }
       return unwrapApiResponse(await apiClient.POST(importPath, {
         params, signal,
-        body: { request_id: importIntent.current.id, job_id: jobId, asset_id: assetId, label, description },
+        body: { request_id: importIntent.current.id, job_id: jobId, asset_id: assetId, label, description: description.trim() || label.trim() },
       }));
     };
     setBusy(true); setError("");
@@ -95,7 +97,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       setRows(previous => [material, ...previous.filter(row => row.id !== material.id)]);
       if (!selected.includes(material.id) && selected.length < 24) onSelect([...selected, material.id]);
       intent.current = undefined; importIntent.current = undefined;
-      setFile(undefined); setAssetId(""); setLabel(""); setDescription("");
+      setFile(undefined); setAssetId(""); setLabel(""); setDescription(""); setAdding(false);
       setFeedbackLabel(""); setLikes(""); setSourceRef(""); setObservedAt(""); setObserved(false);
       if (fileInput.current) fileInput.current.value = "";
     } catch (caught) { setError(editingMessage(caught, "素材保存尚未确认，请重试同一次上传。")); }
@@ -116,14 +118,15 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
   };
 
   return <div>
-    <details open={expanded || undefined}><summary>＋ 添加图片或录屏</summary>
+    <button type="button" onClick={() => setAdding(true)}>＋ 添加素材</button>
+    {adding && <Dialog title="添加素材" onClose={() => { if (!busy) setAdding(false); }}>
     <section aria-label="本期补充素材" className={styles.materials}>
       <p className={styles.note}>{materialMode === "speech" ? "此模板可仅用口播出片，补充素材为可选。" : materialMode === "clips" ? "请上传已分好步骤的短录屏，每段从开头使用，并覆盖对应解说时长。长录屏自动定位尚未接入。" : "按模板要求选择商品、界面或资料图，并说明各自对应内容。"}</p>
-      <p className={styles.note}>上传实拍或导入已完成的创意图。素材名称和说明供规划选材。成片会使用素材原件，请选用画面里没有内部备注的版本。</p>
+      <p className={styles.note}>填写素材是什么内容，会自动匹配对应台词。</p>
       <label>素材来源<select value={source} disabled={busy} onChange={event => { const value = event.target.value; setSource(value === "creative" || value === "feedback" ? value : "upload"); setFile(undefined); setObserved(false); setError(""); }}>
         <option value="upload">上传文件</option><option value="creative">已有创意图</option><option value="feedback">上传互动证据图片</option>
       </select></label>
-      {source !== "creative" ? <label>素材文件<input key={source} ref={fileInput} type="file" accept={source === "feedback" ? "image/jpeg,image/png,image/webp" : "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"} disabled={busy} onChange={event => { setFile(event.target.files?.[0]); setObserved(false); }} /></label> : <>
+      {source !== "creative" ? <label>素材文件<input key={source} ref={fileInput} type="file" accept={source === "feedback" ? "image/jpeg,image/png,image/webp" : "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"} disabled={busy} onChange={event => { const picked = event.target.files?.[0]; setFile(picked); if (picked && !label) setLabel(picked.name.replace(/\.[^.]+$/, "")); setObserved(false); }} /></label> : <>
         <label>创意图任务<select value={jobId} disabled={busy || jobs.isPending} onChange={event => { setJobId(event.target.value); setAssetId(""); }}>
           <option value="">选择有成品的任务</option>
           {jobs.data?.items.filter(item => item.output_asset_count > 0).map((item, index) => <option key={item.id} value={item.id}>{item.display_name || `创意图任务 ${index + 1}`} · {item.output_asset_count} 张</option>)}
@@ -137,7 +140,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
         {chosen && <JobAssetPreview workspaceId={workspaceId} relation={chosen} />}
       </>}
       <label>素材名称<input value={label} placeholder="例如：商品正面、上传步骤" maxLength={120} disabled={busy} onChange={event => setLabel(event.target.value)} /></label>
-      <label>画面说明<textarea value={description} placeholder="例如：展示商品外观，对应口播中介绍外形的部分" maxLength={400} disabled={busy} onChange={event => setDescription(event.target.value)} /></label>
+      <label>补充说明（可选）<textarea value={description} placeholder="例如：复制商品链接的操作，放到介绍复制链接的那句话" maxLength={400} disabled={busy} onChange={event => setDescription(event.target.value)} /></label>
       {source === "feedback" && <>
         <label>反馈短标签<input value={feedbackLabel} maxLength={16} disabled={busy} onChange={event => { setFeedbackLabel(event.target.value); setObserved(false); }} /></label>
         <label>观察到的点赞数<input value={likes} type="number" min={0} max={999999999} step={1} disabled={busy} onChange={event => { setLikes(event.target.value); setObserved(false); }} /></label>
@@ -145,9 +148,10 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
         <label>观察时间（本机时区）<input value={observedAt} type="datetime-local" step={1} disabled={busy} onChange={event => { setObservedAt(event.target.value); setObserved(false); }} /></label>
         <label className={styles.reviewCheck}><input type="checkbox" checked={observed} disabled={busy || !file} onChange={event => setObserved(event.target.checked)} />我已核对上传图片及来源对应上述记录</label>
       </>}
-      <button type="button" onClick={() => void save()} disabled={busy || !(source === "creative" ? chosen : file) || !label.trim() || !description.trim() || (source === "feedback" && !feedbackReady)}>{source === "creative" ? "导入成品图片" : "保存补充素材"}</button>
-    </section></details>
-    {error && <p role="alert" className={styles.error}>{error}</p>}
+      {error && <p role="alert" className={styles.error}>{error}</p>}
+      <button type="button" onClick={() => void save()} disabled={busy || !(source === "creative" ? chosen : file) || !label.trim() || (source === "feedback" && !feedbackReady)}>{source === "creative" ? "导入成品图片" : "保存补充素材"}</button>
+    </section></Dialog>}
+    {error && !adding && <p role="alert" className={styles.error}>{error}</p>}
     <section className={styles.materials} aria-label="已上传素材">
       <p role="status">{rows.length ? `已选 ${selected.length} 项素材` : materialMode === "speech" ? "尚未添加图片，可直接继续" : "还没有补充素材，点击上方添加"}</p>
       <ul className={styles.materialTiles}>{rows.filter((row, index) => showAll || index < 6 || selected.includes(row.id)).map(row => <li key={row.id} data-material-id={row.id}>

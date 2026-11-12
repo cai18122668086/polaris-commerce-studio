@@ -258,8 +258,24 @@ def test_saved_plan_replay_scoping_and_render_option_gates(
             "options": {**body["options"], "delivery": "preview_first"},
         },
     )
-    assert preview.status_code == 422
-    assert preview.json()["error"]["code"] == "EDITING_CONTINUOUS_COMBINATION_REQUIRED"
+    assert preview.status_code == 200
+    empty_preview = client.post(
+        url,
+        json={
+            **body,
+            "request_id": str(uuid4()),
+            "options": {
+                **body["options"],
+                "delivery": "preview_first",
+                "native_edits": {"source_only_beat_ids": [semantic.beats[0].id]},
+            },
+        },
+    )
+    assert empty_preview.status_code == 422
+    assert (
+        empty_preview.json()["error"]["code"]
+        == "EDITING_CONTINUOUS_COMBINATION_REQUIRED"
+    )
     edited = {
         **body,
         "request_id": str(uuid4()),
@@ -394,7 +410,7 @@ def test_template_sample_uses_latest_intact_confirmed_project_master(
                     validation={
                         "decoded": True,
                         "motion_counts": {
-                            "distinct_groups": 4 if case == "too_few" else 5,
+                            "distinct_groups": 0 if case == "too_few" else 5,
                             "occurrences": 6,
                         },
                     },
@@ -574,12 +590,12 @@ def test_saved_plan_rechecks_exact_dependencies_and_allows_explicit_source_only(
 
 
 def test_continuous_combinations_count_types_allow_repetition_and_reject_scene_layers():
-    from app.video_editing_overlay_templates import MIN_OVERLAY_TYPES, overlay_template
+    from app.video_editing_overlay_templates import overlay_template
     from app.video_editing_render_edits import continuous_overlay_groups
 
     chosen = overlay_template("roll-compare-v1")
     groups = {slot["group_id"] for slot in chosen["slots"]}
-    sampled = sorted(groups)[:MIN_OVERLAY_TYPES]
+    sampled = sorted(groups)[:3]
     sequence = [*sampled, sampled[0], sampled[0], "Z-M00"]
     beats = [{"id": f"beat-{i}", "group_id": group} for i, group in enumerate(sequence)]
     entries = {beat["id"]: {"placement": {"layer": "subtitle"}} for beat in beats[:-1]}
@@ -587,7 +603,7 @@ def test_continuous_combinations_count_types_allow_repetition_and_reject_scene_l
     assert continuous_overlay_groups(semantic, recipes, groups) == set(sampled)
     assert (
         len(continuous_overlay_groups(semantic, recipes, groups, {"beat-1"}))
-        == MIN_OVERLAY_TYPES - 1
+        == len(sampled) - 1
     )
     entries["beat-2"]["placement"]["layer"] = "scene"
     assert not continuous_overlay_groups(semantic, recipes, groups)

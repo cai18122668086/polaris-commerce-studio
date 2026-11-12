@@ -5930,6 +5930,50 @@ export interface components {
          * @enum {string}
          */
         EcommerceLoginState: "unknown" | "ready" | "needs_login";
+        /** EditingAppleCreativeOptions */
+        EditingAppleCreativeOptions: {
+            /**
+             * Cover
+             * @default auto
+             * @enum {string}
+             */
+            cover: "auto" | "none";
+            name_card?: components["schemas"]["EditingAppleNameCard"];
+            /**
+             * Schema Version
+             * @default tengli.apple-creative/1
+             * @constant
+             */
+            schema_version: "tengli.apple-creative/1";
+            /**
+             * Subtitle
+             * @default
+             */
+            subtitle: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /** EditingAppleNameCard */
+        EditingAppleNameCard: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+        };
         /** EditingArtifactResponse */
         EditingArtifactResponse: {
             /** Bytes */
@@ -6406,17 +6450,24 @@ export interface components {
              * @default subtitles
              * @enum {string}
              */
-            mode: "subtitles" | "transcript" | "native_plan";
+            mode: "subtitles" | "transcript" | "native_plan" | "suite_plan";
             native_edits?: components["schemas"]["NativeRenderEdits"] | null;
             /** Native Plan Id */
             native_plan_id?: string | null;
             preview_base?: components["schemas"]["EditingPreviewBase"] | null;
+            /**
+             * Reference Script
+             * @description Optional user reference for comparing recognition; never confirmed script provenance.
+             */
+            reference_script?: string | null;
             /**
              * Source Subtitles
              * @default unknown
              * @enum {string}
              */
             source_subtitles: "none" | "present" | "unknown";
+            /** Suite Plan Id */
+            suite_plan_id?: string | null;
             /** Transcript Revision Id */
             transcript_revision_id?: string | null;
         };
@@ -6490,6 +6541,7 @@ export interface components {
              * @default false
              */
             auto_preview: boolean;
+            creative_options?: components["schemas"]["EditingAppleCreativeOptions"] | null;
             /** Material Ids */
             material_ids?: string[] | null;
             /**
@@ -6498,6 +6550,11 @@ export interface components {
              * @enum {string}
              */
             mode: "prepare" | "generate";
+            /**
+             * Music
+             * @description Background music preference frozen at preparation and used by preview rendering.
+             */
+            music?: ("template" | "lower" | "off") | null;
             /** Prepared Task Id */
             prepared_task_id?: string | null;
             /**
@@ -6552,6 +6609,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Engine */
+            engine?: string | null;
             /** Error Code */
             error_code: string | null;
             /** Excluded Template Group Ids */
@@ -6620,6 +6679,14 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "prepared" | "completed" | "failed" | "cancelled";
+            /** Suite Plan */
+            suite_plan?: {
+                [key: string]: unknown;
+            } | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Template Name */
+            template_name?: string | null;
             /** Template Style Blockers */
             template_style_blockers?: string[] | null;
             /** Text Status */
@@ -8529,10 +8596,14 @@ export interface components {
              * @constant
              */
             business_review: "pending";
+            /** Capabilities */
+            capabilities?: string[];
             /** Category */
             category: string;
             /** Description */
             description: string;
+            /** Engine */
+            engine?: string | null;
             example?: components["schemas"]["TemplateExample"] | null;
             /** Featured */
             featured: boolean;

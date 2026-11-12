@@ -32,6 +32,7 @@ from .motion_local_dependencies import (
     local_dependencies,
 )
 from .video_assistance_provider import VideoAssistanceProvider, planner_endpoint
+from .video_editing_apple_pipeline import plan_suite, suite_engine
 from .video_editing_azl_panels import azl_blockers, azl_panel_windows
 from .video_editing_browser_clocks import FRUIT_LIST_GROUP, FRUIT_LIST_TEMPLATE_ID
 from .video_editing_browser_rotation import (
@@ -369,7 +370,8 @@ def process(
             raise ApiError(
                 503, "EDITING_PLANNING_DISABLED", "剪辑原库或任务配置不匹配。"
             )
-        verify_package(settings.video_editing_library_dir)
+        if not suite_engine(snapshot):
+            verify_package(settings.video_editing_library_dir)
         with factory() as session:
             base = session.get(EditingTaskRecord, base_id)
             source = session.get(EditingSourceRecord, source_id)
@@ -456,356 +458,394 @@ def process(
                 "choice_snapshot_sha256": snapshot["choice_snapshot"]["sha256"],
             },
         )
-        guard("building_request")
-        template = snapshot.get("overlay_template")
-        runtime = snapshot.get("planning_runtime")
-        if mode == "prepare":
-            runtime = planning_runtime_snapshot(
-                settings.video_editing_library_dir,
-                motion_evidence_directory(settings),
-                local_dependencies(settings.video_editing_native_bindings_file),
-                template,
+        if suite_engine(snapshot):
+            captured_request = (
+                verify_prepared(snapshot, settings, prepared_id)
+                if mode == "generate" and prepared_id
+                else None
             )
-            runtime["unavailable_template_groups"].update(
-                hypit_template_blockers(
-                    settings, workspace_id, template, snapshot["source_subtitles"]
-                )
-            )
-            require_clean_yy_source(
-                template,
-                snapshot["source_subtitles"],
-                runtime["unavailable_template_groups"],
-            )
-            require_clean_unified_source(
-                template,
-                snapshot["source_subtitles"],
-                runtime["unavailable_template_groups"],
-            )
-            require_spoken_year(
-                template, transcript, runtime["unavailable_template_groups"]
-            )
-            cut_scene_blockers(
-                template,
-                snapshot["asset_cards"],
-                runtime["unavailable_template_groups"],
-            )
-            panel_blockers(
-                template,
-                snapshot["asset_cards"],
-                snapshot["source_sha256"],
-                runtime["unavailable_template_groups"],
-            )
-            handoff_blockers(
-                template,
+            status, result = plan_suite(
+                root,
+                attempt,
+                snapshot,
                 transcript,
-                snapshot["asset_cards"],
-                runtime["unavailable_template_groups"],
-            )
-            opening_inputs = yy6_scene_inputs(
-                template,
-                transcript,
-                snapshot["asset_cards"],
-                runtime["unavailable_template_groups"],
-            )
-            if opening_inputs:
-                runtime["yy6_scene_inputs"] = opening_inputs
-            motion_blockers(
-                template,
-                snapshot["source_subtitles"],
-                snapshot["asset_cards"],
-                snapshot["source_sha256"],
-                runtime["unavailable_template_groups"],
-            )
-            azl_blockers(
-                template,
-                snapshot["source_subtitles"],
-                snapshot["asset_cards"],
-                snapshot["source_sha256"],
-                runtime["unavailable_template_groups"],
-            )
-            panel_windows = azl_panel_windows(
-                template,
-                transcript,
-                snapshot["asset_cards"],
-                runtime["unavailable_template_groups"],
-            )
-            if panel_windows:
-                runtime["azl_panel_windows"] = panel_windows
-            cxbr_blockers(
-                template,
-                snapshot["source_subtitles"],
-                snapshot["asset_cards"],
-                snapshot["source_sha256"],
-                runtime["unavailable_template_groups"],
-            )
-            broll_windows = cxbr_windows(
-                template,
-                transcript,
-                snapshot["asset_cards"],
-                runtime["unavailable_template_groups"],
-            )
-            if broll_windows:
-                runtime["chenxi_broll_windows"] = broll_windows
-            motion_windows = motion_word_windows(
-                template,
-                transcript,
-                snapshot["asset_cards"],
-                runtime["unavailable_template_groups"],
-            )
-            if motion_windows:
-                runtime["presenter_motion_windows"] = motion_windows
-            image_requirements = template_image_requirements(
-                template,
-                snapshot["asset_cards"],
-                verified_materials,
-                transcript=transcript,
-            )
-            if image_requirements:
-                runtime["project_image_requirements"] = image_requirements
-            mark_browser_scene_blockers(
+                model,
+                mode,
                 settings,
-                template,
-                snapshot["source_subtitles"],
-                image_requirements,
-                runtime["unavailable_template_groups"],
+                provider or VideoAssistanceProvider(settings),
+                guard,
+                captured_request,
             )
-            if (
-                template
-                and template["id"] == FLOW_CHART_TEMPLATE_ID
-                and not confirmed_chart_words(transcript)
-            ):
-                runtime["unavailable_template_groups"].setdefault(
-                    FLOW_GROUP, []
-                ).append("corrected_chart_words_required")
-            if any(
-                row["group_id"] == FILM_FEEDBACK_GROUP
-                and row["selected_distinct_images"] < row["required_distinct_images"]
-                for row in image_requirements
-            ):
-                runtime["unavailable_template_groups"].setdefault(
-                    FILM_FEEDBACK_GROUP, []
-                ).append("matched_feedback_evidence_required")
-            if any(
-                row["group_id"] == ROLE_CHAIN_GROUP
-                and not row["role_action_word_matches"]
-                for row in image_requirements
-            ):
-                runtime["unavailable_template_groups"].setdefault(
-                    ROLE_CHAIN_GROUP, []
-                ).append("current_role_actions_required")
-            if any(
-                row["group_id"] == ROLE_CHAIN_GROUP
-                and row["selected_distinct_images"] < row["required_distinct_images"]
-                for row in image_requirements
-            ):
-                runtime["unavailable_template_groups"].setdefault(
-                    ROLE_CHAIN_GROUP, []
-                ).append("current_role_images_required")
-            if any(
-                row["group_id"] == WHY_GROUP
-                and row["selected_distinct_images"] < row["required_distinct_images"]
-                for row in image_requirements
-            ):
-                runtime["unavailable_template_groups"].setdefault(WHY_GROUP, []).append(
-                    "current_question_props_required"
-                )
-            if any(
-                row["group_id"] == CROWD_GROUP
-                and not all(row["native_image_slot_ids"].values())
-                for row in image_requirements
-            ):
-                runtime["unavailable_template_groups"].setdefault(
-                    CROWD_GROUP, []
-                ).append("current_crowd_image_slots_required")
-            if any(
-                row["group_id"] == COLLAGE_GROUP
-                and not all(row["native_image_slot_ids"].values())
-                for row in image_requirements
-            ):
-                runtime["unavailable_template_groups"].setdefault(
-                    COLLAGE_GROUP, []
-                ).append("current_collage_image_slots_required")
-            if (
-                template
-                and template["id"] == FRUIT_LIST_TEMPLATE_ID
-                and "水果" not in "".join(token.text for token in transcript.tokens)
-            ):
-                runtime["unavailable_template_groups"].setdefault(
-                    FRUIT_LIST_GROUP, []
-                ).append("fruit-topic-missing-from-recorded-speech")
-            if template and template["id"] in FIRST_MOTION_GROUPS:
-                runtime["first_groups_policy"] = SCOPED_POOL_POLICY
-            runtime["protect_compound_quantities"] = True
-            profile = style_policy(template)
-            if profile is not None:
-                runtime["template_style"] = profile
-            snapshot = {**snapshot, "planning_runtime": runtime}
-        prepared_request = None
-        if mode == "generate":
-            if not prepared_id:
-                raise ApiError(
-                    409, "EDITING_PREPARED_REQUEST_INVALID", "缺少准备记录。"
-                )
-            prepared_request = verify_prepared(snapshot, settings, prepared_id)
-        body, evidence = planner.build_request(
-            transcript,
-            settings.video_editing_library_dir,
-            model,
-            snapshot["asset_cards"],
-            snapshot["choice_snapshot"],
-            template,
-            runtime,
-            public_copy_only=snapshot.get("public_copy_only", False),
-            prepared_request=prepared_request,
-        )
-        result = {**evidence, "text_status": transcript.text_status}
-        if mode == "prepare":
-            atomic_json(attempt / FILES["request"], body)
-            atomic_json(attempt / FILES["request_evidence"], evidence)
-            status = "prepared"
         else:
-            if not (
-                root / "provider/semantic-submit-intent.json"
-            ).exists() and snapshot.get("gateway") != planner_endpoint(settings):
-                raise ApiError(
-                    409,
-                    "EDITING_PLAN_ENDPOINT_CHANGED",
-                    "规划网关已变化，请重新准备后核对。",
-                )
-            if evidence["request_sha256"] != snapshot["expected_request_sha256"]:
-                raise ApiError(
-                    409,
-                    "EDITING_PLAN_INPUT_CHANGED",
-                    "请求与已准备版本不一致，请重新准备。",
-                )
-            if not (
-                root / "provider" / FILES["response"]
-            ).is_file() and not execution_available(settings):
-                raise ApiError(
-                    503, "EDITING_PLANNING_DISABLED", "付费语义规划尚未开放。"
-                )
-            if (
-                runtime
-                and template
-                and not (root / "provider/semantic-submit-intent.json").exists()
-            ):
-                require_template_group_capacity(snapshot)
-                external = external_dependencies(settings.video_editing_library_dir)
-                bindings = local_dependencies(
-                    settings.video_editing_native_bindings_file
-                )
-                current = unavailable_template_groups(
+            guard("building_request")
+            template = snapshot.get("overlay_template")
+            runtime = snapshot.get("planning_runtime")
+            if mode == "prepare":
+                runtime = planning_runtime_snapshot(
+                    settings.video_editing_library_dir,
+                    motion_evidence_directory(settings),
+                    local_dependencies(settings.video_editing_native_bindings_file),
                     template,
-                    lambda rid: dependency_state(
-                        external.get(rid, {}), bindings.get(rid)
-                    ),
                 )
-                current.update(
+                runtime["unavailable_template_groups"].update(
                     hypit_template_blockers(
                         settings, workspace_id, template, snapshot["source_subtitles"]
                     )
                 )
-                require_clean_yy_source(template, snapshot["source_subtitles"], current)
-                require_clean_unified_source(
-                    template, snapshot["source_subtitles"], current
+                require_clean_yy_source(
+                    template,
+                    snapshot["source_subtitles"],
+                    runtime["unavailable_template_groups"],
                 )
-                require_spoken_year(template, transcript, current)
-                cut_scene_blockers(template, snapshot["asset_cards"], current)
+                require_clean_unified_source(
+                    template,
+                    snapshot["source_subtitles"],
+                    runtime["unavailable_template_groups"],
+                )
+                require_spoken_year(
+                    template, transcript, runtime["unavailable_template_groups"]
+                )
+                cut_scene_blockers(
+                    template,
+                    snapshot["asset_cards"],
+                    runtime["unavailable_template_groups"],
+                )
                 panel_blockers(
                     template,
                     snapshot["asset_cards"],
                     snapshot["source_sha256"],
-                    current,
+                    runtime["unavailable_template_groups"],
                 )
-                handoff_blockers(template, transcript, snapshot["asset_cards"], current)
-                yy6_scene_inputs(template, transcript, snapshot["asset_cards"], current)
+                handoff_blockers(
+                    template,
+                    transcript,
+                    snapshot["asset_cards"],
+                    runtime["unavailable_template_groups"],
+                )
+                opening_inputs = yy6_scene_inputs(
+                    template,
+                    transcript,
+                    snapshot["asset_cards"],
+                    runtime["unavailable_template_groups"],
+                )
+                if opening_inputs:
+                    runtime["yy6_scene_inputs"] = opening_inputs
                 motion_blockers(
                     template,
                     snapshot["source_subtitles"],
                     snapshot["asset_cards"],
                     snapshot["source_sha256"],
-                    current,
+                    runtime["unavailable_template_groups"],
                 )
                 azl_blockers(
                     template,
                     snapshot["source_subtitles"],
                     snapshot["asset_cards"],
                     snapshot["source_sha256"],
-                    current,
+                    runtime["unavailable_template_groups"],
                 )
+                panel_windows = azl_panel_windows(
+                    template,
+                    transcript,
+                    snapshot["asset_cards"],
+                    runtime["unavailable_template_groups"],
+                )
+                if panel_windows:
+                    runtime["azl_panel_windows"] = panel_windows
                 cxbr_blockers(
                     template,
                     snapshot["source_subtitles"],
                     snapshot["asset_cards"],
                     snapshot["source_sha256"],
-                    current,
+                    runtime["unavailable_template_groups"],
                 )
+                broll_windows = cxbr_windows(
+                    template,
+                    transcript,
+                    snapshot["asset_cards"],
+                    runtime["unavailable_template_groups"],
+                )
+                if broll_windows:
+                    runtime["chenxi_broll_windows"] = broll_windows
+                motion_windows = motion_word_windows(
+                    template,
+                    transcript,
+                    snapshot["asset_cards"],
+                    runtime["unavailable_template_groups"],
+                )
+                if motion_windows:
+                    runtime["presenter_motion_windows"] = motion_windows
+                image_requirements = template_image_requirements(
+                    template,
+                    snapshot["asset_cards"],
+                    verified_materials,
+                    transcript=transcript,
+                )
+                if image_requirements:
+                    runtime["project_image_requirements"] = image_requirements
                 mark_browser_scene_blockers(
                     settings,
                     template,
                     snapshot["source_subtitles"],
-                    runtime.get("project_image_requirements", []),
-                    current,
+                    image_requirements,
+                    runtime["unavailable_template_groups"],
                 )
-                if current.keys() - runtime["unavailable_template_groups"].keys():
+                if (
+                    template
+                    and template["id"] == FLOW_CHART_TEMPLATE_ID
+                    and not confirmed_chart_words(transcript)
+                ):
+                    runtime["unavailable_template_groups"].setdefault(
+                        FLOW_GROUP, []
+                    ).append("corrected_chart_words_required")
+                if any(
+                    row["group_id"] == FILM_FEEDBACK_GROUP
+                    and row["selected_distinct_images"]
+                    < row["required_distinct_images"]
+                    for row in image_requirements
+                ):
+                    runtime["unavailable_template_groups"].setdefault(
+                        FILM_FEEDBACK_GROUP, []
+                    ).append("matched_feedback_evidence_required")
+                if any(
+                    row["group_id"] == ROLE_CHAIN_GROUP
+                    and not row["role_action_word_matches"]
+                    for row in image_requirements
+                ):
+                    runtime["unavailable_template_groups"].setdefault(
+                        ROLE_CHAIN_GROUP, []
+                    ).append("current_role_actions_required")
+                if any(
+                    row["group_id"] == ROLE_CHAIN_GROUP
+                    and row["selected_distinct_images"]
+                    < row["required_distinct_images"]
+                    for row in image_requirements
+                ):
+                    runtime["unavailable_template_groups"].setdefault(
+                        ROLE_CHAIN_GROUP, []
+                    ).append("current_role_images_required")
+                if any(
+                    row["group_id"] == WHY_GROUP
+                    and row["selected_distinct_images"]
+                    < row["required_distinct_images"]
+                    for row in image_requirements
+                ):
+                    runtime["unavailable_template_groups"].setdefault(
+                        WHY_GROUP, []
+                    ).append("current_question_props_required")
+                if any(
+                    row["group_id"] == CROWD_GROUP
+                    and not all(row["native_image_slot_ids"].values())
+                    for row in image_requirements
+                ):
+                    runtime["unavailable_template_groups"].setdefault(
+                        CROWD_GROUP, []
+                    ).append("current_crowd_image_slots_required")
+                if any(
+                    row["group_id"] == COLLAGE_GROUP
+                    and not all(row["native_image_slot_ids"].values())
+                    for row in image_requirements
+                ):
+                    runtime["unavailable_template_groups"].setdefault(
+                        COLLAGE_GROUP, []
+                    ).append("current_collage_image_slots_required")
+                if (
+                    template
+                    and template["id"] == FRUIT_LIST_TEMPLATE_ID
+                    and "水果" not in "".join(token.text for token in transcript.tokens)
+                ):
+                    runtime["unavailable_template_groups"].setdefault(
+                        FRUIT_LIST_GROUP, []
+                    ).append("fruit-topic-missing-from-recorded-speech")
+                if template and template["id"] in FIRST_MOTION_GROUPS:
+                    runtime["first_groups_policy"] = SCOPED_POOL_POLICY
+                runtime["protect_compound_quantities"] = True
+                profile = style_policy(template, cohesive=True)
+                if profile is not None:
+                    runtime["template_style"] = profile
+                # New requests perform material/sentence retrieval once at preparation.
+                # Generated requests replay this immutable runtime snapshot.
+                runtime["material_alignment_version"] = "tengli.material-alignment/1"
+                snapshot = {**snapshot, "planning_runtime": runtime}
+            prepared_request = None
+            if mode == "generate":
+                if not prepared_id:
                     raise ApiError(
-                        409,
-                        "EDITING_TEMPLATE_DEPENDENCIES_CHANGED",
-                        "准备后有模板运行条件发生变化，请重新准备并核对可选动效。",
+                        409, "EDITING_PREPARED_REQUEST_INVALID", "缺少准备记录。"
                     )
-            guard("planning")
-            scoped = settings.model_copy(update={"video_editing_plan_model": model})
-            plan = planner.generate(
-                root / "provider",
+                prepared_request = verify_prepared(snapshot, settings, prepared_id)
+            body, evidence = planner.build_request(
                 transcript,
-                scoped,
-                provider or VideoAssistanceProvider(scoped),
+                settings.video_editing_library_dir,
+                model,
                 snapshot["asset_cards"],
                 snapshot["choice_snapshot"],
-                expected_request_sha256=evidence["request_sha256"],
-                guard=guard,
-                template=template,
-                runtime=runtime,
+                template,
+                runtime,
                 public_copy_only=snapshot.get("public_copy_only", False),
                 prepared_request=prepared_request,
             )
-            atomic_json(root / "provider" / FILES["request_evidence"], evidence)
-            result.update(
-                semantic=plan.model_dump(mode="json"),
-                semantic_content_sha256=content_digest(plan.model_dump(mode="json")),
-                semantic_review="unreviewed",
-                native_render_state="not_compiled",
-            )
-            adaptation = read_json(root / "provider" / FILES["receipt"]).get(
-                "semantic_adaptation"
-            )
-            if adaptation:
-                result["semantic_adaptation"] = adaptation
-            positions = {t.id: i for i, t in enumerate(transcript.tokens)}
-            result["aligned_spans"] = [
-                {
-                    "beat_id": beat.id,
-                    "group_id": beat.group_id,
-                    "text": "".join(
-                        t.text
-                        for t in transcript.tokens[
-                            positions[beat.first_token_id] : positions[
-                                beat.last_token_id
-                            ]
-                            + 1
-                        ]
+            result = {**evidence, "text_status": transcript.text_status}
+            if mode == "prepare":
+                atomic_json(attempt / FILES["request"], body)
+                atomic_json(attempt / FILES["request_evidence"], evidence)
+                status = "prepared"
+            else:
+                if not (
+                    root / "provider/semantic-submit-intent.json"
+                ).exists() and snapshot.get("gateway") != planner_endpoint(settings):
+                    raise ApiError(
+                        409,
+                        "EDITING_PLAN_ENDPOINT_CHANGED",
+                        "规划网关已变化，请重新准备后核对。",
+                    )
+                if evidence["request_sha256"] != snapshot["expected_request_sha256"]:
+                    raise ApiError(
+                        409,
+                        "EDITING_PLAN_INPUT_CHANGED",
+                        "请求与已准备版本不一致，请重新准备。",
+                    )
+                if not (
+                    root / "provider" / FILES["response"]
+                ).is_file() and not execution_available(settings):
+                    raise ApiError(
+                        503, "EDITING_PLANNING_DISABLED", "付费语义规划尚未开放。"
+                    )
+                if (
+                    runtime
+                    and template
+                    and not (root / "provider/semantic-submit-intent.json").exists()
+                ):
+                    require_template_group_capacity(snapshot)
+                    external = external_dependencies(settings.video_editing_library_dir)
+                    bindings = local_dependencies(
+                        settings.video_editing_native_bindings_file
+                    )
+                    current = unavailable_template_groups(
+                        template,
+                        lambda rid: dependency_state(
+                            external.get(rid, {}), bindings.get(rid)
+                        ),
+                    )
+                    current.update(
+                        hypit_template_blockers(
+                            settings,
+                            workspace_id,
+                            template,
+                            snapshot["source_subtitles"],
+                        )
+                    )
+                    require_clean_yy_source(
+                        template, snapshot["source_subtitles"], current
+                    )
+                    require_clean_unified_source(
+                        template, snapshot["source_subtitles"], current
+                    )
+                    require_spoken_year(template, transcript, current)
+                    cut_scene_blockers(template, snapshot["asset_cards"], current)
+                    panel_blockers(
+                        template,
+                        snapshot["asset_cards"],
+                        snapshot["source_sha256"],
+                        current,
+                    )
+                    handoff_blockers(
+                        template, transcript, snapshot["asset_cards"], current
+                    )
+                    yy6_scene_inputs(
+                        template, transcript, snapshot["asset_cards"], current
+                    )
+                    motion_blockers(
+                        template,
+                        snapshot["source_subtitles"],
+                        snapshot["asset_cards"],
+                        snapshot["source_sha256"],
+                        current,
+                    )
+                    azl_blockers(
+                        template,
+                        snapshot["source_subtitles"],
+                        snapshot["asset_cards"],
+                        snapshot["source_sha256"],
+                        current,
+                    )
+                    cxbr_blockers(
+                        template,
+                        snapshot["source_subtitles"],
+                        snapshot["asset_cards"],
+                        snapshot["source_sha256"],
+                        current,
+                    )
+                    mark_browser_scene_blockers(
+                        settings,
+                        template,
+                        snapshot["source_subtitles"],
+                        runtime.get("project_image_requirements", []),
+                        current,
+                    )
+                    if current.keys() - runtime["unavailable_template_groups"].keys():
+                        raise ApiError(
+                            409,
+                            "EDITING_TEMPLATE_DEPENDENCIES_CHANGED",
+                            "准备后有模板运行条件发生变化，请重新准备并核对可选动效。",
+                        )
+                guard("planning")
+                scoped = settings.model_copy(update={"video_editing_plan_model": model})
+                plan = planner.generate(
+                    root / "provider",
+                    transcript,
+                    scoped,
+                    provider or VideoAssistanceProvider(scoped),
+                    snapshot["asset_cards"],
+                    snapshot["choice_snapshot"],
+                    expected_request_sha256=evidence["request_sha256"],
+                    guard=guard,
+                    template=template,
+                    runtime=runtime,
+                    public_copy_only=snapshot.get("public_copy_only", False),
+                    prepared_request=prepared_request,
+                )
+                atomic_json(root / "provider" / FILES["request_evidence"], evidence)
+                result.update(
+                    semantic=plan.model_dump(mode="json"),
+                    semantic_content_sha256=content_digest(
+                        plan.model_dump(mode="json")
                     ),
-                    "first_token_id": beat.first_token_id,
-                    "last_token_id": beat.last_token_id,
-                    "start_ms": transcript.tokens[
-                        positions[beat.first_token_id]
-                    ].start_ms,
-                    "end_ms": transcript.tokens[positions[beat.last_token_id]].end_ms,
-                    "timing_review": "unreviewed",
-                }
-                for beat in plan.beats
-            ]
-            status = "completed"
+                    semantic_review="unreviewed",
+                    native_render_state="not_compiled",
+                )
+                adaptation = read_json(root / "provider" / FILES["receipt"]).get(
+                    "semantic_adaptation"
+                )
+                if adaptation:
+                    result["semantic_adaptation"] = adaptation
+                positions = {t.id: i for i, t in enumerate(transcript.tokens)}
+                result["aligned_spans"] = [
+                    {
+                        "beat_id": beat.id,
+                        "group_id": beat.group_id,
+                        "text": "".join(
+                            t.text
+                            for t in transcript.tokens[
+                                positions[beat.first_token_id] : positions[
+                                    beat.last_token_id
+                                ]
+                                + 1
+                            ]
+                        ),
+                        "first_token_id": beat.first_token_id,
+                        "last_token_id": beat.last_token_id,
+                        "start_ms": transcript.tokens[
+                            positions[beat.first_token_id]
+                        ].start_ms,
+                        "end_ms": transcript.tokens[
+                            positions[beat.last_token_id]
+                        ].end_ms,
+                        "timing_review": "unreviewed",
+                    }
+                    for beat in plan.beats
+                ]
+                status = "completed"
         guard("storing")
         result["artifacts"] = artifacts(root, attempt, mode)
         with factory() as session:

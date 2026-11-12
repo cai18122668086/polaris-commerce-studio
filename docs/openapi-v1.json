@@ -4918,6 +4918,67 @@
         "title": "EcommerceLoginState",
         "type": "string"
       },
+      "EditingAppleCreativeOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "cover": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "none"
+            ],
+            "title": "Cover",
+            "type": "string"
+          },
+          "name_card": {
+            "$ref": "#/components/schemas/EditingAppleNameCard"
+          },
+          "schema_version": {
+            "const": "tengli.apple-creative/1",
+            "default": "tengli.apple-creative/1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "subtitle": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Subtitle",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "EditingAppleCreativeOptions",
+        "type": "object"
+      },
+      "EditingAppleNameCard": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "EditingAppleNameCard",
+        "type": "object"
+      },
       "EditingArtifactResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6144,7 +6205,8 @@
             "enum": [
               "subtitles",
               "transcript",
-              "native_plan"
+              "native_plan",
+              "suite_plan"
             ],
             "title": "Mode",
             "type": "string"
@@ -6181,6 +6243,19 @@
               }
             ]
           },
+          "reference_script": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional user reference for comparing recognition; never confirmed script provenance.",
+            "title": "Reference Script"
+          },
           "source_subtitles": {
             "default": "unknown",
             "enum": [
@@ -6190,6 +6265,18 @@
             ],
             "title": "Source Subtitles",
             "type": "string"
+          },
+          "suite_plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suite Plan Id"
           },
           "transcript_revision_id": {
             "anyOf": [
@@ -6420,6 +6507,16 @@
             "title": "Auto Preview",
             "type": "boolean"
           },
+          "creative_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingAppleCreativeOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "material_ids": {
             "anyOf": [
               {
@@ -6444,6 +6541,23 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "music": {
+            "anyOf": [
+              {
+                "enum": [
+                  "template",
+                  "lower",
+                  "off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Background music preference frozen at preparation and used by preview rendering.",
+            "title": "Music"
           },
           "prepared_task_id": {
             "anyOf": [
@@ -6580,6 +6694,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
           },
           "error_code": {
             "anyOf": [
@@ -6800,6 +6925,40 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "suite_plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suite Plan"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "template_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Name"
           },
           "template_style_blockers": {
             "anyOf": [
@@ -12073,6 +12232,13 @@
             "title": "Business Review",
             "type": "string"
           },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "category": {
             "title": "Category",
             "type": "string"
@@ -12080,6 +12246,17 @@
           "description": {
             "title": "Description",
             "type": "string"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
           },
           "example": {
             "anyOf": [
@@ -12205,7 +12382,7 @@
         "additionalProperties": false,
         "properties": {
           "distinct_groups": {
-            "minimum": 5.0,
+            "minimum": 1.0,
             "title": "Distinct Groups",
             "type": "integer"
           },
@@ -12215,7 +12392,7 @@
             "type": "integer"
           },
           "occurrences": {
-            "minimum": 5.0,
+            "minimum": 1.0,
             "title": "Occurrences",
             "type": "integer"
           },

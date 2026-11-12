@@ -19,7 +19,7 @@ export function Dialog({ title, children, onClose, wide = false, className = "",
     dialog?.showModal();
     return () => { dialog?.close(); if (previous instanceof HTMLElement) previous.focus(); };
   }, []);
-  return <dialog ref={ref} aria-labelledby={titleId} className={`${styles.dialog} ${wide ? styles.dialogWide : ""} ${className}`} onCancel={event => { event.preventDefault(); event.stopPropagation(); onClose(); }} onClose={event => { event.stopPropagation(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) { event.stopPropagation(); onClose(); } }}>
+  return <dialog ref={ref} aria-labelledby={titleId} className={`${styles.dialog} ${wide ? styles.dialogWide : ""} ${className}`} onCancel={event => { event.preventDefault(); event.stopPropagation(); onClose(); }} onClose={event => { event.stopPropagation(); if (!event.currentTarget.open) onClose(); }} onClick={event => { if (event.target === event.currentTarget) { event.stopPropagation(); onClose(); } }}>
     <div className={styles.dialogInner}><header><h2 id={titleId}>{title}</h2><button type="button" className={styles.iconButton} aria-label="关闭弹窗" disabled={closeDisabled} onClick={onClose}><X size={20} /></button></header>{children}</div>
   </dialog>;
 }

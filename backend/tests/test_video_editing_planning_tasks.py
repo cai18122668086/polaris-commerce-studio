@@ -1084,7 +1084,8 @@ def test_changed_project_choice_requires_a_new_preparation_before_spending(
     ("avoid_count", "expected", "can_generate"),
     [
         (1, 8, True),
-        (5, 4, False),
+        (5, 4, True),
+        (9, 0, False),
     ],
 )
 def test_template_preparation_keeps_other_groups_and_gates_paid_submission(

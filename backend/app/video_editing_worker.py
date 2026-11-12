@@ -27,6 +27,7 @@ from .motion_library import (
     sha256,
     verify_package,
 )
+from .video_editing_apple_pipeline import render_suite
 from .video_editing_condition_anchors import IncompleteCondition
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_delivery_checkpoint import (
@@ -131,6 +132,12 @@ def load_transcript(
 ) -> Transcript:
     """Existing recognition/alignment and exact-byte recovery path."""
     correction = snapshot["correction"]
+    # A user reference helps comparison, while confirmed provenance retains its
+    # own immutable reference in snapshot["reference"]. Include this choice in
+    # the ASR profile so a changed reference cannot reuse an old transcript.
+    recognition_reference = (
+        snapshot["options"].get("reference_script") or snapshot["reference"]
+    )
     expected_provider: str = settings.video_editing_asr_provider
     expected_model = settings.video_editing_asr_model
     profile: str | None
@@ -179,7 +186,7 @@ def load_transcript(
     else:
         stage("transcribing")
         profile = asr_profile(
-            settings, snapshot["options"]["language"], snapshot["reference"]
+            settings, snapshot["options"]["language"], recognition_reference
         )
     cached = snapshot["checkpoint"].get("transcript")
     transcript = None
@@ -244,7 +251,7 @@ def load_transcript(
                     "provider": settings.video_editing_asr_provider,
                     "model": settings.video_editing_asr_model,
                     "device": settings.video_editing_asr_device,
-                    "reference": snapshot["reference"],
+                    "reference": recognition_reference,
                     "language": snapshot["options"]["language"],
                 },
             )
@@ -460,6 +467,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         base_attempt = preview_base_attempt(session, settings, source, row.options)
         snapshot: dict[str, Any] = {
             "source_path": source.media_path,
+            "source_id": source.id,
             "source_sha256": source.media_sha256,
             "request_hash": row.request_hash,
             "options": row.options,
@@ -734,6 +742,16 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             )
             return
         correction = snapshot["correction"]
+        if snapshot["options"].get("suite_plan_id"):
+            with factory() as session:
+                files, validation = render_suite(
+                    root, snapshot, settings, session, guard, stage
+                )
+            stage("storing")
+            publish(
+                files, validation, status="awaiting_review", ready_stage="preview_ready"
+            )
+            return
         if snapshot["options"].get("transcript_revision_id") and not correction:
             raise EditingFailure("EDITING_TRANSCRIPT_REVISION_NOT_FOUND")
         if snapshot["options"].get("source_subtitles") == "unknown":
@@ -1022,6 +1040,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             if isinstance(
                 error,
                 (
+                    ApiError,
                     EditingFailure,
                     IncompleteCondition,
                     IncompleteDenial,

@@ -228,7 +228,7 @@ def captured_job(
     )
 
 
-def test_repeated_effects_do_not_admit_an_undersized_candidate(
+def test_repeated_effects_are_allowed_without_a_five_type_quota(
     video, tmp_path, monkeypatch
 ):
     client, ws, settings, _, _, _, _, job, _ = captured_job(
@@ -240,11 +240,10 @@ def test_repeated_effects_do_not_admit_an_undersized_candidate(
     assert result["status"] == "completed"
     assert result["motion_counts"] == {"distinct_groups": 4, "occurrences": 5}
     for suffix in ("/native-candidate", "/preview"):
-        denied = client.post(url + suffix)
-        assert denied.status_code == 422, denied.text
-        assert denied.json()["error"]["code"] == "EDITING_PLAN_GROUPS_INSUFFICIENT"
+        admitted = client.post(url + suffix)
+        assert admitted.status_code == 200, admitted.text
     with client.app.state.session_factory() as session:
-        assert session.scalar(select(EditingNativePlanRecord)) is None
+        assert session.scalar(select(EditingNativePlanRecord)) is not None
 
 
 @pytest.mark.parametrize("missing_event", [False, True])

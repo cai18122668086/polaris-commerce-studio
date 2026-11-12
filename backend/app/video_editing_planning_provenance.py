@@ -160,10 +160,17 @@ def _verify(
     root = planning_root(settings, row.id)
     manifest = row.result["artifacts"]
     captured = {a["role"]: a for a in manifest}
-    if len(captured) != len(manifest) or not set(FILES) <= set(captured):
+    runtime = row.snapshot.get("planning_runtime")
+    # New engines and alignment receipts must not invalidate historical captures.
+    required = set(FILES) - {"suite_plan", "material_placement"}
+    if (runtime or {}).get("material_alignment_version"):
+        required.add("material_placement")
+    if len(captured) != len(manifest) or not required <= set(captured):
         raise ValueError("Planning capture is incomplete or has duplicate roles")
     files, data = {}, {}
     for role, name in FILES.items():
+        if role not in captured:
+            continue
         record = captured[role]
         file = Path(record["path"]).resolve()
         if role not in {"transcript", "lineage"} and file != root / "provider" / name:
@@ -205,9 +212,11 @@ def _verify(
     ):
         raise ValueError("Captured input, response and validation hashes disagree")
     payload = json.loads(data["request"]["messages"][1]["content"])
-    runtime = row.snapshot.get("planning_runtime")
     template = row.snapshot.get("overlay_template")
-    compact = bool(template and template["id"] in FIRST_MOTION_GROUPS)
+    cohesive = bool(
+        (runtime or {}).get("template_style", {}).get("composition_contract")
+    )
+    compact = bool(template and template["id"] in FIRST_MOTION_GROUPS and not cohesive)
     scoped_candidates = style_candidate_ids(
         template, runtime, row.snapshot["choice_snapshot"]
     )
@@ -245,6 +254,15 @@ def _verify(
         [t.id, t.text, t.start_ms, t.end_ms] for t in transcript.tokens
     ]:
         raise ValueError("Captured style word clock differs from the real transcript")
+    expected_template = template
+    if cohesive and template and runtime is not None:
+        allowed = set(runtime["template_style"]["allowed_group_ids"])
+        expected_template = {
+            **template,
+            "slots": [
+                slot for slot in template["slots"] if slot["group_id"] in allowed
+            ],
+        }
     if (
         len(payload["full_library"]) != len(expected_groups)
         or {g["id"] for g in payload["full_library"]} != expected_groups
@@ -260,10 +278,14 @@ def _verify(
         )
         or payload["project_library_choices"] != row.snapshot["choice_snapshot"]
         or payload["available_project_materials"] != row.snapshot["asset_cards"]
-        or payload.get("overlay_template") != row.snapshot.get("overlay_template")
+        or payload.get("overlay_template") != expected_template
     ):
         raise ValueError("Captured full-library request does not match scoped inputs")
     saved_semantic = data["semantic_plan"]
+    if (runtime or {}).get("material_alignment_version") and (
+        data["receipt"].get("material_placement_sha256") != files["material_placement"]
+    ):
+        raise ValueError("Material placement receipt differs from the captured plan")
     saved_digest = content_digest(saved_semantic)
     if (
         saved_semantic != row.result["semantic"]

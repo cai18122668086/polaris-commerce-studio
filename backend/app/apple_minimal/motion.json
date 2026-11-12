@@ -1,0 +1,38 @@
+{
+  "format": "motiongit-template",
+  "specVersion": "0.1.0-draft.1",
+  "template": {
+    "id": "apple-minimal-v1",
+    "version": "1.0.0-candidate.1",
+    "name": "科技发布 · 苹果极简",
+    "status": "candidate",
+    "contentType": "full-template"
+  },
+  "runtime": {
+    "profile": "apple-minimal-python/1",
+    "entry": "adapter.py",
+    "dependencyLock": "requirements.txt"
+  },
+  "parameters": { "schema": "params.schema.json" },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": { "num": 25, "den": 1 },
+    "durationPolicy": "fit-voiceover"
+  },
+  "permissions": {
+    "network": false,
+    "read": ["package", "instance-inputs"],
+    "write": ["instance-output"]
+  },
+  "extensions": {
+    "local:apple-minimal": {
+      "engine": "apple-minimal-suite",
+      "visualLibrary": ["V01", "V02", "V03"],
+      "subtitleLibrary": ["T01", "T02", "T03", "T04", "T05"],
+      "recipes": ["materials", "points"],
+      "clock": "word-anchored source voice; no audio retiming",
+      "compatibility": "Uses the supplied author's Motion package organization. Import in third-party MotionGit clients has not been verified."
+    }
+  }
+}

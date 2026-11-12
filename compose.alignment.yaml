@@ -1,4 +1,4 @@
-# Optional correction alignment, on top of compose.editing.yaml; never deploys itself.
+# Confirmed-script default and correction alignment, on top of compose.editing.yaml.
 services:
   api:
     environment:
@@ -9,7 +9,7 @@ services:
       POLARIS_VIDEO_EDITING_ALIGNMENT_MODEL_DIR: /asr-alignment
     volumes:
       - type: bind
-        source: ${POLARIS_EDITING_ALIGNMENT_HOST:?Set the pinned optional fa_zh bundle root}
+        source: ${POLARIS_EDITING_ALIGNMENT_HOST:?Set the pinned fa_zh bundle root for generated narration}
         target: /asr-alignment
         read_only: true
         bind:

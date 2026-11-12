@@ -36,6 +36,9 @@ function subscribeToHash(listener: () => void) {
 const readTaskHash = () => taskHash.exec(window.location.hash)?.[1].toLowerCase();
 const stageLabel: Record<string, string> = { queued: "排队中", preparing: "读取原片", transcribing: "识别口播", aligning: "校准字幕", compiling: "编排画面", rendering: "生成视频", validating: "检查视频", building_preview: "准备预览", storing: "保存视频", transcript_ready: "口播已识别", preview_ready: "预览已就绪", completed: "可下载" };
 const errorLabel: Record<string, string> = {
+  EDITING_ALIGNMENT_DISABLED: "字幕对齐服务尚未开启，请联系管理员。",
+  EDITING_ALIGNMENT_TEXT_TIMESTAMPS_MISMATCH: "确认稿与声音暂时无法对齐，请检查这条口播。",
+  EDITING_ALIGNMENT_TIMESTAMPS_REQUIRED: "未能取得字幕时间，请检查原片声音后重试。",
   EDITING_UPLOAD_SCRIPT_CHANGED: "这条原片的参考确认稿无法核对，请重新选择确认稿并上传。",
   EDITING_HYPIT_INTERNAL_ONLY: "Hypit 原生出片仅在已配置的内部联调工作区开放。",
   EDITING_HYPIT_RUNTIME_UNAVAILABLE: "原 Hypit 运行环境未通过预检，请在环境恢复后重试。",
@@ -408,7 +411,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
     {taskLinkError && taskLinkError.id === focusedTaskId && <p className={styles.error} role="alert">{taskLinkError.message}</p>}
-    {saved && template && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} actionRef={primaryAction} onPrimaryState={setPrimaryState} selected={transcriptReady ? planningTask : ""} onSelect={planFromTranscript} template={template} music={music} creativeOptions={creativeOptions} onCreativeChange={value => { cancelAutomatic(); setCreativeOptions(value); }} onInputsChanged={cancelAutomatic} referenceText={referenceText} referenceDisabled={busy || recognizing} onReferenceChange={value => { cancelAutomatic(); setReferenceText(value); setPlanningTask(""); }} onNativePlan={() => { setPlansVersion(value => value + 1); setNativeOpened(true); if (nativePanel.current) { nativePanel.current.open = true; nativePanel.current.scrollIntoView({ block: "start" }); } }}
+    {saved && template && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} actionRef={primaryAction} onPrimaryState={setPrimaryState} selected={transcriptReady ? planningTask : ""} onSelect={planFromTranscript} template={template} music={music} creativeOptions={creativeOptions} onCreativeChange={value => { cancelAutomatic(); setCreativeOptions(value); }} onInputsChanged={cancelAutomatic} referenceText={referenceText} referenceConfirmed={!!selectedGeneration?.confirmed_version_id && selectedGeneration.snapshot?.draft.drive !== "audio" && !!selectedGeneration.snapshot?.draft.text} referenceDisabled={busy || recognizing} onReferenceChange={value => { cancelAutomatic(); setReferenceText(value); setPlanningTask(""); }} onNativePlan={() => { setPlansVersion(value => value + 1); setNativeOpened(true); if (nativePanel.current) { nativePanel.current.open = true; nativePanel.current.scrollIntoView({ block: "start" }); } }}
       carryFrom={carrySelection?.projectId === projectId ? carrySelection : undefined} onClearCarry={() => setCarrySelection(undefined)} onPreview={previews => {
         const ids = previews.map(task => task.id);
         setTasks(rows => [...previews, ...rows.filter(row => !ids.includes(row.id))]);

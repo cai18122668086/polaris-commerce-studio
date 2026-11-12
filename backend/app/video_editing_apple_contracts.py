@@ -24,7 +24,7 @@ from .video_studio_schemas import StrictVideoModel
 
 TEMPLATE_ID = "apple-minimal-v1"
 ENGINE = "apple-minimal-suite"
-VERSION = "1.0.0-candidate.4"
+VERSION = "1.0.0-candidate.5"
 PLAN_VERSION: Final = "tengli.apple-suite-plan/2"
 MAX_OUTPUT_TOKENS = 8192
 
@@ -94,6 +94,8 @@ def bundle_identity() -> dict[str, str]:
         root / "video_editing_caption_emphasis.py",
         root / "video_editing_material_alignment.py",
         root / "video_editing_reference_text.py",
+        root / "video_editing_alignment.py",
+        root / "video_editing_confirmed_alignment.py",
         *sorted((root / "apple_minimal").rglob("*.py")),
     ]
     entries = [

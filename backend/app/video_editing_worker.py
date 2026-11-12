@@ -136,6 +136,14 @@ def load_transcript(
 ) -> Transcript:
     """Existing recognition/alignment and exact-byte recovery path."""
     correction = snapshot["correction"]
+    if not correction:
+        from .video_editing_confirmed_alignment import confirmed_input, load_confirmed
+
+        binding = confirmed_input(snapshot, prepared)
+        if binding:
+            return load_confirmed(
+                task_id, root, prepared, snapshot, binding, settings, guard, stage
+            )
     # A user reference helps comparison, while confirmed provenance retains its
     # own immutable reference in snapshot["reference"]. Include this choice in
     # the ASR profile so a changed reference cannot reuse an old transcript.

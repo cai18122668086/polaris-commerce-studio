@@ -100,3 +100,15 @@ TypeScript、production build、8项前端行为测试通过。新合同15项、
 本轮三次完整测试集分别73项（强调、参考稿、素材、合同及glue）、71项（ASR、对齐、来源、校对与任务）、70项（规划、来源校验、模板目录）通过，共214项；改动运行模块Ruff和7文件mypy通过。最终本地真实服务PID33880、端口8019；前端3019。没有部署、推送或改变原3018/8018服务。
 
 用户还询问SRT与直接用口播稿。已明确推荐“确认稿提供文字＋实际音频强制对齐提供词级时点→语义分句→SRT/渲染”。SRT是带起止时间的输出格式。现有video_editing_alignment.py已有本地FA能力，但本轮新默认实现是保守参考稿纠错和实录ASR词点复用，未冒称已切成独立强制对齐默认流程。FunASR官方支持音频+文本的对齐输入，见https://modelscope.github.io/FunASR/api.html 。
+
+## 2026-11-12 自产口播默认确认稿强制对齐（candidate.5）
+
+用户明确要求把上述方案接入默认自动链路，并用同一新人物、新稿再真实跑一版。新增video_editing_confirmed_alignment.py：任务来源必须是generation_task，确认版本有效、生成快照matched，确认稿SHA和原片SHA均匹配，才自动选择“绑定确认稿正文＋成片实际音轨FA”。自由填写的reference_script不能覆盖这份确认稿。无确认正文的音频驱动生成和上传视频保留识别分支；既有手动文字修订仍优先走独立校对FA。FA未启用或无有效词点时明确失败，不能默默回落ASR后声称已对齐。部署自产口播需启用compose.alignment.yaml及固定fa_zh模型；本地8019已启用，没有部署线上。
+
+共用measured_alignment验证原生词与区间，逐字保留测量时间，仅允许原生数字子词合并真实外边界，不平均分配时长。确认稿路径没有伪造ASR父转录或用户校对记录：text_status=automatic、parent_transcript_sha256=null、text_revision_id=null。独立confirmed_alignment元数据绑定确认版本、生成任务、脚本、实际PCM和原生FA词点。confirmed-script.json、alignment-input.txt、alignment-raw.json、alignment-receipt.json均留存并带哈希；重试缓存必须同时核验整组证据及模型/设备/处理版本签名。确认稿标点继续约束字幕句号与分句边界，全文词点进入同一次重点词、配图与动效规划。前端显示只读“口播确认稿”，说明字幕正文及显示时间来源，不堆放后端处理信息。
+
+真实网页一次点击开始：新source da9cf7dd-9fe9-49b5-94da-52cb05d310af；FA任务fc88610e-0bca-440c-8108-1a0486056b96，attempt 8e9e5d28；准备9dbe4c99-c6c2-471c-9010-cb39608a6ad9；真实规划d7ddd9ee-f0d7-4b1a-8dec-0420ae71dad2；自动渲染0085e4c0-89d1-4fbc-8e36-01d5acbc7b5c，attempt 02b881ff。没有复用旧ASR转录，实际101个FA区间与原生响应完全一致，101个区间均不同于上一版ASR。字幕正文逐字等于绑定确认稿，14条分句覆盖全文、正确“逐张核对”。主图按FA词首3.15秒匹配“先看主图…”；详情按FA词首7.65秒匹配“再看详情…”；两份素材SHA不变，漏用列表为空。
+
+实际成片21.04秒、1080×1920/25fps，101个可读字37个重点色、64个普通正文（36.63%），每条/行满足稀疏重点词预算且片尾有强调。自动全片编码与完整解码通过；预览及高清网页播放器readyState=4、error=null。网页确认高清并下载到C:/Users/a1726/Downloads/0085e4c0-89d1-4fbc-8e36-01d5acbc7b5c-final.mp4，SHA256 51539446855be63cbefaf049c253952e4247df0ec48d14e300f905d9a7e6953f，与服务端记录及交付副本一致，Range206通过。便于查看的副本、从同一编排区间直接序列化的SRT、实际编码联系图、网页截图、verification.json均在C:/tl/bihuo-editing-20261112/live-case-v1/confirmed-alignment-v4。没有人工修改转录、规划响应、字幕分组/高亮、素材时点或视频；审核脚本只读这些产物并导出证据。强制对齐不独立证明每个字确实被说出，正式听审及用户效果验收仍待进行，不能扩大为任意素材已稳定验收。
+
+本轮144项针对测试通过（新默认分支、FA、ASR、来源、修订、任务、参考稿、素材、字幕及Apple合同/链路）；6个运行模块Ruff/mypy通过。前端typecheck通过；两组件ESLint与HEAD对比，原有8个错误和2个警告均保留，没有新增规则诊断，详情见confirmed-alignment-v4/frontend-check.json。本轮只新增一次真实editing_plan调用，配音/人物/注册各仍为1，总editing_plan为4。8019当前独立服务PID5164；原3018/8018未动。

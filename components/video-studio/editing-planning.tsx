@@ -61,7 +61,7 @@ const errors: Record<string, string> = {
   EDITING_PLAN_CONTRACT_INVALID: "这次编排未能正确匹配口播。请检查口播或更换模板后重新生成。",
 };
 
-export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, creativeOptions, onCreativeChange, onInputsChanged }: {
+export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, referenceConfirmed = false, creativeOptions, onCreativeChange, onInputsChanged }: {
   onInputsChanged?: () => void;
   creativeOptions?: AppleCreativeOptions;
   onCreativeChange?: (options: AppleCreativeOptions) => void;
@@ -69,6 +69,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   referenceText?: string;
   onReferenceChange?: (value: string) => void;
   referenceDisabled?: boolean;
+  referenceConfirmed?: boolean;
   actionRef?: Ref<EditingPrimaryAction>;
   onPrimaryState?: (state: EditingPrimaryState) => void;
   template?: TemplateCard;
@@ -291,7 +292,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     <div className={flow.materialModes} role="radiogroup" aria-label="配图方式"><label><input type="radio" name={`material-mode-${projectId}`} checked={materialMode === "own"} onChange={() => { setMaterialMode("own"); automatic.current.cancel(); onInputsChanged?.(); }} />用我的素材</label><label><input type="radio" name={`material-mode-${projectId}`} checked={materialMode === "none"} onChange={() => { setMaterialMode("none"); changeMaterials([]); }} />不配图</label></div>
     {materialMode === "own" && <EditingProjectMaterials workspaceId={workspaceId} projectId={projectId} selected={materialIds} onSelect={changeMaterials} materialMode={template?.material_mode} />}
     {apple && creativeOptions && onCreativeChange && <EditingCreativeOptions value={creativeOptions} onChange={onCreativeChange} disabled={busy || waiting || submissionPending} />}
-    {onReferenceChange && <details className={flow.referenceScript}><summary>参考口播稿 <small>选填</small></summary><label htmlFor={`editing-reference-${projectId}`}>口播稿</label><textarea id={`editing-reference-${projectId}`} aria-label="参考口播稿" rows={5} maxLength={20000} value={referenceText} disabled={referenceDisabled} placeholder="粘贴本条视频的口播稿，方便核对识别文字" onChange={event => onReferenceChange(event.target.value)} /><p>用于核对识别文字，最终字幕和素材位置以实际口播为准。</p></details>}
+    {onReferenceChange && <details className={flow.referenceScript}><summary>{referenceConfirmed ? "口播确认稿" : <>参考口播稿 <small>选填</small></>}</summary><label htmlFor={`editing-reference-${projectId}`}>口播稿</label><textarea id={`editing-reference-${projectId}`} aria-label={referenceConfirmed ? "口播确认稿" : "参考口播稿"} rows={5} maxLength={20000} value={referenceText} readOnly={referenceConfirmed} disabled={referenceDisabled} placeholder="粘贴本条视频的口播稿，方便核对识别文字" onChange={event => onReferenceChange(event.target.value)} /><p>{referenceConfirmed ? "已使用生成这条口播的确认稿作字幕，显示时间自动匹配实际声音。" : "用于核对识别文字，最终字幕和素材位置以实际口播为准。"}</p></details>}
     <div hidden={!waiting && !submissionPending && preparation?.status !== "failed" && submitted?.status !== "failed" && !prepared} className={flow.preparationStatus} role="status">{waiting || submissionPending ? primaryHint : preparation?.status === "failed" ? editingMessage(errors[preparation.error_code || ""], "素材检查未完成，请核对文件后重试。") : submitted?.status === "failed" ? editingMessage(errors[submitted.error_code || ""], "这次编排暂不可用，请重新检查素材或换个模板。") : prepared ? primaryHint : !selectedCandidate ? "选好口播后，点击底部按钮检查素材。" : "素材选好后，点击底部按钮继续。"}</div>
     {prepared && (!!prepared.template_style_blockers?.length || (prepared.available_template_group_count ?? 1) < 1) && <button type="button" disabled={busy} onClick={() => void submit("prepare")}>补齐后重新检查</button>}
     {error && <p role="alert" className={styles.error}>{error}</p>}

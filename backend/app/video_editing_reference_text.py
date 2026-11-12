@@ -152,7 +152,10 @@ def reconcile_reference(
 
 def caption_boundaries(transcript: Transcript) -> dict[str, Any]:
     """Reliable reference stops constrain cue grouping; long clauses stay flexible."""
-    if transcript.reference_reconciliation.get("status") != "applied":
+    if (
+        transcript.reference_reconciliation.get("status") != "applied"
+        and transcript.confirmed_alignment.get("status") != "aligned"
+    ):
         return {}
     ends = []
     sentence_ends = []

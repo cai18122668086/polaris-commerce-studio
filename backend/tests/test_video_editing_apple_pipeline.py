@@ -55,7 +55,7 @@ def suite_fixture(video, tmp_path, monkeypatch):
             "max_output_tokens": 2000,
         }
 
-    def verify_plan(raw, _transcript, _cards):
+    def verify_plan(raw, _transcript, _cards, **_options):
         if raw != {"suite_fixture": True}:
             raise ValueError("Invalid protocol fixture")
         return raw

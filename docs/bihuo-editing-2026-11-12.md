@@ -52,3 +52,17 @@ TypeScript、production build、8项前端行为测试通过。新合同15项、
 前端环境：VITE_LOCAL_DEV_AUTH=true、NEXT_PUBLIC_LOCAL_DEV_AUTH=true、VITE_API_PROXY_TARGET=http://127.0.0.1:8019。正式模型仍需沿用正式环境配置，未在隔离环境开启付费或复制密钥。
 
 不声称对标全功能100%一致：AI配图生成、用户音乐上传/生成、用户封面上传尚未新接入。本轮完成主剪辑流程与可调用的成套候选模板。
+
+## 字幕修复 · 同日追加
+
+用户指出后半段字幕随机断词且不再标蓝。根因分别是示例工程前12.8秒之后的固定14字/2.8秒分块、有限关键词表，以及网站合同的16字/3秒分块。已取消新规划中的显示端截句，版本升级为1.0.0-candidate.2，规划合同为tengli.apple-suite-plan/2。
+
+同一次全文规划必须给出全片字幕分句、可选自然换行和逐句1–2个重点词的真实词ID。服务端检查按顺序覆盖所有实录词一次、词法边界、数字单位/英文名称、每行容量、关键词归属及片尾覆盖。长分句最多两行同时显示；真实词时钟不改，跨画面时只改变正文字色，保留整句与蓝色词点。历史v1保留读取兼容，新生成必须v2，不增加规划调用或自动重试费用。
+
+两条示例已重导出并完整解码，前述旧产物保留备查，当前入口自动转向reviews/complete-caption-fixed/index.html。当前52.24秒为render/complete/business-captions-v4/final.mp4（SHA256 bce06bb0ced406d7727e80b3a42c78c91ffc9f8f6d72d0adc9f8957526fd1999），26.24秒为render/complete/points-captions-v3/final.mp4。此次示例的20组字幕由人工按新生产合同编写，178个实录词全覆盖；纠正6处文本/标点并记录原词点与差异，未冒称为新模型输出。主画面机制、素材和口播时钟保持原配方。
+
+逐句中点RGBA标蓝检查、实际编码帧和完整解码记录在reviews/caption-repair-v1/verification.json，实际编码联系图为encoded-contact.jpg。更新的独立作者包是delivery/apple-minimal-motion-caption-fixed.zip，SHA256 fb1bdddfcf27428d979e0e93fe3e9f699e811cfcfc413aaec1d73f09ca90c726。未把本次候选扩大为正式技能验收或用户认可。
+
+37项字幕/合同/队列glue测试通过，4个改动运行模块ruff/mypy通过。真实7.6秒新合同队列记录C:/tl/bihuo-editing-20261112/queue-caption-verification-v3/queue-verification.json：一次本地协议fixture、25/25词覆盖、实际编码到高清确认及Range下载通过，外部模型调用0。正式付费模型的语义质量仍未在隔离环境验收。
+
+网站独立examples目录已安装新的52秒例片，manifest的扩展审计字段放在caption_repair，不传给严格TemplateExample元数据模型。内置浏览器已验证原预览页转向、B05后半段视频完整播放和网站新示例52.24秒可播放。8019本任务API已重启载入新版；3018/8018保持原有服务，未部署线上。

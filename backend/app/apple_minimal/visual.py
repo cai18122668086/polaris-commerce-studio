@@ -20,6 +20,26 @@ type Layers = dict[str, Image.Image]
 type CardLayout = tuple[bool, Lines, float, Lines, float]
 
 
+def caption_parts(line: dict[str, Any]) -> list[tuple[str, bool]]:
+    """Highlight the selected occurrence, including repeated words and two lines."""
+    text = line["text"]
+    ranges = line.get("emphasis_spans", [])
+    parts = []
+    cursor = 0
+    for a, b in ranges:
+        if not (
+            isinstance(a, int) and isinstance(b, int) and cursor <= a < b <= len(text)
+        ):
+            raise ValueError("Invalid planned caption emphasis character range")
+        if a > cursor:
+            parts.append((text[cursor:a], False))
+        parts.append((text[a:b], True))
+        cursor = b
+    if cursor < len(text):
+        parts.append((text[cursor:], False))
+    return parts
+
+
 def _blur_alpha(image: Image.Image, radius: float) -> Image.Image:
     return (
         image.convert("RGBa").filter(ImageFilter.GaussianBlur(radius)).convert("RGBA")
@@ -412,57 +432,74 @@ def render_subtitle(
             continue
         layer = blank()
         text = row["text"]
-        accent = row.get("emphasis", "")
-        pos = text.find(accent) if accent else -1
-        parts = (
-            [(text[:pos], False), (accent, True), (text[pos + len(accent) :], False)]
-            if pos >= 0
-            else [(text, False)]
+        cue_lines = row.get("lines")
+        if cue_lines is None:
+            accent = row.get("emphasis", "")
+            pos = text.find(accent) if accent else -1
+            cue_lines = [
+                {
+                    "text": text,
+                    "emphasis_spans": [[pos, pos + len(accent)]] if pos >= 0 else [],
+                }
+            ]
+        if not 1 <= len(cue_lines) <= 2:
+            raise ValueError("Caption must use one or two planned lines")
+        all_parts = [caption_parts(line) for line in cue_lines]
+        color = next(
+            (
+                event["color"]
+                for event in reversed(inputs.get("caption_color_events", []))
+                if event["time"] <= t
+            ),
+            row.get("color", "white"),
         )
-        phase = row.get("color", "white") == "black"
+        phase = color == "black"
         body = (30 if phase else 28) * k
         large = 35 * k
-        length = sum(
-            font(
-                fonts["caption_bold"] if emph else fonts["caption"],
-                large if emph else body,
-            ).getlength(s)
-            for s, emph in parts
-        )
+
+        def line_width(
+            parts: list[tuple[str, bool]], body_size: float, accent_size: float
+        ) -> float:
+            return sum(
+                font(
+                    fonts["caption_bold"] if e else fonts["caption"],
+                    accent_size if e else body_size,
+                ).getlength(s)
+                for s, e in parts
+            )
+
+        length = max(line_width(parts, body, large) for parts in all_parts)
         if length > W * 0.94:
             factor = W * 0.94 / length
             if factor < 0.72:
                 raise ValueError("Caption exceeds safe reading width")
             body *= factor
             large *= factor
-            length = sum(
-                font(
+        baseline = row.get("baseline_540", 834) * k
+        if not phase:
+            baseline -= (len(cue_lines) - 1) * 38 * k
+        d = ImageDraw.Draw(layer)
+        for i, parts in enumerate(all_parts):
+            x = (W - line_width(parts, body, large)) / 2
+            for s, e in parts:
+                face = font(
                     fonts["caption_bold"] if e else fonts["caption"],
                     large if e else body,
-                ).getlength(s)
-                for s, e in parts
-            )
-        x = (W - length) / 2
-        baseline = row.get("baseline_540", 834) * k
-        d = ImageDraw.Draw(layer)
-        for s, e in parts:
-            face = font(
-                fonts["caption_bold"] if e else fonts["caption"], large if e else body
-            )
-            d.text(
-                (round(x), round(baseline)),
-                s,
-                font=face,
-                fill=(0, 151, 233, 255)
-                if e
-                else (12, 12, 12, 255)
-                if phase
-                else (255, 255, 255, 255),
-                anchor="ls",
-                stroke_width=max(1, round(k)),
-                stroke_fill=(255, 255, 255, 220) if phase else (25, 25, 25, 190),
-            )
-            x += face.getlength(s)
+                )
+                d.text(
+                    (round(x), round(baseline + i * 38 * k)),
+                    s,
+                    font=face,
+                    fill=(0, 151, 233, 255)
+                    if e
+                    else (12, 12, 12, 255)
+                    if phase
+                    else (255, 255, 255, 255),
+                    anchor="ls",
+                    stroke_width=max(1, round(k)),
+                    stroke_fill=(255, 255, 255, 220) if phase else (25, 25, 25, 190),
+                )
+                x += face.getlength(s)
         q = ease(a, a + 0.18, t) * (1 - ease(b - 0.08, b, t))
         if q < 1:
             layer = _blur_alpha(layer, (1 - q) * 2 * k)

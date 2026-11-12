@@ -293,7 +293,10 @@ def plan_suite(
         )
     guard()
     plan = verify_plan(
-        json.loads(response["content"]), transcript, snapshot["asset_cards"]
+        json.loads(response["content"]),
+        transcript,
+        snapshot["asset_cards"],
+        require_semantic_captions=True,
     )
     path = folder / "suite-plan.json"
     atomic_json(path, plan)

@@ -100,6 +100,7 @@ def cards():
 
 def plan():
     return {
+        "schema_version": "tengli.apple-suite-plan/1",
         "opening": {
             "title": span(1, 2),
             "subtitle": span(0, 2),
@@ -250,8 +251,11 @@ def test_compile_uses_real_word_times_and_owner_files_without_changing_voice_clo
     assert resolved["materials"][0]["spoken_text"] == "先复制商品链接"
     assert captured["kwargs"]["music"] == "off"
     assert captured["kwargs"]["creative_options"]["name_card"]["enabled"] is False
+    clocks = {t.start_ms / 1000 for t in transcript().tokens} | {
+        t.end_ms / 1000 for t in transcript().tokens
+    }
     assert all(
-        len(row["text"]) <= 16 and row["time"][1] - row["time"][0] <= 3
+        row["time"][0] in clocks and row["time"][1] in clocks
         for row in resolved["captions"]
     )
     assert "".join(row["text"] for row in resolved["captions"]) == "".join(

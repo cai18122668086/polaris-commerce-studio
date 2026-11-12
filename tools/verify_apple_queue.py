@@ -246,17 +246,23 @@ def main():
             )
         # A crop can retain a tiny tail of the preceding utterance. Keep those
         # measured words in the transcript, but choose complete demo phrases.
-        intro = next(row for row in utterances if row.end_ms - row.start_ms >= 1500 and "上传自己的产品图" in row.text)
+        intro = next(
+            row
+            for row in utterances
+            if row.end_ms - row.start_ms >= 1500 and "上传自己的产品图" in row.text
+        )
         body = next(
             row
             for row in utterances
-            if row.start_ms >= intro.end_ms and row.end_ms - row.start_ms >= 1500 and "拉取参考商品" in row.text
+            if row.start_ms >= intro.end_ms
+            and row.end_ms - row.start_ms >= 1500
+            and "拉取参考商品" in row.text
         )
         assert "上传" in intro.text and "拉取" in body.text, (intro.text, body.text)
         body_words = [ids[i] for i in body.token_ids]
         anchor = next(t for t in body_words if t.start_ms >= intro.end_ms + 500)
         plan = {
-            "schema_version": "tengli.apple-suite-plan/1",
+            "schema_version": "tengli.apple-suite-plan/2",
             "opening": {
                 "title": {
                     "first_token_id": intro.token_ids[0],
@@ -280,6 +286,36 @@ def main():
             ],
             "warnings": ["Explicit local protocol fixture; no external planner called"],
         }
+        plan["captions"] = []
+        for sentence in utterances:
+            phrase = "".join(ids[key].text for key in sentence.token_ids)
+            term = (
+                "产品图"
+                if "产品图" in phrase
+                else "拉取参考商品"
+                if "拉取参考商品" in phrase
+                else ""
+            )
+            highlights = []
+            if term:
+                text = ""
+                ranges = []
+                for key in sentence.token_ids:
+                    ranges.append((len(text), len(text) + len(ids[key].text), key))
+                    text += ids[key].text
+                begin = text.index(term)
+                end = begin + len(term)
+                selected = [key for a, b, key in ranges if a < end and begin < b]
+                highlights.append(
+                    {"first_token_id": selected[0], "last_token_id": selected[-1]}
+                )
+            plan["captions"].append(
+                {
+                    "first_token_id": sentence.token_ids[0],
+                    "last_token_id": sentence.token_ids[-1],
+                    "emphasis": highlights,
+                }
+            )
 
         class Provider:
             calls = 0
@@ -397,6 +433,10 @@ def main():
             "matched_spoken_text": body.text,
             "provider_calls": provider.calls,
             "external_calls": 0,
+            "caption_schema": plan["schema_version"],
+            "caption_cues": len(plan["captions"]),
+            "caption_token_coverage": sum(len(u.token_ids) for u in utterances),
+            "caption_token_count": len(words),
             "source_sha256": sha256(clip),
             "parent_source_sha256": sha256(a.source),
             "parent_range": [a.start, a.start + a.duration],

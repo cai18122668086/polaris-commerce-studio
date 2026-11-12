@@ -242,6 +242,12 @@ def compile_recipe(
             }
         )
     captions = deepcopy(resolved.get("captions", []))
+    caption_colors = [{"time": 0, "color": "white"}]
+    if variant == "materials":
+        caption_colors.append({"time": intro + 0.32, "color": "black"})
+        takeover = min(x["start"] for x in features) if features else quote_start
+        if takeover is not None:
+            caption_colors.append({"time": float(takeover) + 0.32, "color": "white"})
     for row in captions:
         row["color"] = (
             "black"
@@ -274,6 +280,7 @@ def compile_recipe(
         "stage_color": [254, 252, 255],
         "visual_keys": keys,
         "captions": captions,
+        "caption_color_events": caption_colors,
         "chapters": resolved.get("chapters", []),
         "media": media,
         "information": information,

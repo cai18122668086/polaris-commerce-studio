@@ -27,6 +27,7 @@ from .video_editing_overlay_templates import (
     motion_counts,
     overlay_template,
 )
+from .video_editing_planning_quality import require_reference_transcript
 from .video_editing_story_panels import PANEL_TEMPLATE_ID
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -36,6 +37,7 @@ from .video_editing_task_models import (
 )
 from .video_editing_template_styles import style_blockers
 from .video_editing_transcript_store import (
+    read_transcript_artifact,
     recorded_source_frame,
     require_native_source_frame,
 )
@@ -366,6 +368,18 @@ def create_planning_task(
             "expected_request_sha256": prepared.result["request_sha256"],
             "prepared_artifacts": prepared.result["artifacts"],
         }
+    if (
+        source.kind == "generation_task"
+        and (source.details.get("generation_lineage") or {}).get(
+            "generation_script_snapshot"
+        )
+        == "matched"
+    ):
+        require_reference_transcript(
+            read_transcript_artifact(artifact, base, settings.video_editing_tasks_dir),
+            source.kind,
+            source.details["generation_lineage"],
+        )
     row = EditingPlanningTaskRecord(
         id=str(uuid4()),
         workspace_id=workspace.workspace_id,

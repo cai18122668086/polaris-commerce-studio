@@ -55,7 +55,8 @@ const errors: Record<string, string> = {
   EDITING_PLAN_INPUT_CHANGED: "请求内容已变化，请重新准备后核对。",
   EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "可选动效少于五种。请核对项目备忘、素材或模板后重新准备。",
   EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。",
-  EDITING_PLAN_CONTRACT_INVALID: "这次编排未能正确匹配口播。请检查口播或更换模板后重新生成。",
+  EDITING_PLAN_CONTRACT_INVALID: "模型编排未通过模板校验。响应已保存，重新校验不会再次调用计费模型。",
+  EDITING_TRANSCRIPT_REVIEW_REQUIRED: "自动字幕与已确认原稿差异较大，请先校对字幕并重新对齐，再继续编排。此检查不计模型费用。",
 };
 
 export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState }: {

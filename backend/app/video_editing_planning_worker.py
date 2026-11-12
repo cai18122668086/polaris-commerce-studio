@@ -71,6 +71,10 @@ from .video_editing_native_content import (
 from .video_editing_native_plans import content_digest
 from .video_editing_pipeline import measured_source_frame, probe
 from .video_editing_planning_preview import pending_auto_preview, resume_auto_preview
+from .video_editing_planning_quality import (
+    NATIVE_BINDING_POLICY,
+    require_reference_transcript,
+)
 from .video_editing_planning_store import (
     FILES,
     execution_available,
@@ -393,6 +397,10 @@ def process(
             transcript = read_transcript_artifact(
                 record, base, settings.video_editing_tasks_dir
             )
+            if not (root / "provider/semantic-submit-intent.json").exists():
+                require_reference_transcript(
+                    transcript, source.kind, source.details.get("generation_lineage")
+                )
             media_path = Path(source.media_path)
             if (
                 not media_path.is_file()
@@ -639,6 +647,7 @@ def process(
             profile = style_policy(template)
             if profile is not None:
                 runtime["template_style"] = profile
+                runtime["native_binding_policy"] = NATIVE_BINDING_POLICY
             snapshot = {**snapshot, "planning_runtime": runtime}
         prepared_request = None
         if mode == "generate":

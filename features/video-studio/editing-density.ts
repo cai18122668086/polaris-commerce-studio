@@ -1,5 +1,5 @@
-export const minDistinctMotionGroups = 5;
-export const preferredDistinctMotionGroups = 10;
+export const minDistinctMotionGroups = 1;
+export const preferredDistinctMotionGroups = 1;
 
 type Beat = { id: string; group_id: string; source_only_available?: boolean };
 

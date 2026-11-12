@@ -22,7 +22,8 @@ test("pending and uncertain submissions never offer another paid action", () => 
 test("missing template conditions block billing and new inputs start with free preparation", () => {
   assert.equal(editingPlanningAction(), "prepare");
   assert.equal(editingPlanningAction({ execution_available: false }), "blocked");
-  assert.equal(editingPlanningAction({ execution_available: true, available_template_group_count: 4 }), "blocked");
+  assert.equal(editingPlanningAction({ execution_available: true, available_template_group_count: 0 }), "blocked");
+  assert.equal(editingPlanningAction({ execution_available: true, available_template_group_count: 1 }), "generate");
   assert.equal(editingPlanningAction({ execution_available: true, available_template_group_count: 16, template_style_blockers: ["需要三张图片"] }), "blocked");
 });
 

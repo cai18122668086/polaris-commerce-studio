@@ -18,6 +18,7 @@ from .config import Settings
 from .domain import UserStatus
 from .errors import ApiError
 from .models import UserRecord
+from .video_editing_apple_pipeline import suite_engine, verified_suite
 from .video_editing_contracts import EditingTaskCreate
 from .video_editing_native_plans import register_gateway_plan
 from .video_editing_overlay_recipes import PROFILE_ID
@@ -72,6 +73,28 @@ def persist_planning_preview(
                 409, "EDITING_PREVIEW_LINK_CHANGED", "预览与已保存的规划不匹配。"
             )
         return previous, False
+    if suite_engine(row.snapshot):
+        from .video_editing_task_models import EditingSourceRecord
+
+        source = session.get(EditingSourceRecord, row.source_id)
+        if source is None:
+            raise ApiError(404, "EDITING_SOURCE_NOT_FOUND", "未找到原片。")
+        verified_suite(session, settings, row.id, source)
+        payload = EditingTaskCreate.model_validate(
+            {
+                "request_id": request_id,
+                "source_id": source.id,
+                "options": {
+                    "mode": "suite_plan",
+                    "suite_plan_id": row.id,
+                    "source_subtitles": row.snapshot["source_subtitles"],
+                    "delivery": "preview_first",
+                },
+            }
+        )
+        return persist_editing_task(
+            payload, settings, workspace, session, preview_for=row
+        )
     candidate = gateway_candidate(session, settings, workspace, row)
     payload = EditingTaskCreate.model_validate(
         {
@@ -83,6 +106,12 @@ def persist_planning_preview(
                 "source_subtitles": candidate.details["source_subtitles"],
                 "caption_font_id": candidate.recipes["design"]["caption_font_id"],
                 "delivery": "preview_first",
+                **(
+                    {"native_edits": {"music": row.snapshot["music"]}}
+                    if row.snapshot.get("music") in {"lower", "off"}
+                    and (candidate.recipes.get("sound") or {}).get("music")
+                    else {}
+                ),
             },
         }
     )

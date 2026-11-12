@@ -11,4 +11,6 @@ COPY components/video-studio ./components/video-studio
 COPY features/video-studio ./features/video-studio
 COPY lib/api/generated/openapi.d.ts ./lib/api/generated/openapi.d.ts
 RUN npm run typecheck && npm run build
+ARG POLARIS_RELEASE_REVISION
+LABEL org.opencontainers.image.revision=${POLARIS_RELEASE_REVISION}
 USER 1000:1000

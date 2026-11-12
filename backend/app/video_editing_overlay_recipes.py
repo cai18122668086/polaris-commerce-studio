@@ -3060,7 +3060,7 @@ def build_overlay_recipes(
         raise ApiError(
             422,
             "EDITING_TEMPLATE_EFFECT_COUNT_REQUIRED",
-            "候选须保留至少五种不同的已选模板动效。",
+            "候选需要至少一个适用于当前口播的已选模板动效。",
         ) from error
     groups = {
         row["id"]: row for row in read_json(package / "catalog/groups.json")["groups"]

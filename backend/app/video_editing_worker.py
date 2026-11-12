@@ -27,6 +27,7 @@ from .motion_library import (
     sha256,
     verify_package,
 )
+from .video_editing_apple_pipeline import render_suite
 from .video_editing_condition_anchors import IncompleteCondition
 from .video_editing_contracts import NativeRenderEdits, SemanticPlan, Transcript
 from .video_editing_delivery_checkpoint import (
@@ -117,6 +118,10 @@ def asr_profile(settings: Settings, language: str, reference: str | None) -> str
         "language": language,
         "reference": reference,
     }
+    if reference:
+        from .video_editing_reference_text import reference_profile
+
+        payload["reference_reconciliation"] = reference_profile()
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
@@ -131,6 +136,20 @@ def load_transcript(
 ) -> Transcript:
     """Existing recognition/alignment and exact-byte recovery path."""
     correction = snapshot["correction"]
+    if not correction:
+        from .video_editing_confirmed_alignment import confirmed_input, load_confirmed
+
+        binding = confirmed_input(snapshot, prepared)
+        if binding:
+            return load_confirmed(
+                task_id, root, prepared, snapshot, binding, settings, guard, stage
+            )
+    # A user reference helps comparison, while confirmed provenance retains its
+    # own immutable reference in snapshot["reference"]. Include this choice in
+    # the ASR profile so a changed reference cannot reuse an old transcript.
+    recognition_reference = (
+        snapshot["options"].get("reference_script") or snapshot["reference"]
+    )
     expected_provider: str = settings.video_editing_asr_provider
     expected_model = settings.video_editing_asr_model
     profile: str | None
@@ -179,7 +198,7 @@ def load_transcript(
     else:
         stage("transcribing")
         profile = asr_profile(
-            settings, snapshot["options"]["language"], snapshot["reference"]
+            settings, snapshot["options"]["language"], recognition_reference
         )
     cached = snapshot["checkpoint"].get("transcript")
     transcript = None
@@ -221,6 +240,27 @@ def load_transcript(
                     for name, item in evidence.items():
                         shutil.copyfile(item["path"], root / name)
                     transcript = candidate
+            elif candidate.reference_reconciliation:
+                evidence = cached.get("reference_evidence", {})
+                if (
+                    set(evidence)
+                    == {"asr-transcript.json", "reference-reconciliation.json"}
+                    and all(
+                        Path(item["path"])
+                        .resolve()
+                        .is_relative_to(
+                            (settings.video_editing_tasks_dir / task_id).resolve()
+                        )
+                        and Path(item["path"]).is_file()
+                        and sha256(Path(item["path"])) == item["sha256"]
+                        for item in evidence.values()
+                    )
+                    and evidence["asr-transcript.json"]["sha256"]
+                    == candidate.parent_transcript_sha256
+                ):
+                    for name, item in evidence.items():
+                        shutil.copyfile(item["path"], root / name)
+                    transcript = candidate
             else:
                 transcript = candidate
     if transcript is None:
@@ -244,7 +284,7 @@ def load_transcript(
                     "provider": settings.video_editing_asr_provider,
                     "model": settings.video_editing_asr_model,
                     "device": settings.video_editing_asr_device,
-                    "reference": snapshot["reference"],
+                    "reference": recognition_reference,
                     "language": snapshot["options"]["language"],
                 },
             )
@@ -276,6 +316,22 @@ def load_transcript(
             "path": str(root / "transcript.json"),
             "sha256": sha256(root / "transcript.json"),
             "profile": profile,
+            **(
+                {
+                    "reference_evidence": {
+                        name: {"path": str(root / name), "sha256": sha256(root / name)}
+                        for name in (
+                            "asr-transcript.json",
+                            "reference-reconciliation.json",
+                        )
+                    }
+                }
+                if all(
+                    (root / name).is_file()
+                    for name in ("asr-transcript.json", "reference-reconciliation.json")
+                )
+                else {}
+            ),
             **(
                 {
                     "alignment_evidence": {
@@ -460,6 +516,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
         base_attempt = preview_base_attempt(session, settings, source, row.options)
         snapshot: dict[str, Any] = {
             "source_path": source.media_path,
+            "source_id": source.id,
             "source_sha256": source.media_sha256,
             "request_hash": row.request_hash,
             "options": row.options,
@@ -734,6 +791,16 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             )
             return
         correction = snapshot["correction"]
+        if snapshot["options"].get("suite_plan_id"):
+            with factory() as session:
+                files, validation = render_suite(
+                    root, snapshot, settings, session, guard, stage
+                )
+            stage("storing")
+            publish(
+                files, validation, status="awaiting_review", ready_stage="preview_ready"
+            )
+            return
         if snapshot["options"].get("transcript_revision_id") and not correction:
             raise EditingFailure("EDITING_TRANSCRIPT_REVISION_NOT_FOUND")
         if snapshot["options"].get("source_subtitles") == "unknown":
@@ -1022,6 +1089,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             if isinstance(
                 error,
                 (
+                    ApiError,
                     EditingFailure,
                     IncompleteCondition,
                     IncompleteDenial,

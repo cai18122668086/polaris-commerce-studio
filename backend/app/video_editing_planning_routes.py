@@ -14,6 +14,7 @@ from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
 from .motion_library import sha256
+from .video_editing_apple_pipeline import TEMPLATE_ID as APPLE_TEMPLATE_ID
 from .video_editing_contracts import (
     EditingNativePlanResponse,
     EditingOverlayTemplate,
@@ -87,7 +88,9 @@ def list_template_catalog(request: Request, workspace: VideoWorkspace) -> list[d
 def get_template_example(
     template_id: str, kind: str, request: Request, workspace: VideoWorkspace
 ) -> FileResponse:
-    if template_id not in {item["id"] for item in overlay_templates()}:
+    if template_id != APPLE_TEMPLATE_ID and template_id not in {
+        item["id"] for item in overlay_templates()
+    }:
         raise ApiError(
             404, "EDITING_TEMPLATE_EXAMPLE_UNAVAILABLE", "此模板的示例暂不可用。"
         )
@@ -190,6 +193,12 @@ def create_native_candidate(
     require_workspace_write(workspace)
     settings = enabled(request)
     row = own_planning_task(session, workspace, str(task_id))
+    if row.snapshot.get("engine") == "apple-minimal-suite":
+        raise ApiError(
+            409,
+            "EDITING_SUITE_NATIVE_EDITOR_UNAVAILABLE",
+            "此模板可直接预览；如需更改文字或素材，请修改选项后重新生成。",
+        )
     own_project(session, workspace, row.project_id)
     candidate = gateway_candidate(
         session, settings, workspace, row, revalidate=revalidate

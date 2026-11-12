@@ -49,6 +49,7 @@ from .video_editing_hypit_chart import FLOW_CHART_TEMPLATE_ID
 from .video_editing_hypit_label_cards import LABEL_CARD_TEMPLATE_ID
 from .video_editing_hypit_strips import SLANT_INSET_PURPOSE
 from .video_editing_line_branch import LINE_GROUP
+from .video_editing_material_alignment import alignment_input, placement_receipt
 from .video_editing_native_content import (
     CHAPTER_PATH,
     FILM_FEEDBACK_TEMPLATE_ID,
@@ -59,9 +60,7 @@ from .video_editing_native_content import (
 )
 from .video_editing_overlay_templates import (
     LINE_TEMPLATE_ID,
-    MIN_OVERLAY_TYPES,
     PACKAGE_TEMPLATES,
-    PREFERRED_OVERLAY_TYPES,
     QUESTION_CARD_B_TEMPLATE_ID,
     QUESTION_CARD_TEMPLATES,
     template_snapshot_matches,
@@ -342,6 +341,12 @@ def build_request(
     public_copy_only: bool = False,
     prepared_request: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    cohesive = bool(
+        (runtime or {}).get("template_style", {}).get("composition_contract")
+    )
+    compact_groups = bool(
+        template and template["id"] in FIRST_MOTION_GROUPS and not cohesive
+    )
     rules = rule_pack(package)
     question_card = bool(template and template["id"] in QUESTION_CARD_TEMPLATES)
     alpha_chapters = bool(template and template["id"] == LIVE_CHAPTERS_TEMPLATE_ID)
@@ -433,6 +438,14 @@ def build_request(
         if not template_snapshot_matches(template):
             raise ValueError("Selected overlay template changed")
         payload["overlay_template"] = template
+        if cohesive:
+            allowed = set((runtime or {})["template_style"]["allowed_group_ids"])
+            payload["overlay_template"] = {
+                **template,
+                "slots": [
+                    slot for slot in template["slots"] if slot["group_id"] in allowed
+                ],
+            }
     if runtime is not None:
         payload["template_runtime"] = runtime_payload(runtime)
     style_clock = bool(
@@ -476,18 +489,26 @@ def build_request(
             "按模板 slots 选择透明叠加或整帧原生场景，允许原构图遮挡人物或换背景。"
             "遵循槽内 binding，整帧追问与主字幕分别编译。"
             "缺素材或语义不匹配时登记 warnings。"
-            f"完整出片至少 {MIN_OVERLAY_TYPES} 种不同原生动效，"
-            f"优先 {PREFERRED_OVERLAY_TYPES} 种以上。"
-            "同一动效可以重复，重复出现不增加种类。自然留白用 Z-M00。"
+            f"完整出片至少 {1 if cohesive else 5} 种不同原生动效，"
+            + (
+                "只用同套机制，允许复用，不追求种类。"
+                if cohesive
+                else "优先 10 种以上。"
+            )
+            + "同一动效可以重复，重复出现不增加种类。自然留白用 Z-M00。"
         )
     elif template is not None:
         message += (
             "用户已选择 overlay_template，整段人物原片持续播放。"
             "只从模板 slots 选择叠加动效，留白用 Z-M00。"
             "每个槽按实际语义和词 ID 绑定，缺少适配词句时登记 warnings。"
-            f"完整出片至少 {MIN_OVERLAY_TYPES} 种不同原生动效，"
-            f"优先 {PREFERRED_OVERLAY_TYPES} 种以上。"
-            "同一动效可以在不同语义位置反复使用，重复出现不增加种类。"
+            f"完整出片至少 {1 if cohesive else 5} 种不同原生动效，"
+            + (
+                "只用同套机制，允许复用，不追求种类。"
+                if cohesive
+                else "优先 10 种以上。"
+            )
+            + "同一动效可以在不同语义位置反复使用，重复出现不增加种类。"
             "素材或语义不足时记录原因，禁止凑项及全屏覆盖人物。"
         )
     if public_copy_only:
@@ -683,14 +704,23 @@ def build_request(
             "template_runtime.template_style是本次选定风格的合同。"
             "必须在本期真实词点中至少使用一次signature_group_ids里的招牌组，"
             "按narrative组织开场、正文和收口；不能全用共享字幕冒充本款风格。"
-            "所有组仍只限overlay_template.slots，至少五种、优先十种以上。"
-            "招牌组只在语义、素材和原生字段条件匹配时使用；不匹配应报告缺失，不能伪造内容。"
+            + (
+                "只用allowed_group_ids中已配套的机制，允许同款重复和同期口播留白。"
+                if cohesive
+                else "所有组仍只限overlay_template.slots，至少五种、优先十种以上。"
+            )
+            + "招牌组只在语义、素材和原生字段条件匹配时使用；"
+            "不匹配应报告缺失，不能伪造内容。"
         )
         if style_clock:
             message += (
                 "measured_word_clock为实录词ID、原词、开始与结束毫秒。"
                 "用它核对每个原生动作的完成时间和文字读时，输出仍只给词ID，禁止输出时间数值。"
-                "优先十种以上，但不拆坏并列信息、否定与条件来凑数。"
+                + (
+                    "按完整表达组织进场、阅读、退场和接力，不按动效数量切碎句子。"
+                    if cohesive
+                    else "优先十种以上，但不拆坏并列信息、否定与条件来凑数。"
+                )
             )
         if (runtime or {}).get("template_style", {}).get("native_role_capacities"):
             message += (
@@ -699,7 +729,7 @@ def build_request(
                 "原生槽不能分别呈现多个分项时，使用完整短句说明，不伪造多个独立图卡。"
                 "CX-G04三个标签各1至4字，relation_item边界与标签的实际词边界一致，说明由主字幕保留。"
             )
-    if template and template["id"] in FIRST_MOTION_GROUPS:
+    if compact_groups and template is not None:
         group_policy = (runtime or {}).get("first_groups_policy")
         readable_policy = group_policy in READABLE_POLICIES
         preflight_policy = group_policy == PREFLIGHT_POLICY or readable_policy
@@ -732,7 +762,7 @@ def build_request(
             "价格、规格和其他陈述不能用作这个问句槽，没有相符实录就跳过 YYO08。"
         )
     if compound_quantities:
-        compact = template and template["id"] in FIRST_MOTION_GROUPS
+        compact = compact_groups
         payload["protected_quantity_spans"] = [
             [row.first, row.last]
             if compact
@@ -742,6 +772,17 @@ def build_request(
         message += (
             "protected_quantity_spans列出实录中的完整数量范围，含首尾词。"
             "用这些词时保留整段的区间、比例和限制词。原生字槽放不下时换组或留原景。"
+        )
+    if (runtime or {}).get("material_alignment_version"):
+        payload["material_sentence_alignment"] = alignment_input(
+            transcript, asset_cards or []
+        )
+        message += (
+            "material_sentence_alignment已在本次规划前根据完整口播和素材说明检索。"
+            "先通读所有台词及素材名称、说明，再一次性决定素材对应哪句话和在句中或句后哪个词点出现。"
+            "候选仅供检索，不能当成事实；语义不符或有歧义时跳过并写warnings。"
+            "asset_ids和native_media须与所选台词表达相符，不按上传顺序轮放。"
+            "本次输出即最终渲染规划，不逐帧调用视觉API，不在出片后再规划。"
         )
     body = {
         "model": model,
@@ -755,9 +796,7 @@ def build_request(
                 "content": json.dumps(
                     payload,
                     ensure_ascii=False,
-                    separators=(",", ":")
-                    if template and template["id"] in FIRST_MOTION_GROUPS
-                    else None,
+                    separators=(",", ":") if compact_groups else None,
                 ),
             },
         ],
@@ -780,9 +819,7 @@ def build_request(
         ).hexdigest(),
         "model": model,
         "max_output_tokens": max_output_tokens,
-        "no_timestamps_sent": not (
-            style_clock or (template and template["id"] in FIRST_MOTION_GROUPS)
-        ),
+        "no_timestamps_sent": not (style_clock or compact_groups),
         "request_bytes": len(encoded),
         "choice_snapshot_sha256": choices["sha256"] if choices else None,
         "choice_project_id": choices["project_id"] if choices else None,
@@ -1089,7 +1126,11 @@ def generate(
     if guard:
         guard()
     content = response["content"]
-    if template and template["id"] in FIRST_MOTION_GROUPS:
+    if (
+        template
+        and template["id"] in FIRST_MOTION_GROUPS
+        and not (runtime or {}).get("template_style", {}).get("composition_contract")
+    ):
         plan = expand_group_plan(
             content,
             transcript,
@@ -1123,6 +1164,11 @@ def generate(
     validate_template_style(plan, runtime)
     if template is not None:
         validate_template_plan(plan, template, complete=False)
+    if (runtime or {}).get("material_alignment_version"):
+        atomic_json(
+            root / "material-placement.json",
+            placement_receipt(plan, transcript, asset_cards or []),
+        )
     plan_path = root / "semantic-plan.json"
     atomic_json(plan_path, plan.model_dump(mode="json"))
     atomic_json(
@@ -1131,6 +1177,11 @@ def generate(
             "request_sha256": evidence["request_sha256"],
             "response_sha256": sha256(response_path),
             "plan_sha256": sha256(plan_path),
+            **(
+                {"material_placement_sha256": sha256(root / "material-placement.json")}
+                if (runtime or {}).get("material_alignment_version")
+                else {}
+            ),
             "validation": "contract_only",
             "semantic_review": "unreviewed",
             "visual_review": "unreviewed",

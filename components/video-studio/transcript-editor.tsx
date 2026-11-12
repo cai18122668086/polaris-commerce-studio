@@ -35,6 +35,7 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const transcriptionOnly = options.mode === "transcript";
+  const frozenPlan = options.mode === "native_plan" || options.mode === "suite_plan";
   const saveIntent = useRef<{ key: string; id: string } | undefined>(undefined);
   const renderIntent = useRef<{ key: string; id: string } | undefined>(undefined);
   const path = { workspace_id: workspaceId, task_id: taskId };
@@ -72,10 +73,10 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
     finally { setBusy(false); }
   };
   const render = async () => {
-    if (!view || !selected || selected.corrected_text !== text || options.mode === "native_plan") return;
+    if (!view || !selected || selected.corrected_text !== text || frozenPlan) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const nextOptions = { ...options, language: "zh" as const, transcript_revision_id: selected.id };
+      const nextOptions = { ...options, reference_script: undefined, language: "zh" as const, transcript_revision_id: selected.id };
       const key = JSON.stringify([view.source_id, nextOptions]);
       if (!renderIntent.current || renderIntent.current.key !== key) renderIntent.current = { key, id: crypto.randomUUID() };
       unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks`, {
@@ -110,8 +111,8 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
       <label>校对文字<textarea aria-label="校对文字" rows={9} maxLength={20000} value={text} onChange={event => { setText(event.target.value); setReviewed(false); setMessage(""); }} /></label>
       <label className={styles.reviewCheck}><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} />我已对照原声核对这份文字；这不代表成片和时间点已验收</label>
       <div className={styles.correctionActions}><button type="button" disabled={busy || !text.trim() || (selected?.corrected_text === text && selected.text_status === (reviewed ? "user_corrected" : "operator_candidate"))} onClick={() => void save()}>{reviewed ? "保存已校对文字" : "保存待核对版本"}</button>
-        <button type="button" disabled={busy || !view.alignment_available || !selected || selected.corrected_text !== text || (!transcriptionOnly && options.source_subtitles !== "none") || options.mode === "native_plan"} onClick={() => void render()}>{transcriptionOnly ? "按此版本重新对齐口播" : "按此版本重新生成字幕"}</button></div>
-      {options.mode === "native_plan" && <p className={styles.note}>这条成片使用冻结的动效编排。可保存文字新版本，重新出片前需按新词点保存新的动效编排。</p>}
+        <button type="button" disabled={busy || !view.alignment_available || !selected || selected.corrected_text !== text || (!transcriptionOnly && options.source_subtitles !== "none") || frozenPlan} onClick={() => void render()}>{transcriptionOnly ? "按此版本重新对齐口播" : "按此版本重新生成字幕"}</button></div>
+      {frozenPlan && <p className={styles.note}>可保存校对后的文字版本，重新剪辑时按新口播重新安排画面。</p>}
       {selected && <p className={styles.note}>已选择：{statusLabel(selected.text_status)}。{selected.corrected_text !== text ? "有未保存的修改，请先保存。" : "重新生成会使用这份已保存文字。"}</p>}
       {!view.alignment_available && <p className={styles.note}>校对文字可以保存；重新对齐服务尚未启用。</p>}
       {!transcriptionOnly && options.source_subtitles !== "none" && <p className={styles.note}>原画面已有字幕，修改文字不能擦除画面中的字。重新生成字幕需要无硬字幕的原片。</p>}

@@ -23,6 +23,7 @@ import uvicorn
 from app.main import create_app
 from app.video_assistance_provider import VideoAssistanceProvider
 from app.video_editing_planning_worker import process as plan_worker
+from app.video_editing_task_models import EditingPlanningTaskRecord, EditingTaskRecord
 from app.video_editing_worker import process as edit_worker
 from app.video_providers import VideoProviders
 from tengli_site_demo_runtime import settings_for
@@ -67,7 +68,20 @@ class ManualFlowTransport(httpx.BaseTransport):
                 if stage == "editing_plan":
                     payload = json.loads(request.content)
                     inputs = json.loads(payload["messages"][1]["content"])
-                    if not inputs.get("overlay_template", {}).get("id"):
+                    suite = inputs.get("template", {})
+                    apple_suite = (
+                        suite.get("id") == "apple-minimal-v1"
+                        and suite.get("engine") == "apple-minimal-suite"
+                        and inputs.get("output_schema", {})
+                        .get("properties", {})
+                        .get("schema_version", {})
+                        .get("const")
+                        == "tengli.apple-suite-plan/2"
+                    )
+                    if (
+                        not inputs.get("overlay_template", {}).get("id")
+                        and not apple_suite
+                    ):
                         raise ValueError("Only template editing planning is enabled")
                 with sqlite3.connect(self.ledger) as db:
                     db.execute(
@@ -95,11 +109,36 @@ class ManualFlowTransport(httpx.BaseTransport):
         pass
 
 
+def dispatch_saved_preview(task_id, factory, dispatch):
+    """Deliver this plan's outbox item without production maintenance."""
+    with factory() as session:
+        plan = session.get(EditingPlanningTaskRecord, task_id)
+        if plan is None or plan.status != "completed" or plan.mode != "generate":
+            return
+        preview_id = plan.result.get("preview_task_id")
+        preview = session.get(EditingTaskRecord, preview_id) if preview_id else None
+        if (
+            preview is None
+            or preview.status != "queued"
+            or (preview.project_id, preview.source_id)
+            != (plan.project_id, plan.source_id)
+        ):
+            return
+    dispatch(preview_id)
+
+
+def process_plan_and_preview(task_id, settings, factory, provider, dispatch):
+    plan_worker(task_id, settings, factory, provider)
+    dispatch_saved_preview(task_id, factory, dispatch)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--provider-env", type=Path, required=True)
     parser.add_argument("--port", type=int, default=8018)
+    parser.add_argument("--examples", type=Path)
+    parser.add_argument("--resume-preview", action="append", default=[])
     parser.add_argument("--enable-user-submissions", action="store_true")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
@@ -107,6 +146,8 @@ def main():
     if not (root / "site.db").is_file():
         parser.error("--root must contain the existing isolated site.db")
     settings = settings_for(root, args.provider_env)
+    if args.examples is not None:
+        settings.video_editing_template_examples_dir = args.examples.resolve()
     checks = {
         "database": True,
         "native_library": settings.video_editing_library_dir.is_dir(),
@@ -136,12 +177,21 @@ def main():
         ThreadPoolExecutor(max_workers=1) as planning,
         ThreadPoolExecutor(max_workers=1) as rendering,
     ):
-        app.state.editing_planning_dispatcher = lambda task: planning.submit(
-            plan_worker, task, settings, app.state.session_factory, provider
-        )
         app.state.editing_dispatcher = lambda task: rendering.submit(
             edit_worker, task, settings, app.state.session_factory
         )
+        app.state.editing_planning_dispatcher = lambda task: planning.submit(
+            process_plan_and_preview,
+            task,
+            settings,
+            app.state.session_factory,
+            provider,
+            app.state.editing_dispatcher,
+        )
+        for task in args.resume_preview:
+            dispatch_saved_preview(
+                task, app.state.session_factory, app.state.editing_dispatcher
+            )
         uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)
 
 

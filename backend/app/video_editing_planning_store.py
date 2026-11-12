@@ -14,6 +14,19 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256
 from .video_assistance_provider import planner_configured, planner_endpoint
+from .video_editing_apple_pipeline import (
+    ENGINE as APPLE_ENGINE,
+)
+from .video_editing_apple_pipeline import (
+    TEMPLATE_ID as APPLE_TEMPLATE_ID,
+)
+from .video_editing_apple_pipeline import (
+    TEMPLATE_NAME as APPLE_TEMPLATE_NAME,
+)
+from .video_editing_apple_pipeline import (
+    suite_bundle,
+    suite_engine,
+)
 from .video_editing_browser_clocks import FRUIT_LIST_TEMPLATE_ID
 from .video_editing_contracts import EditingPlanningTaskCreate
 from .video_editing_library_choice_store import stored_choice_snapshot
@@ -43,6 +56,7 @@ from .video_editing_transcript_store import (
 )
 
 FILES = {
+    "suite_plan": "suite-plan.json",
     "request": "semantic-request.json",
     "request_evidence": "semantic-request-evidence.json",
     "response": "semantic-response.json",
@@ -50,6 +64,7 @@ FILES = {
     "receipt": "semantic-validated.json",
     "lineage": "input-lineage.json",
     "transcript": "transcript.json",
+    "material_placement": "material-placement.json",
 }
 
 
@@ -98,6 +113,9 @@ def _template_availability(snapshot: dict) -> tuple[int | None, list[str]]:
         if note["target_kind"] == "group" and note["choice"] == "avoid"
     } & slots
     runtime = snapshot.get("planning_runtime")
+    if runtime and runtime.get("template_style", {}).get("allowed_group_ids"):
+        slots &= set(runtime["template_style"]["allowed_group_ids"])
+        excluded &= slots
     available = (
         len(slots - excluded - runtime["unavailable_template_groups"].keys())
         if runtime is not None
@@ -135,6 +153,16 @@ def planning_response(
     available, excluded = _template_availability(row.snapshot)
     semantic = row.result.get("semantic")
     return {
+        **(
+            {
+                "engine": APPLE_ENGINE,
+                "template_id": APPLE_TEMPLATE_ID,
+                "template_name": APPLE_TEMPLATE_NAME,
+                "suite_plan": row.result.get("suite_plan"),
+            }
+            if suite_engine(row.snapshot)
+            else {}
+        ),
         "id": row.id,
         "project_id": row.project_id,
         "source_id": row.source_id,
@@ -178,8 +206,13 @@ def planning_response(
         "auto_preview": row.checkpoint.get("auto_preview", False),
         "auto_preview_available": (
             row.status == "prepared"
-            and settings.video_editing_native_plan_enabled
-            and bool(row.snapshot.get("overlay_template"))
+            and (
+                suite_engine(row.snapshot)
+                or (
+                    settings.video_editing_native_plan_enabled
+                    and bool(row.snapshot.get("overlay_template"))
+                )
+            )
         ),
         "auto_preview_error_code": (
             None
@@ -296,8 +329,26 @@ def create_planning_task(
             },
         ),
         "source_subtitles": base.options["source_subtitles"],
+        **({"music": body.music} if body.music is not None else {}),
     }
-    if body.template_id is not None:
+    if body.template_id == APPLE_TEMPLATE_ID:
+        if base.options["source_subtitles"] != "none":
+            raise ApiError(
+                422,
+                "EDITING_APPLE_CLEAN_SOURCE_REQUIRED",
+                "此模板需要没有烧字字幕的口播视频。",
+            )
+        snapshot.update(
+            engine=APPLE_ENGINE,
+            engine_bundle=suite_bundle(settings),
+            creative_options=body.creative_options.model_dump(mode="json")
+            if body.creative_options
+            else {},
+        )
+        snapshot["asset_cards"] = material_cards(
+            source_assets(source) | selected, include_video_durations=True
+        )
+    elif body.template_id is not None:
         try:
             template = overlay_template(body.template_id)
         except ValueError as error:
@@ -355,8 +406,14 @@ def create_planning_task(
             )
         require_template_group_capacity(prepared.snapshot)
         if body.auto_preview and (
-            not settings.video_editing_native_plan_enabled
-            or not prepared.snapshot.get("overlay_template")
+            (
+                not settings.video_editing_native_plan_enabled
+                and not suite_engine(prepared.snapshot)
+            )
+            or not (
+                prepared.snapshot.get("overlay_template")
+                or suite_engine(prepared.snapshot)
+            )
         ):
             raise ApiError(
                 409,

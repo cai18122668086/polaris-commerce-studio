@@ -111,11 +111,26 @@ PUBLIC_TEMPLATE_IDS = tuple(STYLES)
 FEATURED = set(PUBLIC_TEMPLATE_IDS)
 
 
-def style_policy(template: dict | None) -> dict | None:
+COHESIVE_MEMBERS = {
+    "product-explainer-v1": "CX-G01 CX-G02",
+    "knowledge-talk-v1": "Z-M01 Z-M02 Z-M03 Z-M04 Z-M09 Z-M10 Z-M13 Z-M14",
+    "presenter-openings-v1": "LYO01 LYO02 LYO03 LYO04",
+    "rotation-cards-v1": "CX-G04",
+    "azl-panels-v1": "AZL01 AZL02 AZL03 AZL04 AZL05 AZL06 AZL07",
+    "unified-chapter-v1": "Z-M15",
+    "unified-paper-typewriter-v1": "Z-M11",
+    "chenxi-broll-v1": "CXBR01 CXBR02 CXBR03 CXBR04 CXBR05",
+}
+
+
+def style_policy(template: dict | None, *, cohesive: bool = False) -> dict | None:
     if (
         not template
         or template["id"] not in STYLES
-        or template["id"] in {"product-explainer-v1", "knowledge-talk-v1"}
+        or (
+            not cohesive
+            and template["id"] in {"product-explainer-v1", "knowledge-talk-v1"}
+        )
     ):
         return None
     profile = STYLES[template["id"]]
@@ -129,6 +144,18 @@ def style_policy(template: dict | None) -> dict | None:
         "catalog_scope": "template_members",
         "measured_word_clock": True,
         "native_role_capacities": True,
+        **(
+            {
+                "composition_contract": "tengli.cohesive-suite/1",
+                "allowed_group_ids": COHESIVE_MEMBERS[template["id"]].split(),
+                "minimum_distinct_groups": 1,
+                "selection_rule": (
+                    "只在本套画面机制内按语义选择，允许有意复用；不追求动效种数。"
+                ),
+            }
+            if cohesive
+            else {}
+        ),
     }
 
 
@@ -144,7 +171,12 @@ def style_candidate_ids(
         for note in (choices or {}).get("notes", [])
         if note["target_kind"] == "group" and note["choice"] == "avoid"
     )
-    return ({slot["group_id"] for slot in template["slots"]} - unavailable) | {"Z-M00"}
+    members = set(
+        policy.get(
+            "allowed_group_ids", [slot["group_id"] for slot in template["slots"]]
+        )
+    )
+    return (members - unavailable) | {"Z-M00"}
 
 
 def style_blockers(snapshot: dict) -> list[str]:
@@ -189,6 +221,14 @@ def validate_template_style(plan: SemanticPlan, runtime: dict | None) -> None:
         return
     if policy["version"] != STYLE_POLICY_VERSION:
         raise ValueError("Unknown template style policy")
+    if policy.get("composition_contract"):
+        if policy["composition_contract"] != "tengli.cohesive-suite/1":
+            raise ValueError("Unknown composition contract")
+        if any(
+            beat.group_id not in {*policy["allowed_group_ids"], "Z-M00"}
+            for beat in plan.beats
+        ):
+            raise ValueError("编排混入了所选成套模板以外的动效")
     signature = set(policy["signature_group_ids"])
     if (
         sum(beat.group_id in signature for beat in plan.beats)

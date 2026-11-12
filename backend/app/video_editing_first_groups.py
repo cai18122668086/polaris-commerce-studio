@@ -35,6 +35,10 @@ READABLE_POLICIES = frozenset(
 )
 MAX_DENSE_SHOTS = 16
 DENSITY_OUTPUT_TOKENS = 8500
+# This legacy dense-pool planner keeps its published selection policy.
+# Cohesive suites bypass it and use their own allowed mechanisms and density.
+DENSE_MIN_TYPES = 5
+DENSE_PREFERRED_TYPES = 10
 
 # Profiles only expand short word references into the existing native paths.
 # The native recipe and renderer retain responsibility for layout and motion.
@@ -858,11 +862,6 @@ def _select_dense(
     selected_images: set[str] | None = None,
 ) -> list[_Candidate]:
     """Choose a bounded, chronological sequence from the model's valid proposals."""
-    from .video_editing_overlay_templates import (
-        MIN_OVERLAY_TYPES,
-        PREFERRED_OVERLAY_TYPES,
-    )
-
     tokens = transcript.tokens
     paths: list[tuple[_Candidate, ...]] = [()]
 
@@ -876,7 +875,7 @@ def _select_dense(
         )
         scope = (
             (
-                min(distinct, MIN_OVERLAY_TYPES),
+                min(distinct, DENSE_MIN_TYPES),
                 *opening,
                 int(any(selected_images.intersection(c.beat.asset_ids) for c in path)),
             )
@@ -885,7 +884,7 @@ def _select_dense(
         )
         return (
             *scope,
-            min(distinct, PREFERRED_OVERLAY_TYPES + 1),
+            min(distinct, DENSE_PREFERRED_TYPES + 1),
             int(count > distinct),
             count,
             min(len(early), 3),
@@ -991,8 +990,6 @@ def expand_group_plan(
     choice_snapshot: dict | None,
     runtime: dict | None,
 ) -> SemanticPlan:
-    from .video_editing_overlay_templates import MIN_OVERLAY_TYPES
-
     policy = (runtime or {}).get("first_groups_policy")
     if policy in {DENSITY_POLICY, PREFLIGHT_POLICY} or policy in READABLE_POLICIES:
         return _expand(
@@ -1010,7 +1007,7 @@ def expand_group_plan(
     plan = _expand(data, transcript, package, template, cards, choice_snapshot, runtime)
     if (
         policy == 2
-        and len({beat.group_id for beat in plan.beats} - {"Z-M00"}) < MIN_OVERLAY_TYPES
+        and len({beat.group_id for beat in plan.beats} - {"Z-M00"}) < DENSE_MIN_TYPES
     ):
         plan = _expand(
             data,
@@ -1038,7 +1035,6 @@ def _expand(
     density: bool = False,
 ) -> SemanticPlan:
     from .video_editing_overlay_recipes import check_overlay_beat
-    from .video_editing_overlay_templates import PREFERRED_OVERLAY_TYPES
 
     tokens = transcript.tokens
     policy = (runtime or {}).get("first_groups_policy")
@@ -1225,12 +1221,12 @@ def _expand(
         )
         if (
             policy in {TARGET_SEARCH_POLICY, SCOPED_POOL_POLICY}
-            and len({c.beat.group_id for c in selected}) < PREFERRED_OVERLAY_TYPES
+            and len({c.beat.group_id for c in selected}) < DENSE_PREFERRED_TYPES
         ):
             found = _find_dense_target(
                 candidates,
                 transcript,
-                PREFERRED_OVERLAY_TYPES,
+                DENSE_PREFERRED_TYPES,
                 quick_opening=bool(
                     selected and tokens[selected[0].begin].start_ms <= 2200
                 ),

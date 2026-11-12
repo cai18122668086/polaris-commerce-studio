@@ -98,7 +98,7 @@ class DeliveryFile:
 
     @property
     def mime(self) -> str:
-        return {".mp4": "video/mp4", ".wav": "audio/wav"}.get(
+        return {".mp4": "video/mp4", ".wav": "audio/wav", ".jpg": "image/jpeg"}.get(
             self.path.suffix, "application/json"
         )
 

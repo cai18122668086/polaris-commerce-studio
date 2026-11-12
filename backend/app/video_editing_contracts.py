@@ -148,14 +148,40 @@ class EditingCarriedRevision(StrictVideoModel):
     protected_beat_ids: list[str]
 
 
+class EditingAppleNameCard(StrictVideoModel):
+    enabled: bool = False
+    name: str = Field(default="", max_length=32)
+    description: str = Field(default="", max_length=80)
+
+
+class EditingAppleCreativeOptions(StrictVideoModel):
+    schema_version: Literal["tengli.apple-creative/1"] = "tengli.apple-creative/1"
+    title: str = Field(default="", max_length=60)
+    subtitle: str = Field(default="", max_length=100)
+    name_card: EditingAppleNameCard = Field(default_factory=EditingAppleNameCard)
+    cover: Literal["auto", "none"] = "auto"
+
+
 class EditingOptions(StrictVideoModel):
-    mode: Literal["subtitles", "transcript", "native_plan"] = "subtitles"
+    mode: Literal["subtitles", "transcript", "native_plan", "suite_plan"] = "subtitles"
     language: Literal["zh", "en", "auto"] = "zh"
     # Explicit website binding to a bundled font, independent of old episodes.
     caption_font_id: Literal["font-d1961be1161ea1be"] = "font-d1961be1161ea1be"
     source_subtitles: Literal["none", "present", "unknown"] = "unknown"
+    reference_script: str | None = Field(
+        default=None,
+        max_length=20000,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Optional user reference for comparing recognition; "
+            "never confirmed script provenance."
+        ),
+    )
     transcript_revision_id: UUID | None = None
     native_plan_id: UUID | None = None
+    suite_plan_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     native_edits: NativeRenderEdits | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -166,15 +192,35 @@ class EditingOptions(StrictVideoModel):
         default=None, exclude_if=lambda value: value is None
     )
 
+    @field_validator("reference_script", mode="before")
+    @classmethod
+    def trim_reference_script(cls, value: Any) -> Any:
+        return value.strip() or None if isinstance(value, str) else value
+
     @model_validator(mode="after")
     def matching_plan_mode(self) -> Self:
+        if self.reference_script is not None and (
+            self.mode in {"native_plan", "suite_plan"}
+            or self.transcript_revision_id is not None
+        ):
+            raise ValueError(
+                "Saved plans and text revisions keep their frozen transcript"
+            )
         if (self.mode == "native_plan") != (self.native_plan_id is not None):
             raise ValueError("Native mode needs exactly one saved native plan")
+        if (self.mode == "suite_plan") != (self.suite_plan_id is not None):
+            raise ValueError("Suite mode needs exactly one saved suite plan")
+        if self.suite_plan_id and self.delivery != "preview_first":
+            raise ValueError("Suite rendering requires preview confirmation")
+        if self.suite_plan_id and (self.transcript_revision_id or self.preview_base):
+            raise ValueError(
+                "Suite plans use their frozen input without legacy revisions"
+            )
         if self.native_plan_id and self.transcript_revision_id:
             raise ValueError("Saved native plans use their own frozen transcript")
-        if self.native_edits and not self.native_plan_id:
+        if self.native_edits and not (self.native_plan_id or self.suite_plan_id):
             raise ValueError("User edits require a frozen native plan")
-        if self.delivery and not self.native_plan_id:
+        if self.delivery and not (self.native_plan_id or self.suite_plan_id):
             raise ValueError("Preview confirmation requires a frozen native plan")
         if self.preview_base and self.delivery != "preview_first":
             raise ValueError("An earlier preview can only start a new preview")
@@ -236,6 +282,12 @@ class Transcript(StrictVideoModel):
     utterances: list[TranscriptUtterance]
     reference_text: str | None = None
     reference_matches: bool | None = None
+    reference_reconciliation: dict[str, Any] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
+    confirmed_alignment: dict[str, Any] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
     differences: list[dict] = Field(default_factory=list)
     timing_review: Literal["unreviewed", "reviewed"] = "unreviewed"
     parent_transcript_sha256: str | None = None
@@ -585,9 +637,26 @@ class EditingPlanningTaskCreate(StrictVideoModel):
         max_length=64,
         exclude_if=lambda value: value is None,
     )
+    music: Literal["template", "lower", "off"] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Background music preference frozen at preparation "
+            "and used by preview rendering."
+        ),
+    )
+    creative_options: EditingAppleCreativeOptions | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def prepared_execution(self) -> Self:
+        if self.creative_options is not None and (
+            self.mode != "prepare" or self.template_id != "apple-minimal-v1"
+        ):
+            raise ValueError("Creative options require Apple suite preparation")
+        if self.music is not None and self.mode != "prepare":
+            raise ValueError("Music is frozen when preparing the planning request")
         if (self.mode == "generate") != (self.prepared_task_id is not None):
             raise ValueError("Model execution needs exactly one prepared request")
         if self.auto_preview and self.mode != "generate":
@@ -720,6 +789,16 @@ class EditingTemplateImageRequirement(StrictVideoModel):
 
 
 class EditingPlanningTaskResponse(StrictVideoModel):
+    engine: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    template_id: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    template_name: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    suite_plan: dict[str, Any] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     id: str
     project_id: str
     source_id: str

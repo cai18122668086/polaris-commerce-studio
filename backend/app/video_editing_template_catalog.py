@@ -9,6 +9,7 @@ from .config import Settings
 from .errors import ApiError
 from .motion_library import read_json, sha256
 from .motion_library_validation import group_status, motion_evidence_directory
+from .video_editing_apple_pipeline import suite_card
 from .video_editing_overlay_templates import overlay_templates
 from .video_editing_template_styles import FEATURED, PUBLIC_TEMPLATE_IDS, STYLES
 from .video_studio_schemas import StrictVideoModel
@@ -20,13 +21,17 @@ class TemplateExample(StrictVideoModel):
     poster_url: str | None = None
     round: Literal["first", "replan", "recorded_response_replay", "operator_authored"]
     origin: Literal["tengli_gateway", "operator_candidate"] | None = None
-    distinct_groups: int = Field(ge=5)
-    occurrences: int = Field(ge=5)
+    distinct_groups: int = Field(ge=1)
+    occurrences: int = Field(ge=1)
     width: int = Field(gt=0)
     height: int = Field(gt=0)
 
 
 class TemplateCatalogCard(StrictVideoModel):
+    engine: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    capabilities: list[str] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
     id: str
     version: str
     name: str
@@ -202,4 +207,24 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
                 }
             ).model_dump()
         )
+    apple = suite_card(settings, workspace_id)
+    if apple is not None:
+        try:
+            entry, _ = example_file(settings, apple["id"], "video")
+            url = (
+                f"/api/v1/video-studio/workspaces/{workspace_id}"
+                f"/editing-template-catalog/{apple['id']}/example"
+            )
+            poster = None
+            try:
+                example_file(settings, apple["id"], "poster")
+                poster = url + "/poster"
+            except ApiError:
+                pass
+            apple["example"] = TemplateExample.model_validate(
+                {**entry["metadata"], "url": url + "/video", "poster_url": poster}
+            ).model_dump()
+        except (ApiError, KeyError, ValueError):
+            pass
+        cards.insert(0, TemplateCatalogCard.model_validate(apple).model_dump())
     return cards

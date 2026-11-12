@@ -58,5 +58,5 @@ export function editingPlanningAction(prepared?: PreparedInput, submitted?: Plan
     return ["failed", "cancelled"].includes(submitted.status) ? "prepare" : "wait";
   }
   if (!prepared) return "prepare";
-  return prepared.execution_available && !prepared.template_style_blockers?.length && (prepared.available_template_group_count ?? 5) >= 5 ? "generate" : "blocked";
+  return prepared.execution_available && !prepared.template_style_blockers?.length && (prepared.available_template_group_count ?? 1) >= 1 ? "generate" : "blocked";
 }

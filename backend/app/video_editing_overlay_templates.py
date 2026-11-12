@@ -109,8 +109,8 @@ from .video_editing_yy_openings import (
     yy_opening_binding,
 )
 
-MIN_OVERLAY_TYPES = 5
-PREFERRED_OVERLAY_TYPES = 10
+MIN_OVERLAY_TYPES = 1
+PREFERRED_OVERLAY_TYPES = 1
 LEGACY_PICTURE_TEMPLATE_ID = "picture-compare-v1"
 PICTURE_TEMPLATE_ID = "picture-compare-v2"
 ROTATION_TEMPLATE_ID = "rotation-cards-v1"

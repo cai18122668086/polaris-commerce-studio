@@ -18,29 +18,20 @@ ALIGNMENT_MANIFEST = MANIFEST.with_name("editing_alignment_models.json")
 PROCESSING_VERSION = "funasr-force-align/2"
 
 
-def normalize_alignment(
+def measured_alignment(
     result: list[dict[str, Any]],
     text: str,
     prepared: dict,
-    parent: Transcript,
-    parent_sha256: str,
-    revision_id: str,
-    text_status: Literal["user_corrected", "operator_candidate"],
     model_root: Path,
     model_identity: str,
     version: str,
+    reference: str | None,
+    *,
+    preserve_surface: bool = False,
 ) -> Transcript:
     """Native token ↔ native interval ↔ supplied text; no equal-time repair."""
-    if (
-        parent.source_sha256 != prepared["source_sha256"]
-        or parent.audio_sha256 != prepared["audio_sha256"]
-        or parent.duration_ms != prepared["duration_ms"]
-    ):
-        raise EditingFailure("EDITING_ALIGNMENT_SOURCE_MISMATCH")
-    if not revision_id or not text.strip() or len(text) > 20000:
+    if not text.strip() or len(text) > 20000:
         raise EditingFailure("EDITING_ALIGNMENT_TEXT_REQUIRED")
-    if parent.language != "zh":
-        raise EditingFailure("EDITING_ALIGNMENT_LANGUAGE_UNSUPPORTED")
     if len(result) != 1 or not result[0].get("timestamp"):
         raise EditingFailure("EDITING_ALIGNMENT_TIMESTAMPS_REQUIRED")
     native_words = result[0].get("text", "").split()
@@ -115,11 +106,59 @@ def normalize_alignment(
         str(model_root),
         model_identity,
         version,
-        parent.reference_text,
+        reference,
         paraformer=False,
     )
     data = transcript.model_dump()
     data["timing_adjustments"].extend(token_map)
+    # Keep the supplied surface (including English spaces) after validating the
+    # native word mapping and clocks; punctuation has no independent duration.
+    if preserve_surface:
+        for i, match in enumerate(matches):
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+            data["tokens"][i]["text"] = text[match.start() : end]
+            if i == 0:
+                data["tokens"][i]["text"] = (
+                    text[: match.start()] + data["tokens"][i]["text"]
+                )
+        by_id = {token["id"]: token["text"] for token in data["tokens"]}
+        for utterance in data["utterances"]:
+            utterance["text"] = "".join(by_id[t] for t in utterance["token_ids"])
+    return Transcript.model_validate(data)
+
+
+def normalize_alignment(
+    result: list[dict[str, Any]],
+    text: str,
+    prepared: dict,
+    parent: Transcript,
+    parent_sha256: str,
+    revision_id: str,
+    text_status: Literal["user_corrected", "operator_candidate"],
+    model_root: Path,
+    model_identity: str,
+    version: str,
+) -> Transcript:
+    if (
+        parent.source_sha256 != prepared["source_sha256"]
+        or parent.audio_sha256 != prepared["audio_sha256"]
+        or parent.duration_ms != prepared["duration_ms"]
+    ):
+        raise EditingFailure("EDITING_ALIGNMENT_SOURCE_MISMATCH")
+    if not revision_id:
+        raise EditingFailure("EDITING_ALIGNMENT_TEXT_REQUIRED")
+    if parent.language != "zh":
+        raise EditingFailure("EDITING_ALIGNMENT_LANGUAGE_UNSUPPORTED")
+    transcript = measured_alignment(
+        result,
+        text,
+        prepared,
+        model_root,
+        model_identity,
+        version,
+        parent.reference_text,
+    )
+    data = transcript.model_dump()
     prefix = hashlib.sha256(
         json.dumps(
             [

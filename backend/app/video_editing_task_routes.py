@@ -24,6 +24,15 @@ from .motion_library import MOTION_SHA256, read_json, sha256
 from .motion_library_validation import group_status, motion_evidence_directory
 from .motion_local_dependencies import local_dependencies
 from .motion_parameter_contracts import input_contract
+from .video_editing_apple_pipeline import (
+    TEMPLATE_ID as APPLE_TEMPLATE_ID,
+)
+from .video_editing_apple_pipeline import (
+    TEMPLATE_NAME as APPLE_TEMPLATE_NAME,
+)
+from .video_editing_apple_pipeline import (
+    verified_suite,
+)
 from .video_editing_catalog import (
     asset_metadata,
     audio_asset,
@@ -160,6 +169,8 @@ def response(
         native = None
     template_id = native.recipes.get("overlay_template_id") if native else None
     template_name = STYLES.get(template_id, {}).get("name") if template_id else None
+    if row.options.get("suite_plan_id"):
+        template_id, template_name = APPLE_TEMPLATE_ID, APPLE_TEMPLATE_NAME
     if source is None:
         source = session.get(EditingSourceRecord, row.source_id)
     if artifacts is None:
@@ -198,7 +209,11 @@ def response(
         "project_id": row.project_id,
         "template_id": template_id,
         "template_name": template_name,
-        "planning_origin": native.origin if native else None,
+        "planning_origin": native.origin
+        if native
+        else "tengli_gateway"
+        if row.options.get("suite_plan_id")
+        else None,
         "source_id": row.source_id,
         **({"source_origin": source_origin(source)} if source else {}),
         "source_frame": recorded_source_frame(transcript) if transcript else None,
@@ -758,6 +773,20 @@ def persist_editing_task(
             source,
             body.options,
         )
+    if body.options.suite_plan_id:
+        suite, _, _ = verified_suite(
+            session, settings, str(body.options.suite_plan_id), source
+        )
+        if (
+            body.options.source_subtitles != suite.snapshot["source_subtitles"]
+            or body.options.language != "zh"
+            or body.options.native_edits is not None
+        ):
+            raise ApiError(
+                409,
+                "EDITING_NATIVE_OPTIONS_CHANGED",
+                "请使用该模板规划保存的口播与配乐设置。",
+            )
     if (
         body.options.preview_base
         and preview_base_attempt(session, settings, source, payload["options"]) is None

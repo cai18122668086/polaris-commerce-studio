@@ -131,7 +131,7 @@ def test_slow_inspiration_database_query_does_not_block_event_loop(settings, var
         def delay_inspiration_query(_conn, _cursor, statement, *_args):
             if "FROM inspiration_cases" in statement:
                 entered.set()
-                assert release.wait(3), "watchdog: inspiration query was not released"
+                assert release.wait(12), "watchdog: inspiration query was not released"
 
         event.listen(app.state.engine, "before_cursor_execute", delay_inspiration_query)
 
@@ -144,7 +144,11 @@ def test_slow_inspiration_database_query_does_not_block_event_loop(settings, var
                     client.get(url, params={"variant": variant})
                 )
                 try:
-                    assert await asyncio.to_thread(entered.wait, 1)
+                    # Wait for fixture I/O to start on a shared runner; the
+                    # independent health request still has its strict 1s limit.
+                    assert await asyncio.to_thread(
+                        entered.wait, BURST_START_TIMEOUT_SECONDS
+                    )
                     response = await asyncio.wait_for(client.get("/health/live"), 1)
                     assert response.status_code == 200
                     assert not release.is_set()
@@ -157,7 +161,7 @@ def test_slow_inspiration_database_query_does_not_block_event_loop(settings, var
             # Also unblocks the old synchronous implementation if it stalls
             # the event loop, ensuring the regression fails instead of hanging.
             with ThreadPoolExecutor(max_workers=1) as executor:
-                watchdog = executor.submit(lambda: release.wait(2) or release.set())
+                watchdog = executor.submit(lambda: release.wait(10) or release.set())
                 asyncio.run(scenario())
                 watchdog.result()
         finally:

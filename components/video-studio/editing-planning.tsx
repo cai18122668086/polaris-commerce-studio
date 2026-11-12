@@ -127,9 +127,6 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const [batchCount, setBatchCount] = useState(0);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const automatic = useRef(new EditingAutomaticRun());
-  // A hot reload may retain the former optional ref value. A fresh controller
-  // cancels that obsolete UI intent instead of reviving a paid continuation.
-  if (!automatic.current?.cancelUnless) automatic.current = new EditingAutomaticRun();
   const candidates = tasks.filter(task => task.status === "completed" && task.source_frame?.supports_native_portrait !== false && task.artifacts.some(a => a.role === "transcript"));
   const selectedCandidate = candidates.some(task => task.id === selected) ? selected : "";
   const eligible = jobs.filter(canBatchPreview);

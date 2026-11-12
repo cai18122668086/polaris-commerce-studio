@@ -76,14 +76,19 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const preferenceKey = `tengli-editing-options:${workspaceId}:${projectId}`;
   useEffect(() => {
-    try {
-      const prior: unknown = JSON.parse(localStorage.getItem(preferenceKey) || "null");
-      if (prior && typeof prior === "object") {
-        if ("music" in prior && ["template", "lower", "off"].includes(String(prior.music))) setMusic(prior.music as EditingMusicPreference);
-        if ("creativeOptions" in prior && prior.creativeOptions && typeof prior.creativeOptions === "object" && "schema_version" in prior.creativeOptions && prior.creativeOptions.schema_version === "tengli.apple-creative/1") setCreativeOptions({ ...defaultAppleOptions, ...prior.creativeOptions } as AppleCreativeOptions);
-      }
-    } catch { /* Saved task snapshots remain authoritative. */ }
-    setPreferencesLoaded(true);
+    let live = true;
+    void Promise.resolve().then(() => {
+      if (!live) return;
+      try {
+        const prior: unknown = JSON.parse(localStorage.getItem(preferenceKey) || "null");
+        if (prior && typeof prior === "object") {
+          if ("music" in prior && ["template", "lower", "off"].includes(String(prior.music))) setMusic(prior.music as EditingMusicPreference);
+          if ("creativeOptions" in prior && prior.creativeOptions && typeof prior.creativeOptions === "object" && "schema_version" in prior.creativeOptions && prior.creativeOptions.schema_version === "tengli.apple-creative/1") setCreativeOptions({ ...defaultAppleOptions, ...prior.creativeOptions } as AppleCreativeOptions);
+        }
+      } catch { /* Saved task snapshots remain authoritative. */ }
+      setPreferencesLoaded(true);
+    });
+    return () => { live = false; };
   }, [preferenceKey]);
   useEffect(() => {
     if (preferencesLoaded) {

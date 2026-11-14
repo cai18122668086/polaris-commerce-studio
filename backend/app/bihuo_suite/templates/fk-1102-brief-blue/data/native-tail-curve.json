@@ -1,0 +1,103 @@
+{
+  "method": "Native stable FFmpeg RGB; fixed left gradient patch x0:35 y500:1000 normalized to f510; observed color-space curve, not author parameter",
+  "rows": [
+    {
+      "frame": 510,
+      "canvas_patch_mean": 241.73653333333334,
+      "relative_RGB": 1.0
+    },
+    {
+      "frame": 511,
+      "canvas_patch_mean": 241.73653333333334,
+      "relative_RGB": 1.0
+    },
+    {
+      "frame": 512,
+      "canvas_patch_mean": 241.73653333333334,
+      "relative_RGB": 1.0
+    },
+    {
+      "frame": 513,
+      "canvas_patch_mean": 222.5906857142857,
+      "relative_RGB": 0.9207987003245091
+    },
+    {
+      "frame": 514,
+      "canvas_patch_mean": 204.50234285714285,
+      "relative_RGB": 0.8459720177055413
+    },
+    {
+      "frame": 515,
+      "canvas_patch_mean": 185.5400380952381,
+      "relative_RGB": 0.7675299862077312
+    },
+    {
+      "frame": 516,
+      "canvas_patch_mean": 167.77445714285713,
+      "relative_RGB": 0.6940384840859406
+    },
+    {
+      "frame": 517,
+      "canvas_patch_mean": 148.59746666666666,
+      "relative_RGB": 0.6147083546605009
+    },
+    {
+      "frame": 518,
+      "canvas_patch_mean": 129.6516761904762,
+      "relative_RGB": 0.5363346383878931
+    },
+    {
+      "frame": 519,
+      "canvas_patch_mean": 111.69836190476191,
+      "relative_RGB": 0.4620665331985204
+    },
+    {
+      "frame": 520,
+      "canvas_patch_mean": 92.7284,
+      "relative_RGB": 0.3835928261291632
+    },
+    {
+      "frame": 521,
+      "canvas_patch_mean": 73.62601904761905,
+      "relative_RGB": 0.3045713365389222
+    },
+    {
+      "frame": 522,
+      "canvas_patch_mean": 55.55878095238095,
+      "relative_RGB": 0.2298319587290941
+    },
+    {
+      "frame": 523,
+      "canvas_patch_mean": 36.377295238095236,
+      "relative_RGB": 0.15048323369448738
+    },
+    {
+      "frame": 524,
+      "canvas_patch_mean": 18.55542857142857,
+      "relative_RGB": 0.07675889248333959
+    },
+    {
+      "frame": 525,
+      "canvas_patch_mean": 0.0,
+      "relative_RGB": 0.0
+    }
+  ],
+  "command": [
+    "C:/tl/tools/bin/ffmpeg.exe",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-reinit_filter",
+    "0",
+    "-i",
+    "D:\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\media\\20261112_114826_cov1111-1037.mp4",
+    "-an",
+    "-fps_mode",
+    "passthrough",
+    "-f",
+    "rawvideo",
+    "-pix_fmt",
+    "rgb24",
+    "pipe:1"
+  ]
+}

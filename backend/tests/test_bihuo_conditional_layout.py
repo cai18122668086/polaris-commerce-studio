@@ -10,6 +10,130 @@ from app.bihuo_suite import conditional_layout as layout
 from app.bihuo_suite import registry
 
 
+def video_config(tmp_path):
+    from app.bihuo_suite import video_materials
+    from app.motion_library import sha256
+
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"source-bound-video-test")
+    rows = []
+    for i, color in enumerate(("red", "green", "blue")):
+        path = tmp_path / f"frame-{i}.png"
+        Image.new("RGB", (40, 30), color).save(path)
+        rows.append({"path": str(path), "sha256": sha256(path)})
+    proxy = str(tmp_path / "slot.jpg")
+    policy = {
+        **video_materials.identity(),
+        "streams": [
+            {
+                "source_path": str(clip),
+                "source_sha256": sha256(clip),
+                "proxy_path": proxy,
+                "start": 2.0,
+                "frames": rows,
+            }
+        ],
+    }
+    return {
+        "materials": [{"path": proxy}],
+        "video_materials": policy,
+        "resolved_plan": {"kind": "video", "path": str(clip)},
+    }
+
+
+def test_video_advances_from_slot_start_and_holds_last_frame(tmp_path):
+    from app.bihuo_suite.video_materials import VideoFrames
+
+    cfg = video_config(tmp_path)
+    frames = VideoFrames(cfg)
+    paths = [frames.bind(cfg, n)["materials"][0]["path"] for n in (0, 50, 51, 52, 100)]
+    expected = [r["path"] for r in cfg["video_materials"]["streams"][0]["frames"]]
+    assert paths == [expected[0], expected[0], expected[1], expected[2], expected[2]]
+    assert frames.bind(cfg, 51)["resolved_plan"] == cfg["resolved_plan"]
+    assert cfg["materials"][0]["path"].endswith("slot.jpg")
+    Image.new("RGB", (40, 30), "yellow").save(expected[2])
+    with pytest.raises(ValueError, match="frame changed"):
+        VideoFrames(cfg).bind(cfg, 52)
+
+
+@pytest.mark.parametrize("hook", ["render_frame", "render_layers", "encode"])
+def test_timed_video_hooks_restore_and_do_not_freeze_the_first_frame(tmp_path, hook):
+    from app.bihuo_suite.video_materials import execution
+
+    cfg = video_config(tmp_path)
+    if hook == "encode":
+        namespace = {"render": lambda raw, c, n: c["materials"][0]["path"]}
+        exec("def encode(c, out): return render(None, c, 51)", namespace)
+        module = SimpleNamespace(encode=namespace["encode"])
+        original = namespace["render"]
+
+        def call():
+            return module.encode(cfg, None)
+    else:
+
+        def original(c, n):
+            return c["materials"][0]["path"]
+
+        module = SimpleNamespace(**{hook: original})
+
+        def call():
+            return getattr(module, hook)(cfg, 51)
+
+    with execution(module, {"config": cfg}):
+        assert call().endswith("frame-1.png")
+    assert (
+        namespace["render"] if hook == "encode" else getattr(module, hook)
+    ) is original
+
+
+def test_picture_styles_expose_video_without_mutating_native_identity():
+    from app.bihuo_suite.video_materials import capabilities
+
+    for meta in registry.definitions().values():
+        before = copy.deepcopy(meta)
+        effective = capabilities(meta)
+        assert ("video_materials" in effective) == ("images" in effective)
+        assert meta == before
+
+
+def test_frame_extraction_uses_real_video_and_reuses_existing_cache(tmp_path):
+    import subprocess
+
+    import imageio_ffmpeg
+
+    from app.bihuo_suite.video_materials import _frames
+    from app.config import Settings
+    from app.motion_library import sha256
+
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    clip = tmp_path / "moving.mp4"
+    subprocess.run(
+        [
+            ffmpeg,
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=96x64:rate=25",
+            "-t",
+            "0.4",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(clip),
+        ],
+        check=True,
+    )
+    settings = Settings(video_editing_ffmpeg=ffmpeg)
+    material = {"path": str(clip), "sha256": sha256(clip), "duration": 0.4}
+    cache = _frames(material, 2.0, tmp_path, settings, lambda: None)
+    assert len(cache["frames"]) == 10
+    assert cache["frames"][0]["sha256"] != cache["frames"][-1]["sha256"]
+    assert _frames(material, 2.0, tmp_path, settings, lambda: None) == cache
+
+
 def test_long_no_image_node_keeps_every_character_and_fits_native_width():
     native = registry.runtime("bihuo-03-v1").top
     fonts = registry.fonts("bihuo-03-v1")

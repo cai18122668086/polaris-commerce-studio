@@ -253,8 +253,10 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
             pass
         cards.insert(0, TemplateCatalogCard.model_validate(apple).model_dump())
     from .bihuo_suite.registry import cards as bihuo_cards
+    from .bihuo_suite.video_materials import capabilities
 
     for card in bihuo_cards():
+        card["capabilities"] = capabilities(card)
         try:
             entry, _ = example_file(settings, card["id"], "video")
             url = (

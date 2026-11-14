@@ -95,6 +95,86 @@ def test_text_only_template_excludes_materials_from_model_request():
     assert "materials必须为空" in body["messages"][0]["content"]
 
 
+def test_video_stays_in_picture_style_full_script_request():
+    from app.bihuo_suite.video_materials import capabilities
+
+    meta = registry.definition("bihuo-09-v1")
+    video = {
+        "id": "material-video",
+        "kind": "video",
+        "duration_ms": 1500,
+        "sha256": "a" * 64,
+        "viewed_identity": "实际短片",
+        "semantic_use": "对应口播的操作画面",
+    }
+    body, _ = build_request(
+        transcript(),
+        "fixture",
+        [video],
+        template_profile={
+            **meta,
+            "capabilities": capabilities(meta),
+            "engine": registry.ENGINE,
+            "version": "1",
+            "flow": meta["description"],
+        },
+    )
+    assert json.loads(body["messages"][1]["content"])["available_materials"] == [video]
+
+
+def test_picture_style_accepts_video_in_owner_scoped_preparation(
+    suite_fixture, monkeypatch
+):
+    from app import video_editing_material_routes as uploads
+
+    client, _auth, ws, settings, _source, task = suite_fixture
+    identity = {
+        "engine": registry.ENGINE,
+        "template_id": "bihuo-09-v1",
+        "version": "fixture",
+        "sha256": "d" * 64,
+    }
+    monkeypatch.setattr(store, "suite_bundle", lambda *_: identity)
+    monkeypatch.setattr(pipeline, "suite_bundle", lambda *_: identity)
+    module = sys.modules["app.video_editing_apple_contracts"]
+    prior = module.build_request
+    monkeypatch.setattr(module, "build_request", lambda *a, **_k: prior(*a))
+    monkeypatch.setattr(uploads, "metadata", lambda *_: (96, 64, 400))
+    uploaded = client.post(
+        base(ws) + f"/projects/{task['project_id']}/editing-materials",
+        data={
+            "request_id": str(uuid4()),
+            "label": "操作短片",
+            "description": "实际操作过程",
+        },
+        files={"file": ("clip.mp4", b"owner-supplied-video-fixture", "video/mp4")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    material = uploaded.json()
+    response = client.post(
+        base(ws) + f"/editing-tasks/{task['id']}/planning-tasks",
+        json={
+            "request_id": str(uuid4()),
+            "template_id": "bihuo-09-v1",
+            "material_ids": [material["id"]],
+            "music": "off",
+        },
+    )
+    assert response.status_code == 200, response.text
+    from app.video_editing_task_models import EditingPlanningTaskRecord
+
+    with client.app.state.session_factory() as session:
+        row = session.get(EditingPlanningTaskRecord, response.json()["id"])
+        video = next(c for c in row.snapshot["asset_cards"] if c["kind"] == "video")
+        assert video["id"] == "material-" + material["id"]
+        assert video["duration_ms"] == 400
+    worker.process(response.json()["id"], settings, client.app.state.session_factory)
+    view = client.get(
+        base(ws) + f"/editing-planning-tasks/{response.json()['id']}"
+    ).json()
+    assert view["status"] == "prepared", view
+
+
 def test_installed_silver_and_optional_identity_use_real_runtime(tmp_path):
     assert registry.available("bihuo-36-v1")
     assert not registry.available("not-a-template")

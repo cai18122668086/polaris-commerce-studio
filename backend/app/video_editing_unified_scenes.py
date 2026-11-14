@@ -537,7 +537,7 @@ def _validate_explanation(
     duration: float,
 ) -> None:
     is_table = beat.group_id == "Z-M13"
-    fields = (
+    fields: list[tuple[str, ...]] = (
         [(f"rows/{i}/0", f"rows/{i}/1") for i in range(4)]
         if is_table
         else [(f"items/{i}",) for i in range(3)]

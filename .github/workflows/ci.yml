@@ -91,7 +91,8 @@ jobs:
   backend:
     name: Backend shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The largest shard passed in 42m34s but crossed 45m during process cleanup.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

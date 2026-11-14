@@ -126,7 +126,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
     {adding && <Dialog title="添加素材" onClose={() => { if (!busy) setAdding(false); }}>
     <section aria-label="本期补充素材" className={styles.materials}>
       <p className={styles.note}>{materialMode === "speech" ? "此模板可仅用口播出片，补充素材为可选。" : materialMode === "clips" ? "请上传已分好步骤的短录屏，每段从开头使用，并覆盖对应解说时长。长录屏自动定位尚未接入。" : "按模板要求选择商品、界面或资料图，并说明各自对应内容。"}</p>
-      <p className={styles.note}>填写素材是什么内容，会自动匹配对应台词。</p>
+      <p className={styles.note}>支持图片（JPG、PNG、WebP）和视频（MP4、MOV、WebM）。填写素材内容，自动匹配对应台词；视频保留画面，使用口播原声。</p>
       <label>素材来源<select value={source} disabled={busy} onChange={event => { const value = event.target.value; setSource(value === "creative" || value === "feedback" ? value : "upload"); setFile(undefined); setObserved(false); setError(""); }}>
         <option value="upload">上传文件</option><option value="creative">已有创意图</option><option value="feedback">上传互动证据图片</option>
       </select></label>
@@ -157,7 +157,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
     </section></Dialog>}
     {error && !adding && <p role="alert" className={styles.error}>{error}</p>}
     <section className={styles.materials} aria-label="已上传素材">
-      <p role="status">{rows.length ? `已选 ${selected.length} 项素材` : materialMode === "speech" ? "尚未添加图片，可直接继续" : "还没有补充素材，点击上方添加"}</p>
+      <p role="status">{rows.length ? `已选 ${selected.length} 项素材` : materialMode === "speech" ? "尚未添加图片或视频，可直接继续" : "还没有补充素材，点击上方添加"}</p>
       <ul className={styles.materialTiles}>{rows.filter((row, index) => showAll || index < 6 || selected.includes(row.id)).map(row => <li key={row.id} data-material-id={row.id}>
         {row.mime.startsWith("image/") ? <img src={row.url} alt={row.label} loading="lazy" className={styles.materialPreview} /> : <video src={row.url} controls playsInline preload="none" aria-label={`${row.label}素材预览`} className={styles.materialPreview} />}
         <label className={styles.reviewCheck}><input type="checkbox" checked={selected.includes(row.id)} disabled={!selected.includes(row.id) && (selected.length >= 24 || (imagesOnly && !row.mime.startsWith("image/")))} onChange={event => onSelect(event.target.checked ? [...selected, row.id] : selected.filter(id => id !== row.id))} />{row.label}{imagesOnly && !row.mime.startsWith("image/") && "（此模板使用图片）"}</label>

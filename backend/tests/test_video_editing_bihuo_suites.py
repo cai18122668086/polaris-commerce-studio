@@ -136,6 +136,9 @@ def test_new_style_prepare_generate_preview_keeps_its_identity(
     monkeypatch.setattr(store, "suite_bundle", lambda *_: identity)
     monkeypatch.setattr(pipeline, "suite_bundle", lambda *_: identity)
     module = sys.modules["app.video_editing_apple_contracts"]
+    from app.bihuo_suite import planning as bihuo_planning
+
+    monkeypatch.setattr(bihuo_planning, "verify_plan", module.verify_plan)
     prior = module.build_request
     monkeypatch.setattr(module, "build_request", lambda *args, **_kw: prior(*args))
     endpoint = base(ws) + f"/editing-tasks/{task['id']}/planning-tasks"

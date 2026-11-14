@@ -15,6 +15,11 @@ generation retains the existing explicit paid action, frozen inputs, ownership
 checks, uncertain-outcome handling and idempotency. No per-frame provider calls
 or automatic paid retry is added.
 
+Body points and feature phrases are independently ordered by their actual word
+spans. They may interleave in Bihuo templates; Apple's sequential feature-card
+constraint remains unchanged. Saved responses can be revalidated without a new
+provider request. Already accepted plans retain their original compilation.
+
 Capabilities drive the form and planning input. Name cards are optional and
 hidden when disabled or empty; supported adapters permit either name or
 description alone. Styles without native image slots do not accept selected

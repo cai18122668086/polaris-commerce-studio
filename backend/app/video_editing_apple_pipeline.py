@@ -218,6 +218,7 @@ def plan_suite(
     assert_bundle(snapshot, settings)
     profile = None
     if snapshot.get("engine") == "bihuo-full-suite":
+        from .bihuo_suite.planning import verify_plan
         from .bihuo_suite.registry import definition
 
         meta = definition(snapshot["template_id"])
@@ -410,6 +411,9 @@ def verified_suite(
         )
     from .video_editing_apple_contracts import verify_plan
 
+    if row.snapshot.get("engine") == "bihuo-full-suite":
+        from .bihuo_suite.planning import verify_plan
+
     plan = verify_plan(
         read_json(path),
         transcript,
@@ -452,6 +456,7 @@ def render_suite(
     selected_fonts = None
     render_module = "app.apple_minimal.render"
     if frozen.get("engine") == "bihuo-full-suite":
+        from .bihuo_suite.planning import compile_render_input
         from .bihuo_suite.registry import compile_request, definition, fonts
         from .bihuo_suite.source import prepare as prepare_suite_source
 

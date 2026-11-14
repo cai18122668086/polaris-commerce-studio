@@ -334,7 +334,39 @@ def _material_headers(native: Any, original: Any, cfg: dict, n: int) -> tuple:
         else phase
         for i, phase in enumerate(cfg["phases"])
     ]
-    roles, metrics = original({**cfg, "phases": phases}, n)
+    active = set()
+    for i, phase in enumerate(cfg["phases"]):
+        background = native.out(
+            phase["background_entry"][0] - 1, phase["background_entry"][1], n
+        ) * (
+            1
+            - native.ease(
+                phase["background_exit"][0] - 1, phase["background_exit"][1], n
+            )
+        )
+        if background > 0 or native.phase(cfg, i, n) > 0:
+            active.add(i)
+    # Zero-alpha media still triggered a full-screen resize/blur in the frozen
+    # painter. Excluding it here preserves the pixels and the source clocks.
+    visible = [
+        material
+        for material in cfg["materials"]
+        if material["semantic_segment"] in active
+    ]
+    # Native still-image caches use paths as keys. Prepared video frame paths
+    # change every frame; retain only the currently bound images, not a whole
+    # clip's decoded RGBA frames. Static uploaded images keep their old cache.
+    streams = cfg.get("video_materials", {}).get("streams", [])
+    if streams:
+        from pathlib import Path
+
+        folders = {str(Path(stream["frames"][0]["path"]).parent) for stream in streams}
+        current = {material["path"] for material in cfg["materials"]}
+        cache = native.M._IMAGES
+        for path in list(cache):
+            if str(Path(path).parent) in folders and path not in current:
+                cache.pop(path)
+    roles, metrics = original({**cfg, "phases": phases, "materials": visible}, n)
     for i, phase in enumerate(cfg["phases"]):
         if not native.asset(cfg, i) or native.phase(cfg, i, n) <= 0:
             continue

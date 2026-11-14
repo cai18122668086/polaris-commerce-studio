@@ -60,3 +60,15 @@ Validation and recovery receipts, keyframes and UI screenshots are stored under
 `C:/tl/bihuo-ui-covers-20261114/`. The white-capsule four-combination acceptance
 and the prior representative full-film checks are reused; do not repeat them.
 Only the interrupted user-requested task is resumed from its saved response.
+
+
+Paper-template video painting also skips media whose foreground and background
+alpha are both exactly zero. Previously the frozen painter still resized and
+blurred all selected uploads on every frame. The host adapter now retains only
+currently bound prepared-video images in the native still-image cache; static
+uploads keep their cache. Neither change alters FA clocks or visible layers.
+In a source-bound Linux comparison of 12 real frames including continuous
+playback, all RGB pixels were identical: 51.614 s before, 26.758 s after (1.929x).
+Image-cache entries peaked at 21 versus 1 for this sample. This is a sampled
+painting measurement, not an end-to-end render-latency guarantee. The already
+running recovery is kept intact rather than restarting its video render.

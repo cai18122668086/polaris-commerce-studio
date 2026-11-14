@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app import video_editing_apple_contracts as apple
-from app.bihuo_suite import planning
+from app.bihuo_suite import planning, registry
 from app.video_editing_contracts import Transcript
 
 
@@ -134,3 +134,125 @@ def test_conclusion_duplicate_never_hides_invalid_bindings(bad):
         raw["features"].reverse()
     with pytest.raises(ValueError):
         planning.verify_plan(raw, transcript, [], require_semantic_captions=True)
+
+
+def capsule_payload(raw, transcript):
+    captions = apple.semantic_caption_rows(
+        apple.AppleSuitePlan.model_validate(raw), transcript
+    )
+    return {
+        "template_id": "bihuo-02-v1",
+        "config": {
+            "size": [1080, 1920],
+            "fonts": registry.fonts("bihuo-02-v1"),
+            "captions": captions,
+        },
+    }
+
+
+def test_actual_b_caption_fits_at_comma_without_changing_spoken_content():
+    raw, transcript = conclusion_case()
+    original = copy.deepcopy(raw)
+    before = capsule_payload(raw, transcript)
+    untouched = copy.deepcopy(before)
+    native = registry.runtime("bihuo-02-v1").capsule
+    with pytest.raises(ValueError, match="Caption exceeds measured capacity"):
+        native.caption(before["config"], 1)
+    fitted = planning._fit_capsule_captions(before, transcript)
+    first = fitted["config"]["captions"][0]
+    assert [line["text"] for line in first["lines"]] == [
+        "新品上架前，",
+        "商品图先检查这三件事。",
+    ]
+    assert first["lines"][0]["emphasis_spans"] == [[0, 2]]
+    assert first["lines"][1]["emphasis_spans"] == [[7, 10]]
+    assert {k: v for k, v in first.items() if k != "lines"} == {
+        k: v for k, v in before["config"]["captions"][0].items() if k != "lines"
+    }
+    assert fitted["config"]["captions"][1:] == before["config"]["captions"][1:]
+    assert raw == original
+    assert before == untouched
+    assert planning._fit_capsule_captions(fitted, transcript) is fitted
+    compiled = planning.compile_render_input(
+        raw,
+        transcript,
+        {},
+        "unchanged-source.mp4",
+        {},
+        recipe_compiler=lambda resolved, **_: {
+            **before,
+            "config": {**before["config"], "captions": resolved["captions"]},
+        },
+    )
+    assert compiled == fitted
+
+
+def test_actual_a_c_d_caption_layouts_are_unchanged():
+    raw, transcript = case()
+    saved = json.loads(
+        (
+            Path(__file__).parent / "fixtures/bihuo_material_caption_cases.json"
+        ).read_text("utf8")
+    )
+    for captions in [raw["captions"], *[row["captions"] for row in saved]]:
+        payload = capsule_payload({**raw, "captions": captions}, transcript)
+        before = copy.deepcopy(payload)
+        assert planning._fit_capsule_captions(payload, transcript) is payload
+        assert payload == before
+
+
+def test_legacy_caption_without_lines_keeps_native_fallback():
+    raw, transcript = case()
+    payload = capsule_payload(raw, transcript)
+    cue = {"text": "商品图", "time": [0.09, 3.03]}
+    payload["config"]["captions"] = [cue]
+    original = copy.deepcopy(payload)
+    assert planning._fit_capsule_captions(payload, transcript) is payload
+    assert payload == original
+    cue["text"] = "商品图" * 20
+    with pytest.raises(ValueError, match="capacity without recorded token bounds"):
+        planning._fit_capsule_captions(payload, transcript)
+
+
+def test_caption_fit_is_only_for_selected_capsule_and_rejects_unsafe_layout():
+    raw, transcript = conclusion_case()
+    payload = capsule_payload(raw, transcript)
+    other = {**payload, "template_id": "bihuo-01-v1"}
+    assert planning._fit_capsule_captions(other, transcript) is other
+    # One original ASR token cannot be split, even if its rendered text has
+    # lexical boundaries. The entire long opening remains one recorded token.
+    words = transcript.model_copy(deep=True)
+    token = words.tokens[0].model_copy(
+        update={"text": payload["config"]["captions"][0]["text"]}
+    )
+    words.tokens = [token]
+    payload["config"]["captions"] = [payload["config"]["captions"][0]]
+    payload["config"]["captions"][0]["last_token_id"] = token.id
+    payload["config"]["captions"][0]["emphasis_token_spans"] = []
+    with pytest.raises(ValueError, match="no safe two-line"):
+        planning._fit_capsule_captions(payload, words)
+
+
+@pytest.mark.parametrize("protected", ["emphasis", "number"])
+def test_caption_fit_never_splits_emphasis_or_number(protected):
+    raw, transcript = conclusion_case()
+    payload = capsule_payload(raw, transcript)
+    cue = payload["config"]["captions"][0]
+    payload["config"]["captions"] = [cue]
+    if protected == "emphasis":
+        cue["emphasis_token_spans"] = [
+            {k: cue[k] for k in ["first_token_id", "last_token_id"]}
+        ]
+    else:
+        transcript = transcript.model_copy(deep=True)
+        transcript.tokens = [
+            token.model_copy(update={"text": "一"}) for token in transcript.tokens[:20]
+        ]
+        cue.update(
+            text="一" * 20,
+            last_token_id=transcript.tokens[-1].id,
+            emphasis_token_spans=[],
+            lines=[{"text": "一" * 20, "emphasis_spans": []}],
+        )
+    with pytest.raises(ValueError, match="no safe two-line"):
+        planning._fit_capsule_captions(payload, transcript)

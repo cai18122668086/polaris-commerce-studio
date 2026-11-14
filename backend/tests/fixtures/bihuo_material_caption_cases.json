@@ -1,0 +1,328 @@
+[
+  {
+    "label": "C",
+    "captions": [
+      {
+        "first_token_id": "r50793b246d53-t000000",
+        "last_token_id": "r50793b246d53-t000004",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000000",
+            "last_token_id": "r50793b246d53-t000003"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000005",
+        "last_token_id": "r50793b246d53-t000014",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000005",
+            "last_token_id": "r50793b246d53-t000007"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000015",
+        "last_token_id": "r50793b246d53-t000018",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000017",
+            "last_token_id": "r50793b246d53-t000018"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000019",
+        "last_token_id": "r50793b246d53-t000024",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000019",
+            "last_token_id": "r50793b246d53-t000020"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000025",
+        "last_token_id": "r50793b246d53-t000035",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000027",
+            "last_token_id": "r50793b246d53-t000028"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000036",
+        "last_token_id": "r50793b246d53-t000039",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000038",
+            "last_token_id": "r50793b246d53-t000039"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000040",
+        "last_token_id": "r50793b246d53-t000052",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000040",
+            "last_token_id": "r50793b246d53-t000041"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000053",
+        "last_token_id": "r50793b246d53-t000059",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000056",
+            "last_token_id": "r50793b246d53-t000058"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000060",
+        "last_token_id": "r50793b246d53-t000069",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000060",
+            "last_token_id": "r50793b246d53-t000061"
+          },
+          {
+            "first_token_id": "r50793b246d53-t000062",
+            "last_token_id": "r50793b246d53-t000064"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000070",
+        "last_token_id": "r50793b246d53-t000073",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000070",
+            "last_token_id": "r50793b246d53-t000071"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000074",
+        "last_token_id": "r50793b246d53-t000078",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000076",
+            "last_token_id": "r50793b246d53-t000078"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000079",
+        "last_token_id": "r50793b246d53-t000082",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000079",
+            "last_token_id": "r50793b246d53-t000080"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000083",
+        "last_token_id": "r50793b246d53-t000088",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000085",
+            "last_token_id": "r50793b246d53-t000088"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000089",
+        "last_token_id": "r50793b246d53-t000100",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000089",
+            "last_token_id": "r50793b246d53-t000090"
+          },
+          {
+            "first_token_id": "r50793b246d53-t000093",
+            "last_token_id": "r50793b246d53-t000096"
+          }
+        ],
+        "line_break_after_token_id": null
+      }
+    ]
+  },
+  {
+    "label": "D",
+    "captions": [
+      {
+        "first_token_id": "r50793b246d53-t000000",
+        "last_token_id": "r50793b246d53-t000004",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000000",
+            "last_token_id": "r50793b246d53-t000003"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000005",
+        "last_token_id": "r50793b246d53-t000014",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000005",
+            "last_token_id": "r50793b246d53-t000007"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000015",
+        "last_token_id": "r50793b246d53-t000018",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000017",
+            "last_token_id": "r50793b246d53-t000018"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000019",
+        "last_token_id": "r50793b246d53-t000024",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000019",
+            "last_token_id": "r50793b246d53-t000020"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000025",
+        "last_token_id": "r50793b246d53-t000035",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000027",
+            "last_token_id": "r50793b246d53-t000028"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000036",
+        "last_token_id": "r50793b246d53-t000039",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000038",
+            "last_token_id": "r50793b246d53-t000039"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000040",
+        "last_token_id": "r50793b246d53-t000052",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000043",
+            "last_token_id": "r50793b246d53-t000046"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000053",
+        "last_token_id": "r50793b246d53-t000059",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000056",
+            "last_token_id": "r50793b246d53-t000058"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000060",
+        "last_token_id": "r50793b246d53-t000069",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000060",
+            "last_token_id": "r50793b246d53-t000061"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000070",
+        "last_token_id": "r50793b246d53-t000073",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000070",
+            "last_token_id": "r50793b246d53-t000072"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000074",
+        "last_token_id": "r50793b246d53-t000078",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000075",
+            "last_token_id": "r50793b246d53-t000078"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000079",
+        "last_token_id": "r50793b246d53-t000082",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000081",
+            "last_token_id": "r50793b246d53-t000082"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000083",
+        "last_token_id": "r50793b246d53-t000088",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000086",
+            "last_token_id": "r50793b246d53-t000088"
+          }
+        ],
+        "line_break_after_token_id": null
+      },
+      {
+        "first_token_id": "r50793b246d53-t000089",
+        "last_token_id": "r50793b246d53-t000100",
+        "emphasis": [
+          {
+            "first_token_id": "r50793b246d53-t000089",
+            "last_token_id": "r50793b246d53-t000090"
+          }
+        ],
+        "line_break_after_token_id": null
+      }
+    ]
+  }
+]

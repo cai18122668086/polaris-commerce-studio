@@ -1,0 +1,883 @@
+{
+  "reference": {
+    "path": "E:\\TengliVideo\\D\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\media\\20261112_115410_cov1111-856.mp4",
+    "sha256": "0a5124bfb395a059c5f16c271a07698f7676fde200024f8579460e5675ad49f8",
+    "bytes": 16819220
+  },
+  "room_fit": {
+    "path": "E:\\TengliVideo\\C\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\multimedia-pilot-v1\\source\\native-room-SIFT-v2.json",
+    "sha256": "61ce217ce49d9733e449e2c33eb392de09862464c2921c4e07edd11f5c4f8337",
+    "bytes": 315736
+  },
+  "scope": [
+    0,
+    118
+  ],
+  "unresolved": "Authored curve unavailable. Candidate mask/UV requires visual same-clock comparison.",
+  "poses": [
+    {
+      "frame": 70,
+      "box": [
+        64,
+        230,
+        1016,
+        1920
+      ],
+      "radius": 32,
+      "UV_from_source70": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 71,
+      "box": [
+        64.0061641326804,
+        230.0225883019933,
+        1015.9937142068062,
+        1919.9951741329673
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.9999869223467708,
+        0.9999869223467708,
+        0.40583507688393994,
+        -0.5053913267487171
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 72,
+      "box": [
+        76.71266415261762,
+        276.58522324347376,
+        1003.036428002265,
+        1910.0473221436744
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.9730291637076127,
+        0.9730291637076127,
+        14.24019562825114,
+        46.8364845744827
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 73,
+      "box": [
+        105.43604861250871,
+        381.8413097182063,
+        973.7461346385602,
+        1887.5599356257333
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.9120904264979532,
+        0.9120904264979532,
+        58.9130662212425,
+        151.60133101893754
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 74,
+      "box": [
+        141.9163575538552,
+        515.5224418256404,
+        936.5458195996871,
+        1858.999693757179
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.8346948130733529,
+        0.8346948130733529,
+        88.05866481216674,
+        286.95000202000233
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 75,
+      "box": [
+        177.7963028051015,
+        647.0035569897469,
+        899.9577175342715,
+        1830.9094734617956
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.7585729146314811,
+        0.7585729146314811,
+        128.68408230933343,
+        419.85338431939067
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 76,
+      "box": [
+        211.8555120646296,
+        771.8126330263073,
+        865.226287039358,
+        1804.2446977915072
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.6863138392591684,
+        0.6863138392591684,
+        167.1328022348868,
+        545.9874462648697
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 77,
+      "box": [
+        241.19651180148182,
+        879.3319544304301,
+        835.3061886234889,
+        1781.27378352384
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.6240647865777386,
+        0.6240647865777386,
+        201.0288726907157,
+        654.8722273709227
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 78,
+      "box": [
+        266.7939258565939,
+        973.1330046192288,
+        809.2035624488681,
+        1761.2337027833246
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.5697580216305402,
+        0.5697580216305402,
+        229.8702529653377,
+        750.3799662804736
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 79,
+      "box": [
+        288.44411528936416,
+        1052.4695540537887,
+        787.1260666457142,
+        1744.283883424774
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.5238255791558298,
+        0.5238255791558298,
+        254.52244837865214,
+        829.9346058928386
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 80,
+      "box": [
+        305.508479898946,
+        1115.0014691033748,
+        769.7249053662064,
+        1730.9242821843777
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.487622295658887,
+        0.487622295658887,
+        275.11345848573995,
+        893.9987507061854
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 81,
+      "box": [
+        319.7907561622843,
+        1167.3384946210024,
+        755.1607420713549,
+        1719.7427632676854
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.45732141377003205,
+        0.45732141377003205,
+        290.77576333717803,
+        946.9371307142218
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 82,
+      "box": [
+        331.4542267042136,
+        1210.078975488467,
+        743.2670714529401,
+        1710.611493567096
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.4325765175932002,
+        0.4325765175932002,
+        303.31582922091627,
+        988.8610226409176
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 83,
+      "box": [
+        340.22489483072735,
+        1242.2188580310208,
+        734.3232980344557,
+        1703.7449836522594
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.41396891092828597,
+        0.41396891092828597,
+        314.2297962251528,
+        1021.7061980094934
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 84,
+      "box": [
+        347.2592258974313,
+        1267.9959791109818,
+        727.1501314861721,
+        1698.237842882932
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.39904506889573604,
+        0.39904506889573604,
+        322.41124899374444,
+        1048.1006587364855
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 85,
+      "box": [
+        353.0499266516149,
+        1289.2158496378256,
+        721.2451405855243,
+        1693.704333739854
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.3867596785020058,
+        0.3867596785020058,
+        327.806645869033,
+        1069.858407273727
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 86,
+      "box": [
+        357.35361947364305,
+        1304.9866187290736,
+        716.8565064577982,
+        1690.334995280503
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.3776290829665496,
+        0.3776290829665496,
+        332.8209948350511,
+        1086.0858303848058
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 87,
+      "box": [
+        360.07502070935317,
+        1314.9591219415113,
+        714.0813933555937,
+        1688.2044245762302
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.37185543345193345,
+        0.37185543345193345,
+        336.11313811192093,
+        1096.8556968565947
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 88,
+      "box": [
+        363.31523836656453,
+        1326.8328142774765,
+        710.7772240340954,
+        1685.6676752261765
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.3649810773818603,
+        0.3649810773818603,
+        339.70644053755234,
+        1108.0628951729764
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 89,
+      "box": [
+        365.27689745293645,
+        1334.021262376879,
+        708.7768479920715,
+        1684.1319026519775
+      ],
+      "radius": 24,
+      "UV_from_source70": [
+        0.3608192757764023,
+        0.3608192757764023,
+        342.39786937579134,
+        1114.8874364174935
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 90,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 60.25,
+      "UV_from_source70": [
+        0.35980868960810836,
+        0.35980868960810836,
+        351.0285744985788,
+        1134.3986665283726
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 91,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 96.5,
+      "UV_from_source70": [
+        0.3596846536797694,
+        0.3596846536797694,
+        346.7237761024371,
+        1154.8444961497119
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 92,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 132.75,
+      "UV_from_source70": [
+        0.3539033383545734,
+        0.3539033383545734,
+        350.2233240151638,
+        1172.904027691803
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 93,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.36127926981854025,
+        0.36127926981854025,
+        340.78149000146476,
+        1178.0964710811202
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 94,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3847940747892394,
+        0.3847940747892394,
+        345.8090993146297,
+        1162.0838434590203
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 95,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35667302379710203,
+        0.35667302379710203,
+        342.7024113848454,
+        1196.4040101013372
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 96,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3502229687977062,
+        0.3502229687977062,
+        351.33567187214567,
+        1205.0220175328213
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 97,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3568835521561399,
+        0.3568835521561399,
+        343.52502085207334,
+        1204.0055278381467
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 98,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35612416674611325,
+        0.35612416674611325,
+        343.5405788627032,
+        1206.450272967259
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 99,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3543362542498203,
+        0.3543362542498203,
+        342.93979018424346,
+        1210.9080920585075
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 100,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.353722828248728,
+        0.353722828248728,
+        344.30284049977644,
+        1216.0751787688228
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 101,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.34648299564398316,
+        0.34648299564398316,
+        380.80658625040024,
+        1202.895077816532
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 102,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35166854275915366,
+        0.35166854275915366,
+        390.3474281278785,
+        1190.1682575789234
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 103,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3560352649730578,
+        0.3560352649730578,
+        331.5841148677331,
+        1216.4635128778718
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 104,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35604354944529626,
+        0.35604354944529626,
+        342.30819449884854,
+        1214.375363610645
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 105,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35562723953177733,
+        0.35562723953177733,
+        343.58803363828406,
+        1214.4004343554957
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 106,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3570460977116668,
+        0.3570460977116668,
+        342.84622527475864,
+        1213.3076937038431
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 107,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3576480721277613,
+        0.3576480721277613,
+        342.39801539830694,
+        1212.8250290352262
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 108,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35759936356840377,
+        0.35759936356840377,
+        342.8698813004946,
+        1212.7845748864786
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 109,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.357740941850688,
+        0.357740941850688,
+        342.91979161494294,
+        1212.5294457540854
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 110,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3585991158332911,
+        0.3585991158332911,
+        342.44134454428956,
+        1212.0260590323273
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 111,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35866886482672367,
+        0.35866886482672367,
+        342.56185854649925,
+        1211.8938452566124
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 112,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.36083997215074226,
+        0.36083997215074226,
+        341.56115295160816,
+        1210.5292838530038
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 113,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35932641867197035,
+        0.35932641867197035,
+        341.8805314263141,
+        1211.666653161185
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 114,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35937190269198543,
+        0.35937190269198543,
+        341.6572707131656,
+        1211.6437863981962
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 115,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.36026275508293804,
+        0.36026275508293804,
+        341.2387684489805,
+        1211.1241178462244
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 116,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.3604375498952297,
+        0.3604375498952297,
+        341.3935684466393,
+        1211.0235186968068
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    },
+    {
+      "frame": 117,
+      "box": [
+        368,
+        1344,
+        706,
+        1682
+      ],
+      "radius": 169,
+      "UV_from_source70": [
+        0.35972580729078496,
+        0.35972580729078496,
+        341.28375475285577,
+        1211.5926788584013
+      ],
+      "UV_uncertainty": "SIFT face/room motion residual; rotation discarded; 90..93 change in UV/reframing independent of circular mask.",
+      "box_method": "Widths from room texture scale until89; measured opening/end boxes and constant-center linear size/crop relation; candidate between native observations."
+    }
+  ]
+}

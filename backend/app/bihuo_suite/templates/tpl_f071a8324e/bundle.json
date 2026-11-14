@@ -1,0 +1,22 @@
+{
+  "schema": "tengli.bihuo-runtime-bundle/1",
+  "version": "1.0.0",
+  "runtime": "runtime.py",
+  "files": {
+    "README.md": "6fcf88d5de692c5270a66cf5b9422a3bb063def201ef7e0587d03d2c29044f27",
+    "renderer.py": "e1cc5ae29fc132c0c68a01499a9ef7d70005e87ea2ae8301b2d03835a9f4ffef",
+    "runtime.py": "c8a25f108c7032d9a9157aafb19f1cd3c14b66481f1c6e4177b3a7bf4826775a",
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fonts/body.otf": "62383707c086a32f3afd5e293f34c7eff64c7fea31f579fdc6cbe34d920519a6",
+    "vendor/media.py": "da8d0c7d127600b8c73a778c9ab5f97b16fcbfe32ce89fbcc3cf911edcd8efed",
+    "vendor/pilot.py": "1a2d7f7d2fb4abc6ab8b22ed917925769a2c266e90f87af366e00b2d5335ea42",
+    "vendor/visual.py": "aa6b28878cf10d4d3f93acd021101a955c6b526c348f67b862a3c09ed19b7a2e",
+    "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "fonts": {
+    "body": "fonts/body.otf",
+    "caption_bold": "fonts/body.otf",
+    "main": "fonts/body.otf",
+    "caption": "fonts/body.otf"
+  }
+}

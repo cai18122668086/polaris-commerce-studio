@@ -4,6 +4,7 @@ import { UserRound, PackageOpen } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
+import { isEditingSuite } from "@/features/video-studio/editing-suite";
 import { matchesReferenceScript, referenceScript, type EditingMusicPreference } from "@/features/video-studio/editing-options";
 import { projectApi, type VideoVersion } from "@/features/video-studio/projects";
 import { ApiError } from "@/lib/api/api-error";
@@ -355,7 +356,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       else setSourceDialog(true);
       return;
     }
-    if (template.engine === "apple-minimal-suite" && subtitles === "present") {
+    if (isEditingSuite(template.engine) && subtitles === "present") {
       cancelAutomatic();
       setError("请选择无内嵌字幕的口播视频。");
       document.getElementById("editing-source")?.scrollIntoView({ block: "start" });
@@ -410,8 +411,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       <button type="button" onClick={() => void submit("transcript")} disabled={busy || !canSubmit}>识别口播，准备动效剪辑</button>
       <button type="button" onClick={() => void submit("subtitles")} disabled={busy || !canSubmit}>生成基础字幕片</button>
     </div></details>
-    <EditingMusicPicker value={music} onChange={value => { cancelAutomatic(); setMusic(value); }} disabled={busy || recognizing} voiceOnly={template?.engine === "apple-minimal-suite"} />
-    {template?.engine === "apple-minimal-suite" && <EditingCoverPicker value={creativeOptions.cover || "auto"} onChange={cover => { cancelAutomatic(); setCreativeOptions(current => ({ ...current, cover })); }} disabled={busy || recognizing} />}
+    <EditingMusicPicker value={music} onChange={value => { cancelAutomatic(); setMusic(value); }} disabled={busy || recognizing} voiceOnly={isEditingSuite(template?.engine)} />
+    {isEditingSuite(template?.engine) && <EditingCoverPicker value={creativeOptions.cover || "auto"} onChange={cover => { cancelAutomatic(); setCreativeOptions(current => ({ ...current, cover })); }} disabled={busy || recognizing} />}
     </section>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}

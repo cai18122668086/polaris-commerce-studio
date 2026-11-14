@@ -1,0 +1,11 @@
+# 青白双语完整网站运行包
+
+`compile_request(resolved, *, source_path, fonts, creative_options, ffmpeg="ffmpeg", size=(1080,1920))`; `render_mp4(cfg, output_dir)` returns final.mp4 and render-receipt.json(final_sha256). Optional render_frame returns RGB/RGBA/meta. Python3.12+, Pillow/numpy/OpenCV/FFmpeg. Relative renderer/fonts/small resources; no external Navy package or cache required. Three pure blank/normalize/opacity +quadmask primitives snapshot the previously validated algorithms.
+
+Chinese whole-phrase entry and confirmed reference English are independent tracks. New resolved captions use their exact native cue time; no generated English translation. Current new input has no confirmed English and that track is omitted. Captions use planner semantic line breaks/emphasis, fit complete natural glyph lines; identity both-empty/disabled omits, either supplied field can appear alone under actual width guard.
+
+Complete family: cyan stage/opening, book blur entry/person lower inset, separate slanted food takeover/person upper-right, food compress upper and walk lower pane/joint exit, top-center portrait relay and raised bed image, independent captions and whole RGB tail. New materials use actual asset IDs+semantic time; up to4 matched stages supported explicitly. No matching images returns normal portrait; meaningful title/support and full narration remain. No empty image frames are fabricated.
+
+New images preserve the complete brand/embedded words/product handles by contain plus same-image blur padding. Current two illustrative assets are different SKUs, not a single product. Reference whole source551 uses old bounded source assets and newly bounded walk/bed crops; walk burned subtitle corridor is source-only local inpaint with mask/diff provenance, unknown texture is not authorraw. First warm coverplate is explicitly one-frame limited source state. No head segmentation.
+
+Actual complete source551 and clean57b526/101FA/14cue encoded and fully decoded once. None/partial/provided/identity tested only necessary actual phase frames. Current generic API is implemented, not arbitrary planner/effect approval or formal03/04/08 acceptance. Host validates final decode/clock once; production render has no per-frame hashing or redundant decode.

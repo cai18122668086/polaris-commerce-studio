@@ -1,0 +1,647 @@
+{
+  "80": {
+    "kind": "street",
+    "xywh": [
+      53.953990001228256,
+      114.00069179598813,
+      972.068607399508,
+      1000.0705837443497
+    ],
+    "opacity_fit": 1.0,
+    "inliers": 2461,
+    "matches": 2510,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 80,
+    "limits": null
+  },
+  "81": {
+    "kind": "street",
+    "xywh": [
+      53.97375594401574,
+      114.00063797922644,
+      972.0565888969395,
+      1000.0582190297731
+    ],
+    "opacity_fit": 1.0,
+    "inliers": 2455,
+    "matches": 2509,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 81,
+    "limits": null
+  },
+  "82": {
+    "kind": "street",
+    "xywh": [
+      53.844231429201294,
+      114.11777946837287,
+      972.0383599860489,
+      1000.0394650062232
+    ],
+    "opacity_fit": 1.0,
+    "inliers": 2349,
+    "matches": 2512,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 82,
+    "limits": null
+  },
+  "83": {
+    "kind": "street",
+    "xywh": [
+      53.97375594401574,
+      114.00063797922644,
+      972.0565888969395,
+      1000.0582190297731
+    ],
+    "opacity_fit": 1.0,
+    "inliers": 2455,
+    "matches": 2509,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 83,
+    "limits": null
+  },
+  "84": {
+    "kind": "street",
+    "xywh": [
+      53.844231429201294,
+      114.11777946837287,
+      972.0383599860489,
+      1000.0394650062232
+    ],
+    "opacity_fit": 1.0,
+    "inliers": 2349,
+    "matches": 2512,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 84,
+    "limits": null
+  },
+  "85": {
+    "kind": "street",
+    "xywh": [
+      53.91981120170169,
+      113.98743201025964,
+      972.0953788735562,
+      1000.0981264131236
+    ],
+    "opacity_fit": 1.0,
+    "inliers": 2362,
+    "matches": 2432,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 85,
+    "limits": null
+  },
+  "86": {
+    "kind": "street",
+    "xywh": [
+      54.38241187988384,
+      114.24443297272313,
+      971.1051400376012,
+      999.0793621786022
+    ],
+    "opacity_fit": 0.9963477797169258,
+    "inliers": 2093,
+    "matches": 2171,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 86,
+    "limits": null
+  },
+  "87": {
+    "kind": "street",
+    "xywh": [
+      54.49171943596294,
+      114.82469040641239,
+      970.9003827651082,
+      998.8687065484653
+    ],
+    "opacity_fit": 0.9900849504321997,
+    "inliers": 2001,
+    "matches": 2090,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 87,
+    "limits": null
+  },
+  "88": {
+    "kind": "street",
+    "xywh": [
+      54.94975088626057,
+      116.11306243880846,
+      970.041510106326,
+      997.9850927019814
+    ],
+    "opacity_fit": 0.9706866852754695,
+    "inliers": 1935,
+    "matches": 2072,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 88,
+    "limits": null
+  },
+  "89": {
+    "kind": "street",
+    "xywh": [
+      55.557027306795796,
+      118.34023258526592,
+      968.8046226311744,
+      996.7125747234304
+    ],
+    "opacity_fit": 0.9385496003190067,
+    "inliers": 1882,
+    "matches": 1964,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 89,
+    "limits": null
+  },
+  "90": {
+    "kind": "street",
+    "xywh": [
+      56.76779426677156,
+      121.68304165026947,
+      966.6672828840927,
+      994.513665518614
+    ],
+    "opacity_fit": 0.8909279175258538,
+    "inliers": 1576,
+    "matches": 1777,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 90,
+    "limits": null
+  },
+  "91": {
+    "kind": "street",
+    "xywh": [
+      57.748201472572,
+      125.68985366486719,
+      964.5105765066438,
+      992.2948317969586
+    ],
+    "opacity_fit": 0.8269698950663233,
+    "inliers": 1485,
+    "matches": 1585,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 91,
+    "limits": null
+  },
+  "92": {
+    "kind": "street",
+    "xywh": [
+      59.16231685338151,
+      131.4487931489082,
+      961.5436306270424,
+      989.2424183405785
+    ],
+    "opacity_fit": 0.7436473812585465,
+    "inliers": 1216,
+    "matches": 1311,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 92,
+    "limits": null
+  },
+  "93": {
+    "kind": "street",
+    "xywh": [
+      61.463035852894016,
+      138.83388433270304,
+      957.0619112241027,
+      984.6315959095707
+    ],
+    "opacity_fit": 0.6337158351455271,
+    "inliers": 874,
+    "matches": 966,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 93,
+    "limits": null
+  },
+  "94": {
+    "kind": "street",
+    "xywh": [
+      64.05706273699508,
+      148.08460436191126,
+      951.8526374868107,
+      979.2722607889
+    ],
+    "opacity_fit": 0.49816797344091834,
+    "inliers": 517,
+    "matches": 599,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 94,
+    "limits": null
+  },
+  "95": {
+    "kind": "street",
+    "xywh": [
+      66.73703663957764,
+      156.99468951302893,
+      946.6976996601468,
+      973.9688268108506
+    ],
+    "opacity_fit": 0.36264391487437536,
+    "inliers": 215,
+    "matches": 281,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 95,
+    "limits": null
+  },
+  "96": {
+    "kind": "street",
+    "xywh": [
+      68.98788116639786,
+      164.87624679456664,
+      942.0093575784724,
+      969.1454296074819
+    ],
+    "opacity_fit": 0.2520115094872679,
+    "inliers": 91,
+    "matches": 166,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 96,
+    "limits": null
+  },
+  "97": {
+    "kind": "street",
+    "xywh": [
+      68.98788116639786,
+      164.87624679456664,
+      942.0093575784724,
+      969.1454296074819
+    ],
+    "opacity_fit": 0.16906814600201514,
+    "inliers": null,
+    "matches": 13,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 96,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "98": {
+    "kind": "street",
+    "xywh": [
+      68.98788116639786,
+      164.87624679456664,
+      942.0093575784724,
+      969.1454296074819
+    ],
+    "opacity_fit": 0.10595073186707266,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 96,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "99": {
+    "kind": "street",
+    "xywh": [
+      68.98788116639786,
+      164.87624679456664,
+      942.0093575784724,
+      969.1454296074819
+    ],
+    "opacity_fit": 0.06004709916396956,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 96,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "100": {
+    "kind": "street",
+    "xywh": [
+      68.98788116639786,
+      164.87624679456664,
+      942.0093575784724,
+      969.1454296074819
+    ],
+    "opacity_fit": 0.029908053317066845,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 96,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "101": {
+    "kind": "street",
+    "xywh": [
+      68.98788116639786,
+      164.87624679456664,
+      942.0093575784724,
+      969.1454296074819
+    ],
+    "opacity_fit": 0.01114743988568719,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 96,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "180": {
+    "kind": "night",
+    "xywh": [
+      0.005967342799020378,
+      0.005651057090684411,
+      1079.993165628062,
+      1919.9878500054433
+    ],
+    "opacity_fit": 0.9999183458059143,
+    "inliers": 2312,
+    "matches": 2323,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 180,
+    "limits": null
+  },
+  "181": {
+    "kind": "night",
+    "xywh": [
+      0.005967342799020378,
+      0.005651057090684411,
+      1079.993165628062,
+      1919.9878500054433
+    ],
+    "opacity_fit": 0.9999183458059143,
+    "inliers": 2312,
+    "matches": 2323,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 181,
+    "limits": null
+  },
+  "182": {
+    "kind": "night",
+    "xywh": [
+      0.005967342799020378,
+      0.005651057090684411,
+      1079.993165628062,
+      1919.9878500054433
+    ],
+    "opacity_fit": 0.9999183458059143,
+    "inliers": 2312,
+    "matches": 2323,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 182,
+    "limits": null
+  },
+  "183": {
+    "kind": "night",
+    "xywh": [
+      0.005967342799020378,
+      0.005651057090684411,
+      1079.993165628062,
+      1919.9878500054433
+    ],
+    "opacity_fit": 0.9999183458059143,
+    "inliers": 2312,
+    "matches": 2323,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 183,
+    "limits": null
+  },
+  "184": {
+    "kind": "night",
+    "xywh": [
+      0.002344085465810488,
+      0.0059393734306296304,
+      1079.9960423112398,
+      1919.9929641088706
+    ],
+    "opacity_fit": 1.0,
+    "inliers": 2216,
+    "matches": 2241,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 184,
+    "limits": null
+  },
+  "185": {
+    "kind": "night",
+    "xywh": [
+      0.072575257026714,
+      0.16462290162496399,
+      1079.8713509870825,
+      1919.771290643702
+    ],
+    "opacity_fit": 0.9964676702474485,
+    "inliers": 1965,
+    "matches": 1993,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 185,
+    "limits": null
+  },
+  "186": {
+    "kind": "night",
+    "xywh": [
+      0.4272104762524532,
+      1.2439510598098826,
+      1079.2194413382651,
+      1918.6123401569157
+    ],
+    "opacity_fit": 0.9882900217050213,
+    "inliers": 1786,
+    "matches": 1839,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 186,
+    "limits": null
+  },
+  "187": {
+    "kind": "night",
+    "xywh": [
+      0.6114249625142191,
+      2.4884814289142474,
+      1078.927353602393,
+      1918.0930730709208
+    ],
+    "opacity_fit": 0.9697111478732668,
+    "inliers": 1720,
+    "matches": 1785,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 187,
+    "limits": null
+  },
+  "188": {
+    "kind": "night",
+    "xywh": [
+      1.5659021031973022,
+      5.385611518484741,
+      1076.9593765188963,
+      1914.5944471447046
+    ],
+    "opacity_fit": 0.9379919488659195,
+    "inliers": 1471,
+    "matches": 1643,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 188,
+    "limits": null
+  },
+  "189": {
+    "kind": "night",
+    "xywh": [
+      2.2751483340264196,
+      9.222828733540622,
+      1075.4686680762331,
+      1911.9442988021922
+    ],
+    "opacity_fit": 0.8906427503415152,
+    "inliers": 1431,
+    "matches": 1514,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 189,
+    "limits": null
+  },
+  "190": {
+    "kind": "night",
+    "xywh": [
+      3.974154393872023,
+      14.794904171979944,
+      1072.2480213877923,
+      1906.2187046894085
+    ],
+    "opacity_fit": 0.8279881978132335,
+    "inliers": 1099,
+    "matches": 1260,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 190,
+    "limits": null
+  },
+  "191": {
+    "kind": "night",
+    "xywh": [
+      5.252265825731343,
+      22.15965092070895,
+      1069.2399189220384,
+      1900.8709669725129
+    ],
+    "opacity_fit": 0.7449776904360977,
+    "inliers": 799,
+    "matches": 936,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 191,
+    "limits": null
+  },
+  "192": {
+    "kind": "night",
+    "xywh": [
+      7.7204341612708145,
+      31.61061105738295,
+      1064.3410769718573,
+      1892.1619146166352
+    ],
+    "opacity_fit": 0.6348716853998161,
+    "inliers": 447,
+    "matches": 573,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 192,
+    "limits": null
+  },
+  "193": {
+    "kind": "night",
+    "xywh": [
+      10.427033414137705,
+      43.21945288675602,
+      1058.5572733549357,
+      1881.8795970754413
+    ],
+    "opacity_fit": 0.5001412921759368,
+    "inliers": 138,
+    "matches": 307,
+    "pose_supported_by_ransac": true,
+    "last_supported_pose_frame": 193,
+    "limits": null
+  },
+  "194": {
+    "kind": "night",
+    "xywh": [
+      10.427033414137705,
+      43.21945288675602,
+      1058.5572733549357,
+      1881.8795970754413
+    ],
+    "opacity_fit": 0.3544069348844393,
+    "inliers": null,
+    "matches": 198,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 193,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "195": {
+    "kind": "night",
+    "xywh": [
+      10.427033414137705,
+      43.21945288675602,
+      1058.5572733549357,
+      1881.8795970754413
+    ],
+    "opacity_fit": 0.24185072842623156,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 193,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "196": {
+    "kind": "night",
+    "xywh": [
+      10.427033414137705,
+      43.21945288675602,
+      1058.5572733549357,
+      1881.8795970754413
+    ],
+    "opacity_fit": 0.16065328556372757,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 193,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "197": {
+    "kind": "night",
+    "xywh": [
+      10.427033414137705,
+      43.21945288675602,
+      1058.5572733549357,
+      1881.8795970754413
+    ],
+    "opacity_fit": 0.09924804230119486,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 193,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "198": {
+    "kind": "night",
+    "xywh": [
+      10.427033414137705,
+      43.21945288675602,
+      1058.5572733549357,
+      1881.8795970754413
+    ],
+    "opacity_fit": 0.056349911707610216,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 193,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "199": {
+    "kind": "night",
+    "xywh": [
+      10.427033414137705,
+      43.21945288675602,
+      1058.5572733549357,
+      1881.8795970754413
+    ],
+    "opacity_fit": 0.028229728369427658,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 193,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  },
+  "200": {
+    "kind": "night",
+    "xywh": [
+      10.427033414137705,
+      43.21945288675602,
+      1058.5572733549357,
+      1881.8795970754413
+    ],
+    "opacity_fit": 0.011905347123919992,
+    "inliers": null,
+    "matches": 0,
+    "pose_supported_by_ransac": false,
+    "last_supported_pose_frame": 193,
+    "limits": "Late low-alpha photo pose unproved; last reliable pose held only to estimate scalaropacity, candidate not authored curve"
+  }
+}

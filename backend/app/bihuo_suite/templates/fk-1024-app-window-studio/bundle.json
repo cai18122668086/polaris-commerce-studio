@@ -1,0 +1,33 @@
+{
+  "schema": "tengli.bihuo-runtime-bundle/1",
+  "version": "1.0.1",
+  "runtime": "runtime.py",
+  "files": {
+    "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "core/app_bottom_engine.py": "a1419123a81bb12c2f4b8a238fa3626963cc3611b7d66e6e7d4540a8c5c838d6",
+    "core/app_bottom_full.py": "7ca2e5bd5530d7ca9ee7033088671c951582f0c14846348853155658980c40d8",
+    "core/app_window_engine.py": "d6022b7c12d2d727c5c22d57e906ed451cba24f8e27172854a689f9e3f9319c2",
+    "core/bottom-tail.json": "932ffaec41458b5da344ac4d4d41fcf6d88e890b0f11ffcb39162eaacfb4aca8",
+    "core/capsule_engine.py": "d1a5ab4fe78d207daab9638856b50d011cc8f8d7202589a5094ea3d956aa4665",
+    "core/capsule_third.py": "c014dd7da32e9e1d9770c973278267a2efe6a6174f95fb02f2c49cf4b6468014",
+    "core/input_policy.py": "51211690bb685f99af344e478ceb4e0c2452f216845b2089018dbd88a91e0efc",
+    "core/library/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "core/library/visuals/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "core/library/visuals/capsule_list_v1.py": "6874f51da3aefbfd07f8875d095619d18f1a1fb9cdfa03f3b43792f2f23a65f6",
+    "core/vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "core/vendor/apple_minimal/__init__.py": "4d516d052f36f372b7eb771b4848872d101bbda09f52ee7c92805c977dae82e2",
+    "core/vendor/apple_minimal/information.py": "eb5902790801bdb291e5f4ea8e3a589d829c3a73fa6c9ca3f43ea0bb2617df9f",
+    "core/vendor/apple_minimal/media.py": "da8d0c7d127600b8c73a778c9ab5f97b16fcbfe32ce89fbcc3cf911edcd8efed",
+    "core/vendor/apple_minimal/pilot.py": "1a2d7f7d2fb4abc6ab8b22ed917925769a2c266e90f87af366e00b2d5335ea42",
+    "core/vendor/apple_minimal/visual.py": "aa6b28878cf10d4d3f93acd021101a955c6b526c348f67b862a3c09ed19b7a2e",
+    "data/template.json": "5ba807e3660c1eedfb45cc317776b70771e7d20483599fc51df597c347cd43a6",
+    "fonts/62383707c086-思源黑体_CN_Bold--62383707c086.otf": "62383707c086a32f3afd5e293f34c7eff64c7fea31f579fdc6cbe34d920519a6",
+    "fonts/9c62ceb174d7-Noto_Sans_SC_Medium--9c62ceb174d7.otf": "9c62ceb174d7529ae4a7f2071f6531991cfadbc2f1897910b48ba951a580ac57",
+    "runtime.py": "fd56a18b7cd36ca299a3b5acb14e09b108addd4798b9e72b1acb6846331f3852"
+  },
+  "fonts": {
+    "bold": "fonts/62383707c086-思源黑体_CN_Bold--62383707c086.otf",
+    "body": "fonts/9c62ceb174d7-Noto_Sans_SC_Medium--9c62ceb174d7.otf"
+  },
+  "template_id": "fk-1024-app-window-studio"
+}

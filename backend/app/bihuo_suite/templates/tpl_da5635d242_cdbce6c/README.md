@@ -1,0 +1,11 @@
+# 草野暖阳网站完整组合
+
+API: compile_request(resolved, *, source_path, fonts, creative_options, ffmpeg="ffmpeg", size=(1080,1920)); render_mp4(cfg, output_dir) returns final.mp4 with render-receipt.json(final_sha256). Optional render_frame returns RGB/11RGBA/meta. Python3.12+, Pillow/numpy/OpenCV/FFmpeg. Runtime package-relative helpers/fonts/grid/pose parameters only; clean input has no dependency on original source cache.
+
+Native capabilities: title (slanted topic) and name_card; no independent subtitle. Disabled/two-empty identity omits, single supplied field works. Actual asset ID+semantic start/end selects the original poster/small lower-left person first stage and rounded morning container/lower circular person later stage. No images returns original-room speech with full captions; actual meaningful planned point/feature text can create an editable text-only card. Empty payload does not create placeholders. No native head matte.
+
+Complete source mechanisms: grid/poster zoom, old poster exit, enlarged blurred diagonal room-person wipe above and occluding captions, returning large952x1422 window, next poster/circular person, independent full caption track and final black. Source ZH07 fixed-line typewriter uses measured original239/241/...251 onsets and underscore role. New semantic lead after first material uses actual FA token starts, punctuation on containing token, never divided milliseconds. Full cue/audio times unchanged.
+
+Existing limited original0..217 remains frozen and referenced; only missing original207..501 (294frames including context) was newly encoded, giving complete mechanism coverage without repeating old whole clips. New clean57b101FA14cue full526 encoded once and fully decoded. No/partial/provided, optional identity and no-image meaningful text stage were checked at necessary real phases.
+
+Source late pose/wipe/fade curves remain fitted candidates. Original source poster includes baked labels/clock, not newly claimed independent authored text. Source-only repair removes bounded burned words from shirt/room using local inpaint; masks/diffs/provenance are in source/production-v1 and are NOT used on clean input or packaged here. Unknown pixels/font/author FX remain limits. No arbitrary-script planner validation or formal03/04/08 acceptance claimed. Host does final decode once, no per-frame production hashing.

@@ -1,0 +1,599 @@
+{
+  "records": [
+    {
+      "frame": 474,
+      "box_xyxy": [
+        390,
+        306,
+        695,
+        620
+      ],
+      "radius": 146.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0474.png",
+        "sha256": "e2180516c3720547d92421f45dfb2776ebd425fd1064e56ea1e24edb8ea7f874",
+        "bytes": 354816
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 475,
+      "box_xyxy": [
+        375,
+        336,
+        712,
+        672
+      ],
+      "radius": 165.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0475.png",
+        "sha256": "18fefb80b565062bbd8c420fab03b6758c147bb3b2aa320a9bcd695e7a833d10",
+        "bytes": 378261
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 476,
+      "box_xyxy": [
+        339,
+        360,
+        748,
+        787
+      ],
+      "radius": 140.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0476.png",
+        "sha256": "3c7bba1a446ec9aab31ea4e529aa5c82a3e7438ae7e4043bbe8b073890e3d8a4",
+        "bytes": 412361
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 477,
+      "box_xyxy": [
+        297,
+        372,
+        788,
+        911
+      ],
+      "radius": 125.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0477.png",
+        "sha256": "428c32fe7b5a1582cd3436fb7ce2b40e648da4002da7bca886581e3e3a259858",
+        "bytes": 460247
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 478,
+      "box_xyxy": [
+        255,
+        376,
+        831,
+        1046
+      ],
+      "radius": 110.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0478.png",
+        "sha256": "6fc9dc88dfd1112d2c248def5bd59f2ffc132fef63dfc53c83e646f7b30af6e4",
+        "bytes": 535051
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 479,
+      "box_xyxy": [
+        214,
+        356,
+        872,
+        1175
+      ],
+      "radius": 98.5,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0479.png",
+        "sha256": "f06414d87c90e351f058119bed47c4e0649ae875513477e65b2cf0a4996f914f",
+        "bytes": 594290
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 480,
+      "box_xyxy": [
+        175,
+        320,
+        908,
+        1299
+      ],
+      "radius": 87.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0480.png",
+        "sha256": "1fade30a1fc2ce933decb4387c3e8f4e9389117030b2ade9d5fa16c176a9401d",
+        "bytes": 704394
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 481,
+      "box_xyxy": [
+        142,
+        275,
+        942,
+        1410
+      ],
+      "radius": 75.5,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0481.png",
+        "sha256": "8957f04fcd0aa1f48562e632cc446c0d1567be25c83089c9a046beeb1ec39274",
+        "bytes": 816584
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 482,
+      "box_xyxy": [
+        112,
+        228,
+        970,
+        1508
+      ],
+      "radius": 64.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0482.png",
+        "sha256": "18f9e8a048cf5b388608f19525f8d4463d5f88ff3b34b5cf2d329f0da94a12a4",
+        "bytes": 910645
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 483,
+      "box_xyxy": [
+        87,
+        182,
+        994,
+        1593
+      ],
+      "radius": 56.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0483.png",
+        "sha256": "045653c27d1ce78de28b6fa29598273755eb68f8d50ad0dd9de10c5606153532",
+        "bytes": 979535
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown. For483/484 bottom extent uses native warm content with only white/yellow caption pixels excluded; does not truncate at1535. Native source483 manual bottom-edge1593 replaces1635 caption-core false-positive. Measurement approx±4px."
+    },
+    {
+      "frame": 484,
+      "box_xyxy": [
+        67,
+        140,
+        1013,
+        1664
+      ],
+      "radius": 48.00000000000001,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0484.png",
+        "sha256": "2538518cfbca3868bd86d2ccfb3924b67d8b48b429dd5c9d36f2d27646d3e050",
+        "bytes": 1007845
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown. For483/484 bottom extent uses native warm content with only white/yellow caption pixels excluded; does not truncate at1535."
+    },
+    {
+      "frame": 485,
+      "box_xyxy": [
+        51,
+        104,
+        1030,
+        1724
+      ],
+      "radius": 40.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0485.png",
+        "sha256": "8b3d344a7a57e9ff29c2546a898838e69d721aabb3777a5159a738d87fbb31a9",
+        "bytes": 701777
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 486,
+      "box_xyxy": [
+        37,
+        73,
+        1042,
+        1768
+      ],
+      "radius": 32.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0486.png",
+        "sha256": "197b246f8769c676f6c9d06b961a2802fe4b78d26e97372df8e914fe13a119a1",
+        "bytes": 821752
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 487,
+      "box_xyxy": [
+        27,
+        47,
+        1053,
+        1806
+      ],
+      "radius": 24.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0487.png",
+        "sha256": "8394bff8f9bc7d9f203357ffbf3cdda6a9c747b28f4e5552118601a28e344e76",
+        "bytes": 926782
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 488,
+      "box_xyxy": [
+        20,
+        30,
+        1060,
+        1834
+      ],
+      "radius": 16.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0488.png",
+        "sha256": "16e1b989ef1b25e5f07c89d841007c9020e85b32f20acd562f9b8b501156690f",
+        "bytes": 1007802
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 489,
+      "box_xyxy": [
+        15,
+        23,
+        1065,
+        1854
+      ],
+      "radius": 14.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0489.png",
+        "sha256": "5e3efbe697e1372c0f8d8440a5a78808ec730e0a8da02349b192b3b9a27fda76",
+        "bytes": 1065946
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 490,
+      "box_xyxy": [
+        12,
+        18,
+        1069,
+        1870
+      ],
+      "radius": 12.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0490.png",
+        "sha256": "f51c4e714eb8753de881a3d9e6d525ec8464969ae96c5cfa0b5a4023fbe9e7af",
+        "bytes": 1113008
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 491,
+      "box_xyxy": [
+        9,
+        14,
+        1072,
+        1882
+      ],
+      "radius": 10.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0491.png",
+        "sha256": "0d89d3148edba7e600ae7645b09038d6bd3ac9ed37bb1d0da64a2a5f81e2629d",
+        "bytes": 1163042
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 492,
+      "box_xyxy": [
+        7,
+        10,
+        1074,
+        1891
+      ],
+      "radius": 8.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0492.png",
+        "sha256": "43b6a236ff748a97c022f327591aafad83bd054df5d0390a44e4f0bc49c5a245",
+        "bytes": 1205095
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 493,
+      "box_xyxy": [
+        5,
+        8,
+        1075,
+        1898
+      ],
+      "radius": 6.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0493.png",
+        "sha256": "f1eae0b0eff73fc3a099f1d7d943ec6bbf64ad24a2c4298d0362880510fef3ed",
+        "bytes": 1239352
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 494,
+      "box_xyxy": [
+        4,
+        6,
+        1076,
+        1903
+      ],
+      "radius": 4.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0494.png",
+        "sha256": "dc6a95394a8691b3a85e2fc742a45b1f67c3418d3b8852e08d125b286a4f80ad",
+        "bytes": 1260590
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 495,
+      "box_xyxy": [
+        3,
+        5,
+        1077,
+        1908
+      ],
+      "radius": 2.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0495.png",
+        "sha256": "8a0578b9c9a3cacbe2767c14d097da4eb5186ce8f243cb97758fb3ffb68a4df6",
+        "bytes": 1280643
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    },
+    {
+      "frame": 496,
+      "box_xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "radius": 0.0,
+      "source_png": {
+        "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\native\\reference\\f0496.png",
+        "sha256": "49754d283d0598138d392842eea5b7bdc6409fded5d09a84fe910985dd4cfb53",
+        "bytes": 1293436
+      },
+      "method": "Native warm/non-grid RGB support union; R>55 and R-G>7 or G>80. Source grid excluded after prior value thresholds failed. Manual pre478 window-top excludes head. Full edge approx±4px; dark unlit borders can remain unknown."
+    }
+  ],
+  "box_knots": [
+    [
+      474,
+      [
+        390,
+        306,
+        695,
+        620
+      ]
+    ],
+    [
+      475,
+      [
+        375,
+        336,
+        712,
+        672
+      ]
+    ],
+    [
+      476,
+      [
+        339,
+        360,
+        748,
+        787
+      ]
+    ],
+    [
+      477,
+      [
+        297,
+        372,
+        788,
+        911
+      ]
+    ],
+    [
+      478,
+      [
+        255,
+        376,
+        831,
+        1046
+      ]
+    ],
+    [
+      479,
+      [
+        214,
+        356,
+        872,
+        1175
+      ]
+    ],
+    [
+      480,
+      [
+        175,
+        320,
+        908,
+        1299
+      ]
+    ],
+    [
+      481,
+      [
+        142,
+        275,
+        942,
+        1410
+      ]
+    ],
+    [
+      482,
+      [
+        112,
+        228,
+        970,
+        1508
+      ]
+    ],
+    [
+      483,
+      [
+        87,
+        182,
+        994,
+        1593
+      ]
+    ],
+    [
+      484,
+      [
+        67,
+        140,
+        1013,
+        1664
+      ]
+    ],
+    [
+      485,
+      [
+        51,
+        104,
+        1030,
+        1724
+      ]
+    ],
+    [
+      486,
+      [
+        37,
+        73,
+        1042,
+        1768
+      ]
+    ],
+    [
+      487,
+      [
+        27,
+        47,
+        1053,
+        1806
+      ]
+    ],
+    [
+      488,
+      [
+        20,
+        30,
+        1060,
+        1834
+      ]
+    ],
+    [
+      489,
+      [
+        15,
+        23,
+        1065,
+        1854
+      ]
+    ],
+    [
+      490,
+      [
+        12,
+        18,
+        1069,
+        1870
+      ]
+    ],
+    [
+      491,
+      [
+        9,
+        14,
+        1072,
+        1882
+      ]
+    ],
+    [
+      492,
+      [
+        7,
+        10,
+        1074,
+        1891
+      ]
+    ],
+    [
+      493,
+      [
+        5,
+        8,
+        1075,
+        1898
+      ]
+    ],
+    [
+      494,
+      [
+        4,
+        6,
+        1076,
+        1903
+      ]
+    ],
+    [
+      495,
+      [
+        3,
+        5,
+        1077,
+        1908
+      ]
+    ],
+    [
+      496,
+      [
+        0,
+        0,
+        1080,
+        1920
+      ]
+    ]
+  ],
+  "rejected_diagnostics": [
+    {
+      "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\return-geometry.json",
+      "sha256": "d47b8b6b83e87711ad3c7ab769ad481f4fa817b536d82a44069df0068ea78bf0",
+      "bytes": 17438
+    },
+    {
+      "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\return-geometry-v2.json",
+      "sha256": "404ec76635f872ee8ebbfc4b4ab8cec9894b4d356fe976648785aa61119e1a8e",
+      "bytes": 17331
+    }
+  ],
+  "reason": "V1 split dark hair; V2 included bright grid. Both remain rejected geometry diagnostics.",
+  "prior_geometry": {
+    "path": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\vibrant-full-suite-v1\\source\\return-geometry-v4.json",
+    "sha256": "61fe134553df94290c1c4648c6595f9e65fe0391ccc45b3a5530fe4c7cdd1492",
+    "bytes": 19131
+  }
+}

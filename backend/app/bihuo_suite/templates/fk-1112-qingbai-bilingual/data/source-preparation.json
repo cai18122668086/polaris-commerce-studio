@@ -1,0 +1,382 @@
+{
+  "source": "D:\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\media\\20261112_161716_fk-1112-qingbai-bilingual.mp4",
+  "source_sha256": "c5afb0fbf94e31f569e869a3bcc81de786049d6e61e5ebc9cc37f4d3a81b5695",
+  "native_frames": [
+    {
+      "frame": 0,
+      "PTS": 0.0,
+      "raw_RGB_SHA256": "5873548aa490251210493832f3d9b4fe292ba920691e9731078fc1edd07ba0d4"
+    },
+    {
+      "frame": 1,
+      "PTS": 0.04,
+      "raw_RGB_SHA256": "5790ae970bc7b85ad21c30a3790a5640fe2f917f384e0807e79faea327905b24"
+    },
+    {
+      "frame": 10,
+      "PTS": 0.4,
+      "raw_RGB_SHA256": "3c5f7a5faee949bf60f04f3fb917b44f88c2964f3f004199a8e9f69a332b60d8"
+    },
+    {
+      "frame": 74,
+      "PTS": 2.96,
+      "raw_RGB_SHA256": "76e10f38d835bbbc9e01f2636fa8d86671f94248200a5c242ace8fd3aa762b23"
+    },
+    {
+      "frame": 80,
+      "PTS": 3.2,
+      "raw_RGB_SHA256": "95887cf58be55ba97dbd278831b8f4e624fe2b10c9990a94e0d148c4bf536860"
+    },
+    {
+      "frame": 86,
+      "PTS": 3.44,
+      "raw_RGB_SHA256": "492828317a4aca5cad31a4f989aabd61bcabe02123d9a26d73c16225caec2c61"
+    },
+    {
+      "frame": 94,
+      "PTS": 3.76,
+      "raw_RGB_SHA256": "61080cb75392d5b8652a0f9d5726a857fefd62917c1995cb6d795e7fdc74e8f1"
+    },
+    {
+      "frame": 110,
+      "PTS": 4.4,
+      "raw_RGB_SHA256": "fbb339f5f01b79b9557d9f0ce27da204b4715bb7f2e12b74e142a56dd5324237"
+    },
+    {
+      "frame": 212,
+      "PTS": 8.48,
+      "raw_RGB_SHA256": "164049c39b59f0a37c5e6b06446723789b3ffaf62283abe0ad4692fe5a6309fd"
+    },
+    {
+      "frame": 213,
+      "PTS": 8.52,
+      "raw_RGB_SHA256": "85103acd730749cbcf8b61df3dea3d9dbb5134084704b6c45bc89bbfb58ce76c"
+    },
+    {
+      "frame": 223,
+      "PTS": 8.92,
+      "raw_RGB_SHA256": "a6f555957eb81fb2e9faa0f2a8341f49a9b9cf03b998e322167e52ed0e91ed40"
+    },
+    {
+      "frame": 225,
+      "PTS": 9.0,
+      "raw_RGB_SHA256": "078b280d020a8a21d4a7e89e6c892300d54376dddbb016d5b8315e3ee04ffe04"
+    },
+    {
+      "frame": 226,
+      "PTS": 9.04,
+      "raw_RGB_SHA256": "a70b2828e8d0663c398e5e261cd27ae314045fdfdd431697613f0225ba832eaf"
+    },
+    {
+      "frame": 230,
+      "PTS": 9.2,
+      "raw_RGB_SHA256": "c609403b6c960dae7f81ae67887068a5d8b732e5ff0c7743696e709899b390b0"
+    },
+    {
+      "frame": 231,
+      "PTS": 9.24,
+      "raw_RGB_SHA256": "53f185ce5817e38d00428775a773a496586af3b41fa100439dd59fa092e40c9d"
+    },
+    {
+      "frame": 233,
+      "PTS": 9.32,
+      "raw_RGB_SHA256": "c7f1800a0c18d922044339113150563d4e77e296f8be95cb625003b54fa1cb96"
+    },
+    {
+      "frame": 235,
+      "PTS": 9.4,
+      "raw_RGB_SHA256": "0f69a829997c3f5ab0483b18edb854f59a7ef1679de7f751947c1f3954eb58c7"
+    },
+    {
+      "frame": 237,
+      "PTS": 9.48,
+      "raw_RGB_SHA256": "5de5af7eb28c344ee135cf3829526e91de2fc183df748035d1ab044e1f48764b"
+    },
+    {
+      "frame": 240,
+      "PTS": 9.6,
+      "raw_RGB_SHA256": "2410c5ecb53d4cd413d660fb33cbaf7e234035c48900da2752849597db5a842c"
+    },
+    {
+      "frame": 247,
+      "PTS": 9.88,
+      "raw_RGB_SHA256": "5dd86cb92fb8bd877834e515ed02d90a4d8fb3fdafe316962f8e2d5c2ed0374c"
+    },
+    {
+      "frame": 248,
+      "PTS": 9.92,
+      "raw_RGB_SHA256": "a22baae8ae5e007b1aed8c48d2d41e607c89c26d0bf08f423408ddb1d5c4c826"
+    },
+    {
+      "frame": 255,
+      "PTS": 10.2,
+      "raw_RGB_SHA256": "d1bd2eb6ab13a3a7208b9cdfe5016b8e335126c3bc99c10821f40d0309e9b46d"
+    },
+    {
+      "frame": 262,
+      "PTS": 10.48,
+      "raw_RGB_SHA256": "be9d1899527891df26d0d6fd29aca4e2b650af526cebda224520fa24974398b5"
+    }
+  ],
+  "person_raise_components": {
+    "225": {
+      "color_component_candidates": [
+        [
+          63237,
+          [
+            400,
+            1198,
+            688,
+            1578
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "226": {
+      "color_component_candidates": [
+        [
+          66787,
+          [
+            408,
+            1170,
+            696,
+            1552
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "227": {
+      "color_component_candidates": [
+        [
+          84076,
+          [
+            420,
+            1130,
+            710,
+            1512
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "228": {
+      "color_component_candidates": [
+        [
+          84544,
+          [
+            436,
+            1076,
+            726,
+            1460
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "229": {
+      "color_component_candidates": [
+        [
+          85509,
+          [
+            456,
+            1018,
+            746,
+            1402
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "230": {
+      "color_component_candidates": [
+        [
+          85822,
+          [
+            476,
+            948,
+            768,
+            1334
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "231": {
+      "color_component_candidates": [
+        [
+          86073,
+          [
+            502,
+            874,
+            792,
+            1262
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "232": {
+      "color_component_candidates": [
+        [
+          86959,
+          [
+            526,
+            790,
+            820,
+            1180
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "233": {
+      "color_component_candidates": [
+        [
+          87770,
+          [
+            554,
+            700,
+            848,
+            1092
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "234": {
+      "color_component_candidates": [
+        [
+          88424,
+          [
+            582,
+            610,
+            878,
+            1004
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "235": {
+      "color_component_candidates": [
+        [
+          89779,
+          [
+            608,
+            528,
+            906,
+            922
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "236": {
+      "color_component_candidates": [
+        [
+          90661,
+          [
+            632,
+            452,
+            930,
+            848
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "237": {
+      "color_component_candidates": [
+        [
+          91492,
+          [
+            652,
+            384,
+            952,
+            784
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "238": {
+      "color_component_candidates": [
+        [
+          91808,
+          [
+            672,
+            323,
+            972,
+            722
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "239": {
+      "color_component_candidates": [
+        [
+          92562,
+          [
+            688,
+            271,
+            990,
+            672
+          ]
+        ]
+      ],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    },
+    "240": {
+      "color_component_candidates": [],
+      "not_author_window_edge": true,
+      "uncertainty_px": 6
+    }
+  },
+  "food_repair": {
+    "frame": 255,
+    "source_RGB_SHA256": "d1bd2eb6ab13a3a7208b9cdfe5016b8e335126c3bc99c10821f40d0309e9b46d",
+    "mask": "D:\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\projects\\fk-1112-qingbai-bilingual\\source\\pilot-qingbai-v1\\food-f0255-mask.png",
+    "mask_sha256": "33fdaef7c95503cc90c46cde433669924f5fc584cc6fc35bb468eb0d5fe796c7",
+    "after": "D:\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\projects\\fk-1112-qingbai-bilingual\\source\\pilot-qingbai-v1\\food-f0255-repaired.png",
+    "after_sha256": "3d8a4318cc40060766b207d965a961ce9642223065eb636cd402cde91c98c364",
+    "difference": "D:\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\projects\\fk-1112-qingbai-bilingual\\source\\pilot-qingbai-v1\\food-f0255-difference.png",
+    "algorithm": "OpenCV Telea radius3 on bounded finished-source person/caption holes",
+    "unknown_hidden_pixels": true
+  },
+  "book": {
+    "frame": 110,
+    "source_rect": [
+      54,
+      164,
+      1019,
+      1155
+    ],
+    "author_original_unavailable": true,
+    "static_extracted_crop_not_source_video_replay": true
+  },
+  "warm_cover": {
+    "frame": 0,
+    "lower_native_composite_only": true,
+    "not_authored_alpha": true,
+    "normal_groups_no_head_matte": true
+  },
+  "source_fidelity_pass": false
+}

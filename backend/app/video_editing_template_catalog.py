@@ -227,4 +227,25 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
         except (ApiError, KeyError, ValueError):
             pass
         cards.insert(0, TemplateCatalogCard.model_validate(apple).model_dump())
+    from .bihuo_suite.registry import cards as bihuo_cards
+
+    for card in bihuo_cards():
+        try:
+            entry, _ = example_file(settings, card["id"], "video")
+            url = (
+                f"/api/v1/video-studio/workspaces/{workspace_id}"
+                f"/editing-template-catalog/{card['id']}/example"
+            )
+            poster = None
+            try:
+                example_file(settings, card["id"], "poster")
+                poster = url + "/poster"
+            except ApiError:
+                pass
+            card["example"] = TemplateExample.model_validate(
+                {**entry["metadata"], "url": url + "/video", "poster_url": poster}
+            ).model_dump()
+        except (ApiError, KeyError, ValueError):
+            pass
+        cards.append(TemplateCatalogCard.model_validate(card).model_dump())
     return cards

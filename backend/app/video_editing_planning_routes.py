@@ -88,9 +88,13 @@ def list_template_catalog(request: Request, workspace: VideoWorkspace) -> list[d
 def get_template_example(
     template_id: str, kind: str, request: Request, workspace: VideoWorkspace
 ) -> FileResponse:
-    if template_id != APPLE_TEMPLATE_ID and template_id not in {
-        item["id"] for item in overlay_templates()
-    }:
+    from .bihuo_suite.registry import available as bihuo_available
+
+    if (
+        template_id != APPLE_TEMPLATE_ID
+        and not bihuo_available(template_id)
+        and template_id not in {item["id"] for item in overlay_templates()}
+    ):
         raise ApiError(
             404, "EDITING_TEMPLATE_EXAMPLE_UNAVAILABLE", "此模板的示例暂不可用。"
         )
@@ -193,7 +197,7 @@ def create_native_candidate(
     require_workspace_write(workspace)
     settings = enabled(request)
     row = own_planning_task(session, workspace, str(task_id))
-    if row.snapshot.get("engine") == "apple-minimal-suite":
+    if row.snapshot.get("engine") in {"apple-minimal-suite", "bihuo-full-suite"}:
         raise ApiError(
             409,
             "EDITING_SUITE_NATIVE_EDITOR_UNAVAILABLE",

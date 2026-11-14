@@ -1,0 +1,9 @@
+# quantum native mechanism application
+
+API: compile_request(resolved, *, source_path, fonts, creative_options, ffmpeg='ffmpeg', size=(1080,1920)) -> JSON config; render_mp4(cfg, output_dir) -> final.mp4 plus render-receipt.json.
+
+Runtime accepts the host's actual full captions/FA/tokens/material assignments and source duration. It contains no pinned57b text or timing and no drive paths. Images preserve their complete embedded text using contain plus blur padding. Each material has its own semantic interval from spoken_span, independent of the old legacy visual end. Matched historical roles are separately defined by the native recipe, not mislabeled current spoken content. None clears images; meaningful text-only items remain; empty/disabled content is omitted. Identity capabilities: False. Empty or disabled name card is omitted, and single fields work where supported. Title/support are independent editable text roles.
+
+Host-only creative_options.foreground_cache must bind actual source_sha256, the existing01eb6a model SHA, and every used native frame path/SHA. Missing or wrong-person alpha is refused. The cache is generated once by the host's existing local model and shared across templates. No person mask, model or finished-source recovery is shipped in this portable bundle. Current57b is only an offline regression fixture.
+
+Python3.12+, Pillow/numpy/OpenCV and ffmpeg/ffprobe are required. Vendor is a local pinned copy of the previously approved V02/media/font helpers, used directly; host font paths override the bundled Source Han Sans CN Bold. Rendering performs one video encode and a light receipt. New/native mechanism curves, author raw and exact original fonts remain reconstruction limits. New semantic timing follows the actual plan; it is not a claim of identical reference duration or arbitrary automatic spatial planning. Full suite remains a production candidate, not a formal03/04/08 acceptance or new user effect approval.

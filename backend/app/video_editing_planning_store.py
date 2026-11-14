@@ -10,6 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .auth import WorkspaceContext
+from .bihuo_suite.registry import ENGINE as BIHUO_ENGINE
+from .bihuo_suite.registry import definition as bihuo_definition
+from .bihuo_suite.registry import is_template as bihuo_template
 from .config import Settings
 from .errors import ApiError
 from .motion_library import MOTION_SHA256
@@ -81,6 +84,14 @@ def execution_available(settings: Settings) -> bool:
 
 
 def require_active_planning_template(template_id: str | None) -> None:
+    if bihuo_template(template_id):
+        from .bihuo_suite.registry import available
+
+        assert template_id is not None
+        if not available(template_id):
+            raise ApiError(
+                409, "EDITING_TEMPLATE_INSTALLING", "此模板正在更新，请稍后重试。"
+            )
     if template_id == FRUIT_LIST_TEMPLATE_ID:
         raise ApiError(
             409,
@@ -155,9 +166,9 @@ def planning_response(
     return {
         **(
             {
-                "engine": APPLE_ENGINE,
-                "template_id": APPLE_TEMPLATE_ID,
-                "template_name": APPLE_TEMPLATE_NAME,
+                "engine": row.snapshot.get("engine", APPLE_ENGINE),
+                "template_id": row.snapshot.get("template_id", APPLE_TEMPLATE_ID),
+                "template_name": row.snapshot.get("template_name", APPLE_TEMPLATE_NAME),
                 "suite_plan": row.result.get("suite_plan"),
             }
             if suite_engine(row.snapshot)
@@ -331,7 +342,7 @@ def create_planning_task(
         "source_subtitles": base.options["source_subtitles"],
         **({"music": body.music} if body.music is not None else {}),
     }
-    if body.template_id == APPLE_TEMPLATE_ID:
+    if body.template_id == APPLE_TEMPLATE_ID or bihuo_template(body.template_id):
         if base.options["source_subtitles"] != "none":
             raise ApiError(
                 422,
@@ -339,15 +350,40 @@ def create_planning_task(
                 "此模板需要没有烧字字幕的口播视频。",
             )
         snapshot.update(
-            engine=APPLE_ENGINE,
-            engine_bundle=suite_bundle(settings),
+            engine=APPLE_ENGINE
+            if body.template_id == APPLE_TEMPLATE_ID
+            else BIHUO_ENGINE,
+            engine_bundle=suite_bundle(settings)
+            if body.template_id == APPLE_TEMPLATE_ID
+            else suite_bundle(settings, body.template_id),
             creative_options=body.creative_options.model_dump(mode="json")
             if body.creative_options
             else {},
         )
+        if body.template_id != APPLE_TEMPLATE_ID:
+            assert body.template_id is not None
+            from .bihuo_suite.registry import creative_options as suite_creative_options
+
+            snapshot["creative_options"] = suite_creative_options(
+                body.template_id, snapshot["creative_options"]
+            )
+            snapshot.update(
+                template_id=body.template_id,
+                template_name=bihuo_definition(body.template_id)["name"],
+            )
         snapshot["asset_cards"] = material_cards(
             source_assets(source) | selected, include_video_durations=True
         )
+        if body.template_id != APPLE_TEMPLATE_ID and "images" not in bihuo_definition(
+            body.template_id
+        ).get("capabilities", []):
+            if body.material_ids:
+                raise ApiError(
+                    422,
+                    "EDITING_TEMPLATE_MATERIALS_UNSUPPORTED",
+                    "此模板按口播编排文字画面，无需选择配图。",
+                )
+            snapshot["asset_cards"] = []
     elif body.template_id is not None:
         try:
             template = overlay_template(body.template_id)

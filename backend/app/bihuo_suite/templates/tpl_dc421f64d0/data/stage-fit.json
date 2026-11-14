@@ -1,0 +1,19 @@
+{
+  "source_frame": 250,
+  "method": "Per-row native side-margin median -> least-squares vertical RGB gradient; not author declaration",
+  "slope": [
+    -0.022026408342531563,
+    -0.02086869488015254,
+    -0.0186477427735033
+  ],
+  "intercept": [
+    232.0502242213255,
+    231.03366898750613,
+    235.09641544117633
+  ],
+  "mean_rgb_residual": [
+    0.5265641481533484,
+    0.5065714543163609,
+    0.5922563495571025
+  ]
+}

@@ -1,0 +1,3291 @@
+{
+  "source": "D:\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\media\\20261112_114819_cov1111-1019.mp4",
+  "source_sha256": "a027d015500cc944c82bb00b75c5aa95a2caba6a97bd10181753b546f798880c",
+  "scope": [
+    0,
+    217
+  ],
+  "geometry_precision_px": 6,
+  "presenter_frames": [
+    {
+      "frame": 0,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "460d3498ecea5f872bcc27d7155770f993dc7a90ae75a36fbe57fe7aab5cd6a7",
+      "source_crop_rgb_sha256": "460d3498ecea5f872bcc27d7155770f993dc7a90ae75a36fbe57fe7aab5cd6a7",
+      "patch_mask_pixels": 120922,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "2a92c88234de21462b68fa81088763d5d051d6df572d1eedc1d7b946a8ffb7ed"
+    },
+    {
+      "frame": 1,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "a51370d4e714ff93fc7235d085ad3560428ac0522fce69f5b266ec291f75ae99",
+      "source_crop_rgb_sha256": "a51370d4e714ff93fc7235d085ad3560428ac0522fce69f5b266ec291f75ae99",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e38168dcbe7208d1378b0aceb7f64c3741922f226ea5d8fbce0350ab45e3ce3a"
+    },
+    {
+      "frame": 2,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "6d965e0b9c93f24726d63d406e468841bb6bf09bc296efbb281ebb58d3f50cf2",
+      "source_crop_rgb_sha256": "6d965e0b9c93f24726d63d406e468841bb6bf09bc296efbb281ebb58d3f50cf2",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "1f993208d5e99c009f887563d7342c971edaad3df079ecca0a0a88c886cc3227"
+    },
+    {
+      "frame": 3,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "cbcb1a94475cc691747a8eeea78266a326dc8a7cf1d85ba217f12a667af4bb2d",
+      "source_crop_rgb_sha256": "cbcb1a94475cc691747a8eeea78266a326dc8a7cf1d85ba217f12a667af4bb2d",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "588fd22d35a62468d2709b52045ea362fca018beff0a40ec6c17732baf81e6b4"
+    },
+    {
+      "frame": 4,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "a4ceecbd9468091546b6fbdc2a9744450d726129e671e5e40c92607c8129f8a2",
+      "source_crop_rgb_sha256": "a4ceecbd9468091546b6fbdc2a9744450d726129e671e5e40c92607c8129f8a2",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f01e3b2151d9c757594f525e15098e83c7cd6df9bc00a21c1cded1c0e09fb41f"
+    },
+    {
+      "frame": 5,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "bbe9eda9c80fd6925c566e42a20949407d146d799b509fb8867929eaebd27009",
+      "source_crop_rgb_sha256": "bbe9eda9c80fd6925c566e42a20949407d146d799b509fb8867929eaebd27009",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "142b236a83165602b4b9c5739288243a7944a6e7bfdb0b8e4f7ba637fd330f48"
+    },
+    {
+      "frame": 6,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "7566ac847e64dcda61e23d538f7ff1a71d8b0aa412e665785a83a4ec8bd860f5",
+      "source_crop_rgb_sha256": "7566ac847e64dcda61e23d538f7ff1a71d8b0aa412e665785a83a4ec8bd860f5",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b6037f6a754cf9091b755ee9c66f7de3f6e19e15d38292f98780471b7ead1142"
+    },
+    {
+      "frame": 7,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "7cbf3ea99e5dd5d02998a8119d4630ac86d744aff44fa3f8daf0727871df0842",
+      "source_crop_rgb_sha256": "7cbf3ea99e5dd5d02998a8119d4630ac86d744aff44fa3f8daf0727871df0842",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "eee9ec48fa298096ac82976b7642eebe8a7a205f62c26007c4291bdaa105727a"
+    },
+    {
+      "frame": 8,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "52b06f7538167d0d0fdaa5b8adccf40defa2ab73bd0a982dbfdece30ce2abfdd",
+      "source_crop_rgb_sha256": "52b06f7538167d0d0fdaa5b8adccf40defa2ab73bd0a982dbfdece30ce2abfdd",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "d1ecc0d131de0ae9ffdbf83297b77759d452e7d33986397ea928b28c42dde0d7"
+    },
+    {
+      "frame": 9,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "750eb15629be9e6b22110911cb780595cbc65b0ca3375e467e1a667c5f5943f5",
+      "source_crop_rgb_sha256": "750eb15629be9e6b22110911cb780595cbc65b0ca3375e467e1a667c5f5943f5",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "3a077d5fcacc0ff51c006142bc016070dfbf80313bdbe236885faa119dc01abe"
+    },
+    {
+      "frame": 10,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "3ac5a5815bb1e08e86619d39f54c7851954fc78a1a38c64094a80f7e37720aa0",
+      "source_crop_rgb_sha256": "3ac5a5815bb1e08e86619d39f54c7851954fc78a1a38c64094a80f7e37720aa0",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "91a3b44bb47b8989fa4d4cd699d19b434b939b34c2cda1d8cc22defac3182aeb"
+    },
+    {
+      "frame": 11,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "112cee282103d796e24104c16d4dc49978ee17c153a752ac29b9dbeb08973d7f",
+      "source_crop_rgb_sha256": "112cee282103d796e24104c16d4dc49978ee17c153a752ac29b9dbeb08973d7f",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "44ad2fc30d7dc8fd38931b6b3abd389cdbeb7a4c59d15d779b3e80db1d37d411"
+    },
+    {
+      "frame": 12,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "d7a640046f53761d1d904c4918a5b821a76fa06923f6223f1616121ebc13e29c",
+      "source_crop_rgb_sha256": "d7a640046f53761d1d904c4918a5b821a76fa06923f6223f1616121ebc13e29c",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a3b6b93b77311283b108c0cd77348b44ad804ce46834ca84776e0c8db4c526e0"
+    },
+    {
+      "frame": 13,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "f03e9c06f241a9a464d64a5858f233f79a62fa8931c971645b1a19e6d94e9af0",
+      "source_crop_rgb_sha256": "f03e9c06f241a9a464d64a5858f233f79a62fa8931c971645b1a19e6d94e9af0",
+      "patch_mask_pixels": 118355,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "8cdffc15b5c668ceb776d3954de36a2cc688faed2d58d89f13f2693a60433adb"
+    },
+    {
+      "frame": 14,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "4a0b50a2d468f296b0e003c83dd54c6c2818d472ddb381514d7deec17b739e03",
+      "source_crop_rgb_sha256": "4a0b50a2d468f296b0e003c83dd54c6c2818d472ddb381514d7deec17b739e03",
+      "patch_mask_pixels": 119831,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b5e8424dbb15c63f4fcb1d8ef9b8430620aaf6d6d54ec1e947d8b259e4cfdba0"
+    },
+    {
+      "frame": 15,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "9dd8e4cdcdaaa66c39578e5d96116622040ca363e246430de66a04c2efe1b1ad",
+      "source_crop_rgb_sha256": "9dd8e4cdcdaaa66c39578e5d96116622040ca363e246430de66a04c2efe1b1ad",
+      "patch_mask_pixels": 120247,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "cbb53d09753af83da6c66409c101016bedc48648976e3b49d548bb1667cc76c6"
+    },
+    {
+      "frame": 16,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "5194210bca8102ced690da3414f8c9f3ec5b9a3af3f503b990550ea4803b2f6f",
+      "source_crop_rgb_sha256": "5194210bca8102ced690da3414f8c9f3ec5b9a3af3f503b990550ea4803b2f6f",
+      "patch_mask_pixels": 120451,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "9b2e1d3dbf9ac697fe72dfa85d60dba7294a9f8aac855b4229c25e0509b64a69"
+    },
+    {
+      "frame": 17,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "c8142c63afe87cec759aab28c09f21af4774e1812e4928aacb4651a99ba6b977",
+      "source_crop_rgb_sha256": "c8142c63afe87cec759aab28c09f21af4774e1812e4928aacb4651a99ba6b977",
+      "patch_mask_pixels": 120573,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a1957f1e196bfd098fea784935f6efb268e95824f67aaf525edd15dbb15e98c4"
+    },
+    {
+      "frame": 18,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "ffe7121c84b0b46b7d7a0c3620963a44447c34c29a32f954f978ce15778b808b",
+      "source_crop_rgb_sha256": "ffe7121c84b0b46b7d7a0c3620963a44447c34c29a32f954f978ce15778b808b",
+      "patch_mask_pixels": 120665,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b32dea2f9b3a6bf51715844c8933525d47465b49adb7784fd18d4c4fd85d8dae"
+    },
+    {
+      "frame": 19,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "aa69214103f619d302d90c2957c02e15b016b08ab99a1d824ead61a3882f977f",
+      "source_crop_rgb_sha256": "aa69214103f619d302d90c2957c02e15b016b08ab99a1d824ead61a3882f977f",
+      "patch_mask_pixels": 120719,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "040f32d5dd44e7e6d07b5da435f2d2c8196bf620945ea3f8f7f56b1a66f7aba7"
+    },
+    {
+      "frame": 20,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "6d672a9220a4f25c5e5bd5447199bfcb9eb01c0d717ce52f6e518e7b1136f51b",
+      "source_crop_rgb_sha256": "6d672a9220a4f25c5e5bd5447199bfcb9eb01c0d717ce52f6e518e7b1136f51b",
+      "patch_mask_pixels": 120832,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "4f5a4f75ebc7ca4d7367516e6fafefa0708a05122ab5d0f9984eada5a701f3f3"
+    },
+    {
+      "frame": 21,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "22b3971eba8bd014e533b73c2e99a7e601e54437e6159e50d0d5ebf6bc3545c0",
+      "source_crop_rgb_sha256": "22b3971eba8bd014e533b73c2e99a7e601e54437e6159e50d0d5ebf6bc3545c0",
+      "patch_mask_pixels": 120921,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "108ee3fb220848bf7b4e29db45ee1571ab2a72a3eb5ef1742b716584cb176c80"
+    },
+    {
+      "frame": 22,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "5a2948fc94666ee584d4ed9940f9b8333c0e350ef925e7c4b1b2c908fca2006c",
+      "source_crop_rgb_sha256": "5a2948fc94666ee584d4ed9940f9b8333c0e350ef925e7c4b1b2c908fca2006c",
+      "patch_mask_pixels": 120914,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "302a4ec6e1cc289a0f66b0fcbec116e48fd9bf0663477a0f4ae1f60687e7000d"
+    },
+    {
+      "frame": 23,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "b998e4cf962aa420c2d6434b211e450154b84163104494ca08f758b23fa55984",
+      "source_crop_rgb_sha256": "b998e4cf962aa420c2d6434b211e450154b84163104494ca08f758b23fa55984",
+      "patch_mask_pixels": 120934,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "5a65c74d5822d1e647507f9c0b817c34cd76f000990b1fe7262c43f4df77f791"
+    },
+    {
+      "frame": 24,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "685c184b148a1d0edf91d811ab9c02ca91a218beea9603dc2a6725ca77538d50",
+      "source_crop_rgb_sha256": "685c184b148a1d0edf91d811ab9c02ca91a218beea9603dc2a6725ca77538d50",
+      "patch_mask_pixels": 120936,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "c2110a7eb3b8f6247c611e1ceffb4182879ceb2ca06918c61e4e779e00c12fe3"
+    },
+    {
+      "frame": 25,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "c7b9bbef74af66850d2087cfbb5af89cc7e15a05e6ec3e785d1f4e45b2ad1094",
+      "source_crop_rgb_sha256": "c7b9bbef74af66850d2087cfbb5af89cc7e15a05e6ec3e785d1f4e45b2ad1094",
+      "patch_mask_pixels": 120921,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "dca888d24beb4a14db3e982febeef0b6090f1bda1f67080f7c0d5b09844131fe"
+    },
+    {
+      "frame": 26,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "20a49212c2036e783e724c468159dfebe8fe86b9240bf04c087c439817f18bd1",
+      "source_crop_rgb_sha256": "20a49212c2036e783e724c468159dfebe8fe86b9240bf04c087c439817f18bd1",
+      "patch_mask_pixels": 120915,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "5c6a399a6c7ca67980851fb8ad851851450b6897a37ae2d86b96a97ba71fe6d3"
+    },
+    {
+      "frame": 27,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "a6ed0a51b220497a7a200c7876f0a31762eb7223fd155fd3123f5b6692d5c146",
+      "source_crop_rgb_sha256": "a6ed0a51b220497a7a200c7876f0a31762eb7223fd155fd3123f5b6692d5c146",
+      "patch_mask_pixels": 120917,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "1e6105ade956fb6dcb580a251919a6a7cccfa82dcfd31c5983ea49500476024f"
+    },
+    {
+      "frame": 28,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "5289111ba28978a16f97cb86eb24bdf88ede260d62ebf463df104859d852c2a7",
+      "source_crop_rgb_sha256": "5289111ba28978a16f97cb86eb24bdf88ede260d62ebf463df104859d852c2a7",
+      "patch_mask_pixels": 120922,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "0aeb15e964c2e0d3961dae6888b72edf20c4bf451c8e745bf04bbfb6717f27b9"
+    },
+    {
+      "frame": 29,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "26bed73426c325ab95d6ea2efe7449a057037fdc12e6bc5833cefcb024045086",
+      "source_crop_rgb_sha256": "26bed73426c325ab95d6ea2efe7449a057037fdc12e6bc5833cefcb024045086",
+      "patch_mask_pixels": 120912,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "89483b0ed0d79598ed7b2041f1626f1aa75bdf349244c04c12072fc7c409077e"
+    },
+    {
+      "frame": 30,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "ae6f6ca453e044324e25aae7e08c451b74c17f45c3695cee19690b256bfb1532",
+      "source_crop_rgb_sha256": "ae6f6ca453e044324e25aae7e08c451b74c17f45c3695cee19690b256bfb1532",
+      "patch_mask_pixels": 120903,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "94d7ae2a0318b7bdfbe92ffa524592558c1483b69f65cf1f192960731f87c5e7"
+    },
+    {
+      "frame": 31,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "b02e63826ae52a92d675a7b4b784dee5a8393eff7c1fbd6d7cd749b31eaf4fb7",
+      "source_crop_rgb_sha256": "b02e63826ae52a92d675a7b4b784dee5a8393eff7c1fbd6d7cd749b31eaf4fb7",
+      "patch_mask_pixels": 120903,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a6f6b16b404561998c533c24810cb9e4260536bdf3f1b962bca44b6a8eb10e09"
+    },
+    {
+      "frame": 32,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "adf2271b11e3620b15a04a5b88b97bb8035be35837368ec4f054d0481c0fa914",
+      "source_crop_rgb_sha256": "adf2271b11e3620b15a04a5b88b97bb8035be35837368ec4f054d0481c0fa914",
+      "patch_mask_pixels": 120902,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "98e5593f888622dbf3592fe993ceef574898028f01f8359f8c8d4b3b48e9a3d2"
+    },
+    {
+      "frame": 33,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "7b215911304412fa62a459d1a9adb577c33af65da6b9f5e98f3be8dbaf5586ac",
+      "source_crop_rgb_sha256": "7b215911304412fa62a459d1a9adb577c33af65da6b9f5e98f3be8dbaf5586ac",
+      "patch_mask_pixels": 120912,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "26e2d5085a626d7fef0ceb0cdae335106e1fbe75750e640d0d8b30f3b5d6fe56"
+    },
+    {
+      "frame": 34,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "96f5bd2802a40e71c6d06251211e010fe1c8022cdccc93008f60fa9be2871611",
+      "source_crop_rgb_sha256": "96f5bd2802a40e71c6d06251211e010fe1c8022cdccc93008f60fa9be2871611",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "3baab820577ec1542cef399bf8ea6c9e074a970c20f62ef8c7e46d0b61b6f371"
+    },
+    {
+      "frame": 35,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "3b0504065622cbfb0575974d3caccf9bbaeebbd359f821d0947663299296e442",
+      "source_crop_rgb_sha256": "3b0504065622cbfb0575974d3caccf9bbaeebbd359f821d0947663299296e442",
+      "patch_mask_pixels": 117747,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b653ec876e4f2b96665e65126319ccdb927bd599f961a99cfbc66c8317570586"
+    },
+    {
+      "frame": 36,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "da623d55def6593d672d2c1c69916b0ce38c6ec62c5f8a7852c1b386c966c28f",
+      "source_crop_rgb_sha256": "da623d55def6593d672d2c1c69916b0ce38c6ec62c5f8a7852c1b386c966c28f",
+      "patch_mask_pixels": 119118,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "871b7e1466341cdf1279c333cd3decba5d91bcf3d54eff67991f066833ac9854"
+    },
+    {
+      "frame": 37,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "7a48318f266f9068aa53c84fb6f36679943a38f7a4358645eb13ae5d4fab6ba6",
+      "source_crop_rgb_sha256": "7a48318f266f9068aa53c84fb6f36679943a38f7a4358645eb13ae5d4fab6ba6",
+      "patch_mask_pixels": 119479,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "60022f1dea29253518d158da1be2eb1c09ddb8d710cba4974ab1c9de12d04890"
+    },
+    {
+      "frame": 38,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "be1901d26b479a74dcc2c4bc41d680e6abb15ecd47400b926a6fdd1fa1c5d4b4",
+      "source_crop_rgb_sha256": "be1901d26b479a74dcc2c4bc41d680e6abb15ecd47400b926a6fdd1fa1c5d4b4",
+      "patch_mask_pixels": 119818,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b5c5309a94b23878311939c22cb8edd28f82f7b938d7568c231647cffad467cf"
+    },
+    {
+      "frame": 39,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "59607f67edc36d5eb17ef6aa28c19bd7cd66228bdddd5277f5a49921639af117",
+      "source_crop_rgb_sha256": "59607f67edc36d5eb17ef6aa28c19bd7cd66228bdddd5277f5a49921639af117",
+      "patch_mask_pixels": 120419,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "8bfc207f005dd93685ded3ce8ae55ed807e157a70aa3b3c523d83268a1e265e5"
+    },
+    {
+      "frame": 40,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "b926ec5ad9376e128307c23964e330a3e8ea6f9c7ec1019f2932ca7616d0148d",
+      "source_crop_rgb_sha256": "b926ec5ad9376e128307c23964e330a3e8ea6f9c7ec1019f2932ca7616d0148d",
+      "patch_mask_pixels": 120889,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "bbb40a9358d4e0faccf2987509d95fefc0fe4cbaf5a189abbf2df603bc7e2c36"
+    },
+    {
+      "frame": 41,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "2be16628ffb342cd5a6877a50c004ca1ed11d31efb56d86c86c699bb283eaca0",
+      "source_crop_rgb_sha256": "2be16628ffb342cd5a6877a50c004ca1ed11d31efb56d86c86c699bb283eaca0",
+      "patch_mask_pixels": 121284,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ac58d49a9c3bc69eb725030cab121c4d0a72b8898ee2cdfc991ddecfd542f932"
+    },
+    {
+      "frame": 42,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "f86c865d1e65dbfa241f81c10ba8e9b8f8b8508e9c1e3e4d703a46fbe97430fa",
+      "source_crop_rgb_sha256": "f86c865d1e65dbfa241f81c10ba8e9b8f8b8508e9c1e3e4d703a46fbe97430fa",
+      "patch_mask_pixels": 121738,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "1f098f84525eb2306f04241796250b8d3d59547403fdbb60640908375ebbf06d"
+    },
+    {
+      "frame": 43,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "736a955dcd9c9c9dfb59749191cf2a937b0eb23d1997fae5542e33a2db87e1f4",
+      "source_crop_rgb_sha256": "736a955dcd9c9c9dfb59749191cf2a937b0eb23d1997fae5542e33a2db87e1f4",
+      "patch_mask_pixels": 122075,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "9e5127846125978a40e3ee7a35f7772766783941d83470db046ba2b30e737c0b"
+    },
+    {
+      "frame": 44,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "36f1a559abc3d8e2610bc6de63de7a29b786d6c8940015b7d4268b779de84b74",
+      "source_crop_rgb_sha256": "36f1a559abc3d8e2610bc6de63de7a29b786d6c8940015b7d4268b779de84b74",
+      "patch_mask_pixels": 122060,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "8685634458fc5b6357980ae9b1a5c00c928b0535741af0f763738baae6e8fcbb"
+    },
+    {
+      "frame": 45,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "a539dcf474978e217588da55eb766af9920636ce1f71c22678b450b402d8cecc",
+      "source_crop_rgb_sha256": "a539dcf474978e217588da55eb766af9920636ce1f71c22678b450b402d8cecc",
+      "patch_mask_pixels": 122028,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "1a6b490cf290c2083b25fd096abbcbe2db86ce8f1876017faf031e33027cc8ce"
+    },
+    {
+      "frame": 46,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "5d2885597e5a071900291a610274af58a837fc2a6b1a26b28651a916b5d0eda2",
+      "source_crop_rgb_sha256": "5d2885597e5a071900291a610274af58a837fc2a6b1a26b28651a916b5d0eda2",
+      "patch_mask_pixels": 122022,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "183e6ece9738d456f422f7a4881970d0f18f538bd3a37c7705620172c7742cc0"
+    },
+    {
+      "frame": 47,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "3f3e9833e09f4422fd305d2dcad97664d208c05a59acb4027befcc189a9ce1cf",
+      "source_crop_rgb_sha256": "3f3e9833e09f4422fd305d2dcad97664d208c05a59acb4027befcc189a9ce1cf",
+      "patch_mask_pixels": 122055,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "3d0612620b69a82b4510d448acafe609f2a3e2862408573f5fe4012a0d05716a"
+    },
+    {
+      "frame": 48,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "e825f5a47b665f06b9198ab429b876a3cf6d134bc8228515d6aa1ef1e80b981c",
+      "source_crop_rgb_sha256": "e825f5a47b665f06b9198ab429b876a3cf6d134bc8228515d6aa1ef1e80b981c",
+      "patch_mask_pixels": 122168,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f2e9bdcaafd1d3b36e794389125228ef76709b0286185977e06851c159217555"
+    },
+    {
+      "frame": 49,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "01c9876b626a7e132f280ae402fa3a00d74e9044a81810795aa6d524d7420b83",
+      "source_crop_rgb_sha256": "01c9876b626a7e132f280ae402fa3a00d74e9044a81810795aa6d524d7420b83",
+      "patch_mask_pixels": 122118,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "6d2e9fea8e8cb210f71c66da6dab22b6d0e2c8372a8cad2475585f0e84714c30"
+    },
+    {
+      "frame": 50,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "1467c54df1c6e1fa150b8fcc0e2f6d39749d12b64116debc04440b9e0bd5b837",
+      "source_crop_rgb_sha256": "1467c54df1c6e1fa150b8fcc0e2f6d39749d12b64116debc04440b9e0bd5b837",
+      "patch_mask_pixels": 122133,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a5a17b83793399d17c8bd5d4b9032ec9d79d0b0ff0bf28aad4e33a8a88ba6b98"
+    },
+    {
+      "frame": 51,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "29b5c467c928f67bb4e00c3899593fdad20975f4a819bf817a3caf4df63e8503",
+      "source_crop_rgb_sha256": "29b5c467c928f67bb4e00c3899593fdad20975f4a819bf817a3caf4df63e8503",
+      "patch_mask_pixels": 122177,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "dfeaec1cee593fd90994218063b6fcc584b7159ca77b0a789c17b16578cc1ee9"
+    },
+    {
+      "frame": 52,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "4cb8e2e1c7b4269d3aa8f53606a52a465b4a80e0309ecd4f460ce4fb9dceec6a",
+      "source_crop_rgb_sha256": "4cb8e2e1c7b4269d3aa8f53606a52a465b4a80e0309ecd4f460ce4fb9dceec6a",
+      "patch_mask_pixels": 122181,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "dc2a65b8234e94e1b304dfa9bbfc41e74fc13c5d29eaefdc74921b2eaf43683f"
+    },
+    {
+      "frame": 53,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "a2ad14453e817315cbbcc34b496c909f0c84890036559485c57c4efa921dce48",
+      "source_crop_rgb_sha256": "a2ad14453e817315cbbcc34b496c909f0c84890036559485c57c4efa921dce48",
+      "patch_mask_pixels": 122182,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "38aee14bc702dcea6678e797d162e6c3775ea120cd73f8af4b618a25eaf9c027"
+    },
+    {
+      "frame": 54,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "5ed087f1302076c3d3f9f75d2508b1080b0ee7ffbf25f7262a476fd0d7177631",
+      "source_crop_rgb_sha256": "5ed087f1302076c3d3f9f75d2508b1080b0ee7ffbf25f7262a476fd0d7177631",
+      "patch_mask_pixels": 122154,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ed8a2ed1e3a3a5988a68f73783cdf3f7725e994d8ae6a52db22b23e074201456"
+    },
+    {
+      "frame": 55,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "408125ac7f1a4ff6cd1383e22a3ac0649a16c4e3aa305b80a2bf5fc2da5e4a54",
+      "source_crop_rgb_sha256": "408125ac7f1a4ff6cd1383e22a3ac0649a16c4e3aa305b80a2bf5fc2da5e4a54",
+      "patch_mask_pixels": 122161,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "39dd3019996825041127d5412cf7a98e920e6531d150dc387bd70b3e507cb3e2"
+    },
+    {
+      "frame": 56,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "38d5d2eb1d07d9c697815d5938cbf6077b614cc93b7832f10d9339ac94de9dd1",
+      "source_crop_rgb_sha256": "38d5d2eb1d07d9c697815d5938cbf6077b614cc93b7832f10d9339ac94de9dd1",
+      "patch_mask_pixels": 122128,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "3bd478f367902a22c4d1d48889776f7acc1b32dc9b9eec4f48e15bb581b154f6"
+    },
+    {
+      "frame": 57,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "de40c0cff5db6295f7f7359b8eaa6c255ed54773e90226a2a8de340aac69809b",
+      "source_crop_rgb_sha256": "de40c0cff5db6295f7f7359b8eaa6c255ed54773e90226a2a8de340aac69809b",
+      "patch_mask_pixels": 122058,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ebeb3a932db873baf545e5f19739775b6727918084b4df0c2961830f5c4d02c8"
+    },
+    {
+      "frame": 58,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "1b3df7a7c9fe5d34160d983459980e81fc63e01daeff26c037256823ed59bd3e",
+      "source_crop_rgb_sha256": "1b3df7a7c9fe5d34160d983459980e81fc63e01daeff26c037256823ed59bd3e",
+      "patch_mask_pixels": 122097,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "815ba06fe2988b362ab42a582d8dac994b4539410da6b50fea7389f08fb061f9"
+    },
+    {
+      "frame": 59,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "03aaf824fa87258a3d964f45c400ac8c0dfa710c17ef4b824283033b60711e4e",
+      "source_crop_rgb_sha256": "03aaf824fa87258a3d964f45c400ac8c0dfa710c17ef4b824283033b60711e4e",
+      "patch_mask_pixels": 122101,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "c5268db18b7e74886f9e638a1f3d2db42d2a4cb5abaea9be3118c218e51e41c8"
+    },
+    {
+      "frame": 60,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "875e9bf0cb299d3e13f3b7dea730ad912a87c725b43daf0e715dc4a433ec412f",
+      "source_crop_rgb_sha256": "875e9bf0cb299d3e13f3b7dea730ad912a87c725b43daf0e715dc4a433ec412f",
+      "patch_mask_pixels": 122106,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "70242aa93415e599079ac0ed8decf9e68d37d14fbf688f8ba5b50eb731189abe"
+    },
+    {
+      "frame": 61,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "64f51f3908441c64f2ab1aa628796de8023a5f2f920555d9fe7aa104563d13ee",
+      "source_crop_rgb_sha256": "64f51f3908441c64f2ab1aa628796de8023a5f2f920555d9fe7aa104563d13ee",
+      "patch_mask_pixels": 122173,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f82acf9f0400cbfdee1da61908b520bfbf27c7c82aa81744660ce2ee787e5a5d"
+    },
+    {
+      "frame": 62,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "0790fe8698355280f5ac809ce8a59215fcea46140a4b45d600665b31211e5781",
+      "source_crop_rgb_sha256": "0790fe8698355280f5ac809ce8a59215fcea46140a4b45d600665b31211e5781",
+      "patch_mask_pixels": 122202,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "93009deefed51c35c013b67140f631a7c9011017efc136a2a64e148a66d3a563"
+    },
+    {
+      "frame": 63,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "a3cda3300cb01be1e310d77cc2da2fc46e94dd3d0b1bfb032adf3a0b0d9678a1",
+      "source_crop_rgb_sha256": "a3cda3300cb01be1e310d77cc2da2fc46e94dd3d0b1bfb032adf3a0b0d9678a1",
+      "patch_mask_pixels": 122226,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a3b6f5b0c15b132402e11b9769142e2d763231afa19d17d87e3fb52ccfd523e8"
+    },
+    {
+      "frame": 64,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "194bd1867f91a4af0daf67b497ff47e37ccb0310eb956ef92d268978c28df1a5",
+      "source_crop_rgb_sha256": "194bd1867f91a4af0daf67b497ff47e37ccb0310eb956ef92d268978c28df1a5",
+      "patch_mask_pixels": 122170,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "35c9032edfbf64d9ec773a76f728c69ef5130ae6260f8cfd6981dcd2590168d6"
+    },
+    {
+      "frame": 65,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "bc70e434d6499a442a97d56b84b5b7862824625d26a33abee1077dbe82a56692",
+      "source_crop_rgb_sha256": "bc70e434d6499a442a97d56b84b5b7862824625d26a33abee1077dbe82a56692",
+      "patch_mask_pixels": 122106,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "322ade8b191e2f1c946f679d3b229cf6ce09bcb9cf311dba9484f7b084af330b"
+    },
+    {
+      "frame": 66,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "46f320dceae0b962d5601abe0f5713d26f8aeaae8eb11492245c20fb12ed0126",
+      "source_crop_rgb_sha256": "46f320dceae0b962d5601abe0f5713d26f8aeaae8eb11492245c20fb12ed0126",
+      "patch_mask_pixels": 122113,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "1800179312b0af6d3df3fe0dbe32c551e52c4db7f8e849a86dc8fd9b31da5026"
+    },
+    {
+      "frame": 67,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "0ab43310e94b6f8d60cf4e1230ca8c37e8db2dd6ec2f6751b1fe837b97806d0b",
+      "source_crop_rgb_sha256": "0ab43310e94b6f8d60cf4e1230ca8c37e8db2dd6ec2f6751b1fe837b97806d0b",
+      "patch_mask_pixels": 122129,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "bb6806c90b8f9375e3f4bfdf106b0c88f7b177bd0d3136e861a5ecac41f8f3df"
+    },
+    {
+      "frame": 68,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "2d4db69973eaa55287574cbf720c9b0b9df478868127a89cb18d87c5d6462331",
+      "source_crop_rgb_sha256": "2d4db69973eaa55287574cbf720c9b0b9df478868127a89cb18d87c5d6462331",
+      "patch_mask_pixels": 122159,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "2a1b9b335848194d05a7ff8c715c136048e93047ac8acc6c047e70f5577f3d93"
+    },
+    {
+      "frame": 69,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "a10a33c2446286592e1fd66611dc102b293fb6244ca9dfafd919f52998b96e99",
+      "source_crop_rgb_sha256": "a10a33c2446286592e1fd66611dc102b293fb6244ca9dfafd919f52998b96e99",
+      "patch_mask_pixels": 122074,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f744a52deb27ea7274c5822a6bfe596eda07843dfa1798cca0b330cac1854ede"
+    },
+    {
+      "frame": 70,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "7e50dd2878fe09e4fb5e9c2b0d451c4663195abfe9ab0673036723b6ed5bc6c2",
+      "source_crop_rgb_sha256": "7e50dd2878fe09e4fb5e9c2b0d451c4663195abfe9ab0673036723b6ed5bc6c2",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "6293fd5b55db180363b15012e72c61444e0a24b9dfc243fcd88d322c17aae621"
+    },
+    {
+      "frame": 71,
+      "xyxy": [
+        0,
+        0,
+        1080,
+        1920
+      ],
+      "source_native_rgb_sha256": "3f8428c0842d6fa49601ad8e0d460dec80216fb9c73bb248695cde3096951dcd",
+      "source_crop_rgb_sha256": "3f8428c0842d6fa49601ad8e0d460dec80216fb9c73bb248695cde3096951dcd",
+      "patch_mask_pixels": 101268,
+      "donor_frame": 1,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "802670da27a0dbb78a5992cff4642b3e71043067cad05fe36d8f6c1e1383de14"
+    },
+    {
+      "frame": 72,
+      "xyxy": [
+        0,
+        50,
+        1052,
+        1892
+      ],
+      "source_native_rgb_sha256": "4a9c18480df6e29b824799e3d12ed65d382c71ed18d1fab56e8e952fdcdb4e70",
+      "source_crop_rgb_sha256": "da47af7d1ba0a875db2f39cb7777f4f568d02a2efc67aa2a8414607de2a94d17",
+      "patch_mask_pixels": 97619,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "48294164cb20baadb5479e1df74dd5ba1d071f5254e112e246fea9f9d893c3e3"
+    },
+    {
+      "frame": 73,
+      "xyxy": [
+        8,
+        162,
+        984,
+        1835
+      ],
+      "source_native_rgb_sha256": "f58834cfd9bca8e3272de3e683ba5c0b3497482d23f568881cae5537bbbc977a",
+      "source_crop_rgb_sha256": "9cf1864f42b88e9b831fb47eb3b86d59407e089cb76a6092d2007b6d37cd7faa",
+      "patch_mask_pixels": 90162,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "088cd119294ebc505c85b416337719297ec4e9a68d1efb6cd7fa358aa6b40aa5"
+    },
+    {
+      "frame": 74,
+      "xyxy": [
+        16,
+        296,
+        902,
+        1770
+      ],
+      "source_native_rgb_sha256": "862c7b77bc6136d0ee7f791839fbdc8f5ed117950043ad4c62b4e4a88e13ee12",
+      "source_crop_rgb_sha256": "70328e5f0950b7efeb8011ca13f1d41406a2c230375b166ae4a0e6b7f3eb59e4",
+      "patch_mask_pixels": 21737,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "8feacb89bbec171c732aee3541dd865e0fbcf2b24b62c3f0399418aabae26f10"
+    },
+    {
+      "frame": 75,
+      "xyxy": [
+        24,
+        426,
+        816,
+        1706
+      ],
+      "source_native_rgb_sha256": "a8e8ad3542fc15ca2f227997746202f51974086f1499dac7787d19f99a5d9c24",
+      "source_crop_rgb_sha256": "217beeba18197d2c82e6c6185e83d305dbf6a0bf460f1e51a6d800ef8c781e1c",
+      "patch_mask_pixels": 21647,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "9ad3618914267cf3771c3b237518e1f60212a6d70f66b5996beff7a1e91251a3"
+    },
+    {
+      "frame": 76,
+      "xyxy": [
+        32,
+        544,
+        738,
+        1651
+      ],
+      "source_native_rgb_sha256": "bc7be9d437bb63aca8d9ea139b4e5641d9c2626746a77f1c4f57a80b456955a3",
+      "source_crop_rgb_sha256": "d6a49289eea2752f68b6dc90ffb720128ec9853f25333a41814363823fd7ef3b",
+      "patch_mask_pixels": 18394,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "1de615a8a2dbc8c946fc821a89567fdc2e5401401d77105f8dab413bf8a16f3e"
+    },
+    {
+      "frame": 77,
+      "xyxy": [
+        36,
+        644,
+        670,
+        1607
+      ],
+      "source_native_rgb_sha256": "9cfb661c35e287cd7c296ab35b788d2032e4ff1be9e6949fa9e7f1d0575e8899",
+      "source_crop_rgb_sha256": "ec1e00c017fd69782275db9556318959b6e8bdeda8fb4933de8aff88bb3be797",
+      "patch_mask_pixels": 5348,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "520517d77e9fa081dc890bc7ab144fe97de8dd398aa49a6a15619aff8d2b4ff5"
+    },
+    {
+      "frame": 78,
+      "xyxy": [
+        42,
+        728,
+        610,
+        1571
+      ],
+      "source_native_rgb_sha256": "aedeaa7ca8712d0db60f506801b156a894719329288632ba591e787ee1196c61",
+      "source_crop_rgb_sha256": "631383221c0b40c6bd07e09a8df60b7892da09dae01b4604408fdac8aad2ba3d",
+      "patch_mask_pixels": 162,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "3da723ee553844ca1de29bd3e097df155e46d4a0d1d26ed21b0fbecfa89dabd8"
+    },
+    {
+      "frame": 79,
+      "xyxy": [
+        48,
+        796,
+        560,
+        1543
+      ],
+      "source_native_rgb_sha256": "78d5da4a5b56ec269aaf6613eee36b572bd0355b7068db6feaf8eade5aba93ab",
+      "source_crop_rgb_sha256": "1e6c334e0d323c0d882c75d23c4bdb34c7cfd5141f98cb3d735735ddb12630e4",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "5932e31ff7e40098b9893d149f0971f929cbf5d8316e148a8f65250d24bcba03"
+    },
+    {
+      "frame": 80,
+      "xyxy": [
+        50,
+        850,
+        520,
+        1521
+      ],
+      "source_native_rgb_sha256": "d8e3331648902bb61ea662d17ea473c59a7487769cdd7d5e4e211a64adfa79fd",
+      "source_crop_rgb_sha256": "ba2c39f6933fc0c53383fc245ac9a4dba431a974fb0d469ca79acef1a3dac4cb",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "6a6748882b13d88b921c19dfad0d1071d42fcc7a07bc0345ae44982cd8d8504f"
+    },
+    {
+      "frame": 81,
+      "xyxy": [
+        54,
+        892,
+        488,
+        1504
+      ],
+      "source_native_rgb_sha256": "ec83e66e8db6d68183522e6e7dcbc8fa0a5ffe3a14879146ffc52d0accf477a1",
+      "source_crop_rgb_sha256": "05ad38fdef8b6c797109f8342ad32d9a578e047936cee3a64b723af5119031ab",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "5f7893f950f67d8d829bc415ca86618ccc3c1a7b88b59564450a5ff55caea0d2"
+    },
+    {
+      "frame": 82,
+      "xyxy": [
+        56,
+        928,
+        460,
+        1491
+      ],
+      "source_native_rgb_sha256": "bb6d6266f360e0b776fd12b0ffdf480452219279562f2532318a89dcaa0b1a4d",
+      "source_crop_rgb_sha256": "46283a728fbf7f979b07dde20b6e53eeb0d70973efe03daad2c25ca34b39cff3",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e3dde656aa33391e953f98d2463f7d969a2972364128e56f7e1c663de209c9f0"
+    },
+    {
+      "frame": 83,
+      "xyxy": [
+        58,
+        954,
+        440,
+        1481
+      ],
+      "source_native_rgb_sha256": "bbfd9fae40ef1929362516ae877a48fe18fc1b069b267b43bd649a72b65f7cf9",
+      "source_crop_rgb_sha256": "6e4e8bdbd219ac1b786f337b464ac80e2b082321b95f45de03f1a4b457722318",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b95e0429ccfc62f9ac143e621bb62b644c34efa0c3735526e8372bebc45998a4"
+    },
+    {
+      "frame": 84,
+      "xyxy": [
+        60,
+        976,
+        424,
+        1473
+      ],
+      "source_native_rgb_sha256": "6f4a188b246f2e67a59168ad327a771f1a73a641bf10c45509762fdad8522d40",
+      "source_crop_rgb_sha256": "c8bde14a13559c326128b09d729c4d6c1e2adf19b6540799b99313c022a55211",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a3812e6e4fb992eb46b0e3ef5b106fe09a3cda4ac30f2a1d161e733838b04a76"
+    },
+    {
+      "frame": 85,
+      "xyxy": [
+        60,
+        992,
+        410,
+        1468
+      ],
+      "source_native_rgb_sha256": "55d9e3305341e00d439a8ec1dce249929bc5bf2af9c8498e151990fddcee3ff4",
+      "source_crop_rgb_sha256": "217a7284c7344943c088f390ca558bd16da4004f282ed23038e4fc82284ea030",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "d44c2d275ee5c9521f25bf375be5daa9a64b58e459991b3f65888aaf27bc2b46"
+    },
+    {
+      "frame": 86,
+      "xyxy": [
+        61,
+        1003,
+        401,
+        1464
+      ],
+      "source_native_rgb_sha256": "510350701014dad164f428e589d727bdf23a982e8a9df0690758bdf7e9f47bc7",
+      "source_crop_rgb_sha256": "a697eed50332602ef3e89b41db4219bd6642ba69b708fb8f237a5eb8e3048e14",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "28e6722cf8d18ac6a4e3cdd69173c4acb7938a96833a74fd0a8d71dd5d55af30"
+    },
+    {
+      "frame": 87,
+      "xyxy": [
+        62,
+        1014,
+        392,
+        1460
+      ],
+      "source_native_rgb_sha256": "57c9b4c854e5821117994f6a6822bb9ab90bb6ebeec8cd14c36cdcdb057072b5",
+      "source_crop_rgb_sha256": "b777311baa9ccd7f3909f61850f16ef6b8c01c9136195c1e964db2cdc5b998e7",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "3ee8a7e6068d41636126a0cd8d17cf7407f38e94567953f8fb39dbf5d185c8d1"
+    },
+    {
+      "frame": 88,
+      "xyxy": [
+        62,
+        1018,
+        389,
+        1458
+      ],
+      "source_native_rgb_sha256": "0998c81568f3961c19e95ac1bcd704d4e9cb4cb8b82ce3594849ec5412fbed84",
+      "source_crop_rgb_sha256": "3f0d1c3d1d1056cd0ad3bde137830ec012ec91fe2a1bee175c304ba44640b8dd",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f7bda730743ee0196053593e8104d3c6413d813d78dcf4f227f413f77d4caafa"
+    },
+    {
+      "frame": 89,
+      "xyxy": [
+        63,
+        1023,
+        386,
+        1457
+      ],
+      "source_native_rgb_sha256": "5d925d4b9ef84d38a56c89b980c43b3044119f6eb100300b1d7ffea8852ba63d",
+      "source_crop_rgb_sha256": "83eaf0f15e18e1384823c15dfbfa42f08365b734a85ed67bd68e29382614d4b1",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "d4239ab7879261233e3ba7d4dbb1f70f4a8e9549b825e1e92d772cccdc01f04e"
+    },
+    {
+      "frame": 90,
+      "xyxy": [
+        63,
+        1027,
+        383,
+        1456
+      ],
+      "source_native_rgb_sha256": "f8fa4323a387ce5144cf562d522e2c0d8f8778646d48b1fd69607b59254490b7",
+      "source_crop_rgb_sha256": "25c4ddc1975c9d68c042c4dd6407f2cac5613b470e996cf6e644672f9722d70f",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f72b94cbe10f31ddcd14b4715314b5a6080702bd1a277e8cc1130bdde856ca43"
+    },
+    {
+      "frame": 91,
+      "xyxy": [
+        63,
+        1031,
+        380,
+        1454
+      ],
+      "source_native_rgb_sha256": "7ce4b052ce3879926158d0aa17e95115b9cb2d4081cca4bd34602e405349b2b8",
+      "source_crop_rgb_sha256": "f644fb2a524afc5dc84f10986d3836f2a060d403f2770444e41d239084467ec8",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "1069374d404f8a2603f12feac4a3946ebaf2ce980b640777cbf7a7936bf688d6"
+    },
+    {
+      "frame": 92,
+      "xyxy": [
+        64,
+        1036,
+        377,
+        1452
+      ],
+      "source_native_rgb_sha256": "4c64d012bb8ea44087a93b1d298192b0860d4d4bf1a0ee1535e8d32cad5fc1ab",
+      "source_crop_rgb_sha256": "6c55e74ef058b367978cce0f8d12afb165f4bb6645451860b12941ddabe1327e",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a706baaf9bb61a467dc3ad8ce926d61968b430239e42dd7281b03e0ec8741aee"
+    },
+    {
+      "frame": 93,
+      "xyxy": [
+        64,
+        1040,
+        374,
+        1451
+      ],
+      "source_native_rgb_sha256": "3834cb0264e4ecc36b7797f308f0496f83132cf6e4a6b098a9111f5cc3d607db",
+      "source_crop_rgb_sha256": "62fb9f6daf9f88b265ffa2db1bd02656aa281a8106843505f1da68b3004e8898",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "812a822487e627791450ed6d8b72f391ff4ff422aa524c3766e445138be9f62d"
+    },
+    {
+      "frame": 94,
+      "xyxy": [
+        64,
+        1041,
+        373,
+        1451
+      ],
+      "source_native_rgb_sha256": "c592680bccf1b2480d6df1642a2b19103615e50cbf3707e5881b5470c18d9011",
+      "source_crop_rgb_sha256": "1bcfc263f7fec38d6ce88c96683d124793a32bc5e3dc8c8cdc3224d35cf17d6c",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "5d0994b9e2abe7d944aec542a93fe9c12ed71362d2ae9ff19bcf9ea1950d11f2"
+    },
+    {
+      "frame": 95,
+      "xyxy": [
+        64,
+        1042,
+        372,
+        1451
+      ],
+      "source_native_rgb_sha256": "0bb27bee499fc452863ca9374c901c5fbc10c7a4e9c6b1d5fe8814c902c236b8",
+      "source_crop_rgb_sha256": "a5e47df211e6ac20846c8e268af6c0dd345aea4ff5494bdafd346cc49378e2bd",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "fccd8b8fd10c95e225b6f53482cb9a711dd3eb52f2580e9f88a1864228174e52"
+    },
+    {
+      "frame": 96,
+      "xyxy": [
+        64,
+        1043,
+        371,
+        1451
+      ],
+      "source_native_rgb_sha256": "9fd9bbee4240863fda4ddaa5fd87057abd4a473a796330b1da159b1a804d7b1c",
+      "source_crop_rgb_sha256": "1b129fd51a5b35ddb4b767f0a90a09959952dfd21d477f5fc5e870a50cfc4c14",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "7881ca9b95bab460574f34925c87b2cdbd5c979b1529a0e7056a458e060536e4"
+    },
+    {
+      "frame": 97,
+      "xyxy": [
+        64,
+        1043,
+        371,
+        1450
+      ],
+      "source_native_rgb_sha256": "759fe2878aa792d8c9626548e266e14451ecff3851c6583881531404bd76664a",
+      "source_crop_rgb_sha256": "a1485ca97227b55ba921e5b55e8946fcb68e60df587f9e2acf0476e200978c36",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a5d0b7200259f2c80018f439719d3fcefaef2b82984ec029970ed70de5386aab"
+    },
+    {
+      "frame": 98,
+      "xyxy": [
+        64,
+        1044,
+        370,
+        1450
+      ],
+      "source_native_rgb_sha256": "92f188b269a0bc828ae344de7b22fcfc6e3271016e937dbb13f4391026915d54",
+      "source_crop_rgb_sha256": "955ad729ff8354f45057e1c3843f41c6ce28c317435038035c5eb9c8fe5c0fd1",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "8a5e2d5e481cf8cdb609c59867fdf866cf7d0cbf77ba14bb73084331f9d66609"
+    },
+    {
+      "frame": 99,
+      "xyxy": [
+        64,
+        1045,
+        369,
+        1450
+      ],
+      "source_native_rgb_sha256": "ac9fa288a242954e8c34df1254afc43b15fe65adc51b559dba3f78783094736b",
+      "source_crop_rgb_sha256": "b106bb7f26e63939cff70b55deee61196fe12be0fe9802463da774d3df685d3f",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "2ce0b2476889f38efdf25a1e99b288b650313d5a95e5a78a7067d261aca2813e"
+    },
+    {
+      "frame": 100,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "09df1f1d6310dd776681c7bafd644cd612203413b378e5317d47d6679e72ed19",
+      "source_crop_rgb_sha256": "a1cf948e595616ebdb68da4cb71c4718ebe18271cc4a27175368e5864f52c5c9",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a9ee49c4acf3948e8632471302b49c0f9ba7b30a662f834bdebb06e853484bb8"
+    },
+    {
+      "frame": 101,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "e23a1be7f31b12b89bb87d34f9ff2487569b70d10bdd87c000e354892bc0c800",
+      "source_crop_rgb_sha256": "dba1c5e9d0894d3c92d84f8a4b2084b0d805c583c858e8f4745574d7acfb7421",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "32f61bf103cbb6061940ca2897873f0fbe7e68946fe5d8a2d2f1f24d2bb0a56d"
+    },
+    {
+      "frame": 102,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "7eb0d9e35b31ca6a364a368f586df13d30501b72c80ad8be3c90f819c65676e0",
+      "source_crop_rgb_sha256": "166645b1007941b5363a096848e587583a36ea1a46d015a6f9c3e29d6c6acae7",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "7cbd2713d31aecb417b124d0688d94ee1261fb4660bde04cde14e4814db01f33"
+    },
+    {
+      "frame": 103,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "71341d8238253eacaef8621ff24173fd5ea3c57c502a3a024a79de948acc647b",
+      "source_crop_rgb_sha256": "506dc3b8b7ae99586d05acb5045004bdc3a3519ca6e5465ec1e0e97685857a53",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a3ccc2b7b73e85964a4222e0f37ae85248f7b39b063d9e7858fc00dab5be0387"
+    },
+    {
+      "frame": 104,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "229a3c438dc7c84946c9ab5d25f17c0b74aae68d623ee00ada3569e91939fa06",
+      "source_crop_rgb_sha256": "bd96e30974682cace76255a59758e954cdf030ea8aba1cbc76cbaf1542e03d04",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b1c61151b9acd943c7ab9f9855026b6efe32fcea1a0b37ab7e01c49f671c05c7"
+    },
+    {
+      "frame": 105,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "4f698791491fbab547718b1edfd808a970c6f24feab9401ab9f51dfc54f6982a",
+      "source_crop_rgb_sha256": "672e6aa648ff7d04226c468f1e002c99dbcbd4e442ddfee7c47427f444fbbe86",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f5355104f8a2de2e09a3f128b0a0eef6a5b3fd2a49429d27df669de74a961245"
+    },
+    {
+      "frame": 106,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "45615f6306208ed22337c4f8433e386773902bbf9f38115daa6452cc51aba225",
+      "source_crop_rgb_sha256": "3405d929af05029687510459127a84c9ab56cc9fdc513d61c18b6c71fc7a7547",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e29d4505d5109b6579b5759b582facccf0d7203a76d654bcef9fe04e902fac59"
+    },
+    {
+      "frame": 107,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "02c79af7fa4c629b114ab5ffca3c54a9d52290e21e2bef3bb5ef5828e5965413",
+      "source_crop_rgb_sha256": "ce2eb325e85f040360ca7aba88586d07b2f6d6e3a84da11e8e7ce7c0df2c4633",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ac525a9e308d8e0636ad49790ae2b67287421b1207b8e6a7083ed0074e36852e"
+    },
+    {
+      "frame": 108,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "d72f88d7f5dc603f69a3cbb12be0fb0e796a77359302a3fa7e10ee9a1a0baed4",
+      "source_crop_rgb_sha256": "8d917b1fb026addf57cefb0bab904b424fd686bf9ba7abcb9372c27fe7d60f5f",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "945ccc6afbc945304b5757adc6624d48b00f0263cd9260c7d32719d38278deb0"
+    },
+    {
+      "frame": 109,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "1291f1d7378c2e6e1adb8e0176f31fef69f6e7479bf465ebd0a59311b6eaa09f",
+      "source_crop_rgb_sha256": "6448ea71eadd553babe5b4f7b5e04f512d9b080b3f10b5e77073a2bf48349979",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "2fb7545c15f9aafcedcc2c1789a868ef7143227c963d9a20ccef225d49af9e85"
+    },
+    {
+      "frame": 110,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "f491103208ffc73345052f6758aefacd19e30e2c0b99454642ead37944869678",
+      "source_crop_rgb_sha256": "31e8bea65763ce130a159102705bda5aab4488981b2e04e78971e0b62fd039b3",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "2f2040d657d143529acb63307b43959f6d20cd1c4d23450ae6ba49430205c004"
+    },
+    {
+      "frame": 111,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "ff1415e0aabc6b5c7f3d9f3b1dd857236ca331cb7bb0941462461d804915880e",
+      "source_crop_rgb_sha256": "29aeef0d2c65cee4459da491fb9759dbcd96ffbc3aa4d43dc0f5280a223843ba",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "d52abbbab1b4dfca67e2358401a82988a4929d35e1564de6e1a6c6a1d2fb2eb0"
+    },
+    {
+      "frame": 112,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "d6d1720d0047ab492945115f6132ff10881f0b9b53a1a5a1f757e266398350e2",
+      "source_crop_rgb_sha256": "126b0b38f150a419530b1b34f42080bdaea8c4766d7734fae3786884a962626a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "0d7661520415e0d86c576f004af7f02f4d9f68f43863005331b1af7d8748d827"
+    },
+    {
+      "frame": 113,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "784c8bfbcfac0c234c85d416b79eb9ed96418e11c658b97993bbdd889b27be95",
+      "source_crop_rgb_sha256": "75b47317b339e7894942e8f2a0d26bf1c20619893fd0e051bfafd94c3145da1a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b060f12f968369bb73eb70665fde966020ba84bb9d3fe9c2c2169cd6e719915d"
+    },
+    {
+      "frame": 114,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "c75bffce2f35832813194ce3cf8509bf5975abff2619af496b33d89b0c7e4eaa",
+      "source_crop_rgb_sha256": "3b0865411f59b05d4689faad0b50fbe686c3114ff0a852a1f43d0009bc231f13",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "d567865095df1fe77c05bc4fda41d6bbca1712e2fd291046dac110f6c3e541b5"
+    },
+    {
+      "frame": 115,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "b2eabeda3e5145e7f64b5c87f87c72c16651ea88c8cb5fdb0ed5309cd722c766",
+      "source_crop_rgb_sha256": "79159948d801290626c3fe9ba90d1d35b0d166bf7e13ff8e5ec9fbc82808b629",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "9cf29048727dd12dd4c598f3c4688535616dd1bfcb3f9cd7522df2ec8b4ecea0"
+    },
+    {
+      "frame": 116,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "a5c040394d19dae586486f2f8f18fb7c8d14939352cf6171d5ded3e15b817fb3",
+      "source_crop_rgb_sha256": "ab62ff6de5cb4402d203bc5be781535a23abcbece176bdf77d456cb156fb64ac",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "092f1197127e22b7280012d82acd0e400bcda64833f953fcaafce9d40cf73866"
+    },
+    {
+      "frame": 117,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "d6b3d247ea689940b07e79771a2747373dbcdb9d6746e06e256128b333c79249",
+      "source_crop_rgb_sha256": "92370c9fb415363c2046a575af7cab64d3aed0fc9c615d0f7b941136c23ae1d6",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "c04786e386d26d25c698397c095b7b649e2f047edf928dceca29c65a878fb1a2"
+    },
+    {
+      "frame": 118,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "9488961da7b6903ab2be16892351da1e22cd9eef98f13a50dd2e0100a33144a4",
+      "source_crop_rgb_sha256": "628e31fddcb82341eeaf4bc1857ea54287a9d4442c09ed9978471181b4e0e586",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "64d59d03aec8c90d18b3c6205e6fdd7912f3e41ff663c6b3db0430dc3e69518b"
+    },
+    {
+      "frame": 119,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "55996aa1ce4b5ce9a87c0a2e9069af37bee0609610197aa988fb456f2cf03edb",
+      "source_crop_rgb_sha256": "c67919f23198e1d24e3107558f36cbb0174874f84b3144b533a0cf89847cb823",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "47537ab21e5d4888c4e29ee4dcff18a0f5b2c45977d5a9d42ae37678bbbe22a5"
+    },
+    {
+      "frame": 120,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "1282fc5413c9afaa6edd39a01f74a29853754c6d86f590a1c7d967aab24aae47",
+      "source_crop_rgb_sha256": "61291a4ae204fe3124e260baa9e8a2c9c5cb85a1e8ee23e8103f106fd5a832da",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f444a544a0b1ac0ea1ab723ecb0172e9191e9b6732dc705726e8e416931d6ded"
+    },
+    {
+      "frame": 121,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "6d61de016b67d0e88ee0c855ea8c8d809ce406d0a3bf3b144bf5d4b9f0cb2c21",
+      "source_crop_rgb_sha256": "57af57cf0de0a45cdb85240322c90fc996a59a324e644ca6037bc22377556069",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "aa09cdabd9ca493eec381b3b44a7d5fa085d4d26e72f9bb47cba1843b6de9ac3"
+    },
+    {
+      "frame": 122,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "0a21a026b28795f6c8a69df927dd594bf1186edfbe706a72ce8b0bbf8679c7b1",
+      "source_crop_rgb_sha256": "c75d1436348450e66234b3adbac6ff4da807567b4d5ab076acbc6da46c4bec6a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "0104387f4dece487ef7738d1ea0c493e9cd68f6487e87411efd0ef0f6b9c1178"
+    },
+    {
+      "frame": 123,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "3fcfb176bc46e2e580151b0cd2bc10cd82a853ad6eb0bdf0c377d93abffdc167",
+      "source_crop_rgb_sha256": "53463b4dd0ab8dd41b40e479b698663e976ff3cb9c85b5a1285a3c12b044e896",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "dad8007084cd49a4cf0846bd636604e12b64a4bbf6ec12a426e94f02423e0fee"
+    },
+    {
+      "frame": 124,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "4a8ca13f9e61346ecc70f95f77324f1d4992d2f7451c9f8cc049a9c895a4b836",
+      "source_crop_rgb_sha256": "1197fad1d9aae77ce886c3efc63ae4f5cd99c60c65f724a7dc6d843d8d83145e",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "11e28a37d107ec877216512d09acae084e8606ed5d4b3b3c7276e14881311617"
+    },
+    {
+      "frame": 125,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "a7a1b80751dd1bd0ef31046bdd8bb5f39d7f88c280a221dbd97353dfd8e93d34",
+      "source_crop_rgb_sha256": "e8a8f39b54bc5384bf5569e859a658e6909d94bf1cda0defd33a068baed0fea3",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "04a800b9fa8c48b546d63edde11cae6ff8a23261115e19205219c3485bf4caf4"
+    },
+    {
+      "frame": 126,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "eb43750b6d4ae37f3516093976c97f183fb8349ae8e8e52d5bbf0cb0464e9f6c",
+      "source_crop_rgb_sha256": "1dc5ff7f3d06f6a25824f788c1d43cd02830cf3a2244a369a036bd4985ac6dc1",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "edec59216f3790260f5ddc735596afe820a2a68c3879890713bfefebb967c47e"
+    },
+    {
+      "frame": 127,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "eaf0a3d60d97887882f51e8d7a5d5b09163a11b58931635be63f472bdcec8167",
+      "source_crop_rgb_sha256": "eb8ffc8c2ced7c0e71fec27482f23f7b401fba1678cd08676e77ddc84f82764b",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "dade2e223d70edd71fd6059615bede56e5387b6a72164c7f33ecc2aef86d9a03"
+    },
+    {
+      "frame": 128,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "933d2ebc15b9226d0e75268f61fd1d843bac35783dc114381ff3b3e5738c556d",
+      "source_crop_rgb_sha256": "9e5f45300058eb8aa026d515a3fc74298f2fb4041df011fac3013ce1f9f63bd5",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "dd98475ade02fe7afd5cf5a9c4e1af9902b681acc8fe4339f3967e17b7cf8090"
+    },
+    {
+      "frame": 129,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "ed70ebf13bb488be6ae725c63c113a6f53973a0e864b88753a95532813c90073",
+      "source_crop_rgb_sha256": "8e676db5ffa1855b86ec318b587da03e3b56638661fbd19b3d9a4c1e8350e0bd",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "508ad5f8ce61f86507bfddb2990432a2d628dc66424cc3f0c2e8d6e43b74d5f0"
+    },
+    {
+      "frame": 130,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "83954ab9f983116c3137afa1506e6c6095be181bc777d40e7948cfc1076b9a57",
+      "source_crop_rgb_sha256": "50c2c70ce142373538fa905f268e968a3ed994a5241184500904b8d948be4d1f",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "667a7939d5ebd6a1b47dd96f228099afe97ec2fb9d74b53ba99554809b649659"
+    },
+    {
+      "frame": 131,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "e6e3cc0e3b2ea71e4ba9941d825b36ac593b1c416bd5aa506f991ba3066c6c83",
+      "source_crop_rgb_sha256": "f04d30fa7dc07074d6a7159993ed9583996df682a4831798be7bad64213c4459",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "207ae19a97f6a99818c9a5b3b2ae280e0c4a46a4103e5a1c6423b4022b52cd23"
+    },
+    {
+      "frame": 132,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "1119bad781cc5cb2ca0fe7031d7b8d8ca85b2cdd8d24f28a346609a8aad3cc83",
+      "source_crop_rgb_sha256": "541c280e0a6fa13b90091735baa710f6e4cc17b933bbb8744ab2619b87e5c01f",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "39e0eb511055e7ef4c8a3621de9406b12a2dc5331df8dd04db9e1ac5e6f49392"
+    },
+    {
+      "frame": 133,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "3f28fd91ef1160101946b01c6eb1474d29ccdacb029ff64b8cdfae27724528d1",
+      "source_crop_rgb_sha256": "360fd7368973463a17f6800ee5a48a2ac3f5d181b30f9c5a6e05d737b45c2f44",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "b5e0c3804e2c7ae0f5c8bbc85dd865e76e1efe67920dce090ad560441ce95ae6"
+    },
+    {
+      "frame": 134,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "0d5ca522577f2ad739021839a945c58f157f083bf3718308e140bd5a8507b5f3",
+      "source_crop_rgb_sha256": "56b89b8457772e24d2b6da82af4af9a3f799f55ca5f5633a78ec7d6f3e68e512",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e5cf749e8f93adf67d281ab9a8bcb985fc32f9a1b73f4835009b5a15addf7422"
+    },
+    {
+      "frame": 135,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "6c489527641776e1ce6b43ef62f3660b898c7f10e5bf34af017f1c30fb3d1d83",
+      "source_crop_rgb_sha256": "030b8f3df91a5cc214743a049669b00c42cc3b09f4e56a401d59b327ea8bb6bf",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "621dfd4cb273e6b5d2f8540fe2a2cdd6507e3b0c8b73b0a30dba6d5b7b2ad3ac"
+    },
+    {
+      "frame": 136,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "c50ec04451528d3451e8a864dacf77af808cebafd9978de7d640f62cb4d5b58b",
+      "source_crop_rgb_sha256": "230677d7ad5fe484c7478d6a2abbf7abb57f831ad7130ecff786bfeffa392cc4",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "897984f8968dcb22b6b9c3722376ea72381c8e8439d4bc5a9473372d8a3e1a88"
+    },
+    {
+      "frame": 137,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "8708e996da9bd6606a5ea4e1c86c3604ab2c4912585f67ba6e6b690a6ab67799",
+      "source_crop_rgb_sha256": "af8e258cba200be46c48699c33745a46dba4dbd4f9be7a9f709174e4e8906c6a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a42ddd5f3c4fdd6dcaf1aebac09239f126da4cc132a032353a26ce52d29c1102"
+    },
+    {
+      "frame": 138,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "0bc51258460b4802da1fa9f4b9dcc90a7e5416c880099921fdfa6e9a351b9b1a",
+      "source_crop_rgb_sha256": "aa2c1228622071e01a1701a799323a29a4cf30ec83e1e2d8f222b790c0d95ffa",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "dcb00810b0ae6330b15ddde2f691e15031fab5a9c4a8d731e3e4341e78375ef6"
+    },
+    {
+      "frame": 139,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "66bab90126d3539c08a6acc10b12914b92f3bf92b6830afe07a0c4f5b3e839df",
+      "source_crop_rgb_sha256": "9b7216ea476874dad4468f99cc1e7ec42656f2c4dde63f4cdfc88bc13578cfe5",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "c25f29362991a8e0fca6a105f72cc1d3518cf4383b6b3336eaf6af17a75c6fa3"
+    },
+    {
+      "frame": 140,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "a947eb40c07e2876b085e3969133850e901df9d81dc4d252363bdee76dd3887c",
+      "source_crop_rgb_sha256": "0eb74dcdd00c9971d9b8e537a478e191696031047663a78858bc6052858204c4",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "752ac5746d54c63d296fec383ad2d2a601815b7c089835321ad5fe3fd2664268"
+    },
+    {
+      "frame": 141,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "a791b7e1873ae3664e739e7a7c1e2d82f336caa8e5f0d9046bf7748420819e7d",
+      "source_crop_rgb_sha256": "3770207ae89e16207eee09a1a01a7ba4eb9f4c28cdb3d4c9c01153d5d7ccda61",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e4406754944f43cd7234d01ba4c2c2307afa029ccb9532c1e601edfd75cf0663"
+    },
+    {
+      "frame": 142,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "11709eeeb0c10e73854f4df1d2d2a7cabaa2995d2e8d1ca2c10c2dcd0fc1da73",
+      "source_crop_rgb_sha256": "275a50bca3d7368d3a1ad971ad68a584cad6c3d8d69e54f22a46a08bc36d1374",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ef362a5caf185a986959ff7b1aa3f668692c5a1fc3d99af29fdb008bfe47d4a1"
+    },
+    {
+      "frame": 143,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "92fb7ad5bb40bf23b2367dec679041418fe376064e249b9ad65df11344f6e5eb",
+      "source_crop_rgb_sha256": "9ca22f5dfbb5aa73ba9fb1be267e2ccbc7b94ffda4d968552a280db22283fa4b",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "89453368765075aae9cfde0f3f50ed82a9bf838a96207abd169c4b429ae3058b"
+    },
+    {
+      "frame": 144,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "bb94799bfd4651271a174320d4dda4074c47b778b9dc1e6339c9fab2cfccef03",
+      "source_crop_rgb_sha256": "23bf51c4adfd33bf57dbb98938a2b4786fa34d4c468eaa399278365dfed47266",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e8c74796531306dae7033b29d4d2f2c6528747c29efaabcbff4518d74db15859"
+    },
+    {
+      "frame": 145,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "1b54d8e14d41496a8f11b727d27eb026ece21cabbb84cb30382931e459d5c16d",
+      "source_crop_rgb_sha256": "12dffe950bb1ba103bdb2b95ba1c6b815cf60979b954d7cd58e5bdd7d4bcc546",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "13223223e3c4a9f12e13e4f563d59b74328ce8b46246516b2da2de678301024f"
+    },
+    {
+      "frame": 146,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "77d10ba31301cefb39f363046da39a394aad6e3388f4c921cd83e44e582504d4",
+      "source_crop_rgb_sha256": "0acd89dde6eead40bee8a4d9dbafce08c31d1e00057bd9a3eb0886a04f6520d5",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e1694dfe76be800444e80b04b109d77a1729e4b64b3f70cda6c876c187b6fe12"
+    },
+    {
+      "frame": 147,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "7532d39953b02e3b272802dc18042a5acd4fca428c0b6adcc83015a1fa505a0f",
+      "source_crop_rgb_sha256": "1bcd430e14af08df2a57fd8a4fb64683b49fc1d1d10447a3dbc33cdcfda1f0dd",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "efcd7e474a3f58b5da2b9e02d8f355f3e0d57998fdff5ca4cd3ab7728b520e0e"
+    },
+    {
+      "frame": 148,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "43eec46c1fe0b0ea68ab779a4a1bfca5a2eb0b4b04182362fce7e8c1b0632c82",
+      "source_crop_rgb_sha256": "4bc2d74c38fd29bb2ba028b9423d62f8672f089409e31991bf42552e3c64a3d4",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ed90df000564c0f9811c13bb710d4b71c71b89dcc5997b4a1a1263266b9a9137"
+    },
+    {
+      "frame": 149,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "53c89956d284296c548a87992a565414ec7a7bfedee61153d92b876c17613395",
+      "source_crop_rgb_sha256": "97fad2642c336a9b3e9cc388d21ff1e7077b3a42db21dd3f2df32d750a2328ce",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "610ed72a14b8444377ad7224dd03df1cfd8cdfc9457c557f80834acd215b8b05"
+    },
+    {
+      "frame": 150,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "6c91e81e93ad588431e4dede7a4571fbef39c38ab9c4f3bc6cc3e6b3fd60e8e4",
+      "source_crop_rgb_sha256": "814cd626f323aec727a77f88d698513d5caf640533f6b64c23e399fb1ace6f4e",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "6c471dc9f1884056436d698147f1472d05d1a919e0c5b467010d4706717bf4fb"
+    },
+    {
+      "frame": 151,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "808f0dce76055cf13e4794982ad2021c3d64c3102897baaefeef9634f2b2909c",
+      "source_crop_rgb_sha256": "7b1fe048f1e404ac4416fa3145259c1f2d50a36140571e52bba95673473b03cb",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "8be20ef8e1559d3e0b8d8a353cf34fbceee31a9309c617dd0c1dd4ffc334f52d"
+    },
+    {
+      "frame": 152,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "de2e63984ea86d90c9b25ee6a0c1be444e18ff5c11ebe6f22e1800c87c8732fc",
+      "source_crop_rgb_sha256": "1ff6b9b41091408cb4c52d78734adeb42de58ed77127fa4db41d71246b8c4836",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "7365bb704db0a10d4a04e501bf0eb31209fd2ac25cc55c733c2b30bdc596e7a1"
+    },
+    {
+      "frame": 153,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "8b8af2aba116b79cb7e7b31e21cfdd582b8dafd1c00522f6aa58f0bedc14226c",
+      "source_crop_rgb_sha256": "d6113e807fd5c449c2b4cd70a718df8f1df0541a6c1041db4a43b769b4be0fbf",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "43ee31a7527fb4fb97d1eb31ee2b034586355380c48bb3ef31d6948c5304285b"
+    },
+    {
+      "frame": 154,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "f90de6a173097b05c2ca4ec4ea0320310f8970106cdbb826e70981f6387ae0f3",
+      "source_crop_rgb_sha256": "cb0f8416f50eeabe12c1b13c4ee70d3f4c9a38cc8b35d0dde1e309fe87f9f84d",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "d0c376ef1834ac40bf3d4e77de0f263bbb9dbd51bd246335c567a6abded3b0f7"
+    },
+    {
+      "frame": 155,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "89c44b0013083dab62725332cb62898b941d1c82983dc7efbabad6cae8ba250e",
+      "source_crop_rgb_sha256": "92a657e55fb8536836a886a23d587d3a7f44d41b04c9d4cffe9c4808b437e18c",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "a57c248a7d29acb208d324b74ded7d5d266828297b19787908867ad85535000b"
+    },
+    {
+      "frame": 156,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "083f31652a60a9d64ff56349909f273f429347a3262354612660859c3c4b59a5",
+      "source_crop_rgb_sha256": "c50011b7092797a35295b0acf059a776cd3cf7365db038eee6ca7b7e019b0969",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "119230a0dd2eba420e2aa9c9ffb4f53ac27754e1c99ca2e52788bd64a43690b5"
+    },
+    {
+      "frame": 157,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "23e2747483e4a33ab6c7c843bb21624471f3fa526167fc867d580d81eeeaa78f",
+      "source_crop_rgb_sha256": "682a08425418d2768002732a08da84af2a85753cbf548e979b8b30e1b7cd73c1",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "be010146391b5cc29116c402ca555576b24cc7c0decc2296e8eef54bc08bdd6c"
+    },
+    {
+      "frame": 158,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "177a3bc79f69ac5d78831c2f7feffb83926740d5eb05146f64e046adf8424f5b",
+      "source_crop_rgb_sha256": "a61d525be4e45eb9c2893109e28c2e520057883c947f4fd3b9ac931fd029b78c",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "8bf3d534e555000ba67eb1c0dd4cc83aa32ec1aabbcc5bba4abbe0a5ff875d2f"
+    },
+    {
+      "frame": 159,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "5cdbf00e75abb159e48070857a4ec311e4cad3f9331bbc0df9f33b6973a3b9ac",
+      "source_crop_rgb_sha256": "4e0832439ab53b5a422ed305564f88945fc459317f04a40ae86231bda5bc88e1",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "949af6ce1d4fd051c977dad3b780580661c2b21f6ef1e4d24da5065b9e09cf28"
+    },
+    {
+      "frame": 160,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "43d47050cce71892b7170c27219d8968be7cf5dfb5d7a2c514d8f359a1cb9556",
+      "source_crop_rgb_sha256": "f38f3571cc67ae5eeeb28418c02ce5494c63e652e392e67a63754cb20c8c8f7b",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f05f8740212ea7c0dff30868be479e117a4af692646047e5f0816c77e5cb96d8"
+    },
+    {
+      "frame": 161,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "2cbbff51e5eaf8962e3244251edd50b53c41cf958da79ebe1b124eec1614cf1d",
+      "source_crop_rgb_sha256": "cde0dcbf54d8a43545837d852d8128fe12e381e9e071cb32b0fc86c6b8d2df9d",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "361c4933933a875d25d6c4fc90f20a51ce5f4b2e9d433e39e13e88378734460c"
+    },
+    {
+      "frame": 162,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "93b46aa2d581cb156f945b04c5fd69a9709829153cc1e39b9bcd7e1e331eede0",
+      "source_crop_rgb_sha256": "ab0de76cce9bd2b1ca25537c916e084334b63f3005b002ef4255adb72aa2cd2f",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "bda3283cfad09a854f95d43aeb66cab5dd471ce839294e2dc25a488195a37ada"
+    },
+    {
+      "frame": 163,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "e396fead126be9972b1e27b94db266b1c5b4999986c836c52fff4304a45d21b1",
+      "source_crop_rgb_sha256": "7da4e8d6749ac6a5ae1d636aa708442a196f231e372e990b3a8c34fecd5412e5",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "d8dcfe857ed4231bec9d9a5f3ccd4ff6a657fd9864c840e6e5f2b84efc965f5a"
+    },
+    {
+      "frame": 164,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "f5c8ebc4835ed3e40a85182a11afe7d25c5a5eaf6ab010f080f8368239b2c033",
+      "source_crop_rgb_sha256": "a4c569ba1ef836f05ff8b84078f480f251b92650915467e6fe0378d58beb257f",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "7ff9e9823ecaa69b0c2401bfe55b395a9696039af7da43f81c1a817843995e7c"
+    },
+    {
+      "frame": 165,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "618b196f4623efebd68968b25b81f9bc1cdc126bcd6605fe5e2709d3c09718c8",
+      "source_crop_rgb_sha256": "a614109ef1b8b54ca1a559434c3ccdea35bb1c598414bcef1c7fe9a4f3d48964",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "c48b8df6ac7ac556a223b7fb4cf76f010f7158f72f3a21915e537a34c7282405"
+    },
+    {
+      "frame": 166,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "5e527fc51d2c8fb93b1ebadc110e299a39dd0ece07893966d69896954feaa2d8",
+      "source_crop_rgb_sha256": "290e3274d394fafe92b30d54a79343475ebb273788b67e6fdc8b8f047a7a2ea4",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "350cf058fb25644d8a4a93be9b922f4e64b0b85cbcf39a2bdd06ad280832dcba"
+    },
+    {
+      "frame": 167,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "4120acb4ae9bf9dfc8e3c3c11c0d71fab2acec883e7f748b71168011a51b9885",
+      "source_crop_rgb_sha256": "c3bd9d484c58bb5790725c982c8200f41232e38b9004a3a727a5a5e4c2dd5f5c",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "fd9591be0409a25939d1d4eedcb7c1fd5e25bb54845e0d2f421f9e4be5014927"
+    },
+    {
+      "frame": 168,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "f17a424207ee9ea8395e6066525d360ab81e526c594b379567231b5cef75df7b",
+      "source_crop_rgb_sha256": "09b18f025558adcbe94ce9019236ad244d35838c95120f3a3ff9b1dc20c1be5a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "7ee936904c9433cf1415d5693b663ffeedf39efce95f8f84c2b01fc6a14609aa"
+    },
+    {
+      "frame": 169,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "26cca5d20bcff17426b7a9230099cf3fcff85a9f304207afb461b89cdada22d7",
+      "source_crop_rgb_sha256": "53dd5ada4433b2c2dc94b285da5f288c0d83207d28ca55b3723a50847ebcde2e",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "72297b544b4e2061d61138a7f6a77ddd1ea2bec4ba7ff5b422fbc2b097db3259"
+    },
+    {
+      "frame": 170,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "1c689fe09df12ceaaf8c98350bdc33550c81ad9f961c5651c86ebe28f53b4d46",
+      "source_crop_rgb_sha256": "66c4c3e0d06d4b564642986cb00d887b8bda95df33a23834ac99b2a5e797f0cd",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f402e79e70bd68e0faaac1fa7bf2fa7787c4c81aacf77b3d126c6befaf4b6cfc"
+    },
+    {
+      "frame": 171,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "81de0355eb50de535081db42043095e983d805110198256395cf0d4816be06e5",
+      "source_crop_rgb_sha256": "e9876d6741f23da3387fe99cb2799d47bf7594a2bd3e17213c8704f8e9480e63",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "08ef15a5e7c68cfb04d305768a0e8197355a04ed6e5f92ddeb3544639bafbc9a"
+    },
+    {
+      "frame": 172,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "ddae5037dbce9b22ce54f68cb87cc34ede9178fdb3e6ec76fdac36e9f81c66d2",
+      "source_crop_rgb_sha256": "9aa69bf28813a539cb43592bf82d9183ef12c5ad887690acd74cd999a69b8464",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "9edffe8fafeea1d10d7f03d0133bbf0a0f139f8f99f18e34a20c48de2fcb462c"
+    },
+    {
+      "frame": 173,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "f8df116390478d06eb16ad1f2224d724f9ceefcaef55aa19976c68ab2e7de509",
+      "source_crop_rgb_sha256": "fce77e75a4d2c24ce8be40c5d9231a8ca6830ab7e2108a6ab7eeb8bed317a043",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "13fe78bc2b65b6e3e0dc4cbbaf98edbef508ef6802f6669f0803864d3042166a"
+    },
+    {
+      "frame": 174,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "a5dafab3b220f435335895fa11db6c037e4819830b2786b7b38d2e57b83c87f4",
+      "source_crop_rgb_sha256": "38ae7ff08683c26ddc7f21b5bc93599c15092ebf2af734c94e3e77fc8e91aae6",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "618cc8be60a3e8291b7c5a69c00e0fce21336e5cc731ee7794982fd398784e65"
+    },
+    {
+      "frame": 175,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "42e242110dd325c30675df527944c4954d87f56afbfe9fa8b051b1f740f885bb",
+      "source_crop_rgb_sha256": "73a883d11adffb3ab1ffda469e911fa1c396b30b16c97a79c54077220d35ca5f",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "29b4ed98483a0142c24d05136669184c3de18a761be4f5a8e09532f2939a6f68"
+    },
+    {
+      "frame": 176,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "b26ee3959140889ed824d9b5f951042d45800cce511fbe014eec9076b4e6d507",
+      "source_crop_rgb_sha256": "ca54a291d19d3c70b991c2426dab31263f1925d40db0cd64499edd347c2ba64d",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "91f23049db8d27e79bafc0635685d806bdee466a8ba80a171a3e6952bfe0b108"
+    },
+    {
+      "frame": 177,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "3dcf786c5d756edfc9f32e654803c00961f8e696bfa0fa68dfb6947b278f0133",
+      "source_crop_rgb_sha256": "755a4f2ee7dc7258656ee59a5d744066a6fe8a36305e3d737e58eb08f17111d1",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "38b436283ade44b408273f591bb3658292e9e88037171bbce10a4e3f830b3671"
+    },
+    {
+      "frame": 178,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "6adc042757e859f561384c904d9a195cfc068413fa32f39b243727b4733c6d75",
+      "source_crop_rgb_sha256": "2df1d0186ee3f221c8f0fc1bb3e370a815e9d2b122cf897049a3e0005dbd9bee",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ec06b4751b8d877d87d2dc80e481cd962c13a09e8acdc2f830dc8f5521bed5e6"
+    },
+    {
+      "frame": 179,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "c64fca2202711166aa8fbaea92bc7126c2906fa09c252959aa98c275042ef74a",
+      "source_crop_rgb_sha256": "ea30efe164028b3ba7e667cd76692c3c547477517a359c15073c05570561451b",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "2ac44591a34f48d86c255d32000e3e00b4e40bcac75079ba9070d4c1402c63a6"
+    },
+    {
+      "frame": 180,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "558a9080a4f8e0fe58769e9bd2b236bc975ffdfc50f2b5beb442e6f9fc97b040",
+      "source_crop_rgb_sha256": "04bb04deec20e02f40b27bda0cac5b15b1a61c6a64f32984bb8abd82f16b2199",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "6578ef79427e128b5793ce467033992804d3cc4185bf801199ce20f3a1030b34"
+    },
+    {
+      "frame": 181,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "c9f252db9d171e3fdbaf1bd248f5fb99f46a0a5d459cd827d3e9799243b19bc4",
+      "source_crop_rgb_sha256": "4fc88a986c267ccfaeb38a85635b2be2fae77237534ae7aa6559e2a9700444c9",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "831003107993ca65223c0dfb4d11167a44cfa5eeac011df91f72d786c40bb580"
+    },
+    {
+      "frame": 182,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "a1b7d73fd70c760e0c65a8e95a904bfeb2095fbdab3cabc3892ba7c8c5be0259",
+      "source_crop_rgb_sha256": "1f1e2bb43681536bbf7fed545635515cccfa3154952322536060a52544534402",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "457b6398de7406046a6793d54d829fa3e494b4e90c12d5fc98b80b924b58727a"
+    },
+    {
+      "frame": 183,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "adcc38d2b692e696c28303010d1d63c51b74f8e22e680f188619bbeb992b9077",
+      "source_crop_rgb_sha256": "50e2827d7316023defbf3da3a6ea08c1a85bc8227117ff144b2a5cef2767ee22",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "75ec9d9d7ebe5a0ebbe53bfa88867b60a1bee17b78be6ca070a8f84b08c47143"
+    },
+    {
+      "frame": 184,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "c8356e6826e8038cfac3368c86b592c8a682d00d2090d2a26a416efb499bf3a6",
+      "source_crop_rgb_sha256": "3d9ed5c71663b120f2f2129a90f333ddc8ec0fa6b21b29e664581f01586662c0",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ea9ecaf771bce20d342a9dac6ce3626b5c3414b74cafd86b7e600bdae3d82b80"
+    },
+    {
+      "frame": 185,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "b543d456b6a17698bd72bb1bff1d12db0e5df2dbc0a22c97be04a4097778d9b4",
+      "source_crop_rgb_sha256": "8cba98a368eded093824fbb4a418ffc95f16d0f08683ebacfb050d4e953a8cd3",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "7ee794ecbea88db809877bdd89f6a9f0670e6276cd45cdf4c8c9e45a9cfee18b"
+    },
+    {
+      "frame": 186,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "c0a694bd1ff09331fee58d31515c7bc1b97075cad36801225a36893df0df924f",
+      "source_crop_rgb_sha256": "98c4f8e6a8e1a4a7e87ed9798afd494d9db71268f716454ae404dd413dccdefc",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "edb3f015e079ece3ff780a2deac77363bf7a31f4833d171e8c61ebbd41801efb"
+    },
+    {
+      "frame": 187,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "299382350fe800391e30dad79ebd6d9dc6c903fcec3e4c2da97865702e623baa",
+      "source_crop_rgb_sha256": "b460e4ac191fc7aae52158d9bc686456d8e50ff0334f49783c3cb246f6908807",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "2c0155768eacbe6ef61a2e0cf7e945fce572d0866f56d06fd31ef31af4b3e28b"
+    },
+    {
+      "frame": 188,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "3c377c91f7fd2ea2cb699c51659fb654bc8e8f2848334d78ddd27422309243ff",
+      "source_crop_rgb_sha256": "4d2fccfad771d0ac2d9cfce35562b89821f1bb0daff2aaf122c2049cd4232788",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "455937d0f26356b0a89fb01fc5f36ca808c20ee2a90bbfddf1c4298c8d33374f"
+    },
+    {
+      "frame": 189,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "07bec057af03154e50a276517b4430bdd6bd6b52fdff83167eb9aed7b6b084b2",
+      "source_crop_rgb_sha256": "ec7603c5d98f3b28156fd2cff2127c3d0a61970dcd5e74fdfb29dc54da16922b",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "722ab69a9c4037e8f557cf9592163b3a72d031daafa274dc1247ef7a1e577b01"
+    },
+    {
+      "frame": 190,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "0f1d41e596a3b9c11a400fcfa55ba50c5e0a84e6336bd33d43d251e6002d9d01",
+      "source_crop_rgb_sha256": "b218423ca4141c5b1391f266907de9b354c047c7322deb1ffe16ef09d6dc40aa",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "0072c521214763e26f4bafac4f1c4a72bf853cecb72c57f71ae42dd3252fc63f"
+    },
+    {
+      "frame": 191,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "aec32f4c930d07a777f380278a78a39b8d7c746fc1c8c0cac8453bdcde54c8de",
+      "source_crop_rgb_sha256": "a57565fe730c061060ca53c0138d6b4cb2dcfedfb9b318a9c9faacdd9de9c772",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e6bc226e652b4f6c6b99a7354fded3ed7a68d5db575813419985e15de0730d2a"
+    },
+    {
+      "frame": 192,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "37cfdd640b54fd49e6cdc3b6c7fadc3c189c86ad7e7d055cbda20351fae4cac8",
+      "source_crop_rgb_sha256": "5892aac668a988fde83e1dc17769774795ed37926bc58804c71855c34ba4fbae",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "02b59b3bf8a6b938ca544a265229bae30c9d484e88f837b807fa42f736271efe"
+    },
+    {
+      "frame": 193,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "923b7ab5f8e51e03abacf571ad5d21d97b2c52ef7340cdb185ca4aae8d97d602",
+      "source_crop_rgb_sha256": "b3dcd19c67e9717a247a4532ae4b02652783351fc0c4905b0040aa119b520477",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "112099dfd74ad7278f614b2ff90d236e9f517834216039570ad05944397d04f8"
+    },
+    {
+      "frame": 194,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "a6d14ed68316f6b16b0f606f018da3d803e3e169eab0a428004e1d3b1270b36d",
+      "source_crop_rgb_sha256": "6667d95e1d020268fc85bc25d8bf923b6109678dc325403463d9aaf4b71ea15d",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "c1ba30968a67a7991f4ff45ca19457ed24341765b0a9a8f7fae85cda2a9df1ef"
+    },
+    {
+      "frame": 195,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "948866f78d680d16fffdb7b205b5b988d3bf7f8261fa067d8f5e51c1bbe1cb3c",
+      "source_crop_rgb_sha256": "749f0022d2bd6c95ef6b93d18aecb0b26243eb0e95d6fbcb6e9f8b6c3940e562",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "0e1b26d22fd9722017f5d98b494544cb1d36be80807e43e756b4aa11c5273c2a"
+    },
+    {
+      "frame": 196,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "b039f373a68582935ffa28baf418f26bf5c1c841c4625ab5880adaf5d29f91da",
+      "source_crop_rgb_sha256": "0956e449a9c3b82bf35e71f85bb3501de20147d674b0a892cc4b1a39404e775a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "7bad2b5b7521df49dd45c2ba0b347dc124cae1d84e4cf6a36f8fa08229496091"
+    },
+    {
+      "frame": 197,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "4ba2bd606509093f9d5c0f44868477f0ac142a7b67bd17ef402b9331bc8a2423",
+      "source_crop_rgb_sha256": "52275df12e955d5c4e990ba73f23ec6789345cf62695a4bcc67491f1bf8d65df",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "9cb5edfe5f7c9766433823183cc0f7e33493ac673990621ac633d739a13014f0"
+    },
+    {
+      "frame": 198,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "f99ebeea1996ee96885056817e874cdc9eede567df9a28b2a1ad4da65f1c43b7",
+      "source_crop_rgb_sha256": "3933fe14e7b55978dcbb747c92ca520e20e667465e3b24076cb34b1089f955e0",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "ec928d3a0a8f00ec97661fa4dbfed16939e458a203a5bf831c204ca6952d966a"
+    },
+    {
+      "frame": 199,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "0f159a17f3e68b4c61f8720c79b8dca5c642729d28c594a65f876b5303bbfc7d",
+      "source_crop_rgb_sha256": "5cac397c14e513c61861b2b4930a4ef7359018ef5de415cc7533cc4a5818b002",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "46e080af8ab74b0e818d743aa6d3543e2b3fa9cc81b6cdc2097e615ba30e2875"
+    },
+    {
+      "frame": 200,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "1123854e0b63e0e63763494476be652e4f9f7f4ce4fe0156f68f69f799d47182",
+      "source_crop_rgb_sha256": "cdbe7f544a4c68da0358fcd1ec79bf38926bff84dfd6815a144ed4c603a72c09",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "5fed21bb13c871623f10c93aec008b936c0ab1edca56c1ddd148f719a38ca039"
+    },
+    {
+      "frame": 201,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "dd073bf0bdab3f7459e5c297e6407953b2d9309100d05ba7f7264afddd2e0db9",
+      "source_crop_rgb_sha256": "fbcbc0fe75e36003513c6ff86032a8b84cd16ed1f6df545bb9bb74b2ce24b9f9",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "d2d198ca3afe4fa957204cbb8afb50e1904c1127a7d520d7531204a265cca6da"
+    },
+    {
+      "frame": 202,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "e50e2ae5ea34fde47b13fb88465cf22288fc4622eb019870389c053226f16162",
+      "source_crop_rgb_sha256": "099f81d3ea865db21407d9011a14fb12d595e3060b718d421b6f1cf761d732b0",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "f8203b0425bebf36d4a2b6daeece7c75fc9f106a598d30ac9e8e2af2b05e2cf2"
+    },
+    {
+      "frame": 203,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "e99606fee43567f25610316de9711976239bd23d8d4003ae9f968fcc0fe2fe0a",
+      "source_crop_rgb_sha256": "48e2c160a5584e9dc3d3d42864cc994afb51ee7815390e32d5351f52b162fedd",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "bffdb2183b5c7ab7a72948f050ac01b3cad41bfe1f802e2843c667bea16f4ba9"
+    },
+    {
+      "frame": 204,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "629666662ceba82b4c7e55396e945fe2aacf8b8bde3b09ded98dc5c8c1932446",
+      "source_crop_rgb_sha256": "dd5e7d34753944391c3de2ea052fa2db47e486604191a3a043ba00da823449a5",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "e7adf64dd7f2d8fc2aaefdd4ce5945a5e1d2406dc62c1c10771f76ef51fc9fc8"
+    },
+    {
+      "frame": 205,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "371f298169bc051ec3dc5e583f8b29af53abbc485a73decb7d0a06b291a470ce",
+      "source_crop_rgb_sha256": "97198a6fd71fcab6b8fc41de7e15e2696c1107d07538622344f8f0b7ee5a1c98",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "7549e9f9144bee8e874c4dfb400174c29cf7494208382b88e27701e3e3a00a60"
+    },
+    {
+      "frame": 206,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "8ddcc0268a6ce8d4f3ff11cfd0881b030d86429119c8cace8585ec3d7da5bc6b",
+      "source_crop_rgb_sha256": "f8677afd7ec94944ea05af323b57890e9db62df22a88ced49ddf261f9c453f8a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "1a55241fcd0903c4e9968e19ac12a2a5f9715c515fb3e1c1014eac464c6a0ab4"
+    },
+    {
+      "frame": 207,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "8fd64ee1af456139c6a25b3f9e7f3375b47fa40df1daf1333cb8e6e36b4d75e7",
+      "source_crop_rgb_sha256": "ad2be253a2d9470d80927a09edb352a914514d74e09bed9a6d4b8ee128e1384a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "4687dfaa5197c9f9aac8093e470c39e246727b5a28d9313f4f9fbdd9d3c63192"
+    },
+    {
+      "frame": 208,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "61ebd587f7859f42baf9815dcd73c52191eab73418cbfae8249fff9cf8393edd",
+      "source_crop_rgb_sha256": "cf598f10e2f5279464d79058054f52e17431f754d015e1a97209686202460f25",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "8a57a1d4db34b1ab10273a80aa72b5802bcb8a6ff90124efd042fb9c709e5173"
+    },
+    {
+      "frame": 209,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "c3beb640dc2a7578ba5f6778a8efa65e5765ed19cc97ccedbac9b2d5e2875a64",
+      "source_crop_rgb_sha256": "cb8afd7921587add33530095652d0ab6cc48da48952117de51a70afbb46213bb",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "dfd62ba33ee9c7a6d799e79cb9db8d0b4caaaaeb1f088eb0a99e770f3b54cd9c"
+    },
+    {
+      "frame": 210,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "8260968272fc5fdf10c41ac9bb5dc743137ac0958891a237f55fb9d9813a9b97",
+      "source_crop_rgb_sha256": "17d0baf4b869fb23f99e50c11fddfdef0316fe4cc6c35d95e098871c7f24a2db",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "49cd63fb91a6a823f3b8fc70f378e5d60f6def03cb18d673201d67134813aca0"
+    },
+    {
+      "frame": 211,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "ab2ca2cab5093c7e0b915b5923fb8e72ad9adce45f098d4bd7dbb340a2816235",
+      "source_crop_rgb_sha256": "a2387984bdf4e7266fff3fcf00a75cf17e250c2c6d224dbafa4356a95f536825",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "c202b629438a97b3b8e208b957cf142f038ca8c58d43b62bb50a3f8045b533b7"
+    },
+    {
+      "frame": 212,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "876bec3dae0acaa81c2bb1bfad138fdd384eb9b0fc72be4894dc6d9fb1a3dc41",
+      "source_crop_rgb_sha256": "ebb63d7b13a01e8eb6dac5d41b52d3634ae51d6fb7a4c8f0ab794de2be9d8139",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "fc2fc4c2116112604345aeb2149652e0adf340bf3793f9b54932b572e2194575"
+    },
+    {
+      "frame": 213,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "13a5478e1274e6795b5213ececff9683d8b69c722ff961bf8be5a8219a0722d6",
+      "source_crop_rgb_sha256": "45476fe44ac83cfa85b81dbe64271ef08e65d9c1b2678733d565359abe10815a",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "bc03d3a6b63313fcbce060b69083baadc4c6c94ef42874e8c95fac264f6a28f6"
+    },
+    {
+      "frame": 214,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "51b9db0e53b009577acadd7700db0167266467112803b8786316f5b182b06967",
+      "source_crop_rgb_sha256": "c75f58d875648cf552994fe8745f2ed589c0567e2066769039f2490e2c4247a0",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "91e714423efd65f88b89b82dbbebbf8cd04af0f35aa4506962abbd0345dc8c51"
+    },
+    {
+      "frame": 215,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "98b7b645b2dfec75e47681a31c59a44864d134cef958d5b475a90bdc0948b42b",
+      "source_crop_rgb_sha256": "95a3da7b4ad92c632f24ad2e6ddbde02897296bd043f7183b5e267ad01d508d5",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "fac5dd4b80d7d8eaf2001328ae1844b313e7bea8535d27347fcce6c697c46198"
+    },
+    {
+      "frame": 216,
+      "xyxy": [
+        64,
+        1046,
+        368,
+        1450
+      ],
+      "source_native_rgb_sha256": "64c4fba9e8cb0184df3a35f147ad63116a0825ca176f8308e334a97e6dd85fd0",
+      "source_crop_rgb_sha256": "7befcabcf108689375b69b7fa556ddfb30a543c0a41b811d4b54918c6bd52a40",
+      "patch_mask_pixels": 0,
+      "donor_frame": null,
+      "method": "Small same-source donor1 for top/left labels; Telea visible caption mask; native face/window sampling retained",
+      "output_sha256": "3f869bb609e73e5932c48a98fc0859817746fa57da00aec58c80f46e71e99c5c"
+    }
+  ],
+  "poster_atlas": {
+    "base_frame": 100,
+    "sharp_band_xyxy": [
+      0,
+      555,
+      1080,
+      1365
+    ],
+    "original_occlusion_pixels": 406080,
+    "unrecoverable_inpaint_pixels": 219427,
+    "donors": [
+      100,
+      150,
+      200,
+      175,
+      125,
+      110,
+      204,
+      93
+    ],
+    "limits": "Finished-source restored static image plus matching baked blur; covered pixels remain Telea estimates, not author raw. Internal poster words/logo baked in original image asset, not independently editable author text."
+  },
+  "leading_texture": "Only native top-left116x600 source patches, clipped to editable3frame polygon; not complete wipe or raw",
+  "pose_source": "C:\\Users\\a1726\\codex-workspaces\\motion-batch-spill-20261113\\sleepgrid-pilot-v1\\reviews\\poster-affine-landmarks-all-native.json",
+  "font_original_unknown": true
+}

@@ -1,0 +1,341 @@
+{
+  "stage": {
+    "0": {
+      "polynomial_coefficients": [
+        [
+          23.037324513634353,
+          48.370362931042926,
+          56.95160575479113
+        ],
+        [
+          7.212001987356789,
+          51.950221498240914,
+          61.088929740727494
+        ],
+        [
+          0.5346550825672733,
+          59.57501731592249,
+          66.10518039563566
+        ],
+        [
+          -3.139448214570177,
+          -51.64545505397312,
+          -64.78377064490805
+        ],
+        [
+          2.2161870917046023,
+          -1.2626216019978678,
+          -1.894385283966633
+        ],
+        [
+          10.65028352217031,
+          -53.139261336557986,
+          -58.03950999236402
+        ],
+        [
+          -4.2264618558048195,
+          2.4644494714372858,
+          6.766337394071638
+        ],
+        [
+          -0.29666985528955736,
+          1.701262953133047,
+          2.830604373011866
+        ],
+        [
+          -3.681366903637863,
+          -1.1504074043021992,
+          -2.388682746299211
+        ],
+        [
+          -11.806771886176328,
+          6.367782907835668,
+          4.111689936151182
+        ]
+      ],
+      "RGB_MAE": 1.3973603018044538,
+      "samples": 2201,
+      "source_RGB_SHA256": "5873548aa490251210493832f3d9b4fe292ba920691e9731078fc1edd07ba0d4",
+      "unknown_vignette_exact": false
+    },
+    "1": {
+      "polynomial_coefficients": [
+        [
+          13.742298344475218,
+          57.29373487650236,
+          69.37996241559544
+        ],
+        [
+          -2.686102597885474,
+          1.6712411921178543,
+          1.5584334917095521
+        ],
+        [
+          -1.74591509173456,
+          20.704314725169088,
+          22.14684088124357
+        ],
+        [
+          3.699844096627754,
+          -2.5113209795240268,
+          -1.227467869416473
+        ],
+        [
+          0.7635060955334545,
+          0.2058970388408281,
+          -2.6656931214312145
+        ],
+        [
+          5.933864154569922,
+          12.040450186609027,
+          15.910868969560472
+        ],
+        [
+          -0.5516887644730195,
+          0.7198501460496556,
+          -0.354668547467031
+        ],
+        [
+          -3.4017368635546132,
+          1.4278581338711869,
+          0.8451118317884867
+        ],
+        [
+          2.2244908493269167,
+          -1.596209589546024,
+          2.086543662937629
+        ],
+        [
+          -3.9047765873376905,
+          -8.721221307869003,
+          -12.471481326785153
+        ]
+      ],
+      "RGB_MAE": 0.6209255715473849,
+      "samples": 2420,
+      "source_RGB_SHA256": "5790ae970bc7b85ad21c30a3790a5640fe2f917f384e0807e79faea327905b24",
+      "unknown_vignette_exact": false
+    }
+  },
+  "food_boundary": {
+    "231": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1906,
+        1896
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "232": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1866,
+        1832
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "233": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1800,
+        1728
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "234": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1714,
+        1592
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "235": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1610,
+        1432
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "236": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1486,
+        1258
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "237": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1346,
+        1076
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "238": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1188,
+        898
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "239": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        1020,
+        728
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "240": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        842,
+        570
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "241": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        662,
+        244
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "242": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        489,
+        224
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "243": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        331,
+        204
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "244": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        195,
+        120
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "245": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        91,
+        55
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "246": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        23,
+        18
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "247": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        0,
+        18
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    },
+    "248": {
+      "x_samples": [
+        40,
+        1075
+      ],
+      "top_y": [
+        0,
+        18
+      ],
+      "source": "NativefullsequentialRGB vsf223 unchangedstage, L2>28 median5columns",
+      "uncertainty_px": 6
+    }
+  },
+  "source": "native original pixels, no FA clock",
+  "author_exact": false,
+  "warm_color_edge_diagnostic_retained": "layer-fit-candidates.json; highwarmthreshold missesgraybackground after241, not used for reconstruction"
+}

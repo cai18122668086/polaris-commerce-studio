@@ -171,6 +171,15 @@ def response(
     template_name = STYLES.get(template_id, {}).get("name") if template_id else None
     if row.options.get("suite_plan_id"):
         template_id, template_name = APPLE_TEMPLATE_ID, APPLE_TEMPLATE_NAME
+        suite = session.get(EditingPlanningTaskRecord, row.options["suite_plan_id"])
+        if suite and (
+            suite.workspace_id,
+            suite.owner_user_id,
+            suite.project_id,
+            suite.source_id,
+        ) == (row.workspace_id, row.owner_user_id, row.project_id, row.source_id):
+            template_id = suite.snapshot.get("template_id", template_id)
+            template_name = suite.snapshot.get("template_name", template_name)
     if source is None:
         source = session.get(EditingSourceRecord, row.source_id)
     if artifacts is None:

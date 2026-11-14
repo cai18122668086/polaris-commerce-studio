@@ -1,0 +1,1425 @@
+{
+  "source_sha256": "0a5124bfb395a059c5f16c271a07698f7676fde200024f8579460e5675ad49f8",
+  "fps": 25,
+  "frame_count": 501,
+  "method": "Human reading of every original-frame two-region caption strip, 97 native caption crops, 39 full native context frames, residual closeups and supporting pixel projection. Chinese and English read separately; paired edges happened to coincide. No OCR or ASR-derived frame timing.",
+  "coverage": {
+    "all_original_frames_viewed": [
+      0,
+      500
+    ],
+    "all11strip_pages_viewed": true,
+    "all13edge_pages_viewed": true,
+    "all4context_pages_viewed": true,
+    "extra_ghost_native_frames": [
+      114,
+      133
+    ],
+    "english_residual_signal": "english-residual-signal.json"
+  },
+  "channels": {
+    "zh": [
+      {
+        "id": "ZH01",
+        "source_visible_text": "为什么你明明",
+        "first_faint_visible_frame": 12,
+        "last_visible_frame": 32,
+        "first_absent_frame": 33,
+        "visible_frame_range": [
+          12,
+          33
+        ],
+        "visible_pts_seconds": [
+          0.48,
+          1.32
+        ],
+        "near_settled_observed_frame": 13,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "为什么你明明",
+          "token_indices": [
+            0,
+            5
+          ],
+          "audio_ms": [
+            430,
+            1330
+          ],
+          "tokens": [
+            {
+              "index": 0,
+              "text": "为",
+              "start_ms": 430,
+              "end_ms": 609
+            },
+            {
+              "index": 1,
+              "text": "什",
+              "start_ms": 609,
+              "end_ms": 670
+            },
+            {
+              "index": 2,
+              "text": "么",
+              "start_ms": 670,
+              "end_ms": 850
+            },
+            {
+              "index": 3,
+              "text": "你",
+              "start_ms": 850,
+              "end_ms": 969
+            },
+            {
+              "index": 4,
+              "text": "明",
+              "start_ms": 969,
+              "end_ms": 1030
+            },
+            {
+              "index": 5,
+              "text": "明",
+              "start_ms": 1030,
+              "end_ms": 1330
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH02",
+        "source_visible_text": "睡够了8小时",
+        "first_faint_visible_frame": 32,
+        "last_visible_frame": 69,
+        "first_absent_frame": 70,
+        "visible_frame_range": [
+          32,
+          70
+        ],
+        "visible_pts_seconds": [
+          1.28,
+          2.8
+        ],
+        "near_settled_observed_frame": 34,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "睡够了八小时",
+          "token_indices": [
+            6,
+            11
+          ],
+          "audio_ms": [
+            1330,
+            2770
+          ],
+          "tokens": [
+            {
+              "index": 6,
+              "text": "睡",
+              "start_ms": 1330,
+              "end_ms": 1390
+            },
+            {
+              "index": 7,
+              "text": "够",
+              "start_ms": 1390,
+              "end_ms": 1509
+            },
+            {
+              "index": 8,
+              "text": "了",
+              "start_ms": 1509,
+              "end_ms": 1749
+            },
+            {
+              "index": 9,
+              "text": "八",
+              "start_ms": 1749,
+              "end_ms": 1870
+            },
+            {
+              "index": 10,
+              "text": "小",
+              "start_ms": 1870,
+              "end_ms": 2050
+            },
+            {
+              "index": 11,
+              "text": "时",
+              "start_ms": 2050,
+              "end_ms": 2770
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": [
+          {
+            "visible_char_index": 3,
+            "visible": "8",
+            "raw_asr": "八",
+            "native_token_index": 9
+          }
+        ]
+      },
+      {
+        "id": "ZH03",
+        "source_visible_text": "白天还是很困",
+        "first_faint_visible_frame": 71,
+        "last_visible_frame": 117,
+        "first_absent_frame": 118,
+        "visible_frame_range": [
+          71,
+          118
+        ],
+        "visible_pts_seconds": [
+          2.84,
+          4.72
+        ],
+        "near_settled_observed_frame": 72,
+        "precision_frames": 1,
+        "split_first_observed_frame": 101,
+        "split": "Chinese glyph line clips into upper/lower halves, opens vertical gap and holds dim residual through117;118 removed. Native ghost-tail pages distinguish full residual end from main reading end.",
+        "native_raw_asr": {
+          "text": "白天还是很困",
+          "token_indices": [
+            12,
+            17
+          ],
+          "audio_ms": [
+            2830,
+            4330
+          ],
+          "tokens": [
+            {
+              "index": 12,
+              "text": "白",
+              "start_ms": 2830,
+              "end_ms": 2890
+            },
+            {
+              "index": 13,
+              "text": "天",
+              "start_ms": 2890,
+              "end_ms": 3190
+            },
+            {
+              "index": 14,
+              "text": "还",
+              "start_ms": 3190,
+              "end_ms": 3250
+            },
+            {
+              "index": 15,
+              "text": "是",
+              "start_ms": 3250,
+              "end_ms": 3549
+            },
+            {
+              "index": 16,
+              "text": "很",
+              "start_ms": 3549,
+              "end_ms": 3609
+            },
+            {
+              "index": 17,
+              "text": "困",
+              "start_ms": 3609,
+              "end_ms": 4330
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH04",
+        "source_visible_text": "真正影响精力的",
+        "first_faint_visible_frame": 102,
+        "last_visible_frame": 156,
+        "first_absent_frame": 157,
+        "visible_frame_range": [
+          102,
+          157
+        ],
+        "visible_pts_seconds": [
+          4.08,
+          6.28
+        ],
+        "near_settled_observed_frame": 104,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "真正影响精力的",
+          "token_indices": [
+            18,
+            24
+          ],
+          "audio_ms": [
+            4630,
+            6250
+          ],
+          "tokens": [
+            {
+              "index": 18,
+              "text": "真",
+              "start_ms": 4630,
+              "end_ms": 4690
+            },
+            {
+              "index": 19,
+              "text": "正",
+              "start_ms": 4690,
+              "end_ms": 4990
+            },
+            {
+              "index": 20,
+              "text": "影",
+              "start_ms": 4990,
+              "end_ms": 5050
+            },
+            {
+              "index": 21,
+              "text": "响",
+              "start_ms": 5050,
+              "end_ms": 5410
+            },
+            {
+              "index": 22,
+              "text": "精",
+              "start_ms": 5410,
+              "end_ms": 5470
+            },
+            {
+              "index": 23,
+              "text": "力",
+              "start_ms": 5470,
+              "end_ms": 5710
+            },
+            {
+              "index": 24,
+              "text": "的",
+              "start_ms": 5710,
+              "end_ms": 6250
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH05",
+        "source_visible_text": "不只是睡眠时长",
+        "first_faint_visible_frame": 157,
+        "last_visible_frame": 201,
+        "first_absent_frame": 202,
+        "visible_frame_range": [
+          157,
+          202
+        ],
+        "visible_pts_seconds": [
+          6.28,
+          8.08
+        ],
+        "near_settled_observed_frame": 158,
+        "precision_frames": 1,
+        "split_first_observed_frame": 188,
+        "split": "First hairline separation188, upper/lower halves apart189; residual until201,202 absent.",
+        "native_raw_asr": {
+          "text": "不只是睡眠时长",
+          "token_indices": [
+            25,
+            31
+          ],
+          "audio_ms": [
+            6250,
+            7870
+          ],
+          "tokens": [
+            {
+              "index": 25,
+              "text": "不",
+              "start_ms": 6250,
+              "end_ms": 6309
+            },
+            {
+              "index": 26,
+              "text": "只",
+              "start_ms": 6309,
+              "end_ms": 6490
+            },
+            {
+              "index": 27,
+              "text": "是",
+              "start_ms": 6490,
+              "end_ms": 6729
+            },
+            {
+              "index": 28,
+              "text": "睡",
+              "start_ms": 6729,
+              "end_ms": 6790
+            },
+            {
+              "index": 29,
+              "text": "眠",
+              "start_ms": 6790,
+              "end_ms": 7090
+            },
+            {
+              "index": 30,
+              "text": "时",
+              "start_ms": 7090,
+              "end_ms": 7149
+            },
+            {
+              "index": 31,
+              "text": "长",
+              "start_ms": 7149,
+              "end_ms": 7870
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH06",
+        "source_visible_text": "还有睡眠节律",
+        "first_faint_visible_frame": 190,
+        "last_visible_frame": 236,
+        "first_absent_frame": 237,
+        "visible_frame_range": [
+          190,
+          237
+        ],
+        "visible_pts_seconds": [
+          7.6,
+          9.48
+        ],
+        "near_settled_observed_frame": 193,
+        "precision_frames": 1,
+        "visible_runs": [
+          [
+            190,
+            220
+          ],
+          [
+            223,
+            237
+          ]
+        ],
+        "composition_occlusion": {
+          "partial": [
+            219,
+            223
+          ],
+          "fully_hidden": [
+            220,
+            223
+          ],
+          "first_full_return": 224,
+          "intrinsic_cue_continues_across_hidden_window": true
+        },
+        "source_face_overlap": "Restored caption remains at upper anchor while returning presenter grows;223–230 text crosses forehead/eyes/nose, then lowerface/collar. Actual source overlap, not a safe-newinput claim.",
+        "native_raw_asr": {
+          "text": "还有睡眠节律",
+          "token_indices": [
+            32,
+            37
+          ],
+          "audio_ms": [
+            8050,
+            9549
+          ],
+          "tokens": [
+            {
+              "index": 32,
+              "text": "还",
+              "start_ms": 8050,
+              "end_ms": 8109
+            },
+            {
+              "index": 33,
+              "text": "有",
+              "start_ms": 8109,
+              "end_ms": 8410
+            },
+            {
+              "index": 34,
+              "text": "睡",
+              "start_ms": 8410,
+              "end_ms": 8470
+            },
+            {
+              "index": 35,
+              "text": "眠",
+              "start_ms": 8470,
+              "end_ms": 8830
+            },
+            {
+              "index": 36,
+              "text": "节",
+              "start_ms": 8830,
+              "end_ms": 8890
+            },
+            {
+              "index": 37,
+              "text": "律",
+              "start_ms": 8890,
+              "end_ms": 9549
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH07",
+        "source_visible_text": "光照和起床时间",
+        "first_faint_visible_frame": 238,
+        "last_visible_frame": 292,
+        "first_absent_frame": 293,
+        "visible_frame_range": [
+          238,
+          293
+        ],
+        "visible_pts_seconds": [
+          9.52,
+          11.72
+        ],
+        "near_settled_observed_frame": 239,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "光照和起床时间",
+          "token_indices": [
+            38,
+            44
+          ],
+          "audio_ms": [
+            9549,
+            11530
+          ],
+          "tokens": [
+            {
+              "index": 38,
+              "text": "光",
+              "start_ms": 9549,
+              "end_ms": 9610
+            },
+            {
+              "index": 39,
+              "text": "照",
+              "start_ms": 9610,
+              "end_ms": 10090
+            },
+            {
+              "index": 40,
+              "text": "和",
+              "start_ms": 10090,
+              "end_ms": 10270
+            },
+            {
+              "index": 41,
+              "text": "起",
+              "start_ms": 10270,
+              "end_ms": 10330
+            },
+            {
+              "index": 42,
+              "text": "床",
+              "start_ms": 10330,
+              "end_ms": 10750
+            },
+            {
+              "index": 43,
+              "text": "时",
+              "start_ms": 10750,
+              "end_ms": 10810
+            },
+            {
+              "index": 44,
+              "text": "间",
+              "start_ms": 10810,
+              "end_ms": 11530
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH08",
+        "source_visible_text": "先固定每天",
+        "first_faint_visible_frame": 302,
+        "last_visible_frame": 325,
+        "first_absent_frame": 326,
+        "visible_frame_range": [
+          302,
+          326
+        ],
+        "visible_pts_seconds": [
+          12.08,
+          13.04
+        ],
+        "near_settled_observed_frame": 303,
+        "precision_frames": 1,
+        "end_uncertainty_frames": 1,
+        "native_raw_asr": {
+          "text": "先固定每天",
+          "token_indices": [
+            45,
+            49
+          ],
+          "audio_ms": [
+            12070,
+            13030
+          ],
+          "tokens": [
+            {
+              "index": 45,
+              "text": "先",
+              "start_ms": 12070,
+              "end_ms": 12310
+            },
+            {
+              "index": 46,
+              "text": "固",
+              "start_ms": 12310,
+              "end_ms": 12369
+            },
+            {
+              "index": 47,
+              "text": "定",
+              "start_ms": 12369,
+              "end_ms": 12670
+            },
+            {
+              "index": 48,
+              "text": "每",
+              "start_ms": 12670,
+              "end_ms": 12730
+            },
+            {
+              "index": 49,
+              "text": "天",
+              "start_ms": 12730,
+              "end_ms": 13030
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH09",
+        "source_visible_text": "起床时间",
+        "first_faint_visible_frame": 324,
+        "last_visible_frame": 355,
+        "first_absent_frame": 356,
+        "visible_frame_range": [
+          324,
+          356
+        ],
+        "visible_pts_seconds": [
+          12.96,
+          14.24
+        ],
+        "near_settled_observed_frame": 327,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "起床时间",
+          "token_indices": [
+            50,
+            53
+          ],
+          "audio_ms": [
+            13030,
+            14170
+          ],
+          "tokens": [
+            {
+              "index": 50,
+              "text": "起",
+              "start_ms": 13030,
+              "end_ms": 13090
+            },
+            {
+              "index": 51,
+              "text": "床",
+              "start_ms": 13090,
+              "end_ms": 13389
+            },
+            {
+              "index": 52,
+              "text": "时",
+              "start_ms": 13389,
+              "end_ms": 13450
+            },
+            {
+              "index": 53,
+              "text": "间",
+              "start_ms": 13450,
+              "end_ms": 14170
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH10",
+        "source_visible_text": "再把早晨的",
+        "first_faint_visible_frame": 357,
+        "last_visible_frame": 374,
+        "first_absent_frame": 375,
+        "visible_frame_range": [
+          357,
+          375
+        ],
+        "visible_pts_seconds": [
+          14.28,
+          15.0
+        ],
+        "near_settled_observed_frame": 358,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "再把早晨的",
+          "token_indices": [
+            54,
+            58
+          ],
+          "audio_ms": [
+            14230,
+            14950
+          ],
+          "tokens": [
+            {
+              "index": 54,
+              "text": "再",
+              "start_ms": 14230,
+              "end_ms": 14289
+            },
+            {
+              "index": 55,
+              "text": "把",
+              "start_ms": 14289,
+              "end_ms": 14590
+            },
+            {
+              "index": 56,
+              "text": "早",
+              "start_ms": 14590,
+              "end_ms": 14650
+            },
+            {
+              "index": 57,
+              "text": "晨",
+              "start_ms": 14650,
+              "end_ms": 14830
+            },
+            {
+              "index": 58,
+              "text": "的",
+              "start_ms": 14830,
+              "end_ms": 14950
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH11",
+        "source_visible_text": "自然光照补足",
+        "first_faint_visible_frame": 374,
+        "last_visible_frame": 411,
+        "first_absent_frame": 412,
+        "visible_frame_range": [
+          374,
+          412
+        ],
+        "visible_pts_seconds": [
+          14.96,
+          16.48
+        ],
+        "near_settled_observed_frame": 376,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "自然光照补足",
+          "token_indices": [
+            59,
+            64
+          ],
+          "audio_ms": [
+            14950,
+            16450
+          ],
+          "tokens": [
+            {
+              "index": 59,
+              "text": "自",
+              "start_ms": 14950,
+              "end_ms": 15010
+            },
+            {
+              "index": 60,
+              "text": "然",
+              "start_ms": 15010,
+              "end_ms": 15309
+            },
+            {
+              "index": 61,
+              "text": "光",
+              "start_ms": 15309,
+              "end_ms": 15369
+            },
+            {
+              "index": 62,
+              "text": "照",
+              "start_ms": 15369,
+              "end_ms": 15670
+            },
+            {
+              "index": 63,
+              "text": "补",
+              "start_ms": 15670,
+              "end_ms": 15730
+            },
+            {
+              "index": 64,
+              "text": "足",
+              "start_ms": 15730,
+              "end_ms": 16450
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH12",
+        "source_visible_text": "坚持一周",
+        "first_faint_visible_frame": 413,
+        "last_visible_frame": 431,
+        "first_absent_frame": 432,
+        "visible_frame_range": [
+          413,
+          432
+        ],
+        "visible_pts_seconds": [
+          16.52,
+          17.28
+        ],
+        "near_settled_observed_frame": 414,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "坚持一周",
+          "token_indices": [
+            65,
+            68
+          ],
+          "audio_ms": [
+            16450,
+            17590
+          ],
+          "tokens": [
+            {
+              "index": 65,
+              "text": "坚",
+              "start_ms": 16450,
+              "end_ms": 16509
+            },
+            {
+              "index": 66,
+              "text": "持",
+              "start_ms": 16509,
+              "end_ms": 16870
+            },
+            {
+              "index": 67,
+              "text": "一",
+              "start_ms": 16870,
+              "end_ms": 16930
+            },
+            {
+              "index": 68,
+              "text": "周",
+              "start_ms": 16930,
+              "end_ms": 17590
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH13",
+        "source_visible_text": "你会明显感觉",
+        "first_faint_visible_frame": 431,
+        "last_visible_frame": 468,
+        "first_absent_frame": 469,
+        "visible_frame_range": [
+          431,
+          469
+        ],
+        "visible_pts_seconds": [
+          17.24,
+          18.76
+        ],
+        "near_settled_observed_frame": 433,
+        "precision_frames": 1,
+        "native_raw_asr": {
+          "text": "你会明显感觉",
+          "token_indices": [
+            69,
+            74
+          ],
+          "audio_ms": [
+            17590,
+            18669
+          ],
+          "tokens": [
+            {
+              "index": 69,
+              "text": "你",
+              "start_ms": 17590,
+              "end_ms": 17650
+            },
+            {
+              "index": 70,
+              "text": "会",
+              "start_ms": 17650,
+              "end_ms": 17950
+            },
+            {
+              "index": 71,
+              "text": "明",
+              "start_ms": 17950,
+              "end_ms": 18009
+            },
+            {
+              "index": 72,
+              "text": "显",
+              "start_ms": 18009,
+              "end_ms": 18310
+            },
+            {
+              "index": 73,
+              "text": "感",
+              "start_ms": 18310,
+              "end_ms": 18370
+            },
+            {
+              "index": 74,
+              "text": "觉",
+              "start_ms": 18370,
+              "end_ms": 18669
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": []
+      },
+      {
+        "id": "ZH14",
+        "source_visible_text": "清醒得更早",
+        "first_faint_visible_frame": 469,
+        "last_visible_frame": 499,
+        "first_absent_frame": 500,
+        "visible_frame_range": [
+          469,
+          500
+        ],
+        "visible_pts_seconds": [
+          18.76,
+          20.0
+        ],
+        "near_settled_observed_frame": 470,
+        "precision_frames": 1,
+        "intrinsic_caption_end_frame": null,
+        "exit": "Ordinary caption remains faintly discernible499;500 black. Intrinsic own-out vs wholecomposition fade unknown.",
+        "native_raw_asr": {
+          "text": "清醒的更早",
+          "token_indices": [
+            75,
+            79
+          ],
+          "audio_ms": [
+            18669,
+            20079
+          ],
+          "tokens": [
+            {
+              "index": 75,
+              "text": "清",
+              "start_ms": 18669,
+              "end_ms": 18730
+            },
+            {
+              "index": 76,
+              "text": "醒",
+              "start_ms": 18730,
+              "end_ms": 18970
+            },
+            {
+              "index": 77,
+              "text": "的",
+              "start_ms": 18970,
+              "end_ms": 19210
+            },
+            {
+              "index": 78,
+              "text": "更",
+              "start_ms": 19210,
+              "end_ms": 19270
+            },
+            {
+              "index": 79,
+              "text": "早",
+              "start_ms": 19270,
+              "end_ms": 20079
+            }
+          ],
+          "timing_unmodified": true
+        },
+        "text_mismatches": [
+          {
+            "visible_char_index": 2,
+            "visible": "得",
+            "raw_asr": "的",
+            "native_token_index": 77
+          }
+        ]
+      }
+    ],
+    "en": [
+      {
+        "id": "EN01",
+        "source_visible_text": "Why do you",
+        "first_faint_visible_frame": 12,
+        "last_visible_frame": 32,
+        "first_absent_frame": 33,
+        "visible_frame_range": [
+          12,
+          33
+        ],
+        "visible_pts_seconds": [
+          0.48,
+          1.32
+        ],
+        "near_settled_observed_frame": 13,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN02",
+        "source_visible_text": "sleep 8 hours",
+        "first_faint_visible_frame": 32,
+        "last_visible_frame": 69,
+        "first_absent_frame": 70,
+        "visible_frame_range": [
+          32,
+          70
+        ],
+        "visible_pts_seconds": [
+          1.28,
+          2.8
+        ],
+        "near_settled_observed_frame": 34,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN03",
+        "source_visible_text": "yet feel tired?",
+        "first_faint_visible_frame": 71,
+        "last_visible_frame": 117,
+        "first_absent_frame": 118,
+        "visible_frame_range": [
+          71,
+          118
+        ],
+        "visible_pts_seconds": [
+          2.84,
+          4.72
+        ],
+        "near_settled_observed_frame": 72,
+        "precision_frames": 1,
+        "exit": "Full English line fades while new English overlays same band; no English half-split established. Supporting old-only pixel signal falls from residual 0.118 at117 to0.010 at118, zero >20delta pixels after118; no author-alpha claim.",
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN04",
+        "source_visible_text": "What really drains you",
+        "first_faint_visible_frame": 102,
+        "last_visible_frame": 156,
+        "first_absent_frame": 157,
+        "visible_frame_range": [
+          102,
+          157
+        ],
+        "visible_pts_seconds": [
+          4.08,
+          6.28
+        ],
+        "near_settled_observed_frame": 104,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN05",
+        "source_visible_text": "isn't just duration,",
+        "first_faint_visible_frame": 157,
+        "last_visible_frame": 201,
+        "first_absent_frame": 202,
+        "visible_frame_range": [
+          157,
+          202
+        ],
+        "visible_pts_seconds": [
+          6.28,
+          8.08
+        ],
+        "near_settled_observed_frame": 158,
+        "precision_frames": 1,
+        "exit": "Whole English line lowopacity residual under new line until201;202 absent; Chinese split is separate.",
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN06",
+        "source_visible_text": "but rhythm,",
+        "first_faint_visible_frame": 190,
+        "last_visible_frame": 236,
+        "first_absent_frame": 237,
+        "visible_frame_range": [
+          190,
+          237
+        ],
+        "visible_pts_seconds": [
+          7.6,
+          9.48
+        ],
+        "near_settled_observed_frame": 193,
+        "precision_frames": 1,
+        "visible_runs": [
+          [
+            190,
+            220
+          ],
+          [
+            223,
+            237
+          ]
+        ],
+        "composition_occlusion": {
+          "partial_frames": [
+            219,
+            223
+          ],
+          "fully_hidden": [
+            220,
+            223
+          ],
+          "first_full_return": 224
+        },
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN07",
+        "source_visible_text": "light, and wake time.",
+        "first_faint_visible_frame": 238,
+        "last_visible_frame": 292,
+        "first_absent_frame": 293,
+        "visible_frame_range": [
+          238,
+          293
+        ],
+        "visible_pts_seconds": [
+          9.52,
+          11.72
+        ],
+        "near_settled_observed_frame": 239,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN08",
+        "source_visible_text": "Fix your daily",
+        "first_faint_visible_frame": 302,
+        "last_visible_frame": 325,
+        "first_absent_frame": 326,
+        "visible_frame_range": [
+          302,
+          326
+        ],
+        "visible_pts_seconds": [
+          12.08,
+          13.04
+        ],
+        "near_settled_observed_frame": 303,
+        "precision_frames": 1,
+        "end_uncertainty_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN09",
+        "source_visible_text": "wake time.",
+        "first_faint_visible_frame": 324,
+        "last_visible_frame": 355,
+        "first_absent_frame": 356,
+        "visible_frame_range": [
+          324,
+          356
+        ],
+        "visible_pts_seconds": [
+          12.96,
+          14.24
+        ],
+        "near_settled_observed_frame": 327,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN10",
+        "source_visible_text": "Then add",
+        "first_faint_visible_frame": 357,
+        "last_visible_frame": 374,
+        "first_absent_frame": 375,
+        "visible_frame_range": [
+          357,
+          375
+        ],
+        "visible_pts_seconds": [
+          14.28,
+          15.0
+        ],
+        "near_settled_observed_frame": 358,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN11",
+        "source_visible_text": "morning light.",
+        "first_faint_visible_frame": 374,
+        "last_visible_frame": 411,
+        "first_absent_frame": 412,
+        "visible_frame_range": [
+          374,
+          412
+        ],
+        "visible_pts_seconds": [
+          14.96,
+          16.48
+        ],
+        "near_settled_observed_frame": 376,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN12",
+        "source_visible_text": "last a week",
+        "first_faint_visible_frame": 413,
+        "last_visible_frame": 431,
+        "first_absent_frame": 432,
+        "visible_frame_range": [
+          413,
+          432
+        ],
+        "visible_pts_seconds": [
+          16.52,
+          17.28
+        ],
+        "near_settled_observed_frame": 414,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN13",
+        "source_visible_text": "You'll feel",
+        "first_faint_visible_frame": 431,
+        "last_visible_frame": 468,
+        "first_absent_frame": 469,
+        "visible_frame_range": [
+          431,
+          469
+        ],
+        "visible_pts_seconds": [
+          17.24,
+          18.76
+        ],
+        "near_settled_observed_frame": 433,
+        "precision_frames": 1,
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      },
+      {
+        "id": "EN14",
+        "source_visible_text": "alert sooner.",
+        "first_faint_visible_frame": 469,
+        "last_visible_frame": 499,
+        "first_absent_frame": 500,
+        "visible_frame_range": [
+          469,
+          500
+        ],
+        "visible_pts_seconds": [
+          18.76,
+          20.0
+        ],
+        "near_settled_observed_frame": 470,
+        "precision_frames": 1,
+        "intrinsic_caption_end_frame": null,
+        "exit": "Faint full English line499;500black, source composition fade.",
+        "native_audio_alignment": "No English ASR/FA; this is visible original reference wording, not verified translation or audio clock."
+      }
+    ]
+  },
+  "no_visible_caption_ranges": {
+    "zh": [
+      [
+        1,
+        12
+      ],
+      [
+        70,
+        71
+      ],
+      [
+        220,
+        223
+      ],
+      [
+        237,
+        238
+      ],
+      [
+        293,
+        302
+      ],
+      [
+        356,
+        357
+      ],
+      [
+        412,
+        413
+      ],
+      [
+        500,
+        501
+      ]
+    ],
+    "en": [
+      [
+        1,
+        12
+      ],
+      [
+        70,
+        71
+      ],
+      [
+        220,
+        223
+      ],
+      [
+        237,
+        238
+      ],
+      [
+        293,
+        302
+      ],
+      [
+        356,
+        357
+      ],
+      [
+        412,
+        413
+      ],
+      [
+        500,
+        501
+      ]
+    ]
+  },
+  "source_warm_frame": {
+    "frame": 0,
+    "zh": "为什么你明明",
+    "en": "Why do you",
+    "cleared_frame": 1,
+    "not_additional_speechcue": true
+  },
+  "default_entry": "Wholecue immediate or short opacity/scale handoff; no character typing observed. Per-language wording and clock retained independently.",
+  "default_exit": "Wholecue removal/crossfade unless explicitly measured Chinese half-split or composition-wide wipe. English full-line fade does not automatically inherit Chinese half-clipping.",
+  "geometry_and_layer_clock": {
+    "coordinate_space": [
+      1080,
+      1920
+    ],
+    "measured_screen_anchor_phases": [
+      {
+        "frames": [
+          12,
+          70
+        ],
+        "zh_ink_top_candidate": 1510,
+        "en_ink_top_candidate": 1590,
+        "observation": "Opening black shirt reading area; title clock independent."
+      },
+      {
+        "frames": [
+          71,
+          237
+        ],
+        "zh_ink_top_candidate": 1170,
+        "en_ink_top_candidate": 1250,
+        "observation": "New cue selects upper reading anchor immediately71 while presenter shrinks. Captions stay above circle/poster; picture transforms do not scale them. Wipe gates both screen channels at219–223."
+      },
+      {
+        "frames": [
+          238,
+          302
+        ],
+        "zh_ink_top_candidate": 1510,
+        "en_ink_top_candidate": 1590,
+        "observation": "Blank237 then next cue lower anchor238; no continuous lowerward subtitle flight observed."
+      },
+      {
+        "frames": [
+          302,
+          500
+        ],
+        "zh_ink_top_candidate": 1496,
+        "en_ink_top_candidate": 1580,
+        "observation": "Morning picture/person take-over; independent lower caption band, poster content/labels are baked pixels. Body shrinks up-right, captions do not track it."
+      }
+    ],
+    "error_px": 6,
+    "source_face_overlap": {
+      "frames": [
+        223,
+        231
+      ],
+      "evidence": [
+        "edges-08.jpg",
+        "context-03.jpg"
+      ],
+      "observation": "Returning large original face moves through fixed upper bilingual caption band. Chinese crosses forehead/eyes; English crosses nose/mouth. Do not call this source globally safe."
+    },
+    "layer_order": "Ordinary bilingual captions over source video/poster, below final slanted compositewipe; Chinese half-clips local to caption, not same mask as picture wipe.",
+    "font_identity": "Unknown actual Chinese/English files; white sans with dark edge/glow. Independent line widths and size candidates must be calibrated in03."
+  },
+  "known_unknowns": [
+    "Exact font files, glyph/stroke/glow equivalence and opacity/easing curves.",
+    "C08/EN08 faint residual end bracket325–326; stored candidate326 with ±1frame. Other faint edges±1frame.",
+    "Final intrinsic caption outpoint hidden by fullcomposition tail fade.",
+    "English reference wording is recorded verbatim but not certified translation or spoken English; native ASR is Chinese only.",
+    "Last raw token 早19270–20079ms exceeds PCM20050ms; retained unmodified.",
+    "No formal hearing, originalraw/matte/license recovery or replacement/conditional render performed."
+  ],
+  "confirmed_script": false,
+  "forced_alignment": false,
+  "continuous_visual_playback": false,
+  "formal_hearing": false
+}

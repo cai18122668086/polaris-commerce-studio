@@ -45,7 +45,7 @@ FONT_IDS = {
 
 
 def suite_engine(snapshot: dict) -> bool:
-    return snapshot.get("engine") == ENGINE
+    return snapshot.get("engine") in {ENGINE, "bihuo-full-suite"}
 
 
 def suite_fonts(settings: Settings) -> dict[str, str]:
@@ -73,7 +73,11 @@ def suite_fonts(settings: Settings) -> dict[str, str]:
     return result
 
 
-def suite_bundle(settings: Settings) -> dict:
+def suite_bundle(settings: Settings, template_id: str | None = None) -> dict:
+    if template_id is not None and template_id != TEMPLATE_ID:
+        from .bihuo_suite.registry import bundle_identity as bihuo_bundle_identity
+
+        return bihuo_bundle_identity(template_id)
     from .video_editing_apple_contracts import bundle_identity
 
     identity = bundle_identity()
@@ -87,7 +91,12 @@ def suite_bundle(settings: Settings) -> dict:
 
 
 def assert_bundle(snapshot: dict, settings: Settings) -> None:
-    if suite_bundle(settings) != snapshot["engine_bundle"]:
+    current = (
+        suite_bundle(settings, snapshot["template_id"])
+        if snapshot.get("engine") == "bihuo-full-suite"
+        else suite_bundle(settings)
+    )
+    if current != snapshot["engine_bundle"]:
         raise ApiError(
             409,
             "EDITING_APPLE_BUNDLE_CHANGED",
@@ -207,8 +216,24 @@ def plan_suite(
     from .video_editing_apple_contracts import build_request, verify_plan
 
     assert_bundle(snapshot, settings)
+    profile = None
+    if snapshot.get("engine") == "bihuo-full-suite":
+        from .bihuo_suite.registry import definition
+
+        meta = definition(snapshot["template_id"])
+        profile = {
+            **meta,
+            "engine": snapshot["engine"],
+            "version": snapshot["engine_bundle"]["version"],
+            "flow": meta["description"],
+        }
+    request_options = {"template_profile": profile} if profile is not None else {}
     body, evidence = build_request(
-        transcript, model, snapshot["asset_cards"], snapshot.get("creative_options")
+        transcript,
+        model,
+        snapshot["asset_cards"],
+        snapshot.get("creative_options"),
+        **request_options,
     )
     if prepared_request is not None:
         # Reuse the exact prepared body instead of silently changing model input.
@@ -297,6 +322,7 @@ def plan_suite(
         transcript,
         snapshot["asset_cards"],
         require_semantic_captions=True,
+        allow_mixed_body=snapshot.get("engine") == "bihuo-full-suite",
     )
     path = folder / "suite-plan.json"
     atomic_json(path, plan)
@@ -308,7 +334,7 @@ def plan_suite(
     atomic_json(
         folder / "semantic-validated.json",
         {
-            "engine": ENGINE,
+            "engine": snapshot.get("engine", ENGINE),
             "engine_bundle": snapshot["engine_bundle"],
             "request_sha256": evidence["request_sha256"],
             "response_sha256": sha256(response_path),
@@ -384,7 +410,12 @@ def verified_suite(
         )
     from .video_editing_apple_contracts import verify_plan
 
-    plan = verify_plan(read_json(path), transcript, row.snapshot["asset_cards"])
+    plan = verify_plan(
+        read_json(path),
+        transcript,
+        row.snapshot["asset_cards"],
+        allow_mixed_body=row.snapshot.get("engine") == "bihuo-full-suite",
+    )
     if plan != row.result.get("suite_plan"):
         raise ApiError(
             409, "EDITING_PLANNING_PROVENANCE_CHANGED", "规划内容与校验记录不一致。"
@@ -413,22 +444,65 @@ def render_suite(
     )
     plan, frozen = row.result["suite_plan"], dict(row.snapshot)
     source_path, source_sha = source.media_path, source.media_sha256
+    original_source_path = Path(source_path)
+    # The source and planning rows above are now frozen in local values. Do not
+    # hold a database transaction through preparation, inference and encoding.
+    session.rollback()
+    compiler = None
+    selected_fonts = None
+    render_module = "app.apple_minimal.render"
+    if frozen.get("engine") == "bihuo-full-suite":
+        from .bihuo_suite.registry import compile_request, definition, fonts
+        from .bihuo_suite.source import prepare as prepare_suite_source
+
+        template_id = frozen["template_id"]
+        selected_fonts = fonts(template_id)
+        render_module = "app.bihuo_suite.render"
+        creative_options = dict(frozen.get("creative_options") or {})
+        stage("preparing_source", engine=frozen["engine"])
+        source_path = str(
+            prepare_suite_source(
+                Path(source_path), transcript.duration_ms / 1000, root, settings, guard
+            )
+        )
+        if definition(template_id).get("requires_foreground"):
+            from .bihuo_suite.foreground import prepare as prepare_foreground
+
+            stage("preparing_foreground", engine=frozen["engine"])
+            creative_options["foreground_cache"] = prepare_foreground(
+                Path(source_path), transcript.duration_ms / 1000, settings, guard
+            )
+
+        def compiler(resolved: dict, **kwargs: Any) -> dict:
+            kwargs.pop("fonts", None)
+            kwargs.pop("music", None)
+            return compile_request(template_id, resolved, **kwargs)
+
+    else:
+        selected_fonts = suite_fonts(settings)
+        creative_options = dict(frozen.get("creative_options") or {})
+
     config = compile_render_input(
         plan,
         transcript,
         assets,
         source_path,
-        suite_fonts(settings),
-        creative_options=frozen.get("creative_options"),
+        selected_fonts,
+        creative_options=creative_options,
         music=frozen.get("music", "template"),
         ffmpeg=settings.video_editing_ffmpeg,
+        recipe_compiler=compiler,
     )
     session.rollback()
     config_path = root / "suite-input.json"
     atomic_json(config_path, config)
     atomic_json(root / "suite-plan.json", plan)
     atomic_json(root / "transcript.json", transcript.model_dump(mode="json"))
-    stage("rendering", engine=ENGINE, engine_bundle=frozen["engine_bundle"])
+    stage(
+        "rendering",
+        engine=frozen.get("engine", ENGINE),
+        engine_bundle=frozen["engine_bundle"],
+    )
     output = root / "suite-render"
     run(
         [
@@ -437,7 +511,7 @@ def render_suite(
             "-X",
             "utf8",
             "-m",
-            "app.apple_minimal.render",
+            render_module,
             "--input",
             str(config_path),
             "--output",
@@ -453,7 +527,7 @@ def render_suite(
     if not final.is_file() or receipt.get("final_sha256") != sha256(final):
         raise EditingFailure("EDITING_APPLE_OUTPUT_CHANGED")
     assert_bundle(frozen, settings)
-    if sha256(Path(source_path)) != source_sha:
+    if sha256(original_source_path) != source_sha:
         raise EditingFailure("EDITING_SOURCE_CHANGED")
     stage("validating")
     decode_av(final, root, settings, guard, "decode_apple_suite")
@@ -469,7 +543,7 @@ def render_suite(
     if abs(duration - transcript.duration_ms) > 80:
         raise EditingFailure("EDITING_APPLE_CLOCK_CHANGED")
     validation = {
-        "engine": ENGINE,
+        "engine": frozen.get("engine", ENGINE),
         "engine_bundle": frozen["engine_bundle"],
         "input_sha256": sha256(config_path),
         "plan_sha256": sha256(root / "suite-plan.json"),

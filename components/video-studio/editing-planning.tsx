@@ -17,8 +17,8 @@ import type { TemplateCard } from "./editing-template-gallery";
 
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
-type BaseTask = Pick<PreviewTask, "id" | "status" | "created_at" | "artifacts" | "source_frame">;
-export type EditingPrimaryState = { label: string; hint: string; disabled: boolean; phase: "prepare" | "generate" | "waiting" | "preview" };
+type BaseTask = Pick<PreviewTask, "id" | "status" | "stage" | "created_at" | "artifacts" | "source_frame">;
+export type EditingPrimaryState = { label: string; hint: string; disabled: boolean; phase: "prepare" | "generate" | "waiting" | "rendering" | "preview" };
 export type EditingPrimaryAction = { run: () => void; cancel: () => void };
 export type CarrySelection = {
   projectId: string;
@@ -160,6 +160,10 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const preparation = activePreparation?.signature === formSignature ? jobs.find(job => job.id === activePreparation.id) : undefined;
   const prepared = preparation?.status === "prepared" ? preparation : undefined;
   const submitted = prepared && jobs.find(job => job.prepared_task_id === prepared.id);
+  const rendered = tasks.find(task => task.id === submitted?.preview_task_id);
+  const rendering = !!rendered && ["queued", "running"].includes(rendered.status);
+  const renderStages: Record<string, string> = { queued: "排队等待渲染", preparing_source: "准备口播画面", preparing_foreground: "准备人物前景", rendering: "渲染视频画面", validating: "检查音视频", building_preview: "准备全片预览", storing: "保存视频" };
+  const renderHint = rendering ? `${renderStages[rendered.stage] || "正在生成视频"}，完成后自动显示预览，无需再次提交。` : rendered?.status === "awaiting_review" ? "全片预览已完成，确认导出后即可下载高清，不会重新剪辑。" : rendered?.status === "failed" ? "视频处理已中断，请在历史记录中查看原因；已保存的编排会保留。" : "";
   const waiting = !!preparation && ["queued", "running"].includes(preparation.status);
   const submissionPending = !!submitted && ["queued", "running"].includes(submitted.status);
   const submissionUncertain = !!submitted && submitted.call_state === "intent_saved" && !submissionPending;
@@ -167,8 +171,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const nextAction = editingPlanningAction(prepared, submitted || undefined);
   const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || nextAction === "wait" || nextAction === "blocked";
   const primaryLabel = busy ? "正在提交…" : waiting ? "正在检查素材…" : submissionPending ? "正在编排视频…" : submissionUncertain ? "提交结果待确认" : submitted?.status === "completed" ? "查看视频预览" : submissionFailed ? "重新检查素材" : nextAction === "blocked" ? prepared && !prepared.execution_available ? "自动剪辑暂不可用" : "请先补齐素材" : prepared ? "生成预览（计费）" : "检查素材并继续";
-  const primaryHint = submissionUncertain ? "请等待结果确认，避免重复提交和计费" : submitted?.status === "completed" ? "查看本次结果，满意后下载高清" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "重新检查素材不会再次调用模型" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
-  const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
+  const primaryHint = submissionUncertain ? "请等待结果确认，避免重复提交和计费" : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
+  const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : rendering ? "rendering" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase]);
 
   const submit = async (mode: "prepare" | "generate", prepared?: Job) => {

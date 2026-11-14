@@ -35,7 +35,7 @@ function subscribeToHash(listener: () => void) {
   return () => window.removeEventListener("hashchange", listener);
 }
 const readTaskHash = () => taskHash.exec(window.location.hash)?.[1].toLowerCase();
-const stageLabel: Record<string, string> = { queued: "排队中", preparing: "读取原片", transcribing: "识别口播", aligning: "校准字幕", compiling: "编排画面", rendering: "生成视频", validating: "检查视频", building_preview: "准备预览", storing: "保存视频", transcript_ready: "口播已识别", preview_ready: "预览已就绪", completed: "可下载" };
+const stageLabel: Record<string, string> = { queued: "排队中", preparing: "读取原片", preparing_source: "准备口播画面", preparing_foreground: "准备人物前景", transcribing: "识别口播", aligning: "校准字幕", compiling: "编排画面", rendering: "生成视频", validating: "检查视频", building_preview: "准备预览", storing: "保存视频", transcript_ready: "口播已识别", preview_ready: "预览已就绪", completed: "可下载" };
 const errorLabel: Record<string, string> = {
   EDITING_ALIGNMENT_DISABLED: "字幕对齐服务尚未开启，请联系管理员。",
   EDITING_ALIGNMENT_TEXT_TIMESTAMPS_MISMATCH: "确认稿与声音暂时无法对齐，请检查这条口播。",
@@ -377,7 +377,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     begin();
   }, [saved, busy, begin]);
   const historyTasks = tasks.filter(task => (task.options.mode !== "transcript" || task.id === focusedTaskId) && (!historyQuery.trim() || `${task.template_name || ""} ${stageLabel[task.stage] || task.status} ${new Date(task.created_at).toLocaleDateString("zh-CN")}`.includes(historyQuery.trim())));
-  const actionLabel = busy || recognizing || primaryState?.phase === "waiting" ? "正在剪辑…" : transcriptReady && primaryState?.phase === "preview" ? "查看剪辑结果" : "开始智能剪辑";
+  const actionLabel = busy ? "正在提交…" : recognizing ? "正在识别口播…" : primaryState?.phase === "waiting" ? primaryState.label : primaryState?.phase === "rendering" ? "查看剪辑进度" : transcriptReady && primaryState?.phase === "preview" ? "查看剪辑结果" : "开始智能剪辑";
   return <section className={`${styles.panel} ${flow.workbench} ${compact ? flow.compact : ""}`} aria-label="口播剪辑">
     <EditingTemplateGallery key={`gallery:${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={saved ? projectId : ""} selected={template?.id || ""} onRestore={chooseTemplate} sampleRevision={tasks.flatMap(task => task.artifacts.filter(a => a.role === "final").map(a => a.sha256)).join(",")} onSelect={chooseTemplate} />
     <section id="editing-source" className={`${flow.step} ${flow.source}`} aria-label="准备口播"><div className={flow.sourceHeading}><h2>剪辑</h2><label className={flow.uploadButton}>手动上传视频<input ref={sourceUpload} disabled={busy || recognizing} aria-label="上传口播视频" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => { cancelAutomatic(); setSelected("upload"); setFile(event.target.files?.[0]); setPlanningTask(""); setReferenceVersion(""); setReferenceText(""); setSubtitles("none"); }} /></label></div>
@@ -517,6 +517,6 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         {["failed", "cancelled"].includes(task.status) && !layoutFailed && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
       </article></details>;
     })}</div>{historyTasks.length > 3 && <button type="button" onClick={() => setShowTaskHistory(value => !value)}>{showTaskHistory ? "收起历史版本" : `查看全部 ${historyTasks.length} 个版本`}</button>}</section>
-    <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || (!saved && !onSaveProject) || recognizing || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))} onClick={begin}>{actionLabel}</button><small className={flow.feeHint}>按实际用量计费，完成后可预览并下载</small></>}</div>
+    <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || (!saved && !onSaveProject) || recognizing || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))} onClick={begin}>{actionLabel}</button><small className={flow.feeHint} role="status">{recognizing ? "识别完成后自动继续编排与渲染，请保持当前页面。" : transcriptReady && primaryState ? primaryState.hint : "识别 → 编排 → 渲染 → 全片预览，确认后下载高清"}</small></>}</div>
   </section>;
 }

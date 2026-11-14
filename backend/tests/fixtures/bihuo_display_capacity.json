@@ -1,0 +1,1964 @@
+{
+  "plan": {
+    "schema_version": "tengli.apple-suite-plan/2",
+    "opening": {
+      "title": {
+        "first_token_id": "t000012",
+        "last_token_id": "t000016"
+      },
+      "subtitle": {
+        "first_token_id": "t000017",
+        "last_token_id": "t000025"
+      },
+      "intro_last_token_id": "t000025"
+    },
+    "body_variant": "materials",
+    "materials": [
+      {
+        "first_token_id": "t000026",
+        "last_token_id": "t000037",
+        "asset_id": "material-9c6d5676-5969-43f4-b140-e4871fa11df2",
+        "show_at_token_id": "t000026",
+        "edge": "start"
+      },
+      {
+        "first_token_id": "t000038",
+        "last_token_id": "t000046",
+        "asset_id": "material-9ab655b1-f6dc-40f9-a620-a1601694058b",
+        "show_at_token_id": "t000038",
+        "edge": "start"
+      },
+      {
+        "first_token_id": "t000047",
+        "last_token_id": "t000052",
+        "asset_id": "material-1a1b8b6f-57fd-4de9-b6ed-87e49ff81573",
+        "show_at_token_id": "t000047",
+        "edge": "start"
+      },
+      {
+        "first_token_id": "t000068",
+        "last_token_id": "t000085",
+        "asset_id": "material-d6672c69-f6ff-4883-9bb7-2f69d2d01400",
+        "show_at_token_id": "t000074",
+        "edge": "start"
+      },
+      {
+        "first_token_id": "t000086",
+        "last_token_id": "t000110",
+        "asset_id": "material-24fb358f-31e6-4ed5-bc62-5131a03b3fa9",
+        "show_at_token_id": "t000104",
+        "edge": "start"
+      }
+    ],
+    "points": [],
+    "features": [
+      {
+        "first_token_id": "t000111",
+        "last_token_id": "t000116"
+      },
+      {
+        "first_token_id": "t000117",
+        "last_token_id": "t000124"
+      },
+      {
+        "first_token_id": "t000132",
+        "last_token_id": "t000140"
+      }
+    ],
+    "conclusion": {
+      "first": {
+        "first_token_id": "t000145",
+        "last_token_id": "t000151"
+      },
+      "second": {
+        "first_token_id": "t000170",
+        "last_token_id": "t000177"
+      }
+    },
+    "quote_start_token_id": "t000145",
+    "chapters": [
+      {
+        "first_token_id": "t000026",
+        "last_token_id": "t000037",
+        "at_token_id": "t000026"
+      },
+      {
+        "first_token_id": "t000038",
+        "last_token_id": "t000052",
+        "at_token_id": "t000038"
+      },
+      {
+        "first_token_id": "t000053",
+        "last_token_id": "t000081",
+        "at_token_id": "t000053"
+      },
+      {
+        "first_token_id": "t000082",
+        "last_token_id": "t000110",
+        "at_token_id": "t000082"
+      },
+      {
+        "first_token_id": "t000111",
+        "last_token_id": "t000140",
+        "at_token_id": "t000111"
+      },
+      {
+        "first_token_id": "t000141",
+        "last_token_id": "t000169",
+        "at_token_id": "t000141"
+      }
+    ],
+    "comparisons": [],
+    "emphasis": [],
+    "captions": [
+      {
+        "first_token_id": "t000000",
+        "last_token_id": "t000011",
+        "emphasis": []
+      },
+      {
+        "first_token_id": "t000012",
+        "last_token_id": "t000025",
+        "emphasis": [
+          {
+            "first_token_id": "t000014",
+            "last_token_id": "t000016"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000026",
+        "last_token_id": "t000037",
+        "emphasis": [
+          {
+            "first_token_id": "t000028",
+            "last_token_id": "t000031"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000038",
+        "last_token_id": "t000046",
+        "emphasis": [
+          {
+            "first_token_id": "t000044",
+            "last_token_id": "t000045"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000047",
+        "last_token_id": "t000052",
+        "emphasis": [
+          {
+            "first_token_id": "t000047",
+            "last_token_id": "t000050"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000053",
+        "last_token_id": "t000061",
+        "emphasis": [
+          {
+            "first_token_id": "t000053",
+            "last_token_id": "t000057"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000062",
+        "last_token_id": "t000067",
+        "emphasis": [
+          {
+            "first_token_id": "t000065",
+            "last_token_id": "t000066"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000068",
+        "last_token_id": "t000081",
+        "emphasis": [
+          {
+            "first_token_id": "t000074",
+            "last_token_id": "t000078"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000082",
+        "last_token_id": "t000085",
+        "emphasis": [
+          {
+            "first_token_id": "t000084",
+            "last_token_id": "t000085"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000086",
+        "last_token_id": "t000091",
+        "emphasis": []
+      },
+      {
+        "first_token_id": "t000092",
+        "last_token_id": "t000110",
+        "line_break_after_token_id": "t000100",
+        "emphasis": [
+          {
+            "first_token_id": "t000101",
+            "last_token_id": "t000106"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000111",
+        "last_token_id": "t000116",
+        "emphasis": [
+          {
+            "first_token_id": "t000113",
+            "last_token_id": "t000116"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000117",
+        "last_token_id": "t000131",
+        "emphasis": [
+          {
+            "first_token_id": "t000121",
+            "last_token_id": "t000124"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000132",
+        "last_token_id": "t000140",
+        "emphasis": [
+          {
+            "first_token_id": "t000134",
+            "last_token_id": "t000137"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000141",
+        "last_token_id": "t000144",
+        "emphasis": [
+          {
+            "first_token_id": "t000141",
+            "last_token_id": "t000144"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000145",
+        "last_token_id": "t000151",
+        "emphasis": [
+          {
+            "first_token_id": "t000147",
+            "last_token_id": "t000151"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000152",
+        "last_token_id": "t000159",
+        "emphasis": [
+          {
+            "first_token_id": "t000158",
+            "last_token_id": "t000159"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000160",
+        "last_token_id": "t000169",
+        "emphasis": [
+          {
+            "first_token_id": "t000163",
+            "last_token_id": "t000166"
+          }
+        ]
+      },
+      {
+        "first_token_id": "t000170",
+        "last_token_id": "t000177",
+        "emphasis": [
+          {
+            "first_token_id": "t000176",
+            "last_token_id": "t000177"
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "开场含有无法识别的片头残词，已保留对应字幕以覆盖完整实录。"
+    ]
+  },
+  "transcript": {
+    "schema_version": "tengli.transcript/1",
+    "audio_sha256": "7634c46effbf1910a647344f4f37bf46bc8afbfc55b0fefeb2a56f682ba1e148",
+    "source_sha256": "ecbc5dbd950d7ff1dfe54209137e0497d7c4ed0f8bd420c1d5067aad7ce94a3d",
+    "duration_ms": 52240,
+    "provider": "funasr",
+    "model": "/asr",
+    "model_sha256": "0e818b03c3893758ffc3db6d50ca4547fe2aaa5f4a1dabcb7a3d66a97a328e09",
+    "recognizer_version": "1.4.24",
+    "processing_version": "funasr-word-clock/3",
+    "raw_result_sha256": "71e62770ffde44f99931a043043842eefa0868e4f62a1a76e25908d55a654286",
+    "warnings": [
+      "自动识别和标点仍需校对；词点精度与语义尚未人工验收。"
+    ],
+    "timing_adjustments": [
+      {
+        "token_id": "t000000",
+        "native_start_ms": -90,
+        "start_ms": 0,
+        "reason": "clip_paraformer_initial_shift_to_media_start"
+      },
+      {
+        "token_id": "t000177",
+        "native_end_ms": 52290,
+        "end_ms": 52222,
+        "reason": "clip_paraformer_final_padding_to_media_end",
+        "analysis_audio_end_ms": 52222
+      }
+    ],
+    "language": "zh",
+    "tokens": [
+      {
+        "id": "t000000",
+        "text": "dropping",
+        "start_ms": 0,
+        "end_ms": 570,
+        "confidence": null
+      },
+      {
+        "id": "t000001",
+        "text": "ing",
+        "start_ms": 570,
+        "end_ms": 990,
+        "confidence": null
+      },
+      {
+        "id": "t000002",
+        "text": "to",
+        "start_ms": 990,
+        "end_ms": 1109,
+        "confidence": null
+      },
+      {
+        "id": "t000003",
+        "text": "还",
+        "start_ms": 1109,
+        "end_ms": 1829,
+        "confidence": null
+      },
+      {
+        "id": "t000004",
+        "text": "在",
+        "start_ms": 2130,
+        "end_ms": 2190,
+        "confidence": null
+      },
+      {
+        "id": "t000005",
+        "text": "一",
+        "start_ms": 2190,
+        "end_ms": 2730,
+        "confidence": null
+      },
+      {
+        "id": "t000006",
+        "text": "张",
+        "start_ms": 2730,
+        "end_ms": 2790,
+        "confidence": null
+      },
+      {
+        "id": "t000007",
+        "text": "一",
+        "start_ms": 2790,
+        "end_ms": 3330,
+        "confidence": null
+      },
+      {
+        "id": "t000008",
+        "text": "张",
+        "start_ms": 3330,
+        "end_ms": 3389,
+        "confidence": null
+      },
+      {
+        "id": "t000009",
+        "text": "找",
+        "start_ms": 3389,
+        "end_ms": 4050,
+        "confidence": null
+      },
+      {
+        "id": "t000010",
+        "text": "参",
+        "start_ms": 4050,
+        "end_ms": 4470,
+        "confidence": null
+      },
+      {
+        "id": "t000011",
+        "text": "考，",
+        "start_ms": 4470,
+        "end_ms": 4530,
+        "confidence": null
+      },
+      {
+        "id": "t000012",
+        "text": "反",
+        "start_ms": 4530,
+        "end_ms": 5250,
+        "confidence": null
+      },
+      {
+        "id": "t000013",
+        "text": "复",
+        "start_ms": 5490,
+        "end_ms": 5550,
+        "confidence": null
+      },
+      {
+        "id": "t000014",
+        "text": "改",
+        "start_ms": 5550,
+        "end_ms": 5970,
+        "confidence": null
+      },
+      {
+        "id": "t000015",
+        "text": "设",
+        "start_ms": 5970,
+        "end_ms": 6510,
+        "confidence": null
+      },
+      {
+        "id": "t000016",
+        "text": "计",
+        "start_ms": 6510,
+        "end_ms": 6569,
+        "confidence": null
+      },
+      {
+        "id": "t000017",
+        "text": "给",
+        "start_ms": 6569,
+        "end_ms": 7290,
+        "confidence": null
+      },
+      {
+        "id": "t000018",
+        "text": "你",
+        "start_ms": 7350,
+        "end_ms": 7410,
+        "confidence": null
+      },
+      {
+        "id": "t000019",
+        "text": "看",
+        "start_ms": 7410,
+        "end_ms": 7890,
+        "confidence": null
+      },
+      {
+        "id": "t000020",
+        "text": "个",
+        "start_ms": 7890,
+        "end_ms": 8010,
+        "confidence": null
+      },
+      {
+        "id": "t000021",
+        "text": "省",
+        "start_ms": 8010,
+        "end_ms": 8490,
+        "confidence": null
+      },
+      {
+        "id": "t000022",
+        "text": "事",
+        "start_ms": 8490,
+        "end_ms": 8549,
+        "confidence": null
+      },
+      {
+        "id": "t000023",
+        "text": "的",
+        "start_ms": 8549,
+        "end_ms": 8910,
+        "confidence": null
+      },
+      {
+        "id": "t000024",
+        "text": "办",
+        "start_ms": 8910,
+        "end_ms": 9270,
+        "confidence": null
+      },
+      {
+        "id": "t000025",
+        "text": "法，",
+        "start_ms": 9270,
+        "end_ms": 9330,
+        "confidence": null
+      },
+      {
+        "id": "t000026",
+        "text": "先",
+        "start_ms": 9330,
+        "end_ms": 10049,
+        "confidence": null
+      },
+      {
+        "id": "t000027",
+        "text": "把",
+        "start_ms": 10290,
+        "end_ms": 10350,
+        "confidence": null
+      },
+      {
+        "id": "t000028",
+        "text": "对",
+        "start_ms": 10350,
+        "end_ms": 10830,
+        "confidence": null
+      },
+      {
+        "id": "t000029",
+        "text": "标",
+        "start_ms": 10830,
+        "end_ms": 10889,
+        "confidence": null
+      },
+      {
+        "id": "t000030",
+        "text": "商",
+        "start_ms": 10889,
+        "end_ms": 11370,
+        "confidence": null
+      },
+      {
+        "id": "t000031",
+        "text": "品",
+        "start_ms": 11370,
+        "end_ms": 11430,
+        "confidence": null
+      },
+      {
+        "id": "t000032",
+        "text": "链",
+        "start_ms": 11430,
+        "end_ms": 11850,
+        "confidence": null
+      },
+      {
+        "id": "t000033",
+        "text": "接",
+        "start_ms": 11850,
+        "end_ms": 11910,
+        "confidence": null
+      },
+      {
+        "id": "t000034",
+        "text": "复",
+        "start_ms": 11910,
+        "end_ms": 12389,
+        "confidence": null
+      },
+      {
+        "id": "t000035",
+        "text": "制",
+        "start_ms": 12389,
+        "end_ms": 12450,
+        "confidence": null
+      },
+      {
+        "id": "t000036",
+        "text": "进",
+        "start_ms": 12450,
+        "end_ms": 12809,
+        "confidence": null
+      },
+      {
+        "id": "t000037",
+        "text": "来，",
+        "start_ms": 12809,
+        "end_ms": 12870,
+        "confidence": null
+      },
+      {
+        "id": "t000038",
+        "text": "再",
+        "start_ms": 12870,
+        "end_ms": 13590,
+        "confidence": null
+      },
+      {
+        "id": "t000039",
+        "text": "上",
+        "start_ms": 13889,
+        "end_ms": 14190,
+        "confidence": null
+      },
+      {
+        "id": "t000040",
+        "text": "传",
+        "start_ms": 14190,
+        "end_ms": 14250,
+        "confidence": null
+      },
+      {
+        "id": "t000041",
+        "text": "自",
+        "start_ms": 14250,
+        "end_ms": 14729,
+        "confidence": null
+      },
+      {
+        "id": "t000042",
+        "text": "己",
+        "start_ms": 14729,
+        "end_ms": 14790,
+        "confidence": null
+      },
+      {
+        "id": "t000043",
+        "text": "的",
+        "start_ms": 14790,
+        "end_ms": 14969,
+        "confidence": null
+      },
+      {
+        "id": "t000044",
+        "text": "产",
+        "start_ms": 14969,
+        "end_ms": 15209,
+        "confidence": null
+      },
+      {
+        "id": "t000045",
+        "text": "品",
+        "start_ms": 15209,
+        "end_ms": 15270,
+        "confidence": null
+      },
+      {
+        "id": "t000046",
+        "text": "图，",
+        "start_ms": 15270,
+        "end_ms": 15510,
+        "confidence": null
+      },
+      {
+        "id": "t000047",
+        "text": "点",
+        "start_ms": 15510,
+        "end_ms": 16230,
+        "confidence": null
+      },
+      {
+        "id": "t000048",
+        "text": "击",
+        "start_ms": 16590,
+        "end_ms": 16650,
+        "confidence": null
+      },
+      {
+        "id": "t000049",
+        "text": "拉",
+        "start_ms": 16650,
+        "end_ms": 17250,
+        "confidence": null
+      },
+      {
+        "id": "t000050",
+        "text": "取",
+        "start_ms": 17250,
+        "end_ms": 17310,
+        "confidence": null
+      },
+      {
+        "id": "t000051",
+        "text": "参",
+        "start_ms": 17310,
+        "end_ms": 18029,
+        "confidence": null
+      },
+      {
+        "id": "t000052",
+        "text": "考。",
+        "start_ms": 18270,
+        "end_ms": 18330,
+        "confidence": null
+      },
+      {
+        "id": "t000053",
+        "text": "商",
+        "start_ms": 18330,
+        "end_ms": 18689,
+        "confidence": null
+      },
+      {
+        "id": "t000054",
+        "text": "品",
+        "start_ms": 18689,
+        "end_ms": 18750,
+        "confidence": null
+      },
+      {
+        "id": "t000055",
+        "text": "的",
+        "start_ms": 18750,
+        "end_ms": 18930,
+        "confidence": null
+      },
+      {
+        "id": "t000056",
+        "text": "图",
+        "start_ms": 18930,
+        "end_ms": 19230,
+        "confidence": null
+      },
+      {
+        "id": "t000057",
+        "text": "片",
+        "start_ms": 19230,
+        "end_ms": 19290,
+        "confidence": null
+      },
+      {
+        "id": "t000058",
+        "text": "就",
+        "start_ms": 19290,
+        "end_ms": 19770,
+        "confidence": null
+      },
+      {
+        "id": "t000059",
+        "text": "出",
+        "start_ms": 19770,
+        "end_ms": 19950,
+        "confidence": null
+      },
+      {
+        "id": "t000060",
+        "text": "来",
+        "start_ms": 19950,
+        "end_ms": 20009,
+        "confidence": null
+      },
+      {
+        "id": "t000061",
+        "text": "了，",
+        "start_ms": 20009,
+        "end_ms": 20250,
+        "confidence": null
+      },
+      {
+        "id": "t000062",
+        "text": "挑",
+        "start_ms": 20250,
+        "end_ms": 20730,
+        "confidence": null
+      },
+      {
+        "id": "t000063",
+        "text": "几",
+        "start_ms": 20730,
+        "end_ms": 20849,
+        "confidence": null
+      },
+      {
+        "id": "t000064",
+        "text": "张",
+        "start_ms": 20849,
+        "end_ms": 20970,
+        "confidence": null
+      },
+      {
+        "id": "t000065",
+        "text": "喜",
+        "start_ms": 20970,
+        "end_ms": 21330,
+        "confidence": null
+      },
+      {
+        "id": "t000066",
+        "text": "欢",
+        "start_ms": 21330,
+        "end_ms": 21390,
+        "confidence": null
+      },
+      {
+        "id": "t000067",
+        "text": "的。",
+        "start_ms": 21390,
+        "end_ms": 21630,
+        "confidence": null
+      },
+      {
+        "id": "t000068",
+        "text": "再",
+        "start_ms": 21630,
+        "end_ms": 22169,
+        "confidence": null
+      },
+      {
+        "id": "t000069",
+        "text": "从",
+        "start_ms": 22169,
+        "end_ms": 22230,
+        "confidence": null
+      },
+      {
+        "id": "t000070",
+        "text": "详",
+        "start_ms": 22230,
+        "end_ms": 22710,
+        "confidence": null
+      },
+      {
+        "id": "t000071",
+        "text": "情",
+        "start_ms": 22710,
+        "end_ms": 22770,
+        "confidence": null
+      },
+      {
+        "id": "t000072",
+        "text": "图",
+        "start_ms": 22770,
+        "end_ms": 23009,
+        "confidence": null
+      },
+      {
+        "id": "t000073",
+        "text": "里",
+        "start_ms": 23009,
+        "end_ms": 23189,
+        "confidence": null
+      },
+      {
+        "id": "t000074",
+        "text": "选",
+        "start_ms": 23189,
+        "end_ms": 23610,
+        "confidence": null
+      },
+      {
+        "id": "t000075",
+        "text": "好",
+        "start_ms": 23610,
+        "end_ms": 23669,
+        "confidence": null
+      },
+      {
+        "id": "t000076",
+        "text": "想",
+        "start_ms": 23669,
+        "end_ms": 24150,
+        "confidence": null
+      },
+      {
+        "id": "t000077",
+        "text": "参",
+        "start_ms": 24150,
+        "end_ms": 24390,
+        "confidence": null
+      },
+      {
+        "id": "t000078",
+        "text": "考",
+        "start_ms": 24390,
+        "end_ms": 24450,
+        "confidence": null
+      },
+      {
+        "id": "t000079",
+        "text": "的",
+        "start_ms": 24450,
+        "end_ms": 24630,
+        "confidence": null
+      },
+      {
+        "id": "t000080",
+        "text": "风",
+        "start_ms": 24630,
+        "end_ms": 24869,
+        "confidence": null
+      },
+      {
+        "id": "t000081",
+        "text": "格，",
+        "start_ms": 24869,
+        "end_ms": 24930,
+        "confidence": null
+      },
+      {
+        "id": "t000082",
+        "text": "点",
+        "start_ms": 24930,
+        "end_ms": 25650,
+        "confidence": null
+      },
+      {
+        "id": "t000083",
+        "text": "击",
+        "start_ms": 25650,
+        "end_ms": 25709,
+        "confidence": null
+      },
+      {
+        "id": "t000084",
+        "text": "生",
+        "start_ms": 25709,
+        "end_ms": 26189,
+        "confidence": null
+      },
+      {
+        "id": "t000085",
+        "text": "成，",
+        "start_ms": 26189,
+        "end_ms": 26250,
+        "confidence": null
+      },
+      {
+        "id": "t000086",
+        "text": "等",
+        "start_ms": 26250,
+        "end_ms": 26970,
+        "confidence": null
+      },
+      {
+        "id": "t000087",
+        "text": "它",
+        "start_ms": 26970,
+        "end_ms": 27029,
+        "confidence": null
+      },
+      {
+        "id": "t000088",
+        "text": "处",
+        "start_ms": 27029,
+        "end_ms": 27330,
+        "confidence": null
+      },
+      {
+        "id": "t000089",
+        "text": "理",
+        "start_ms": 27330,
+        "end_ms": 27390,
+        "confidence": null
+      },
+      {
+        "id": "t000090",
+        "text": "完",
+        "start_ms": 27390,
+        "end_ms": 27630,
+        "confidence": null
+      },
+      {
+        "id": "t000091",
+        "text": "成",
+        "start_ms": 27630,
+        "end_ms": 27689,
+        "confidence": null
+      },
+      {
+        "id": "t000092",
+        "text": "一",
+        "start_ms": 27689,
+        "end_ms": 28410,
+        "confidence": null
+      },
+      {
+        "id": "t000093",
+        "text": "组",
+        "start_ms": 28470,
+        "end_ms": 28529,
+        "confidence": null
+      },
+      {
+        "id": "t000094",
+        "text": "套",
+        "start_ms": 28529,
+        "end_ms": 28830,
+        "confidence": null
+      },
+      {
+        "id": "t000095",
+        "text": "用",
+        "start_ms": 28830,
+        "end_ms": 28890,
+        "confidence": null
+      },
+      {
+        "id": "t000096",
+        "text": "了",
+        "start_ms": 28890,
+        "end_ms": 29070,
+        "confidence": null
+      },
+      {
+        "id": "t000097",
+        "text": "咱",
+        "start_ms": 29070,
+        "end_ms": 29369,
+        "confidence": null
+      },
+      {
+        "id": "t000098",
+        "text": "们",
+        "start_ms": 29369,
+        "end_ms": 29430,
+        "confidence": null
+      },
+      {
+        "id": "t000099",
+        "text": "自",
+        "start_ms": 29430,
+        "end_ms": 29669,
+        "confidence": null
+      },
+      {
+        "id": "t000100",
+        "text": "己",
+        "start_ms": 29669,
+        "end_ms": 29730,
+        "confidence": null
+      },
+      {
+        "id": "t000101",
+        "text": "产",
+        "start_ms": 29730,
+        "end_ms": 30090,
+        "confidence": null
+      },
+      {
+        "id": "t000102",
+        "text": "品",
+        "start_ms": 30090,
+        "end_ms": 30150,
+        "confidence": null
+      },
+      {
+        "id": "t000103",
+        "text": "的",
+        "start_ms": 30150,
+        "end_ms": 30330,
+        "confidence": null
+      },
+      {
+        "id": "t000104",
+        "text": "商",
+        "start_ms": 30330,
+        "end_ms": 30689,
+        "confidence": null
+      },
+      {
+        "id": "t000105",
+        "text": "品",
+        "start_ms": 30689,
+        "end_ms": 30750,
+        "confidence": null
+      },
+      {
+        "id": "t000106",
+        "text": "图",
+        "start_ms": 30750,
+        "end_ms": 30930,
+        "confidence": null
+      },
+      {
+        "id": "t000107",
+        "text": "就",
+        "start_ms": 30930,
+        "end_ms": 31349,
+        "confidence": null
+      },
+      {
+        "id": "t000108",
+        "text": "做",
+        "start_ms": 31349,
+        "end_ms": 31590,
+        "confidence": null
+      },
+      {
+        "id": "t000109",
+        "text": "好",
+        "start_ms": 31590,
+        "end_ms": 31650,
+        "confidence": null
+      },
+      {
+        "id": "t000110",
+        "text": "了。",
+        "start_ms": 31650,
+        "end_ms": 31830,
+        "confidence": null
+      },
+      {
+        "id": "t000111",
+        "text": "你",
+        "start_ms": 31830,
+        "end_ms": 32430,
+        "confidence": null
+      },
+      {
+        "id": "t000112",
+        "text": "看",
+        "start_ms": 32430,
+        "end_ms": 32805,
+        "confidence": null
+      },
+      {
+        "id": "t000113",
+        "text": "卖",
+        "start_ms": 33300,
+        "end_ms": 33360,
+        "confidence": null
+      },
+      {
+        "id": "t000114",
+        "text": "点",
+        "start_ms": 33360,
+        "end_ms": 33660,
+        "confidence": null
+      },
+      {
+        "id": "t000115",
+        "text": "排",
+        "start_ms": 33660,
+        "end_ms": 33720,
+        "confidence": null
+      },
+      {
+        "id": "t000116",
+        "text": "版、",
+        "start_ms": 33720,
+        "end_ms": 34380,
+        "confidence": null
+      },
+      {
+        "id": "t000117",
+        "text": "产",
+        "start_ms": 34380,
+        "end_ms": 34440,
+        "confidence": null
+      },
+      {
+        "id": "t000118",
+        "text": "品",
+        "start_ms": 34440,
+        "end_ms": 34860,
+        "confidence": null
+      },
+      {
+        "id": "t000119",
+        "text": "展",
+        "start_ms": 34860,
+        "end_ms": 34920,
+        "confidence": null
+      },
+      {
+        "id": "t000120",
+        "text": "示",
+        "start_ms": 34920,
+        "end_ms": 35520,
+        "confidence": null
+      },
+      {
+        "id": "t000121",
+        "text": "整",
+        "start_ms": 35520,
+        "end_ms": 35579,
+        "confidence": null
+      },
+      {
+        "id": "t000122",
+        "text": "体",
+        "start_ms": 35579,
+        "end_ms": 35940,
+        "confidence": null
+      },
+      {
+        "id": "t000123",
+        "text": "配",
+        "start_ms": 35940,
+        "end_ms": 36000,
+        "confidence": null
+      },
+      {
+        "id": "t000124",
+        "text": "色",
+        "start_ms": 36000,
+        "end_ms": 36539,
+        "confidence": null
+      },
+      {
+        "id": "t000125",
+        "text": "都",
+        "start_ms": 36539,
+        "end_ms": 36720,
+        "confidence": null
+      },
+      {
+        "id": "t000126",
+        "text": "给",
+        "start_ms": 36720,
+        "end_ms": 36780,
+        "confidence": null
+      },
+      {
+        "id": "t000127",
+        "text": "你",
+        "start_ms": 36780,
+        "end_ms": 36960,
+        "confidence": null
+      },
+      {
+        "id": "t000128",
+        "text": "安",
+        "start_ms": 36960,
+        "end_ms": 37019,
+        "confidence": null
+      },
+      {
+        "id": "t000129",
+        "text": "排",
+        "start_ms": 37019,
+        "end_ms": 37200,
+        "confidence": null
+      },
+      {
+        "id": "t000130",
+        "text": "上",
+        "start_ms": 37200,
+        "end_ms": 37440,
+        "confidence": null
+      },
+      {
+        "id": "t000131",
+        "text": "了，",
+        "start_ms": 37440,
+        "end_ms": 37980,
+        "confidence": null
+      },
+      {
+        "id": "t000132",
+        "text": "还",
+        "start_ms": 37980,
+        "end_ms": 38040,
+        "confidence": null
+      },
+      {
+        "id": "t000133",
+        "text": "能",
+        "start_ms": 38040,
+        "end_ms": 38520,
+        "confidence": null
+      },
+      {
+        "id": "t000134",
+        "text": "逐",
+        "start_ms": 38520,
+        "end_ms": 38580,
+        "confidence": null
+      },
+      {
+        "id": "t000135",
+        "text": "张",
+        "start_ms": 38580,
+        "end_ms": 39000,
+        "confidence": null
+      },
+      {
+        "id": "t000136",
+        "text": "查",
+        "start_ms": 39000,
+        "end_ms": 39060,
+        "confidence": null
+      },
+      {
+        "id": "t000137",
+        "text": "看",
+        "start_ms": 39060,
+        "end_ms": 39480,
+        "confidence": null
+      },
+      {
+        "id": "t000138",
+        "text": "和",
+        "start_ms": 39480,
+        "end_ms": 39719,
+        "confidence": null
+      },
+      {
+        "id": "t000139",
+        "text": "调",
+        "start_ms": 39719,
+        "end_ms": 39780,
+        "confidence": null
+      },
+      {
+        "id": "t000140",
+        "text": "整，",
+        "start_ms": 39780,
+        "end_ms": 40320,
+        "confidence": null
+      },
+      {
+        "id": "t000141",
+        "text": "不",
+        "start_ms": 40320,
+        "end_ms": 40379,
+        "confidence": null
+      },
+      {
+        "id": "t000142",
+        "text": "会",
+        "start_ms": 40379,
+        "end_ms": 40860,
+        "confidence": null
+      },
+      {
+        "id": "t000143",
+        "text": "设",
+        "start_ms": 40860,
+        "end_ms": 40920,
+        "confidence": null
+      },
+      {
+        "id": "t000144",
+        "text": "计，",
+        "start_ms": 40920,
+        "end_ms": 41640,
+        "confidence": null
+      },
+      {
+        "id": "t000145",
+        "text": "也",
+        "start_ms": 41940,
+        "end_ms": 42000,
+        "confidence": null
+      },
+      {
+        "id": "t000146",
+        "text": "能",
+        "start_ms": 42000,
+        "end_ms": 42359,
+        "confidence": null
+      },
+      {
+        "id": "t000147",
+        "text": "先",
+        "start_ms": 42359,
+        "end_ms": 42660,
+        "confidence": null
+      },
+      {
+        "id": "t000148",
+        "text": "做",
+        "start_ms": 42660,
+        "end_ms": 42720,
+        "confidence": null
+      },
+      {
+        "id": "t000149",
+        "text": "出",
+        "start_ms": 42720,
+        "end_ms": 43020,
+        "confidence": null
+      },
+      {
+        "id": "t000150",
+        "text": "一",
+        "start_ms": 43020,
+        "end_ms": 43080,
+        "confidence": null
+      },
+      {
+        "id": "t000151",
+        "text": "版，",
+        "start_ms": 43080,
+        "end_ms": 43800,
+        "confidence": null
+      },
+      {
+        "id": "t000152",
+        "text": "再",
+        "start_ms": 44279,
+        "end_ms": 44459,
+        "confidence": null
+      },
+      {
+        "id": "t000153",
+        "text": "按",
+        "start_ms": 44459,
+        "end_ms": 44520,
+        "confidence": null
+      },
+      {
+        "id": "t000154",
+        "text": "照",
+        "start_ms": 44520,
+        "end_ms": 44880,
+        "confidence": null
+      },
+      {
+        "id": "t000155",
+        "text": "自",
+        "start_ms": 44880,
+        "end_ms": 44940,
+        "confidence": null
+      },
+      {
+        "id": "t000156",
+        "text": "己",
+        "start_ms": 44940,
+        "end_ms": 45180,
+        "confidence": null
+      },
+      {
+        "id": "t000157",
+        "text": "的",
+        "start_ms": 45180,
+        "end_ms": 45420,
+        "confidence": null
+      },
+      {
+        "id": "t000158",
+        "text": "需",
+        "start_ms": 45420,
+        "end_ms": 45480,
+        "confidence": null
+      },
+      {
+        "id": "t000159",
+        "text": "求，",
+        "start_ms": 45480,
+        "end_ms": 46080,
+        "confidence": null
+      },
+      {
+        "id": "t000160",
+        "text": "细",
+        "start_ms": 46080,
+        "end_ms": 46140,
+        "confidence": null
+      },
+      {
+        "id": "t000161",
+        "text": "改",
+        "start_ms": 46140,
+        "end_ms": 46859,
+        "confidence": null
+      },
+      {
+        "id": "t000162",
+        "text": "做",
+        "start_ms": 47279,
+        "end_ms": 47640,
+        "confidence": null
+      },
+      {
+        "id": "t000163",
+        "text": "电",
+        "start_ms": 47640,
+        "end_ms": 47699,
+        "confidence": null
+      },
+      {
+        "id": "t000164",
+        "text": "商",
+        "start_ms": 47699,
+        "end_ms": 48180,
+        "confidence": null
+      },
+      {
+        "id": "t000165",
+        "text": "素",
+        "start_ms": 48180,
+        "end_ms": 48240,
+        "confidence": null
+      },
+      {
+        "id": "t000166",
+        "text": "材",
+        "start_ms": 48240,
+        "end_ms": 48480,
+        "confidence": null
+      },
+      {
+        "id": "t000167",
+        "text": "的",
+        "start_ms": 48480,
+        "end_ms": 48840,
+        "confidence": null
+      },
+      {
+        "id": "t000168",
+        "text": "朋",
+        "start_ms": 48840,
+        "end_ms": 48900,
+        "confidence": null
+      },
+      {
+        "id": "t000169",
+        "text": "友，",
+        "start_ms": 48900,
+        "end_ms": 49620,
+        "confidence": null
+      },
+      {
+        "id": "t000170",
+        "text": "这",
+        "start_ms": 49680,
+        "end_ms": 49740,
+        "confidence": null
+      },
+      {
+        "id": "t000171",
+        "text": "个",
+        "start_ms": 49740,
+        "end_ms": 50040,
+        "confidence": null
+      },
+      {
+        "id": "t000172",
+        "text": "操",
+        "start_ms": 50040,
+        "end_ms": 50100,
+        "confidence": null
+      },
+      {
+        "id": "t000173",
+        "text": "作",
+        "start_ms": 50100,
+        "end_ms": 50819,
+        "confidence": null
+      },
+      {
+        "id": "t000174",
+        "text": "可",
+        "start_ms": 50999,
+        "end_ms": 51060,
+        "confidence": null
+      },
+      {
+        "id": "t000175",
+        "text": "以",
+        "start_ms": 51060,
+        "end_ms": 51540,
+        "confidence": null
+      },
+      {
+        "id": "t000176",
+        "text": "试",
+        "start_ms": 51540,
+        "end_ms": 51600,
+        "confidence": null
+      },
+      {
+        "id": "t000177",
+        "text": "试。",
+        "start_ms": 51600,
+        "end_ms": 52222,
+        "confidence": null
+      }
+    ],
+    "utterances": [
+      {
+        "id": "u00000",
+        "text": "droppingingto还在一张一张找参考，",
+        "token_ids": [
+          "t000000",
+          "t000001",
+          "t000002",
+          "t000003",
+          "t000004",
+          "t000005",
+          "t000006",
+          "t000007",
+          "t000008",
+          "t000009",
+          "t000010",
+          "t000011"
+        ],
+        "start_ms": 0,
+        "end_ms": 4530
+      },
+      {
+        "id": "u00001",
+        "text": "反复改设计给你看个省事的办法，",
+        "token_ids": [
+          "t000012",
+          "t000013",
+          "t000014",
+          "t000015",
+          "t000016",
+          "t000017",
+          "t000018",
+          "t000019",
+          "t000020",
+          "t000021",
+          "t000022",
+          "t000023",
+          "t000024",
+          "t000025"
+        ],
+        "start_ms": 4530,
+        "end_ms": 9330
+      },
+      {
+        "id": "u00002",
+        "text": "先把对标商品链接复制进来，",
+        "token_ids": [
+          "t000026",
+          "t000027",
+          "t000028",
+          "t000029",
+          "t000030",
+          "t000031",
+          "t000032",
+          "t000033",
+          "t000034",
+          "t000035",
+          "t000036",
+          "t000037"
+        ],
+        "start_ms": 9330,
+        "end_ms": 12870
+      },
+      {
+        "id": "u00003",
+        "text": "再上传自己的产品图，",
+        "token_ids": [
+          "t000038",
+          "t000039",
+          "t000040",
+          "t000041",
+          "t000042",
+          "t000043",
+          "t000044",
+          "t000045",
+          "t000046"
+        ],
+        "start_ms": 12870,
+        "end_ms": 15510
+      },
+      {
+        "id": "u00004",
+        "text": "点击拉取参考。",
+        "token_ids": [
+          "t000047",
+          "t000048",
+          "t000049",
+          "t000050",
+          "t000051",
+          "t000052"
+        ],
+        "start_ms": 15510,
+        "end_ms": 18330
+      },
+      {
+        "id": "u00005",
+        "text": "商品的图片就出来了，",
+        "token_ids": [
+          "t000053",
+          "t000054",
+          "t000055",
+          "t000056",
+          "t000057",
+          "t000058",
+          "t000059",
+          "t000060",
+          "t000061"
+        ],
+        "start_ms": 18330,
+        "end_ms": 20250
+      },
+      {
+        "id": "u00006",
+        "text": "挑几张喜欢的。",
+        "token_ids": [
+          "t000062",
+          "t000063",
+          "t000064",
+          "t000065",
+          "t000066",
+          "t000067"
+        ],
+        "start_ms": 20250,
+        "end_ms": 21630
+      },
+      {
+        "id": "u00007",
+        "text": "再从详情图里选好想参考的风格，",
+        "token_ids": [
+          "t000068",
+          "t000069",
+          "t000070",
+          "t000071",
+          "t000072",
+          "t000073",
+          "t000074",
+          "t000075",
+          "t000076",
+          "t000077",
+          "t000078",
+          "t000079",
+          "t000080",
+          "t000081"
+        ],
+        "start_ms": 21630,
+        "end_ms": 24930
+      },
+      {
+        "id": "u00008",
+        "text": "点击生成，",
+        "token_ids": [
+          "t000082",
+          "t000083",
+          "t000084",
+          "t000085"
+        ],
+        "start_ms": 24930,
+        "end_ms": 26250
+      },
+      {
+        "id": "u00009",
+        "text": "等它处理完成一组套用了咱们自己产品的商品图就做好了。",
+        "token_ids": [
+          "t000086",
+          "t000087",
+          "t000088",
+          "t000089",
+          "t000090",
+          "t000091",
+          "t000092",
+          "t000093",
+          "t000094",
+          "t000095",
+          "t000096",
+          "t000097",
+          "t000098",
+          "t000099",
+          "t000100",
+          "t000101",
+          "t000102",
+          "t000103",
+          "t000104",
+          "t000105",
+          "t000106",
+          "t000107",
+          "t000108",
+          "t000109",
+          "t000110"
+        ],
+        "start_ms": 26250,
+        "end_ms": 31830
+      },
+      {
+        "id": "u00010",
+        "text": "你看卖点排版、",
+        "token_ids": [
+          "t000111",
+          "t000112",
+          "t000113",
+          "t000114",
+          "t000115",
+          "t000116"
+        ],
+        "start_ms": 31830,
+        "end_ms": 34380
+      },
+      {
+        "id": "u00011",
+        "text": "产品展示整体配色都给你安排上了，",
+        "token_ids": [
+          "t000117",
+          "t000118",
+          "t000119",
+          "t000120",
+          "t000121",
+          "t000122",
+          "t000123",
+          "t000124",
+          "t000125",
+          "t000126",
+          "t000127",
+          "t000128",
+          "t000129",
+          "t000130",
+          "t000131"
+        ],
+        "start_ms": 34380,
+        "end_ms": 37980
+      },
+      {
+        "id": "u00012",
+        "text": "还能逐张查看和调整，",
+        "token_ids": [
+          "t000132",
+          "t000133",
+          "t000134",
+          "t000135",
+          "t000136",
+          "t000137",
+          "t000138",
+          "t000139",
+          "t000140"
+        ],
+        "start_ms": 37980,
+        "end_ms": 40320
+      },
+      {
+        "id": "u00013",
+        "text": "不会设计，",
+        "token_ids": [
+          "t000141",
+          "t000142",
+          "t000143",
+          "t000144"
+        ],
+        "start_ms": 40320,
+        "end_ms": 41640
+      },
+      {
+        "id": "u00014",
+        "text": "也能先做出一版，",
+        "token_ids": [
+          "t000145",
+          "t000146",
+          "t000147",
+          "t000148",
+          "t000149",
+          "t000150",
+          "t000151"
+        ],
+        "start_ms": 41940,
+        "end_ms": 43800
+      },
+      {
+        "id": "u00015",
+        "text": "再按照自己的需求，",
+        "token_ids": [
+          "t000152",
+          "t000153",
+          "t000154",
+          "t000155",
+          "t000156",
+          "t000157",
+          "t000158",
+          "t000159"
+        ],
+        "start_ms": 44279,
+        "end_ms": 46080
+      },
+      {
+        "id": "u00016",
+        "text": "细改做电商素材的朋友，",
+        "token_ids": [
+          "t000160",
+          "t000161",
+          "t000162",
+          "t000163",
+          "t000164",
+          "t000165",
+          "t000166",
+          "t000167",
+          "t000168",
+          "t000169"
+        ],
+        "start_ms": 46080,
+        "end_ms": 49620
+      },
+      {
+        "id": "u00017",
+        "text": "这个操作可以试试。",
+        "token_ids": [
+          "t000170",
+          "t000171",
+          "t000172",
+          "t000173",
+          "t000174",
+          "t000175",
+          "t000176",
+          "t000177"
+        ],
+        "start_ms": 49680,
+        "end_ms": 52222
+      }
+    ],
+    "reference_text": null,
+    "reference_matches": null,
+    "differences": [],
+    "timing_review": "unreviewed",
+    "parent_transcript_sha256": null,
+    "text_revision_id": null,
+    "text_status": "automatic"
+  },
+  "asset_cards": [
+    {
+      "id": "material-1a1b8b6f-57fd-4de9-b6ed-87e49ff81573",
+      "kind": "video",
+      "scope": "owner description; visual evidence and facts unreviewed",
+      "sha256": "348ec2fa9a7260706c285892c1482ac441a6593ab845db649ab59b17db686aca",
+      "duration_ms": 5000,
+      "semantic_use": "03_拉取对标商品图",
+      "viewed_identity": "03_拉取对标商品图"
+    },
+    {
+      "id": "material-24fb358f-31e6-4ed5-bc62-5131a03b3fa9",
+      "kind": "video",
+      "scope": "owner description; visual evidence and facts unreviewed",
+      "sha256": "e20f17c95f5a4beeb38c5b3407145957dab8fb38883c7eb389115acb84ff62d5",
+      "duration_ms": 17400,
+      "semantic_use": "05_成品图效果展示",
+      "viewed_identity": "05_成品图效果展示"
+    },
+    {
+      "id": "material-9ab655b1-f6dc-40f9-a620-a1601694058b",
+      "kind": "video",
+      "scope": "owner description; visual evidence and facts unreviewed",
+      "sha256": "9ed0bbb042e61e4fc10c03d4075a3e01dd2e88a13eb97bfec8c1a09b59926857",
+      "duration_ms": 5900,
+      "semantic_use": "02_上传产品图",
+      "viewed_identity": "02_上传产品图"
+    },
+    {
+      "id": "material-9c6d5676-5969-43f4-b140-e4871fa11df2",
+      "kind": "video",
+      "scope": "owner description; visual evidence and facts unreviewed",
+      "sha256": "5e7eabc4ed6755208a5b3ed4baf85aa16407fe78a0960901e572eb49b7021db0",
+      "duration_ms": 3900,
+      "semantic_use": "01_填写对标链接",
+      "viewed_identity": "01_填写对标链接"
+    },
+    {
+      "id": "material-d6672c69-f6ff-4883-9bb7-2f69d2d01400",
+      "kind": "video",
+      "scope": "owner description; visual evidence and facts unreviewed",
+      "sha256": "1e9a396a56c4be368da30bbda4387f2b5b9831cb15b12bdfccd428d6aa77f7e9",
+      "duration_ms": 11500,
+      "semantic_use": "04_选择参考图并提交",
+      "viewed_identity": "04_选择参考图并提交"
+    },
+    {
+      "id": "source-6f4fa0b8-82bb-500e-8abd-7147bad69e0c",
+      "kind": "original_video",
+      "sha256": "ecbc5dbd950d7ff1dfe54209137e0497d7c4ed0f8bd420c1d5067aad7ce94a3d",
+      "semantic_use": "本期原片说话人，不是商品实拍证据",
+      "viewed_identity": null
+    }
+  ]
+}

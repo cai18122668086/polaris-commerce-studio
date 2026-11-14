@@ -20,6 +20,93 @@ def case():
     return data["plan"], Transcript.model_validate(data["transcript"])
 
 
+def test_saved_real_display_capacity_recovers_without_rewriting_provider_content():
+    data = json.loads(
+        (Path(__file__).parent / "fixtures/bihuo_display_capacity.json").read_text(
+            "utf-8"
+        )
+    )
+    raw = data["plan"]
+    original = copy.deepcopy(raw)
+    transcript = Transcript.model_validate(data["transcript"])
+    with pytest.raises(ValueError, match="reading capacity"):
+        apple.verify_plan(
+            raw,
+            transcript,
+            data["asset_cards"],
+            require_semantic_captions=True,
+            allow_mixed_body=True,
+        )
+    fitted = planning.verify_plan(
+        raw, transcript, data["asset_cards"], require_semantic_captions=True
+    )
+    assert raw == original
+    assert fitted["captions"][0]["line_break_after_token_id"] == "t000002"
+    assert fitted["materials"] == raw["materials"]
+    assert fitted["opening"] == raw["opening"]
+    assert fitted["features"] == raw["features"]
+    assert fitted["conclusion"] == raw["conclusion"]
+    before = [
+        (c["first_token_id"], c["last_token_id"], c.get("emphasis", []))
+        for c in raw["captions"]
+    ]
+    assert before == [
+        (c["first_token_id"], c["last_token_id"], c.get("emphasis", []))
+        for c in fitted["captions"]
+    ]
+    assert planning.fit_recorded_display_spans(fitted, transcript) is fitted
+    rows = apple.semantic_caption_rows(
+        apple.AppleSuitePlan.model_validate(fitted), transcript
+    )
+    resolved = {
+        "captions": rows,
+        "tokens": [t.model_dump(mode="json") for t in transcript.tokens],
+    }
+    native = planning.native_caption_text(resolved, fitted, transcript)
+    assert native["captions"][0]["text"] == "droppingingto还在一张一张找参考，"
+    assert native["captions"][0]["lines"][0]["text"] == "droppingingto"
+    assert native["tokens"] == resolved["tokens"]
+    for before_row, after_row in zip(rows, native["captions"], strict=True):
+        assert before_row["time"] == after_row["time"]
+        assert "".join(line["text"] for line in after_row["lines"]) == after_row["text"]
+    assert planning.native_caption_text(native, fitted, transcript) is native
+    rows = apple.semantic_caption_rows(
+        apple.AppleSuitePlan.model_validate(fitted), transcript
+    )
+    assert "".join(row["text"].replace(" ", "") for row in rows) == "".join(
+        token.text for token in transcript.tokens
+    ).replace(" ", "")
+
+
+@pytest.mark.parametrize(
+    "bad", ["missing_word", "unknown_word", "unsafe_explicit_break", "cross_emphasis"]
+)
+def test_display_fit_preserves_strict_caption_checks(bad):
+    data = json.loads(
+        (Path(__file__).parent / "fixtures/bihuo_display_capacity.json").read_text(
+            "utf-8"
+        )
+    )
+    raw = data["plan"]
+    if bad == "missing_word":
+        raw["captions"][0]["first_token_id"] = "t000001"
+    elif bad == "unknown_word":
+        raw["captions"][0]["first_token_id"] = "missing"
+    elif bad == "unsafe_explicit_break":
+        raw["captions"][0]["line_break_after_token_id"] = "t000000"
+    else:
+        raw["captions"][0]["emphasis"] = [
+            {"first_token_id": "t000000", "last_token_id": "t000011"}
+        ]
+    with pytest.raises(ValueError):
+        planning.verify_plan(
+            raw,
+            Transcript.model_validate(data["transcript"]),
+            data["asset_cards"],
+            require_semantic_captions=True,
+        )
+
+
 def test_actual_interleaved_response_keeps_original_words_and_times():
     raw, transcript = case()
     with pytest.raises(ValueError, match="Body phrases must follow source order"):

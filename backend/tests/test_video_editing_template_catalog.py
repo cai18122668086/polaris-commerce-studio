@@ -71,6 +71,36 @@ def test_example_tamper_and_path_escape_are_rejected(tmp_path):
         example_file(settings, "product-explainer-v1", "video")
 
 
+def test_unchanged_examples_are_hashed_once_but_replacement_is_rechecked(
+    tmp_path, monkeypatch
+):
+    import os
+
+    from app import video_editing_template_catalog as catalog
+
+    _, video = install_example(tmp_path)
+    settings = Settings(_env_file=None, video_editing_template_examples_dir=tmp_path)
+    original = catalog.sha256
+    hashed = []
+
+    def counted(path):
+        hashed.append(path)
+        return original(path)
+
+    monkeypatch.setattr(catalog, "sha256", counted)
+    for _ in range(4):
+        assert example_file(settings, "product-explainer-v1", "video")[1] == video
+    assert hashed == [video]
+    stat = video.stat()
+    replacement = tmp_path / "replacement.mp4"
+    replacement.write_bytes(b"x" * stat.st_size)
+    os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    replacement.replace(video)
+    with pytest.raises(ApiError):
+        example_file(settings, "product-explainer-v1", "video")
+    assert hashed == [video, video]
+
+
 def test_catalog_and_example_are_workspace_scoped_with_range_support(video, tmp_path):
     client, _, ws, _, settings = video
     settings.video_editing_enabled = True

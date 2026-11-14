@@ -1,5 +1,6 @@
 """Presentation metadata beside, never inside, immutable planning snapshots."""
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -67,6 +68,27 @@ class TemplateStylePreview(StrictVideoModel):
 _PENDING = {"CX-G05", "CX-G08", "CX-G09", "CX-G10", "HY-A1"}
 
 
+def _file_revision(path: Path) -> tuple[int, ...]:
+    stat = path.stat()
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+@lru_cache(maxsize=8)
+def _example_manifest(path: Path, revision: tuple[int, ...]) -> dict:
+    manifest = read_json(path)
+    if _file_revision(path) != revision:
+        raise ValueError("Example manifest changed while reading")
+    return manifest
+
+
+@lru_cache(maxsize=256)
+def _example_digest(path: Path, revision: tuple[int, ...]) -> str:
+    digest = sha256(path)
+    if _file_revision(path) != revision:
+        raise ValueError("Example changed while checking")
+    return digest
+
+
 def example_file(
     settings: Settings, template_id: str, kind: str, *, collection: str = "examples"
 ) -> tuple[dict, Path]:
@@ -76,7 +98,8 @@ def example_file(
         if directory is None or kind not in {"video", "poster"}:
             raise ValueError("No installed example")
         root = directory.resolve()
-        manifest = read_json(root / "manifest.json")
+        manifest_path = root / "manifest.json"
+        manifest = _example_manifest(manifest_path, _file_revision(manifest_path))
         if collection not in {"examples", "style_previews"}:
             raise ValueError("Invalid media collection")
         entry = manifest[collection][template_id]
@@ -90,7 +113,9 @@ def example_file(
             raise ValueError("Invalid example path")
         if path.suffix.lower() != (".mp4" if kind == "video" else ".jpg"):
             raise ValueError("Invalid example media")
-        if sha256(path) != entry[kind]["sha256"]:
+        # The installed store is read-only. Reuse verification only while the
+        # exact file revision is unchanged; ownership/path checks run every time.
+        if _example_digest(path, _file_revision(path)) != entry[kind]["sha256"]:
             raise ValueError("Example bytes changed")
         return entry, path
     except (OSError, ValueError, KeyError, TypeError):

@@ -325,6 +325,113 @@ def _text_panels(native: Any, cfg: dict, n: int) -> tuple[dict, list]:
     return roles, metrics
 
 
+def _material_headers(native: Any, original: Any, cfg: dict, n: int) -> tuple:
+    # The native "actual upload example" label occupied the same horizontal
+    # space as a full spoken heading. Keep source-backed text in its own area.
+    phases = [
+        {**phase, "note_title": "", "note_detail": "", "example": ""}
+        if native.asset(cfg, i)
+        else phase
+        for i, phase in enumerate(cfg["phases"])
+    ]
+    active = set()
+    for i, phase in enumerate(cfg["phases"]):
+        background = native.out(
+            phase["background_entry"][0] - 1, phase["background_entry"][1], n
+        ) * (
+            1
+            - native.ease(
+                phase["background_exit"][0] - 1, phase["background_exit"][1], n
+            )
+        )
+        if background > 0 or native.phase(cfg, i, n) > 0:
+            active.add(i)
+    # Zero-alpha media still triggered a full-screen resize/blur in the frozen
+    # painter. Excluding it here preserves the pixels and the source clocks.
+    visible = [
+        material
+        for material in cfg["materials"]
+        if material["semantic_segment"] in active
+    ]
+    # Native still-image caches use paths as keys. Prepared video frame paths
+    # change every frame; retain only the currently bound images, not a whole
+    # clip's decoded RGBA frames. Static uploaded images keep their old cache.
+    streams = cfg.get("video_materials", {}).get("streams", [])
+    if streams:
+        from pathlib import Path
+
+        folders = {str(Path(stream["frames"][0]["path"]).parent) for stream in streams}
+        current = {material["path"] for material in cfg["materials"]}
+        cache = native.M._IMAGES
+        for path in list(cache):
+            if str(Path(path).parent) in folders and path not in current:
+                cache.pop(path)
+    roles, metrics = original({**cfg, "phases": phases, "materials": visible}, n)
+    for i, phase in enumerate(cfg["phases"]):
+        if not native.asset(cfg, i) or native.phase(cfg, i, n) <= 0:
+            continue
+        if i not in (2, 3):
+            rect = [430, 362, 1014, 456]
+            layouts = [
+                _label(text.strip(), cfg["fonts"]["title"], 540, (36, 32, 28, 24), 1)
+                for text in (phase["note_title"], phase["note_detail"])
+                if text.strip()
+            ]
+        else:
+            match = next(row for row in metrics if row.get("phase") == i)
+            bounds = match["rect"]
+            # Keep the complete upload below a header inside this card. A band
+            # beneath the card would collide with the native upper captions.
+            rect = [bounds[0], bounds[1], bounds[2], bounds[1] + 170]
+            material = native.asset(cfg, i)
+            photo = native.media_layer(
+                material["path"],
+                [bounds[0], bounds[1] + 180, bounds[2], bounds[3]],
+                22,
+                "contain",
+            )
+            enter = native.out(phase["entry"][0] - 1, phase["entry"][1], n)
+            leave = 1 - native.ease(phase["exit"][0] - 1, phase["exit"][1], n)
+            roles[f"material_{i}"] = native.opacity(
+                native.pixel_phase(photo, bounds, enter), leave
+            )
+            layouts = [
+                _label(
+                    text.strip(),
+                    cfg["fonts"]["title"],
+                    rect[2] - rect[0] - 32,
+                    (36, 32, 28, 24),
+                    2,
+                )
+                for text in (phase["note_title"], phase["note_detail"])
+                if text.strip()
+            ]
+        total = (
+            sum(len(layout["lines"]) * (layout["size"] + 7) + 5 for layout in layouts)
+            - 5
+        )
+        if total > rect[3] - rect[1]:
+            raise ValueError("Material labels exceed their separate reading area")
+        layer = native.blank()
+        if i in (2, 3):
+            ImageDraw.Draw(layer).rounded_rectangle(
+                tuple(rect), radius=16, fill=(244, 233, 213, 248)
+            )
+        y = rect[1] + (rect[3] - rect[1] - total) / 2
+        for layout in layouts:
+            for line in layout["lines"]:
+                tile = native.ink(
+                    line, cfg["fonts"]["title"], layout["size"], (65, 45, 25, 255)
+                )
+                layer.alpha_composite(
+                    tile, (round((rect[0] + rect[2] - tile.width) / 2), round(y))
+                )
+                y += layout["size"] + 7
+            y += 5
+        roles[f"info_text_{i}"] = native.opacity(layer, native.phase(cfg, i, n))
+    return roles, metrics
+
+
 @contextmanager
 def execution(module: Any, payload: dict) -> Iterator[None]:
     """Scoped hooks only in the isolated renderer; restore on every exit."""
@@ -353,6 +460,14 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
                 module.E,
                 "material_layers",
                 lambda c, n, out: _photo_text(module.E, old, c, n, out),
+            )
+        elif template == "bihuo-09-v1" and cfg["materials"]:
+            engine = module.E
+            old_materials = engine.materials
+            replace(
+                engine,
+                "materials",
+                lambda c, n: _material_headers(engine, old_materials, c, n),
             )
         elif template == "bihuo-09-v1" and not cfg["materials"]:
             engine = module.E

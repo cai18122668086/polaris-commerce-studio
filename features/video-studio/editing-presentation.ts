@@ -50,11 +50,12 @@ type PreparedInput = {
 type PlanningSubmission = { status: string; call_state: string };
 
 /** A pending or uncertain paid request can never become a second paid action. */
-export function editingPlanningAction(prepared?: PreparedInput, submitted?: PlanningSubmission): "prepare" | "generate" | "preview" | "wait" | "blocked" {
+export function editingPlanningAction(prepared?: PreparedInput, submitted?: PlanningSubmission): "prepare" | "generate" | "preview" | "recover" | "wait" | "blocked" {
   if (submitted) {
     if (["queued", "running"].includes(submitted.status)) return "wait";
     if (submitted.call_state === "intent_saved") return "blocked";
     if (submitted.status === "completed") return "preview";
+    if (["failed", "cancelled"].includes(submitted.status) && submitted.call_state === "response_saved") return "recover";
     return ["failed", "cancelled"].includes(submitted.status) ? "prepare" : "wait";
   }
   if (!prepared) return "prepare";

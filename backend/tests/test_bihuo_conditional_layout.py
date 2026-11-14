@@ -10,6 +10,54 @@ from app.bihuo_suite import conditional_layout as layout
 from app.bihuo_suite import registry
 
 
+def test_paper_video_cache_is_bounded_and_invisible_media_is_not_painted(tmp_path):
+    folder = tmp_path / "frames"
+    static = str(tmp_path / "static.png")
+    cache = {static: object()}
+    received = []
+    phases = [
+        dict(
+            note_title="",
+            note_detail="",
+            example="",
+            background_entry=[a, a + 2],
+            background_exit=[a + 8, a + 10],
+        )
+        for a in (0, 20)
+    ]
+    cfg = {
+        "phases": phases,
+        "materials": [
+            {"semantic_segment": 0, "path": str(folder / "0.jpg")},
+            {"semantic_segment": 1, "path": static},
+        ],
+        "video_materials": {"streams": [{"frames": [{"path": str(folder / "0.jpg")}]}]},
+    }
+    native = SimpleNamespace(
+        M=SimpleNamespace(_IMAGES=cache),
+        out=lambda a, b, n: float(n >= b),
+        ease=lambda a, b, n: float(n >= b),
+        phase=lambda c, i, n: 0,
+        asset=lambda c, i: c["materials"][i],
+    )
+
+    def paint(config, frame):
+        received.append([m["semantic_segment"] for m in config["materials"]])
+        for material in config["materials"]:
+            cache[material["path"]] = object()
+        return {}, []
+
+    for frame in range(100):
+        cfg["materials"][0]["path"] = str(folder / f"{frame}.jpg")
+        layout._material_headers(native, paint, cfg, 5)
+        assert len(cache) == 2
+        assert static in cache
+    assert all(items == [0] for items in received)
+    assert len(cfg["materials"]) == 2
+    layout._material_headers(native, paint, cfg, 40)
+    assert received[-1] == []
+
+
 def video_config(tmp_path):
     from app.bihuo_suite import video_materials
     from app.motion_library import sha256

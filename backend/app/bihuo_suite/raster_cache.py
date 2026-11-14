@@ -93,10 +93,10 @@ def native_raster_cache(module: ModuleType) -> Iterator[RasterCache]:
             value = getattr(item, "text_image", None)
             if callable(value) and value in wrappers:
                 replaced.append((item, value))
-                setattr(item, "text_image", wrappers[value])
+                item.text_image = wrappers[value]
         yield cache
     finally:
         for item, original in replaced:
-            setattr(item, "text_image", original)
+            item.text_image = original
         cache.items.clear()
         cache.bytes = 0

@@ -462,7 +462,7 @@ def render_suite(
 
         template_id = frozen["template_id"]
         selected_fonts = fonts(template_id)
-        render_module = "app.bihuo_suite.render"
+        render_module = "app.video_editing_bihuo_cached_render"
         creative_options = dict(frozen.get("creative_options") or {})
         stage("preparing_source", engine=frozen["engine"])
         source_path = str(

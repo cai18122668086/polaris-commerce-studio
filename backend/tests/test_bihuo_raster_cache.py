@@ -72,3 +72,41 @@ def test_scoped_aliases_are_restored_even_when_rendering_fails(monkeypatch):
         pass
     assert root.text_image is pilot.text_image is text_image
     assert cache.bytes == 0
+
+
+def test_accelerator_preserves_native_receipt_and_payload(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    from app import video_editing_bihuo_cached_render as runner
+
+    module = ModuleType("receipt_native_suite")
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(runner, "runtime", lambda _: module)
+    payload = {"template_id": "existing-style", "config": {"frames": 12}}
+    before = json.dumps(payload, sort_keys=True)
+
+    def native_render(data, output):
+        assert data == payload
+        output.mkdir()
+        final = output / "final.mp4"
+        final.write_bytes(b"native transport fixture")
+        (output / "render-receipt.json").write_text(
+            json.dumps(
+                {
+                    "final_sha256": hashlib.sha256(final.read_bytes()).hexdigest(),
+                    "template_id": data["template_id"],
+                    "native_marker": "kept",
+                }
+            )
+        )
+        return final
+
+    monkeypatch.setattr(runner, "native_render", native_render)
+    final = runner.render(payload, tmp_path / "new-render")
+    receipt = json.loads((final.parent / "render-receipt.json").read_text())
+    assert json.dumps(payload, sort_keys=True) == before
+    assert receipt["native_marker"] == "kept"
+    assert receipt["final_sha256"] == hashlib.sha256(final.read_bytes()).hexdigest()
+    assert len(receipt["execution_accelerator"]["runner_sha256"]) == 64
+    assert len(receipt["execution_accelerator"]["cache_sha256"]) == 64

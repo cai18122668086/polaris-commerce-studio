@@ -39,8 +39,10 @@ The isolated full-suite renderer can reuse established pure `pilot.text_image`
 rasters within a 32 MiB image budget. Each returned image is copied, preserving
 later alpha and blur operations. The scope restores all aliases on success or
 failure and never caches source frames, materials, clocks or layout decisions.
-The helper is included in the engine identity. The render receipt records
-elapsed time and hit/miss counts. This does not alter the immutable bundles.
+The native entry point and engine identity stay unchanged, permitting saved
+responses and frozen plans to continue. An outer execution entry point adds the
+cache and records both accelerator source hashes, elapsed time and hit/miss
+counts in the receipt. This does not alter the immutable bundles.
 
 In a local white-capsule comparison, 57 frames including transitions and a
 continuous body segment were pixel-identical before and after reuse. Time was

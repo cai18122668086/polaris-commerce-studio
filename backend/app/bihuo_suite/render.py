@@ -4,10 +4,8 @@ import argparse
 import hashlib
 import json
 import os
-import time
 from pathlib import Path
 
-from .raster_cache import native_raster_cache
 from .registry import runtime
 
 
@@ -21,9 +19,7 @@ def render(payload: dict, output: Path) -> Path:
     if output.exists():
         raise ValueError("Suite output directory must be new")
     module = runtime(payload["template_id"])
-    started = time.monotonic()
-    with native_raster_cache(module) as rasters:
-        final = Path(module.render_mp4(payload["config"], output))
+    final = Path(module.render_mp4(payload["config"], output))
     if not final.is_file() or not final.resolve().is_relative_to(output.resolve()):
         raise ValueError("Suite did not produce a video in its output directory")
     receipt = output / "render-receipt.json"
@@ -31,9 +27,6 @@ def render(payload: dict, output: Path) -> Path:
     value.update(
         template_id=payload["template_id"],
         final_sha256=hashlib.sha256(final.read_bytes()).hexdigest(),
-        render_seconds=round(time.monotonic() - started, 3),
-        raster_cache_hits=rasters.hits,
-        raster_cache_misses=rasters.misses,
     )
     receipt.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", "utf-8")
     return final

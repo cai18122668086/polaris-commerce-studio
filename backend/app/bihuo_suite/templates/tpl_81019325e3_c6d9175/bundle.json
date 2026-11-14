@@ -1,6 +1,6 @@
 {
   "schema": "tengli.bihuo-runtime-bundle/1",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "runtime": "runtime.py",
   "files": {
     "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -9,7 +9,7 @@
     "data/native-pose-candidate-v1.json": "dba465518541192ead83786c2b6fa6232629fd9d79e84822aba669f30c600281",
     "fonts/9c62ceb174d7-Noto_Sans_SC_Medium--9c62ceb174d7.otf": "9c62ceb174d7529ae4a7f2071f6531991cfadbc2f1897910b48ba951a580ac57",
     "fonts/fbecfacdfac3-抖音美好体_Bold--fbecfacdfac3.ttf": "fbecfacdfac33982774e301073a8d357a09c698cd3134bb6ddec0f5bfc268fa1",
-    "multimedia_engine.py": "827ff149dce17b5fda85105e47fb25d568d5766a48521f4e916a6a3ebc2297f6",
+    "multimedia_engine.py": "71c318b64197482d32eca1f606db0fed296ea2d8b4c5e8e832adb28563190833",
     "README.md": "abab3627d52515d0715779b5b2750fec2c80c5e6e2e26aa0373e11fd9b90fbc1",
     "runtime.py": "f26d52874970721bb4f0b8db66be6f654864e0bd0af20cbecc590ba99dcd7e7e",
     "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

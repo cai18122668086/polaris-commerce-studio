@@ -171,7 +171,9 @@ def composite(layers):
 
 def _ease(a,b,n):q=ramp(n,a,b);return 1-(1-q)**3
 def _asset(cfg,n,tail=True):
- return next((m for m in cfg['materials']+([] if cfg['materials'] else cfg.get('text_cards',[])) if m['start']<=n<m['end']+(12 if tail else 0)),None)
+ stages=cfg['materials']+([] if cfg['materials'] else cfg.get('text_cards',[]))
+ current=next((m for m in stages if m['start']<=n<m['end']),None)
+ return current if current else next((m for m in stages if tail and m['end']<=n<m['end']+12),None)
 def match(cfg):
  if cfg['mode']=='baseline':return {'id':'source-sleep-poster','time':[79/25,217/25]}
  m=cfg.get('_active_material')

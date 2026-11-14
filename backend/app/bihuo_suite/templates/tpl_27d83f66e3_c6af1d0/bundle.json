@@ -1,6 +1,6 @@
 {
   "schema": "tengli.bihuo-runtime-bundle/1",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "runtime": "runtime.py",
   "files": {
     "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -8,7 +8,7 @@
     "data/source-preparation.json": "edfb7abae7d9a1dd0107dd74b3214e199fc62f39565eb4ad44e79774f30435a0",
     "fonts/msyhbd.ttc": "4508821b3dffe01f0ef5e5326a3e60df705a44633858811f67b6982dce3f6ee6",
     "fonts/simkai.ttf": "95b3e69321f4e55f6ecf36b29d1e31a0c1205acfde0117df6472a17494c3cbd2",
-    "orange_engine.py": "5f019afe88ee757b0536a6842106be5b239de605c883dbef959873a6171ee196",
+    "orange_engine.py": "5929be72fce601aa166e6c310c46f41fdb65cbf1ae643bdf8e50aa4a45e83648",
     "README.md": "559865f018687caf276ead31b733798d7bbc8a84ea76b9eb2d3169dc4facfe38",
     "runtime.py": "16208e47a20c142a9a2fe2b024edbfad586b65822998c4ae8eada9e5c77737c3",
     "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

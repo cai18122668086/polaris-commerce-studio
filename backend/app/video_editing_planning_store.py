@@ -384,6 +384,20 @@ def create_planning_task(
                     "此模板按口播编排文字画面，无需选择配图。",
                 )
             snapshot["asset_cards"] = []
+        elif (
+            body.template_id != APPLE_TEMPLATE_ID
+            and "video_materials"
+            not in bihuo_definition(body.template_id).get("capabilities", [])
+        ):
+            if any(card["kind"] == "video" for card in material_cards(selected)):
+                raise ApiError(
+                    422,
+                    "EDITING_TEMPLATE_IMAGE_MATERIALS_REQUIRED",
+                    "此模板的配图槽支持图片，请取消视频素材或改用图片。",
+                )
+            snapshot["asset_cards"] = [
+                card for card in snapshot["asset_cards"] if card["kind"] == "image"
+            ]
     elif body.template_id is not None:
         try:
             template = overlay_template(body.template_id)

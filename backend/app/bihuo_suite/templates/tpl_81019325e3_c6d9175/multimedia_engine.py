@@ -102,7 +102,7 @@ def _old_render(cfg,n):
 def schedule(cfg,n):
  if cfg['mode']=='source':
   active=71<=n<217 or n>=302;return dict(active=active,phase=n,return_q=0,semantic_match=active,stage=0 if n<302 else 1)
- m=next((m for m in cfg['materials'] if m['start']-7<=n<m['end']+14),None)
+ m=next((m for m in cfg['materials'] if m['start']<=n<m['end']),None) or next((m for m in cfg['materials'] if m['start']-7<=n<m['end']+14),None)
  if not m:return dict(active=False,phase=70,return_q=0,semantic_match=False,stage=-1)
  q=float(ease(m['end'],m['end']+13,n));phase=min(100,71+max(0,n-m['start']+7))
  return dict(active=True,phase=phase,return_q=q,semantic_match=n<m['end'],asset_id=m['id'],stage=m['stage'],material=m)

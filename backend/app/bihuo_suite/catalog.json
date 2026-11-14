@@ -22,7 +22,8 @@
         "cover",
         "reference_script",
         "music",
-        "images"
+        "images",
+        "video_materials"
       ],
       "requires_foreground": false,
       "enabled": true
@@ -47,7 +48,8 @@
         "cover",
         "reference_script",
         "music",
-        "images"
+        "images",
+        "video_materials"
       ],
       "requires_foreground": false,
       "enabled": true
@@ -73,7 +75,8 @@
         "cover",
         "reference_script",
         "music",
-        "images"
+        "images",
+        "video_materials"
       ],
       "requires_foreground": false,
       "enabled": true

@@ -176,7 +176,10 @@ def captions(c,n):
 def render_layers(c,n):
  raw=M._sample(dict(path=c['source'],start_frame=0,end_policy='hold'),n,25).convert('RGB');mat,mm=materials(c,n);person,pm,rep=presenter(c,n,raw);caps,cm=captions(c,n);roles={'background':paper(c['mode']=='baseline').copy()}
  for i in range(len(c['phases'])):
-  for key in [f'blur_material_{i}',f'info_plate_{i}',f'material_{i}',f'info_text_{i}']:
+  key=f'blur_material_{i}'
+  if key in mat:roles[key]=mat[key]
+ for i in range(len(c['phases'])):
+  for key in [f'info_plate_{i}',f'material_{i}',f'info_text_{i}']:
    if key in mat:roles[key]=mat[key]
  roles.update(person);roles.update(titles(c,n));roles['identity']=identity(c,n);roles.update(caps)
  if n>=c.get('fade_start',10**9):

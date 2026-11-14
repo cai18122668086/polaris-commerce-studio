@@ -188,6 +188,10 @@ def build_request(
         "capabilities", []
     ):
         cards = []
+    elif template_profile is not None and "video_materials" not in template_profile.get(
+        "capabilities", []
+    ):
+        cards = [card for card in cards if card["kind"] == "image"]
     boundary_chars, _preferred = text_boundaries(
         "".join(t.text for t in transcript.tokens)
     )

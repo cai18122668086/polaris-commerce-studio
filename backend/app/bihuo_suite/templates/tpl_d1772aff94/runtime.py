@@ -5,6 +5,7 @@ No fixed person, fixed transcript, model/provider or original finished pixels.
 from pathlib import Path
 import copy,hashlib,importlib,importlib.util,json,math,subprocess,sys
 from functools import lru_cache
+import unicodedata
 import numpy as np
 from PIL import Image,ImageDraw,ImageFilter,ImageOps
 HERE=Path(__file__).resolve().parent
@@ -56,7 +57,7 @@ def compile_request(resolved,*,source_path,fonts,creative_options,ffmpeg='ffmpeg
   glyph_times=[]
   for token in tokens[positions[first]:positions[last]+1]:
    for char in token['text']:
-    if char not in '，。！？；,.!?; ':glyph_times.append(dict(glyph=char,start=token['start_ms']/1000,end=token['end_ms']/1000,token_id=token['id']))
+    if not char.isspace()and not unicodedata.category(char).startswith('P'):glyph_times.append(dict(glyph=char,start=token['start_ms']/1000,end=token['end_ms']/1000,token_id=token['id']))
   row['glyph_times']=glyph_times
  cfg=dict(schema='bihuo.copper.production/1',template_id='tpl_d1772aff94',source_path=str(source_path),source_sha256=_sha(source_path),duration=duration,frames=max(round(duration*25),math.ceil(rows[-1]['time'][1]*25)),fps=25,size=list(size),fonts=_style_fonts(fonts),title=title,opening_end=opening_end,captions=rows,materials=assets,glyph_caption_ids=candidates,tokens=tokens,identity=dict(enabled=enabled,name=name,description=description),ffmpeg=str(ffmpeg),points=copy.deepcopy(resolved.get('points',[])),features=copy.deepcopy(resolved.get('features',[])),conclusion=copy.deepcopy(resolved.get('conclusion')),limits=['Author glyph angles/rest curves unknown; local12degree candidate retains stagger/whole-line distinction. Actual glyph birth clock uses host token starts, never equal division of a cue.','Only planned matched resource spans adopt upper-person/material layout; missing segments remain full oral scene.','Native Copper has no independent feature-card UI; complete caption rows retain all spoken content.'])
  return cfg
@@ -87,8 +88,13 @@ def caption_layer(cfg,n):
   y=top+j*86;width=pilot.font(path,size).getlength(line);x=(1080-width)/2
   if animated:
    for i,ch in enumerate(line):
-    event=row['glyph_times'][glyph_index];glyph_index+=1
-    if ch!=event['glyph']:raise ValueError('Host glyph tokens do not match caption text')
+    if ch.isspace():x+=pilot.font(path,size).getlength(ch);continue
+    punctuation=unicodedata.category(ch).startswith('P')
+    if not row['glyph_times']:raise ValueError('Glyph row has no actual spoken FA tokens')
+    event=row['glyph_times'][min(glyph_index if not punctuation else max(0,glyph_index-1),len(row['glyph_times'])-1)]
+    if not punctuation:
+     if ch!=event['glyph']:raise ValueError('Host glyph tokens do not match caption text')
+     glyph_index+=1
     at=event['start'];q=pilot.ease(at,at+min(.14,max(.04,event['end']-at)),t);tile=_ink(ch,path,size,(255,255,255,255),2).copy();tile.putalpha(tile.getchannel('A').point([round(v*q)for v in range(256)]));tile=tile.rotate(-12*(1-q),resample=Image.Resampling.BICUBIC,expand=True);out.alpha_composite(tile,(round(x+(pilot.font(path,size).getlength(ch)-tile.width)/2),round(y+(size-tile.height)/2)));x+=pilot.font(path,size).getlength(ch)
   else:_put(out,line,path,size,540,y,(255,255,255,255),2,True,pilot.ease(row['time'][0]-.04,row['time'][0]+.24,t))
  return out

@@ -1,9 +1,9 @@
 {
   "schema": "tengli.bihuo-runtime-bundle/1",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "runtime": "runtime.py",
   "files": {
-    "runtime.py": "f3b194c0a6283cf89af6add23037cce0197fb526a820034f123fd4c65d8c73e5",
+    "runtime.py": "3bf8db8da5f2c04a43abeb7a666889b200b9785e8a93763593c2b5ff4d3f9950",
     "fonts/caption.otf": "62383707c086a32f3afd5e293f34c7eff64c7fea31f579fdc6cbe34d920519a6",
     "fonts/title.ttf": "fbecfacdfac33982774e301073a8d357a09c698cd3134bb6ddec0f5bfc268fa1",
     "vendor/media.py": "da8d0c7d127600b8c73a778c9ab5f97b16fcbfe32ce89fbcc3cf911edcd8efed",

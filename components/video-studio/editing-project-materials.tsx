@@ -14,7 +14,8 @@ type Material = components["schemas"]["EditingMaterialResponse"];
 const path = "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials" as const;
 const importPath = `${path}/image-results` as const;
 
-export function EditingProjectMaterials({ workspaceId, projectId, selected, onSelect, expanded = false, materialMode }: {
+export function EditingProjectMaterials({ workspaceId, projectId, selected, onSelect, expanded = false, materialMode, imagesOnly = false }: {
+  imagesOnly?: boolean;
   expanded?: boolean;
   materialMode?: "speech" | "images" | "clips" | "special";
   workspaceId: string;
@@ -61,6 +62,9 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
 
   const save = async () => {
     if (!label.trim() || (source === "feedback" && !feedbackReady)) return;
+    if (imagesOnly && file && !file.type.startsWith("image/")) {
+      setError("此模板的配图槽支持图片，请选择图片文件。"); return;
+    }
     const params = { path: { workspace_id: workspaceId, project_id: projectId } };
     const signal = AbortSignal.timeout(600000);
     const saveUpload = async (file: File) => {
@@ -126,7 +130,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       <label>素材来源<select value={source} disabled={busy} onChange={event => { const value = event.target.value; setSource(value === "creative" || value === "feedback" ? value : "upload"); setFile(undefined); setObserved(false); setError(""); }}>
         <option value="upload">上传文件</option><option value="creative">已有创意图</option><option value="feedback">上传互动证据图片</option>
       </select></label>
-      {source !== "creative" ? <label>素材文件<input key={source} ref={fileInput} type="file" accept={source === "feedback" ? "image/jpeg,image/png,image/webp" : "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"} disabled={busy} onChange={event => { const picked = event.target.files?.[0]; setFile(picked); if (picked && !label) setLabel(picked.name.replace(/\.[^.]+$/, "")); setObserved(false); }} /></label> : <>
+      {source !== "creative" ? <label>素材文件<input key={source} ref={fileInput} type="file" accept={(imagesOnly || source === "feedback") ? "image/jpeg,image/png,image/webp" : "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"} disabled={busy} onChange={event => { const picked = event.target.files?.[0]; setFile(picked); if (picked && !label) setLabel(picked.name.replace(/\.[^.]+$/, "")); setObserved(false); }} /></label> : <>
         <label>创意图任务<select value={jobId} disabled={busy || jobs.isPending} onChange={event => { setJobId(event.target.value); setAssetId(""); }}>
           <option value="">选择有成品的任务</option>
           {jobs.data?.items.filter(item => item.output_asset_count > 0).map((item, index) => <option key={item.id} value={item.id}>{item.display_name || `创意图任务 ${index + 1}`} · {item.output_asset_count} 张</option>)}
@@ -156,7 +160,7 @@ export function EditingProjectMaterials({ workspaceId, projectId, selected, onSe
       <p role="status">{rows.length ? `已选 ${selected.length} 项素材` : materialMode === "speech" ? "尚未添加图片，可直接继续" : "还没有补充素材，点击上方添加"}</p>
       <ul className={styles.materialTiles}>{rows.filter((row, index) => showAll || index < 6 || selected.includes(row.id)).map(row => <li key={row.id} data-material-id={row.id}>
         {row.mime.startsWith("image/") ? <img src={row.url} alt={row.label} loading="lazy" className={styles.materialPreview} /> : <video src={row.url} controls playsInline preload="none" aria-label={`${row.label}素材预览`} className={styles.materialPreview} />}
-        <label className={styles.reviewCheck}><input type="checkbox" checked={selected.includes(row.id)} disabled={!selected.includes(row.id) && selected.length >= 24} onChange={event => onSelect(event.target.checked ? [...selected, row.id] : selected.filter(id => id !== row.id))} />{row.label}</label>
+        <label className={styles.reviewCheck}><input type="checkbox" checked={selected.includes(row.id)} disabled={!selected.includes(row.id) && (selected.length >= 24 || (imagesOnly && !row.mime.startsWith("image/")))} onChange={event => onSelect(event.target.checked ? [...selected, row.id] : selected.filter(id => id !== row.id))} />{row.label}{imagesOnly && !row.mime.startsWith("image/") && "（此模板使用图片）"}</label>
         <details><summary>素材说明</summary><p className={styles.note}>{row.description} · {row.width} × {row.height}{row.duration_ms !== null && ` · ${row.duration_ms / 1000} 秒`}</p>
         {row.source_job_id && <p className={styles.note}>来自已有创意图</p>}
         {row.feedback_observation && <p className={styles.note}>已登记互动记录 · {row.feedback_observation.label} · {row.feedback_observation.likes} 赞 · {new Date(row.feedback_observation.observed_at).toLocaleString()} · {row.feedback_observation.source_ref}</p>}

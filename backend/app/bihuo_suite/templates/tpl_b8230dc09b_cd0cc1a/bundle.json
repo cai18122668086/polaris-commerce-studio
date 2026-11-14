@@ -1,0 +1,38 @@
+{
+  "schema": "tengli.bihuo-runtime-bundle/1",
+  "version": "1.0.0",
+  "runtime": "runtime.py",
+  "files": {
+    "grid.json": "84ec80c40539c53aa776e17acda543ea526033c492c83948b86f11c569986f97",
+    "README.md": "ddd79ed33aeaa93bb2279c478ff99ac7546da6a4f0fc41b8bf85eba8806ca747",
+    "renderer.py": "7436d162557ca2f2fa8293ad5e7668843f173fd8af1dcd1bb1e202debdc92c46",
+    "runtime.py": "a2b821a13dbcc4655d2216449d916d707bfe31edc7e141c23e3ff679ff7073f7",
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fonts/body.otf": "62383707c086a32f3afd5e293f34c7eff64c7fea31f579fdc6cbe34d920519a6",
+    "library/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vendor/media.py": "da8d0c7d127600b8c73a778c9ab5f97b16fcbfe32ce89fbcc3cf911edcd8efed",
+    "vendor/pilot.py": "1a2d7f7d2fb4abc6ab8b22ed917925769a2c266e90f87af366e00b2d5335ea42",
+    "vendor/visual.py": "aa6b28878cf10d4d3f93acd021101a955c6b526c348f67b862a3c09ed19b7a2e",
+    "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "library/subtitles/core.py": "2a032c21501dfb3e2e7e8f70d8ebcc9c325bf402f4997fdacd3fade70eb04a6f",
+    "library/subtitles/cue_split_v1.py": "b368b1672e354da386c2b84ca1224c0adb87163bbe389c22b4291c7992201dbc",
+    "library/subtitles/glyph_stagger_v1.py": "e68b3ba4cc9d3b4b51a0ba06db082a9bc579ea7a27393a19cfa477fcc68090fe",
+    "library/subtitles/split_title.py": "43e0989a8ba2ab3730d8fd681d42cfe49d9b5faff718f852b95dde0c7c996237",
+    "library/subtitles/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "fonts": {
+    "body": "fonts/body.otf",
+    "caption": "fonts/body.otf",
+    "caption_bold": "fonts/body.otf",
+    "main": "fonts/body.otf",
+    "gold": "fonts/body.otf",
+    "white": "fonts/body.otf"
+  },
+  "capabilities": {
+    "title": true,
+    "subtitle": false,
+    "name_card": true,
+    "images": false,
+    "native_image_slots": 0
+  }
+}

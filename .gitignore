@@ -86,3 +86,6 @@ next-env.d.ts
 backend/work/
 
 /backend/backend/work/
+/.local/bihuo-bundles/
+/.local/bihuo-source-normalization/
+/backend/app/bihuo_suite/templates/*.installing*/

@@ -1,0 +1,624 @@
+{
+  "schema": "tengli.bihuo-suites/1",
+  "templates": [
+    {
+      "id": "bihuo-02-v1",
+      "bundle": "fk-1104-know-white-capsule",
+      "index": 2,
+      "name": "知识口播·白底胶囊",
+      "category": "知识口播",
+      "description": "名片胶囊停留后清除 → 圆角人物窗口缩移并变圆，为上方卡片让位 → 信息卡内容虚化交接 → 清单逐项揭晓与结论胶囊接力 → 要点行揭晓并转移当前蓝色强调",
+      "visual_features": [
+        "名片胶囊停留后清除",
+        "圆角人物窗口缩移并变圆，为上方卡片让位",
+        "信息卡内容虚化交接",
+        "清单逐项揭晓与结论胶囊接力",
+        "要点行揭晓并转移当前蓝色强调"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images",
+        "video_materials"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-03-v1",
+      "bundle": "fk-1109-app-window-studio-top",
+      "index": 3,
+      "name": "应用窗口·讲义版",
+      "category": "应用窗口",
+      "description": "导航标题分层揭晓与章节接力 → 问题与答案双卡依次进入，连接符后补 → 问题与答案双卡接力揭晓 → 三步横向节点揭晓与当前项强调 → 引用双行结论分层揭晓",
+      "visual_features": [
+        "导航标题分层揭晓与章节接力",
+        "问题与答案双卡依次进入，连接符后补",
+        "问题与答案双卡接力揭晓",
+        "三步横向节点揭晓与当前项强调",
+        "引用双行结论分层揭晓"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "cover",
+        "reference_script",
+        "music",
+        "images",
+        "video_materials"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-04-v1",
+      "bundle": "fk-1024-app-window-studio",
+      "index": 4,
+      "name": "应用窗口·知识口播",
+      "category": "应用窗口",
+      "description": "章节编号先切换，正文与下方导航分层接管 → 白色误区卡→蓝色真相卡→连接符后补 → 引号、黑色首句、蓝色结论独立揭晓 → 纵向要点逐项加入与图标焦点轮换 → 误区与真相双卡文字接力",
+      "visual_features": [
+        "章节编号先切换，正文与下方导航分层接管",
+        "白色误区卡→蓝色真相卡→连接符后补",
+        "引号、黑色首句、蓝色结论独立揭晓",
+        "纵向要点逐项加入与图标焦点轮换",
+        "误区与真相双卡文字接力"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images",
+        "video_materials"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-08-v1",
+      "bundle": "tpl_da5635d242_cdbce6c",
+      "index": 8,
+      "name": "草野暖阳",
+      "category": "口播模板",
+      "description": "圆窗与矩窗的几何变化 → 透视网格中的窗口交接 → 虚化背景与资料窗口切换 → 人物矩窗连续缩移与回归 → 斜向虚化人物带擦拭 → 片首主题与可选身份独立显隐 → 指定句逐字输入与下划线光标",
+      "visual_features": [
+        "圆窗与矩窗的几何变化",
+        "透视网格中的窗口交接",
+        "虚化背景与资料窗口切换",
+        "人物矩窗连续缩移与回归",
+        "斜向虚化人物带擦拭"
+      ],
+      "capabilities": [
+        "title",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-09-v1",
+      "bundle": "tpl_27d83f66e3_c6af1d0",
+      "index": 9,
+      "name": "杏黄古卷",
+      "category": "口播模板",
+      "description": "人物窗口构图交接 → 圆窗与矩窗的几何变化 → 主图与历史资料接力 → 虚化背景与资料窗口切换 → 正文固定字位逐字符渐显 → 主题双行文字整层淡入与独立退场 → 可选身份名片的局部显现与淡退",
+      "visual_features": [
+        "人物窗口构图交接",
+        "圆窗与矩窗的几何变化",
+        "主图与历史资料接力",
+        "虚化背景与资料窗口切换",
+        "正文固定字位逐字符渐显"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-10-v1",
+      "bundle": "fk-1017-share-paper",
+      "index": 10,
+      "name": "分享·生活手记",
+      "category": "分享",
+      "description": "人物窗口构图交接 → 主图与历史资料接力 → 信息卡与人物窗口接管 → 星点装饰进入退出 → 卡内信息逐项揭晓 → 标题与大字进入收束",
+      "visual_features": [
+        "人物窗口构图交接",
+        "主图与历史资料接力",
+        "信息卡与人物窗口接管",
+        "星点装饰进入退出",
+        "卡内信息逐项揭晓"
+      ],
+      "capabilities": [
+        "title",
+        "name_card",
+        "images",
+        "cover",
+        "reference_script",
+        "music"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-11-v1",
+      "bundle": "tpl_b4738a1cc2",
+      "index": 11,
+      "name": "旧笺黄影",
+      "category": "口播模板",
+      "description": "人物窗口构图交接 → 主图与历史资料接力 → 虚化背景与资料窗口切换 → 小圆窗头部越框 → 标题与大字进入收束 → 消息秒回碎片裁区与错时进入 → 竖线铺垫与问候连续裁露",
+      "visual_features": [
+        "人物窗口构图交接",
+        "主图与历史资料接力",
+        "虚化背景与资料窗口切换",
+        "小圆窗头部越框",
+        "标题与大字进入收束"
+      ],
+      "capabilities": [
+        "title",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": true,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-13-v1",
+      "bundle": "tpl_ee351f0cce_c74832a",
+      "index": 13,
+      "name": "青瓷古宅",
+      "category": "口播模板",
+      "description": "人物窗口构图交接 → 主图与历史资料接力 → 资料整幅接管与角落人物 → 虚化背景与资料窗口切换 → 片首薄荷底内容平面扩展 → 书本与窗边细条独立裁露 → 标题与大字进入收束",
+      "visual_features": [
+        "人物窗口构图交接",
+        "主图与历史资料接力",
+        "资料整幅接管与角落人物",
+        "虚化背景与资料窗口切换",
+        "片首薄荷底内容平面扩展"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-14-v1",
+      "bundle": "fk-1102-brief-teal",
+      "index": 14,
+      "name": "资讯解读·青绿光窗",
+      "category": "资讯解读",
+      "description": "信息卡与人物窗口接管 → 上方配图独立淡入 → 卡内信息逐项揭晓 → 可选身份标签淡入与淡退",
+      "visual_features": [
+        "信息卡与人物窗口接管",
+        "上方配图独立淡入",
+        "卡内信息逐项揭晓",
+        "可选身份标签淡入与淡退"
+      ],
+      "capabilities": [
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-15-v1",
+      "bundle": "fk-1102-brief-blue",
+      "index": 15,
+      "name": "资讯解读·蓝白光晕",
+      "category": "资讯解读",
+      "description": "人物下缩让位与资料迟入 → 身份卡与主题条独立显隐",
+      "visual_features": [
+        "人物下缩让位与资料迟入",
+        "身份卡与主题条独立显隐"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-16-v1",
+      "bundle": "tpl_ccfde4c40e",
+      "index": 16,
+      "name": "奶蓝拾光",
+      "category": "口播模板",
+      "description": "人物窗口构图交接 → 主图与历史资料接力 → 主体透明前景、双层描边与资料遮挡 → 标题与大字进入收束",
+      "visual_features": [
+        "人物窗口构图交接",
+        "主图与历史资料接力",
+        "主体透明前景、双层描边与资料遮挡",
+        "标题与大字进入收束"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": true,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-19-v1",
+      "bundle": "tpl_6c9775d0ad",
+      "index": 19,
+      "name": "量子蓝境",
+      "category": "口播模板",
+      "description": "人物窗口构图交接 → 透视网格中的窗口交接 → 资料照片与人物圆窗分层接力 → 清晰圆孔闭合、模糊停留与反向展开 → 人物头部前景突破原背景圆底窗 → 双行连续横向裁露与独立淡退",
+      "visual_features": [
+        "人物窗口构图交接",
+        "透视网格中的窗口交接",
+        "资料照片与人物圆窗分层接力",
+        "清晰圆孔闭合、模糊停留与反向展开",
+        "人物头部前景突破原背景圆底窗"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": true,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-23-v1",
+      "bundle": "fk-1028-news-navy",
+      "index": 23,
+      "name": "藏青快讯台",
+      "category": "口播模板",
+      "description": "主图与历史资料接力 → 斜边人物窗与资料侧栏 → 信息卡与人物窗口接管 → 卡内信息逐项揭晓 → 固定读区内文字水平滚动",
+      "visual_features": [
+        "主图与历史资料接力",
+        "斜边人物窗与资料侧栏",
+        "信息卡与人物窗口接管",
+        "卡内信息逐项揭晓",
+        "固定读区内文字水平滚动"
+      ],
+      "capabilities": [
+        "title",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-24-v1",
+      "bundle": "fk-1112-qingbai-bilingual",
+      "index": 24,
+      "name": "青白双语",
+      "category": "口播模板",
+      "description": "人物缩小/位移与资料接管 → 资料双屏重排与新图抬升接管 → 旧资料先退、斜边新资料整幅接管 → 主副标题与可选身份卡分层进退",
+      "visual_features": [
+        "人物缩小/位移与资料接管",
+        "资料双屏重排与新图抬升接管",
+        "旧资料先退、斜边新资料整幅接管",
+        "主副标题与可选身份卡分层进退"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-26-v1",
+      "bundle": "tpl_27d83f66e3",
+      "index": 26,
+      "name": "靛蓝简叙",
+      "category": "口播模板",
+      "description": "圆窗与矩窗的几何变化 → 主图与历史资料接力 → 全身人物突破原背景圆底上缘 → 人物窗口构图交接 → 虚化背景与资料窗口切换 → 古城资料斜透视展开 → 卡内信息逐项揭晓",
+      "visual_features": [
+        "圆窗与矩窗的几何变化",
+        "主图与历史资料接力",
+        "全身人物突破原背景圆底上缘",
+        "人物窗口构图交接",
+        "虚化背景与资料窗口切换"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": true,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-27-v1",
+      "bundle": "fk-1112-meiye-blue",
+      "index": 27,
+      "name": "莓夜蓝调",
+      "category": "口播模板",
+      "description": "人物窗口下移、缩放与内部取景切换 → 主图与历史资料接力 → 资料淡退清空与下一主图虚化淡入 → 标题与大字进入收束 → 指定旧句互补切半与新句接力",
+      "visual_features": [
+        "人物窗口下移、缩放与内部取景切换",
+        "主图与历史资料接力",
+        "资料淡退清空与下一主图虚化淡入",
+        "标题与大字进入收束",
+        "指定旧句互补切半与新句接力"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-28-v1",
+      "bundle": "fk-1102-brief-neon",
+      "index": 28,
+      "name": "资讯解读·紫夜荧光",
+      "category": "资讯解读",
+      "description": "倾斜资料卡与右上圆角人物窗 → 信息卡与人物窗口接管 → 卡内信息逐项揭晓",
+      "visual_features": [
+        "倾斜资料卡与右上圆角人物窗",
+        "信息卡与人物窗口接管",
+        "卡内信息逐项揭晓"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-29-v1",
+      "bundle": "fk-1021-news-yuanfeng",
+      "index": 29,
+      "name": "新闻解读·紫夜光窗",
+      "category": "新闻解读",
+      "description": "人物窗口构图交接 → 信息卡与人物窗口接管 → 卡内信息逐项揭晓 → 引用结论分层揭晓 → 标题与大字进入收束",
+      "visual_features": [
+        "人物窗口构图交接",
+        "信息卡与人物窗口接管",
+        "卡内信息逐项揭晓",
+        "引用结论分层揭晓",
+        "标题与大字进入收束"
+      ],
+      "capabilities": [
+        "title",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-32-v1",
+      "bundle": "tpl_d1772aff94",
+      "index": 32,
+      "name": "商务铜影",
+      "category": "口播模板",
+      "description": "人物窗口构图交接 → 虚化背景与资料窗口切换 → 标题独立进入收束 → 指定句逐字旋转揭晓",
+      "visual_features": [
+        "人物窗口构图交接",
+        "虚化背景与资料窗口切换",
+        "标题独立进入收束",
+        "指定句逐字旋转揭晓"
+      ],
+      "capabilities": [
+        "title",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-33-v1",
+      "bundle": "fk-1021-news-vibrant",
+      "index": 33,
+      "name": "新闻解读·活力色彩",
+      "category": "新闻解读",
+      "description": "人物窗口构图交接 → 圆角底窗与头部越界前景的混合人物层 → 手写式标题前缀揭晓伴随横移回位",
+      "visual_features": [
+        "人物窗口构图交接",
+        "圆角底窗与头部越界前景的混合人物层",
+        "手写式标题前缀揭晓伴随横移回位"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": true,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-34-v1",
+      "bundle": "tpl_b8230dc09b_cd0cc1a",
+      "index": 34,
+      "name": "M-7 黄白口播",
+      "category": "口播模板",
+      "description": "标题与大字进入收束 → 指定旧句互补切半、上下分离让位 → 整句填充／空心字幕缩放变亮接入 → 分角色字号的逐字揭晓",
+      "visual_features": [
+        "标题与大字进入收束",
+        "指定旧句互补切半、上下分离让位",
+        "整句填充／空心字幕缩放变亮接入",
+        "分角色字号的逐字揭晓"
+      ],
+      "capabilities": [
+        "title",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-36-v1",
+      "bundle": "tpl_dc421f64d0",
+      "index": 36,
+      "name": "银灰蜜影",
+      "category": "口播模板",
+      "description": "虚化构图交接与人物窗/字幕共同外层收尾 → 标题独立进入收束 → 指定旧句互补切半与中心接力",
+      "visual_features": [
+        "虚化构图交接与人物窗/字幕共同外层收尾",
+        "标题独立进入收束",
+        "指定旧句互补切半与中心接力"
+      ],
+      "capabilities": [
+        "title",
+        "name_card",
+        "cover",
+        "reference_script",
+        "music"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-40-v1",
+      "bundle": "tpl_f071a8324e",
+      "index": 40,
+      "name": "简洁白卡",
+      "category": "口播模板",
+      "description": "人物窗口构图交接 → 资料整幅接管与角落人物 → 虚化背景与资料窗口切换 → 斜边人物窗与资料侧栏 → 圆窗与矩窗的几何变化 → 人物窗收窄消失再展开 → 侧栏资料窄楔展开与接力",
+      "visual_features": [
+        "人物窗口构图交接",
+        "资料整幅接管与角落人物",
+        "虚化背景与资料窗口切换",
+        "斜边人物窗与资料侧栏",
+        "圆窗与矩窗的几何变化"
+      ],
+      "capabilities": [
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-47-v1",
+      "bundle": "tpl_b15dea9f43",
+      "index": 47,
+      "name": "臻境商务",
+      "category": "口播模板",
+      "description": "透视网格中的窗口交接 → 星点装饰进入退出 → 圆形开合遮罩转场 → 人物窗口构图交接 → 圆窗与矩窗的几何变化 → 机器人资料由左侧透视转入 → 标题与大字进入收束",
+      "visual_features": [
+        "透视网格中的窗口交接",
+        "星点装饰进入退出",
+        "圆形开合遮罩转场",
+        "人物窗口构图交接",
+        "圆窗与矩窗的几何变化"
+      ],
+      "capabilities": [
+        "title",
+        "subtitle",
+        "name_card",
+        "images",
+        "cover",
+        "reference_script",
+        "music"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    },
+    {
+      "id": "bihuo-48-v1",
+      "bundle": "tpl_81019325e3_c6d9175",
+      "index": 48,
+      "name": "素材多多-模板",
+      "category": "口播模板",
+      "description": "圆窗与矩窗的几何变化 → 资料整幅接管与角落人物 → 透视网格中的窗口交接 → 人物窗口构图交接 → 虚化底与清晰前景交接 → 斜向虚化人物整幅擦拭 → 标题与大字进入收束",
+      "visual_features": [
+        "圆窗与矩窗的几何变化",
+        "资料整幅接管与角落人物",
+        "透视网格中的窗口交接",
+        "人物窗口构图交接",
+        "虚化底与清晰前景交接"
+      ],
+      "capabilities": [
+        "title",
+        "cover",
+        "reference_script",
+        "music",
+        "images"
+      ],
+      "requires_foreground": false,
+      "enabled": true
+    }
+  ]
+}

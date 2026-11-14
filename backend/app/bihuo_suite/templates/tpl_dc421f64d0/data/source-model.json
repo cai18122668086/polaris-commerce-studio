@@ -1,0 +1,341 @@
+{
+  "window_geometry": [
+    {
+      "frame": 231,
+      "xywh": [
+        0,
+        27,
+        1080,
+        1869
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 232,
+      "xywh": [
+        12,
+        48,
+        1062,
+        1821
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 233,
+      "xywh": [
+        16,
+        72,
+        1050,
+        1770
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 234,
+      "xywh": [
+        24,
+        92,
+        1056,
+        1828
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 235,
+      "xywh": [
+        32,
+        112,
+        1024,
+        1680
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 236,
+      "xywh": [
+        33,
+        133,
+        1015,
+        1637
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 237,
+      "xywh": [
+        40,
+        146,
+        1002,
+        1601
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 238,
+      "xywh": [
+        45,
+        168,
+        991,
+        1558
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 239,
+      "xywh": [
+        50,
+        184,
+        982,
+        1523
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 240,
+      "xywh": [
+        48,
+        198,
+        979,
+        1493
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 241,
+      "xywh": [
+        54,
+        208,
+        970,
+        1468
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 242,
+      "xywh": [
+        56,
+        218,
+        966,
+        1447
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 243,
+      "xywh": [
+        61,
+        225,
+        959,
+        1432
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 244,
+      "xywh": [
+        62,
+        227,
+        956,
+        1427
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 245,
+      "xywh": [
+        62,
+        226,
+        956,
+        1428
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 246,
+      "xywh": [
+        62,
+        224,
+        956,
+        1430
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 247,
+      "xywh": [
+        62,
+        224,
+        956,
+        1430
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 248,
+      "xywh": [
+        62,
+        224,
+        956,
+        1430
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 249,
+      "xywh": [
+        62,
+        224,
+        956,
+        1430
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    },
+    {
+      "frame": 250,
+      "xywh": [
+        62,
+        224,
+        956,
+        1430
+      ],
+      "method": "Native source vs analytic gray-stage threshold17; lower central caption excluded. Rounded/blurred edges remain uncertain."
+    }
+  ],
+  "settled_xywh": [
+    62,
+    228,
+    956,
+    1426
+  ],
+  "global_fade": [
+    {
+      "frame": 338,
+      "opacity_candidate": 0.9212962962962963
+    },
+    {
+      "frame": 339,
+      "opacity_candidate": 0.8465346534653465
+    },
+    {
+      "frame": 340,
+      "opacity_candidate": 0.7678571428571429
+    },
+    {
+      "frame": 341,
+      "opacity_candidate": 0.6933333333333334
+    },
+    {
+      "frame": 342,
+      "opacity_candidate": 0.6142857142857143
+    },
+    {
+      "frame": 343,
+      "opacity_candidate": 0.5353982300884956
+    },
+    {
+      "frame": 344,
+      "opacity_candidate": 0.4608294930875576
+    },
+    {
+      "frame": 345,
+      "opacity_candidate": 0.38181818181818183
+    },
+    {
+      "frame": 346,
+      "opacity_candidate": 0.30357142857142855
+    },
+    {
+      "frame": 347,
+      "opacity_candidate": 0.23008849557522124
+    },
+    {
+      "frame": 348,
+      "opacity_candidate": 0.1523809523809524
+    },
+    {
+      "frame": 349,
+      "opacity_candidate": 0.07804878048780488
+    },
+    {
+      "frame": 350,
+      "opacity_candidate": 0.0
+    }
+  ],
+  "whole_blur": [
+    {
+      "frame": 221,
+      "radius_candidate": 3,
+      "dy_candidate": 0
+    },
+    {
+      "frame": 222,
+      "radius_candidate": 8,
+      "dy_candidate": 5
+    },
+    {
+      "frame": 223,
+      "radius_candidate": 16,
+      "dy_candidate": 16
+    },
+    {
+      "frame": 224,
+      "radius_candidate": 28,
+      "dy_candidate": 31
+    },
+    {
+      "frame": 225,
+      "radius_candidate": 42,
+      "dy_candidate": 47
+    },
+    {
+      "frame": 226,
+      "radius_candidate": 52,
+      "dy_candidate": 60
+    },
+    {
+      "frame": 227,
+      "radius_candidate": 48,
+      "dy_candidate": 56
+    },
+    {
+      "frame": 228,
+      "radius_candidate": 38,
+      "dy_candidate": 40
+    },
+    {
+      "frame": 229,
+      "radius_candidate": 24,
+      "dy_candidate": 21
+    },
+    {
+      "frame": 230,
+      "radius_candidate": 12,
+      "dy_candidate": 8
+    }
+  ],
+  "split_curve": {
+    "distance_by_phase": [
+      16,
+      38,
+      50,
+      50,
+      50,
+      50
+    ],
+    "opacity_by_phase": [
+      0.9,
+      0.68,
+      0.2,
+      0.15,
+      0.12,
+      0.08
+    ],
+    "basis": "Gold source C03 raw ROI confirms approx+/-16,+/-38,+/-50 movement then faint residue; exact author alpha unknown. C01 shorter/sourceC10 variants need native visual calibration."
+  },
+  "limits": [
+    "Window threshold/canonical matrix are recovered finished source estimates, not author original geometry",
+    "Common blur cannot be inverted; baseline source retains already blurred media, editable retext independently blurred with same candidateprofile",
+    "Early render source switch226..230 intrinsic local entry remains visually uncertain"
+  ],
+  "source_fade_revision": "Actual reaccepted mainv3 confirms338 first,337 last unchanged stage; inverse/forward uses338 and sameframe finalouterpose."
+}

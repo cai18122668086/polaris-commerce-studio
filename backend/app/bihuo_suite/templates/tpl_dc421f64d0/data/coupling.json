@@ -1,0 +1,697 @@
+{
+  "source_sha256": "a289220e4f96d809c932a4eadbb7273d9a95407890358122357006d8edc60b63",
+  "reference_frame": 321,
+  "method": "Unchanged native RGB gold mask for same 两步 glyphs; ECC affine registration. Long near-horizontal top-window edge via Hough. Pixel fits are source estimates, not author transform declarations.",
+  "roi_xyxy": [
+    330,
+    1500,
+    760,
+    1840
+  ],
+  "frames": [
+    {
+      "frame": 321,
+      "gold_ink_xyxy": [
+        498,
+        1590,
+        656,
+        1668
+      ],
+      "gold_centroid_xy": [
+        570.1757676043391,
+        1627.812649384078
+      ],
+      "same_glyph_affine": {
+        "ecc": 1.000002,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0,
+            -7.205045005065358e-09,
+            -4.58804015579517e-06
+          ],
+          [
+            -2.4853334945618144e-09,
+            0.9999999403953552,
+            9.25463973544538e-06
+          ]
+        ],
+        "angle_degrees": -0.0,
+        "area_scale_sqrt": 1.0
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          459,
+          226,
+          986,
+          226
+        ],
+        "angle_degrees": 0.0,
+        "mid_y": 226.0
+      }
+    },
+    {
+      "frame": 322,
+      "gold_ink_xyxy": [
+        486,
+        1612,
+        644,
+        1690
+      ],
+      "gold_centroid_xy": [
+        558.4765877745616,
+        1648.951643112549
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.988586,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0309507846832275,
+            -0.01783694513142109,
+            -16.31709098815918
+          ],
+          [
+            0.019941797479987144,
+            1.0347002744674683,
+            11.895413398742676
+          ]
+        ],
+        "angle_degrees": 1.1081,
+        "area_scale_sqrt": 1.033
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          102,
+          196,
+          872,
+          209
+        ],
+        "angle_degrees": 0.9672,
+        "mid_y": 202.5
+      }
+    },
+    {
+      "frame": 323,
+      "gold_ink_xyxy": [
+        476,
+        1622,
+        637,
+        1708
+      ],
+      "gold_centroid_xy": [
+        549.7325430334524,
+        1664.5555375121792
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.987333,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0539560317993164,
+            -0.03370131924748421,
+            -28.632925033569336
+          ],
+          [
+            0.033995334059000015,
+            1.0572483539581299,
+            21.2174072265625
+          ]
+        ],
+        "angle_degrees": 1.8474,
+        "area_scale_sqrt": 1.05614
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          92,
+          173,
+          801,
+          194
+        ],
+        "angle_degrees": 1.6966,
+        "mid_y": 183.5
+      }
+    },
+    {
+      "frame": 324,
+      "gold_ink_xyxy": [
+        468,
+        1636,
+        632,
+        1718
+      ],
+      "gold_centroid_xy": [
+        544.0345862286797,
+        1674.1959886291852
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.988248,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0689761638641357,
+            -0.03570006787776947,
+            -37.81443405151367
+          ],
+          [
+            0.04139966145157814,
+            1.0703963041305542,
+            27.472970962524414
+          ]
+        ],
+        "angle_degrees": 2.2179,
+        "area_scale_sqrt": 1.07038
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          86,
+          158,
+          1047,
+          195
+        ],
+        "angle_degrees": 2.2049,
+        "mid_y": 176.5
+      }
+    },
+    {
+      "frame": 325,
+      "gold_ink_xyxy": [
+        466,
+        1640,
+        630,
+        1722
+      ],
+      "gold_centroid_xy": [
+        541.214163690014,
+        1678.1734741419475
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.988721,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0742607116699219,
+            -0.04456539452075958,
+            -40.36189270019531
+          ],
+          [
+            0.045751072466373444,
+            1.0769414901733398,
+            29.630565643310547
+          ]
+        ],
+        "angle_degrees": 2.4387,
+        "area_scale_sqrt": 1.07655
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          86,
+          152,
+          759,
+          181
+        ],
+        "angle_degrees": 2.4674,
+        "mid_y": 166.5
+      }
+    },
+    {
+      "frame": 326,
+      "gold_ink_xyxy": [
+        466,
+        1640,
+        631,
+        1722
+      ],
+      "gold_centroid_xy": [
+        542.126246882793,
+        1677.446228179551
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.988861,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0722748041152954,
+            -0.0407661609351635,
+            -39.82992172241211
+          ],
+          [
+            0.045780569314956665,
+            1.0763185024261475,
+            28.773143768310547
+          ]
+        ],
+        "angle_degrees": 2.4447,
+        "area_scale_sqrt": 1.07516
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          87,
+          154,
+          1059,
+          194
+        ],
+        "angle_degrees": 2.3565,
+        "mid_y": 174.0
+      }
+    },
+    {
+      "frame": 327,
+      "gold_ink_xyxy": [
+        470,
+        1634,
+        633,
+        1716
+      ],
+      "gold_centroid_xy": [
+        544.825962456252,
+        1672.640470887687
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.986874,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.065916657447815,
+            -0.03758690133690834,
+            -35.66697692871094
+          ],
+          [
+            0.04004570469260216,
+            1.0657130479812622,
+            26.512956619262695
+          ]
+        ],
+        "angle_degrees": 2.1515,
+        "area_scale_sqrt": 1.06652
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          85,
+          161,
+          1040,
+          196
+        ],
+        "angle_degrees": 2.0989,
+        "mid_y": 178.5
+      }
+    },
+    {
+      "frame": 328,
+      "gold_ink_xyxy": [
+        476,
+        1626,
+        637,
+        1708
+      ],
+      "gold_centroid_xy": [
+        549.5158459288152,
+        1664.722411831627
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.987582,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0534690618515015,
+            -0.03388000652194023,
+            -28.534656524658203
+          ],
+          [
+            0.03435464948415756,
+            1.0575069189071655,
+            21.161291122436523
+          ]
+        ],
+        "angle_degrees": 1.8678,
+        "area_scale_sqrt": 1.05604
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          83,
+          173,
+          1028,
+          201
+        ],
+        "angle_degrees": 1.6972,
+        "mid_y": 187.0
+      }
+    },
+    {
+      "frame": 329,
+      "gold_ink_xyxy": [
+        482,
+        1618,
+        641,
+        1698
+      ],
+      "gold_centroid_xy": [
+        554.949577044286,
+        1655.5725659313318
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.987716,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.040073037147522,
+            -0.024067340418696404,
+            -21.20137596130371
+          ],
+          [
+            0.02458593249320984,
+            1.0426632165908813,
+            16.094276428222656
+          ]
+        ],
+        "angle_degrees": 1.3541,
+        "area_scale_sqrt": 1.04165
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          92,
+          186,
+          1005,
+          207
+        ],
+        "angle_degrees": 1.3176,
+        "mid_y": 196.5
+      }
+    },
+    {
+      "frame": 330,
+      "gold_ink_xyxy": [
+        488,
+        1608,
+        645,
+        1687
+      ],
+      "gold_centroid_xy": [
+        560.7507336440532,
+        1645.9502848265147
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.988987,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0266386270523071,
+            -0.01181519590318203,
+            -14.257000923156738
+          ],
+          [
+            0.015104249119758606,
+            1.0251858234405518,
+            11.035774230957031
+          ]
+        ],
+        "angle_degrees": 0.8429,
+        "area_scale_sqrt": 1.026
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          89,
+          201,
+          661,
+          209
+        ],
+        "angle_degrees": 0.8013,
+        "mid_y": 205.0
+      }
+    },
+    {
+      "frame": 331,
+      "gold_ink_xyxy": [
+        494,
+        1587,
+        649,
+        1678
+      ],
+      "gold_centroid_xy": [
+        565.4216312056737,
+        1637.1136524822696
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.987037,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0121688842773438,
+            -0.0032433385495096445,
+            -7.145560264587402
+          ],
+          [
+            0.006857879459857941,
+            1.0143216848373413,
+            5.506442070007324
+          ]
+        ],
+        "angle_degrees": 0.3882,
+        "area_scale_sqrt": 1.01326
+      },
+      "long_outer_top_edge_candidate": null
+    },
+    {
+      "frame": 332,
+      "gold_ink_xyxy": [
+        497,
+        1592,
+        652,
+        1670
+      ],
+      "gold_centroid_xy": [
+        568.2144385026738,
+        1629.7263814616756
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.985016,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.001772165298462,
+            -0.0029063040856271982,
+            -0.9098852872848511
+          ],
+          [
+            0.0018985954811796546,
+            1.0105464458465576,
+            -0.32685813307762146
+          ]
+        ],
+        "angle_degrees": 0.1086,
+        "area_scale_sqrt": 1.00615
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          381,
+          225,
+          955,
+          225
+        ],
+        "angle_degrees": 0.0,
+        "mid_y": 225.0
+      }
+    },
+    {
+      "frame": 333,
+      "gold_ink_xyxy": [
+        500,
+        1592,
+        655,
+        1672
+      ],
+      "gold_centroid_xy": [
+        572.1485059939166,
+        1631.3540883879048
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.989741,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0037702322006226,
+            0.0010627455776557326,
+            1.1739211082458496
+          ],
+          [
+            -0.0020832745358347893,
+            1.009706974029541,
+            2.8529369831085205
+          ]
+        ],
+        "angle_degrees": -0.1189,
+        "area_scale_sqrt": 1.00674
+      },
+      "long_outer_top_edge_candidate": null
+    },
+    {
+      "frame": 334,
+      "gold_ink_xyxy": [
+        502,
+        1595,
+        657,
+        1676
+      ],
+      "gold_centroid_xy": [
+        574.7773214285714,
+        1634.662142857143
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.987402,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0100953578948975,
+            0.006473348010331392,
+            0.9950496554374695
+          ],
+          [
+            -0.00659524230286479,
+            1.0123717784881592,
+            6.706086158752441
+          ]
+        ],
+        "angle_degrees": -0.3741,
+        "area_scale_sqrt": 1.01125
+      },
+      "long_outer_top_edge_candidate": null
+    },
+    {
+      "frame": 335,
+      "gold_ink_xyxy": [
+        502,
+        1596,
+        658,
+        1676
+      ],
+      "gold_centroid_xy": [
+        575.0859142607175,
+        1635.711286089239
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.989567,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0120937824249268,
+            0.009784645400941372,
+            0.9324654340744019
+          ],
+          [
+            -0.005686872638761997,
+            1.0092754364013672,
+            8.09223461151123
+          ]
+        ],
+        "angle_degrees": -0.3219,
+        "area_scale_sqrt": 1.01071
+      },
+      "long_outer_top_edge_candidate": null
+    },
+    {
+      "frame": 336,
+      "gold_ink_xyxy": [
+        502,
+        1596,
+        658,
+        1677
+      ],
+      "gold_centroid_xy": [
+        574.9095380291586,
+        1635.5984542420517
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.988381,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0123752355575562,
+            0.009213419631123543,
+            0.8406040072441101
+          ],
+          [
+            -0.004662053659558296,
+            1.0120294094085693,
+            7.3020806312561035
+          ]
+        ],
+        "angle_degrees": -0.2638,
+        "area_scale_sqrt": 1.01222
+      },
+      "long_outer_top_edge_candidate": {
+        "xyxy": [
+          311,
+          219,
+          995,
+          215
+        ],
+        "angle_degrees": -0.3351,
+        "mid_y": 217.0
+      }
+    },
+    {
+      "frame": 337,
+      "gold_ink_xyxy": [
+        502,
+        1595,
+        657,
+        1676
+      ],
+      "gold_centroid_xy": [
+        573.8209854661468,
+        1634.6237149946828
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.986868,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0112240314483643,
+            0.005504919216036797,
+            0.6330676674842834
+          ],
+          [
+            -0.0061064655892550945,
+            1.0118865966796875,
+            6.4910688400268555
+          ]
+        ],
+        "angle_degrees": -0.346,
+        "area_scale_sqrt": 1.01157
+      },
+      "long_outer_top_edge_candidate": null
+    },
+    {
+      "frame": 338,
+      "gold_ink_xyxy": [
+        500,
+        1592,
+        656,
+        1674
+      ],
+      "gold_centroid_xy": [
+        573.0188542422045,
+        1632.7777374909354
+      ],
+      "same_glyph_affine": {
+        "ecc": 0.986526,
+        "accepted": true,
+        "matrix_template_roi_to_current_roi": [
+          [
+            1.0074944496154785,
+            0.00529256509616971,
+            0.5548286437988281
+          ],
+          [
+            -0.003012473229318857,
+            1.0091419219970703,
+            4.280777454376221
+          ]
+        ],
+        "angle_degrees": -0.1713,
+        "area_scale_sqrt": 1.00833
+      },
+      "long_outer_top_edge_candidate": null
+    }
+  ]
+}

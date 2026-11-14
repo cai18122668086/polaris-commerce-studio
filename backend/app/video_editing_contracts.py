@@ -651,10 +651,16 @@ class EditingPlanningTaskCreate(StrictVideoModel):
 
     @model_validator(mode="after")
     def prepared_execution(self) -> Self:
+        from .bihuo_suite.registry import is_template as bihuo_template
+
         if self.creative_options is not None and (
-            self.mode != "prepare" or self.template_id != "apple-minimal-v1"
+            self.mode != "prepare"
+            or (
+                self.template_id != "apple-minimal-v1"
+                and not bihuo_template(self.template_id)
+            )
         ):
-            raise ValueError("Creative options require Apple suite preparation")
+            raise ValueError("Creative options require full-suite preparation")
         if self.music is not None and self.mode != "prepare":
             raise ValueError("Music is frozen when preparing the planning request")
         if (self.mode == "generate") != (self.prepared_task_id is not None):

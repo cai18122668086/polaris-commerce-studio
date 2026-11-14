@@ -1,0 +1,28 @@
+{
+  "schema": "tengli.bihuo-runtime-bundle/1",
+  "version": "1.0.0",
+  "runtime": "runtime.py",
+  "files": {
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "data/source-exits-complete-v2.json": "fedd3a2a2afead586e72bebad1123e068117891ffb260dbec1e1a565f46c502f",
+    "data/source-geometry.json": "2d7ce7ca1a8982ceb4585d30a93982c5ff8babeb3d84e1eb8843b5e3d706de0e",
+    "fonts/msyhbd.ttc": "4508821b3dffe01f0ef5e5326a3e60df705a44633858811f67b6982dce3f6ee6",
+    "fonts/simkai.ttf": "95b3e69321f4e55f6ecf36b29d1e31a0c1205acfde0117df6472a17494c3cbd2",
+    "qingci_engine.py": "97c1bf6dfb83e8f8710ce1e3f0bcbf66b1c0a30114adfb0d55ba4ba751ea0942",
+    "README.md": "b2a6dacb233acea802a955f77a612c53022ac4b7b704b05e0173fa5350045f56",
+    "runtime.py": "6e0fce7f03f201d7732b0c9b633692e30652f8b972444a8e67bb5e0d6e19e924",
+    "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vendor/apple_minimal/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vendor/apple_minimal/media.py": "da8d0c7d127600b8c73a778c9ab5f97b16fcbfe32ce89fbcc3cf911edcd8efed",
+    "vendor/apple_minimal/pilot.py": "1a2d7f7d2fb4abc6ab8b22ed917925769a2c266e90f87af366e00b2d5335ea42",
+    "vendor/apple_minimal/visual.py": "aa6b28878cf10d4d3f93acd021101a955c6b526c348f67b862a3c09ed19b7a2e",
+    "vendor/subtitle_engine/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vendor/subtitle_engine/core.py": "2a032c21501dfb3e2e7e8f70d8ebcc9c325bf402f4997fdacd3fade70eb04a6f",
+    "vendor/subtitle_engine/split_title.py": "43e0989a8ba2ab3730d8fd681d42cfe49d9b5faff718f852b95dde0c7c996237"
+  },
+  "fonts": {
+    "body": "fonts/simkai.ttf",
+    "title": "fonts/msyhbd.ttc"
+  },
+  "template_id": "tpl_ee351f0cce_c74832a"
+}

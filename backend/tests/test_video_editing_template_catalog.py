@@ -20,7 +20,8 @@ pytest_plugins = ["tests.test_video_projects"]
 def test_catalog_retains_all_templates_without_changing_snapshots(tmp_path):
     settings = Settings(_env_file=None, video_editing_tasks_dir=tmp_path)
     before = overlay_templates()
-    cards = template_catalog(settings, "ws_test")
+    all_cards = template_catalog(settings, "ws_test")
+    cards = [card for card in all_cards if card.get("engine") != "bihuo-full-suite"]
     assert len(before) == 46
     assert len(cards) == 8
     assert {c["id"] for c in cards} < {t["id"] for t in before}

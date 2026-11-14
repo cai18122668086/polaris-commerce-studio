@@ -9,16 +9,19 @@ import flow from "./editing-flow.module.css";
 export type AppleCreativeOptions = components["schemas"]["EditingAppleCreativeOptions"];
 export const defaultAppleOptions: AppleCreativeOptions = { schema_version: "tengli.apple-creative/1", title: "", subtitle: "", name_card: { enabled: false, name: "", description: "" }, cover: "auto" };
 
-export function EditingCreativeOptions({ value, onChange, disabled }: {
+export function EditingCreativeOptions({ value, onChange, disabled, capabilities }: {
   value: AppleCreativeOptions; onChange: (value: AppleCreativeOptions) => void; disabled?: boolean;
+  capabilities?: readonly string[];
 }) {
   const nameCard = value.name_card || defaultAppleOptions.name_card!;
+  const supports = (field: string) => !capabilities || capabilities.includes(field);
+  if (!["title", "subtitle", "name_card"].some(supports)) return null;
   return <div className={flow.creativeOptions}>
     <h2>文字</h2>
-    <label>主标题<input value={value.title || ""} maxLength={60} disabled={disabled} placeholder="选填，根据口播自动生成" onChange={event => onChange({ ...value, title: event.target.value })} /></label>
-    <label>副标题<input value={value.subtitle || ""} maxLength={100} disabled={disabled} placeholder="选填，根据口播自动生成" onChange={event => onChange({ ...value, subtitle: event.target.value })} /></label>
-    <div className={flow.nameCardHeading}><h3>人物名片</h3><label className={flow.nameCardSwitch}><input type="checkbox" checked={nameCard.enabled || false} disabled={disabled} onChange={event => onChange({ ...value, name_card: { ...nameCard, enabled: event.target.checked } })} /><span>{nameCard.enabled ? "开启" : "关闭"}</span></label></div>
-    {nameCard.enabled && <div className={flow.nameCardFields}><label>姓名<input value={nameCard.name || ""} maxLength={32} disabled={disabled} placeholder="请输入姓名" onChange={event => onChange({ ...value, name_card: { ...nameCard, name: event.target.value } })} /></label><label>介绍<input value={nameCard.description || ""} maxLength={80} disabled={disabled} placeholder="请输入身份或介绍" onChange={event => onChange({ ...value, name_card: { ...nameCard, description: event.target.value } })} /></label></div>}
+    {supports("title") && <label>主标题<input value={value.title || ""} maxLength={60} disabled={disabled} placeholder="选填，根据口播自动生成" onChange={event => onChange({ ...value, title: event.target.value })} /></label>}
+    {supports("subtitle") && <label>副标题<input value={value.subtitle || ""} maxLength={100} disabled={disabled} placeholder="选填，根据口播自动生成" onChange={event => onChange({ ...value, subtitle: event.target.value })} /></label>}
+    {supports("name_card") && <><div className={flow.nameCardHeading}><h3>人物名片</h3><label className={flow.nameCardSwitch}><input type="checkbox" checked={nameCard.enabled || false} disabled={disabled} onChange={event => onChange({ ...value, name_card: { ...nameCard, enabled: event.target.checked } })} /><span>{nameCard.enabled ? "开启" : "关闭"}</span></label></div>
+    {nameCard.enabled && <div className={flow.nameCardFields}><label>姓名<input value={nameCard.name || ""} maxLength={32} disabled={disabled} placeholder="请输入姓名" onChange={event => onChange({ ...value, name_card: { ...nameCard, name: event.target.value } })} /></label><label>介绍<input value={nameCard.description || ""} maxLength={80} disabled={disabled} placeholder="请输入身份或介绍" onChange={event => onChange({ ...value, name_card: { ...nameCard, description: event.target.value } })} /></label></div>}</>}
   </div>;
 }
 

@@ -72,13 +72,18 @@ norecursedirs = ["skill_sources"]
 [tool.ruff]
 target-version = "py313"
 line-length = 88
-extend-exclude = ["skill_sources", "app/replica_exact_versions/v16"]
+extend-exclude = [
+  "skill_sources",
+  "app/replica_exact_versions/v16",
+  "app/bihuo_suite/templates",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
 python_version = "3.13"
+exclude = ["(^|/)bihuo_suite/templates/"]
 check_untyped_defs = true
 disallow_untyped_defs = true
 ignore_missing_imports = true
@@ -108,6 +113,10 @@ module = [
 ignore_errors = true
 
 # Frozen historical protocols and the byte-pinned sister bundle retain source identity.
+[[tool.mypy.overrides]]
+module = ["app.bihuo_suite.templates.*"]
+ignore_errors = true
+
 [[tool.mypy.overrides]]
 module = [
   "app.replica_exact_versions.v8.*",

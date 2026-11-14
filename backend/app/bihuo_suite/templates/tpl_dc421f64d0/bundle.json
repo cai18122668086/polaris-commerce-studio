@@ -1,0 +1,30 @@
+{
+  "schema": "tengli.bihuo-runtime-bundle/1",
+  "version": "1.0.0",
+  "runtime": "runtime.py",
+  "files": {
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "data/coupling.json": "a82df66784943eced409c99e4c94393e939c3875b63e409b8a078724216e0bd6",
+    "data/defaults.json": "44b57dfb428c99420715a88ac067c7cdeb4ac9575aa08ae2098f2ac62a5be490",
+    "data/source-model.json": "e2d4b61fa7267a6d70a4f421328d15ff4c38a790c9072587b774a9a2b265c01e",
+    "data/stage-fit.json": "e5411778bff776ad096743a6d462fbfafde98017f67cdfe599224bcb61547e89",
+    "fonts/62383707c086-思源黑体_CN_Bold--62383707c086.otf": "62383707c086a32f3afd5e293f34c7eff64c7fea31f579fdc6cbe34d920519a6",
+    "fonts/fbecfacdfac3-抖音美好体_Bold--fbecfacdfac3.ttf": "fbecfacdfac33982774e301073a8d357a09c698cd3134bb6ddec0f5bfc268fa1",
+    "README.md": "f8dcafde15292fc2fe329d2160264aaec3aa7095943175b8ab1ac6d27d168205",
+    "runtime.py": "ae47c36c7c5036af35958270bb419bd52885d85b16195e2c8c5cc8c35b0dad97",
+    "silver_engine.py": "58483a455adce5de2e70098e15487f089d7d61a70cc2b55ad83b74a1b76e3c9c",
+    "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vendor/apple_minimal/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vendor/apple_minimal/media.py": "da8d0c7d127600b8c73a778c9ab5f97b16fcbfe32ce89fbcc3cf911edcd8efed",
+    "vendor/apple_minimal/pilot.py": "1a2d7f7d2fb4abc6ab8b22ed917925769a2c266e90f87af366e00b2d5335ea42",
+    "vendor/apple_minimal/visual.py": "aa6b28878cf10d4d3f93acd021101a955c6b526c348f67b862a3c09ed19b7a2e",
+    "vendor/subtitle_engine/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vendor/subtitle_engine/core.py": "2a032c21501dfb3e2e7e8f70d8ebcc9c325bf402f4997fdacd3fade70eb04a6f",
+    "vendor/subtitle_engine/split_title.py": "43e0989a8ba2ab3730d8fd681d42cfe49d9b5faff718f852b95dde0c7c996237"
+  },
+  "fonts": {
+    "caption": "fonts/62383707c086-思源黑体_CN_Bold--62383707c086.otf",
+    "title": "fonts/fbecfacdfac3-抖音美好体_Bold--fbecfacdfac3.ttf"
+  },
+  "template_id": "tpl_dc421f64d0"
+}

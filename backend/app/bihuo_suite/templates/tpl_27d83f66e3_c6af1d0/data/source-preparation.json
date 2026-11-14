@@ -1,0 +1,139 @@
+{
+  "source": "D:\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\media\\20261112_115257_cov1111-950.mp4",
+  "source_SHA256": "aea4dfbdb9be97d3e3f620f77ffd8f25163e249e929041300b14e2472d0ab1f2",
+  "continuous_decoded_scope": [
+    0,
+    243
+  ],
+  "actual_native_frames": [
+    {
+      "frame": 0,
+      "PTS": 0.0,
+      "RGB_SHA256": "e42a76e64569cb678976623cead4d679e3f821863917cce7b3547f99fb211f5c"
+    },
+    {
+      "frame": 1,
+      "PTS": 0.04,
+      "RGB_SHA256": "3b0869d5df980a3de491027cebbb076e11d934513d13d71a14f407a3300b3018"
+    },
+    {
+      "frame": 25,
+      "PTS": 1.0,
+      "RGB_SHA256": "0d488fcd617e84e561deb88cb0a674973f7791cb19c51449f82ac0ee67c44c65"
+    },
+    {
+      "frame": 33,
+      "PTS": 1.32,
+      "RGB_SHA256": "c55550cb8ef65767f041cf341255cbc7d45cab4ff60071867d5aa5c77a8b3d2e"
+    },
+    {
+      "frame": 56,
+      "PTS": 2.24,
+      "RGB_SHA256": "07f973a4cade4c954f42155d4c7eb7b1f71f6a134b7fb31a97cc470303bb263b"
+    },
+    {
+      "frame": 64,
+      "PTS": 2.56,
+      "RGB_SHA256": "673866f24f930f9a2c7cd2259dd3ad4714272913f8976b8f1d2da2f8594d7642"
+    },
+    {
+      "frame": 70,
+      "PTS": 2.8,
+      "RGB_SHA256": "fcefcded02fe60f18cea984de079177847e9065c27c5cfdc996f78ceb37b304a"
+    },
+    {
+      "frame": 76,
+      "PTS": 3.04,
+      "RGB_SHA256": "d86237659217e6e2a67406fb49c50f0b2da7ad772579401be068e6d5ab4d3677"
+    },
+    {
+      "frame": 80,
+      "PTS": 3.2,
+      "RGB_SHA256": "16707a02fe72a5a93b75a22198b71cf5a03ef4f068d70e7b00bb6f1bbc48f44a"
+    },
+    {
+      "frame": 95,
+      "PTS": 3.8,
+      "RGB_SHA256": "7919560b96d428fb2051385a9db5f2905662f80c89a096f0fffd6023c8642bc3"
+    },
+    {
+      "frame": 102,
+      "PTS": 4.08,
+      "RGB_SHA256": "b8b5c399b87d141610ddf60608b6035c78cd9ed914babcb21d701e6823ba0327"
+    },
+    {
+      "frame": 123,
+      "PTS": 4.92,
+      "RGB_SHA256": "c501b01595e18fd10d86341bcc031ede0f598562165b7529b682c4e326adfaf2"
+    },
+    {
+      "frame": 150,
+      "PTS": 6.0,
+      "RGB_SHA256": "0b6c6c44bfb9ed25cf8034b5f13769b17fd2f4b838a51c8e9288cc7a4c984242"
+    },
+    {
+      "frame": 230,
+      "PTS": 9.2,
+      "RGB_SHA256": "1c88a8869e685c00716c25bf3a9c116eb7c7abf51e95391749b71a1d6b2f40ff"
+    },
+    {
+      "frame": 242,
+      "PTS": 9.68,
+      "RGB_SHA256": "09d6eb1cb38d6f3b063774d408debd21fbdbe5d96407aff1eecf723198744749"
+    }
+  ],
+  "source_repairs": [
+    {
+      "kind": "material",
+      "index": 0,
+      "native_frame": 95,
+      "source_RGB_SHA256": "7919560b96d428fb2051385a9db5f2905662f80c89a096f0fffd6023c8642bc3",
+      "mask_SHA256": "c59b6524fbbdc606e1cf39ec6ff36803470498edf7c06b0d4b42f0168e451f4f",
+      "after_SHA256": "472244c008dd81674e2962c47bb36c3aa4ae21d0ad00110447792d181fa691eb",
+      "unknown_pixels_under_circle_and_glow": true,
+      "not_author_original_asset": true,
+      "embedded_labels_preserved_not_subtitle_tracks": true
+    },
+    {
+      "kind": "material",
+      "index": 1,
+      "native_frame": 150,
+      "source_RGB_SHA256": "0b6c6c44bfb9ed25cf8034b5f13769b17fd2f4b838a51c8e9288cc7a4c984242",
+      "mask_SHA256": "c59b6524fbbdc606e1cf39ec6ff36803470498edf7c06b0d4b42f0168e451f4f",
+      "after_SHA256": "aaae1478ffde412c96fb2b7912581a0a2c03aa583d419ac0f68799b04ac7856f",
+      "unknown_pixels_under_circle_and_glow": true,
+      "not_author_original_asset": true,
+      "embedded_labels_preserved_not_subtitle_tracks": true
+    },
+    {
+      "kind": "paper",
+      "native_frame": 242,
+      "known_paper_from_frame1": true,
+      "unknown_mask": "D:\\Desktop\\cyh\\剪辑\\必火全模板批次_20261113\\projects\\tpl_27d83f66e3_c6af1d0\\source\\pilot-orange-v1\\source-paper-mask.png",
+      "unknown_pixel_count": 33904,
+      "patch_algorithm": "Telea3 only uncoveredsourcepaperholes; newinput usesproceduralpaper, notthisrepair",
+      "palette_RGB": [
+        194.0,
+        173.0,
+        147.0
+      ]
+    }
+  ],
+  "ordinary_white_ink_proxies": {
+    "0": [
+      280,
+      1552,
+      590,
+      1649
+    ],
+    "33": [
+      279,
+      1552,
+      800,
+      1650
+    ]
+  },
+  "caption_proxy_threshold": "minRGB>225,R-B<18,lower1450..1700; originalglyphshape unknown",
+  "no_human_matte_in_scope": true,
+  "source_fidelity_pass": false
+}

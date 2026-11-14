@@ -1,0 +1,750 @@
+{
+  "kind": "app-top",
+  "font_roles": [
+    "bold",
+    "body"
+  ],
+  "defaults": {
+    "schema": "app-window-pilot/1",
+    "engine": "app-window",
+    "size": [
+      540,
+      960
+    ],
+    "fps": 25,
+    "duration": 21.043,
+    "fonts": {
+      "bold": "fonts/62383707c086-思源黑体_CN_Bold--62383707c086.otf",
+      "body": "fonts/9c62ceb174d7-Noto_Sans_SC_Medium--9c62ceb174d7.otf"
+    },
+    "source_mode": "clean-raw",
+    "source_warm_frame": false,
+    "header_title": "新品上架",
+    "header_support": "主图 · 详情 · 整套",
+    "category": "商品图检查",
+    "material_mode": "provided",
+    "chapters": [
+      {
+        "at": 0,
+        "nav": "上架前",
+        "nav_support": "商品图检查",
+        "label": "检查目标",
+        "gray": "新品上架前",
+        "blue": "先检查这三件事",
+        "gray_y": 956,
+        "blue_y": 1002,
+        "gray_at": 0.17,
+        "blue_at": 1.29,
+        "contrast": [
+          {
+            "label": "检查对象",
+            "text": "商品图",
+            "at": 1.29,
+            "reveal": 0.2
+          },
+          {
+            "label": "检查方法",
+            "text": "三件事",
+            "at": 2.15,
+            "reveal": 0.2,
+            "emphasis": true
+          }
+        ],
+        "connector_at": 2.3899999999999997
+      },
+      {
+        "at": 2.67,
+        "nav": "三件事",
+        "nav_support": "主图 · 详情 · 整套",
+        "label": "检查三步",
+        "gray": "商品图检查",
+        "blue": "主图、详情、整套",
+        "items": [
+          {
+            "text": "主图",
+            "enter_at": 3.07,
+            "at": 3.15,
+            "clear_at": 3.3899999999999997
+          },
+          {
+            "text": "详情",
+            "enter_at": 7.57,
+            "at": 7.65,
+            "clear_at": 7.890000000000001
+          },
+          {
+            "text": "整套图片",
+            "enter_at": 11.31,
+            "at": 11.39,
+            "clear_at": 11.63
+          }
+        ]
+      },
+      {
+        "at": 17.61,
+        "nav": "讲清楚",
+        "nav_support": "",
+        "label": "讲清产品",
+        "gray": "把图片讲清楚",
+        "blue": "",
+        "gray_y": 984,
+        "quote": {
+          "first": "把图片讲清楚，",
+          "second": "顾客才能更快看懂你的产品。",
+          "support": "",
+          "first_at": 17.77,
+          "second_at": 18.75,
+          "first_reveal": 0.56,
+          "second_reveal": 0.24,
+          "support_reveal": 0.32,
+          "compact_optional_roles": true
+        }
+      }
+    ],
+    "limits": [
+      "Scoped pilot adapter reuses the same authorized generated source, approved whole-script semantic plan and native FA clocks. No new production planner or FA request claimed.",
+      "Contrast roles are source-grounded subject/method, not an invented claim that the new speaker made a mistake.",
+      "Original reference font/BGM/FX identity unknown; new source voice preserved.",
+      "Native1/2/3-node capacity probes and optional-image pairing are separate checks, not all-style or production validation.",
+      "Supplied-image column/stacked nodes are a new app-window pairing trial, not measured source-native composition or prior effect approval.",
+      "Full-suite extension of user-approved first2 chain. Thirdquote/sourcecurve/fonts remain candidate pending actualnewgroup review; not fulltemplate orcleanroom acceptance.",
+      "Original24.04seconds baseline601frames;new21.043seconds sampled526frames/21.04seconds withsamearchived101tokenFA/14semanticcaptions,notvoice-retimed."
+    ],
+    "captions": [
+      {
+        "first_token_id": "f5aa6f8e9338b-t000000",
+        "last_token_id": "f5aa6f8e9338b-t000004",
+        "time": [
+          0.17,
+          0.97
+        ],
+        "text": "新品上架前，",
+        "lines": [
+          {
+            "text": "新品上架前，",
+            "emphasis_spans": [
+              [
+                0,
+                2
+              ]
+            ]
+          }
+        ],
+        "emphasis": "新品",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000000",
+            "last_token_id": "f5aa6f8e9338b-t000001"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 3,
+        "emphasis_adjustments": [],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000005",
+        "last_token_id": "f5aa6f8e9338b-t000014",
+        "time": [
+          1.29,
+          2.51
+        ],
+        "text": "商品图先检查这三件事。",
+        "lines": [
+          {
+            "text": "商品图先检查这三件事。",
+            "emphasis_spans": [
+              [
+                0,
+                3
+              ]
+            ]
+          }
+        ],
+        "emphasis": "商品图",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000005",
+            "last_token_id": "f5aa6f8e9338b-t000007"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 3,
+        "body_characters": 7,
+        "emphasis_adjustments": [],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000015",
+        "last_token_id": "f5aa6f8e9338b-t000018",
+        "time": [
+          3.15,
+          3.85
+        ],
+        "text": "先看主图，",
+        "lines": [
+          {
+            "text": "先看主图，",
+            "emphasis_spans": [
+              [
+                2,
+                4
+              ]
+            ]
+          }
+        ],
+        "emphasis": "主图",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000017",
+            "last_token_id": "f5aa6f8e9338b-t000018"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 2,
+        "emphasis_adjustments": [],
+        "color": "black"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000019",
+        "last_token_id": "f5aa6f8e9338b-t000024",
+        "time": [
+          4.23,
+          5.07
+        ],
+        "text": "产品是否清楚，",
+        "lines": [
+          {
+            "text": "产品是否清楚，",
+            "emphasis_spans": [
+              [
+                0,
+                2
+              ]
+            ]
+          }
+        ],
+        "emphasis": "产品",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000019",
+            "last_token_id": "f5aa6f8e9338b-t000020"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 4,
+        "emphasis_adjustments": [],
+        "color": "black"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000025",
+        "last_token_id": "f5aa6f8e9338b-t000035",
+        "time": [
+          5.59,
+          6.97
+        ],
+        "text": "核心卖点能不能一眼看懂。",
+        "lines": [
+          {
+            "text": "核心卖点能不能一眼看懂。",
+            "emphasis_spans": [
+              [
+                0,
+                4
+              ]
+            ]
+          }
+        ],
+        "emphasis": "核心卖点",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000025",
+            "last_token_id": "f5aa6f8e9338b-t000028"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 4,
+        "body_characters": 7,
+        "emphasis_adjustments": [],
+        "color": "black"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000036",
+        "last_token_id": "f5aa6f8e9338b-t000039",
+        "time": [
+          7.65,
+          8.43
+        ],
+        "text": "再看详情，",
+        "lines": [
+          {
+            "text": "再看详情，",
+            "emphasis_spans": [
+              [
+                2,
+                4
+              ]
+            ]
+          }
+        ],
+        "emphasis": "详情",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000038",
+            "last_token_id": "f5aa6f8e9338b-t000039"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 2,
+        "emphasis_adjustments": [],
+        "color": "black"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000040",
+        "last_token_id": "f5aa6f8e9338b-t000052",
+        "time": [
+          8.69,
+          10.79
+        ],
+        "text": "规格和使用场景有没有讲完整。",
+        "lines": [
+          {
+            "text": "规格和使用场景有没有讲完整。",
+            "emphasis_spans": [
+              [
+                0,
+                2
+              ],
+              [
+                5,
+                7
+              ]
+            ]
+          }
+        ],
+        "emphasis": "规格",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000040",
+            "last_token_id": "f5aa6f8e9338b-t000041"
+          },
+          {
+            "first_token_id": "f5aa6f8e9338b-t000043",
+            "last_token_id": "f5aa6f8e9338b-t000046"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 4,
+        "body_characters": 9,
+        "emphasis_adjustments": [
+          {
+            "text": "规格和使用场景有没有讲完整。",
+            "model_spans": [
+              [
+                0,
+                2
+              ],
+              [
+                3,
+                7
+              ]
+            ],
+            "render_spans": [
+              [
+                0,
+                2
+              ],
+              [
+                5,
+                7
+              ]
+            ]
+          }
+        ],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000053",
+        "last_token_id": "f5aa6f8e9338b-t000059",
+        "time": [
+          11.39,
+          12.25
+        ],
+        "text": "最后看整套图片，",
+        "lines": [
+          {
+            "text": "最后看整套图片，",
+            "emphasis_spans": [
+              [
+                5,
+                7
+              ]
+            ]
+          }
+        ],
+        "emphasis": "图片",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000056",
+            "last_token_id": "f5aa6f8e9338b-t000059"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 5,
+        "emphasis_adjustments": [
+          {
+            "text": "最后看整套图片，",
+            "model_spans": [
+              [
+                3,
+                7
+              ]
+            ],
+            "render_spans": [
+              [
+                5,
+                7
+              ]
+            ]
+          }
+        ],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000060",
+        "last_token_id": "f5aa6f8e9338b-t000069",
+        "time": [
+          12.77,
+          14.27
+        ],
+        "text": "颜色和排版是不是统一。",
+        "lines": [
+          {
+            "text": "颜色和排版是不是统一。",
+            "emphasis_spans": [
+              [
+                0,
+                2
+              ],
+              [
+                3,
+                5
+              ]
+            ]
+          }
+        ],
+        "emphasis": "颜色",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000060",
+            "last_token_id": "f5aa6f8e9338b-t000061"
+          },
+          {
+            "first_token_id": "f5aa6f8e9338b-t000063",
+            "last_token_id": "f5aa6f8e9338b-t000064"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 4,
+        "body_characters": 6,
+        "emphasis_adjustments": [],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000070",
+        "last_token_id": "f5aa6f8e9338b-t000073",
+        "time": [
+          14.41,
+          15.25
+        ],
+        "text": "检查完成，",
+        "lines": [
+          {
+            "text": "检查完成，",
+            "emphasis_spans": [
+              [
+                0,
+                2
+              ]
+            ]
+          }
+        ],
+        "emphasis": "检查",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000070",
+            "last_token_id": "f5aa6f8e9338b-t000073"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 2,
+        "emphasis_adjustments": [
+          {
+            "text": "检查完成，",
+            "model_spans": [
+              [
+                0,
+                4
+              ]
+            ],
+            "render_spans": [
+              [
+                0,
+                2
+              ]
+            ]
+          }
+        ],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000074",
+        "last_token_id": "f5aa6f8e9338b-t000078",
+        "time": [
+          15.57,
+          16.25
+        ],
+        "text": "再导出预览，",
+        "lines": [
+          {
+            "text": "再导出预览，",
+            "emphasis_spans": [
+              [
+                1,
+                3
+              ]
+            ]
+          }
+        ],
+        "emphasis": "导出",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000075",
+            "last_token_id": "f5aa6f8e9338b-t000078"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 3,
+        "emphasis_adjustments": [
+          {
+            "text": "再导出预览，",
+            "model_spans": [
+              [
+                1,
+                5
+              ]
+            ],
+            "render_spans": [
+              [
+                1,
+                3
+              ]
+            ]
+          }
+        ],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000079",
+        "last_token_id": "f5aa6f8e9338b-t000082",
+        "time": [
+          16.55,
+          17.07
+        ],
+        "text": "逐张核对。",
+        "lines": [
+          {
+            "text": "逐张核对。",
+            "emphasis_spans": [
+              [
+                2,
+                4
+              ]
+            ]
+          }
+        ],
+        "emphasis": "核对",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000079",
+            "last_token_id": "f5aa6f8e9338b-t000082"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 2,
+        "emphasis_adjustments": [
+          {
+            "text": "逐张核对。",
+            "model_spans": [
+              [
+                0,
+                4
+              ]
+            ],
+            "render_spans": [
+              [
+                2,
+                4
+              ]
+            ]
+          }
+        ],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000083",
+        "last_token_id": "f5aa6f8e9338b-t000088",
+        "time": [
+          17.61,
+          18.41
+        ],
+        "text": "把图片讲清楚，",
+        "lines": [
+          {
+            "text": "把图片讲清楚，",
+            "emphasis_spans": [
+              [
+                1,
+                3
+              ]
+            ]
+          }
+        ],
+        "emphasis": "图片",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000084",
+            "last_token_id": "f5aa6f8e9338b-t000085"
+          },
+          {
+            "first_token_id": "f5aa6f8e9338b-t000086",
+            "last_token_id": "f5aa6f8e9338b-t000088"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 2,
+        "body_characters": 4,
+        "emphasis_adjustments": [
+          {
+            "text": "把图片讲清楚，",
+            "model_spans": [
+              [
+                1,
+                3
+              ],
+              [
+                3,
+                6
+              ]
+            ],
+            "render_spans": [
+              [
+                1,
+                3
+              ]
+            ]
+          }
+        ],
+        "color": "white"
+      },
+      {
+        "first_token_id": "f5aa6f8e9338b-t000089",
+        "last_token_id": "f5aa6f8e9338b-t000100",
+        "time": [
+          18.75,
+          20.63
+        ],
+        "text": "顾客才能更快看懂你的产品。",
+        "lines": [
+          {
+            "text": "顾客才能更快看懂你的产品。",
+            "emphasis_spans": [
+              [
+                0,
+                2
+              ],
+              [
+                6,
+                8
+              ]
+            ]
+          }
+        ],
+        "emphasis": "顾客",
+        "emphasis_token_spans": [
+          {
+            "first_token_id": "f5aa6f8e9338b-t000089",
+            "last_token_id": "f5aa6f8e9338b-t000090"
+          },
+          {
+            "first_token_id": "f5aa6f8e9338b-t000095",
+            "last_token_id": "f5aa6f8e9338b-t000096"
+          }
+        ],
+        "caption_policy": "full-script-semantic-phrases/1",
+        "emphasis_policy": "sparse-keyword-emphasis/1",
+        "emphasis_characters": 4,
+        "body_characters": 8,
+        "emphasis_adjustments": [],
+        "color": "white"
+      }
+    ],
+    "evidence_times": [
+      0,
+      0.52,
+      1.29,
+      1.49,
+      2.15,
+      2.35,
+      2.55,
+      2.67,
+      2.75,
+      2.9899999999999998,
+      3.07,
+      3.15,
+      3.39,
+      7.57,
+      7.65,
+      7.89,
+      11.31,
+      11.39,
+      11.63,
+      17.52,
+      17.61,
+      17.77,
+      17.93,
+      18.33,
+      18.75,
+      18.99,
+      20.63,
+      21
+    ],
+    "raw_crop": [
+      0,
+      420,
+      1080,
+      1080
+    ]
+  }
+}

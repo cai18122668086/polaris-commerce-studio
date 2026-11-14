@@ -204,7 +204,11 @@ def compile_render_input(
         raise ValueError("Bihuo compilation requires its selected recipe compiler")
 
     def fitted_recipe(resolved: dict, **options: Any) -> dict:
-        return _fit_capsule_captions(recipe_compiler(resolved, **options), transcript)
+        from .conditional_layout import prepare
+
+        return prepare(
+            _fit_capsule_captions(recipe_compiler(resolved, **options), transcript)
+        )
 
     cards = [{**asset, "id": ident} for ident, asset in asset_files.items()]
     verified = verify_plan(plan, transcript, cards)

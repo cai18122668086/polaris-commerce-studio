@@ -220,10 +220,12 @@ def plan_suite(
     if snapshot.get("engine") == "bihuo-full-suite":
         from .bihuo_suite.planning import verify_plan
         from .bihuo_suite.registry import definition
+        from .bihuo_suite.video_materials import capabilities
 
         meta = definition(snapshot["template_id"])
         profile = {
             **meta,
+            "capabilities": capabilities(meta),
             "engine": snapshot["engine"],
             "version": snapshot["engine_bundle"]["version"],
             "flow": meta["description"],
@@ -479,9 +481,19 @@ def render_suite(
             )
 
         def compiler(resolved: dict, **kwargs: Any) -> dict:
+            from .bihuo_suite.video_materials import compile_request as compile_media
+
             kwargs.pop("fonts", None)
             kwargs.pop("music", None)
-            return compile_request(template_id, resolved, **kwargs)
+            return compile_media(
+                template_id,
+                resolved,
+                compile_request,
+                root=root,
+                settings=settings,
+                guard=guard,
+                **kwargs,
+            )
 
     else:
         selected_fonts = suite_fonts(settings)

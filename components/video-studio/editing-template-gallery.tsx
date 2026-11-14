@@ -89,7 +89,7 @@ export function EditingTemplateGallery({ workspaceId, projectId, selected, onSel
     {error && <p role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>重试</button></p>}
     {!cards.length && !error && <p role="status">正在读取模板…</p>}
     <div className={styles.templateScroll}><div className={styles.grid}>{shortlist.map(card => cardView(card))}</div></div>
-    {selectedCard && <div className={styles.selectedSummary}><span className={styles.selectionLabel}><Check size={14} /> 已选模板</span><strong>{selectedCard.name}</strong><span>{(selectedCard.capabilities?.includes("images") ?? selectedCard.material_mode === "images") ? "支持配图 · 按需添加" : "以口播和文字呈现"}</span></div>}
+    {selectedCard && <div className={styles.selectedSummary}><span className={styles.selectionLabel}><Check size={14} /> 已选模板</span><strong>{selectedCard.name}</strong><span>{selectedCard.capabilities?.includes("video_materials") ? "支持图片和视频 · 按需添加" : (selectedCard.capabilities?.includes("images") ?? selectedCard.material_mode === "images") ? "支持配图 · 按需添加" : "以口播和文字呈现"}</span></div>}
     {libraryOpen && <Dialog title="模板库" wide className={styles.templateLibraryDialog} onClose={() => setLibraryOpen(false)}><div className={styles.libraryFilters}>
       <label className={styles.searchBox}><Search size={16} /><input className={styles.templateSearch} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索模板、风格、字幕…" aria-label="搜索模板" /></label>
       <div className={styles.filters} role="group" aria-label="模板分类">{["全部", ...new Set(cards.map(card => card.category))].map(category => <button type="button" key={category} aria-pressed={filter === category} onClick={() => setFilter(category)}>{category}</button>)}</div>

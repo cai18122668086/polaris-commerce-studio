@@ -5,11 +5,116 @@ Existing plans accepted by the Apple bridge retain exactly that compilation;
 only interleaved Bihuo body roles use the independent span bridge below.
 """
 
+import re
 from copy import deepcopy
 from typing import Any
 
 from .. import video_editing_apple_contracts as contracts
+from ..video_editing_captioning import text_boundaries
 from ..video_editing_contracts import Transcript
+
+
+def _fit_capsule_captions(payload: dict, transcript: Transcript) -> dict:
+    """Supply a missing display break using the frozen native font metrics.
+
+    This only changes rendered lines, never the saved plan or source clock.
+    """
+    if payload.get("template_id") != "bihuo-02-v1":
+        return payload
+    from .registry import runtime
+
+    native = runtime("bihuo-02-v1").capsule
+    cfg = payload["config"]
+    scale = cfg["size"][0] / 1080
+    limit = 990 * scale
+    positions = contracts._index(transcript)
+
+    def width(line: dict) -> float:
+        return sum(
+            native.font(
+                cfg["fonts"]["caption"],
+                cfg.get("emphasis_size", 74) * scale
+                if active
+                else cfg.get("caption_size", 62) * scale,
+            ).getlength(text)
+            for text, active in native.approved_visual.caption_parts(line)
+        )
+
+    changed = []
+    for cue in cfg["captions"]:
+        lines = cue.get("lines", [{"text": cue["text"], "emphasis_spans": []}])
+        if all(width(line) <= limit for line in lines):
+            changed.append(cue)
+            continue
+        if len(lines) != 1:
+            raise ValueError(
+                "Capsule caption exceeds native capacity after explicit break"
+            )
+        line = lines[0]
+        text = line["text"]
+        if not cue.get("first_token_id") or not cue.get("last_token_id"):
+            raise ValueError(
+                "Capsule caption exceeds native capacity without recorded token bounds"
+            )
+        first, last = positions[cue["first_token_id"]], positions[cue["last_token_id"]]
+        words = transcript.tokens[first : last + 1]
+        if contracts._join([word.text for word in words]) != text:
+            raise ValueError("Capsule caption text differs from its recorded tokens")
+        safe, preferred = text_boundaries(text)
+        emphasis = line.get("emphasis_spans", [])
+        original_emphasis = [
+            (positions[row["first_token_id"]], positions[row["last_token_id"]])
+            for row in cue.get("emphasis_token_spans", [])
+        ]
+        candidates = []
+        for stop in range(1, len(words)):
+            cut = len(contracts._join([word.text for word in words[:stop]]))
+            if cut not in safe or any(a < cut < b for a, b in emphasis):
+                continue
+            if any(a < first + stop <= b for a, b in original_emphasis):
+                continue
+            parts = []
+            for begin, end in ((0, cut), (cut, len(text))):
+                fragment = text[begin:end]
+                if not re.search(r"\w", fragment):
+                    break
+                parts.append(
+                    {
+                        "text": fragment,
+                        "emphasis_spans": [
+                            [a - begin, b - begin]
+                            for a, b in emphasis
+                            if begin <= a < b <= end
+                        ],
+                    }
+                )
+            if len(parts) != 2:
+                continue
+            widths = [width(part) for part in parts]
+            if max(widths) <= limit:
+                candidates.append(
+                    (
+                        (
+                            cut not in preferred,
+                            max(widths),
+                            abs(widths[0] - widths[1]),
+                            cut,
+                        ),
+                        parts,
+                    )
+                )
+        if not candidates:
+            raise ValueError(
+                "Capsule caption has no safe two-line native-capacity layout"
+            )
+        changed.append({**cue, "lines": min(candidates, key=lambda row: row[0])[1]})
+    if any(a is not b for a, b in zip(changed, cfg["captions"], strict=True)):
+        payload = {**payload, "config": {**cfg, "captions": changed}}
+    # Exercise the actual native painter now; do not defer capacity errors to
+    # the subprocess after source preparation and a long video render.
+    for cue in payload["config"]["captions"]:
+        native.caption(payload["config"], sum(cue["time"]) / 2)
+    return payload
 
 
 def verify_plan(
@@ -97,14 +202,18 @@ def compile_render_input(
 ) -> dict[str, Any]:
     if recipe_compiler is None:
         raise ValueError("Bihuo compilation requires its selected recipe compiler")
+
+    def fitted_recipe(resolved: dict, **options: Any) -> dict:
+        return _fit_capsule_captions(recipe_compiler(resolved, **options), transcript)
+
     cards = [{**asset, "id": ident} for ident, asset in asset_files.items()]
     verified = verify_plan(plan, transcript, cards)
-    kwargs = dict(
+    kwargs: dict[str, Any] = dict(
         creative_options=creative_options,
         music=music,
         ffmpeg=ffmpeg,
         size=size,
-        recipe_compiler=recipe_compiler,
+        recipe_compiler=fitted_recipe,
     )
     try:
         contracts.verify_plan(verified, transcript, cards, allow_mixed_body=True)
@@ -131,7 +240,7 @@ def compile_render_input(
     def independent_roles(resolved: dict, **options: Any) -> dict:
         # The normal resolver still binds all captions, materials and points.
         # Feature times come from the same actual source tokens, without moves.
-        return recipe_compiler({**resolved, "features": features}, **options)
+        return fitted_recipe({**resolved, "features": features}, **options)
 
     kwargs["recipe_compiler"] = independent_roles
     return contracts.compile_render_input(

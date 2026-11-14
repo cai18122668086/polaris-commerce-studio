@@ -132,6 +132,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const candidates = tasks.filter(task => task.status === "completed" && task.source_frame?.supports_native_portrait !== false && task.artifacts.some(a => a.role === "transcript"));
   const selectedCandidate = candidates.some(task => task.id === selected) ? selected : "";
   const eligible = jobs.filter(canBatchPreview);
+  const savedRecoveries = jobs.filter(job => job.mode === "generate" && !retiredTemplate(job) && ["failed", "cancelled"].includes(job.status) && job.call_state === "response_saved");
   const batchIds = batchSelection.filter(id => eligible.some(job => job.id === id));
   const showBatch = eligible.length >= 2 || batchIds.length > 0;
   const refresh = useCallback(async () => unwrapApiResponse(await apiClient.GET(`${root}/projects/{project_id}/editing-planning-tasks`, {
@@ -304,6 +305,14 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     {prepared && (!!prepared.template_style_blockers?.length || (prepared.available_template_group_count ?? 1) < 1) && <button type="button" disabled={busy} onClick={() => void submit("prepare")}>补齐后重新检查</button>}
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {loadError && <p role="alert" className={styles.error}>{loadError}</p>}
+    {savedRecoveries.length > 0 && <section aria-label="恢复已保存的剪辑结果" className={styles.tasks}>
+      <p>本次编排结果已保存，可继续处理，无需重新请求模型。</p>
+      {savedRecoveries.map(job => <article key={job.id} data-planning-recovery={job.id}>
+        <b>{editingTemplateName(job.overlay_template?.id, job.overlay_template?.name)}</b>
+        <p>{new Date(job.created_at).toLocaleString("zh-CN")}</p>
+        <button type="button" disabled={busy} onClick={() => void action(job, "retry")}>继续处理已保存结果</button>
+      </article>)}
+    </section>}
     <details hidden><summary>技术详情与历史编排{jobs.length ? `（${jobs.length}）` : ""}</summary>
     <details><summary>更换已识别的口播</summary><label>使用哪次识别结果？<select value={selectedCandidate} onChange={event => onSelect(event.target.value)}><option value="">请选择已有口播</option>{candidates.map(task => <option key={task.id} value={task.id}>{new Date(task.created_at).toLocaleString("zh-CN")}</option>)}</select></label></details>
     {carryFrom && <div className={styles.correction}>

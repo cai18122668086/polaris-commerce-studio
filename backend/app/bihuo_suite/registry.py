@@ -100,6 +100,7 @@ def bundle_identity(template_id: str) -> dict[str, str]:
                 ROOT / "render.py",
                 ROOT / "foreground.py",
                 ROOT / "source.py",
+                ROOT / "raster_cache.py",
             ]
         },
     }

@@ -18,7 +18,7 @@ import type { TemplateCard } from "./editing-template-gallery";
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
 type BaseTask = Pick<PreviewTask, "id" | "status" | "stage" | "created_at" | "artifacts" | "source_frame">;
-export type EditingPrimaryState = { label: string; hint: string; disabled: boolean; phase: "prepare" | "generate" | "waiting" | "rendering" | "preview" };
+export type EditingPrimaryState = { label: string; hint: string; disabled: boolean; phase: "prepare" | "generate" | "recover" | "waiting" | "rendering" | "preview" };
 export type EditingPrimaryAction = { run: () => void; cancel: () => void };
 export type CarrySelection = {
   projectId: string;
@@ -170,9 +170,9 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const submissionFailed = !!submitted && ["failed", "cancelled"].includes(submitted.status);
   const nextAction = editingPlanningAction(prepared, submitted || undefined);
   const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || nextAction === "wait" || nextAction === "blocked";
-  const primaryLabel = busy ? "正在提交…" : waiting ? "正在检查素材…" : submissionPending ? "正在编排视频…" : submissionUncertain ? "提交结果待确认" : submitted?.status === "completed" ? "查看视频预览" : submissionFailed ? "重新检查素材" : nextAction === "blocked" ? prepared && !prepared.execution_available ? "自动剪辑暂不可用" : "请先补齐素材" : prepared ? "生成预览（计费）" : "检查素材并继续";
+  const primaryLabel = busy ? "正在提交…" : waiting ? "正在检查素材…" : submissionPending ? "正在编排视频…" : submissionUncertain ? "提交结果待确认" : submitted?.status === "completed" ? "查看视频预览" : nextAction === "recover" ? "继续处理已保存结果" : submissionFailed ? "重新检查素材" : nextAction === "blocked" ? prepared && !prepared.execution_available ? "自动剪辑暂不可用" : "请先补齐素材" : prepared ? "生成预览（计费）" : "检查素材并继续";
   const primaryHint = submissionUncertain ? "请等待结果确认，避免重复提交和计费" : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
-  const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : rendering ? "rendering" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
+  const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : rendering ? "rendering" : nextAction === "recover" ? "recover" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase]);
 
   const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
@@ -259,7 +259,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   };
   useImperativeHandle(actionRef, () => ({ cancel: () => { automatic.current.cancel(); }, run: () => {
     if (primaryDisabled) return;
-    if (nextAction === "preview" && submitted) void preview(submitted);
+    if (nextAction === "recover" && submitted) { automatic.current.cancel(); void action(submitted, "retry"); }
+    else if (nextAction === "preview" && submitted) void preview(submitted);
     else if (nextAction === "generate" && prepared) void submit("generate", prepared);
     else if (nextAction === "prepare") {
       automatic.current.start(formSignature);

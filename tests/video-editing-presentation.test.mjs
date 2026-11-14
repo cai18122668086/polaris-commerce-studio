@@ -16,7 +16,9 @@ test("pending and uncertain submissions never offer another paid action", () => 
   assert.equal(editingPlanningAction(prepared, { status: "running", call_state: "intent_saved" }), "wait");
   assert.equal(editingPlanningAction(prepared, { status: "failed", call_state: "intent_saved" }), "blocked");
   assert.equal(editingPlanningAction(prepared, { status: "completed", call_state: "response_saved" }), "preview");
-  assert.equal(editingPlanningAction(prepared, { status: "failed", call_state: "response_saved" }), "prepare");
+  assert.equal(editingPlanningAction(prepared, { status: "failed", call_state: "response_saved" }), "recover");
+  assert.equal(editingPlanningAction(prepared, { status: "cancelled", call_state: "response_saved" }), "recover");
+  assert.equal(editingPlanningAction(prepared, { status: "failed", call_state: "not_submitted" }), "prepare");
 });
 
 test("missing template conditions block billing and new inputs start with free preparation", () => {

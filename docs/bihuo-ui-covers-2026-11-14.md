@@ -52,7 +52,9 @@ without the redundant example label or overlap with upper captions.
 The primary action now distinguishes recognition, planning and rendering. A
 render in progress opens its existing task; the hint explains that preview
 arrives automatically and that HD export needs one confirmation, without a
-second render. Failures are described as interruptions instead of progress.
+second render. Failures are described as interruptions instead of progress. A failed or cancelled
+job with a saved response makes the primary button retry that same job, rather
+than prepare a new paid planning request. Uncertain submissions remain blocked.
 
 Validation and recovery receipts, keyframes and UI screenshots are stored under
 `C:/tl/bihuo-ui-covers-20261114/`. The white-capsule four-combination acceptance

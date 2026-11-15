@@ -93,23 +93,49 @@ def prepare(payload: dict) -> dict:
                 )
     elif template == "bihuo-08-v1":
         policy["provided_image_text_zone"] = [60, 70, 1020, 490]
-    elif template == "bihuo-09-v1" and not cfg["materials"]:
-        phases = sorted(cfg["phases"], key=lambda row: row["entry"][0])
+    elif template == "bihuo-09-v1":
+        phases = cfg["phases"]
         quote = cfg["resolved_plan"].get("quote_start")
         closing = round(quote * 25) if quote is not None else cfg["fade_start"]
-        for i, phase in enumerate(phases):
+        for phase in phases:
             original = copy.deepcopy(phase)
-            next_start = phases[i + 1]["entry"][0] if i + 1 < len(phases) else closing
-            end = max(phase["exit"][0], next_start)
             phase["spoken_display_events"] = original
+            # Move the person before a card arrives, including text-only spans
+            # inside a mixed-material plan. Never reorder semantic slot indices.
+            phase["person_entry"] = [phase["entry"][0] - 14, phase["entry"][0] - 2]
+            if phase.get("asset_id"):
+                continue
+            next_start = min(
+                (p["entry"][0] for p in phases if p["entry"][0] > phase["entry"][0]),
+                default=closing,
+            )
+            end = max(phase["exit"][0], next_start)
             phase["exit"] = [end, min(cfg["frame_count"] - 1, end + 9)]
             phase["background_exit"] = [end, min(cfg["frame_count"] - 1, end + 11)]
-        cfg["phases"] = phases
         policy["hold_points_between_spoken_spans"] = True
+        policy["paper_composition"] = "content-led/2"
+        policy["paper_caption_layouts"] = {
+            row["id"]: _paper_caption_layout(row, cfg["fonts"]["body"])
+            for row in cfg.get("captions", [])
+        }
     elif template == "bihuo-13-v1":
         policy["opening_presenter_top"] = 380 if cfg["support"].strip() else 276
     cfg["conditional_layout"] = policy
     return {**payload, "config": cfg}
+
+
+def _paper_labels(
+    texts: list[str], font: str, width: int, sizes: tuple, rows: int, height: int
+) -> list[dict]:
+    for size in sizes:
+        try:
+            layouts = [_label(text, font, width, (size,), rows) for text in texts]
+        except ValueError:
+            continue
+        total = sum(len(v["lines"]) * (v["size"] + 12) + 16 for v in layouts) - 16
+        if total <= height:
+            return layouts
+    raise ValueError("Paper labels exceed their separate reading area")
 
 
 def _steps(native: Any, cfg: dict, t: float, scene: dict) -> Image.Image:
@@ -275,10 +301,14 @@ def _photo_text(native: Any, original: Any, cfg: dict, n: int, out: dict) -> Non
     out["material_text"] = native.op(tile, q)
 
 
-def _text_panels(native: Any, cfg: dict, n: int) -> tuple[dict, list]:
+def _text_panels(
+    native: Any, cfg: dict, n: int, indices: set[int] | None = None
+) -> tuple[dict, list]:
     roles = {}
     metrics = []
     for i, scene in enumerate(cfg["phases"]):
+        if indices is not None and i not in indices:
+            continue
         for key in ("blur_material", "material", "info_plate", "info_text"):
             roles[f"{key}_{i}"] = native.blank()
         q = native.phase(cfg, i, n)
@@ -297,10 +327,9 @@ def _text_panels(native: Any, cfg: dict, n: int) -> tuple[dict, list]:
         texts = [
             s.strip() for s in (scene["note_title"], scene["note_detail"]) if s.strip()
         ]
-        layouts = [
-            _label(s, cfg["fonts"]["title"], 432, (64, 58, 52, 46, 40, 34), 3)
-            for s in texts
-        ]
+        layouts = _paper_labels(
+            texts, cfg["fonts"]["title"], 432, (64, 58, 52, 46, 40, 34), 3, 340
+        )
         height = sum(len(v["lines"]) * (v["size"] + 12) + 16 for v in layouts) - 16
         if height > 340:
             raise ValueError("No-image point exceeds its compact reading panel")
@@ -326,13 +355,20 @@ def _text_panels(native: Any, cfg: dict, n: int) -> tuple[dict, list]:
 
 
 def _material_headers(native: Any, original: Any, cfg: dict, n: int) -> tuple:
-    # The native "actual upload example" label occupied the same horizontal
-    # space as a full spoken heading. Keep source-backed text in its own area.
+    # Reuse the native blurred backdrops, without painting an ordinal-specific
+    # foreground that will immediately be replaced. The saved input is intact.
     phases = [
-        {**phase, "note_title": "", "note_detail": "", "example": ""}
-        if native.asset(cfg, i)
-        else phase
-        for i, phase in enumerate(cfg["phases"])
+        {
+            **phase,
+            "note_title": "",
+            "note_detail": "",
+            "example": "",
+            "entry": [
+                cfg.get("frame_count", 100000) + 1,
+                cfg.get("frame_count", 100000) + 2,
+            ],
+        }
+        for phase in cfg["phases"]
     ]
     active = set()
     for i, phase in enumerate(cfg["phases"]):
@@ -366,70 +402,157 @@ def _material_headers(native: Any, original: Any, cfg: dict, n: int) -> tuple:
         for path in list(cache):
             if str(Path(path).parent) in folders and path not in current:
                 cache.pop(path)
-    roles, metrics = original({**cfg, "phases": phases, "materials": visible}, n)
+    roles, _ = original({**cfg, "phases": phases, "materials": visible}, n)
+    metrics = []
+    text_indices = set()
+    foreground = [i for i in active if native.phase(cfg, i, n) > 0]
+    heading = max(foreground, key=lambda i: cfg["phases"][i]["entry"][0], default=-1)
+    if heading >= 0:
+        for j, upcoming in enumerate(cfg["phases"]):
+            if (
+                cfg["phases"][heading]["entry"][0] < upcoming["entry"][0]
+                and upcoming["person_entry"][0] <= n < upcoming["entry"][0]
+                and bool(native.asset(cfg, heading)) != bool(native.asset(cfg, j))
+            ):
+                heading = -1
+                break
     for i, phase in enumerate(cfg["phases"]):
-        if not native.asset(cfg, i) or native.phase(cfg, i, n) <= 0:
+        if native.phase(cfg, i, n) <= 0:
             continue
-        if i not in (2, 3):
-            rect = [430, 362, 1014, 456]
-            layouts = [
-                _label(text.strip(), cfg["fonts"]["title"], 540, (36, 32, 28, 24), 1)
-                for text in (phase["note_title"], phase["note_detail"])
-                if text.strip()
-            ]
-        else:
-            match = next(row for row in metrics if row.get("phase") == i)
-            bounds = match["rect"]
-            # Keep the complete upload below a header inside this card. A band
-            # beneath the card would collide with the native upper captions.
-            rect = [bounds[0], bounds[1], bounds[2], bounds[1] + 170]
-            material = native.asset(cfg, i)
-            photo = native.media_layer(
-                material["path"],
-                [bounds[0], bounds[1] + 180, bounds[2], bounds[3]],
-                22,
-                "contain",
-            )
-            enter = native.out(phase["entry"][0] - 1, phase["entry"][1], n)
-            leave = 1 - native.ease(phase["exit"][0] - 1, phase["exit"][1], n)
-            roles[f"material_{i}"] = native.opacity(
-                native.pixel_phase(photo, bounds, enter), leave
-            )
-            layouts = [
-                _label(
-                    text.strip(),
-                    cfg["fonts"]["title"],
-                    rect[2] - rect[0] - 32,
-                    (36, 32, 28, 24),
-                    2,
-                )
-                for text in (phase["note_title"], phase["note_detail"])
-                if text.strip()
-            ]
-        total = (
-            sum(len(layout["lines"]) * (layout["size"] + 7) + 5 for layout in layouts)
-            - 5
+        material = native.asset(cfg, i)
+        if not material:
+            text_indices.add(i)
+            continue
+        with Image.open(material["path"]) as image:
+            scale = min(972 / image.width, 960 / image.height)
+            w, h = image.width * scale, image.height * scale
+        rect = [
+            round((1080 - w) / 2),
+            round((1740 - h) / 2),
+            round((1080 + w) / 2),
+            round((1740 + h) / 2),
+        ]
+        plate_rect = [rect[0] - 12, rect[1] - 12, rect[2] + 12, rect[3] + 12]
+        plate = native.blank()
+        ImageDraw.Draw(plate).rounded_rectangle(
+            tuple(plate_rect), radius=28, fill=(244, 233, 213, 255)
         )
-        if total > rect[3] - rect[1]:
-            raise ValueError("Material labels exceed their separate reading area")
-        layer = native.blank()
-        if i in (2, 3):
-            ImageDraw.Draw(layer).rounded_rectangle(
-                tuple(rect), radius=16, fill=(244, 233, 213, 248)
-            )
-        y = rect[1] + (rect[3] - rect[1] - total) / 2
-        for layout in layouts:
-            for line in layout["lines"]:
-                tile = native.ink(
-                    line, cfg["fonts"]["title"], layout["size"], (65, 45, 25, 255)
-                )
-                layer.alpha_composite(
-                    tile, (round((rect[0] + rect[2] - tile.width) / 2), round(y))
-                )
-                y += layout["size"] + 7
-            y += 5
-        roles[f"info_text_{i}"] = native.opacity(layer, native.phase(cfg, i, n))
+        photo = native.media_layer(material["path"], rect, 18, "contain")
+        enter = native.out(phase["entry"][0] - 1, phase["entry"][1], n)
+        leave = 1 - native.ease(phase["exit"][0] - 1, phase["exit"][1], n)
+        roles[f"info_plate_{i}"] = native.opacity(
+            native.pixel_phase(plate, plate_rect, enter), leave
+        )
+        roles[f"material_{i}"] = native.opacity(
+            native.pixel_phase(photo, rect, enter), leave
+        )
+        roles[f"info_text_{i}"] = (
+            native.opacity(_paper_heading(native, cfg, phase), native.phase(cfg, i, n))
+            if i == heading
+            else native.blank()
+        )
+        metrics.append(
+            {
+                "phase": i,
+                "actual_asset_id": material["id"],
+                "rect": rect,
+                "header_rect": [54, 96, 702, 350],
+                "fit": "contain",
+                "content_led": True,
+            }
+        )
+    text_roles, text_metrics = _text_panels(native, cfg, n, text_indices)
+    for i in text_indices:
+        if i != heading:
+            text_roles[f"info_text_{i}"] = native.blank()
+    roles.update(text_roles)
+    metrics.extend(text_metrics)
     return roles, metrics
+
+
+def _paper_heading(native: Any, cfg: dict, phase: dict) -> Image.Image:
+    rect = [54, 96, 702, 350]
+    texts = [
+        t.strip() for t in (phase["note_title"], phase["note_detail"]) if t.strip()
+    ]
+    layouts = _paper_labels(
+        texts, cfg["fonts"]["title"], 600, (44, 40, 36, 32, 28), 2, 230
+    )
+    height = sum(len(v["lines"]) * (v["size"] + 8) + 8 for v in layouts) - 8
+    layer = native.blank()
+    if not texts:
+        return layer
+    ImageDraw.Draw(layer).rounded_rectangle(
+        tuple(rect), radius=22, fill=(244, 233, 213, 244)
+    )
+    y = (rect[1] + rect[3] - height) / 2
+    for layout in layouts:
+        for line in layout["lines"]:
+            tile = native.ink(
+                line, cfg["fonts"]["title"], layout["size"], (65, 45, 25, 255)
+            )
+            layer.alpha_composite(
+                tile, (round((rect[0] + rect[2] - tile.width) / 2), round(y))
+            )
+            y += layout["size"] + 8
+        y += 8
+    return layer
+
+
+def _paper_caption_layout(row: dict, font: str) -> dict:
+    layout = _label(row["text"], font, 920, (80, 76, 72, 68, 64, 60, 58), 2)
+    cursor = 0
+    breaks = []
+    for line in layout["lines"][:-1]:
+        cursor += len(line)
+        breaks.append(cursor)
+    if any(a < cut < b for a, b in row.get("emphasis_spans", []) for cut in breaks):
+        return {"size": 58, "line_breaks": row.get("line_breaks", [])}
+    return {"size": layout["size"], "line_breaks": breaks}
+
+
+def _paper_pose(native: Any, cfg: dict, n: int) -> tuple:
+    rect = [102.0, 508.0, 894.0, 868.0]
+    radius, weight = 20.0, 0.0
+    for i, phase in enumerate(cfg["phases"]):
+        if not native.meaningful(cfg, i):
+            continue
+        start, end = phase["person_entry"]
+        leave = phase["background_exit"][1]
+        q = native.out(start, end, n) * (1 - native.ease(leave + 1, leave + 19, n))
+        if q <= 0:
+            continue
+        target, corner = (
+            ([748, 70, 280, 280], 140)
+            if native.asset(cfg, i)
+            else ([64, 620, 440, 440], 220)
+        )
+        rect = [a * (1 - q) + b * q for a, b in zip(rect, target, strict=True)]
+        radius = radius * (1 - q) + corner * q
+        weight = max(weight, q)
+    return rect, radius, weight
+
+
+def _paper_captions(native: Any, cfg: dict, n: int) -> tuple:
+    local = dict(cfg)
+    local["caption_baseline"] = cfg["caption_baseline"]
+    row = next((r for r in cfg["captions"] if r["range"][0] <= n < r["range"][1]), None)
+    if row:
+        layout = cfg["conditional_layout"]["paper_caption_layouts"][row["id"]]
+        local["body_size"] = layout["size"]
+        local["captions"] = [{**row, "line_breaks": layout["line_breaks"]}]
+    layers, meta = native._old_captions(local, n)
+    ink = Image.new("RGBA", native.SIZE, (65, 45, 25, 0))
+    ink.putalpha(layers["caption"].getchannel("A"))
+    plate = native.blank()
+    if bounds := ink.getbbox():
+        x, y, x2, y2 = bounds
+        ImageDraw.Draw(plate).rounded_rectangle(
+            (max(20, x - 22), max(0, y - 14), min(1060, x2 + 22), min(1920, y2 + 14)),
+            radius=18,
+            fill=(249, 241, 226, 235),
+        )
+    return {"caption_shadow": plate, "caption": ink}, meta
 
 
 @contextmanager
@@ -461,7 +584,7 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
                 "material_layers",
                 lambda c, n, out: _photo_text(module.E, old, c, n, out),
             )
-        elif template == "bihuo-09-v1" and cfg["materials"]:
+        elif template == "bihuo-09-v1":
             engine = module.E
             old_materials = engine.materials
             replace(
@@ -469,32 +592,8 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
                 "materials",
                 lambda c, n: _material_headers(engine, old_materials, c, n),
             )
-        elif template == "bihuo-09-v1" and not cfg["materials"]:
-            engine = module.E
-            replace(engine, "materials", lambda c, n: _text_panels(engine, c, n))
-
-            def text_pose(c: dict, n: int) -> tuple:
-                normal = [102, 508, 894, 868]
-                target = [64, 620, 440, 440]
-                q = max(
-                    [0.0] + [engine.phase(c, i, n) for i in range(len(c["phases"]))]
-                )
-                rect = [
-                    a * (1 - q) + b * q for a, b in zip(normal, target, strict=True)
-                ]
-                return rect, 20 + 200 * q, q
-
-            replace(engine, "pose", text_pose)
-            old_caps = engine.captions
-
-            def paper_captions(c: dict, n: int) -> tuple:
-                layers, meta = old_caps(c, n)
-                ink = Image.new("RGBA", engine.SIZE, (65, 45, 25, 0))
-                ink.putalpha(layers["caption"].getchannel("A"))
-                layers["caption"] = ink
-                return layers, meta
-
-            replace(engine, "captions", paper_captions)
+            replace(engine, "pose", lambda c, n: _paper_pose(engine, c, n))
+            replace(engine, "captions", lambda c, n: _paper_captions(engine, c, n))
         elif template == "bihuo-13-v1" and (
             cfg["title"].strip() or cfg["support"].strip()
         ):

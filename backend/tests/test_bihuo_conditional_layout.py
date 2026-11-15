@@ -232,8 +232,14 @@ def test_no_image_holds_display_without_retiming_speech_or_materials():
         "frame_count": 250,
         "fade_start": 237,
         "resolved_plan": {"quote_start": 8.0},
+        "fonts": registry.fonts("bihuo-09-v1"),
         "captions": [
-            {"text": "真实原话", "range": [10, 30], "glyph_firsts": [10, 12, 16, 22]}
+            {
+                "id": "cue",
+                "text": "真实原话",
+                "range": [10, 30],
+                "glyph_firsts": [10, 12, 16, 22],
+            }
         ],
     }
     before = copy.deepcopy(cfg)

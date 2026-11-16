@@ -32,6 +32,11 @@ from .video_editing_task_models import (
     EditingTaskRecord,
 )
 from .video_editing_transcript_store import read_transcript_artifact
+from .video_planner_policy import (
+    json_planning_options,
+    normalize_suite_output,
+    require_planning_content,
+)
 
 TEMPLATE_ID = "apple-minimal-v1"
 ENGINE = "apple-minimal-suite"
@@ -238,7 +243,11 @@ def plan_suite(
         snapshot.get("creative_options"),
         **request_options,
     )
+    if prepared_request is None or "thinking" in prepared_request:
+        body = {**body, **json_planning_options(model)}
     if prepared_request is not None:
+        if "thinking" not in prepared_request:
+            body.pop("thinking", None)
         # Reuse the exact prepared body instead of silently changing model input.
         if body != prepared_request:
             raise ApiError(
@@ -308,10 +317,14 @@ def plan_suite(
         response = {
             "request_sha256": evidence["request_sha256"],
             "content": content if isinstance(content, str) else None,
-            "provider_envelope_valid": isinstance(content, str),
+            "provider_envelope_valid": isinstance(content, str)
+            and bool(content.strip()),
             "model": data.get("model"),
             "usage": data.get("usage"),
             "provider_id": data.get("id"),
+            "finish_reason": choices[0].get("finish_reason")
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict)
+            else None,
             "gateway": planner_endpoint(settings),
             "provider_route": data.get("_polaris_planner_route"),
         }
@@ -321,8 +334,11 @@ def plan_suite(
             409, "EDITING_PLAN_RESPONSE_MISMATCH", "已保存响应与本次规划不一致。"
         )
     guard()
+    raw, adaptations = normalize_suite_output(
+        json.loads(require_planning_content(response)), transcript
+    )
     plan = verify_plan(
-        json.loads(response["content"]),
+        raw,
         transcript,
         snapshot["asset_cards"],
         require_semantic_captions=True,
@@ -330,6 +346,15 @@ def plan_suite(
     )
     path = folder / "suite-plan.json"
     atomic_json(path, plan)
+    if adaptations:
+        atomic_json(
+            folder / "semantic-adaptation.json",
+            {
+                "policy": "recorded-suite-boundaries/1",
+                "response_sha256": sha256(response_path),
+                "changes": adaptations,
+            },
+        )
     atomic_json(
         folder / "material-placement.json",
         material_placement(plan, transcript, snapshot["asset_cards"]),

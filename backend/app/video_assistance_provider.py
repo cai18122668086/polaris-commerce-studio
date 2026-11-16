@@ -14,6 +14,7 @@ from pydantic import Field
 
 from .config import Settings
 from .errors import ApiError
+from .video_planner_policy import json_planning_options
 from .video_studio_schemas import StrictVideoModel
 
 
@@ -155,13 +156,16 @@ class VideoAssistanceProvider:
                 raise ApiError(
                     502, "VIDEO_ASSISTANCE_REJECTED", "备用渠道需要文案请求。"
                 ) from None
+            fallback_body = {**body, "model": fallback_model}
+            fallback_body.pop("thinking", None)
+            fallback_body.update(json_planning_options(fallback_model))
             result = self._request_once(
                 method,
                 path,
                 fallback_base,
                 fallback_key,
                 read_timeout,
-                **{**kwargs, "json": {**body, "model": fallback_model}},
+                **{**kwargs, "json": fallback_body},
             )
             result["_polaris_planner_route"] = {
                 "channel": "fallback",
@@ -262,6 +266,7 @@ class VideoAssistanceProvider:
             "/v1/chat/completions",
             json={
                 "model": self.settings.video_script_model,
+                **json_planning_options(self.settings.video_script_model),
                 "stream": False,
                 "messages": [
                     {"role": "system", "content": prompt},

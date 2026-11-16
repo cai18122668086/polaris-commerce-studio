@@ -34,6 +34,7 @@ from .video_editing_template_styles import (
     validate_template_style,
 )
 from .video_editing_transcript_store import read_transcript_artifact
+from .video_planner_policy import bind_selected_native_assets, normalize_azl_windows
 
 
 @dataclass(frozen=True)
@@ -293,6 +294,8 @@ def _verify(
     ):
         raise ValueError("Captured semantic result no longer matches its record")
     content = data["response"]["content"]
+    native_asset_repairs: list[dict[str, Any]] = []
+    native_window_repairs: list[dict[str, Any]] = []
     if template and compact:
         semantic = expand_group_plan(
             content,
@@ -304,7 +307,21 @@ def _verify(
             runtime,
         )
     else:
-        semantic = SemanticPlan.model_validate_json(content)
+        normalized, native_window_repairs = normalize_azl_windows(
+            json.loads(content), transcript, runtime
+        )
+        normalized, native_asset_repairs = bind_selected_native_assets(
+            normalized, row.snapshot["asset_cards"]
+        )
+        semantic = SemanticPlan.model_validate(normalized)
+    if data["receipt"].get("native_asset_adaptation", []) != native_asset_repairs:
+        raise ValueError(
+            "Captured native asset binding receipt differs from selected project assets"
+        )
+    if data["receipt"].get("native_window_adaptation", []) != native_window_repairs:
+        raise ValueError(
+            "Captured measured window adaptation differs from prepared input"
+        )
     semantic, relation_adaptation = adapt_style_text_relations(
         semantic, transcript, runtime
     )

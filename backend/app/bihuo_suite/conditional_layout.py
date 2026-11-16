@@ -22,6 +22,8 @@ from ..video_editing_captioning import text_boundaries
 
 VERSION = "bihuo-conditional-layout/1"
 TARGETS = {
+    "bihuo-10-v1",
+    "bihuo-36-v1",
     "bihuo-03-v1",
     "bihuo-04-v1",
     "bihuo-08-v1",

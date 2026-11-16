@@ -105,6 +105,12 @@ from .video_editing_word_bindings import (
     word_bindings,
 )
 from .video_editing_yy_openings import YY08_QUESTION_REQUIRED, yy08_spoken_question
+from .video_planner_policy import (
+    bind_selected_native_assets,
+    json_planning_options,
+    normalize_azl_windows,
+    require_planning_content,
+)
 
 RULES_VERSION = "tengli-editorial-rules/1"
 RULES = [
@@ -784,8 +790,32 @@ def build_request(
             "asset_ids和native_media须与所选台词表达相符，不按上传顺序轮放。"
             "本次输出即最终渲染规划，不逐帧调用视觉API，不在出片后再规划。"
         )
+    if template and template["id"] == "azl-panels-v1":
+        marker = "AZL词点准入/1"
+        frozen_messages = (prepared_request or {}).get("messages")
+        frozen_system = (
+            frozen_messages[0].get("content", "")
+            if isinstance(frozen_messages, list)
+            and frozen_messages
+            and isinstance(frozen_messages[0], dict)
+            else ""
+        )
+        if prepared_request is None or marker in frozen_system:
+            message += (
+                "\nAZL词点准入/1：本模板不是把每个长句都塞进多格。"
+                "每个非Z-M00段的first_token_id和last_token_id必须完整照选"
+                "template_runtime.azl_panel_windows中的同一个选项；group_id必须在该选项group_ids内。"
+                "四个native_events必须原样复制所选选项，不能自行估计字幕起落词点。"
+                "/content/subtitle必须从选项first_token_id到subtitle_last_token_id，去句末标点；"
+                "title和tagline各取本段内不超过7个可读字符的完整短语。"
+                "presenter使用同期原片，其他素材只从该选项material_ids选择，每槽使用不同素材。"
+                "asset_ids必须包含native_media引用的全部ID，包括同期原片。"
+                "未被这些选项覆盖的词按顺序另列Z-M00原景段；整稿仍必须覆盖所有词一次。"
+                "优先使用AZL01、AZL02、AZL03；没有三个独立实录短语时不要选AZL06。"
+            )
     body = {
         "model": model,
+        **json_planning_options(model),
         "stream": False,
         "max_tokens": max_output_tokens,
         "response_format": {"type": "json_object"},
@@ -802,6 +832,8 @@ def build_request(
         ],
     }
     if prepared_request is not None:
+        if "thinking" not in prepared_request:
+            body.pop("thinking", None)
         body = _with_frozen_request(body, payload, prepared_request)
     encoded = _request_bytes(body)
     evidence = {
@@ -1116,17 +1148,23 @@ def generate(
             # Save the received envelope before contract parsing, including
             # malformed successful responses, so recovery never bills again.
             "content": content if isinstance(content, str) else None,
-            "provider_envelope_valid": isinstance(content, str),
+            "provider_envelope_valid": isinstance(content, str)
+            and bool(content.strip()),
             "model": data.get("model"),
             "usage": data.get("usage"),
             "provider_id": data.get("id"),
+            "finish_reason": choices[0].get("finish_reason")
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict)
+            else None,
             "gateway": planner_endpoint(settings),
             "provider_route": data.get("_polaris_planner_route"),
         }
         atomic_json(response_path, response)
     if guard:
         guard()
-    content = response["content"]
+    content = require_planning_content(response)
+    native_asset_repairs: list[dict[str, Any]] = []
+    native_window_repairs: list[dict[str, Any]] = []
     if (
         template
         and template["id"] in FIRST_MOTION_GROUPS
@@ -1142,7 +1180,22 @@ def generate(
             runtime,
         )
     else:
-        plan = SemanticPlan.model_validate_json(content)
+        normalized, native_window_repairs = normalize_azl_windows(
+            json.loads(content), transcript, runtime
+        )
+        normalized, native_asset_repairs = bind_selected_native_assets(
+            normalized, asset_cards or []
+        )
+        plan = SemanticPlan.model_validate(normalized)
+        if native_asset_repairs:
+            atomic_json(
+                root / "native-asset-adaptation.json",
+                {
+                    "policy": "selected-native-asset-bindings/1",
+                    "response_sha256": sha256(response_path),
+                    "changes": native_asset_repairs,
+                },
+            )
     if template is None and any(beat.question_gloss is not None for beat in plan.beats):
         raise ValueError("English question gloss requires an AH-S03 template")
     if template is None and plan.chapter_start_token_ids:
@@ -1189,6 +1242,16 @@ def generate(
             **(
                 {"semantic_adaptation": relation_adaptation}
                 if relation_adaptation
+                else {}
+            ),
+            **(
+                {"native_asset_adaptation": native_asset_repairs}
+                if native_asset_repairs
+                else {}
+            ),
+            **(
+                {"native_window_adaptation": native_window_repairs}
+                if native_window_repairs
                 else {}
             ),
         },

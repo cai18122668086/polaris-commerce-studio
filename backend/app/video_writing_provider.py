@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from .config import Settings
 from .motion_library import atomic_json, inside, read_json
 from .video_editing_pipeline import environment
+from .video_planner_policy import json_planning_options
 from .video_writing_contracts import (
     FactReplacement,
     ReviseWritingDraft,
@@ -322,6 +323,7 @@ def plan_writing(
         "/v1/chat/completions",
         json={
             "model": service.settings.video_script_model,
+            **json_planning_options(service.settings.video_script_model),
             "stream": False,
             "max_tokens": 5000,
             "response_format": {"type": "json_object"},

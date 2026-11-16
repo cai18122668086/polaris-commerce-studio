@@ -39,6 +39,10 @@ def dimensions(path: str, kind: str = "image") -> tuple[int, int]:
 
 
 def prepare(template: str, cfg: dict, policy: dict) -> None:
+    if template == "bihuo-10-v1":
+        policy["paper_card_fit"] = "content-lines/1"
+    if template == "bihuo-36-v1":
+        policy["silver_caption_fit"] = "bounded-native-fonts/1"
     if template in {"bihuo-03-v1", "bihuo-04-v1"}:
         policy["application_materials"] = "content-led/1"
     if template == "bihuo-14-v1":
@@ -59,6 +63,85 @@ def app_geometry(material: dict, bottom: bool) -> tuple[list[int], list[int]]:
         [144, 560 if bottom else 970, 936, 985 if bottom else 1395],
         [148, 410 if bottom else 835, 930, 535 if bottom else 950],
     )
+
+
+def silver_whole_line(native: Any, original: Any, cfg: dict, cue: dict) -> Any:
+    lines = cue.get("lines") or [
+        {"text": cue["text"], "emphasis_spans": cue.get("emphasis_spans", [])}
+    ]
+    for reduction in range(7):
+        local = dict(
+            cfg,
+            white_size=cfg["white_size"] - reduction,
+            gold_size=cfg["gold_size"] - reduction,
+        )
+        widths = [
+            sum(
+                native.font(
+                    cfg["fonts"]["caption"],
+                    local["gold_size"] if active else local["white_size"],
+                ).getlength(text)
+                for text, active in native.visual.caption_parts({**cue, **line})
+            )
+            for line in lines
+        ]
+        if max(widths, default=0) <= 1030:
+            return original(local, cue)
+    return original(cfg, cue)  # Truly overlong content still fails the native gate.
+
+
+def paper_card_layers(native: Any, original: Any, t: float, cfg: dict) -> dict:
+    card = cfg["card"]
+    ink = native.C.ink
+    item_width = 254 if len(card["items"]) == 3 else 430
+
+    def fitted(text: str, path: str, size: int, fill: tuple) -> Image.Image:
+        width = (
+            item_width
+            if any(row["text"] == text for row in card["items"])
+            else 390
+            if text == card.get("button")
+            else 800
+        )
+        face = ink(text, path, size, fill)
+        if face.width <= width:
+            return face
+        display = fit(text, path, width, tuple(range(size, max(23, size - 12), -2)), 2)
+        lines = [ink(line, path, display["size"], fill) for line in display["lines"]]
+        face = Image.new(
+            "RGBA",
+            (
+                max(line.width for line in lines),
+                sum(line.height for line in lines) + 8 * (len(lines) - 1),
+            ),
+        )
+        y = 0
+        for line in lines:
+            face.alpha_composite(line, ((face.width - line.width) // 2, y))
+            y += line.height + 8
+        return face
+
+    native.C.ink = fitted
+    try:
+        return original(t, cfg)
+    finally:
+        native.C.ink = ink
+
+
+@contextmanager
+def compilation(template_id: str) -> Iterator[None]:
+    if template_id != "bihuo-36-v1":
+        yield
+        return
+    from .registry import runtime
+
+    native = runtime(template_id).E
+    original = native.whole_line
+    native.whole_line = lambda c, cue: silver_whole_line(native, original, c, cue)
+    try:
+        yield
+    finally:
+        native.whole_line = original
 
 
 def scene_texts(cfg: dict, t: float, native: Any) -> list[tuple[str, tuple]]:
@@ -120,6 +203,47 @@ def app_information(native: Any, cfg: dict, t: float, bottom: bool) -> Image.Ima
             native.put(layer, cfg, line, display["size"], x, y, color, max_width=x2 - x)
             y += display["size"] + 12
     return layer
+
+
+def app_quote_layers(
+    native: Any, original: Any, cfg: dict, t: float, scene: dict
+) -> dict:
+    """Wrap long source-backed conclusions without shortening their words."""
+    data = scene.get("quote") or {}
+    scale = cfg["size"][0] / 1080
+    fields = [
+        (key, data.get(key, ""), size) for key, size in [("first", 50), ("second", 54)]
+    ]
+    if all(
+        not text
+        or native.font(cfg["fonts"]["bold"], size * scale).getlength(text)
+        <= 700 * scale
+        for _, text, size in fields
+    ):
+        return original(cfg, t, scene)
+    # Reuse the original quote mark, opacity and blur clocks. Blank placeholders
+    # prevent its single-line painter from seeing overlong display strings.
+    placeholder = {**data, **{key: " " if text else "" for key, text, _ in fields}}
+    roles = original(cfg, t, {**scene, "quote": placeholder})
+    y = 656 if all(text for _, text, _ in fields) else 692
+    for key, text, size in fields:
+        if not text:
+            continue
+        display = fit(text, cfg["fonts"]["bold"], 700, (size, 46, 42, 38, 34), 2)
+        layer = native.blank(cfg)
+        color = native.BLUE if key == "second" else native.BLACK
+        for line in display["lines"]:
+            native.put(layer, cfg, line, display["size"], 224, y, color, max_width=700)
+            y += display["size"] + 12
+        y += 6
+        at = data.get(key + "_at", scene["at"])
+        opacity = native.ease(at, at + data.get(key + "_opacity", 0.20), t)
+        clear_at = data.get(key + "_blur_at", at)
+        clear = native.ease(clear_at, clear_at + data.get(key + "_reveal", 0.32), t)
+        if cfg.get("source_warm_frame") and t == 0 and key == "first":
+            opacity = clear = 1
+        roles[key] = native.fade(layer, opacity, (1 - clear) * 7 * scale)
+    return roles
 
 
 def app_material(native: Any, cfg: dict, t: float, bottom: bool) -> Image.Image:
@@ -451,6 +575,14 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
 
                 patch(native, name, wrapped)
             if bottom:
+                old_quote = native.quote_layers
+                patch(
+                    native,
+                    "quote_layers",
+                    lambda c, t, scene: app_quote_layers(
+                        native, old_quote, c, t, scene
+                    ),
+                )
                 old_contrast = module.bottom.contrast
                 old_support = module.bottom.quote_support
                 patch(
@@ -469,6 +601,21 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
                         else old_support(c, t)
                     ),
                 )
+        elif tid == "bihuo-36-v1":
+            native = module.E
+            original = native.whole_line
+            patch(
+                native,
+                "whole_line",
+                lambda c, cue: silver_whole_line(native, original, c, cue),
+            )
+        elif tid == "bihuo-10-v1":
+            original_card = module.C.card_layers
+            patch(
+                module.C,
+                "card_layers",
+                lambda t, c: paper_card_layers(module, original_card, t, c),
+            )
         elif tid in {"bihuo-16-v1", "bihuo-19-v1", "bihuo-40-v1"}:
             namespace = module.encode.__globals__
             native = __import__(namespace["__name__"], fromlist=["textcard"])

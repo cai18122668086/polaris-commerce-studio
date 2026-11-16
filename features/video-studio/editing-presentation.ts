@@ -47,12 +47,13 @@ type PreparedInput = {
   template_style_blockers?: string[] | null;
   available_template_group_count?: number | null;
 };
-type PlanningSubmission = { status: string; call_state: string };
+type PlanningSubmission = { status: string; call_state: string; error_code?: string | null };
 
 /** A pending or uncertain paid request can never become a second paid action. */
 export function editingPlanningAction(prepared?: PreparedInput, submitted?: PlanningSubmission): "prepare" | "generate" | "preview" | "recover" | "wait" | "blocked" {
   if (submitted) {
     if (["queued", "running"].includes(submitted.status)) return "wait";
+    if (submitted.error_code === "EDITING_PLAN_EMPTY_RESPONSE") return "blocked";
     if (submitted.call_state === "intent_saved") return "blocked";
     if (submitted.status === "completed") return "preview";
     if (["failed", "cancelled"].includes(submitted.status) && submitted.call_state === "response_saved") return "recover";

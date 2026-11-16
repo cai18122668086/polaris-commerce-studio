@@ -17,6 +17,10 @@ from .errors import ApiError
 from .video_studio_schemas import StrictVideoModel
 
 
+class _PlannerNotSubmitted(Exception):
+    """The primary rejected the request before model execution."""
+
+
 class ScriptResult(StrictVideoModel):
     title: str = Field(min_length=1, max_length=80)
     script: str = Field(min_length=10, max_length=3000)
@@ -132,6 +136,65 @@ class VideoAssistanceProvider:
         parts = urlsplit(base)
         if parts.scheme != "https" or parts.username or parts.password:
             raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "文案服务地址未配置。")
+        fallback = self._planner_fallback() if service == "planner" else None
+        try:
+            return self._request_once(
+                method,
+                path,
+                base,
+                key.get_secret_value(),
+                read_timeout,
+                allow_fallback=fallback is not None,
+                **kwargs,
+            )
+        except _PlannerNotSubmitted as error:
+            assert fallback is not None
+            fallback_base, fallback_key, fallback_model = fallback
+            body = kwargs.get("json")
+            if not isinstance(body, dict):
+                raise ApiError(
+                    502, "VIDEO_ASSISTANCE_REJECTED", "备用渠道需要文案请求。"
+                ) from None
+            result = self._request_once(
+                method,
+                path,
+                fallback_base,
+                fallback_key,
+                read_timeout,
+                **{**kwargs, "json": {**body, "model": fallback_model}},
+            )
+            result["_polaris_planner_route"] = {
+                "channel": "fallback",
+                "host": urlsplit(fallback_base).hostname,
+                "model": fallback_model,
+                "reason": str(error),
+            }
+            return result
+
+    def _planner_fallback(self) -> tuple[str, str, str] | None:
+        base = self.settings.video_script_fallback_base_url.rstrip("/")
+        key = self.settings.video_script_fallback_api_key.get_secret_value()
+        model = self.settings.video_script_fallback_model
+        if not base or not key or not model:
+            return None
+        captured = self.settings.model_copy(update={"video_script_base_url": base})
+        if not planner_endpoint(captured):
+            return None
+        if base == self.settings.video_script_base_url.rstrip("/"):
+            return None
+        return base, key, model
+
+    def _request_once(
+        self,
+        method: str,
+        path: str,
+        base: str,
+        key: str,
+        read_timeout: float,
+        *,
+        allow_fallback: bool = False,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         try:
             with httpx.Client(
                 timeout=httpx.Timeout(read_timeout, connect=15),
@@ -141,9 +204,14 @@ class VideoAssistanceProvider:
                 response = client.request(
                     method,
                     base + path,
-                    headers={"Authorization": "Bearer " + key.get_secret_value()},
+                    headers={"Authorization": "Bearer " + key},
                     **kwargs,
                 )
+            # These responses reject authentication, model selection or quota
+            # before generation. Never fail over after an ambiguous POST, a
+            # read/write timeout, a 5xx, or an invalid successful response.
+            if allow_fallback and response.status_code in {401, 402, 403, 404, 429}:
+                raise _PlannerNotSubmitted(f"http_{response.status_code}")
             if not response.is_success:
                 raise ApiError(
                     502,
@@ -159,6 +227,12 @@ class VideoAssistanceProvider:
             if not isinstance(data, dict):
                 raise ValueError("Expected object")
             return data
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
+            if allow_fallback:
+                raise _PlannerNotSubmitted("connection_not_established") from None
+            raise ApiError(
+                502, "VIDEO_ASSISTANCE_UNAVAILABLE", "文案服务连接未能建立。"
+            ) from None
         except (httpx.HTTPError, ValueError):
             raise ApiError(
                 502,
@@ -205,6 +279,7 @@ class VideoAssistanceProvider:
             "model": data.get("model"),
             "usage": data.get("usage"),
             "provider_id": data.get("id"),
+            "provider_route": data.get("_polaris_planner_route"),
         }
         try:
             content = data["choices"][0]["message"]["content"]

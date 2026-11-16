@@ -314,7 +314,7 @@ def test_hook_restoration_and_old_payloads_are_untouched():
     assert module.top.step_nodes is original
     with layout.execution(SimpleNamespace(), {"config": {}}):
         pass
-    for tid in ("bihuo-02-v1", "bihuo-04-v1"):
+    for tid in ("bihuo-02-v1", "bihuo-24-v1"):
         old = {"template_id": tid, "config": {"captions": []}}
         assert layout.prepare(old) is old
     payload["config"]["conditional_layout"]["sha256"] = "changed"

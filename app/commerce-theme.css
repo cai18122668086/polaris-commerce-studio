@@ -28,6 +28,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .app-shell .top-nav { color: #1c1d1a; background: rgb(255 255 255 / 95%); border-bottom: 1px solid #e6e8e1; box-shadow: none; backdrop-filter: blur(16px); }
 .app-shell--home .app-shell__body { margin-top:calc(-1 * var(--nav-height)); }
 .app-shell--home .commerce-hero { padding-top:var(--nav-height); }
+.app-shell--home:has([data-welcome-credits]) .commerce-hero { padding-top: 0; }
 .app-shell--home .top-nav { background:rgb(255 255 255 / 84%);border-color:#e9e3ef99;transition:background .25s,border-color .25s,box-shadow .25s; }
 .app-shell--home .top-nav[data-transparent="true"] { background:transparent;border-color:transparent;box-shadow:none;backdrop-filter:none; }
 .app-shell--home .top-nav[data-transparent="true"] .main-nav > a.active,.app-shell--home .top-nav[data-transparent="true"] .nav-menu__trigger.active { background:#ffffff22; }
@@ -428,4 +429,31 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .commerce-hero *, .commerce-reveal, .commerce-showcase *, .commerce-reviews *, .nav-menu.is-open .nav-mega { animation: none !important; transition: none !important; }
   .commerce-reveal { opacity: 1; translate: none; }
   .commerce-hero__bottom button { display: none; }
+}
+
+
+@media (max-width: 480px) {
+  .top-nav[data-rewards-navigation] .top-nav__inner {
+    padding-inline: 8px;
+    gap: 4px;
+  }
+  .top-nav[data-rewards-navigation] .top-nav__brand {
+    flex: 0 0 32px;
+  }
+  .top-nav[data-rewards-navigation] .brand-lockup .brand-copy,
+  .top-nav[data-rewards-navigation] .task-trigger > span {
+    display: none;
+  }
+  .top-nav[data-rewards-navigation] .task-trigger {
+    position: relative;
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+  .top-nav[data-rewards-navigation] .task-trigger > i {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+  }
 }

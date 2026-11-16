@@ -1522,6 +1522,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Growth */
+        get: operations["public_growth_api_v1_public_promotions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runtime": {
         parameters: {
             query?: never;
@@ -3338,6 +3355,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Invitations */
+        get: operations["invitations_api_v1_workspaces__workspace_id__invitations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs": {
         parameters: {
             query?: never;
@@ -3823,6 +3857,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/promotions/newcomer-offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Newcomer Offer */
+        get: operations["newcomer_offer_api_v1_workspaces__workspace_id__promotions_newcomer_offer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/promotions/newcomer-offer/impression": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Impression */
+        post: operations["impression_api_v1_workspaces__workspace_id__promotions_newcomer_offer_impression_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/promotions/newcomer-offer/viewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Newcomer Result Viewed */
+        post: operations["newcomer_result_viewed_api_v1_workspaces__workspace_id__promotions_newcomer_offer_viewed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/replica/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -4034,6 +4119,40 @@ export interface paths {
          * @description Explicitly adopt corrected rules while retaining verifiable earlier work.
          */
         post: operations["revise_analysis_api_v1_workspaces__workspace_id__replica_sessions__document_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/rewards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rewards State */
+        get: operations["rewards_state_api_v1_workspaces__workspace_id__rewards_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/rewards/check-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim Checkin */
+        post: operations["claim_checkin_api_v1_workspaces__workspace_id__rewards_check_in_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4808,6 +4927,11 @@ export interface components {
         };
         /** CaseUpdate */
         CaseUpdate: {
+            /**
+             * Grant Welcome Bonus
+             * @default false
+             */
+            grant_welcome_bonus: boolean;
             /** Resolution */
             resolution: string;
             /**
@@ -4815,6 +4939,16 @@ export interface components {
              * @enum {string}
              */
             status: "open" | "in_progress" | "resolved";
+        };
+        /** CheckinResult */
+        CheckinResult: {
+            /** Adjusted Credits */
+            adjusted_credits: number;
+            /** Created */
+            created: boolean;
+            /** Credited Credits */
+            credited_credits: number;
+            rewards: components["schemas"]["RewardsState"];
         };
         /** CloneConfigResponse */
         CloneConfigResponse: {
@@ -7357,6 +7491,53 @@ export interface components {
             /** Retained Fact Ids */
             retained_fact_ids: string[];
         };
+        /** InvitationCenter */
+        InvitationCenter: {
+            /** Earned Credits */
+            earned_credits: number;
+            /** Invite Code */
+            invite_code: string;
+            /** Invite Url */
+            invite_url: string;
+            /** Invited Count */
+            invited_count: number;
+            /** Items */
+            items: components["schemas"]["InvitationFriend"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Paid Count */
+            paid_count: number;
+            /** Refunded Count */
+            refunded_count: number;
+            /** Reward Percent */
+            reward_percent: number;
+            /** Total */
+            total: number;
+            /** Unpaid Count */
+            unpaid_count: number;
+            /** Validity Days */
+            validity_days: number;
+        };
+        /** InvitationFriend */
+        InvitationFriend: {
+            /** Earned Credits */
+            earned_credits: number;
+            /** Friend */
+            friend: string;
+            /** Id */
+            id: string;
+            /** Last Paid At */
+            last_paid_at: string | null;
+            /**
+             * Payment Status
+             * @enum {string}
+             */
+            payment_status: "unpaid" | "paid" | "refunded";
+            /** Registered At */
+            registered_at: string;
+        };
         /** JobAssetResponse */
         JobAssetResponse: {
             /** Asset Id */
@@ -7867,6 +8048,36 @@ export interface components {
              */
             punctuation: "preserve" | "omit_sentence_punctuation";
         };
+        /** NewcomerOffer */
+        NewcomerOffer: {
+            /** Amount Fen */
+            amount_fen: number;
+            /** Credits */
+            credits: number;
+            /** Eligible */
+            eligible: boolean;
+            /** Ready At */
+            ready_at: string | null;
+            /** Reminded */
+            reminded: boolean;
+            /** Result Asset Ids */
+            result_asset_ids: string[];
+            /** Server Now */
+            server_now: string;
+            /** Should Show */
+            should_show: boolean;
+            /** Validity Days */
+            validity_days: number;
+            /** Waiting For Result */
+            waiting_for_result: boolean;
+            /** Window Ends At */
+            window_ends_at: string | null;
+        };
+        /** NewcomerResultView */
+        NewcomerResultView: {
+            /** Asset Id */
+            asset_id: string;
+        };
         /** NoteBody */
         NoteBody: {
             /** Note */
@@ -8009,6 +8220,13 @@ export interface components {
             platform: "auto" | "taobao" | "tmall" | "1688" | "jd";
             /** Url */
             url: string;
+        };
+        /** PublicGrowth */
+        PublicGrowth: {
+            /** Checkin Enabled */
+            checkin_enabled: boolean;
+            /** Welcome Enabled */
+            welcome_enabled: boolean;
         };
         /** ReferenceChoice */
         ReferenceChoice: {
@@ -8320,6 +8538,59 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** RewardEvent */
+        RewardEvent: {
+            /** Adjusted */
+            adjusted: boolean;
+            /** Created At */
+            created_at: string;
+            /** Credits */
+            credits: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "checkin" | "referral";
+            /** Title */
+            title: string;
+        };
+        /** RewardsState */
+        RewardsState: {
+            /** Checked In */
+            checked_in: boolean;
+            /** Checkin Enabled */
+            checkin_enabled: boolean;
+            /** Checkin Expires At */
+            checkin_expires_at: string | null;
+            /** Checkin Validity Hours */
+            checkin_validity_hours: number;
+            /** Daily Credits */
+            daily_credits: number;
+            /** Day */
+            day: string;
+            /** Earned Credits */
+            earned_credits: number;
+            /** Invite Url */
+            invite_url: string | null;
+            /** Invited Count */
+            invited_count: number;
+            /** Next Day At */
+            next_day_at: string;
+            /** Pending Adjustment Credits */
+            pending_adjustment_credits: number;
+            /** Recent */
+            recent: components["schemas"]["RewardEvent"][];
+            /** Referral Enabled */
+            referral_enabled: boolean;
+            /** Reward Percent */
+            reward_percent: number;
+            /** Support Claimed */
+            support_claimed: boolean;
+            /** Validity Days */
+            validity_days: number;
+            /** Welcome Claimed */
+            welcome_claimed: boolean;
+        };
         /** RuntimeCapabilities */
         RuntimeCapabilities: {
             /** @description Asset upload, listing, and private access URL workflow. */
@@ -8574,6 +8845,11 @@ export interface components {
             issue: string;
             /** Job Id */
             job_id?: string | null;
+            /**
+             * Welcome Bonus
+             * @default false
+             */
+            welcome_bonus: boolean;
         };
         /** SupportResponse */
         SupportResponse: {
@@ -8587,6 +8863,8 @@ export interface components {
             resolution: string;
             /** Status */
             status: string;
+            /** Welcome Bonus */
+            welcome_bonus: boolean;
             /** Workspace Id */
             workspace_id: string;
         };
@@ -12663,6 +12941,26 @@ export interface operations {
             };
         };
     };
+    public_growth_api_v1_public_promotions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicGrowth"];
+                };
+            };
+        };
+    };
     get_runtime_status_api_v1_runtime_get: {
         parameters: {
             query?: never;
@@ -16606,6 +16904,41 @@ export interface operations {
             };
         };
     };
+    invitations_api_v1_workspaces__workspace_id__invitations_get: {
+        parameters: {
+            query?: {
+                status?: "all" | "unpaid" | "paid" | "refunded";
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationCenter"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_jobs_api_v1_workspaces__workspace_id__jobs_get: {
         parameters: {
             query?: {
@@ -17718,6 +18051,103 @@ export interface operations {
             };
         };
     };
+    newcomer_offer_api_v1_workspaces__workspace_id__promotions_newcomer_offer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewcomerOffer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impression_api_v1_workspaces__workspace_id__promotions_newcomer_offer_impression_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewcomerOffer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    newcomer_result_viewed_api_v1_workspaces__workspace_id__promotions_newcomer_offer_viewed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewcomerResultView"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewcomerOffer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_v1_workspaces__workspace_id__replica_documents__document_id__get: {
         parameters: {
             query?: never;
@@ -18159,6 +18589,68 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rewards_state_api_v1_workspaces__workspace_id__rewards_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RewardsState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_checkin_api_v1_workspaces__workspace_id__rewards_check_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckinResult"];
                 };
             };
             /** @description Validation Error */

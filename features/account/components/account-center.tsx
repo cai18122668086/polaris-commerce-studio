@@ -1,5 +1,11 @@
 "use client";
 import { TaskWorkspaceLink } from "@/components/task-workspace-link";
+import { RewardsNavigation } from "@/components/rewards-navigation";
+import { NewcomerOfferCountdown } from "@/components/newcomer-offer-controller";
+import { RewardsCenter } from "./rewards-center";
+import { InvitationCenter } from "./invitation-center";
+import { useRewards } from "@/features/billing/api/rewards";
+import welcomeStyles from "@/components/welcome-credits.module.css";
 import { SupportCases } from "@/components/support-cases";
 import { ProcessingConsentPanel } from "@/components/auth/processing-consent";
 import { AccountStatusMenu } from "@/components/account-status-menu";
@@ -75,6 +81,8 @@ import styles from "./account-center.module.css";
 
 type Page =
   | "overview"
+  | "rewards"
+  | "invitations"
   | "membership"
   | "credits"
   | "orders"
@@ -86,6 +94,8 @@ const pages: { id: Page; label: string; icon: LucideIcon; group?: string }[] = [
   { id: "overview", label: "账户概览", icon: LayoutDashboard },
   { id: "membership", label: "会员与充值", icon: Crown },
   { id: "credits", label: "积分明细", icon: Coins },
+  { id: "rewards", label: "签到与福利", icon: Coins },
+  { id: "invitations", label: "邀请好友", icon: Coins },
   { id: "orders", label: "订单与发票", icon: FileText },
   { id: "creations", label: "创作记录", icon: Layers3, group: "我的创作" },
   { id: "assets", label: "我的素材", icon: FolderOpen },
@@ -96,6 +106,8 @@ const subtitles: Record<Page, string> = {
   overview: "管理你的创作、积分与会员，一切都在这里。",
   membership: "选择适合你的创作节奏，让每一次上新更从容。",
   credits: "每一笔消耗与到账，都清楚可查。",
+  rewards: "每日签到领积分，查看新人福利。",
+  invitations: "邀请好友，返赠创作积分。",
   orders: "查看购买记录，管理订单和发票。",
   creations: "从第一张灵感，到一整套好作品。",
   assets: "把商品与品牌素材整理好，下次创作更轻松。",
@@ -286,6 +298,7 @@ export function AccountCenterPage() {
 }
 
 function AccountCenter({ workspaceId }: { workspaceId: string }) {
+  const rewards = useRewards(workspaceId);
   const page = useSyncExternalStore(
     (notify) => {
       window.addEventListener("hashchange", notify);
@@ -349,7 +362,7 @@ function AccountCenter({ workspaceId }: { workspaceId: string }) {
               极光商绘<small>POLARIS STUDIO</small>
             </span>
           </Link>
-          <div className="topbar-right"><Link className="account-button" href="/jobs">任务中心</Link><AccountStatusMenu />
+          <div className="topbar-right"><RewardsNavigation /><Link className="account-button" href="/jobs">任务中心</Link><AccountStatusMenu />
             {process.env.NODE_ENV !== "production" && (
               <span className="local-badge">
                 <span />
@@ -437,6 +450,10 @@ function AccountCenter({ workspaceId }: { workspaceId: string }) {
           )}
           {page === "creations" && <Creations workspaceId={workspaceId} />}
           {page === "assets" && <Assets workspaceId={workspaceId} />}
+          {page === "rewards" && <RewardsCenter workspaceId={workspaceId} />}
+          {page === "invitations" && (rewards.data?.referral_enabled
+            ? <InvitationCenter workspaceId={workspaceId} />
+            : <p className="page-content">{rewards.isPending ? "正在读取邀请权益…" : "当前工作区暂未开放邀请奖励。"}</p>)}
           {page === "help" && <><SupportCases workspaceId={workspaceId} /><Help /></>}
           {page === "settings" && (
             <div className="settings-integration">
@@ -706,12 +723,11 @@ function Membership({
     credits = useCreditAccount(workspaceId),
     create = useCreatePurchase(workspaceId);
   const currentMembership = useMembership(workspaceId);
-  const products =
-    catalog.data?.packages.filter((pack) =>
-      tab === "pack"
-        ? pack.kind === "pack"
-        : pack.kind === "membership" && pack.months === (annual ? 12 : 1),
-    ) ?? [];
+  const newcomer = catalog.data?.packages.find(product => product.id === "newcomer_pack");
+  const products = catalog.data?.packages.filter(product => tab === "pack"
+    ? product.kind === "pack" && product.id !== "newcomer_pack"
+    : product.kind === "membership" && product.months === (annual ? 12 : 1),
+  ) ?? [];
   function select(product: Product) {
     create.newIntent();
     setSelected(product);
@@ -738,6 +754,13 @@ function Membership({
           </button>
         </div>
       </div>
+      {newcomer && <section className={welcomeStyles.purchase} aria-label="新客首单优惠">
+        <div><h2>新客首单 · {newcomer.credits} 积分</h2>
+          <p>到账后 30 天有效 · 首单限购一次</p>
+          <NewcomerOfferCountdown className={welcomeStyles.purchaseTimer} />
+        </div>
+        <button type="button" onClick={() => select(newcomer)}>¥{money(newcomer.amount_fen)} 立即抢购<ArrowUpRight size={18} /></button>
+      </section>}
       <div className="pricing-toolbar">
         <div className="purchase-tabs" role="tablist" aria-label="购买方式">
           <button
@@ -921,7 +944,9 @@ function Membership({
           <p className="checkout-note">
             {selected.kind === "membership"
               ? `${selected.months === 12 ? "年付一次支付，分 12 期按月发放" : "月卡按一个月周期发放"}，每期积分当期有效。已有会员时顺延生效。`
-              : selected.validity_months
+              : selected.id === "newcomer_pack"
+                ? "积分到账后 30 天有效。"
+                : selected.validity_months
                 ? `积分到账后 ${selected.validity_months} 个月有效。`
                 : "购买积分无固定到期日。"}
             到期不自动续费。
@@ -1216,6 +1241,12 @@ function Ledger({
     [query, setQuery] = useState("");
   const rows = ledger.data?.pages.flatMap((page) => page.items) ?? [];
   const supportKinds: Record<string, string> = {
+    signup_bonus: "新用户注册赠分",
+    support_bonus: "添加客服赠分",
+    daily_checkin: "每日签到",
+    referral_bonus: "邀请奖励",
+    referral_reversal: "邀请奖励调整",
+    reward_adjustment: "赠送积分调整",
     gift: "赠送", compensation: "补偿", refund: "退款扣回",
     refund_hold: "冻结", refund_release: "退回",
   };

@@ -1,4 +1,5 @@
 "use client";
+import { WECHAT_SUPPORT_URL } from "@/lib/customer-support";
 import { TaskWorkspaceLink } from "@/components/task-workspace-link";
 
 import { useRef, useState } from "react";
@@ -28,11 +29,12 @@ function SupportCaseForm({ workspaceId, initialJobId }: { workspaceId: string; i
     intent.current ??= crypto.randomUUID();
     return unwrapApiResponse(await apiClient.POST("/api/v1/workspaces/{workspace_id}/support-cases", {
       params: { path: { workspace_id: workspaceId }, header: { "Idempotency-Key": intent.current } },
-      body: { issue, job_id: jobId.trim() || null },
+      body: { welcome_bonus: false, issue, job_id: jobId.trim() || null },
     }));
   }, onSuccess: () => { setIssue(""); intent.current = null; void client.invalidateQueries({ queryKey: ["support-cases", workspaceId] }); } });
   return <section className="support-cases panel">
     <h2>任务与售后帮助</h2><p>描述问题并关联任务，方便工作人员核对进度、出图和积分。处理结果会保留在这里。</p>
+    <p><a href={WECHAT_SUPPORT_URL} target="_blank" rel="noopener noreferrer">联系企业微信客服</a></p>
     <form onSubmit={event => { event.preventDefault(); submit.mutate(); }}>
       <label>关联任务编号（选填）<input value={jobId} onChange={event => { setJobId(event.target.value); intent.current = null; }} placeholder="可从生成记录复制任务编号" maxLength={40} /></label>
       <label>问题描述<textarea value={issue} onChange={event => { setIssue(event.target.value); intent.current = null; submit.reset(); }} maxLength={4000} rows={4} placeholder="请说明遇到的问题、预期效果以及已经尝试的步骤。" required minLength={3} /></label>

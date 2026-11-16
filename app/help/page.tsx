@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { WECHAT_SUPPORT_QR, WECHAT_SUPPORT_URL } from "@/lib/customer-support";
 import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
 
 type Faq = {
@@ -321,12 +322,12 @@ export default function HelpPage() {
               <aside className="support-card">
                 <span><MessageCircle size={25} /></span>
                 <h3>仍然没有解决？</h3>
-                <p>在线联系工作人员。添加企业微信后，请说明你的账号、任务状态和已经操作过的步骤。</p>
+                <p>通过企业微信联系客服，请说明你的账号、任务状态和已经操作过的步骤。</p>
                 <button className="primary-button" onClick={() => setContactOpen(true)} aria-haspopup="dialog">
                   在线联系
                   <ArrowRight size={17} />
                 </button>
-                <small>工作日 09:30–18:30 · 添加后会尽快回复</small>
+                <small>工作日 09:30–18:30 · 我们会尽快回复</small>
               </aside>
             </div>
           </section>
@@ -421,9 +422,12 @@ export default function HelpPage() {
             <button className="help-modal__close contact-modal__close" onClick={() => setContactOpen(false)} aria-label="关闭在线联系"><X size={20} /></button>
             <div className="contact-modal__icon"><MessageCircle size={26} /></div>
             <h2 id="contact-modal-title">在线联系</h2>
-            <p><span>请扫描二维码，添加企业微信联系我们。</span><span>添加时可以备注你的账号和遇到的问题。</span></p>
-            <div className="contact-qr"><Image src="/contact-wechat-qr.jpg" alt="腾利科技企业微信二维码" width={330} height={330} unoptimized /></div>
-            <strong>扫码添加企业微信</strong>
+            <p>请提供你的账号和遇到的问题，方便客服协助。</p>
+            <a className="primary-button contact-modal__action" href={WECHAT_SUPPORT_URL} target="_blank" rel="noopener noreferrer">
+              打开企业微信客服 <ArrowRight size={17} />
+            </a>
+            <div className="contact-qr"><Image src={WECHAT_SUPPORT_QR} alt="极光商绘企业微信客服二维码" width={350} height={350} unoptimized /></div>
+            <strong>也可用微信扫码联系</strong>
             <small>工作日 09:30–18:30 · 我们会尽快回复</small>
           </section>
         </div>

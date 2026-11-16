@@ -1,4 +1,5 @@
-﻿import { AuthShell } from "@/components/auth/auth-shell";
+﻿import { WelcomeCreditsBanner } from "@/components/welcome-credits";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { LoginForm } from "@/features/auth/components/login-form";
 import { sanitizeReturnTo } from "@/lib/auth/return-to";
 
@@ -12,6 +13,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <AuthShell title="欢迎回来" description="登录后继续使用你的电商图片工作台。">
+      <WelcomeCreditsBanner compact />
       <LoginForm returnTo={returnTo} />
     </AuthShell>
   );

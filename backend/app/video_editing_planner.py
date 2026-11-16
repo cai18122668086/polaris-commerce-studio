@@ -813,6 +813,16 @@ def build_request(
                 "未被这些选项覆盖的词按顺序另列Z-M00原景段；整稿仍必须覆盖所有词一次。"
                 "优先使用AZL01、AZL02、AZL03；没有三个独立实录短语时不要选AZL06。"
             )
+        if prepared_request is None or "AZL关系准入/1" in frozen_system:
+            message += (
+                "\nAZL关系准入/1：板式里有多张素材，不等于原话有并列事项。"
+                "说明同一过程或同一例子的板式段使用explanation。"
+                "若原话确有parallel、contrast、cause、sequence、condition或transformation关系，"
+                "必须输出relation_items，每个事项用独立、有序且不重叠的实录词段，"
+                "并用native_media_paths或native_text_paths绑定实际承载该事项的原生槽。"
+                "parallel至少两个事项，不得只写relation而省略relation_items；"
+                "图槽路径和asset_ids必须对应本段native_media中已有的绑定，不能杜撰素材含义。"
+            )
     body = {
         "model": model,
         **json_planning_options(model),

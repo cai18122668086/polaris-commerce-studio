@@ -10,6 +10,63 @@ from app.bihuo_suite import conditional_layout as layout
 from app.bihuo_suite import registry
 
 
+def test_silver_font_fit_preserves_words_clocks_and_restores_compile_hook():
+    from app.bihuo_suite import adaptive_layout
+
+    engine = registry.runtime("bihuo-36-v1").E
+    cfg = {"fonts": registry.fonts("bihuo-36-v1"), "white_size": 76, "gold_size": 82}
+    cue = {
+        "text": "产品展示整体配色都给你安排上了",
+        "emphasis_spans": [],
+        "range": [100, 150],
+    }
+    before = copy.deepcopy((cfg, cue))
+    received = []
+    adaptive_layout.silver_whole_line(
+        engine, lambda c, v: received.append((c, v)), cfg, cue
+    )
+    assert (cfg, cue) == before
+    assert received[0][1] is cue
+    assert 70 <= received[0][0]["white_size"] <= 76
+    original = engine.whole_line
+    with pytest.raises(RuntimeError), adaptive_layout.compilation("bihuo-36-v1"):
+        assert engine.whole_line is not original
+        raise RuntimeError("compile interrupted")
+    assert engine.whole_line is original
+
+
+def test_paper_card_wraps_actual_long_items_without_changing_their_text_or_clocks():
+    module = registry.runtime("bihuo-10-v1")
+    cfg = {
+        "fonts": module.core._style_fonts(registry.fonts("bihuo-10-v1")),
+        "card": {
+            "enabled": True,
+            "title": "反复改设计",
+            "entry": 33.3,
+            "exit": [51.92, 52.12],
+            "links": [39.72, 40.12],
+            "button": "不会设计，",
+            "button_at": 40.32,
+            "items": [
+                {"text": text, "at": at}
+                for text, at in [
+                    ("卖点排版、", 33.3),
+                    ("产品展示整体配色", 34.38),
+                    ("逐张查看和调整，", 38.52),
+                ]
+            ],
+        },
+    }
+    before = copy.deepcopy(cfg)
+    with pytest.raises(ValueError, match="semantic wrap"):
+        module.C.card_layers(42, cfg)
+    payload = layout.prepare({"template_id": "bihuo-10-v1", "config": cfg})
+    with layout.execution(module, payload):
+        result = module.C.card_layers(42, payload["config"])
+        assert result["card-items"].getbbox() is not None
+    assert cfg == before
+
+
 def test_paper_video_cache_is_bounded_and_invisible_media_is_not_painted(tmp_path):
     folder = tmp_path / "frames"
     static = str(tmp_path / "static.png")

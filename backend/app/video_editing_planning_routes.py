@@ -58,6 +58,7 @@ from .video_editing_template_catalog import (
     example_file,
     template_catalog,
 )
+from .video_planner_policy import EMPTY_RESPONSE, saved_response_empty
 from .video_studio_routes import VideoWorkspace
 
 router = APIRouter(
@@ -374,6 +375,12 @@ def retry_task(
         raise ApiError(409, "EDITING_PLANNING_NOT_RETRYABLE", "规划任务不需要重试。")
     require_active_planning_template(row.snapshot.get("overlay_template", {}).get("id"))
     provider = planning_root(settings, row.id) / "provider"
+    if row.mode == "generate" and saved_response_empty(provider):
+        raise ApiError(
+            409,
+            EMPTY_RESPONSE,
+            "已保存回执没有编排正文，无法重新校验。请先核对用量；重新生成会产生新的模型费用。",
+        )
     if row.mode == "generate" and not (provider / "semantic-response.json").is_file():
         if (provider / "semantic-submit-intent.json").exists():
             raise ApiError(

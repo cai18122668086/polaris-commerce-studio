@@ -57,6 +57,7 @@ from .video_editing_transcript_store import (
     recorded_source_frame,
     require_native_source_frame,
 )
+from .video_planner_policy import EMPTY_RESPONSE, saved_response_empty
 
 FILES = {
     "suite_plan": "suite-plan.json",
@@ -191,7 +192,9 @@ def planning_response(
         "revision": row.revision,
         "attempts": row.attempts,
         "cancel_requested": row.cancel_requested,
-        "error_code": row.error_code,
+        "error_code": EMPTY_RESPONSE
+        if row.status == "failed" and saved_response_empty(provider)
+        else row.error_code,
         "created_at": row.created_at.replace(tzinfo=UTC)
         if row.created_at.tzinfo is None
         else row.created_at,

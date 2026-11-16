@@ -48,6 +48,24 @@ def test_primary_success_never_calls_standby(settings):
     assert seen == ["primary.example"]
 
 
+def test_standby_does_not_receive_deepseek_only_thinking_option(settings):
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.host)
+        if request.url.host == "primary.example":
+            return httpx.Response(429)
+        assert json.loads(request.content) == {"model": "gpt-6.1-sol"}
+        return httpx.Response(200, json={"id": "standby"})
+
+    call(
+        settings,
+        handler,
+        {"model": settings.video_script_model, "thinking": {"type": "disabled"}},
+    )
+    assert seen == ["primary.example", "standby.example"]
+
+
 @pytest.mark.parametrize("status", [401, 402, 403, 404, 429])
 def test_pre_execution_rejection_uses_standby_once(settings, status):
     seen = []

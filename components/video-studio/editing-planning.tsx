@@ -61,6 +61,7 @@ const errors: Record<string, string> = {
   EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "没有适用的成套动效。请核对项目备忘、素材或模板后重新准备。",
   EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。",
   EDITING_PLAN_CONTRACT_INVALID: "模型编排未通过模板校验。响应已保存，重新校验不会再次调用计费模型。",
+  EDITING_PLAN_EMPTY_RESPONSE: "模型未返回编排正文，无法通过重新校验恢复。已保存调用回执，请先核对用量；重新生成会产生新的模型费用。",
   EDITING_TRANSCRIPT_REVIEW_REQUIRED: "自动字幕与已确认原稿差异较大，请先校对字幕并重新对齐，再继续编排。此检查不计模型费用。",
 };
 
@@ -132,7 +133,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const candidates = tasks.filter(task => task.status === "completed" && task.source_frame?.supports_native_portrait !== false && task.artifacts.some(a => a.role === "transcript"));
   const selectedCandidate = candidates.some(task => task.id === selected) ? selected : "";
   const eligible = jobs.filter(canBatchPreview);
-  const savedRecoveries = jobs.filter(job => job.mode === "generate" && !retiredTemplate(job) && ["failed", "cancelled"].includes(job.status) && job.call_state === "response_saved");
+  const savedRecoveries = jobs.filter(job => job.mode === "generate" && !retiredTemplate(job) && job.error_code !== "EDITING_PLAN_EMPTY_RESPONSE" && ["failed", "cancelled"].includes(job.status) && job.call_state === "response_saved");
   const batchIds = batchSelection.filter(id => eligible.some(job => job.id === id));
   const showBatch = eligible.length >= 2 || batchIds.length > 0;
   const refresh = useCallback(async () => unwrapApiResponse(await apiClient.GET(`${root}/projects/{project_id}/editing-planning-tasks`, {
@@ -168,10 +169,11 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const submissionPending = !!submitted && ["queued", "running"].includes(submitted.status);
   const submissionUncertain = !!submitted && submitted.call_state === "intent_saved" && !submissionPending;
   const submissionFailed = !!submitted && ["failed", "cancelled"].includes(submitted.status);
+  const emptyResponse = submitted?.error_code === "EDITING_PLAN_EMPTY_RESPONSE";
   const nextAction = editingPlanningAction(prepared, submitted || undefined);
   const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || nextAction === "wait" || nextAction === "blocked";
-  const primaryLabel = busy ? "正在提交…" : waiting ? "正在检查素材…" : submissionPending ? "正在编排视频…" : submissionUncertain ? "提交结果待确认" : submitted?.status === "completed" ? "查看视频预览" : nextAction === "recover" ? "继续处理已保存结果" : submissionFailed ? "重新检查素材" : nextAction === "blocked" ? prepared && !prepared.execution_available ? "自动剪辑暂不可用" : "请先补齐素材" : prepared ? "生成预览（计费）" : "检查素材并继续";
-  const primaryHint = submissionUncertain ? "请等待结果确认，避免重复提交和计费" : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
+  const primaryLabel = busy ? "正在提交…" : waiting ? "正在检查素材…" : submissionPending ? "正在编排视频…" : emptyResponse ? "调用回执待核对" : submissionUncertain ? "提交结果待确认" : submitted?.status === "completed" ? "查看视频预览" : nextAction === "recover" ? "继续处理已保存结果" : submissionFailed ? "重新检查素材" : nextAction === "blocked" ? prepared && !prepared.execution_available ? "自动剪辑暂不可用" : "请先补齐素材" : prepared ? "生成预览（计费）" : "检查素材并继续";
+  const primaryHint = emptyResponse ? errors.EDITING_PLAN_EMPTY_RESPONSE : submissionUncertain ? "请等待结果确认，避免重复提交和计费" : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
   const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : rendering ? "rendering" : nextAction === "recover" ? "recover" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase]);
 
@@ -443,7 +445,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       {job.status === "failed" && <p role="alert" className={styles.error}>{errors[job.error_code || ""] || "本次规划未完成，请核对输入或服务配置。"}</p>}
       {job.call_state === "intent_saved" && <p className={styles.note}>请求已登记提交，结果未确认；不能自动重发付费请求。取消只能停止后续处理。</p>}
       {["queued", "running"].includes(job.status) && <button type="button" disabled={busy || job.cancel_requested} onClick={() => void action(job, "cancel")}>{job.cancel_requested ? "正在取消" : job.call_state === "not_submitted" ? "取消" : "取消后续处理"}</button>}
-      {["failed", "cancelled"].includes(job.status) && !retiredTemplate(job) && job.call_state !== "intent_saved" && <button type="button" disabled={busy || (job.mode === "generate" && job.call_state === "not_submitted" && !job.execution_available)} onClick={() => void action(job, "retry")}>{job.call_state === "response_saved" ? "重新校验已保存响应" : "重试任务"}</button>}
+      {["failed", "cancelled"].includes(job.status) && !retiredTemplate(job) && job.error_code !== "EDITING_PLAN_EMPTY_RESPONSE" && job.call_state !== "intent_saved" && <button type="button" disabled={busy || (job.mode === "generate" && job.call_state === "not_submitted" && !job.execution_available)} onClick={() => void action(job, "retry")}>{job.call_state === "response_saved" ? "重新校验已保存响应" : "重试任务"}</button>}
       </article>;
     })}</div>
     {jobs.length > 4 && <button type="button" onClick={() => setShowHistory(value => !value)}>{showHistory ? "收起历史规划" : `查看历史规划（${jobs.length - 4} 条）`}</button>}

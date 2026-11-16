@@ -912,7 +912,16 @@ def test_unknown_or_invalid_result_cannot_bill_again(
     result = client.get(url).json()
     assert result["status"] == "failed" and provider.calls == 1
     retry = client.post(url + "/retry")
-    if malformed:
+    if malformed == "envelope":
+        assert retry.status_code == 409
+        assert retry.json()["error"]["code"] == "EDITING_PLAN_EMPTY_RESPONSE"
+        unchanged = client.get(url).json()
+        assert unchanged["error_code"] == "EDITING_PLAN_EMPTY_RESPONSE"
+        assert (unchanged["revision"], unchanged["attempts"]) == (
+            result["revision"],
+            result["attempts"],
+        )
+    elif malformed:
         assert retry.status_code == 200
         worker.process(
             submitted["id"], settings, client.app.state.session_factory, provider

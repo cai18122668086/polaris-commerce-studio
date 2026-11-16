@@ -115,7 +115,10 @@ def compile_request(
 ) -> dict:
     videos = [m for m in resolved.get("materials", []) if m.get("kind") == "video"]
     if not videos or template_id in NATIVE_VIDEO:
-        return compiler(template_id, resolved, **kwargs)
+        from .adaptive_layout import compilation
+
+        with compilation(template_id):
+            return compiler(template_id, resolved, **kwargs)
     native = copy.deepcopy(resolved)
     streams = []
     prepared = {}

@@ -83,6 +83,46 @@ class SuiteProvider:
         return {"choices": [{"message": {"content": content}}], "model": "fixture"}
 
 
+def test_empty_thinking_only_response_is_saved_and_retry_is_blocked(suite_fixture):
+    client, _auth, ws, settings, _source, task = suite_fixture
+    prepared_id = prepare_suite(suite_fixture)
+    enable_fixture(settings)
+    response = client.post(
+        base(ws) + f"/editing-tasks/{task['id']}/planning-tasks",
+        json={
+            "request_id": str(uuid4()),
+            "mode": "generate",
+            "prepared_task_id": prepared_id,
+        },
+    )
+    assert response.status_code == 200
+    plan_id = response.json()["id"]
+
+    class EmptyProvider:
+        calls = 0
+
+        def request(self, *_args, **_kwargs):
+            self.calls += 1
+            return {
+                "choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+                "usage": {
+                    "completion_tokens": 8192,
+                    "completion_tokens_details": {"reasoning_tokens": 8192},
+                },
+            }
+
+    provider = EmptyProvider()
+    worker.process(plan_id, settings, client.app.state.session_factory, provider)
+    endpoint = base(ws) + f"/editing-planning-tasks/{plan_id}"
+    view = client.get(endpoint).json()
+    assert view["error_code"] == "EDITING_PLAN_EMPTY_RESPONSE"
+    assert view["call_state"] == "response_saved"
+    retry = client.post(endpoint + "/retry")
+    assert retry.status_code == 409
+    assert retry.json()["error"]["code"] == "EDITING_PLAN_EMPTY_RESPONSE"
+    assert provider.calls == 1
+
+
 def prepare_suite(context):
     client, _auth, ws, settings, _source, task = context
     payload = {
@@ -107,6 +147,27 @@ def prepare_suite(context):
     assert prepared["engine"] == apple.ENGINE and prepared["semantic"] is None
     assert prepared["auto_preview_available"] is True
     return prepared_id
+
+
+def test_deepseek_suite_preparation_freezes_thinking_policy(suite_fixture):
+    from pathlib import Path
+
+    client, _auth, _ws, settings, _source, _task = suite_fixture
+    settings.video_editing_plan_model = "deepseek-v4.1-flash-1017"
+    prepared_id = prepare_suite(suite_fixture)
+    with client.app.state.session_factory() as session:
+        prepared = session.get(EditingPlanningTaskRecord, prepared_id)
+        artifact = next(
+            a for a in prepared.result["artifacts"] if a["role"] == "request"
+        )
+        body = json.loads(Path(artifact["path"]).read_text())
+        assert body["thinking"] == {"type": "disabled"}
+        assert (
+            prepared.result["request_sha256"]
+            == hashlib.sha256(
+                json.dumps(body, sort_keys=True, ensure_ascii=False).encode()
+            ).hexdigest()
+        )
 
 
 def test_suite_creative_contract_does_not_change_legacy_defaults():

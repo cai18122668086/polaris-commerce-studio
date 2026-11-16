@@ -145,3 +145,29 @@ def test_concurrent_templates_select_one_complete_shared_plan(tmp_path):
         )
     assert results[0]["sha256"] == results[1]["sha256"]
     assert load_plan(tmp_path, context, transcript)["sha256"] == results[0]["sha256"]
+
+
+def test_all_installed_website_styles_have_a_distinct_readable_recording_surface():
+    from app.bihuo_suite.registry import definitions
+    from app.video_editing_apple_pipeline import TEMPLATE_ID
+    from app.video_editing_template_styles import PUBLIC_TEMPLATE_IDS
+    from app.video_editing_tutorial_surfaces import SIZE, chrome, surface
+
+    ids = [
+        TEMPLATE_ID,
+        *PUBLIC_TEMPLATE_IDS,
+        *(tid for tid, meta in definitions().items() if meta.get("enabled", True)),
+    ]
+    names = set()
+    for template_id in ids:
+        layout = surface(template_id)
+        assert layout.name != "inset" and layout.name not in names
+        names.add(layout.name)
+        x, y, width, height = layout.viewport
+        assert x >= 0 and y >= 0 and x + width <= SIZE[0] and y + height <= SIZE[1]
+        assert width >= SIZE[0] * 0.75
+        if layout.native_box:
+            nx, ny, nw, nh = layout.native_box
+            assert nx >= 0 and ny >= 0 and nx + nw <= SIZE[0] and ny + nh <= SIZE[1]
+            assert ny + nh <= y or ny >= y + height
+            assert chrome(layout, template_id, {}, []).size == SIZE

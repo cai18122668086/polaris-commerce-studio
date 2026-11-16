@@ -22,6 +22,8 @@ from .video_assistance_provider import (
 )
 from .video_editing_contracts import Transcript
 from .video_editing_delivery_checkpoint import delivery_file
+from .video_editing_editorial_suite import ENGINE as EDITORIAL_ENGINE
+from .video_editing_editorial_suite import bundle as editorial_bundle
 from .video_editing_materials import verify_material_cards
 from .video_editing_pipeline import EditingFailure, decode_av, probe, run
 from .video_editing_preview import build_preview
@@ -50,7 +52,7 @@ FONT_IDS = {
 
 
 def suite_engine(snapshot: dict) -> bool:
-    return snapshot.get("engine") in {ENGINE, "bihuo-full-suite"}
+    return snapshot.get("engine") in {ENGINE, "bihuo-full-suite", EDITORIAL_ENGINE}
 
 
 def suite_fonts(settings: Settings) -> dict[str, str]:
@@ -96,11 +98,12 @@ def suite_bundle(settings: Settings, template_id: str | None = None) -> dict:
 
 
 def assert_bundle(snapshot: dict, settings: Settings) -> None:
-    current = (
-        suite_bundle(settings, snapshot["template_id"])
-        if snapshot.get("engine") == "bihuo-full-suite"
-        else suite_bundle(settings)
-    )
+    if snapshot.get("engine") == "bihuo-full-suite":
+        current = suite_bundle(settings, snapshot["template_id"])
+    else:
+        current = suite_bundle(settings)
+        if snapshot.get("engine") == EDITORIAL_ENGINE:
+            current = editorial_bundle(snapshot["template_id"], current)
     if current != snapshot["engine_bundle"]:
         raise ApiError(
             409,
@@ -235,6 +238,17 @@ def plan_suite(
             "version": snapshot["engine_bundle"]["version"],
             "flow": meta["description"],
         }
+    if snapshot.get("engine") == EDITORIAL_ENGINE:
+        from .video_editing_template_styles import STYLES
+
+        profile = {
+            "id": snapshot["template_id"],
+            "name": snapshot["template_name"],
+            "engine": EDITORIAL_ENGINE,
+            "version": snapshot["engine_bundle"]["version"],
+            "flow": STYLES[snapshot["template_id"]]["description"],
+            "capabilities": ["images"],
+        }
     request_options = {"template_profile": profile} if profile is not None else {}
     body, evidence = build_request(
         transcript,
@@ -248,6 +262,13 @@ def plan_suite(
     body = augment_request(
         body, snapshot.get("tutorial_context"), snapshot.get("tutorial_shared_plan")
     )
+    if snapshot.get("material_layout_version") and not any(
+        card["kind"] == "image" for card in snapshot["asset_cards"]
+    ):
+        body["messages"][0]["content"] += (
+            "\n本期没有静态配图。正文用真实口播词点组织points，materials留空。"
+            "如有教程录屏，只通过tutorial_steps绑定，不占用配图槽。"
+        )
     if prepared_request is None or "thinking" in prepared_request:
         body = {**body, **json_planning_options(model)}
     if prepared_request is not None:
@@ -358,7 +379,8 @@ def plan_suite(
         transcript,
         snapshot["asset_cards"],
         require_semantic_captions=True,
-        allow_mixed_body=snapshot.get("engine") == "bihuo-full-suite",
+        allow_mixed_body=snapshot.get("engine")
+        in {"bihuo-full-suite", EDITORIAL_ENGINE},
     )
     path = folder / "suite-plan.json"
     atomic_json(path, plan)
@@ -465,7 +487,8 @@ def verified_suite(
         read_json(path),
         transcript,
         row.snapshot["asset_cards"],
-        allow_mixed_body=row.snapshot.get("engine") == "bihuo-full-suite",
+        allow_mixed_body=row.snapshot.get("engine")
+        in {"bihuo-full-suite", EDITORIAL_ENGINE},
     )
     if plan != row.result.get("suite_plan"):
         raise ApiError(
@@ -560,6 +583,19 @@ def render_suite(
         selected_fonts = suite_fonts(settings)
         creative_options = dict(frozen.get("creative_options") or {})
 
+    if frozen.get("engine") == EDITORIAL_ENGINE:
+
+        def editorial_compiler(resolved: dict, **options: Any) -> dict:
+            return {
+                "template_id": frozen["template_id"],
+                "resolved": resolved,
+                "fonts": options["fonts"],
+                "source_path": options["source_path"],
+                "source_subtitles": frozen["source_subtitles"],
+            }
+
+        compiler = editorial_compiler
+
     config = compile_render_input(
         plan,
         transcript,
@@ -582,24 +618,29 @@ def render_suite(
         engine_bundle=frozen["engine_bundle"],
     )
     output = root / "suite-render"
-    run(
-        [
-            settings.video_editing_python,
-            "-B",
-            "-X",
-            "utf8",
-            "-m",
-            render_module,
-            "--input",
-            str(config_path),
-            "--output",
-            str(output),
-        ],
-        root,
-        settings,
-        guard,
-        "apple_suite_render",
-    )
+    if frozen.get("engine") == EDITORIAL_ENGINE:
+        from .video_editing_editorial_suite import render as render_editorial
+
+        render_editorial(config, output, settings, guard)
+    else:
+        run(
+            [
+                settings.video_editing_python,
+                "-B",
+                "-X",
+                "utf8",
+                "-m",
+                render_module,
+                "--input",
+                str(config_path),
+                "--output",
+                str(output),
+            ],
+            root,
+            settings,
+            guard,
+            "apple_suite_render",
+        )
     final = output / "final.mp4"
     receipt = read_json(output / "render-receipt.json")
     if not final.is_file() or receipt.get("final_sha256") != sha256(final):

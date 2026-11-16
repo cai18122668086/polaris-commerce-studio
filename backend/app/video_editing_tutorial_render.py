@@ -38,7 +38,7 @@ from .video_editing_tutorial_surfaces import (
     surface,
 )
 
-VERSION = "tengli.tutorial-presentation/2"
+VERSION = "tengli.tutorial-presentation/3"
 
 
 def prepare_recording(
@@ -371,6 +371,28 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     return path
 
 
+def concat_file(
+    manifest: Path, files: list[Path], spans: list[float], *, images: bool = False
+) -> Path:
+    def line(path: Path) -> str:
+        return "file '" + path.resolve().as_posix().replace("'", "'\\''") + "'"
+
+    rows = ["ffconcat version 1.0"]
+    for path, span in zip(files, spans, strict=True):
+        rows.append(line(path))
+        if images:
+            rows.append("option framerate 30")
+        rows.append(f"duration {span:.3f}")
+    if images:
+        rows.extend([line(files[-1]), "option framerate 30"])
+    manifest.write_text("\n".join(rows) + "\n", encoding="utf8")
+    return manifest
+
+
+def filter_path(path: Path) -> str:
+    return path.as_posix().replace(":", r"\:").replace("'", r"\'")
+
+
 def render_tutorial(
     base: Path,
     source: Path,
@@ -444,26 +466,11 @@ def render_tutorial(
         panels.append(tile)
     spans = [(step["end_ms"] - step["start_ms"]) / 1000 for step in clock["steps"]]
 
-    def concat(name: str, files: list[Path], *, images: bool = False) -> Path:
-        manifest = root / name
-
-        def line(path: Path) -> str:
-            return "file '" + path.resolve().as_posix().replace("'", "'\\''") + "'"
-
-        rows = ["ffconcat version 1.0"]
-        for path, span in zip(files, spans, strict=True):
-            rows.append(line(path))
-            if images:
-                rows.append("option framerate 30")
-            rows.append(f"duration {span:.3f}")
-        if images:
-            rows.extend([line(files[-1]), "option framerate 30"])
-        manifest.write_text("\n".join(rows) + "\n", encoding="utf8")
-        return manifest
-
     for manifest in (
-        concat("panels.ffconcat", panels, images=True),
-        concat("recordings.ffconcat", [Path(m["context"]) for m in prepared]),
+        concat_file(root / "panels.ffconcat", panels, spans, images=True),
+        concat_file(
+            root / "recordings.ffconcat", [Path(m["context"]) for m in prepared], spans
+        ),
     ):
         args += ["-threads", "1", "-f", "concat", "-safe", "0", "-i", str(manifest)]
     steps = clock["steps"]
@@ -476,13 +483,28 @@ def render_tutorial(
     active = f"gte(t,{start})*lt(t,{end})"
     shift = f"PTS-STARTPTS+{start}/TB"
     x, y = layout.viewport[:2]
+    if layout.native_box:
+        _, _, nw, nh = layout.native_box
+        graph += [
+            "[base]split[base_full][native_input]",
+            f"[native_input]scale={nw}:{nh},setsar=1[native]",
+        ]
+        base_label = "base_full"
+    else:
+        base_label = "base"
     graph += [
         f"[2:v]format=rgba,setpts='{shift}'[panels]",
         f"[3:v]setpts='{shift}'[recordings]",
-        f"[base][panels]overlay=0:0:enable='{active}':eof_action=pass[styled]",
+        f"[{base_label}][panels]overlay=0:0:enable='{active}':eof_action=pass[styled]",
         f"[styled][recordings]overlay={x}:{y}:enable='{active}':eof_action=pass[screen]",
     ]
     current = "screen"
+    if layout.native_box:
+        nx, ny = layout.native_box[:2]
+        graph.append(
+            f"[screen][native]overlay={nx}:{ny}:enable='{active}':eof_action=pass[native_scene]"
+        )
+        current = "native_scene"
     if layout.presenter:
         px, py, pw, ph = layout.presenter
         mask = root / "presenter-mask.png"
@@ -496,12 +518,8 @@ def render_tutorial(
         ]
         current = "person"
     if captions:
-
-        def escape(path: Path) -> str:
-            return path.as_posix().replace(":", r"\:").replace("'", r"\'")
-
         graph.append(
-            f"[{current}]subtitles=filename='{escape(captions)}':fontsdir='{escape(Path(caption_font).parent)}'[final]"
+            f"[{current}]subtitles=filename='{filter_path(captions)}':fontsdir='{filter_path(Path(caption_font).parent)}'[final]"
         )
         current = "final"
     if preview_at is not None:

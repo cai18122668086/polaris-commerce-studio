@@ -1309,7 +1309,11 @@ def test_template_prepares_distinct_verified_project_images(
     colors = ("red", "red", "blue", "green", "yellow")
     ids = [upload(color) for color in colors[: required + 1]]
     provider = Provider(semantic)
-    for selected, count in (([], 0), (ids[:-1], required - 1), (ids, required)):
+    selections = (([], 0), (ids[:-1], required - 1), (ids, required))
+    if template_id == "rotation-cards-v1":
+        # The speech-only suite test covers the two insufficient-image paths.
+        selections = ((ids, required),)
+    for selected, count in selections:
         new = (
             client.post(
                 route,

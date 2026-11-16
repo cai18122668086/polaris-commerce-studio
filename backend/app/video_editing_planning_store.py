@@ -377,22 +377,40 @@ def create_planning_task(
             ) from error
         snapshot["overlay_template"] = template
     model = settings.video_editing_plan_model
-    if body.mode == "prepare" and any(
-        c["kind"] == "video" for c in snapshot["asset_cards"]
-    ):
+    if body.mode == "prepare":
+        from .video_editing_editorial_suite import ENGINE as EDITORIAL_ENGINE
+        from .video_editing_editorial_suite import bundle as editorial_bundle
+        from .video_editing_editorial_suite import use_editorial
+        from .video_editing_template_styles import STYLES
         from .video_editing_tutorial_plan import content_context, optional_plan
 
-        tutorial_transcript = read_transcript_artifact(
-            artifact, base, settings.video_editing_tasks_dir
-        )
-        tutorial = content_context(
-            source.id, tutorial_transcript, snapshot["asset_cards"]
-        )
-        assert tutorial is not None
-        snapshot["tutorial_context"] = tutorial
-        snapshot["tutorial_shared_plan"] = optional_plan(
-            settings.video_editing_tasks_dir, tutorial, tutorial_transcript
-        )
+        template_id = body.template_id
+        if template_id and use_editorial(template_id, selected):
+            snapshot.pop("overlay_template", None)
+            snapshot.update(
+                engine=EDITORIAL_ENGINE,
+                template_id=template_id,
+                template_name=STYLES[template_id]["name"],
+                engine_bundle=editorial_bundle(template_id, suite_bundle(settings)),
+                creative_options={},
+            )
+        # Selected recordings have one owner: the source tutorial timeline.
+        # Native picture slots retain the caller's chosen still images.
+        cards = snapshot["asset_cards"]
+        snapshot["material_layout_version"] = 1
+        if any(card["kind"] == "video" for card in cards):
+            tutorial_transcript = read_transcript_artifact(
+                artifact, base, settings.video_editing_tasks_dir
+            )
+            tutorial = content_context(source.id, tutorial_transcript, cards)
+            assert tutorial is not None
+            snapshot["tutorial_context"] = tutorial
+            snapshot["tutorial_shared_plan"] = optional_plan(
+                settings.video_editing_tasks_dir, tutorial, tutorial_transcript
+            )
+            snapshot["asset_cards"] = [
+                card for card in cards if card["kind"] != "video"
+            ]
     if body.mode == "generate":
         prepared = own_planning_task(session, workspace, str(body.prepared_task_id))
         if (

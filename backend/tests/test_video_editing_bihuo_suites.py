@@ -168,10 +168,10 @@ def test_picture_style_accepts_video_in_owner_scoped_preparation(
 
     with client.app.state.session_factory() as session:
         row = session.get(EditingPlanningTaskRecord, response.json()["id"])
-        video = next(c for c in row.snapshot["asset_cards"] if c["kind"] == "video")
+        video = row.snapshot["tutorial_context"]["recordings"][0]
         assert video["id"] == "material-" + material["id"]
         assert video["duration_ms"] == 400
-        assert row.snapshot["tutorial_context"]["recordings"] == [video]
+        assert all(card["kind"] != "video" for card in row.snapshot["asset_cards"])
     worker.process(response.json()["id"], settings, client.app.state.session_factory)
     view = client.get(
         base(ws) + f"/editing-planning-tasks/{response.json()['id']}"

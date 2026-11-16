@@ -676,6 +676,11 @@ def process(
                 # New requests perform material/sentence retrieval once at preparation.
                 # Generated requests replay this immutable runtime snapshot.
                 runtime["material_alignment_version"] = "tengli.material-alignment/1"
+                if snapshot.get("tutorial_context") is not None:
+                    runtime["tutorial_context"] = snapshot["tutorial_context"]
+                    runtime["tutorial_shared_plan"] = snapshot.get(
+                        "tutorial_shared_plan"
+                    )
                 snapshot = {**snapshot, "planning_runtime": runtime}
             prepared_request = None
             if mode == "generate":
@@ -829,6 +834,10 @@ def process(
                 )
                 if adaptation:
                     result["semantic_adaptation"] = adaptation
+                if snapshot.get("tutorial_context") is not None:
+                    result["tutorial_plan_sha256"] = read_json(
+                        root / "provider/tutorial-plan.json"
+                    )["sha256"]
                 positions = {t.id: i for i, t in enumerate(transcript.tokens)}
                 result["aligned_spans"] = [
                     {

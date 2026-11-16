@@ -73,6 +73,12 @@ def persist_planning_preview(
                 409, "EDITING_PREVIEW_LINK_CHANGED", "预览与已保存的规划不匹配。"
             )
         return previous, False
+    tutorial_options = {}
+    if row.snapshot.get("tutorial_context") is not None:
+        tutorial_options["tutorial_material_ids"] = [
+            card["id"].removeprefix("material-")
+            for card in row.snapshot["tutorial_context"]["recordings"]
+        ]
     if suite_engine(row.snapshot):
         from .video_editing_task_models import EditingSourceRecord
 
@@ -87,6 +93,7 @@ def persist_planning_preview(
                 "options": {
                     "mode": "suite_plan",
                     "suite_plan_id": row.id,
+                    **tutorial_options,
                     "source_subtitles": row.snapshot["source_subtitles"],
                     "delivery": "preview_first",
                 },
@@ -103,6 +110,7 @@ def persist_planning_preview(
             "options": {
                 "mode": "native_plan",
                 "native_plan_id": candidate.id,
+                **tutorial_options,
                 "source_subtitles": candidate.details["source_subtitles"],
                 "caption_font_id": candidate.recipes["design"]["caption_font_id"],
                 "delivery": "preview_first",

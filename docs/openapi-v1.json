@@ -6289,6 +6289,22 @@
               }
             ],
             "title": "Transcript Revision Id"
+          },
+          "tutorial_material_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 40,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutorial Material Ids"
           }
         },
         "title": "EditingOptions",

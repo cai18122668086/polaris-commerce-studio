@@ -185,6 +185,9 @@ class EditingOptions(StrictVideoModel):
     native_edits: NativeRenderEdits | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    tutorial_material_ids: list[UUID] | None = Field(
+        default=None, max_length=40, exclude_if=lambda value: value is None
+    )
     delivery: Literal["preview_first"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -199,6 +202,14 @@ class EditingOptions(StrictVideoModel):
 
     @model_validator(mode="after")
     def matching_plan_mode(self) -> Self:
+        if self.tutorial_material_ids is not None and (
+            self.mode not in {"native_plan", "suite_plan"}
+            or not self.tutorial_material_ids
+            or len(set(self.tutorial_material_ids)) != len(self.tutorial_material_ids)
+        ):
+            raise ValueError(
+                "Tutorial playback needs a native or suite plan and unique recordings"
+            )
         if self.reference_script is not None and (
             self.mode in {"native_plan", "suite_plan"}
             or self.transcript_revision_id is not None

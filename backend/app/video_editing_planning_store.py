@@ -36,15 +36,11 @@ from .video_editing_library_choice_store import stored_choice_snapshot
 from .video_editing_materials import PREFIX, material_cards, project_material_files
 from .video_editing_native_plans import content_digest, source_assets
 from .video_editing_overlay_templates import (
-    AZL_TEMPLATE_ID,
-    CXBR_TEMPLATE_ID,
     MIN_OVERLAY_TYPES,
-    PRESENTER_MOTION_TEMPLATE_ID,
     motion_counts,
     overlay_template,
 )
 from .video_editing_planning_quality import require_reference_transcript
-from .video_editing_story_panels import PANEL_TEMPLATE_ID
 from .video_editing_task_models import (
     EditingArtifactRecord,
     EditingPlanningTaskRecord,
@@ -60,6 +56,7 @@ from .video_editing_transcript_store import (
 from .video_planner_policy import EMPTY_RESPONSE, saved_response_empty
 
 FILES = {
+    "tutorial_plan": "tutorial-plan.json",
     "suite_plan": "suite-plan.json",
     "request": "semantic-request.json",
     "request_evidence": "semantic-request-evidence.json",
@@ -334,13 +331,7 @@ def create_planning_task(
         "choice_snapshot": choices,
         "asset_cards": material_cards(
             source_assets(source) | selected,
-            include_video_durations=body.template_id
-            in {
-                PRESENTER_MOTION_TEMPLATE_ID,
-                AZL_TEMPLATE_ID,
-                CXBR_TEMPLATE_ID,
-                PANEL_TEMPLATE_ID,
-            },
+            include_video_durations=True,
         ),
         "source_subtitles": base.options["source_subtitles"],
         **({"music": body.music} if body.music is not None else {}),
@@ -377,16 +368,6 @@ def create_planning_task(
         snapshot["asset_cards"] = material_cards(
             source_assets(source) | selected, include_video_durations=True
         )
-        if body.template_id != APPLE_TEMPLATE_ID and "images" not in bihuo_definition(
-            body.template_id
-        ).get("capabilities", []):
-            if body.material_ids:
-                raise ApiError(
-                    422,
-                    "EDITING_TEMPLATE_MATERIALS_UNSUPPORTED",
-                    "此模板按口播编排文字画面，无需选择配图。",
-                )
-            snapshot["asset_cards"] = []
     elif body.template_id is not None:
         try:
             template = overlay_template(body.template_id)
@@ -396,6 +377,22 @@ def create_planning_task(
             ) from error
         snapshot["overlay_template"] = template
     model = settings.video_editing_plan_model
+    if body.mode == "prepare" and any(
+        c["kind"] == "video" for c in snapshot["asset_cards"]
+    ):
+        from .video_editing_tutorial_plan import content_context, optional_plan
+
+        tutorial_transcript = read_transcript_artifact(
+            artifact, base, settings.video_editing_tasks_dir
+        )
+        tutorial = content_context(
+            source.id, tutorial_transcript, snapshot["asset_cards"]
+        )
+        assert tutorial is not None
+        snapshot["tutorial_context"] = tutorial
+        snapshot["tutorial_shared_plan"] = optional_plan(
+            settings.video_editing_tasks_dir, tutorial, tutorial_transcript
+        )
     if body.mode == "generate":
         prepared = own_planning_task(session, workspace, str(body.prepared_task_id))
         if (

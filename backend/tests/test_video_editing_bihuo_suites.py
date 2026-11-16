@@ -4,6 +4,8 @@ import json
 import sys
 from uuid import uuid4
 
+import pytest
+
 from app import video_editing_apple_pipeline as pipeline
 from app import video_editing_planning_store as store
 from app import video_editing_planning_worker as worker
@@ -122,15 +124,16 @@ def test_video_stays_in_picture_style_full_script_request():
     assert json.loads(body["messages"][1]["content"])["available_materials"] == [video]
 
 
+@pytest.mark.parametrize("template_id", ["bihuo-09-v1", "bihuo-36-v1"])
 def test_picture_style_accepts_video_in_owner_scoped_preparation(
-    suite_fixture, monkeypatch
+    suite_fixture, monkeypatch, template_id
 ):
     from app import video_editing_material_routes as uploads
 
     client, _auth, ws, settings, _source, task = suite_fixture
     identity = {
         "engine": registry.ENGINE,
-        "template_id": "bihuo-09-v1",
+        "template_id": template_id,
         "version": "fixture",
         "sha256": "d" * 64,
     }
@@ -155,7 +158,7 @@ def test_picture_style_accepts_video_in_owner_scoped_preparation(
         base(ws) + f"/editing-tasks/{task['id']}/planning-tasks",
         json={
             "request_id": str(uuid4()),
-            "template_id": "bihuo-09-v1",
+            "template_id": template_id,
             "material_ids": [material["id"]],
             "music": "off",
         },
@@ -168,11 +171,68 @@ def test_picture_style_accepts_video_in_owner_scoped_preparation(
         video = next(c for c in row.snapshot["asset_cards"] if c["kind"] == "video")
         assert video["id"] == "material-" + material["id"]
         assert video["duration_ms"] == 400
+        assert row.snapshot["tutorial_context"]["recordings"] == [video]
     worker.process(response.json()["id"], settings, client.app.state.session_factory)
     view = client.get(
         base(ws) + f"/editing-planning-tasks/{response.json()['id']}"
     ).json()
     assert view["status"] == "prepared", view
+
+    # A template with no native image slots still captures and carries the
+    # complete shared recording plan into the ordinary website preview task.
+    from app.bihuo_suite import planning as bihuo_planning
+    from app.video_editing_task_models import EditingTaskRecord
+
+    monkeypatch.setattr(bihuo_planning, "verify_plan", module.verify_plan)
+    enable_fixture(settings)
+    generated = client.post(
+        base(ws) + f"/editing-tasks/{task['id']}/planning-tasks",
+        json={
+            "request_id": str(uuid4()),
+            "mode": "generate",
+            "prepared_task_id": view["id"],
+        },
+    ).json()
+
+    class TutorialProvider:
+        calls = 0
+
+        def request(self, *_args, **kwargs):
+            self.calls += 1
+            payload = json.loads(kwargs["json"]["messages"][1]["content"])
+            assert payload["tutorial_material_plan"]["required_recordings"] == [video]
+            words = payload["words"]
+            result = {
+                "suite_fixture": True,
+                "tutorial_steps": [
+                    {
+                        "asset_id": video["id"],
+                        "first_token_id": words[0]["id"],
+                        "last_token_id": words[-1]["id"],
+                    }
+                ],
+            }
+            return {
+                "choices": [{"message": {"content": json.dumps(result)}}],
+                "model": "fixture",
+            }
+
+    provider = TutorialProvider()
+    worker.process(
+        generated["id"], settings, client.app.state.session_factory, provider
+    )
+    completed = client.get(
+        base(ws) + f"/editing-planning-tasks/{generated['id']}"
+    ).json()
+    assert completed["status"] == "completed", completed
+    preview = client.post(
+        base(ws) + f"/editing-planning-tasks/{generated['id']}/preview"
+    )
+    assert preview.status_code == 200, preview.text
+    with client.app.state.session_factory() as session:
+        row = session.get(EditingTaskRecord, preview.json()["id"])
+        assert row.options["tutorial_material_ids"] == [material["id"]]
+    assert provider.calls == 1
 
 
 def test_installed_silver_and_optional_identity_use_real_runtime(tmp_path):

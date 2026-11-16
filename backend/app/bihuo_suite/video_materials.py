@@ -25,7 +25,7 @@ NATIVE_VIDEO = {"bihuo-02-v1", "bihuo-03-v1", "bihuo-04-v1"}
 
 def capabilities(meta: dict) -> list[str]:
     values = list(meta.get("capabilities", []))
-    if "images" in values and "video_materials" not in values:
+    if "video_materials" not in values:
         values.append("video_materials")
     return values
 

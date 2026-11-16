@@ -243,6 +243,11 @@ def plan_suite(
         snapshot.get("creative_options"),
         **request_options,
     )
+    from .video_editing_tutorial_plan import augment_request
+
+    body = augment_request(
+        body, snapshot.get("tutorial_context"), snapshot.get("tutorial_shared_plan")
+    )
     if prepared_request is None or "thinking" in prepared_request:
         body = {**body, **json_planning_options(model)}
     if prepared_request is not None:
@@ -334,9 +339,20 @@ def plan_suite(
             409, "EDITING_PLAN_RESPONSE_MISMATCH", "已保存响应与本次规划不一致。"
         )
     guard()
-    raw, adaptations = normalize_suite_output(
-        json.loads(require_planning_content(response)), transcript
-    )
+    raw = json.loads(require_planning_content(response))
+    tutorial = None
+    if snapshot.get("tutorial_context") is not None:
+        from .video_editing_tutorial_plan import accept_output
+
+        raw, tutorial = accept_output(
+            raw,
+            snapshot["tutorial_context"],
+            transcript,
+            settings.video_editing_tasks_dir,
+            {"response_sha256": sha256(response_path)},
+        )
+        atomic_json(folder / "tutorial-plan.json", tutorial)
+    raw, adaptations = normalize_suite_output(raw, transcript)
     plan = verify_plan(
         raw,
         transcript,
@@ -368,6 +384,7 @@ def plan_suite(
             "request_sha256": evidence["request_sha256"],
             "response_sha256": sha256(response_path),
             "plan_sha256": sha256(path),
+            **({"tutorial_plan_sha256": tutorial["sha256"]} if tutorial else {}),
             "validation": "contract_only",
             "semantic_review": "unreviewed",
             "visual_review": "unreviewed",
@@ -378,6 +395,8 @@ def plan_suite(
         suite_plan_sha256=sha256(path),
         native_render_state="not_compiled",
     )
+    if tutorial:
+        result["tutorial_plan_sha256"] = tutorial["sha256"]
     return "completed", result
 
 
@@ -452,6 +471,17 @@ def verified_suite(
         raise ApiError(
             409, "EDITING_PLANNING_PROVENANCE_CHANGED", "规划内容与校验记录不一致。"
         )
+    if row.snapshot.get("tutorial_context") is not None:
+        from .video_editing_tutorial_plan import verify_capture
+
+        verify_capture(
+            root,
+            row.snapshot["tutorial_context"],
+            transcript,
+            settings,
+            row.result,
+            receipt,
+        )
     assets = verify_material_cards(
         session, settings, source, row.snapshot["asset_cards"], verify_bytes=True
     )
@@ -477,6 +507,11 @@ def render_suite(
     plan, frozen = row.result["suite_plan"], dict(row.snapshot)
     source_path, source_sha = source.media_path, source.media_sha256
     original_source_path = Path(source_path)
+    tutorial = None
+    if ids := snapshot["options"].get("tutorial_material_ids"):
+        from .video_editing_tutorial_plan import task_context
+
+        tutorial = task_context(session, settings, source.id, ids, transcript)
     # The source and planning rows above are now frozen in local values. Do not
     # hold a database transaction through preparation, inference and encoding.
     session.rollback()
@@ -599,6 +634,23 @@ def render_suite(
         "visual_review": "unreviewed",
         "listening_review": "unreviewed",
     }
+    if tutorial is not None:
+        from .video_editing_tutorial_render import render_tutorial
+
+        stage("rendering")
+        final, tutorial_validation = render_tutorial(
+            final,
+            original_source_path,
+            transcript,
+            tutorial[1],
+            tutorial[0],
+            frozen.get("template_id", TEMPLATE_ID),
+            root / "tutorial",
+            settings,
+            guard,
+        )
+        validation = {**tutorial_validation, "base_native_validation": validation}
+        duration = validation["duration_ms"]
     (root / "outputs").mkdir(exist_ok=True)
     stage("building_preview")
     preview, preview_receipt = build_preview(final, root, validation, settings, guard)

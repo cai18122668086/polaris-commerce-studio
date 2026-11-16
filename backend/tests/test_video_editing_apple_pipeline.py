@@ -33,6 +33,7 @@ def suite_fixture(video, tmp_path, monkeypatch):
         body = {
             "model": model,
             "messages": [
+                {"role": "system", "content": "Explicit suite protocol fixture"},
                 {
                     "role": "user",
                     "content": json.dumps(

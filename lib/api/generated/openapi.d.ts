@@ -6470,6 +6470,8 @@ export interface components {
             suite_plan_id?: string | null;
             /** Transcript Revision Id */
             transcript_revision_id?: string | null;
+            /** Tutorial Material Ids */
+            tutorial_material_ids?: string[] | null;
         };
         /** EditingOverlaySlot */
         EditingOverlaySlot: {

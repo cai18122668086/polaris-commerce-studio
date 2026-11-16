@@ -1043,6 +1043,31 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                 receipts["audio_receipt"] = "audio-validation.json"
             if (root / "layout/adapter-review.json").is_file():
                 receipts["layout_receipt"] = "layout/adapter-review.json"
+            if ids := snapshot["options"].get("tutorial_material_ids"):
+                from .video_editing_tutorial_plan import task_context
+                from .video_editing_tutorial_render import render_tutorial
+
+                with factory() as session:
+                    shared, tutorial_assets = task_context(
+                        session, settings, snapshot["source_id"], ids, transcript
+                    )
+                stage("rendering")
+                final, tutorial_validation = render_tutorial(
+                    final,
+                    Path(snapshot["source_path"]),
+                    transcript,
+                    tutorial_assets,
+                    shared,
+                    snapshot["native_plan"]["recipes"]["overlay_template_id"],
+                    root / "tutorial",
+                    settings,
+                    guard,
+                )
+                validation = {
+                    **tutorial_validation,
+                    "base_native_validation": validation,
+                }
+                atomic_json(root / "validation.json", validation)
             files = {
                 final_role: delivery_file(final),
                 **{role: delivery_file(root / path) for role, path in receipts.items()},

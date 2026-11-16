@@ -782,6 +782,34 @@ def persist_editing_task(
             source,
             body.options,
         )
+    if body.options.tutorial_material_ids:
+        from .video_editing_native_plans import native_edit_transcript
+        from .video_editing_tutorial_plan import task_context
+
+        if body.options.suite_plan_id:
+            _, tutorial_transcript, _ = verified_suite(
+                session, settings, str(body.options.suite_plan_id), source
+            )
+        else:
+            native = session.get(
+                EditingNativePlanRecord, str(body.options.native_plan_id)
+            )
+            assert native is not None
+            tutorial_transcript = native_edit_transcript(session, settings, native)
+        try:
+            task_context(
+                session,
+                settings,
+                source.id,
+                [str(value) for value in body.options.tutorial_material_ids],
+                tutorial_transcript,
+            )
+        except (ValueError, OSError) as error:
+            raise ApiError(
+                409,
+                "EDITING_TUTORIAL_PLAN_INVALID",
+                "录屏与讲解对应关系不完整，请先核对已保存的素材编排。",
+            ) from error
     if body.options.suite_plan_id:
         suite, _, _ = verified_suite(
             session, settings, str(body.options.suite_plan_id), source

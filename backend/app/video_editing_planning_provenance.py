@@ -163,9 +163,11 @@ def _verify(
     captured = {a["role"]: a for a in manifest}
     runtime = row.snapshot.get("planning_runtime")
     # New engines and alignment receipts must not invalidate historical captures.
-    required = set(FILES) - {"suite_plan", "material_placement"}
+    required = set(FILES) - {"suite_plan", "material_placement", "tutorial_plan"}
     if (runtime or {}).get("material_alignment_version"):
         required.add("material_placement")
+    if (runtime or {}).get("tutorial_context") is not None:
+        required.add("tutorial_plan")
     if len(captured) != len(manifest) or not required <= set(captured):
         raise ValueError("Planning capture is incomplete or has duplicate roles")
     files, data = {}, {}
@@ -294,6 +296,21 @@ def _verify(
     ):
         raise ValueError("Captured semantic result no longer matches its record")
     content = data["response"]["content"]
+    if (runtime or {}).get("tutorial_context") is not None:
+        from .video_editing_tutorial_plan import verify_capture
+
+        assert runtime is not None
+        verify_capture(
+            root / "provider",
+            runtime["tutorial_context"],
+            transcript,
+            settings,
+            row.result,
+            data["receipt"],
+        )
+        raw_content = json.loads(content)
+        raw_content.pop("tutorial_steps", None)
+        content = json.dumps(raw_content, ensure_ascii=False)
     native_asset_repairs: list[dict[str, Any]] = []
     native_window_repairs: list[dict[str, Any]] = []
     if template and compact:

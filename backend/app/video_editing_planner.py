@@ -823,6 +823,15 @@ def build_request(
                 "parallel至少两个事项，不得只写relation而省略relation_items；"
                 "图槽路径和asset_ids必须对应本段native_media中已有的绑定，不能杜撰素材含义。"
             )
+    tutorial_context = (runtime or {}).get("tutorial_context")
+    if tutorial_context is not None:
+        from .video_editing_tutorial_plan import planning_hint
+
+        hint = planning_hint(
+            tutorial_context, (runtime or {}).get("tutorial_shared_plan")
+        )
+        payload["tutorial_material_plan"] = hint
+        message += "\n教程录屏共用规则/1：" + hint["policy"]
     body = {
         "model": model,
         **json_planning_options(model),
@@ -1173,6 +1182,20 @@ def generate(
     if guard:
         guard()
     content = require_planning_content(response)
+    tutorial = None
+    if (runtime or {}).get("tutorial_context") is not None:
+        from .video_editing_tutorial_plan import accept_output
+
+        assert runtime is not None
+        native, tutorial = accept_output(
+            json.loads(content),
+            runtime["tutorial_context"],
+            transcript,
+            settings.video_editing_tasks_dir,
+            {"response_sha256": sha256(response_path)},
+        )
+        content = json.dumps(native, ensure_ascii=False)
+        atomic_json(root / "tutorial-plan.json", tutorial)
     native_asset_repairs: list[dict[str, Any]] = []
     native_window_repairs: list[dict[str, Any]] = []
     if (
@@ -1241,6 +1264,7 @@ def generate(
             "request_sha256": evidence["request_sha256"],
             "response_sha256": sha256(response_path),
             "plan_sha256": sha256(plan_path),
+            **({"tutorial_plan_sha256": tutorial["sha256"]} if tutorial else {}),
             **(
                 {"material_placement_sha256": sha256(root / "material-placement.json")}
                 if (runtime or {}).get("material_alignment_version")

@@ -8,7 +8,6 @@ No model, transcription or image-generation provider is used here.
 from __future__ import annotations
 
 import os
-import re
 import wave
 from collections.abc import Callable
 from contextlib import suppress
@@ -18,7 +17,7 @@ from uuid import uuid4
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import ImageFont
 
 from .motion_library import atomic_json, read_json, sha256
 from .video_editing_captioning import measured_caption_rows
@@ -30,100 +29,25 @@ from .video_editing_tutorial_plan import (
     source_to_output,
     timestamp_expression,
 )
+from .video_editing_tutorial_surfaces import (
+    SIZE,
+    Surface,
+    chrome,
+    fonts_for,
+    presenter_mask,
+    surface,
+)
 
-VERSION = "tengli.tutorial-presentation/1"
-SIZE = (1080, 1920)
-CONTEXT_BOX = (32, 390, 1016, 544)
-PRESENTER_BOX = (64, 1140, 300, 534)
-
-
-def profile(template_id: str) -> dict:
-    from .bihuo_suite.registry import fonts, is_template
-
-    face = fonts(template_id if is_template(template_id) else "bihuo-02-v1")
-    styles = {
-        "bihuo-02-v1": ("#F6F7F5", "#FFFFFF", "#2875E5", 48),
-        "bihuo-04-v1": ("#ECEBE8", "#FFFFFF", "#326CB5", 24),
-        "bihuo-10-v1": ("#B29B7E", "#FAF4E5", "#A1832C", 28),
-        "bihuo-36-v1": ("#E8E8EE", "#FFFFFF", "#A18A47", 20),
-        "product-explainer-v1": ("#F6F5EF", "#FFFFFF", "#566F62", 24),
-        "azl-panels-v1": ("#F5F4F0", "#FFFFFF", "#1C252D", 0),
-    }
-    background, card, accent, radius = styles.get(
-        template_id, ("#F5F5F4", "#FFFFFF", "#356BC3", 24)
-    )
-    return {
-        "template_id": template_id,
-        "background": background,
-        "card": card,
-        "accent": accent,
-        "radius": radius,
-        "title_font": face.get("title") or face.get("bold") or face["caption"],
-        "caption_font": face.get("caption") or face.get("bold") or face["body"],
-    }
-
-
-def _label(
-    draw: ImageDraw.ImageDraw,
-    text: str,
-    path: str,
-    x: int,
-    y: int,
-    width: int,
-    size: int,
-    color: str,
-    max_lines: int = 2,
-) -> None:
-    from .bihuo_suite.conditional_layout import _label as fit
-
-    display = fit(text, path, width, tuple(range(size, 29, -4)), max_lines)
-    font = ImageFont.truetype(path, display["size"])
-    for line in display["lines"]:
-        draw.text((x, y), line, font=font, fill=color, stroke_width=0)
-        y += display["size"] + 12
-
-
-def plate(step: dict, total: int, style: dict) -> Image.Image:
-    image = Image.new("RGB", SIZE, style["background"])
-    draw = ImageDraw.Draw(image)
-    radius = style["radius"]
-    draw.rounded_rectangle((24, 24, 1056, 1896), radius=radius, fill=style["card"])
-    draw.rounded_rectangle(
-        (48, 62, 246, 126), radius=min(32, radius), fill=style["accent"]
-    )
-    draw.text(
-        (76, 69),
-        f"{step['index']:02d} / {total:02d}",
-        fill="white",
-        font=ImageFont.truetype(style["caption_font"], 36),
-    )
-    title = re.sub(r"^\s*\d+[_.、\s-]*", "", step["label"]).strip()
-    _label(draw, title, style["title_font"], 48, 144, 970, 60, "#202328")
-    for x, y, width, height in (CONTEXT_BOX,):
-        draw.rounded_rectangle(
-            (x - 6, y - 6, x + width + 6, y + height + 6),
-            radius=min(radius, 22),
-            fill="#E6E7E9",
-        )
-    draw.text(
-        (48, 310),
-        "跟着画面，完整看清这一步",
-        font=ImageFont.truetype(style["caption_font"], 32),
-        fill=style["accent"],
-    )
-    for y, text in [(1230, "看清操作"), (1300, "再进入下一步")]:
-        draw.text(
-            (420, y),
-            text,
-            font=ImageFont.truetype(style["title_font"], 43),
-            fill="#40464E",
-        )
-    draw.line((420, 1410, 1032, 1410), fill=style["accent"], width=4)
-    return image
+VERSION = "tengli.tutorial-presentation/2"
 
 
 def prepare_recording(
-    asset: dict, step: dict, cache: Path, settings: Any, guard: Callable
+    asset: dict,
+    step: dict,
+    cache: Path,
+    settings: Any,
+    guard: Callable,
+    layout: Surface,
 ) -> dict:
     path = Path(asset["path"])
     if sha256(path) != step["asset_sha256"]:
@@ -133,7 +57,8 @@ def prepare_recording(
             "source": step["asset_sha256"],
             "hold_ms": step["tail_hold_ms"],
             "version": VERSION,
-            "implementation": sha256(Path(__file__)),
+            "viewport_size": layout.viewport[2:],
+            "background": layout.pad_color,
         }
     )
     parent = cache / key[:20]
@@ -148,10 +73,10 @@ def prepare_recording(
     root.mkdir(parents=True, exist_ok=False)
     hold = step["tail_hold_ms"] / 1000
     context = root / "context.mp4"
-    full_w, full_h = CONTEXT_BOX[2:]
+    full_w, full_h = layout.viewport[2:]
     graph = (
         f"[0:v]scale={full_w}:{full_h}:force_original_aspect_ratio=decrease,"
-        f"pad={full_w}:{full_h}:(ow-iw)/2:(oh-ih)/2:color=white,setsar=1,fps=30,"
+        f"pad={full_w}:{full_h}:(ow-iw)/2:(oh-ih)/2:color={layout.pad_color},setsar=1,fps=30,"
         f"tpad=stop_mode=clone:stop_duration={hold}[full]"
     )
     run(
@@ -287,11 +212,13 @@ def verify_voice(
     }
 
 
-def verify_views(final: Path, prepared: list[dict], clock: dict) -> dict:
+def verify_views(
+    final: Path, prepared: list[dict], clock: dict, layout: Surface
+) -> dict:
     """Check actual first/middle/last demonstration frames, not only file decode."""
     capture = cv2.VideoCapture(str(final))
     samples = []
-    x, y, width, height = CONTEXT_BOX
+    x, y, width, height = layout.viewport
     try:
         for step, material in zip(clock["steps"], prepared, strict=True):
             reference = cv2.VideoCapture(material["context"])
@@ -384,16 +311,23 @@ def _ass_time(milliseconds: int) -> str:
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
 
 
-def caption_file(root: Path, transcript: Transcript, clock: dict, style: dict) -> Path:
-    font_name = ImageFont.truetype(style["caption_font"], 52).getname()[0]
+def caption_file(
+    root: Path, transcript: Transcript, clock: dict, layout: Surface, font: str
+) -> Path:
+    font_name = ImageFont.truetype(font, 52).getname()[0]
+
+    def color(hex_rgb: str) -> str:
+        return "&H00" + hex_rgb[4:6] + hex_rgb[2:4] + hex_rgb[:2]
+
+    primary, outline = color(layout.caption_color), color(layout.caption_outline)
     columns = (
         "Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,"
         "BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,"
         "BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding"
     )
     definition = (
-        f"Style: Tutorial,{font_name},52,&H00202020,&H00202020,&H00FFFFFF,"
-        "&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,80,80,90,1"
+        f"Style: Tutorial,{font_name},52,{primary},{primary},{outline},"
+        f"&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,68,68,{layout.caption_margin},1"
     )
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -447,12 +381,15 @@ def render_tutorial(
     root: Path,
     settings: Any,
     guard: Callable,
+    *,
+    preview_at: float | None = None,
 ) -> tuple[Path, dict]:
     clock = schedule(shared, transcript)
     if sha256(source) != transcript.source_sha256:
         raise ValueError("Tutorial narration source changed")
     root.mkdir(parents=True, exist_ok=True)
-    style = profile(template_id)
+    layout = surface(template_id)
+    _, caption_font = fonts_for(template_id)
     cache = (
         settings.video_editing_tasks_dir
         / "_tutorial"
@@ -460,11 +397,17 @@ def render_tutorial(
         / "media"
     )
     prepared = [
-        prepare_recording(assets[step["asset_id"]], step, cache, settings, guard)
+        prepare_recording(
+            assets[step["asset_id"]], step, cache, settings, guard, layout
+        )
         for step in clock["steps"]
     ]
     atomic_json(root / "tutorial-clock.json", clock)
-    captions = caption_file(root, transcript, clock, style)
+    captions = (
+        caption_file(root, transcript, clock, layout, caption_font)
+        if layout.replaces_caption
+        else None
+    )
     expression = timestamp_expression(clock)
     duration = clock["duration_ms"] / 1000
     safety_tail = sum(h["duration_ms"] for h in clock["holds"]) / 1000 + 1
@@ -488,62 +431,109 @@ def render_tutorial(
     ]
     graph = [
         f"[0:v]setpts='{expression}',fps=30,tpad=stop_mode=clone:stop_duration={safety_tail},scale=1080:1920,setsar=1,format=yuv420p[base]",
-        f"[1:v]setpts='{expression}',fps=30,tpad=stop_mode=clone:stop_duration={safety_tail},scale={PRESENTER_BOX[2]}:{PRESENTER_BOX[3]}:force_original_aspect_ratio=increase,crop={PRESENTER_BOX[2]}:{PRESENTER_BOX[3]},setsar=1[presenter]",
-        f"[1:a]aresample=48000,aformat=channel_layouts=stereo,asetnsamples=n=48:p=0,asetpts='{expression}',aresample=async=1:min_hard_comp=0.0005:first_pts=0,apad,atrim=duration={duration},asplit=2[voice][voice_proof]",
     ]
-    current = "base"
-    source_index = 2
-    for step, media in zip(clock["steps"], prepared, strict=True):
-        index = step["index"]
-        tile = root / f"step-{index:02d}.png"
-        plate(step, len(clock["steps"]), style).save(tile)
-        args += [
-            "-loop",
-            "1",
-            "-framerate",
-            "30",
-            "-i",
-            str(tile),
-            "-threads",
-            "1",
-            "-i",
-            media["context"],
-        ]
-        a, b = step["start_ms"] / 1000, step["end_ms"] / 1000
-        active = f"gte(t,{a})*lt(t,{b})"
-        graph += [
-            f"[{current}][{source_index}:v]overlay=0:0:enable='{active}':eof_action=pass[p{index}]",
-            f"[{source_index + 1}:v]setpts=PTS-STARTPTS+{a}/TB[f{index}]",
-            f"[p{index}][f{index}]overlay={CONTEXT_BOX[0]}:{CONTEXT_BOX[1]}:enable='{active}':eof_action=pass[s{index}]",
-        ]
-        current = f"s{index}"
-        source_index += 2
-    active = (
-        f"gte(t,{clock['steps'][0]['start_ms'] / 1000})"
-        f"*lt(t,{clock['steps'][-1]['end_ms'] / 1000})"
-    )
-    speaking = active + "".join(
-        f"*(not(gte(t,{h['output_start_ms'] / 1000})"
-        f"*lt(t,{(h['output_start_ms'] + h['duration_ms']) / 1000})))"
-        for h in clock["holds"]
-    )
-    escaped = str(captions).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-    fonts = (
-        str(Path(style["caption_font"]).parent)
-        .replace("\\", "/")
-        .replace(":", r"\:")
-        .replace("'", r"\'")
-    )
+    if preview_at is None:
+        graph.append(
+            f"[1:a]aresample=48000,aformat=channel_layouts=stereo,asetnsamples=n=48:p=0,asetpts='{expression}',aresample=async=1:min_hard_comp=0.0005:first_pts=0,apad,atrim=duration={duration},asplit=2[voice][voice_proof]"
+        )
+    labels = [step["label"] for step in clock["steps"]]
+    panels = []
+    for step in clock["steps"]:
+        tile = root / f"step-{step['index']:02d}.png"
+        chrome(layout, template_id, step, labels).save(tile)
+        panels.append(tile)
+    spans = [(step["end_ms"] - step["start_ms"]) / 1000 for step in clock["steps"]]
+
+    def concat(name: str, files: list[Path], *, images: bool = False) -> Path:
+        manifest = root / name
+
+        def line(path: Path) -> str:
+            return "file '" + path.resolve().as_posix().replace("'", "'\\''") + "'"
+
+        rows = ["ffconcat version 1.0"]
+        for path, span in zip(files, spans, strict=True):
+            rows.append(line(path))
+            if images:
+                rows.append("option framerate 30")
+            rows.append(f"duration {span:.3f}")
+        if images:
+            rows.extend([line(files[-1]), "option framerate 30"])
+        manifest.write_text("\n".join(rows) + "\n", encoding="utf8")
+        return manifest
+
+    for manifest in (
+        concat("panels.ffconcat", panels, images=True),
+        concat("recordings.ffconcat", [Path(m["context"]) for m in prepared]),
+    ):
+        args += ["-threads", "1", "-f", "concat", "-safe", "0", "-i", str(manifest)]
+    steps = clock["steps"]
+    if any(
+        a["end_ms"] != b["start_ms"] for a, b in zip(steps, steps[1:], strict=False)
+    ):
+        raise ValueError("Tutorial demonstration timeline is not continuous")
+    start = steps[0]["start_ms"] / 1000
+    end = steps[-1]["end_ms"] / 1000
+    active = f"gte(t,{start})*lt(t,{end})"
+    shift = f"PTS-STARTPTS+{start}/TB"
+    x, y = layout.viewport[:2]
     graph += [
-        f"[{current}][presenter]overlay={PRESENTER_BOX[0]}:{PRESENTER_BOX[1]}:enable='{speaking}':eof_action=pass[person]",
-        f"[person]subtitles=filename='{escaped}':fontsdir='{fonts}'[final]",
+        f"[2:v]format=rgba,setpts='{shift}'[panels]",
+        f"[3:v]setpts='{shift}'[recordings]",
+        f"[base][panels]overlay=0:0:enable='{active}':eof_action=pass[styled]",
+        f"[styled][recordings]overlay={x}:{y}:enable='{active}':eof_action=pass[screen]",
     ]
+    current = "screen"
+    if layout.presenter:
+        px, py, pw, ph = layout.presenter
+        mask = root / "presenter-mask.png"
+        presenter_mask(layout, mask)
+        args += ["-loop", "1", "-framerate", "30", "-i", str(mask)]
+        graph += [
+            f"[1:v]setpts='{expression}',fps=30,tpad=stop_mode=clone:stop_duration={safety_tail},scale={pw}:{ph}:force_original_aspect_ratio=increase,crop={pw}:{ph},setsar=1,format=yuv420p[pip]",
+            "[4:v]format=gray[alpha]",
+            "[pip][alpha]alphamerge[presenter]",
+            f"[screen][presenter]overlay={px}:{py}:enable='{active}':eof_action=pass[person]",
+        ]
+        current = "person"
+    if captions:
+
+        def escape(path: Path) -> str:
+            return path.as_posix().replace(":", r"\:").replace("'", r"\'")
+
+        graph.append(
+            f"[{current}]subtitles=filename='{escape(captions)}':fontsdir='{escape(Path(caption_font).parent)}'[final]"
+        )
+        current = "final"
+    if preview_at is not None:
+        still = root / "preview.jpg"
+        run(
+            args
+            + [
+                "-filter_complex",
+                ";".join(graph),
+                "-map",
+                f"[{current}]",
+                "-ss",
+                str(preview_at),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                "-y",
+                str(still),
+            ],
+            root,
+            settings,
+            guard,
+            "tutorial_preview",
+        )
+        return still, {"viewport": layout.viewport, "surface": layout.name}
     final = root / "tutorial-final.mp4"
     args += [
         "-filter_complex",
         ";".join(graph),
         "-map",
-        "[final]",
+        f"[{current}]",
         "-map",
         "[voice]",
         "-t",
@@ -609,7 +599,8 @@ def validate_tutorial(
     if abs(measured - clock["duration_ms"]) > 100:
         raise ValueError("Tutorial output clock changed")
     voice = verify_voice(source, root / "narration.wav", clock, root, settings, guard)
-    views = verify_views(final, prepared, clock)
+    layout = surface(template_id)
+    views = verify_views(final, prepared, clock, layout)
     receipt = {
         "version": VERSION,
         "decoded": True,
@@ -629,7 +620,8 @@ def validate_tutorial(
             "all_source_ranges_complete": True,
         },
         "recordings": clock["steps"],
-        "context_box": list(CONTEXT_BOX),
+        "context_box": list(layout.viewport),
+        "template_surface": layout.name,
         "simultaneous_recording_views": 1,
         "narration_rate": 1,
         "narration_holds": clock["holds"],

@@ -10,6 +10,7 @@ from .motion_library import atomic_json, sha256
 from .video_editing_pipeline import EditingFailure, decode_av, probe, run
 
 PROXY_MAX_EDGE = 640
+TUTORIAL_PROXY_MAX_EDGE = 1280
 
 
 def build_preview(
@@ -59,7 +60,12 @@ def build_preview(
 
     master_tracks = tracks(master)
     video = master_tracks["video"]
-    factor = min(1, PROXY_MAX_EDGE / max(video["width"], video["height"]))
+    max_edge = (
+        TUTORIAL_PROXY_MAX_EDGE
+        if validation.get("template_surface")
+        else PROXY_MAX_EDGE
+    )
+    factor = min(1, max_edge / max(video["width"], video["height"]))
     width = max(2, int(video["width"] * factor / 2) * 2)
     height = max(2, int(video["height"] * factor / 2) * 2)
     preview = root / "outputs/preview.mp4"

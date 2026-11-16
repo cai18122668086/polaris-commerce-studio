@@ -128,3 +128,27 @@ def test_head_breakout_and_room_share_one_source_transform(tmp_path):
             == out["head_foreground"].getpixel((540, y))[:3]
         )
     assert out["head_foreground"].getbbox()[3] <= 506
+
+
+def test_milkblue_caption_keeps_complete_words_and_source_clock():
+    font = next(iter(registry.fonts("bihuo-16-v1").values()))
+    text = "规格和使用场景有没有讲完整。"
+    display = layout.fit(text, font, 1000, (76, 72, 68, 64, 60), 2)
+    assert "".join(display["lines"]) == text
+    assert any("完整" in line for line in display["lines"])
+    assert min(len(line) for line in display["lines"]) >= 5
+    module = registry.runtime("bihuo-16-v1")
+    native = __import__(module.encode.__globals__["__name__"], fromlist=["caption"])
+    row = {
+        "text": text,
+        "time": [1, 3],
+        "lines": [{"text": text, "emphasis_spans": []}],
+    }
+    cfg = {"font": font, "captions": [row]}
+    out = {
+        k: native.blank()
+        for k in ["caption_body", "caption_emphasis", "caption_shadow"]
+    }
+    layout.milkblue_caption(native, native.caption, cfg, 50, out)
+    assert cfg["captions"] == [row] and row["time"] == [1, 3]
+    assert out["caption_body"].getbbox()[3] < 1710

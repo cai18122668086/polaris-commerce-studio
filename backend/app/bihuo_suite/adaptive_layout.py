@@ -209,6 +209,54 @@ def transparent_window(
     return result
 
 
+def milkblue_caption(
+    native: Any, original: Callable, c: dict, n: int, out: dict
+) -> None:
+    row = next(
+        (v for v in c["captions"] if v["time"][0] <= n / 25 < v["time"][1]), None
+    )
+    if not row or native.font(c["font"], 76).getlength(row["text"]) <= 1000:
+        original(c, n, out)
+        return
+    from PIL import ImageFilter
+
+    display = fit(row["text"], c["font"], 1000, (76, 72, 68, 64, 60), 2)
+    spans: list[tuple[int, int]] = []
+    offset = 0
+    for line in row.get("lines", []):
+        spans.extend(
+            (a + offset, b + offset) for a, b in line.get("emphasis_spans", [])
+        )
+        offset += len(line["text"])
+    size = display["size"]
+    face = native.font(c["font"], size)
+    ref = face.getbbox("国", anchor="ls", stroke_width=2)
+    offset = 0
+    for j, line in enumerate(display["lines"]):
+        top = 1598 - (len(display["lines"]) - 1) * 112 + j * 112
+        x = (1080 - sum(face.getlength(ch) for ch in line)) / 2
+        for ch in line:
+            mark = any(a <= offset < b for a, b in spans)
+            tile, bounds, pad = native.glyph(ch, c["font"], size, mark)
+            baseline = top - ref[1] - (10 if mark else 0)
+            out["caption_emphasis" if mark else "caption_body"].alpha_composite(
+                tile, (round(x + bounds[0] - pad), round(baseline + bounds[1] - pad))
+            )
+            x += face.getlength(ch)
+            offset += 1
+    q = min(1, (n / 25 - row["time"][0] + 0.04) / 0.28)
+    for key in ["caption_body", "caption_emphasis"]:
+        out[key] = native.opacity(out[key], q)
+    alpha = Image.alpha_composite(
+        out["caption_body"], out["caption_emphasis"]
+    ).getchannel("A")
+    shadow = native.blank()
+    shadow.putalpha(
+        alpha.filter(ImageFilter.GaussianBlur(2)).point(lambda a: round(a * 0.8))
+    )
+    out["caption_shadow"].alpha_composite(shadow, (3, 4))
+
+
 def milkblue_render(
     native: Any,
     original: Callable,
@@ -434,6 +482,12 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
                 ),
             )
             if tid == "bihuo-16-v1":
+                old_caption = native.caption
+                patch(
+                    native,
+                    "caption",
+                    lambda c, n, out: milkblue_caption(native, old_caption, c, n, out),
+                )
                 old = native.render
                 patch(
                     native,

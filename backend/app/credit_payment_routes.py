@@ -3,7 +3,7 @@
 import hashlib
 import hmac
 import re
-from datetime import UTC
+from datetime import UTC, timedelta
 from typing import Annotated, Any, Literal, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from . import welcome_credits
 from .auth import SessionDependency, WorkspaceDependency, WorkspaceWriteDependency
 from .config import Settings
 from .credit_memberships import add_months, aware, grant, membership_state, refresh
@@ -27,6 +28,7 @@ from .models import (
     CreditLedgerEntryRecord,
     CreditMembershipRecord,
     CreditPurchaseRecord,
+    UserRecord,
     utc_now,
 )
 from .services import credit_enforcement_enabled, new_id, require_idempotency_key
@@ -173,7 +175,10 @@ def _response(order: CreditPurchaseRecord) -> CreditPurchaseResponse:
     response_model=CreditPackageCatalog,
 )
 def packages(
-    request: Request, workspace: WorkspaceDependency, include_memberships: bool = False
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+    include_memberships: bool = False,
 ) -> CreditPackageCatalog:
     settings: Settings = request.app.state.settings
     enabled = credit_enforcement_enabled(workspace.workspace_id)
@@ -182,11 +187,24 @@ def packages(
             _creation_key(settings)
         except ApiError:
             enabled = False
+    eligible = (
+        enabled
+        and welcome_credits.eligibility(
+            session,
+            workspace.principal.user_id,
+            workspace.workspace_id,
+            aware(utc_now()),
+        )
+        is not None
+    )
+    available = list(PRODUCTS.values())
+    if eligible:
+        available.append(welcome_credits.PRODUCT)
     return CreditPackageCatalog(
         enabled=enabled,
         packages=[
             CreditPackage(**product.snapshot())
-            for product in PRODUCTS.values()
+            for product in available
             if product.id != LEGACY_PACK_ID
             and (include_memberships or product.kind == "pack")
         ]
@@ -211,7 +229,18 @@ def create_purchase(
         raise ApiError(403, "CREDIT_PILOT_REQUIRED", "当前账号暂未开放积分充值。")
     settings: Settings = request.app.state.settings
     key = _creation_key(settings)
-    product = PRODUCTS.get(payload.package_id)
+    newcomer = payload.package_id == welcome_credits.PRODUCT.id
+    product = welcome_credits.PRODUCT if newcomer else PRODUCTS.get(payload.package_id)
+    if newcomer:
+        # Serialize order creation across unique idempotency keys for one buyer.
+        if session.get_bind().dialect.name == "sqlite":
+            session.execute(
+                update(UserRecord)
+                .where(UserRecord.id == workspace.principal.user_id)
+                .values(status=UserRecord.status)
+            )
+        else:
+            session.get(UserRecord, workspace.principal.user_id, with_for_update=True)
     if product is None:
         raise ApiError(422, "INVALID_CREDIT_PACKAGE", "充值套餐不存在。")
     request_key = require_idempotency_key(idempotency_header)
@@ -227,6 +256,28 @@ def create_purchase(
                 409, "IDEMPOTENCY_CONFLICT", "这次购买内容已改变，请重新确认。"
             )
         return _response(existing)
+    from .growth_rewards import referral_terms
+
+    terms = referral_terms(session, workspace.principal.user_id, workspace.workspace_id)
+    if terms:
+        terms["referral_workspace_id"] = workspace.workspace_id
+    if newcomer:
+        if (
+            welcome_credits.eligibility(
+                session,
+                workspace.principal.user_id,
+                workspace.workspace_id,
+                aware(utc_now()),
+            )
+            is None
+        ):
+            raise ApiError(403, "NEWCOMER_INELIGIBLE", "新人首单优惠已结束或已使用。")
+        pending = welcome_credits.pending_order(
+            session, workspace.principal.user_id, workspace.workspace_id
+        )
+        if pending:
+            return _response(pending)
+        terms["validity_days"] = welcome_credits.VALIDITY_DAYS
     order_id = new_id("pay")
     parameters = {
         "pid": settings.credit_epay_pid,
@@ -248,7 +299,10 @@ def create_purchase(
         package_name=product.name,
         amount_fen=product.amount_fen,
         credits=product.credits,
-        product_snapshot=product.snapshot(),
+        product_snapshot={
+            **product.snapshot(),
+            **terms,
+        },
         merchant_pid=settings.credit_epay_pid,
         signing_key_id=settings.credit_epay_active_key_id,
         checkout_url=settings.credit_epay_base_url.rstrip("/")
@@ -615,6 +669,8 @@ def _settle_verified_purchase(session: Session, parameters: dict[str, str]) -> N
             if terms and terms.get("validity_months")
             else None
         )
+        if terms and terms.get("validity_days"):
+            expiry = aware(utc_now()) + timedelta(days=terms["validity_days"])
         lot = grant(
             session,
             account,

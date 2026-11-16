@@ -46,6 +46,8 @@ from .ecommerce_routes import router as ecommerce_router
 from .ecommerce_session import EcommerceSessionManager
 from .ecommerce_worker_routes import router as ecommerce_worker_router
 from .errors import ApiError
+from .growth_center_routes import router as growth_center_router
+from .growth_routes import router as growth_router
 from .inspiration_routes import router as inspiration_router
 from .legacy_detail_proxy import LegacyDetailProxy
 from .models import WorkspaceLimitRecord
@@ -344,6 +346,7 @@ def create_app(
     allowed_headers = [
         "Content-Type",
         "Idempotency-Key",
+        "X-Signup-Invitation",
         "X-Request-Id",
     ]
     if app_settings.auth_mode == "development":
@@ -567,6 +570,8 @@ def create_app(
     application.include_router(processing_consent_router)
     application.include_router(creation_summary_router)
     application.include_router(support_router)
+    application.include_router(growth_router)
+    application.include_router(growth_center_router)
     application.include_router(credit_payment_router)
     application.include_router(brand_resume_router)
     application.include_router(announcement_router)

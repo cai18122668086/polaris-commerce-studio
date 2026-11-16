@@ -52,7 +52,7 @@ export function ReplicaImageHistoryDialog({ workspaceId, jobId, itemId, title, o
     {history.isPending ? <div className={styles.loading}><LoaderCircle className="spin" size={24} />正在加载记录…</div>
       : history.error ? <div className={styles.loading} role="alert"><p>{errorMessage(history.error)}</p><button type="button" onClick={() => void history.refetch()}>重新加载</button></div>
         : data && <div className={styles.body}>
-          <div className={styles.preview}>{access.data?.url ? <img src={access.data.url} alt="复刻图片历史预览" /> : access.error ? <p role="alert">图片暂不可用</p> : <LoaderCircle className="spin" size={24} />}</div>
+          <div className={styles.preview}>{access.data?.url ? <img data-growth-asset={assetId} src={access.data.url} alt="复刻图片历史预览" /> : access.error ? <p role="alert">图片暂不可用</p> : <LoaderCircle className="spin" size={24} />}</div>
           <aside className={styles.sidebar}>
             <div className={styles.versions} role="group" aria-label="图片修改版本">
               <button type="button" className={styles.version} aria-pressed={selectedId === "original"} onClick={() => setSelected("original")} disabled={select.isPending}>

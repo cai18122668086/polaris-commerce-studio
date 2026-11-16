@@ -21,7 +21,7 @@ export function BeforeAfterResult({ workspaceId, sourceUrl, assetId, downloadabl
     <div>
       <div className={styles.comparisonStage}>
         <img src={sourceUrl} alt="一句话改图前的原图" />
-        <div className={styles.comparisonAfter} style={{ clipPath: `inset(0 0 0 ${position}%)` }}><img src={access.data.url} alt="一句话改图后的生成结果" /></div>
+        <div className={styles.comparisonAfter} style={{ clipPath: `inset(0 0 0 ${position}%)` }}><img data-growth-asset={assetId} src={access.data.url} alt="一句话改图后的生成结果" /></div>
         {position > 20 && <span className={`${styles.comparisonLabel} ${styles.beforeLabel}`}>原图</span>}
         {position < 80 && <span className={`${styles.comparisonLabel} ${styles.afterLabel}`}>{preview ? "候选预览" : "结果"}</span>}
         <i className={styles.divider} style={{ left: `${position}%` }} />

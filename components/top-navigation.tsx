@@ -1,5 +1,7 @@
 "use client";
 
+import { RewardsNavigation } from "./rewards-navigation";
+import { usePublicGrowth, useRewards } from "@/features/billing/api/rewards";
 import { PrimaryNavigationLink } from "./primary-navigation-link";
 import { useVideoStudioAccess } from "@/features/video-studio/access";
 import styles from "./top-navigation.module.css";
@@ -56,6 +58,7 @@ export function TopNavigation({
   taskTriggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const pathname = usePathname();
+  const publicGrowth = usePublicGrowth();
   const videoStudioAllowed = useVideoStudioAccess();
   const isHome = pathname === "/";
   const [scrolled, setScrolled] = useState(false);
@@ -131,8 +134,15 @@ export function TopNavigation({
     />
   );
 
+  const rewards = useRewards(workspace?.id);
+  const bannerVisible = workspace
+    ? rewards.data?.welcome_claimed || rewards.data?.checkin_enabled || rewards.data?.referral_enabled
+    : publicGrowth.data?.welcome_enabled;
+  const checkinVisible = workspace
+    ? rewards.data?.checkin_enabled
+    : publicGrowth.data?.checkin_enabled;
   return (
-    <header className={`top-nav ${styles.header}`} data-transparent={isHome && !scrolled || undefined}>
+    <header data-rewards-navigation={checkinVisible || undefined} className={`top-nav ${styles.header}`} data-transparent={isHome && !scrolled && !bannerVisible || undefined}>
       <div className="top-nav__inner">
         {showMenu && (
           <button
@@ -180,6 +190,7 @@ export function TopNavigation({
           pathname={pathname}
         />
         <div className="top-nav__actions">
+          <RewardsNavigation />
           <AnnouncementBanner />
           <button ref={taskTriggerRef} className={`task-trigger ${taskStateClass}`} onClick={() => workspace ? onOpenTasks() : window.location.assign(loginHref("/jobs"))} aria-label={taskAriaLabel} aria-controls="task-drawer" aria-expanded={taskOpen} aria-haspopup="dialog">
             <PanelRightOpen size={18} /><span>{taskLabel}</span>{activeCount || errorCount ? <i>{activeCount || errorCount}</i> : null}

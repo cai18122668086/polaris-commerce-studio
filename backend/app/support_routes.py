@@ -6,16 +6,19 @@ from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from . import welcome_credits
 from .admin_commerce_models import SupportCaseRecord
 from .auth import SessionDependency, WorkspaceDependency
 from .errors import ApiError
 from .models import AuditEventRecord, JobRecord, WorkspaceRecord
+from .onboarding import personal_workspace_id
 from .services import new_id, require_idempotency_key
 
 router = APIRouter(tags=["support"])
 
 
 class SupportCreate(BaseModel):
+    welcome_bonus: bool = False
     issue: str = Field(min_length=3, max_length=4000)
     job_id: str | None = Field(default=None, max_length=40)
 
@@ -27,6 +30,7 @@ class SupportResponse(BaseModel):
     issue: str
     status: str
     resolution: str
+    welcome_bonus: bool
 
     model_config = {"from_attributes": True}
 
@@ -63,6 +67,21 @@ def create_case(
 ) -> SupportCaseRecord:
     request_key = require_idempotency_key(key)
     issue = body.issue.strip()
+    if body.welcome_bonus:
+        if (
+            workspace.workspace_id != personal_workspace_id(workspace.principal.user_id)
+            or welcome_credits.signup_lot(session, workspace.workspace_id) is None
+            or body.job_id
+        ):
+            raise ApiError(
+                403, "SUPPORT_BONUS_INELIGIBLE", "此账号未参加新人赠分活动。"
+            )
+        request_key = "support-welcome"
+        issue = "申请添加客服赠送 50 积分"
+    elif request_key == "support-welcome":
+        raise ApiError(
+            422, "INVALID_REQUEST_KEY", "请使用普通售后请求编号。"
+        )
     if len(issue) < 3:
         raise ApiError(422, "SUPPORT_ISSUE_REQUIRED", "请描述遇到的问题。")
     if body.job_id:
@@ -97,6 +116,7 @@ def create_case(
         job_id=body.job_id,
         request_key=request_key,
         issue=issue,
+        welcome_bonus=body.welcome_bonus,
         status="open",
         resolution="",
     )

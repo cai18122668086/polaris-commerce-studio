@@ -165,14 +165,14 @@ def _load_external_user(session: Session, primary_user_id: str) -> UserRecord | 
 def _ensure_external_user(
     session: Session,
     identity: ExternalIdentity,
-) -> UserRecord:
+) -> tuple[UserRecord, bool]:
     normalized_email = _normalize_email(identity.email)
     for attempt in range(_MAX_JIT_ATTEMPTS):
         user = _load_external_user(session, identity.primary_user_id)
         if user is not None:
             if user.email_normalized != normalized_email:
                 user.email_normalized = normalized_email
-            return user
+            return user, False
         try:
             with session.begin_nested():
                 user = UserRecord(
@@ -185,7 +185,7 @@ def _ensure_external_user(
                 )
                 session.add(user)
                 session.flush()
-                return user
+                return user, True
         except IntegrityError:
             session.expire_all()
             if attempt + 1 == _MAX_JIT_ATTEMPTS:
@@ -243,7 +243,12 @@ async def get_principal(
             "请先完成邮箱验证。",
         )
 
-    return await run_in_threadpool(_external_principal, session, identity)
+    pending_invite = request.headers.get("X-Signup-Invitation", "")
+    subject, _, code = pending_invite.partition(":")
+    return await run_in_threadpool(
+        _external_principal, session, identity,
+        code if subject in {identity.primary_user_id, identity.recipe_user_id} else "",
+    )
 
 
 def _development_principal(session: Session, user_id: str) -> Principal:
@@ -257,13 +262,15 @@ def _development_principal(session: Session, user_id: str) -> Principal:
     return principal
 
 
-def _external_principal(session: Session, identity: ExternalIdentity) -> Principal:
+def _external_principal(
+    session: Session, identity: ExternalIdentity, invite_code: str = ""
+) -> Principal:
     # Pool checkout and provisioning use the synchronous SQLAlchemy driver.
     # Keep them off the ASGI event loop so occupied connections cannot freeze
     # session refresh, health checks, or completion of other requests.
 
     try:
-        user = _ensure_external_user(session, identity)
+        user, is_new = _ensure_external_user(session, identity)
         if user.status != UserStatus.ACTIVE.value:
             session.rollback()
             raise ApiError(
@@ -272,6 +279,10 @@ def _external_principal(session: Session, identity: ExternalIdentity) -> Princip
                 "当前账户已被停用。",
             )
         ensure_personal_workspace(session, user)
+        if is_new:
+            from .welcome_credits import register_growth
+
+            register_growth(session, user, identity.joined_at, invite_code)
         session.commit()
     except ApiError:
         raise

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Flame, Search, Sparkles, type LucideIcon } from "lucide-react";
 
 import { HomeAiToolbox } from "@/components/home-ai-toolbox";
+import { WelcomeCreditsBanner } from "@/components/welcome-credits";
 import { HomeHero, HomeHomeFooter, HomeHomeReveal, HomeProductShowcase, HomeCreativeVoices, HomeReplicaCardArt } from "@/components/home-showcase";
 import {
   resolveRuntimeCapability,
@@ -287,6 +288,7 @@ export function ToolDirectory() {
 
   return (
     <section className="focus-home">
+      <WelcomeCreditsBanner />
       <HomeHero />
       <CreationStartHub />
       <CommerceEntryGroups />

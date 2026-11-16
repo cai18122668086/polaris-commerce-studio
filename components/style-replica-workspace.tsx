@@ -55,7 +55,7 @@ function AssetImage({ workspaceId, assetId, className, onClick }: { workspaceId:
   const { ref, visible } = usePreviewVisibility<HTMLElement>();
   const access = useAssetAccessUrl(workspaceId, visible ? assetId : undefined, "thumbnail");
   const url = access.data?.url;
-  return url ? <img ref={ref as RefObject<HTMLImageElement | null>} className={className} src={url} loading="lazy" decoding="async" alt="商品图片" onClick={() => onClick?.(access.data?.original_url ?? url)} /> : <span ref={ref as RefObject<HTMLSpanElement | null>} className={styles.imagePlaceholder}><ImagePlus size={22} /></span>;
+  return url ? <img data-growth-asset={assetId} ref={ref as RefObject<HTMLImageElement | null>} className={className} src={url} loading="lazy" decoding="async" alt="商品图片" onClick={() => onClick?.(access.data?.original_url ?? url)} /> : <span ref={ref as RefObject<HTMLSpanElement | null>} className={styles.imagePlaceholder}><ImagePlus size={22} /></span>;
 
 }
 

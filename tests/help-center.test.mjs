@@ -35,9 +35,12 @@ test("help center removes the crowded quick-start and feature-picker sections an
 });
 
 test("help center preserves retention guidance and uses online WeChat contact", async () => {
-  const [page, content] = await Promise.all([
+  const [page, content, support, rewards, cases] = await Promise.all([
     utf8("app/help/page.tsx"),
     utf8("lib/help-center-content.ts"),
+    utf8("lib/customer-support.ts"),
+    utf8("components/welcome-credits.tsx"),
+    utf8("components/support-cases.tsx"),
   ]);
   const combined = `${page}\n${content}`;
 
@@ -47,8 +50,12 @@ test("help center preserves retention guidance and uses online WeChat contact", 
   assert.match(combined, /草稿从创建起保存 30 天/);
   assert.match(combined, /到期后相关内容不可恢复/);
   assert.match(page, /在线联系/);
-  assert.match(page, /contact-wechat-qr\.jpg/);
-  assert.match(page, /扫码添加企业微信/);
+  for (const entry of [page, rewards, cases]) {
+    assert.match(entry, /href=\{WECHAT_SUPPORT_URL\} target="_blank" rel="noopener noreferrer"/);
+  }
+  assert.match(page, /src=\{WECHAT_SUPPORT_QR\}/);
+  assert.match(rewards, /src=\{WECHAT_SUPPORT_QR\}/);
+  assert.match(support, /https:\/\/work\.weixin\.qq\.com\/kfid\/kfcafc67d7093bbfeba/);
   assert.doesNotMatch(page, /mailto:/);
   assert.doesNotMatch(page, /发送问题邮件/);
 });

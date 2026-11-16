@@ -272,6 +272,7 @@ class CaseBody(StrictBody):
 
 
 class CaseUpdate(StrictBody):
+    grant_welcome_bonus: bool = False
     status: Literal["open", "in_progress", "resolved"]
     resolution: str = Field(max_length=4000)
 
@@ -844,6 +845,7 @@ def cases(
                     "resolution",
                     "status",
                     "actor_user_id",
+                    "welcome_bonus",
                 ]
             }
             | {"created_at": stamp(r.created_at), "updated_at": stamp(r.updated_at)}
@@ -898,6 +900,25 @@ def update_case(
         raise ApiError(404, "CASE_NOT_FOUND", "售后记录不存在。")
     if body.status == "resolved" and len(body.resolution.strip()) < 3:
         raise ApiError(422, "RESOLUTION_REQUIRED", "请填写处理结果后再结案。")
+    if body.grant_welcome_bonus:
+        from .welcome_credits import grant_support_bonus
+
+        if not row.welcome_bonus or body.status != "resolved":
+            raise ApiError(
+                422, "SUPPORT_BONUS_REVIEW_REQUIRED", "请核实添加客服后结案发放。"
+            )
+        lot, created = grant_support_bonus(session, row.workspace_id)
+        if created:
+            audit(
+                session,
+                request,
+                actor,
+                row.workspace_id,
+                "support_welcome_bonus",
+                "credit_grant",
+                lot.id,
+                {"case_id": row.id, "credits": lot.amount},
+            )
     row.status = body.status
     row.resolution = body.resolution
     row.actor_user_id = actor.user_id
@@ -1159,6 +1180,9 @@ def resolve_refund(
         )
         if member:
             member.cancelled_at = utc_now()
+        from .growth_rewards import reverse_refund_rewards
+
+        reverse_refund_rewards(session, order, row)
     result = entry(
         session,
         account,

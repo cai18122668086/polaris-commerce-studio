@@ -90,7 +90,7 @@ export function JobDetailPanel({
   return (
     <>
       <button className="drawer-overlay" onClick={onClose} aria-label="关闭任务详情" />
-      <aside className="task-drawer open job-detail-drawer" role="dialog" aria-modal="true" aria-label="任务详情">
+      <aside className="task-drawer open job-detail-drawer" data-newcomer-result-detail="true" role="dialog" aria-modal="true" aria-label="任务详情">
         <div className="drawer-head">
           <div><p>生成记录</p><strong>{job ? jobTitle(job) : "正在加载任务"}</strong></div>
           <button className="icon-button" onClick={onClose} aria-label="关闭任务详情"><X size={19} /></button>

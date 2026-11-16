@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -82,6 +83,7 @@ class SupportCaseRecord(TimestampMixin, Base):
         ForeignKey("jobs.id", ondelete="RESTRICT"), index=True
     )
     issue: Mapped[str] = mapped_column(Text, nullable=False)
+    welcome_bonus: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     resolution: Mapped[str] = mapped_column(Text, default="", nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="open", nullable=False)
     actor_user_id: Mapped[str] = mapped_column(

@@ -1633,3 +1633,126 @@ class CreditGrantRecord(TimestampMixin, Base):
         nullable=True,
         unique=True,
     )
+
+
+class DailyCheckinRecord(TimestampMixin, Base):
+    __tablename__ = "daily_checkins"
+    __table_args__ = (
+        UniqueConstraint("email_key", "day", name="uq_checkin_email_day"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    email_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    grant_id: Mapped[str] = mapped_column(
+        ForeignKey("credit_grants.id", ondelete="RESTRICT"), unique=True, nullable=False
+    )
+    net_credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class InvitationCodeRecord(TimestampMixin, Base):
+    __tablename__ = "invitation_codes"
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+    code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
+
+
+class InvitationRecord(TimestampMixin, Base):
+    __tablename__ = "invitations"
+    invitee_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+    inviter_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True, nullable=False
+    )
+    email_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
+class GrowthDebtRecord(TimestampMixin, Base):
+    __tablename__ = "growth_reward_adjustments"
+    __table_args__ = (
+        CheckConstraint(
+            "pending_credits >= 0", name="ck_growth_adjustment_nonnegative"
+        ),
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+    pending_credits: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+
+
+class ReferralRewardRecord(TimestampMixin, Base):
+    __tablename__ = "referral_rewards"
+    __table_args__ = (
+        CheckConstraint(
+            "amount >= 0 AND revoked >= 0 AND revoked <= amount "
+            "AND consumed >= 0 AND debt_created >= 0 AND source_revoked >= 0",
+            name="ck_referral_reward_amounts",
+        ),
+    )
+    source_grant_id: Mapped[str] = mapped_column(
+        ForeignKey("credit_grants.id", ondelete="RESTRICT"), primary_key=True
+    )
+    purchase_id: Mapped[str] = mapped_column(
+        ForeignKey("credit_purchases.id", ondelete="RESTRICT"),
+        index=True,
+        nullable=False,
+    )
+    inviter_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True, nullable=False
+    )
+    invitee_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    bonus_grant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("credit_grants.id", ondelete="RESTRICT"), unique=True
+    )
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    revoked: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    consumed: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    debt_created: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    source_revoked: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+
+
+class ReferralReversalRecord(TimestampMixin, Base):
+    __tablename__ = "referral_reward_reversals"
+    refund_id: Mapped[str] = mapped_column(
+        ForeignKey("manual_credit_refunds.id", ondelete="RESTRICT"), primary_key=True
+    )
+    source_grant_id: Mapped[str] = mapped_column(
+        ForeignKey("referral_rewards.source_grant_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    source_credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class PromotionCampaignRecord(Base):
+    __tablename__ = "promotion_campaigns"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SignupBonusClaim(Base):
+    __tablename__ = "signup_bonus_claims"
+
+    email_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), unique=True, nullable=False
+    )
+
+
+class NewcomerOfferRecord(Base):
+    __tablename__ = "newcomer_offers"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+    first_viewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    shown_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

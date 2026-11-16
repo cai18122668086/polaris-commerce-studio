@@ -9345,8 +9345,20 @@ select:focus-visible {
   background: #fff;
 }
 
+.contact-modal__action {
+  display: inline-flex;
+  align-self: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .contact-modal .contact-qr {
   align-self: center;
+}
+
+.contact-modal .contact-qr img {
+  transform: none;
 }
 
 .contact-qr img {

@@ -21,13 +21,27 @@ from PIL import Image, ImageDraw
 from ..video_editing_captioning import text_boundaries
 
 VERSION = "bihuo-conditional-layout/1"
-TARGETS = {"bihuo-03-v1", "bihuo-08-v1", "bihuo-09-v1", "bihuo-13-v1"}
+TARGETS = {
+    "bihuo-03-v1",
+    "bihuo-04-v1",
+    "bihuo-08-v1",
+    "bihuo-09-v1",
+    "bihuo-13-v1",
+    "bihuo-14-v1",
+    "bihuo-16-v1",
+    "bihuo-19-v1",
+    "bihuo-40-v1",
+}
 
 
 def identity() -> dict:
+    from . import adaptive_layout
+
     return {
         "version": VERSION,
-        "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "sha256": hashlib.sha256(
+            Path(__file__).read_bytes() + Path(adaptive_layout.__file__).read_bytes()
+        ).hexdigest(),
     }
 
 
@@ -120,6 +134,9 @@ def prepare(payload: dict) -> dict:
         }
     elif template == "bihuo-13-v1":
         policy["opening_presenter_top"] = 380 if cfg["support"].strip() else 276
+    from . import adaptive_layout
+
+    adaptive_layout.prepare(template, cfg, policy)
     cfg["conditional_layout"] = policy
     return {**payload, "config": cfg}
 
@@ -610,7 +627,10 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
                 return [rect[0], rect[1] + shift, rect[2], rect[3] - shift]
 
             replace(module.E, "person_rect", opening_rect)
-        yield
+        from . import adaptive_layout
+
+        with adaptive_layout.execution(module, payload):
+            yield
     finally:
         for target, name, value in reversed(patches):
             vars(target)[name] = value

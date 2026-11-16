@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from shutil import copyfile
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -211,19 +212,62 @@ def render(config: dict, out: Path, settings: Any, guard: Any) -> Path:
         tiles.append(tile)
         spans.append(end - start)
     manifest = concat_file(out / "pages.ffconcat", tiles, spans, images=True)
+    # Supply a continuous video stream to overlay. Sparse PNG packets can make
+    # FFmpeg buffer the portrait and its audio while waiting for the next page.
+    background = out / "pages.mp4"
+    run(
+        [
+            settings.video_editing_ffmpeg,
+            "-v",
+            "error",
+            "-nostdin",
+            "-threads",
+            "1",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(manifest),
+            "-filter_threads",
+            "1",
+            "-vf",
+            "fps=30,format=yuv420p",
+            "-t",
+            str(duration),
+            "-c:v",
+            "libx264",
+            "-threads",
+            "2",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "14",
+            "-y",
+            str(background),
+        ],
+        out,
+        settings,
+        guard,
+        "editorial_background",
+    )
     x, y, width, height = STYLES[template_id].portrait
     graph = (
         f"[0:v]fps=30,scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1[person];"
-        f"[1:v]fps=30,format=yuv420p[page];[page][person]overlay={x}:{y}[visual]"
+        f"[1:v][person]overlay={x}:{y}[visual]"
     )
     label = "visual"
     if config["source_subtitles"] == "none":
         subtitle = _caption_file(out, resolved["captions"])
-        caption_font = ImageFont.truetype(fonts["caption"], 55).getname()[0]
-        fontsdir = filter_path(Path(fonts["caption"]).parent)
+        font = Path(fonts["caption"])
+        caption_font = ImageFont.truetype(str(font), 55).getname()[0]
+        fontsdir = out / "subtitle-font"
+        fontsdir.mkdir(exist_ok=True)
+        copyfile(font, fontsdir / font.name)
         graph += (
-            f";[visual]subtitles=filename='{filter_path(subtitle)}':fontsdir='{fontsdir}':"
+            f";[visual]subtitles=filename='{filter_path(subtitle)}':"
+            f"fontsdir='{filter_path(fontsdir)}':"
             f"force_style='FontName={caption_font},FontSize=11,Outline=1,MarginV=32'[subtitled]"
         )
         label = "subtitled"
@@ -238,12 +282,10 @@ def render(config: dict, out: Path, settings: Any, guard: Any) -> Path:
             "1",
             "-i",
             source,
-            "-f",
-            "concat",
-            "-safe",
-            "0",
+            "-threads",
+            "1",
             "-i",
-            str(manifest),
+            str(background),
             "-filter_complex_threads",
             "1",
             "-filter_complex",

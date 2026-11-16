@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     video_script_api_key: SecretStr = SecretStr("")
     video_script_base_url: str = "https://api.tengliapi.xyz"
     video_script_model: str = "gpt-5.6-sol"
+    video_script_fallback_base_url: str = ""
+    video_script_fallback_api_key: SecretStr = SecretStr("")
+    video_script_fallback_model: str = ""
     video_extract_enabled: bool = False
     video_benchmark_search_enabled: bool = False
     video_extract_api_key: SecretStr = SecretStr("")

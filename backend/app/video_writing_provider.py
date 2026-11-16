@@ -342,6 +342,7 @@ def plan_writing(
         "model": data.get("model"),
         "usage": data.get("usage"),
         "provider_id": data.get("id"),
+        "provider_route": data.get("_polaris_planner_route"),
         "writing_rules": rules,
     }
     try:

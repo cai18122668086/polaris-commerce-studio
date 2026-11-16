@@ -1121,6 +1121,7 @@ def generate(
             "usage": data.get("usage"),
             "provider_id": data.get("id"),
             "gateway": planner_endpoint(settings),
+            "provider_route": data.get("_polaris_planner_route"),
         }
         atomic_json(response_path, response)
     if guard:

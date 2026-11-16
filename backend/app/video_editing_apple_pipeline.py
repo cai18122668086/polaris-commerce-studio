@@ -313,6 +313,7 @@ def plan_suite(
             "usage": data.get("usage"),
             "provider_id": data.get("id"),
             "gateway": planner_endpoint(settings),
+            "provider_route": data.get("_polaris_planner_route"),
         }
         atomic_json(response_path, response)
     if response.get("request_sha256") != evidence["request_sha256"]:

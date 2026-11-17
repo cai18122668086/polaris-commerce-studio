@@ -191,14 +191,17 @@ def test_timed_video_hooks_restore_and_do_not_freeze_the_first_frame(tmp_path, h
     ) is original
 
 
-def test_picture_styles_expose_video_without_mutating_native_identity():
+def test_all_styles_expose_video_without_mutating_native_identity():
     from app.bihuo_suite.video_materials import capabilities
 
-    for meta in registry.definitions().values():
+    for template_id, meta in registry.definitions().items():
         before = copy.deepcopy(meta)
         effective = capabilities(meta)
-        assert ("video_materials" in effective) == ("images" in effective)
-        assert meta == before
+        assert effective.count("video_materials") == 1, template_id
+        assert [value for value in effective if value != "video_materials"] == [
+            value for value in before["capabilities"] if value != "video_materials"
+        ], template_id
+        assert meta == before, template_id
 
 
 def test_frame_extraction_uses_real_video_and_reuses_existing_cache(tmp_path):

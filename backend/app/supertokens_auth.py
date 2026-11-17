@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from html import escape
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
@@ -21,6 +22,7 @@ class ExternalIdentity:
     recipe_user_id: str
     email: str
     email_verified: bool
+    joined_at: datetime | None = None
 
 
 class ExternalAuthenticationError(RuntimeError):
@@ -463,4 +465,5 @@ class SuperTokensAuthAdapter:
             recipe_user_id=recipe_user_id,
             email=login_method.email,
             email_verified=bool(login_method.verified),
+            joined_at=datetime.fromtimestamp(supertokens_user.time_joined / 1000, UTC),
         )

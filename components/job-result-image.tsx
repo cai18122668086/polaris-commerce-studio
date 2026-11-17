@@ -58,7 +58,7 @@ export function JobResultImage({ workspaceId, assetId, alt, label, width, height
   }
   return (
     <article ref={ref} className={styles.resultCard}>
-      <a href={access.data.original_url ?? access.data.url} target="_blank" rel="noreferrer" aria-label={`${alt}，单张查看`}><img loading="lazy" decoding="async" src={access.data.url} alt={alt} onError={() => setFailedUrl(access.data?.url)} /><ExternalLink size={15} /></a>
+      <a href={access.data.original_url ?? access.data.url} target="_blank" rel="noreferrer" aria-label={`${alt}，单张查看`}><img data-growth-asset={assetId} loading="lazy" decoding="async" src={access.data.url} alt={alt} onError={() => setFailedUrl(access.data?.url)} /><ExternalLink size={15} /></a>
       <div><strong>{label ?? alt}</strong><button type="button" onClick={download} disabled={isDownloading || !workspaceId} aria-label={`下载${alt}`}>{isDownloading ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />}{isDownloading ? "准备中…" : "下载"}</button></div>
       {width && height ? <p className={styles.resultDimensions}>实际尺寸 {width} × {height} px</p> : null}
       {downloadError ? <p className={styles.downloadError} role="alert">{downloadError}</p> : null}

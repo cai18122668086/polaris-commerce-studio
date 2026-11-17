@@ -12,6 +12,7 @@ import { currentReturnTo, loginHref, verifyEmailHref } from "@/lib/auth/return-t
 import { AUTH_ROUTES, isPublicRoute, routeRequiresWorkspace } from "@/lib/auth/routes";
 import { onAuthUnauthorised } from "@/lib/auth/session-events";
 import { withAuthTimeout } from "@/lib/auth/request-timeout";
+import { NewcomerOfferController } from "@/components/newcomer-offer-controller";
 import { AuthStatus } from "./auth-status";
 import { ProcessingConsentGate } from "./processing-consent";
 import { AuthDiagnosticDetails } from "./auth-diagnostic-details";
@@ -117,5 +118,5 @@ function WorkspaceGate({ children }: { children: React.ReactNode }) {
     <Link className="auth-button auth-button--primary" href={AUTH_ROUTES.account}>查看账户</Link>
     <button className="auth-button auth-button--secondary" onClick={async () => { await signOut(); queryClient.clear(); router.replace(AUTH_ROUTES.login); }}>退出登录</button>
   </AuthStatus>;
-  return <>{children}</>;
+  return <>{children}<NewcomerOfferController /></>;
 }

@@ -205,7 +205,7 @@ function AssetPreview({
   return (
     <div className={styles.assetPreview}>
       {access.data?.url ? (
-        <img src={access.data.url} alt={alt} />
+        <img data-growth-asset={asset?.id} src={access.data.url} alt={alt} />
       ) : access.isError ? (
         <div className={styles.assetPreviewEmpty} role="alert">
           <Info size={22} />

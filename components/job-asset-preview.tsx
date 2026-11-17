@@ -18,7 +18,7 @@ export function JobAssetPreview({ workspaceId, relation, thumbnail = false }: { 
   const cardBody = (
     <>
       <div className="job-asset-card__media">
-        {access.isPending ? <LoaderCircle className="spin" size={20} aria-label="正在获取预览" /> : access.data?.url ? <img src={access.data.url} alt={assetName} loading="lazy" decoding="async" /> : <ImageIcon size={22} />}
+        {access.isPending ? <LoaderCircle className="spin" size={20} aria-label="正在获取预览" /> : access.data?.url ? <img data-growth-asset={relation.asset_id} src={access.data.url} alt={assetName} loading="lazy" decoding="async" /> : <ImageIcon size={22} />}
       </div>
       <div className="job-asset-card__body">
         <strong title={assetName}>{assetName}</strong>

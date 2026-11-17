@@ -250,6 +250,20 @@ def test_postgres_credit_migrations_preserve_legacy_reservation(postgres_credits
         )
         session.commit()
     with engine.begin() as connection:
+        campaign_tables = {
+            "daily_checkins",
+            "growth_reward_adjustments",
+            "invitation_codes",
+            "invitations",
+            "newcomer_offers",
+            "promotion_campaigns",
+            "referral_reward_reversals",
+            "referral_rewards",
+            "signup_bonus_claims",
+        }
+        for table in reversed(Base.metadata.sorted_tables):
+            if table.name in campaign_tables:
+                table.drop(connection)
         for record in [
             ManualRefundRecord,
             CreditAdjustmentRecord,
@@ -278,6 +292,7 @@ def test_postgres_credit_migrations_preserve_legacy_reservation(postgres_credits
             "20261027_0030_credit_memberships.py",
             "20261028_0031_admin_commerce.py",
             "20261030_0033_customer_support_requests.py",
+            "20261116_0052_growth_rewards.py",
         ]:
             path = Path(__file__).resolve().parents[1] / "migrations/versions" / name
             spec = importlib.util.spec_from_file_location("credit_migration", path)

@@ -4,6 +4,8 @@ import { AUTH_API_BASE_PATH } from "@/lib/auth/config";
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
 import { emitAuthUnauthorised } from "@/lib/auth/session-events";
 
+import { pendingSignupInvitation } from "@/lib/auth/signup-invitation";
+
 import type { paths } from "./generated/openapi";
 
 // Browser requests default to the current origin. Internal and production deployments
@@ -23,6 +25,8 @@ const requestMetadata: Middleware = {
   async onRequest({ request }) {
     const headers = new Headers(request.headers);
     headers.set("X-Request-Id", crypto.randomUUID());
+    const invite = pendingSignupInvitation();
+    if (invite) headers.set("X-Signup-Invitation", invite);
     if (isLocalDevelopmentAuthEnabled()) {
       headers.set("X-User-Id", LOCAL_DEV_AUTH_USER_ID);
     }

@@ -1926,6 +1926,11 @@
       "CaseUpdate": {
         "additionalProperties": false,
         "properties": {
+          "grant_welcome_bonus": {
+            "default": false,
+            "title": "Grant Welcome Bonus",
+            "type": "boolean"
+          },
           "resolution": {
             "maxLength": 4000,
             "title": "Resolution",
@@ -1946,6 +1951,33 @@
           "resolution"
         ],
         "title": "CaseUpdate",
+        "type": "object"
+      },
+      "CheckinResult": {
+        "properties": {
+          "adjusted_credits": {
+            "title": "Adjusted Credits",
+            "type": "integer"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "credited_credits": {
+            "title": "Credited Credits",
+            "type": "integer"
+          },
+          "rewards": {
+            "$ref": "#/components/schemas/RewardsState"
+          }
+        },
+        "required": [
+          "created",
+          "credited_credits",
+          "adjusted_credits",
+          "rewards"
+        ],
+        "title": "CheckinResult",
         "type": "object"
       },
       "CloneConfigResponse": {
@@ -8724,6 +8756,132 @@
         "title": "IntakeConflictResolution",
         "type": "object"
       },
+      "InvitationCenter": {
+        "properties": {
+          "earned_credits": {
+            "title": "Earned Credits",
+            "type": "integer"
+          },
+          "invite_code": {
+            "title": "Invite Code",
+            "type": "string"
+          },
+          "invite_url": {
+            "title": "Invite Url",
+            "type": "string"
+          },
+          "invited_count": {
+            "title": "Invited Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvitationFriend"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "paid_count": {
+            "title": "Paid Count",
+            "type": "integer"
+          },
+          "refunded_count": {
+            "title": "Refunded Count",
+            "type": "integer"
+          },
+          "reward_percent": {
+            "title": "Reward Percent",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unpaid_count": {
+            "title": "Unpaid Count",
+            "type": "integer"
+          },
+          "validity_days": {
+            "title": "Validity Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "invite_code",
+          "invite_url",
+          "invited_count",
+          "paid_count",
+          "unpaid_count",
+          "refunded_count",
+          "earned_credits",
+          "reward_percent",
+          "validity_days",
+          "total",
+          "offset",
+          "limit",
+          "items"
+        ],
+        "title": "InvitationCenter",
+        "type": "object"
+      },
+      "InvitationFriend": {
+        "properties": {
+          "earned_credits": {
+            "title": "Earned Credits",
+            "type": "integer"
+          },
+          "friend": {
+            "title": "Friend",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_paid_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Paid At"
+          },
+          "payment_status": {
+            "enum": [
+              "unpaid",
+              "paid",
+              "refunded"
+            ],
+            "title": "Payment Status",
+            "type": "string"
+          },
+          "registered_at": {
+            "title": "Registered At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "friend",
+          "registered_at",
+          "payment_status",
+          "last_paid_at",
+          "earned_credits"
+        ],
+        "title": "InvitationFriend",
+        "type": "object"
+      },
       "JobAssetResponse": {
         "properties": {
           "asset_id": {
@@ -10243,6 +10401,101 @@
         "title": "NativeTextAnchor",
         "type": "object"
       },
+      "NewcomerOffer": {
+        "properties": {
+          "amount_fen": {
+            "title": "Amount Fen",
+            "type": "integer"
+          },
+          "credits": {
+            "title": "Credits",
+            "type": "integer"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "ready_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready At"
+          },
+          "reminded": {
+            "title": "Reminded",
+            "type": "boolean"
+          },
+          "result_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Result Asset Ids",
+            "type": "array"
+          },
+          "server_now": {
+            "title": "Server Now",
+            "type": "string"
+          },
+          "should_show": {
+            "title": "Should Show",
+            "type": "boolean"
+          },
+          "validity_days": {
+            "title": "Validity Days",
+            "type": "integer"
+          },
+          "waiting_for_result": {
+            "title": "Waiting For Result",
+            "type": "boolean"
+          },
+          "window_ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Ends At"
+          }
+        },
+        "required": [
+          "eligible",
+          "reminded",
+          "should_show",
+          "waiting_for_result",
+          "result_asset_ids",
+          "server_now",
+          "ready_at",
+          "window_ends_at",
+          "amount_fen",
+          "credits",
+          "validity_days"
+        ],
+        "title": "NewcomerOffer",
+        "type": "object"
+      },
+      "NewcomerResultView": {
+        "properties": {
+          "asset_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Asset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id"
+        ],
+        "title": "NewcomerResultView",
+        "type": "object"
+      },
       "NoteBody": {
         "additionalProperties": false,
         "properties": {
@@ -10687,6 +10940,24 @@
           "url"
         ],
         "title": "ProductRequest",
+        "type": "object"
+      },
+      "PublicGrowth": {
+        "properties": {
+          "checkin_enabled": {
+            "title": "Checkin Enabled",
+            "type": "boolean"
+          },
+          "welcome_enabled": {
+            "title": "Welcome Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "welcome_enabled",
+          "checkin_enabled"
+        ],
+        "title": "PublicGrowth",
         "type": "object"
       },
       "ReferenceChoice": {
@@ -11439,6 +11710,153 @@
         "title": "ReviseWritingDraft",
         "type": "object"
       },
+      "RewardEvent": {
+        "properties": {
+          "adjusted": {
+            "title": "Adjusted",
+            "type": "boolean"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "credits": {
+            "title": "Credits",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "checkin",
+              "referral"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "credits",
+          "created_at",
+          "adjusted"
+        ],
+        "title": "RewardEvent",
+        "type": "object"
+      },
+      "RewardsState": {
+        "properties": {
+          "checked_in": {
+            "title": "Checked In",
+            "type": "boolean"
+          },
+          "checkin_enabled": {
+            "title": "Checkin Enabled",
+            "type": "boolean"
+          },
+          "checkin_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkin Expires At"
+          },
+          "checkin_validity_hours": {
+            "title": "Checkin Validity Hours",
+            "type": "integer"
+          },
+          "daily_credits": {
+            "title": "Daily Credits",
+            "type": "integer"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "earned_credits": {
+            "title": "Earned Credits",
+            "type": "integer"
+          },
+          "invite_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Url"
+          },
+          "invited_count": {
+            "title": "Invited Count",
+            "type": "integer"
+          },
+          "next_day_at": {
+            "title": "Next Day At",
+            "type": "string"
+          },
+          "pending_adjustment_credits": {
+            "title": "Pending Adjustment Credits",
+            "type": "integer"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/RewardEvent"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "referral_enabled": {
+            "title": "Referral Enabled",
+            "type": "boolean"
+          },
+          "reward_percent": {
+            "title": "Reward Percent",
+            "type": "integer"
+          },
+          "support_claimed": {
+            "title": "Support Claimed",
+            "type": "boolean"
+          },
+          "validity_days": {
+            "title": "Validity Days",
+            "type": "integer"
+          },
+          "welcome_claimed": {
+            "title": "Welcome Claimed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "welcome_claimed",
+          "support_claimed",
+          "checkin_enabled",
+          "referral_enabled",
+          "checked_in",
+          "daily_credits",
+          "reward_percent",
+          "validity_days",
+          "checkin_validity_hours",
+          "checkin_expires_at",
+          "day",
+          "next_day_at",
+          "invite_url",
+          "invited_count",
+          "earned_credits",
+          "pending_adjustment_credits",
+          "recent"
+        ],
+        "title": "RewardsState",
+        "type": "object"
+      },
       "RuntimeCapabilities": {
         "properties": {
           "asset_management": {
@@ -12186,6 +12604,11 @@
               }
             ],
             "title": "Job Id"
+          },
+          "welcome_bonus": {
+            "default": false,
+            "title": "Welcome Bonus",
+            "type": "boolean"
           }
         },
         "required": [
@@ -12223,6 +12646,10 @@
             "title": "Status",
             "type": "string"
           },
+          "welcome_bonus": {
+            "title": "Welcome Bonus",
+            "type": "boolean"
+          },
           "workspace_id": {
             "title": "Workspace Id",
             "type": "string"
@@ -12234,7 +12661,8 @@
           "job_id",
           "issue",
           "status",
-          "resolution"
+          "resolution",
+          "welcome_bonus"
         ],
         "title": "SupportResponse",
         "type": "object"
@@ -20665,6 +21093,27 @@
         ]
       }
     },
+    "/api/v1/public/promotions": {
+      "get": {
+        "operationId": "public_growth_api_v1_public_promotions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicGrowth"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Public Growth",
+        "tags": [
+          "account rewards"
+        ]
+      }
+    },
     "/api/v1/runtime": {
       "get": {
         "description": "Reports internal-test workflow availability and execution mode. availability=available only means the workflow/API can be exercised; clients must read execution before describing real generation support.",
@@ -28058,6 +28507,93 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/invitations": {
+      "get": {
+        "operationId": "invitations_api_v1_workspaces__workspace_id__invitations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "unpaid",
+                "paid",
+                "refunded"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationCenter"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Invitations",
+        "tags": [
+          "growth center"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/jobs": {
       "get": {
         "operationId": "list_jobs_api_v1_workspaces__workspace_id__jobs_get",
@@ -30402,6 +30938,157 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/promotions/newcomer-offer": {
+      "get": {
+        "operationId": "newcomer_offer_api_v1_workspaces__workspace_id__promotions_newcomer_offer_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewcomerOffer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Newcomer Offer",
+        "tags": [
+          "growth center"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/promotions/newcomer-offer/impression": {
+      "post": {
+        "operationId": "impression_api_v1_workspaces__workspace_id__promotions_newcomer_offer_impression_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewcomerOffer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Impression",
+        "tags": [
+          "growth center"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/promotions/newcomer-offer/viewed": {
+      "post": {
+        "operationId": "newcomer_result_viewed_api_v1_workspaces__workspace_id__promotions_newcomer_offer_viewed_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewcomerResultView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewcomerOffer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Newcomer Result Viewed",
+        "tags": [
+          "growth center"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/replica/documents/{document_id}": {
       "get": {
         "operationId": "get_document_api_v1_workspaces__workspace_id__replica_documents__document_id__get",
@@ -31195,6 +31882,100 @@
         "summary": "Revise Analysis",
         "tags": [
           "one-click-replica"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/rewards": {
+      "get": {
+        "operationId": "rewards_state_api_v1_workspaces__workspace_id__rewards_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RewardsState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Rewards State",
+        "tags": [
+          "account rewards"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/rewards/check-in": {
+      "post": {
+        "operationId": "claim_checkin_api_v1_workspaces__workspace_id__rewards_check_in_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckinResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Claim Checkin",
+        "tags": [
+          "account rewards"
         ]
       }
     },

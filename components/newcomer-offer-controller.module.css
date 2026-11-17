@@ -1,0 +1,452 @@
+.dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  width: min(600px,calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid #f2d0af;
+  border-radius: 24px;
+  background: #fff9ef;
+  color: #981014;
+  box-shadow: 0 28px 90px #35121650;
+}
+.dialog::backdrop {
+  background: #21151e80;
+  backdrop-filter: blur(4px);
+}
+.top {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  text-align: center;
+  padding: 30px 32px 34px;
+  background: linear-gradient(115deg,#e32d27,#ba1018);
+  color: white;
+  border-bottom: 3px solid #ffdc91;
+}
+.top:before,.top:after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 55%;
+  height: 90px;
+  bottom: -74px;
+  border-top: 3px solid #ffe2a0;
+  border-radius: 50%;
+  box-shadow: 0 -5px 0 #ffdb874f,0 -10px 0 #ffdb872c;
+  pointer-events: none;
+}
+.top:before {
+  left: -18%;
+  transform: rotate(12deg);
+}
+.top:after {
+  right: -18%;
+  transform: rotate(-12deg);
+}
+.badge {
+  display: inline-block;
+  color: #ffe7bc;
+  font-size: 17px;
+  line-height: 1.6;
+  letter-spacing: 2px;
+}
+.top h2 {
+  margin: 10px 0 0;
+  font-size: clamp(40px,5vw,58px);
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: 4px;
+}
+.close {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+.body {
+  padding: 29px 32px 22px;
+}
+.coupon {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 24px;
+  margin: 4px 0 25px;
+}
+.priceValue,.creditValue {
+  display: flex;
+  align-items: baseline;
+  white-space: nowrap;
+  gap: 4px;
+  min-width: 0;
+}
+.priceValue strong,.creditValue strong {
+  font-size: 76px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -2px;
+  font-variant-numeric: tabular-nums;
+}
+.priceValue>span {
+  font-size: 37px;
+  font-weight: 700;
+}
+.creditValue {
+  border-left: 1px solid #e3c8ad;
+  padding-left: 24px;
+}
+.creditValue>span {
+  font-size: 26px;
+  font-weight: 700;
+}
+.countdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 17px;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto 25px;
+  padding: 9px 19px;
+  border: 1px solid #f5c361;
+  border-radius: 999px;
+  background: #ffe9b8;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.countdown>div,.countdown>div>span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.countdown b {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  padding: 6px 5px;
+  border-radius: 7px;
+  background: #b9161d;
+  color: white;
+  font-size: 22px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.countdown i {
+  font-style: normal;
+}
+.buy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 12px 20px;
+  border: 1px solid #ffe0a0;
+  border-radius: 999px;
+  background: linear-gradient(115deg,#ffeab2,#ffd27f);
+  color: #74170f;
+  font-size: 27px;
+  font-weight: 800;
+  text-decoration: none;
+  line-height: 1.4;
+}
+.buy:hover {
+  background: #ffe3a0;
+}
+.bottom {
+  text-align: center;
+  color: #914231;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.bottom>p {
+  margin: 16px 0 3px;
+}
+.bottom details {
+  color: #9d7861;
+  font-size: 11px;
+}
+.bottom summary {
+  cursor: pointer;
+  width: max-content;
+  margin: auto;
+}
+.bottom details p {
+  margin: 9px 0 0;
+  text-align: left;
+}
+.dialog button:focus-visible,.buy:focus-visible,.bottom summary:focus-visible {
+  outline: 3px solid #db9427;
+  outline-offset: 3px;
+}
+.floatingWrap {
+  position: fixed;
+  right: 22px;
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  z-index: 105;
+  width: 116px;
+}
+.floating {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 15px 8px 10px;
+  border: 1px solid #f6bb65;
+  border-radius: 20px;
+  background: linear-gradient(135deg,#e72c25,#ae0c16);
+  color: #fff;
+  box-shadow: 0 7px 20px #8c1e1833;
+  cursor: pointer;
+}
+.floating:before,.floating:after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 150%;
+  height: 40px;
+  left: -25%;
+  border: 2px solid #ffd88c;
+  border-radius: 50%;
+  transform: rotate(-20deg);
+  pointer-events: none;
+}
+.floating:before {
+  top: -31px;
+}
+.floating:after {
+  bottom: -30px;
+}
+.floating>strong {
+  font-size: 18px;
+  letter-spacing: .4px;
+  line-height: 1.2;
+}
+.floatingPrice {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: 42px;
+  color: #ffe2a0;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+.floatingPrice small {
+  font-size: 23px;
+}
+.floating time {
+  display: block;
+  width: 100%;
+  padding: 5px 3px;
+  border-radius: 999px;
+  background: #ffe1a0;
+  color: #8e1b10;
+  font-size: 17px;
+  line-height: 1.15;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .2px;
+}
+.floatingClose {
+  position: absolute;
+  z-index: 2;
+  right: -9px;
+  top: -12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #f0d3b5;
+  border-radius: 50%;
+  background: #fffaf2;
+  color: #b31a1b;
+  cursor: pointer;
+  box-shadow: 0 2px 6px #6d20121a;
+}
+.floatingClose:before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+.floating:focus-visible,.floatingClose:focus-visible {
+  outline: 3px solid #d88620;
+  outline-offset: 3px;
+}
+.stageHint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 20px;
+  padding: 12px 16px;
+  border: 1px solid #eddbc9;
+  border-radius: 12px;
+  background: #fff8ed;
+  color: #885b44;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.stageHint a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #b52121;
+  font-weight: 650;
+  text-decoration: none;
+  min-height: 28px;
+}
+.stageHint a:focus-visible {
+  outline: 3px solid #d88620;
+  outline-offset: 3px;
+}
+@media(max-width:640px) {
+  .floatingWrap {
+    width: 88px;
+    right: 12px;
+    bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+  .floating {
+    padding: 12px 5px 8px;
+    border-radius: 15px;
+    gap: 5px;
+  }
+  .floating>strong {
+    font-size: 14px;
+  }
+  .floatingPrice {
+    font-size: 32px;
+  }
+  .floatingPrice small {
+    font-size: 18px;
+  }
+  .floating time {
+    font-size: 13px;
+    padding: 4px 2px;
+  }
+  .floatingClose {
+    width: 28px;
+    height: 28px;
+    right: -4px;
+    top: -12px;
+  }
+}
+@media(max-width:480px) {
+  .dialog {
+    border-radius: 20px;
+  }
+  .top {
+    padding: 27px 18px 28px;
+  }
+  .top h2 {
+    font-size: 42px;
+    letter-spacing: 2px;
+  }
+  .badge {
+    font-size: 14px;
+  }
+  .body {
+    padding: 26px 20px 18px;
+  }
+  .coupon {
+    gap: 15px;
+    margin-bottom: 23px;
+  }
+  .creditValue {
+    padding-left: 15px;
+  }
+  .priceValue strong,.creditValue strong {
+    font-size: 55px;
+    letter-spacing: -1.5px;
+  }
+  .priceValue>span {
+    font-size: 27px;
+  }
+  .creditValue>span {
+    font-size: 20px;
+  }
+  .countdown {
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    margin-bottom: 22px;
+  }
+  .countdown b {
+    font-size: 18px;
+    min-width: 27px;
+    padding: 5px 3px;
+  }
+  .countdown>div,.countdown>div>span {
+    gap: 4px;
+  }
+  .buy {
+    min-height: 54px;
+    font-size: 22px;
+  }
+  .bottom {
+    font-size: 11px;
+  }
+  .bottom>p {
+    margin-top: 13px;
+  }
+}
+@media(max-width:360px) {
+  .body {
+    padding: 22px 14px 16px;
+  }
+  .priceValue strong,.creditValue strong {
+    font-size: 46px;
+  }
+  .priceValue>span {
+    font-size: 23px;
+  }
+  .creditValue>span {
+    font-size: 17px;
+  }
+  .coupon {
+    gap: 12px;
+  }
+  .creditValue {
+    padding-left: 12px;
+  }
+  .countdown {
+    gap: 7px;
+    padding-inline: 9px;
+  }
+  .countdown b {
+    font-size: 16px;
+    min-width: 24px;
+  }
+  .top h2 {
+    font-size: 38px;
+  }
+  .bottom>p {
+    font-size: 10px;
+  }
+  .buy {
+    font-size: 20px;
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  .dialog::backdrop {
+    backdrop-filter: none;
+  }
+}

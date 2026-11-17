@@ -14,9 +14,15 @@ import {
   sessionExists,
 } from "@/features/auth/api/auth";
 import { withReturnTo } from "@/lib/auth/return-to";
+import { invitationPattern, rememberSignupInvitation } from "@/lib/auth/signup-invitation";
+import invitationStyles from "./register-invitation.module.css";
 import { AUTH_ROUTES, LEGAL_ROUTES } from "@/lib/auth/routes";
 
-export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
+export function RegisterForm({ returnTo = "/", invite }: { returnTo?: string; invite?: string }) {
+  const [invitationCode, setInvitationCode] = useState(() => {
+    const normalized = invite?.trim().toUpperCase() ?? "";
+    return invitationPattern.test(normalized) ? normalized : "";
+  });
   const queryClient = useQueryClient();
   const [registrationEmail, setRegistrationEmail] = useState<string>();
   const [delivery, setDelivery] = useState<VerificationDelivery>();
@@ -62,6 +68,11 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
       return;
     }
 
+    if (invitationCode && !invitationPattern.test(invitationCode)) {
+      setError("请输入 JG 开头的 12 位邀请码，或留空继续注册。");
+      return;
+    }
+
     setSubmitting(true);
     registrationAttempt.current = true;
     try {
@@ -77,6 +88,7 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
 
       // Keep this step on the same page. Creating an unverified identity is
       // not registration completion, and a mail error must remain visible.
+      rememberSignupInvitation(result.user.id, invitationCode);
       queryClient.clear();
       setDelivery({ status: "sending" });
       setRegistrationEmail(email.trim());
@@ -168,6 +180,17 @@ export function RegisterForm({ returnTo = "/" }: { returnTo?: string }) {
         />
         {fieldErrors.confirmation ? <small className="auth-field__error">{fieldErrors.confirmation}</small> : null}
       </label>
+      <details className={invitationStyles.field}>
+        <summary>邀请码（选填）{invitationCode && <span>已填写</span>}</summary>
+        <label><span>好友邀请码</span><input
+          autoComplete="off"
+          maxLength={12}
+          placeholder="填写好友的 12 位邀请码"
+          value={invitationCode}
+          disabled={submitting}
+          onChange={event => setInvitationCode(event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())}
+        /></label>
+      </details>
       <div className="auth-consent" aria-describedby={consentError ? "registration-consent-error" : undefined}>
         <label className="auth-consent__item">
           <input

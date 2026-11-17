@@ -99,15 +99,19 @@ def test_admin_commerce_additive_migration_preserves_financial_rows():
             "manual_credit_refunds",
             "credit_memberships",
         }
-        # SQLite cannot round-trip the legacy expression indexes. Compare the
-        # complete schemas of all tables touched by this additive migration.
+        # Compare the administrator and support schemas at revision 0033.
+        # The welcome bonus column is introduced later by revision 0052.
+        def include_admin_schema(obj, name, kind, _reflected, _compare_to):
+            if kind == "table":
+                return name in changed_tables
+            return not (
+                kind == "column"
+                and obj.table.name == "customer_support_cases"
+                and name == "welcome_bonus"
+            )
+
         context = MigrationContext.configure(
-            connection,
-            opts={
-                "include_object": lambda obj, name, kind, reflected, compare_to: (
-                    kind != "table" or name in changed_tables
-                ),
-            },
+            connection, opts={"include_object": include_admin_schema}
         )
         assert compare_metadata(context, Base.metadata) == []
     with Session(engine) as session:

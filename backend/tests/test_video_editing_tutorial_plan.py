@@ -240,3 +240,39 @@ def test_all_installed_website_styles_have_a_distinct_readable_recording_surface
             assert nx >= 0 and ny >= 0 and nx + nw <= SIZE[0] and ny + nh <= SIZE[1]
             assert ny + nh <= y or ny >= y + height
             assert chrome(layout, template_id, {}, []).size == SIZE
+
+
+def test_tutorial_caption_wraps_long_chinese_at_the_larger_size(tmp_path):
+    from app.video_editing_tutorial_render import caption_file
+    from app.video_editing_tutorial_surfaces import fonts_for, surface
+
+    text = "按顺序选择参考图片确认生成结果并检查排版"
+    transcript = Transcript(
+        audio_sha256="a" * 64,
+        source_sha256="b" * 64,
+        duration_ms=2500,
+        provider="fixture",
+        model="fixture",
+        language="zh",
+        utterances=[],
+        tokens=[
+            TranscriptToken(
+                id=f"w{i}", text=char, start_ms=100 * i, end_ms=100 * (i + 1)
+            )
+            for i, char in enumerate(text)
+        ],
+    )
+    template = "azl-panels-v1"
+    clock = {"steps": [{"start_ms": 0, "end_ms": 2500}], "holds": []}
+    path = caption_file(
+        tmp_path, transcript, clock, surface(template), fonts_for(template)[1]
+    )
+    script = path.read_text(encoding="utf-8")
+    assert ",62," in script and ",68,68,318,1" in script
+    [cue] = [
+        line.split(",,", 2)[-1]
+        for line in script.splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert len(cue.split(r"\N")) == 2
+    assert cue.replace(r"\N", "") == text

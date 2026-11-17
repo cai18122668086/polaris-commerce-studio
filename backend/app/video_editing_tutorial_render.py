@@ -20,7 +20,7 @@ import numpy as np
 from PIL import ImageFont
 
 from .motion_library import atomic_json, read_json, sha256
-from .video_editing_captioning import measured_caption_rows
+from .video_editing_captioning import measured_caption_rows, text_boundaries
 from .video_editing_contracts import Transcript
 from .video_editing_pipeline import decode_av, probe, run
 from .video_editing_tutorial_plan import (
@@ -43,6 +43,8 @@ from .video_editing_tutorial_surfaces import (
 
 VERSION = "tengli.tutorial-presentation/5"
 LARGE_VIEW = (0, 162, 1080, 1280)
+CAPTION_SIZE = 62
+CAPTION_WIDTH = SIZE[0] - 2 * (68 + 5)
 
 
 def recording_activity(
@@ -535,10 +537,39 @@ def _ass_time(milliseconds: int) -> str:
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
 
 
+def _caption_text(text: str, face: ImageFont.FreeTypeFont) -> str:
+    text = (
+        " ".join(text.splitlines())
+        .strip()
+        .replace("\\", "＼")
+        .replace("{", "｛")
+        .replace("}", "｝")
+    )
+    width = face.getlength(text)
+    if width <= CAPTION_WIDTH:
+        return text
+    safe, preferred = text_boundaries(text)
+    candidates = []
+    for cut in sorted(safe - {0, len(text)}):
+        left, right = text[:cut].rstrip(), text[cut:].lstrip()
+        if not left or not right:
+            continue
+        widest = max(face.getlength(left), face.getlength(right))
+        if widest <= CAPTION_WIDTH:
+            candidates.append((cut not in preferred, widest, left, right))
+    if candidates:
+        _, _, left, right = min(candidates)
+        return left + r"\N" + right
+    # Preserve indivisible names and number/unit strings when a line cannot wrap.
+    size = max(1, int(CAPTION_SIZE * CAPTION_WIDTH / width))
+    return rf"{{\fs{size}}}" + text
+
+
 def caption_file(
     root: Path, transcript: Transcript, clock: dict, layout: Surface, font: str
 ) -> Path:
-    font_name = ImageFont.truetype(font, 52).getname()[0]
+    face = ImageFont.truetype(font, CAPTION_SIZE)
+    font_name = face.getname()[0]
 
     def color(hex_rgb: str) -> str:
         return "&H00" + hex_rgb[4:6] + hex_rgb[2:4] + hex_rgb[:2]
@@ -550,15 +581,15 @@ def caption_file(
         "BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding"
     )
     definition = (
-        f"Style: Tutorial,{font_name},52,{primary},{primary},{outline},"
-        f"&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,68,68,"
+        f"Style: Tutorial,{font_name},{CAPTION_SIZE},{primary},{primary},{outline},"
+        f"&H00000000,-1,0,0,0,100,100,0,0,1,3.8,0,2,68,68,"
         f"{layout.caption_margin if layout.replaces_caption else 318},1"
     )
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
-WrapStyle: 0
+WrapStyle: 2
 [V4+ Styles]
 Format: {columns}
 {definition}
@@ -595,13 +626,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 groups.append([])
             groups[-1].append(token)
         for group in groups:
-            text = (
-                "".join(t.text for t in group)
-                .replace("\\", "＼")
-                .replace("{", "｛")
-                .replace("}", "｝")
-                .replace("\n", r"\N")
-            )
+            text = _caption_text("".join(t.text for t in group), face)
             for start, end in windows:
                 first = group[0].start_ms
                 hold = holds.get(first)

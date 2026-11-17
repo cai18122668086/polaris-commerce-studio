@@ -12,6 +12,7 @@ from .motion_library import inside, read_json, sha256
 from .video_editing_pipeline import run
 from .video_editing_screen_clicks import detect_screen_clicks
 from .video_editing_template_audio import SCREEN_CLICK, SCREEN_ENTRY, SoundSlice
+from .video_editing_tutorial_plan import playback_elapsed_ms
 
 RATE = 48_000
 VERSION = "tengli.tutorial-sound/1"
@@ -122,7 +123,8 @@ def recording_sound(
         events.extend(
             {
                 "asset_id": asset_id,
-                "at_ms": step["start_ms"] + click["source_ms"] - step["source_in_ms"],
+                "at_ms": step["start_ms"]
+                + playback_elapsed_ms(step["playback_segments"], click["source_ms"]),
                 **click,
             }
             for click in clicks

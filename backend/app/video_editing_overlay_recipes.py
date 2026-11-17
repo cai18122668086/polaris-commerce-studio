@@ -1034,6 +1034,7 @@ def _entry_sound(
     *,
     default: SoundSlice | None = None,
 ) -> NativeSoundCue:
+    selection: SoundSlice
     path, selection = (
         (
             card_path,

@@ -448,8 +448,15 @@ def compile_episode(
         layout_policy=copy.deepcopy(authoring.layout_policy),
         protected_regions=copy.deepcopy(authoring.protected_regions),
     )
+    original_caption_size = None
     if authoring.typography is not None:
         episode["typography"] = copy.deepcopy(authoring.typography)
+    elif readable:
+        # The standard type for public oral templates needs a small lift at
+        # phone width. Authored type and native motion text keep their sizes.
+        caption = episode["typography"]["caption"]
+        original_caption_size = caption["size_px"]
+        caption["size_px"] = round(original_caption_size * 13 / 12)
     if episode["design"].get("caption_font_id") != options["caption_font_id"]:
         raise EditingFailure("EDITING_CAPTION_DESIGN_MISMATCH")
     episode["editorial"].update(
@@ -463,7 +470,16 @@ def compile_episode(
             "semantic_review": "unreviewed",
         }
     )
-    layout_captions(episode, captions, settings)
+    try:
+        layout_captions(episode, captions, settings)
+    except EditingFailure as error:
+        if (
+            original_caption_size is None
+            or error.code != "EDITING_CAPTION_CAPACITY_REVIEW_REQUIRED"
+        ):
+            raise
+        episode["typography"]["caption"]["size_px"] = original_caption_size
+        layout_captions(episode, captions, settings)
     episode["production"].update(beats=[], materials=[])
     tokens = transcript.tokens
     positions = {t.id: i for i, t in enumerate(tokens)}

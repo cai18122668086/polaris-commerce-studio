@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -20,7 +21,16 @@ from .motion_library import atomic_json, read_json, sha256
 from .video_editing_contracts import Transcript
 
 VERSION = "tengli.tutorial-content/1"
-READ_HOLD_MS = 500
+PLAYBACK_VERSION = "tengli.tutorial-playback/2"
+
+
+@dataclass(frozen=True)
+class RecordingActivity:
+    # Intervals of relative stillness measured on the recording's own timeline.
+    steady: tuple[tuple[int, int], ...] = ()
+    # A region with a visibly changing interface, using per-mille coordinates.
+    focus: tuple[int, int, int, int] | None = None
+    detail_from_ms: int | None = None
 
 
 class TutorialStep(BaseModel):
@@ -215,7 +225,17 @@ def accept_output(
     return native, shared
 
 
-def planning_hint(context: dict, shared: dict | None = None) -> dict:
+def planning_hint(
+    context: dict, shared: dict | None = None, *, adaptive: bool = False
+) -> dict:
+    playback_policy = (
+        "录屏从头完整播放。绑定实际台词即可，倍速、单个大录屏和演示留白由程序处理，口播原速。"
+        if adaptive
+        else (
+            "录屏从头完整播放，具体秒数由程序测量；口播更快时程序在步骤交接处留出演示时间，"
+            "不截短、不加速、不以静态截图冒充录屏。"
+        )
+    )
     return {
         "version": VERSION,
         "key": context["key"],
@@ -226,19 +246,23 @@ def planning_hint(context: dict, shared: dict | None = None) -> dict:
             "asset_id、first_token_id、last_token_id；每段选中录屏恰好出现一次，"
             "按真实操作顺序绑定完整台词区间，包括该步骤的操作与结果说明，区间互不重叠。"
             "shared_steps已给出时直接复用，不得因模板换位、图卡数量或动效时长删减录屏。"
-            "录屏从头完整播放，具体秒数由程序测量；口播更快时程序在步骤交接处留出演示时间，"
-            "不截短、不加速、不以静态截图冒充录屏。原生materials/native_media只负责模板装饰，"
+            + playback_policy
+            + "原生materials/native_media只负责模板装饰，"
             "不能代替tutorial_steps的完整教程素材计划。"
         ),
     }
 
 
 def augment_request(
-    body: dict, context: dict | None, shared: dict | None = None
+    body: dict,
+    context: dict | None,
+    shared: dict | None = None,
+    *,
+    adaptive: bool = False,
 ) -> dict:
     if context is None:
         return body
-    hint = planning_hint(context, shared)
+    hint = planning_hint(context, shared, adaptive=adaptive)
     messages = [dict(row) for row in body["messages"]]
     payload = json.loads(messages[1]["content"])
     payload["tutorial_material_plan"] = hint
@@ -298,29 +322,130 @@ def source_to_output(clock: dict, source_ms: int, *, end: bool = False) -> int:
     )
 
 
-def schedule(shared: dict, transcript: Transcript) -> dict:
+def _playback(
+    duration: int, window: int, steady: tuple[tuple[int, int], ...]
+) -> list[dict]:
+    """Fit using local retiming, with the greatest speed reserved for quiet spans."""
+    if duration <= window or (not steady and duration > window * 1.15):
+        return [{"source_in_ms": 0, "source_out_ms": duration, "output_ms": duration}]
+    cuts = sorted({0, duration, *(t for pair in steady for t in pair)})
+    chunks = [
+        (left, right, 2.0 if (left, right) in steady else 1.18)
+        for left, right in zip(cuts, cuts[1:], strict=False)
+    ]
+    possible = sum((right - left) * (1 - 1 / rate) for left, right, rate in chunks)
+    fraction = min(1.0, max(0.0, (duration - window) / possible))
+    result = []
+    elapsed = 0.0
+    allocated = 0
+    for left, right, rate in chunks:
+        elapsed += (right - left) * (1 - fraction * (1 - 1 / rate))
+        length = max(1, round(elapsed) - allocated)
+        result.append(
+            {"source_in_ms": left, "source_out_ms": right, "output_ms": length}
+        )
+        allocated += length
+    return result
+
+
+def playback_elapsed_ms(segments: list[dict], source_ms: int) -> int:
+    return round(
+        sum(
+            seg["output_ms"]
+            * min(
+                1,
+                max(
+                    0,
+                    (source_ms - seg["source_in_ms"])
+                    / (seg["source_out_ms"] - seg["source_in_ms"]),
+                ),
+            )
+            for seg in segments
+        )
+    )
+
+
+def frame_at(milliseconds: int) -> int:
+    """Use the first 30 fps output frame at or after this timestamp."""
+    return (milliseconds * 30 + 999) // 1000
+
+
+def schedule(
+    shared: dict,
+    transcript: Transcript,
+    activity: dict[str, RecordingActivity] | None = None,
+    quiet: dict[int, int] | None = None,
+) -> dict:
     context, intent = shared["context"], shared["intent"]
     validate_intent(intent, transcript, context)
     tokens = {token.id: token for token in transcript.tokens}
+    positions = {token.id: i for i, token in enumerate(transcript.tokens)}
     cards = {row["id"]: row for row in context["recordings"]}
     holds: list[dict] = []
     steps = []
     delay = 0
     for index, step in enumerate(intent["steps"]):
         first, last = tokens[step["first_token_id"]], tokens[step["last_token_id"]]
-        start = first.start_ms + delay
         duration = cards[step["asset_id"]]["duration_ms"]
-        playback_end = start + duration
         boundary = (
             tokens[intent["steps"][index + 1]["first_token_id"]].start_ms
             if index + 1 < len(intent["steps"])
             else last.end_ms
         )
-        pause = max(0, playback_end + READ_HOLD_MS - (boundary + delay))
+        word_boundary = boundary
+        source_start = first.start_ms
+        if quiet:
+            source_start = quiet.get(source_start, source_start)
+            boundary = quiet.get(boundary, boundary)
+        start = source_start + delay
+        window = boundary - source_start
+        profile = (activity or {}).get(step["asset_id"], RecordingActivity())
+        segments = _playback(duration, window, profile.steady)
+        playback_end = start + sum(row["output_ms"] for row in segments)
+        frame_end = frame_at(start) * 1000 // 30 + 1
+        pause = max(0, max(playback_end, frame_end) - (boundary + delay))
+        large_start = boundary + delay if pause else None
+        if profile.detail_from_ms is not None and duration >= window - 1300:
+            detail_at = start + playback_elapsed_ms(segments, profile.detail_from_ms)
+            if playback_end - detail_at >= 800:
+                large_start = (
+                    min(large_start, detail_at)
+                    if large_start is not None
+                    else detail_at
+                )
+        if pause and duration >= 2.35 * max(window, 1):
+            large_start = start
+            # A long demonstration can continue between the description and
+            # the final spoken instruction, while the close-up is already live.
+            inner = None
+            for i in range(positions[first.id], positions[last.id]):
+                token, next_token = transcript.tokens[i : i + 2]
+                if token.text.endswith(("，", "、", "。", ",", ";", "；")):
+                    word_boundary_at = next_token.start_ms
+                    point = (quiet or {}).get(word_boundary_at, word_boundary_at)
+                    if (
+                        source_start + 0.4 * window
+                        <= point
+                        <= source_start + 0.85 * window
+                    ):
+                        inner = (point, word_boundary_at)
+            if inner is not None and pause >= 1800:
+                gap = pause - 750
+                holds.append(
+                    {
+                        "source_ms": inner[0],
+                        "word_boundary_ms": inner[1],
+                        "output_start_ms": inner[0] + delay,
+                        "duration_ms": gap,
+                    }
+                )
+                delay += gap
+                pause -= gap
         if pause:
             holds.append(
                 {
                     "source_ms": boundary,
+                    "word_boundary_ms": word_boundary,
                     "output_start_ms": boundary + delay,
                     "duration_ms": pause,
                 }
@@ -340,22 +465,22 @@ def schedule(shared: dict, transcript: Transcript) -> dict:
                 "end_ms": end,
                 "source_in_ms": 0,
                 "source_out_ms": duration,
-                "playback_rate": 1,
+                "playback_rate": duration / (playback_end - start),
+                "playback_segments": segments,
+                "large_start_ms": large_start,
+                "large_crop": profile.focus if large_start is not None else None,
                 "tail_hold_ms": end - playback_end,
             }
         )
     clock = {
-        "version": VERSION,
+        "version": PLAYBACK_VERSION,
         "content_sha256": shared["sha256"],
         "source_duration_ms": transcript.duration_ms,
         "duration_ms": transcript.duration_ms + delay,
         "holds": holds,
         "steps": steps,
     }
-    if any(
-        row["end_ms"] < row["playback_end_ms"] or row["tail_hold_ms"] < READ_HOLD_MS
-        for row in steps
-    ):
+    if any(row["end_ms"] < row["playback_end_ms"] for row in steps):
         raise ValueError("Tutorial material cannot be cut short by a scene transition")
     return {**clock, "sha256": digest(clock)}
 

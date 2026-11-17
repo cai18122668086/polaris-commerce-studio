@@ -678,6 +678,8 @@ def process(
                 runtime["material_alignment_version"] = "tengli.material-alignment/1"
                 if snapshot.get("tutorial_context") is not None:
                     runtime["tutorial_context"] = snapshot["tutorial_context"]
+                    if snapshot.get("adaptive_tutorial_playback"):
+                        runtime["adaptive_tutorial_playback"] = True
                     runtime["tutorial_shared_plan"] = snapshot.get(
                         "tutorial_shared_plan"
                     )

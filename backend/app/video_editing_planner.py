@@ -828,7 +828,9 @@ def build_request(
         from .video_editing_tutorial_plan import planning_hint
 
         hint = planning_hint(
-            tutorial_context, (runtime or {}).get("tutorial_shared_plan")
+            tutorial_context,
+            (runtime or {}).get("tutorial_shared_plan"),
+            adaptive=(runtime or {}).get("adaptive_tutorial_playback", False),
         )
         payload["tutorial_material_plan"] = hint
         message += "\n教程录屏共用规则/1：" + hint["policy"]

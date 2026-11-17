@@ -5070,9 +5070,28 @@ def _validate_domestic_detail_retry(
     if (
         source.type != JobType.DETAIL_PACK.value
         or settings.get("market_region") != "domestic"
-        or detail_fast_runtime.is_independent(source.configuration)
     ):
         return
+    if detail_fast_runtime.is_independent(source.configuration):
+        uncertain_item_id = session.scalar(
+            select(JobItemRecord.id)
+            .where(
+                JobItemRecord.job_id == source.id,
+                JobItemRecord.id.in_(selected),
+                JobItemRecord.error_code.in_(
+                    ("PROVIDER_OUTCOME_UNKNOWN", "IMAGE_RESULT_DOWNLOAD_UNCONFIRMED")
+                ),
+            )
+            .limit(1)
+        )
+        if uncertain_item_id is not None:
+            raise ApiError(
+                409,
+                "PROVIDER_OUTCOME_UNKNOWN",
+                "原生图结果尚未核实，请核查原任务，避免重复提交。",
+            )
+        return
+
     from .aurora_detail_runtime import detail_workspace
 
     try:

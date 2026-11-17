@@ -344,9 +344,12 @@ def test_native_fast_plan_save_failure_can_replan_with_original_inputs(
     assert source["stage"] == "planning_failed" and source["plan"] is None
     assert not gateway.image_calls and len(gateway.planner_calls) == 1
     with client.app.state.session_factory() as db:
-        assert db.get(JobRecord, job_id).configuration[
-            "_main_image_fast_planning"
-        ]["state"] == "invoked"
+        assert (
+            db.get(JobRecord, job_id).configuration["_main_image_fast_planning"][
+                "state"
+            ]
+            == "invoked"
+        )
     key = idem()
     response = client.post(
         BASE + f"/jobs/{job_id}/retry",
@@ -570,3 +573,34 @@ def test_standard_default_serialization_preserves_existing_request_identity():
         **data, main_image_speed="standard"
     ).model_dump()
     assert omitted == explicit and "main_image_speed" not in omitted
+
+
+def test_full_storage_stops_before_planning_and_retry_completes(
+    client,
+    tmp_path,
+    monkeypatch,
+):
+    async def full():
+        raise OSError("mock MinIO free-space refusal")
+
+    storage = client.app.state.storage
+    with monkeypatch.context() as failed:
+        failed.setattr(storage, "probe_write", full)
+        job_id, gateway = create(client, tmp_path)
+        dispatch_pending(client)
+    current = detail(client, job_id)
+    assert current["status"] == "failed"
+    assert current["error_code"] == "STORAGE_WRITE_UNAVAILABLE"
+    assert current["api_request_count"] == 0
+    assert len(gateway.planner_calls) == len(gateway.image_calls) == 0
+
+    response = client.post(
+        BASE + f"/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": "failed"},
+    )
+    assert response.status_code == 201, response.text
+    dispatch_pending(client)
+    assert_delivery(client, response.json()["id"])
+    assert len(gateway.planner_calls) == 1
+    assert len(gateway.image_calls) == 6

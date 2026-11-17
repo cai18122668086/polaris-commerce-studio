@@ -428,3 +428,58 @@ def test_original_and_saved_result_byte_integrity_block_paid_dispatch(
     second = asyncio.run(provider.execute(request))
     assert second.error_code == "FAST_MAIN_IMAGE_RESULT_CHANGED"
     assert len(gateway.requests) == 1
+
+
+def test_storage_outage_blocks_network_then_recovers_staged_main_image(
+    client,
+    monkeypatch,
+    tmp_path,
+):
+    from app.generation_image_stage import GenerationImageStage
+
+    provider, gateway, request, plan = setup(client, monkeypatch)
+    provider.stage = GenerationImageStage(tmp_path, "main-image")
+    storage = client.app.state.storage
+    probe, save = storage.probe_write, storage.save_validated
+
+    async def failed_probe():
+        raise OSError("storage full before dispatch")
+
+    monkeypatch.setattr(storage, "probe_write", failed_probe)
+    blocked = asyncio.run(provider.execute(request))
+    assert blocked.error_code == "STORAGE_WRITE_UNAVAILABLE"
+    assert blocked.raw_usage["network_requests"] == 0
+    assert len(gateway.requests) == 0
+    monkeypatch.setattr(storage, "probe_write", probe)
+
+    async def failed_save(image):
+        raise OSError("storage filled after dispatch")
+
+    monkeypatch.setattr(storage, "save_validated", failed_save)
+    pending = asyncio.run(provider.execute(request))
+    assert pending.error_code == "STORAGE_RESULT_PENDING"
+    staged = receipt(client, request)["0"]
+    assert staged["state"] == "storage_pending"
+    spool = provider.stage.path(
+        request.workspace_id, request.job_id, request.attempt_id
+    )
+    assert spool.exists()
+    monkeypatch.setattr(storage, "save_validated", save)
+    retry = persist(client, plan, retry_of=request.job_id, receipts={"0": staged})
+    # New worker instance, same mounted work volume.
+    recreated = FastMainImageProvider(
+        client.app.state.session_factory,
+        gateway,
+        storage,
+        stage_root=tmp_path,
+    )
+    recovered = asyncio.run(recreated.execute(retry))
+    assert recovered.outcome == ProviderOutcome.SUCCEEDED
+    assert recovered.artifact.sha256 == staged["sha256"]
+    assert recovered.raw_usage["network_requests"] == 0
+    assert (
+        asyncio.run(storage.read_bytes(staged["object_key"]))
+        == recovered.artifact.payload
+    )
+    assert not spool.exists()
+    assert len(gateway.requests) == 1

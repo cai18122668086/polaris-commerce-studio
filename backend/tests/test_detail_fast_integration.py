@@ -573,3 +573,65 @@ def test_fast_keeps_original_png_format_contract_and_rejects_jpeg(client, monkey
     assert final["items"][0]["error_code"] == "DETAIL_OUTPUT_FORMAT_INVALID"
     assert final["output_asset_count"] == 0
     assert len(gateway.image_calls) == 1
+
+
+@pytest.mark.parametrize("mode", ["full_after_response", "unknown_response"])
+def test_fast_detail_retry_restores_staged_bytes_or_blocks_unknown_dispatch(
+    client,
+    monkeypatch,
+    mode,
+):
+    gateway, originals = synthetic_images(client, monkeypatch)
+    job = planned(client, 2)
+    storage = client.app.state.storage
+    save = storage.save_validated
+    edit = gateway.edit
+
+    async def save_only_if_available(image):
+        if "/detail-fast/" in image.object_key and "/page-002-" in image.object_key:
+            raise OSError("storage filled after dispatch")
+        return await save(image)
+
+    async def uncertain_response(request):
+        result = await edit(request)
+        if request.page_number == 2:
+            return replace(
+                result,
+                outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                artifact=None,
+                error_code="PROVIDER_OUTCOME_UNKNOWN",
+            )
+        return result
+
+    with monkeypatch.context() as failure:
+        if mode == "unknown_response":
+            failure.setattr(gateway, "edit", uncertain_response)
+        else:
+            failure.setattr(storage, "save_validated", save_only_if_available)
+        confirm(client, job)
+        dispatch_pending(client)
+    original = client.get(BASE + f"/jobs/{job['id']}").json()
+    assert original["status"] == "partial", original
+    retry = client.post(
+        BASE + f"/jobs/{job['id']}/retry", headers=idem(), json={"scope": "failed"}
+    )
+    if mode == "unknown_response":
+        assert retry.status_code == 409, retry.text
+        assert retry.json()["error"]["code"] == "PROVIDER_OUTCOME_UNKNOWN"
+    else:
+        assert original["items"][1]["error_code"] == "STORAGE_RESULT_PENDING"
+        assert retry.status_code == 201, retry.text
+        child = retry.json()
+        if child["status"] == "awaiting_confirmation":
+            confirm(client, child)
+        dispatch_pending(client)
+        final = client.get(BASE + f"/jobs/{child['id']}").json()
+        assert final["status"] == "completed", final
+        assert final["api_request_count"] == 0
+        archive = client.get(BASE + f"/jobs/{child['id']}/deliverables.zip")
+        assert archive.status_code == 200, archive.text
+        with ZipFile(BytesIO(archive.content)) as bundle:
+            assert bundle.read("page-001.png") == originals[1]
+            assert bundle.read("page-002.png") == originals[2]
+    assert len(gateway.planner_calls) == 1
+    assert len(gateway.image_calls) == 2

@@ -411,7 +411,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       <button type="button" onClick={() => void submit("transcript")} disabled={busy || !canSubmit}>识别口播，准备动效剪辑</button>
       <button type="button" onClick={() => void submit("subtitles")} disabled={busy || !canSubmit}>生成基础字幕片</button>
     </div></details>
-    <EditingMusicPicker value={music} onChange={value => { cancelAutomatic(); setMusic(value); }} disabled={busy || recognizing} voiceOnly={isEditingSuite(template?.engine)} />
+    <EditingMusicPicker value={music} onChange={value => { cancelAutomatic(); setMusic(value); }} disabled={busy || recognizing} voiceOnly={isEditingSuite(template?.engine) && !template?.capabilities?.includes("music")} templateSound={template?.engine === "bihuo-full-suite"} />
     {isEditingSuite(template?.engine) && <EditingCoverPicker value={creativeOptions.cover || "auto"} onChange={cover => { cancelAutomatic(); setCreativeOptions(current => ({ ...current, cover })); }} disabled={busy || recognizing} />}
     </section>
     {error && <p className={styles.error} role="alert">{error}</p>}

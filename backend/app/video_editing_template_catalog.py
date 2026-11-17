@@ -262,9 +262,13 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
         cards.insert(0, TemplateCatalogCard.model_validate(apple).model_dump())
     from .bihuo_suite.registry import cards as bihuo_cards
     from .bihuo_suite.video_materials import capabilities
+    from .video_editing_suite_music import SUITE_MUSIC, music_file
 
     for card in bihuo_cards():
         card["capabilities"] = capabilities(card)
+        track = SUITE_MUSIC.get(card["id"])
+        if track and music_file(settings, track).is_file():
+            card["capabilities"].append("music")
         card["material_requirements"][1] = (
             "可选配图或录屏。没有素材时按口播组织文字和人物画面"
             if "images" in card["capabilities"]

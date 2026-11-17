@@ -680,7 +680,8 @@ def render_suite(
     }
     suite_sound = False
     if frozen.get("engine") == "bihuo-full-suite":
-        from .video_editing_suite_sound import SUITE_FAMILIES, enhance_suite_sound
+        from .video_editing_suite_actions import SUITE_FAMILIES
+        from .video_editing_suite_sound import enhance_suite_sound
 
         suite_sound = frozen["template_id"] in SUITE_FAMILIES
         if suite_sound:
@@ -714,6 +715,25 @@ def render_suite(
         )
         validation = {**tutorial_validation, "base_native_validation": validation}
         duration = validation["duration_ms"]
+    if suite_sound:
+        from .video_editing_suite_music import mix_suite_music
+
+        music = mix_suite_music(
+            final,
+            root / "tutorial/narration.wav"
+            if tutorial is not None
+            else original_source_path,
+            frozen["template_id"],
+            frozen.get("music") or "template",
+            duration,
+            root / "suite-music",
+            settings,
+            guard,
+        )
+        if music is not None:
+            final, track = music
+            decode_av(final, root, settings, guard, "decode_suite_music")
+            validation.update(sha256=sha256(final), template_music=track)
     (root / "outputs").mkdir(exist_ok=True)
     stage("building_preview")
     preview, preview_receipt = build_preview(final, root, validation, settings, guard)

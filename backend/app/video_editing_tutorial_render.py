@@ -47,6 +47,7 @@ VERSION = "tengli.tutorial-presentation/5"
 LARGE_VIEW = (0, 162, 1080, 1280)
 CAPTION_SIZE = 62
 CAPTION_WIDTH = SIZE[0] - 2 * (68 + 5)
+RECORDING_TIMESCALE = 15360
 
 
 def recording_activity(
@@ -188,15 +189,19 @@ def _recording_graph(
     normal = f"{fit(nw, nh)},pad={wc}:{hc}:0:0{pad}"
     large = crop() + fit(wc, hc)
     if normal_frames == 0:
-        return f"{prefix},{large}[full]"
-    if normal_frames == frames:
-        return f"{prefix},{normal}[full]"
-    return (
-        f"{prefix},split[a][b];"
-        f"[a]trim=end_frame={normal_frames},setpts=PTS-STARTPTS,{normal}[small];"
-        f"[b]trim=start_frame={normal_frames},setpts=PTS-STARTPTS,{large}[large];"
-        "[small][large]concat=n=2:v=1:a=0[full]"
-    )
+        graph = f"{prefix},{large}"
+    elif normal_frames == frames:
+        graph = f"{prefix},{normal}"
+    else:
+        graph = (
+            f"{prefix},split[a][b];"
+            f"[a]trim=end_frame={normal_frames},setpts=PTS-STARTPTS,{normal}[small];"
+            f"[b]trim=start_frame={normal_frames},setpts=PTS-STARTPTS,{large}[large];"
+            "[small][large]concat=n=2:v=1:a=0"
+        )
+    # concat can emit a microsecond time base. The subsequent demuxer playlist
+    # requires all recordings to use the same clock.
+    return f"{graph},settb=expr=1/30,setpts=N[full]"
 
 
 def prepare_recording(
@@ -225,6 +230,7 @@ def prepare_recording(
             "frames": frames,
             "normal_frames": normal_frames,
             "large_crop": step["large_crop"],
+            "recording_timescale": RECORDING_TIMESCALE,
             "version": VERSION,
             "viewport_size": viewport_size,
             "background": layout.pad_color,
@@ -260,6 +266,10 @@ def prepare_recording(
             "[full]",
             "-frames:v",
             str(frames),
+            "-r",
+            "30",
+            "-video_track_timescale",
+            str(RECORDING_TIMESCALE),
             "-an",
             "-c:v",
             "libx264",
@@ -280,10 +290,13 @@ def prepare_recording(
         "tutorial_material",
     )
     info = probe(context, settings)
-    if int(info["streams"][0].get("nb_frames", 0)) != frames:
-        raise ValueError(
-            "Prepared tutorial recording ended before its full source range"
-        )
+    video = info["streams"][0]
+    if (
+        int(video.get("nb_frames", 0)) != frames
+        or video["time_base"] != f"1/{RECORDING_TIMESCALE}"
+        or video["duration_ts"] != frames * (RECORDING_TIMESCALE // 30)
+    ):
+        raise ValueError("Prepared tutorial recording has an invalid playback clock")
     value = {
         "context": str(context),
         "context_sha256": sha256(context),

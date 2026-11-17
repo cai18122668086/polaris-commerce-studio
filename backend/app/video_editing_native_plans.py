@@ -312,6 +312,7 @@ def register_gateway_plan(
             template,
             verified.task.snapshot["choice_snapshot"],
             verified.task.snapshot["asset_cards"],
+            tasks_root=settings.video_editing_tasks_dir,
         )
     if recipes.planning_origin != "tengli_gateway":
         raise ApiError(
@@ -674,6 +675,7 @@ def admit_render_plan(
                 transcript,
                 current,
                 edits.music_track_id,
+                tasks_root=settings.video_editing_tasks_dir,
             )
             if replacements is None or not replacements.choices:
                 raise ValueError("Background music replacement is unavailable")

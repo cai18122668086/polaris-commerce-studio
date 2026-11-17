@@ -345,6 +345,55 @@ def test_replacement_music_keeps_native_mix_boundaries_and_checks_stock(tmp_path
         )
 
 
+def test_private_template_track_uses_its_hash_without_changing_motion_library(
+    tmp_path, monkeypatch
+):
+    from app import video_editing_template_audio as audio
+
+    _, package, _, transcript, *_ = protocol(tmp_path)
+    track_id = audio.TEMPLATE_TRACKS[audio.KNOWLEDGE_GROUP_ID]
+    tracks = tmp_path / audio.MUSIC_SUBDIRECTORY
+    tracks.mkdir()
+    track = tracks / "knowledge.m4a"
+    track.write_bytes(b"preview")
+    digest = sha256(track)
+    monkeypatch.setitem(audio._TRACKS, track_id, ("Fixture", track.name, digest, 30))
+    atomic_json(package / "assets/sfx/runtime-assets.json", {"assets": []})
+    original_manifest = sha256(package / "asset-manifest.json")
+    sound = NativeSoundDesign.model_validate(
+        {
+            "music": [
+                {
+                    "asset_id": track_id,
+                    "start": {"token_id": "t1", "edge": "start"},
+                    "end": "episode_end",
+                    "gain_db": -24,
+                    "fade_seconds": 0.3,
+                    "reason": "template soundtrack",
+                }
+            ]
+        }
+    )
+    notes = {"notes": []}
+    options = music_replacement_options(
+        package, sound.model_dump(mode="json"), transcript, notes, tasks_root=tmp_path
+    )
+    assert options is not None and options.original.asset_id == track_id
+    episode = {"source": {"duration_seconds": 4.0}}
+    result = compile_sound(
+        package, transcript, episode, sound, {}, notes, tasks_root=tmp_path
+    )
+    assert result["music"][0]["asset_sha256"] == digest
+    assert episode["music"][0]["start_seconds"] == 0.6
+    assert sha256(package / "asset-manifest.json") == original_manifest
+
+    track.write_bytes(b"changed")
+    with pytest.raises(ValueError, match="does not match the current selection"):
+        compile_sound(
+            package, transcript, episode, sound, {}, notes, tasks_root=tmp_path
+        )
+
+
 @pytest.mark.parametrize(
     ("duration_ms", "boundaries"),
     [(30000, [0, 15, 30]), (30470, [0, 15, 29.5, 30.47]), (30500, [0, 15, 30, 30.5])],

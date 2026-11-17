@@ -23,12 +23,14 @@ from .motion_library import atomic_json, read_json, sha256
 from .video_editing_captioning import measured_caption_rows
 from .video_editing_contracts import Transcript
 from .video_editing_pipeline import decode_av, probe, run
+from .video_editing_template_audio import TEMPLATE_TRACKS
 from .video_editing_tutorial_plan import (
     digest,
     schedule,
     source_to_output,
     timestamp_expression,
 )
+from .video_editing_tutorial_sound import recording_sound
 from .video_editing_tutorial_surfaces import (
     SIZE,
     Surface,
@@ -432,10 +434,20 @@ def render_tutorial(
     graph = [
         f"[0:v]setpts='{expression}',fps=30,tpad=stop_mode=clone:stop_duration={safety_tail},scale=1080:1920,setsar=1,format=yuv420p[base]",
     ]
+    enhanced_audio = template_id in TEMPLATE_TRACKS
     if preview_at is None:
-        graph.append(
-            f"[1:a]aresample=48000,aformat=channel_layouts=stereo,asetnsamples=n=48:p=0,asetpts='{expression}',aresample=async=1:min_hard_comp=0.0005:first_pts=0,apad,atrim=duration={duration},asplit=2[voice][voice_proof]"
+        audio_clock = (
+            "aresample=48000,aformat=channel_layouts=stereo,asetnsamples=n=48:p=0,"
+            f"asetpts='{expression}',"
+            "aresample=async=1:min_hard_comp=0.0005:first_pts=0,"
+            f"apad,atrim=duration={duration}"
         )
+        graph.append(
+            f"[1:a]{audio_clock}"
+            + ("[voice_proof]" if enhanced_audio else ",asplit=2[voice][voice_proof]")
+        )
+        if enhanced_audio:
+            graph.append(f"[0:a]{audio_clock}[native_mix]")
     labels = [step["label"] for step in clock["steps"]]
     panels = []
     for step in clock["steps"]:
@@ -529,6 +541,16 @@ def render_tutorial(
         )
         return still, {"viewport": layout.viewport, "surface": layout.name}
     final = root / "tutorial-final.mp4"
+    sound = None
+    if enhanced_audio:
+        fx, sound = recording_sound(clock, assets, root, settings, guard)
+        audio_input = 5 if layout.presenter else 4
+        args += ["-i", str(fx)]
+        graph += [
+            f"[{audio_input}:a]aformat=channel_layouts=stereo[recording_fx]",
+            "[native_mix][recording_fx]amix=inputs=2:duration=first:normalize=0,"
+            "alimiter=limit=0.97:level=0:latency=1[voice]",
+        ]
     args += [
         "-filter_complex",
         ";".join(graph),
@@ -577,6 +599,7 @@ def render_tutorial(
         root,
         settings,
         guard,
+        sound=sound,
     )
 
 
@@ -591,6 +614,8 @@ def validate_tutorial(
     root: Path,
     settings: Any,
     guard: Callable,
+    *,
+    sound: dict | None = None,
 ) -> dict:
     clock = schedule(shared, transcript)
     decode_av(final, root, settings, guard, "decode_tutorial")
@@ -628,6 +653,7 @@ def validate_tutorial(
         "model_calls": 0,
         "narration_validation": voice,
         "material_view_validation": views,
+        **({"recording_sound": sound} if sound is not None else {}),
         "visual_review": "unreviewed",
         "listening_review": "unreviewed",
     }

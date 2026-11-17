@@ -1180,6 +1180,7 @@ def compile_episode(
                 sound_events,
                 choice_snapshot,
                 edits,
+                tasks_root=settings.video_editing_tasks_dir,
                 sync_subtitle_entries=authoring.overlay_template_id
                 in SYNC_SUBTITLE_TEMPLATES,
                 sync_yy_opening_entries=authoring.overlay_template_id

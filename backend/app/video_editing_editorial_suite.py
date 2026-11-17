@@ -265,10 +265,12 @@ def render(config: dict, out: Path, settings: Any, guard: Any) -> Path:
         fontsdir = out / "subtitle-font"
         fontsdir.mkdir(exist_ok=True)
         copyfile(font, fontsdir / font.name)
+        margin = 40 if template_id == "azl-panels-v1" else 32
         graph += (
             f";[visual]subtitles=filename='{filter_path(subtitle)}':"
             f"fontsdir='{filter_path(fontsdir)}':"
-            f"force_style='FontName={caption_font},FontSize=11,Outline=1,MarginV=32'[subtitled]"
+            f"force_style='FontName={caption_font},FontSize=11,Outline=1,MarginV={margin}'"
+            "[subtitled]"
         )
         label = "subtitled"
     final = out / "final.mp4"

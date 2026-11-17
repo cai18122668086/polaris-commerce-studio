@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 SIZE = (1080, 1920)
 Box = tuple[int, int, int, int]
@@ -59,7 +60,7 @@ _SURFACES = {
     ),
     "product-explainer-v1": Surface("product", (24, 960, 1032, 552)),
     "azl-panels-v1": Surface(
-        "magazine", (52, 302, 976, 522), (82, 916, 402, 586), 0, True, 247
+        "magazine", (52, 302, 976, 522), (82, 916, 402, 586), 0, True, 318
     ),
     "apple-minimal-v1": _native(
         "apple-launch",
@@ -375,13 +376,30 @@ def native_chrome(layout: Surface) -> Image.Image:
     return img
 
 
+def large_chrome(layout: Surface, template_id: str, step: dict) -> Image.Image:
+    backdrop = layout.backdrop if layout.native_box else "#F7F8F1"
+    image = Image.new("RGBA", SIZE, backdrop)
+    draw = ImageDraw.Draw(image)
+    label = re.sub(r"^\s*\d+[_.、\s-]*", "", step["label"]).strip()
+    light = sum(ImageColor.getrgb(backdrop)[:3]) >= 3 * 132
+    title_font, _ = fonts_for(template_id)
+    _title(
+        draw,
+        label,
+        title_font,
+        (54, 47),
+        972,
+        47,
+        "#171A1B" if light else "#FFFFFF",
+    )
+    return image
+
+
 def chrome(
     layout: Surface, template_id: str, step: dict, labels: list[str]
 ) -> Image.Image:
     if layout.native_box:
         return native_chrome(layout)
-
-    import re
 
     title_font, caption_font = fonts_for(template_id)
     index = step["index"]

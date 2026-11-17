@@ -405,6 +405,7 @@ def create_planning_task(
             tutorial = content_context(source.id, tutorial_transcript, cards)
             assert tutorial is not None
             snapshot["tutorial_context"] = tutorial
+            snapshot["adaptive_tutorial_playback"] = True
             snapshot["tutorial_shared_plan"] = optional_plan(
                 settings.video_editing_tasks_dir, tutorial, tutorial_transcript
             )

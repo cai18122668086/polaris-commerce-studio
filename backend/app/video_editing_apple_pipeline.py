@@ -260,7 +260,10 @@ def plan_suite(
     from .video_editing_tutorial_plan import augment_request
 
     body = augment_request(
-        body, snapshot.get("tutorial_context"), snapshot.get("tutorial_shared_plan")
+        body,
+        snapshot.get("tutorial_context"),
+        snapshot.get("tutorial_shared_plan"),
+        adaptive=snapshot.get("adaptive_tutorial_playback", False),
     )
     if snapshot.get("material_layout_version") and not any(
         card["kind"] == "image" for card in snapshot["asset_cards"]

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import ApiError
+from .video_editing_captioning import text_boundaries
 from .video_editing_contracts import Transcript
 
 EMPTY_RESPONSE = "EDITING_PLAN_EMPTY_RESPONSE"
@@ -56,7 +57,7 @@ def normalize_material_anchors(
 
 
 def normalize_suite_output(
-    raw: dict[str, Any], transcript: Transcript
+    raw: dict[str, Any], transcript: Transcript, *, repair_caption_lines: bool = False
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     changed, anchor_repairs = normalize_material_anchors(raw, transcript)
     repairs: list[dict[str, Any]] = [dict(row) for row in anchor_repairs]
@@ -71,6 +72,8 @@ def normalize_suite_output(
             repairs.append(
                 {"kind": "caption_prefix", "from": first, "to": transcript.tokens[0].id}
             )
+    if repair_caption_lines and isinstance(captions, list):
+        repairs.extend(_repair_editorial_caption_lines(captions, transcript, positions))
     chapters = changed.get("chapters")
     if isinstance(chapters, list):
         kept = []
@@ -109,6 +112,85 @@ def normalize_suite_output(
             kept.append(chapter)
         changed["chapters"] = kept
     return changed, repairs
+
+
+def _repair_editorial_caption_lines(
+    captions: list, transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Fit the recorded phrase within the existing two-line contract."""
+    tokens = transcript.tokens
+    text = "".join(token.text for token in tokens)
+    safe, preferred = text_boundaries(text)
+    offsets = [0]
+    for token in tokens:
+        offsets.append(offsets[-1] + len(token.text))
+
+    def count(start: int, end: int) -> int:
+        return len(re.findall(r"\w", text[offsets[start] : offsets[end + 1]]))
+
+    repaired = []
+    for cue in captions:
+        if not isinstance(cue, dict):
+            continue
+        first, last = cue.get("first_token_id"), cue.get("last_token_id")
+        if (
+            not isinstance(first, str)
+            or not isinstance(last, str)
+            or first not in positions
+            or last not in positions
+        ):
+            continue
+        a, b = positions[first], positions[last]
+        old = cue.get("line_break_after_token_id")
+        if old is not None and (not isinstance(old, str) or old not in positions):
+            continue
+        spans = cue.get("emphasis", [])
+        if not isinstance(spans, list):
+            continue
+        size = count(a, b)
+        emphasis = [
+            (positions[item["first_token_id"]], positions[item["last_token_id"]])
+            for item in spans
+            if isinstance(item, dict)
+            and all(
+                isinstance(item.get(key), str) and item[key] in positions
+                for key in ("first_token_id", "last_token_id")
+            )
+        ]
+        candidates = [
+            k
+            for k in range(a, b)
+            if offsets[k + 1] in safe
+            and 1 <= count(a, k) <= 18
+            and 1 <= count(k + 1, b) <= 18
+            and all(not start <= k < end for start, end in emphasis)
+        ]
+        if size <= 18 if old is None else positions[old] in candidates:
+            continue
+        if size <= 18:
+            target = None
+        elif candidates:
+            cut = min(
+                candidates,
+                key=lambda k: (
+                    offsets[k + 1] not in preferred,
+                    abs(size - 2 * count(a, k)),
+                ),
+            )
+            target = tokens[cut].id
+        else:
+            continue
+        cue["line_break_after_token_id"] = target
+        repaired.append(
+            {
+                "kind": "editorial_caption_line",
+                "first_token_id": first,
+                "last_token_id": last,
+                "from": old,
+                "to": target,
+            }
+        )
+    return repaired
 
 
 def bind_selected_native_assets(

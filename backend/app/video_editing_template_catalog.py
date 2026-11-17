@@ -11,6 +11,7 @@ from .errors import ApiError
 from .motion_library import read_json, sha256
 from .motion_library_validation import group_status, motion_evidence_directory
 from .video_editing_apple_pipeline import suite_card
+from .video_editing_editorial_suite import STYLES as EDITORIAL_STYLES
 from .video_editing_overlay_templates import overlay_templates
 from .video_editing_template_styles import FEATURED, PUBLIC_TEMPLATE_IDS, STYLES
 from .video_studio_schemas import StrictVideoModel
@@ -153,6 +154,11 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
                 "category",
             )
         }
+        if tid in EDITORIAL_STYLES:
+            meta["material_requirements"] = [
+                "9:16 竖屏口播，建议无内嵌字幕",
+                "图片和录屏可选。没有素材时用真实台词组织本模板的文字画面",
+            ]
         count = sum(sampled[gid] for gid in groups)
         if b_variant and sampled.get("AH-S03"):
             count -= 1
@@ -212,6 +218,7 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
             TemplateCatalogCard.model_validate(
                 {
                     "id": tid,
+                    "capabilities": ["video_materials"],
                     "version": tid.rsplit("-", 1)[-1],
                     "name": profile["name"],
                     "featured": tid in FEATURED,
@@ -234,6 +241,7 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
         )
     apple = suite_card(settings, workspace_id)
     if apple is not None:
+        apple["capabilities"] = [*apple["capabilities"], "video_materials"]
         try:
             entry, _ = example_file(settings, apple["id"], "video")
             url = (
@@ -257,6 +265,11 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
 
     for card in bihuo_cards():
         card["capabilities"] = capabilities(card)
+        card["material_requirements"][1] = (
+            "可选配图或录屏。没有素材时按口播组织文字和人物画面"
+            if "images" in card["capabilities"]
+            else "可选录屏。没有素材时保留本套口播布局"
+        )
         try:
             entry, _ = example_file(settings, card["id"], "video")
             url = (

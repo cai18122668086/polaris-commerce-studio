@@ -44,7 +44,7 @@ def suite_fixture(video, tmp_path, monkeypatch):
                         },
                         ensure_ascii=False,
                     ),
-                }
+                },
             ],
         }
         encoded = json.dumps(body, sort_keys=True, ensure_ascii=False).encode()
@@ -298,3 +298,65 @@ def test_suite_rejects_burned_subtitles_before_planning(suite_fixture):
     )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "EDITING_APPLE_CLEAN_SOURCE_REQUIRED"
+
+
+@pytest.mark.parametrize(
+    "template_id", ["rotation-cards-v1", "azl-panels-v1", "chenxi-broll-v1"]
+)
+def test_material_driven_styles_can_prepare_and_preview_a_speech_only_plan(
+    suite_fixture, monkeypatch, template_id
+):
+    from app.video_editing_editorial_suite import ENGINE
+
+    client, _auth, ws, settings, _source, task = suite_fixture
+    module = sys.modules["app.video_editing_apple_contracts"]
+    build_request = module.build_request
+    monkeypatch.setattr(
+        module, "build_request", lambda *args, **_kwargs: build_request(*args)
+    )
+    endpoint = base(ws) + f"/editing-tasks/{task['id']}/planning-tasks"
+    created = client.post(
+        endpoint, json={"request_id": str(uuid4()), "template_id": template_id}
+    )
+    assert created.status_code == 200, created.text
+    prepared_id = created.json()["id"]
+    worker.process(prepared_id, settings, client.app.state.session_factory)
+    prepared = client.get(base(ws) + f"/editing-planning-tasks/{prepared_id}").json()
+    assert prepared["status"] == "prepared", prepared
+    assert prepared["engine"] == ENGINE and prepared["template_id"] == template_id
+    assert prepared["auto_preview_available"]
+    enable_fixture(settings)
+    created = client.post(
+        endpoint,
+        json={
+            "request_id": str(uuid4()),
+            "mode": "generate",
+            "prepared_task_id": prepared_id,
+        },
+    )
+    assert created.status_code == 200, created.text
+    generated_id = created.json()["id"]
+    provider = SuiteProvider()
+    worker.process(generated_id, settings, client.app.state.session_factory, provider)
+    preview = client.post(base(ws) + f"/editing-planning-tasks/{generated_id}/preview")
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["template_id"] == template_id
+    with client.app.state.session_factory() as session:
+        edit = session.get(EditingTaskRecord, preview.json()["id"])
+        assert edit.options["suite_plan_id"] == generated_id
+        assert "tutorial_material_ids" not in edit.options
+    assert provider.calls == 1
+
+
+def test_rotation_uses_word_cards_with_duplicate_or_partial_pictures():
+    from app.video_editing_editorial_suite import use_editorial
+
+    images = {
+        "a": {"kind": "image", "sha256": "1"},
+        "b": {"kind": "image", "sha256": "1"},
+        "c": {"kind": "image", "sha256": "2"},
+    }
+    assert use_editorial("rotation-cards-v1", images)
+    assert not use_editorial(
+        "rotation-cards-v1", images | {"d": {"kind": "image", "sha256": "3"}}
+    )

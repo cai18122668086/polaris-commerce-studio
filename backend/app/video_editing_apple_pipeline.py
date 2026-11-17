@@ -634,6 +634,24 @@ def render_suite(
         "visual_review": "unreviewed",
         "listening_review": "unreviewed",
     }
+    suite_sound = False
+    if frozen.get("engine") == "bihuo-full-suite":
+        from .video_editing_suite_sound import SUITE_FAMILIES, enhance_suite_sound
+
+        suite_sound = frozen["template_id"] in SUITE_FAMILIES
+        if suite_sound:
+            final, audio = enhance_suite_sound(
+                final,
+                config,
+                duration,
+                source_sha,
+                root / "suite-audio",
+                settings,
+                guard,
+                scan_recordings=tutorial is None,
+            )
+            decode_av(final, root, settings, guard, "decode_suite_audio")
+            validation.update(sha256=sha256(final), template_sound=audio)
     if tutorial is not None:
         from .video_editing_tutorial_render import render_tutorial
 
@@ -648,6 +666,7 @@ def render_suite(
             root / "tutorial",
             settings,
             guard,
+            retain_native_mix=suite_sound,
         )
         validation = {**tutorial_validation, "base_native_validation": validation}
         duration = validation["duration_ms"]

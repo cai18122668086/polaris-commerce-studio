@@ -66,6 +66,36 @@ def _cue_wave(
     return samples
 
 
+def write_cue_track(
+    output: Path,
+    duration_ms: int,
+    events: list[tuple[int, SoundSlice]],
+    settings: Any,
+    guard: Callable[[], None],
+) -> None:
+    sounds = {
+        cue: _cue_wave(cue, output.parent, settings, guard)
+        for cue in dict.fromkeys(cue for _, cue in events)
+    }
+    total = round(duration_ms * RATE / 1000)
+    cues = [(round(at * RATE / 1000), sounds[cue]) for at, cue in events]
+    with wave.open(str(output), "wb") as writer:
+        writer.setparams((1, 2, RATE, 0, "NONE", "not compressed"))
+        for start in range(0, total, RATE):
+            guard()
+            block = np.zeros(min(RATE, total - start), dtype=np.float32)
+            stop = start + len(block)
+            for position, cue in cues:
+                first, last = max(start, position), min(stop, position + len(cue))
+                if first < last:
+                    block[first - start : last - start] += cue[
+                        first - position : last - position
+                    ]
+            writer.writeframesraw(
+                np.round(np.clip(block, -1, 1) * 32767).astype("<i2").tobytes()
+            )
+
+
 def recording_sound(
     clock: dict,
     assets: dict,
@@ -98,34 +128,15 @@ def recording_sound(
             for click in clicks
             if step["source_in_ms"] <= click["source_ms"] < step["source_out_ms"]
         )
-    sounds = {
-        "recording_entry": _cue_wave(SCREEN_ENTRY, root, settings, guard),
-        "click": _cue_wave(SCREEN_CLICK, root, settings, guard),
-    }
-    total = round(clock["duration_ms"] * RATE / 1000)
-    cues = [
+    selections = [
         (
-            round(event["at_ms"] * RATE / 1000),
-            sounds[
-                "recording_entry" if event["evidence"] == "recording_entry" else "click"
-            ],
+            event["at_ms"],
+            SCREEN_ENTRY if event["evidence"] == "recording_entry" else SCREEN_CLICK,
         )
         for event in events
     ]
     output = root / "recording-fx.wav"
-    with wave.open(str(output), "wb") as writer:
-        writer.setparams((1, 2, RATE, 0, "NONE", "not compressed"))
-        for start in range(0, total, RATE):
-            guard()
-            block = np.zeros(min(RATE, total - start), dtype=np.float32)
-            stop = start + len(block)
-            for position, cue in cues:
-                first, last = max(start, position), min(stop, position + len(cue))
-                if first < last:
-                    block[first - start : last - start] += cue[
-                        first - position : last - position
-                    ]
-            writer.writeframesraw(np.round(block * 32767).astype("<i2").tobytes())
+    write_cue_track(output, clock["duration_ms"], selections, settings, guard)
     return output, {
         "version": VERSION,
         "native_mix_retained": True,

@@ -1062,6 +1062,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     root / "tutorial",
                     settings,
                     guard,
+                    retain_native_mix=validation.get("native_mix_validation")
+                    == "passed",
                 )
                 validation = {
                     **tutorial_validation,

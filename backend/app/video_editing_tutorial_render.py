@@ -385,6 +385,7 @@ def render_tutorial(
     guard: Callable,
     *,
     preview_at: float | None = None,
+    retain_native_mix: bool = False,
 ) -> tuple[Path, dict]:
     clock = schedule(shared, transcript)
     if sha256(source) != transcript.source_sha256:
@@ -434,7 +435,7 @@ def render_tutorial(
     graph = [
         f"[0:v]setpts='{expression}',fps=30,tpad=stop_mode=clone:stop_duration={safety_tail},scale=1080:1920,setsar=1,format=yuv420p[base]",
     ]
-    enhanced_audio = template_id in TEMPLATE_TRACKS
+    enhanced_audio = retain_native_mix or template_id in TEMPLATE_TRACKS
     if preview_at is None:
         audio_clock = (
             "aresample=48000,aformat=channel_layouts=stereo,asetnsamples=n=48:p=0,"

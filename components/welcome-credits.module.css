@@ -321,42 +321,136 @@
 }
 
 .support {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(16px, 4vw, 40px);
+  max-width: 52rem;
+  margin-bottom: 20px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid #ebd8c5;
+  border-radius: 16px;
+  background: linear-gradient(115deg, #fff4e3, #fffaf2 70%);
+  color: #3f2b24;
+}
+.supportBody { min-width: 0; }
+.supportHeader { display: flex; align-items: center; gap: 12px; }
+.supportIcon {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 11px;
+  background: #f8e3cd;
+  color: #a42722;
+}
+.supportHeader h2 {
+  margin: 0;
+  color: #3f2b24;
+  font-size: clamp(18px, 2.4vw, 23px);
+  font-weight: 650;
+  line-height: 1.35;
+}
+.supportHeader strong { color: #a42722; white-space: nowrap; }
+.support .supportDescription {
+  max-width: 38em;
+  margin: 10px 0 0;
+  color: #6b5044;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.supportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.support .supportContact,
+.support .supportApply {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 13px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: none;
+}
+.supportActions svg, .supportMeta svg { flex-shrink: 0; }
+.support .supportContact { background: #a42722; color: #fff; }
+.support .supportContact:hover { background: #881c18; }
+.support .supportApply {
+  border-color: #dcbda7;
+  background: #fffdf8;
+  color: #773128;
+}
+.support .supportApply:hover:not(:disabled) { background: #ffeadb; }
+.support .supportApply:disabled { opacity: .65; cursor: default; }
+.supportMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 6px;
+}
+.support .supportStatus {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding: 20px;
-  border: 1px solid #efd6bc;
-  border-radius: 16px;
-  background: #fff5e5;
-  color: #74160e;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: #755014;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
-.support h2, .support a { display: flex; align-items: center; gap: 6px; }
-.support h2 { margin: 0; font-size: 18px; }
-.support p { margin: 8px 0; font-size: 13px; line-height: 1.5; }
-.support img {
-  width: 180px;
-  max-width: 100%;
-  height: auto;
-  flex-shrink: 0;
-  border-radius: 8px;
-}
-@media (max-width: 600px) {
-  .support { flex-direction: column; align-items: stretch; }
-  .support img { align-self: center; }
-}
-.support button { margin: 4px 0 8px; padding: 8px 12px; border-radius: 8px; color: #74160e; background: #ffd789; }
-.support a { font-size: 13px; }
-.support .supportContact {
-  width: fit-content;
+.support .supportStatus[data-state="claimed"] { color: #255b3e; }
+.support .supportStatus[data-state="resolved"] { color: #6b5044; }
+.support .supportError { margin: 8px 0 0; color: #a42722; font-size: 13px; }
+.support .supportRecords {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   min-height: 44px;
-  margin: 4px 0;
-  padding: 0 12px;
-  border: 1px solid #efd6bc;
-  border-radius: 8px;
-  background: #fffaf0;
-  font-weight: 700;
+  color: #783729;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.support :is(a, button):focus-visible { outline: 2px solid #a42722; outline-offset: 3px; }
+.supportQr {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #efdfcd;
+  border-radius: 12px;
+  background: #fff;
+  color: #6b5044;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.supportQr img {
+  display: block;
+  width: 175px;
+  height: auto;
+  max-width: 100%;
+  image-rendering: pixelated;
+}
+@media (max-width: 540px) {
+  .support { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .supportActions > :is(a, button) { flex: 1 1 100%; }
+  .supportMeta { gap: 0 12px; }
+  .supportQr { grid-template-columns: auto 1fr; align-items: center; justify-items: start; gap: 12px; }
+}
+@media (max-width: 360px) {
+  .supportQr { grid-template-columns: 1fr; justify-items: center; gap: 6px; }
 }
 
 .purchase {

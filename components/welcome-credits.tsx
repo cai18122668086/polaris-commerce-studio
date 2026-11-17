@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowUpRight, Gift, X } from "lucide-react";
+import { ArrowUpRight, Check, Clock3, Gift, MessageCircle, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
@@ -115,21 +115,46 @@ export function SupportWelcomeReward({ workspaceId, claimed }: { workspaceId: st
         body: { issue: "申请添加客服赠送 50 积分", welcome_bonus: true },
       },
     )),
-    onSuccess: () => client.invalidateQueries({ queryKey: key }),
+    onSuccess: created => {
+      client.setQueryData<NonNullable<typeof cases.data>>(key, previous => [
+        created, ...(previous ?? []).filter(item => item.id !== created.id),
+      ]);
+      void client.invalidateQueries({ queryKey: key });
+    },
   });
   const request = cases.data?.find(item => item.welcome_bonus);
+  const resolved = request?.status === "resolved";
+  const needsCase = !claimed && !request;
+  const unavailable = needsCase && cases.isError && !cases.data;
   return <section className={styles.support} aria-label="新用户客服奖励">
-    <div>
-      <h2><Gift size={19} />联系客服，再领 50 积分</h2>
-      <p>通过企业微信联系客服并提供注册邮箱，再提交申请。客服核实后会发放积分。</p>
-      <a className={styles.supportContact} href={WECHAT_SUPPORT_URL} target="_blank" rel="noopener noreferrer">
-        联系企业微信客服<ArrowUpRight size={15} />
-      </a>
-      {claimed ? <p role="status">客服赠送的 50 积分已到账</p> : request ? <p role="status">{request.status === "resolved" ? request.resolution : "已提交，等待客服核实"}</p> :
-        <button type="button" disabled={cases.isPending || claim.isPending} onClick={() => claim.mutate()}>{claim.isPending ? "提交中…" : "已联系，提交申请"}</button>}
-      {claim.isError && <p role="alert">{errorMessage(claim.error)}</p>}
-      <a href="#help">查看客服记录<ArrowUpRight size={15} /></a>
+    <div className={styles.supportBody}>
+      <header className={styles.supportHeader}>
+        <span className={styles.supportIcon}><Gift size={20} aria-hidden="true" /></span>
+        <h2>{claimed ? "客服赠分" : "联系客服，再领"} <strong>50 积分</strong></h2>
+      </header>
+      {needsCase && <p className={styles.supportDescription}>通过企业微信联系并提供注册邮箱，再提交申请。客服核实后发放积分。</p>}
+      <div className={styles.supportActions}>
+        <a className={styles.supportContact} href={WECHAT_SUPPORT_URL} target="_blank" rel="noopener noreferrer">
+          <MessageCircle size={17} aria-hidden="true" />联系企业微信客服<ArrowUpRight size={15} aria-hidden="true" />
+        </a>
+        {needsCase && <button className={styles.supportApply} type="button" disabled={cases.isPending || claim.isPending || (unavailable && cases.isFetching)} onClick={() => unavailable ? void cases.refetch() : claim.mutate()}>
+          {claim.isPending ? "正在提交…" : cases.isPending || (unavailable && cases.isFetching) ? "正在读取申请…" : unavailable ? "重新读取申请" : claim.isError ? "重新提交申请" : "已联系，提交申请"}
+        </button>}
+      </div>
+      {needsCase && (claim.isError || unavailable) && <p className={styles.supportError} role="alert">
+        {unavailable ? "暂时无法读取申请状态，请重试。" : errorMessage(claim.error)}
+      </p>}
+      <div className={styles.supportMeta}>
+        {(claimed || request) && <p className={styles.supportStatus} data-state={claimed ? "claimed" : resolved ? "resolved" : "pending"} role="status">
+          {claimed || resolved ? <Check size={17} aria-hidden="true" /> : <Clock3 size={16} aria-hidden="true" />}
+          <span>{claimed ? "客服赠送的 50 积分已到账" : resolved ? request.resolution || "申请已处理" : "已提交，等待客服核实"}</span>
+        </p>}
+        <a className={styles.supportRecords} href="#help">查看客服记录<ArrowUpRight size={14} aria-hidden="true" /></a>
+      </div>
     </div>
-    <Image src={WECHAT_SUPPORT_QR} alt="极光商绘企业微信客服二维码" width={350} height={350} unoptimized />
+    <figure className={styles.supportQr}>
+      <Image src={WECHAT_SUPPORT_QR} alt="极光商绘企业微信客服二维码" width={350} height={350} unoptimized />
+      <figcaption>微信扫码联系</figcaption>
+    </figure>
   </section>;
 }

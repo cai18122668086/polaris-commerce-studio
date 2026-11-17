@@ -265,7 +265,9 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
     from .video_editing_suite_music import SUITE_MUSIC, music_file
 
     for card in bihuo_cards():
-        card["capabilities"] = capabilities(card)
+        card["capabilities"] = [
+            value for value in capabilities(card) if value != "music"
+        ]
         track = SUITE_MUSIC.get(card["id"])
         if track and music_file(settings, track).is_file():
             card["capabilities"].append("music")

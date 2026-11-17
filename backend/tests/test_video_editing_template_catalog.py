@@ -11,6 +11,7 @@ from app.video_editing_overlay_templates import (
     overlay_templates,
     template_snapshot_matches,
 )
+from app.video_editing_suite_music import SUITE_MUSIC, music_file
 from app.video_editing_template_catalog import example_file, template_catalog
 from tests.test_video_projects import base
 
@@ -34,6 +35,19 @@ def test_catalog_retains_all_templates_without_changing_snapshots(tmp_path):
     assert all(c["business_review"] == "pending" for c in cards)
     assert all(c["sampled_group_count"] == 0 for c in cards)
     assert "question-card-b-story-v1" not in {c["id"] for c in cards}
+
+
+def test_bihuo_catalog_only_offers_music_when_a_default_is_installed(tmp_path):
+    settings = Settings(_env_file=None, video_editing_tasks_dir=tmp_path)
+    asset = music_file(settings, SUITE_MUSIC["bihuo-33-v1"])
+    asset.parent.mkdir()
+    asset.touch()
+    cards = template_catalog(settings, "ws_test")
+    assert {
+        row["id"]
+        for row in cards
+        if row.get("engine") == "bihuo-full-suite" and "music" in row["capabilities"]
+    } == {"bihuo-33-v1"}
 
 
 def install_example(tmp_path: Path):

@@ -1,4 +1,5 @@
 import io
+import json
 import shutil
 import subprocess
 import tempfile
@@ -10,9 +11,11 @@ import httpx
 import imageio_ffmpeg
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.errors import ApiError
 from app.main import create_app
+from app.video_generation_models import VideoGenerationRecord
 from app.video_providers import VideoProviders, safe_media_url
 from tests.test_auth_external import (
     FakeExternalAuthBackend,
@@ -121,7 +124,7 @@ class FakeVideoProviders:
         if path == "/api/digital_human/submit":
             return {"task_id": "lip-fixture", "billing": {"amount_cny": "-0.5"}}
         if path == "/v1/videos":
-            return {"id": "h3-fixture"}
+            return {"id": "muse-fixture" if vendor == "yiyuan" else "h3-fixture"}
         if path == "/api/digital_human/models":
             count = sum(p == path for _, p, _ in self.posts)
             return {"model": {"id": 98 + count}}
@@ -193,8 +196,13 @@ def test_public_lipsync_bypasses_h3_and_is_persistently_idempotent(video_gen):
     assert client.post(root + "/generation-tasks", json=changed).status_code == 409
 
 
-def test_self_owned_template_uses_h3_then_registers_and_can_lipsync(video_gen):
+@pytest.mark.parametrize("vendor", ["wuye", "yiyuan"])
+def test_self_owned_template_generates_then_registers_and_can_lipsync(
+    video_gen, vendor
+):
     client, _, provider, root, pid, _ = video_gen
+    if vendor == "yiyuan":
+        client.app.state.settings.yiyuan_api_key = SecretStr("fixture")
     body = {
         "request_id": str(uuid4()),
         "kind": "h3_template",
@@ -202,10 +210,20 @@ def test_self_owned_template_uses_h3_then_registers_and_can_lipsync(video_gen):
     }
     r = client.post(root + "/generation-tasks", json=body)
     assert r.status_code == 200, r.text
-    assert provider.posts[0][0:2] == ("wuye", "/v1/videos")
-    assert provider.posts[0][2]["referenceImages"]
-    assert provider.posts[0][2]["model"] == "Minimax-H3-768p-913"
-    assert provider.posts[0][2]["duration"] == 15
+    assert provider.posts[0][:2] == (vendor, "/v1/videos")
+    generation = provider.posts[0][2]
+    if vendor == "yiyuan":
+        assert generation["input_reference"]
+        assert generation["model"] == "muse-video"
+        assert generation["seconds"] == "10" and generation["aspect_ratio"] == "9:16"
+        assert "10秒" in generation["prompt"]
+        assert provider.downloads[0][0] == (
+            "https://yy.shagentai.com/v1/videos/muse-fixture/content"
+        )
+    else:
+        assert generation["referenceImages"]
+        assert generation["model"] == "Minimax-H3-768p-913"
+        assert generation["duration"] == 15
     jobs = client.get(root + "/generation-tasks").json()
     assert jobs[0]["status"] == "awaiting_review"
     assert len(provider.posts) == 1
@@ -234,6 +252,153 @@ def test_self_owned_template_uses_h3_then_registers_and_can_lipsync(video_gen):
     )
     assert r.status_code == 200
     assert provider.posts[-1][2]["model_id"] == 99
+
+
+@pytest.mark.parametrize("outcome", ["rejected", "failed", "unknown", "download"])
+def test_yiyuan_template_falls_back_only_on_confirmed_failure(video_gen, outcome):
+    client, _, provider, root, _, _ = video_gen
+    settings = client.app.state.settings
+    settings.yiyuan_api_key = SecretStr("primary")
+    settings.wuye_api_key = SecretStr("backup")
+    request, download = provider.request, provider.download
+    primary_queries = []
+
+    def upstream(vendor, method, path, **kwargs):
+        if (
+            vendor == "yiyuan"
+            and method == "POST"
+            and outcome in {"rejected", "unknown"}
+        ):
+            provider.posts.append((vendor, path, kwargs["json"]))
+            if outcome == "rejected":
+                raise ApiError(
+                    502,
+                    "VIDEO_PROVIDER_REJECTED",
+                    "fixture no channel",
+                    {"upstream_status": 503, "model_unavailable": True},
+                )
+            raise ApiError(502, "VIDEO_PROVIDER_OUTCOME_UNKNOWN", "fixture timeout")
+        if vendor == "yiyuan" and method == "GET":
+            primary_queries.append(path)
+            if outcome == "failed":
+                return {"status": "failed"}
+        return request(vendor, method, path, **kwargs)
+
+    def interrupted(url, target, **kwargs):
+        raise ApiError(502, "VIDEO_MEDIA_DOWNLOAD_FAILED", "fixture interrupted")
+
+    provider.request = upstream
+    if outcome == "download":
+        provider.download = interrupted
+    body = {
+        "request_id": str(uuid4()),
+        "kind": "h3_template",
+        "avatar_id": "self-presenter-female-v1",
+    }
+    assert client.post(root + "/generation-tasks", json=body).status_code == 200
+    job = client.get(root + "/generation-tasks").json()[0]
+    if outcome == "unknown":
+        assert job["status"] == "unknown"
+        assert (
+            client.post(root + f"/generation-tasks/{job['id']}/resume").status_code
+            == 409
+        )
+    elif outcome == "download":
+        assert job["status"] == "failed" and job["can_resume"]
+        provider.download = download
+        assert (
+            client.post(root + f"/generation-tasks/{job['id']}/resume").status_code
+            == 200
+        )
+        assert primary_queries == ["/v1/videos/muse-fixture"]
+    else:
+        assert job["status"] == "awaiting_review"
+        assert provider.downloads[0][0] == (
+            "https://www.wuyeai.cn/v1/videos/h3-fixture/content"
+        )
+        with client.app.state.session_factory() as session:
+            row = session.get(VideoGenerationRecord, job["id"])
+            assert row.provider_task_id == "h3-fixture"
+            assert row.details["template_provider"] == "wuye"
+            assert row.details["template_primary_task_id"] == (
+                "muse-fixture" if outcome == "failed" else None
+            )
+    expected = ["yiyuan", "wuye"] if outcome in {"rejected", "failed"} else ["yiyuan"]
+    assert [vendor for vendor, _, _ in provider.posts] == expected
+    assert len(provider.uploads) == 1
+
+
+def test_existing_h3_task_downloads_from_original_channel_after_enabling_yiyuan(
+    video_gen,
+):
+    client, _, provider, root, _, _ = video_gen
+    download = provider.download
+
+    def interrupted(url, target, **kwargs):
+        raise ApiError(502, "VIDEO_MEDIA_DOWNLOAD_FAILED", "fixture interrupted")
+
+    provider.download = interrupted
+    body = {
+        "request_id": str(uuid4()),
+        "kind": "h3_template",
+        "avatar_id": "self-presenter-female-v1",
+    }
+    assert client.post(root + "/generation-tasks", json=body).status_code == 200
+    job = client.get(root + "/generation-tasks").json()[0]
+    assert job["status"] == "failed" and job["can_resume"]
+    with client.app.state.session_factory() as session:
+        row = session.get(VideoGenerationRecord, job["id"])
+        row.details = {
+            k: v
+            for k, v in row.details.items()
+            if k not in {"template_provider", "template_model"}
+        }
+        session.commit()
+    client.app.state.settings.yiyuan_api_key = SecretStr("new-primary")
+    provider.download = download
+    assert (
+        client.post(root + f"/generation-tasks/{job['id']}/resume").status_code == 200
+    )
+    assert (
+        client.get(root + "/generation-tasks").json()[0]["status"] == "awaiting_review"
+    )
+    assert (
+        provider.downloads[0][0] == "https://www.wuyeai.cn/v1/videos/h3-fixture/content"
+    )
+    assert [vendor for vendor, _, _ in provider.posts] == ["wuye"]
+
+
+@pytest.mark.parametrize("rejected", [True, False])
+def test_yiyuan_distinguishes_no_channel_from_unknown_503(tmp_path, rejected):
+    settings = external_settings(tmp_path).model_copy(
+        update={"yiyuan_api_key": SecretStr("fixture"), "video_providers_enabled": True}
+    )
+
+    def gateway(request):
+        assert request.url.host == "yy.shagentai.com"
+        assert request.headers["Authorization"] == "Bearer fixture"
+        return httpx.Response(
+            503,
+            json={
+                "code": "fail_to_fetch_task",
+                "message": json.dumps(
+                    {
+                        "error": {
+                            "code": "model_not_found" if rejected else "upstream_down"
+                        }
+                    }
+                ),
+                "data": None,
+            },
+        )
+
+    with pytest.raises(ApiError) as error:
+        VideoProviders(settings, httpx.MockTransport(gateway)).request(
+            "yiyuan", "POST", "/v1/videos"
+        )
+    assert error.value.code == (
+        "VIDEO_PROVIDER_REJECTED" if rejected else "VIDEO_PROVIDER_OUTCOME_UNKNOWN"
+    )
 
 
 def test_unknown_paid_submission_never_retries_on_replay_or_resume(video_gen):
@@ -440,7 +605,16 @@ def test_audio_upload_checks_file_content_and_scope(video_gen):
     assert provider.posts == []
 
 
-def test_media_host_and_redirects_do_not_leak_provider_credentials(tmp_path):
+@pytest.mark.parametrize(
+    "vendor, host, header, value",
+    [
+        ("quanyu", "quanyu.sowa.chat", "X-API-Key", "private-test-token"),
+        ("yiyuan", "yy.shagentai.com", "Authorization", "Bearer private-test-token"),
+    ],
+)
+def test_media_host_and_redirects_do_not_leak_provider_credentials(
+    tmp_path, vendor, host, header, value
+):
     for url in [
         "http://127.0.0.1/x",
         "https://evil.example/file.mp4",
@@ -451,8 +625,8 @@ def test_media_host_and_redirects_do_not_leak_provider_credentials(tmp_path):
     seen = []
 
     def transport(request):
-        seen.append((request.url.host, request.headers.get("X-API-Key")))
-        if request.url.host == "quanyu.sowa.chat":
+        seen.append((request.url.host, request.headers.get(header)))
+        if request.url.host == host:
             return httpx.Response(
                 302, headers={"Location": "https://cdn.jihuo.pro/out.mp4"}
             )
@@ -461,16 +635,16 @@ def test_media_host_and_redirects_do_not_leak_provider_credentials(tmp_path):
     settings = external_settings(tmp_path).model_copy(
         update={
             "video_providers_enabled": True,
-            "quanyu_api_key": __import__("pydantic").SecretStr("private-test-token"),
+            f"{vendor}_api_key": SecretStr("private-test-token"),
         }
     )
     provider = VideoProviders(settings, httpx.MockTransport(transport))
     provider.download(
-        "https://quanyu.sowa.chat/api/download/id",
+        f"https://{host}/v1/videos/id/content",
         tmp_path / "result.mp4",
-        vendor="quanyu",
+        vendor=vendor,
     )
-    assert seen == [("quanyu.sowa.chat", "private-test-token"), ("cdn.jihuo.pro", None)]
+    assert seen == [(host, value), ("cdn.jihuo.pro", None)]
 
 
 def test_post_transport_failure_is_unknown_and_not_retried(tmp_path):

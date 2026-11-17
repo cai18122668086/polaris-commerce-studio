@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
@@ -45,7 +47,7 @@ from .video_generation_runtime import (
     unconfirmed_paid_submission,
 )
 from .video_lipsync import run_lipsync
-from .video_providers import VideoProviders, safe_media_url
+from .video_providers import YIYUAN_HOST, VideoProviders, safe_media_url
 from .video_stage_timing import transition
 from .video_studio_models import VideoProjectRecord
 from .video_studio_routes import VideoWorkspace, append_version, scope
@@ -75,6 +77,14 @@ H3_PROMPT = (
     "中性位置并安静保持，方便正向首尾衔接。表情平和，口周清晰放松，嘴唇闭合或轻微"
     "张开，不主动连续说话，不张嘴喘气，不大笑，便于后续音频驱动。手不遮脸，不点头"
     "晃头，不走动、不转身、不运镜、不切镜，无配音、无文字水印。"
+)
+H3_TEMPLATE_MODEL = "Minimax-H3-768p-913"
+YIYUAN_TEMPLATE_MODEL = "muse-video"
+YIYUAN_TEMPLATE_PROMPT = (
+    "以参考图为唯一人物、服装、背景和起始姿态参考。生成竖屏10秒真人口播动作底片。"
+    "腰部以上、双手完整可见，固定机位，光线稳定。前2秒保持中性姿势，2到5秒右手做"
+    "一次幅度很小的解释手势，5到8秒慢慢回位，最后2秒保持和开头一致。"
+    "头部、肩线和躯干始终稳定，目视镜头，嘴唇自然闭合，无说话，无字幕或水印。"
 )
 
 
@@ -265,53 +275,14 @@ def _process_generation(
                     if job.details.get("uploaded_video_path")
                     else settings.video_media_dir / "jobs" / job.id / "template.mp4"
                 )
-                if not job.details.get("uploaded_video_path"):
-                    if not job.provider_task_id:
-                        if not job.details.get("reference_url"):
-                            set_stage(session, job, "uploading_reference")
-                            ref = provider.upload(
-                                Path(
-                                    job.details.get("reference_path", str(OWNED_IMAGE))
-                                ),
-                                "image/png",
-                                "digital_human_model",
-                            )
-                            set_stage(
-                                session, job, "reference_ready", reference_url=ref
-                            )
-                        set_stage(session, job, "h3_submitting")
-                        data = provider.request(
-                            "wuye",
-                            "POST",
-                            "/v1/videos",
-                            json={
-                                "model": "Minimax-H3-768p-913",
-                                "prompt": job.details["prompt"],
-                                "duration": 15,
-                                "ratio": "9:16",
-                                "resolution": "768p",
-                                "referenceImages": [job.details["reference_url"]],
-                            },
-                        )
-                        if not data.get("id"):
-                            raise ApiError(
-                                502,
-                                "VIDEO_PROVIDER_OUTCOME_UNKNOWN",
-                                "生成结果未能确认。",
-                            )
-                        job.provider_task_id = data["id"]
-                        set_stage(session, job, "h3_generating")
-                    if not poll_until_complete(session, job, provider, "wuye"):
-                        return
-                    if not local.exists():
-                        set_stage(session, job, "downloading_template")
-                        provider.download(
-                            "https://www.wuyeai.cn/v1/videos/"
-                            + provider_task_id(job)
-                            + "/content",
-                            local,
-                            vendor="wuye",
-                        )
+                if (
+                    not job.details.get("uploaded_video_path")
+                    and not local.is_file()
+                    and not prepare_template_preview(
+                        session, job, settings, provider, local
+                    )
+                ):
+                    return
                 if not job.details.get("review_approved"):
                     set_stage(session, job, "awaiting_review", result_path=str(local))
                     job.status = "awaiting_review"
@@ -503,6 +474,120 @@ def _process_generation(
             session.commit()
 
 
+def submit_template(
+    session: Session,
+    job: VideoGenerationRecord,
+    provider: VideoProviders,
+    vendor: str,
+    **routing: Any,
+) -> None:
+    prompt = job.details["prompt"]
+    reference_url = job.details["reference_url"]
+    model = YIYUAN_TEMPLATE_MODEL if vendor == "yiyuan" else H3_TEMPLATE_MODEL
+    if vendor == "yiyuan":
+        body = {
+            "model": model,
+            "prompt": YIYUAN_TEMPLATE_PROMPT if prompt == H3_PROMPT else prompt,
+            "seconds": "10",
+            "aspect_ratio": "9:16",
+            "input_reference": reference_url,
+        }
+    else:
+        body = {
+            "model": model,
+            "prompt": prompt,
+            "duration": 15,
+            "ratio": "9:16",
+            "resolution": "768p",
+            "referenceImages": [reference_url],
+        }
+    set_stage(
+        session,
+        job,
+        "h3_submitting",
+        template_provider=vendor,
+        template_model=model,
+        **routing,
+    )
+    task_id = provider.request(vendor, "POST", "/v1/videos", json=body).get("id")
+    if not task_id or (
+        vendor == "yiyuan"
+        and (
+            not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", task_id)
+        )
+    ):
+        raise ApiError(502, "VIDEO_PROVIDER_OUTCOME_UNKNOWN", "生成结果未能确认。")
+    job.provider_task_id = task_id
+    set_stage(session, job, "h3_generating")
+
+
+def template_failover_allowed(error: ApiError) -> bool:
+    if error.code == "VIDEO_PROVIDER_TASK_FAILED":
+        return True
+    details = error.details or {}
+    return error.code == "VIDEO_PROVIDER_REJECTED" and (
+        details.get("upstream_status") in {400, 401, 402, 403, 404, 422, 429}
+        or details.get("model_unavailable") is True
+    )
+
+
+def prepare_template_preview(
+    session: Session,
+    job: VideoGenerationRecord,
+    settings: Settings,
+    provider: VideoProviders,
+    target: Path,
+) -> bool:
+    vendor = job.details.get("template_provider") or (
+        "yiyuan" if not job.provider_task_id and settings.yiyuan_api_key else "wuye"
+    )
+    if not job.provider_task_id and not job.details.get("reference_url"):
+        set_stage(session, job, "uploading_reference")
+        reference_url = provider.upload(
+            Path(job.details.get("reference_path", str(OWNED_IMAGE))),
+            "image/png",
+            "digital_human_model",
+        )
+        set_stage(session, job, "reference_ready", reference_url=reference_url)
+    if job.stage not in {
+        "provider_completed",
+        "downloading_template",
+        "awaiting_review",
+    }:
+        try:
+            if not job.provider_task_id:
+                submit_template(session, job, provider, vendor)
+            if not poll_until_complete(session, job, provider, vendor):
+                return False
+        except ApiError as error:
+            if (
+                vendor != "yiyuan"
+                or not settings.wuye_api_key
+                or not template_failover_allowed(error)
+            ):
+                raise
+            primary_task_id = job.provider_task_id
+            job.provider_task_id = None
+            vendor = "wuye"
+            submit_template(
+                session,
+                job,
+                provider,
+                vendor,
+                template_primary_task_id=primary_task_id,
+                template_failover_reason=error.code,
+            )
+            if not poll_until_complete(session, job, provider, vendor):
+                return False
+    set_stage(session, job, "downloading_template")
+    host = YIYUAN_HOST if vendor == "yiyuan" else "www.wuyeai.cn"
+    task_id = quote(provider_task_id(job), safe="")
+    provider.download(
+        f"https://{host}/v1/videos/{task_id}/content", target, vendor=vendor
+    )
+    return True
+
+
 def poll_until_complete(
     session: Session, job: VideoGenerationRecord, provider: VideoProviders, vendor: str
 ) -> bool:
@@ -510,11 +595,7 @@ def poll_until_complete(
         guard_run(session)
         job.updated_at = utc_now()
         session.commit()
-        path = (
-            "/v1/videos/" + provider_task_id(job)
-            if vendor == "wuye"
-            else "/api/status/" + provider_task_id(job)
-        )
+        path = "/v1/videos/" + quote(provider_task_id(job), safe="")
         try:
             data = provider.request(vendor, "GET", path)
         except ApiError:
@@ -529,7 +610,7 @@ def poll_until_complete(
                 provider_result=data.get("result", {}),
             )
             return True
-        if status in {"failed", "error", "cancelled"}:
+        if status in {"failed", "error", "cancelled", "canceled"}:
             raise ApiError(502, "VIDEO_PROVIDER_TASK_FAILED", "供应商任务失败。")
         time.sleep(5)
     job.status = "awaiting_resume"
@@ -886,7 +967,6 @@ def submit_generation(
             )
         details["prompt"] = body.prompt
         details["reference_path"] = avatar.cover_path or str(OWNED_IMAGE)
-        details["h3_model"] = "Minimax-H3-768p-913"
     else:
         project = session.scalar(
             select(VideoProjectRecord)

@@ -7063,7 +7063,7 @@ export interface components {
              * Mode
              * @enum {string}
              */
-            mode: "subtitles" | "native_plan";
+            mode: "subtitles" | "native_plan" | "suite_plan";
             /** Project Id */
             project_id: string;
             /** Project Title */

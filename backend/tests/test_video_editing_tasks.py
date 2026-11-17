@@ -761,6 +761,50 @@ def test_preview_confirmation_is_exact_owned_and_replayable(video, tmp_path):
     assert client.get(works_url).json()["items"] == [work]
 
 
+def test_editing_works_includes_confirmed_suite_export(video, tmp_path):
+    client, _, ws, _, _, project, source = setup_source(video, tmp_path)
+    created = client.post(
+        base(ws) + "/editing-tasks",
+        json={"request_id": str(uuid4()), "source_id": source},
+    )
+    assert created.status_code in (200, 201, 202), created.text
+    task_id = created.json()["id"]
+    final_id, checksum = str(uuid4()), "a" * 64
+    with client.app.state.session_factory() as session:
+        task = session.get(EditingTaskRecord, task_id)
+        task.status = task.stage = "completed"
+        task.options = {
+            **task.options,
+            "mode": "suite_plan",
+            "suite_plan_id": str(uuid4()),
+            "delivery": "preview_first",
+        }
+        task.checkpoint = {
+            **task.checkpoint,
+            "export_confirmation": {"final_id": final_id, "final_sha256": checksum},
+        }
+        session.add(
+            EditingArtifactRecord(
+                id=final_id,
+                task_id=task_id,
+                role="final",
+                path=str(tmp_path / "suite.mp4"),
+                mime="video/mp4",
+                bytes=120,
+                sha256=checksum,
+                duration_ms=2000,
+            )
+        )
+        session.commit()
+    response = client.get(base(ws) + "/editing-works")
+    assert response.status_code == 200, response.text
+    work, = response.json()["items"]
+    assert (work["task_id"], work["project_id"], work["mode"]) == (
+        task_id, project, "suite_plan",
+    )
+    assert work["final"]["sha256"] == checksum
+
+
 def test_editing_works_search_cursor_and_owner_scope(video, tmp_path):
     from tests.test_auth_external import verified_identity
 

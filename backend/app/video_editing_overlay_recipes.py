@@ -196,6 +196,8 @@ from .video_editing_native_sound import (
     NativeMusicTrack,
     NativeSoundCue,
     NativeSoundDesign,
+    SoundBoundary,
+    WordBoundary,
 )
 from .video_editing_overlay_templates import (
     AUTOMATIC_TEMPLATE_DEPENDENCIES,
@@ -249,6 +251,15 @@ from .video_editing_story_panels import (
     validate_panel_anchors,
 )
 from .video_editing_subtitle_foreground import FOREGROUND_SUBTITLE_DEPENDENCIES
+from .video_editing_template_audio import (
+    EXTRA_ENTRANCES,
+    KNOWLEDGE_GROUP_ID,
+    TEMPLATE_TRACKS,
+    VISIBLE_SHOT_START,
+    SoundSlice,
+    template_sound,
+    template_tracks,
+)
 from .video_editing_unified_alpha import ALPHA_GROUPS, GHOST_GROUP, PAPER_CHAPTER_GROUP
 from .video_editing_unified_scenes import (
     PRESENTER_VIDEO_GROUPS,
@@ -1019,7 +1030,10 @@ def _entry_sound(
     duration_ms: int,
     avoided: set[str],
     card_path: str | None = None,
+    *,
+    default: SoundSlice | None = None,
 ) -> NativeSoundCue:
+    selection: SoundSlice
     path, selection = (
         (
             card_path,
@@ -1048,6 +1062,7 @@ def _entry_sound(
     if beat.group_id == CROWD_GROUP and path == "/timing/events/title_in":
         selection = _IMPACT
     event = next(row for row in anchors["events"] if row["path"] == path)
+    selection = default or selection
     asset_id, source_start, length, peak = (
         selection if selection[0] not in avoided else _CLICK
     )
@@ -3031,6 +3046,77 @@ def check_overlay_beat(
         raise ValueError(error.message) from error
 
 
+def _overlay_sounds(
+    beat: SemanticBeat,
+    anchors: dict[str, Any],
+    transcript: Transcript,
+    template_id: str,
+    avoided: set[str],
+    paths: tuple[str | None, ...],
+    *,
+    has_material: bool = False,
+) -> list[NativeSoundCue]:
+    if template_id not in TEMPLATE_TRACKS:
+        return [
+            _entry_sound(beat, anchors, transcript.duration_ms, avoided, path)
+            for path in paths
+        ]
+    cues: list[NativeSoundCue] = []
+    events = {row["path"]: row for row in anchors["events"]}
+    primary = tuple(path or _ENTRY_SOUNDS[beat.group_id][0] for path in paths)
+    extra = EXTRA_ENTRANCES.get(beat.group_id, ())
+    if VISIBLE_SHOT_START in extra:
+        first_ms = next(
+            token.start_ms
+            for token in transcript.tokens
+            if token.id == beat.first_token_id
+        )
+        events[VISIBLE_SHOT_START] = {
+            "path": VISIBLE_SHOT_START,
+            "measured_anchor_ms": first_ms,
+            "frame_quantization_ms": 0,
+        }
+        anchors = {
+            **anchors,
+            "events": [*anchors["events"], events[VISIBLE_SHOT_START]],
+        }
+    selected = sorted(
+        dict.fromkeys((*primary, *(path for path in extra if path in events))),
+        key=lambda path: events[path]["measured_anchor_ms"],
+    )
+    primary_times = [events[path]["measured_anchor_ms"] for path in primary]
+    extra_times: list[int] = []
+    for index, path in enumerate(selected):
+        event = events[path]
+        anchor_ms = event["measured_anchor_ms"]
+        # Simultaneous layers share one accent, including a picture and its label.
+        if path not in primary:
+            if transcript.duration_ms - anchor_ms - event[
+                "frame_quantization_ms"
+            ] < 150 or any(
+                abs(anchor_ms - at) < 34 for at in (*primary_times, *extra_times)
+            ):
+                continue
+            extra_times.append(anchor_ms)
+        cues.append(
+            _entry_sound(
+                beat,
+                anchors,
+                transcript.duration_ms,
+                avoided,
+                path,
+                default=template_sound(
+                    template_id,
+                    beat.group_id,
+                    material=path in primary and has_material,
+                    index=index,
+                    opening=anchor_ms < 6000,
+                ),
+            )
+        )
+    return cues
+
+
 def build_text_effect_replacement(
     package: Path,
     group: dict,
@@ -3038,11 +3124,13 @@ def build_text_effect_replacement(
     transcript: Transcript,
     template_id: str,
     avoided: set[str],
-) -> tuple[NativeEpisodeEntry, NativeSoundCue]:
+) -> tuple[NativeEpisodeEntry, list[NativeSoundCue]]:
     if beat.group_id not in _ENTRY_SOUNDS:
         raise ValueError("The original text effect needs its verified sound entry")
     entry, anchors = _entry(package, group, beat, transcript, template_id=template_id)
-    return entry, _entry_sound(beat, anchors, transcript.duration_ms, avoided)
+    return entry, _overlay_sounds(
+        beat, anchors, transcript, template_id, avoided, (None,)
+    )
 
 
 def build_overlay_recipes(
@@ -3053,6 +3141,8 @@ def build_overlay_recipes(
     template: dict,
     choice_snapshot: dict,
     asset_cards: list[dict] | None = None,
+    *,
+    tasks_root: Path | None = None,
 ) -> EpisodeRecipeBundle:
     try:
         validate_template_plan(semantic, template, complete=True)
@@ -3071,13 +3161,28 @@ def build_overlay_recipes(
         for row in choice_snapshot.get("notes", [])
         if row["target_kind"] == "bundled_asset" and row["choice"] == "avoid"
     }
-    music_id = next((asset_id for asset_id in _MUSIC if asset_id not in avoided), None)
+    template_id = template["id"]
+    preferred = TEMPLATE_TRACKS.get(template_id)
+    music_choices = (
+        (preferred, *_MUSIC)
+        if preferred and preferred in template_tracks(tasks_root)
+        else _MUSIC
+    )
+    music_id = next(
+        (asset_id for asset_id in music_choices if asset_id not in avoided), None
+    )
     if music_id is None:
         raise ApiError(
             422, "EDITING_TEMPLATE_MUSIC_UNAVAILABLE", "候选背景音乐均已被避用。"
         )
     entries = {}
     cues: list[NativeSoundCue] = []
+    material_ids = {
+        row["id"]
+        for row in asset_cards or []
+        if row.get("kind") in {"image", "video"}
+        and row.get("sha256") != transcript.source_sha256
+    }
     for beat in beats:
         group = groups[beat.group_id]
         entries[beat.id], anchors, paths = _overlay_entry(
@@ -3090,9 +3195,30 @@ def build_overlay_recipes(
             chapter_starts=semantic.chapter_start_token_ids,
         )
         cues.extend(
-            _entry_sound(beat, anchors, transcript.duration_ms, avoided, path)
-            for path in paths
+            _overlay_sounds(
+                beat,
+                anchors,
+                transcript,
+                template_id,
+                avoided,
+                paths,
+                has_material=bool(material_ids.intersection(beat.asset_ids)),
+            )
         )
+    music_start: SoundBoundary = "episode_start"
+    music_span = transcript.duration_ms
+    if music_id == preferred and template_id == KNOWLEDGE_GROUP_ID:
+        first_beat = next(
+            (
+                token
+                for token in transcript.tokens
+                if 2700 <= token.start_ms <= min(4200, transcript.duration_ms - 850)
+            ),
+            None,
+        )
+        if first_beat is not None:
+            music_start = WordBoundary(token_id=first_beat.id, edge="start")
+            music_span -= first_beat.start_ms
     has_scene = any(entry.placement.layer == "scene" for entry in entries.values())
     has_bottom_caption_lane = any(
         beat.group_id
@@ -3183,10 +3309,12 @@ def build_overlay_recipes(
             music=[
                 NativeMusicTrack(
                     asset_id=music_id,
-                    start="episode_start",
+                    start=music_start,
                     end="episode_end",
-                    gain_db=-33,
-                    fade_seconds=min(0.8, transcript.duration_ms / 2000),
+                    gain_db=-24.0 if music_id == preferred else -33,
+                    fade_seconds=min(
+                        0.5 if music_id == preferred else 0.8, music_span / 2000
+                    ),
                     reason="让原库背景乐在连续口播下低位铺底，片头片尾淡入淡出。",
                     loop=True,
                 )

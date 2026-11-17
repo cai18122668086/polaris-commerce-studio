@@ -23,6 +23,7 @@ from .motion_library import atomic_json, read_json, sha256
 from .video_editing_captioning import measured_caption_rows, text_boundaries
 from .video_editing_contracts import Transcript
 from .video_editing_pipeline import decode_av, probe, run
+from .video_editing_template_audio import TEMPLATE_TRACKS
 from .video_editing_tutorial_plan import (
     RecordingActivity,
     digest,
@@ -31,6 +32,7 @@ from .video_editing_tutorial_plan import (
     source_to_output,
     timestamp_expression,
 )
+from .video_editing_tutorial_sound import recording_sound
 from .video_editing_tutorial_surfaces import (
     SIZE,
     Surface,
@@ -324,9 +326,15 @@ def _voice_chunks(reader: wave.Wave_read, clock: dict) -> Iterator[bytes]:
 
 
 def decode_voice(
-    source: Path, duration_ms: int, root: Path, settings: Any, guard: Callable
+    source: Path,
+    duration_ms: int,
+    root: Path,
+    settings: Any,
+    guard: Callable,
+    *,
+    filename: str = "source-voice.wav",
 ) -> Path:
-    baseline = root / "source-voice.wav"
+    baseline = root / filename
     run(
         [
             settings.video_editing_ffmpeg,
@@ -397,8 +405,15 @@ def quiet_boundaries(
     return result
 
 
-def prepare_voice(baseline: Path, clock: dict, root: Path, guard: Callable) -> Path:
-    proof = root / "narration.wav"
+def prepare_voice(
+    baseline: Path,
+    clock: dict,
+    root: Path,
+    guard: Callable,
+    *,
+    filename: str = "narration.wav",
+) -> Path:
+    proof = root / filename
     with wave.open(str(baseline)) as original, wave.open(str(proof), "wb") as output:
         output.setparams(original.getparams())
         for chunk in _voice_chunks(original, clock):
@@ -900,15 +915,35 @@ def render_tutorial(
     final = root / "tutorial-final.mp4"
     voice = prepare_voice(baseline_voice, clock, root, guard)
     voice_input = 5 if layout.presenter else 4
+    voice_map = f"{voice_input}:a:0"
+    sound = None
+    if template_id in TEMPLATE_TRACKS:
+        native = decode_voice(
+            base,
+            transcript.duration_ms,
+            root,
+            settings,
+            guard,
+            filename="native-mix-source.wav",
+        )
+        voice = prepare_voice(native, clock, root, guard, filename="native-mix.wav")
+        fx, sound = recording_sound(clock, assets, root, settings, guard)
+        args += ["-i", str(voice), "-i", str(fx)]
+        graph += [
+            f"[{voice_input + 1}:a:0]aformat=channel_layouts=stereo[recording_fx]",
+            f"[{voice_input}:a:0][recording_fx]amix=inputs=2:duration=first:normalize=0,"
+            "alimiter=limit=0.97:level=0:latency=1[mixed_voice]",
+        ]
+        voice_map = "[mixed_voice]"
+    else:
+        args += ["-i", str(voice)]
     args += [
-        "-i",
-        str(voice),
         "-filter_complex",
         ";".join(graph),
         "-map",
         f"[{current}]",
         "-map",
-        f"{voice_input}:a:0",
+        voice_map,
         "-t",
         str(duration),
         "-c:v",
@@ -944,6 +979,7 @@ def render_tutorial(
         root,
         settings,
         guard,
+        sound=sound,
     )
 
 
@@ -959,6 +995,8 @@ def validate_tutorial(
     root: Path,
     settings: Any,
     guard: Callable,
+    *,
+    sound: dict | None = None,
 ) -> dict:
     decode_av(final, root, settings, guard, "decode_tutorial")
     info = probe(final, settings)
@@ -996,6 +1034,7 @@ def validate_tutorial(
         "model_calls": 0,
         "narration_validation": voice,
         "material_view_validation": views,
+        **({"recording_sound": sound} if sound is not None else {}),
         "visual_review": "unreviewed",
         "listening_review": "unreviewed",
     }

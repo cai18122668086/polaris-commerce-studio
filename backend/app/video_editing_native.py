@@ -53,6 +53,7 @@ def main() -> None:
     )
     parser.add_argument("--kind", choices=["episode", "group"], default="episode")
     parser.add_argument("--native-bindings", type=Path)
+    parser.add_argument("--tasks-root", type=Path)
     parser.add_argument("--diagnostic-browser-images", action="store_true")
     args = parser.parse_args()
     diagnostic = args.diagnostic_browser_images
@@ -209,7 +210,7 @@ def main() -> None:
         if args.kind == "episode":
             install_unified_sequence_audit(package, sequences)
         if args.command == "export":
-            install_native_stereo_composition(package, root)
+            install_native_stereo_composition(package, root, tasks_root=args.tasks_root)
             install_native_role_review(package, root)
             install_shot_recovery(package, root)
             install_subtitle_sound_clock(package, root)

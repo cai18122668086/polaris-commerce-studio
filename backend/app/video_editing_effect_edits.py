@@ -114,7 +114,7 @@ def _replace(
         if cue.beat_id not in selected:
             fx.append(cue)
         elif cue.beat_id in cues:
-            fx.append(cues.pop(cue.beat_id))
+            fx.extend(cues.pop(cue.beat_id))
     sound = bundle.sound.model_copy(update={"fx": fx})
     return (
         revised,

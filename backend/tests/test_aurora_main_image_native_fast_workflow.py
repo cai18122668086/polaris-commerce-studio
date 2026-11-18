@@ -256,6 +256,7 @@ def test_native_fast_failed_page_retry_uses_frozen_native_prompt_only(client, tm
     dispatch_pending(client)
     initial = detail(client, job_id)
     assert initial["status"] == "partial" and initial["succeeded_item_count"] == 5
+    assert {"retry", "clone"} <= set(initial["allowed_actions"])
     original = private_plan(client, job_id)
     assert_no_native_closure(original)
     child_id = retry(client, job_id)
@@ -308,7 +309,12 @@ def test_native_fast_unknown_call_blocks_retry_and_clone(client, tmp_path):
     gateway = Unknown()
     job_id, _ = create(client, tmp_path, gateway=gateway)
     dispatch_pending(client)
-    assert detail(client, job_id)["status"] == "partial"
+    current = detail(client, job_id)
+    assert current["status"] == "partial"
+    assert not {"retry", "clone"} & set(current["allowed_actions"])
+    history = client.get(BASE + "/jobs").json()["items"]
+    listed = next(job for job in history if job["id"] == job_id)
+    assert not {"retry", "clone"} & set(listed["allowed_actions"])
     for suffix, body in [
         ("retry", {"scope": "failed", "item_ids": []}),
         ("clone", None),

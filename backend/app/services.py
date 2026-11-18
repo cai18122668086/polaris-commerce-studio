@@ -390,6 +390,11 @@ def allowed_actions(job: JobRecord) -> list[str]:
         actions.append("retry")
     if current in TERMINAL_JOB_STATUSES:
         actions.append("clone")
+    if job.type == JobType.DOMESTIC_MAIN_IMAGE.value:
+        from .aurora_main_image_fast import has_unresolved_images, selected
+
+        if selected(job.configuration) and has_unresolved_images(job.configuration):
+            actions = [action for action in actions if action not in {"retry", "clone"}]
     return actions
 
 

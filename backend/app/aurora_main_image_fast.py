@@ -21,6 +21,14 @@ def selected(configuration: Any) -> bool:
     )
 
 
+def has_unresolved_images(configuration: dict[str, Any]) -> bool:
+    receipts = configuration.get("_main_image_fast_invocations", {})
+    return any(
+        receipt.get("state") in {"invoked", "unknown"}
+        for receipt in receipts.values()
+    )
+
+
 def require_recoverable_plan(
     session: Any, job: JobRecord, *, allow_replanning: bool = False
 ) -> bool:
@@ -69,10 +77,7 @@ def require_recoverable_plan(
         validate_plan(plan, job)
     except AuroraPlanningError as error:
         raise ApiError(409, "FAST_MAIN_IMAGE_PLAN_CHANGED", str(error)) from error
-    receipts = job.configuration.get("_main_image_fast_invocations", {})
-    if any(
-        receipt.get("state") in {"invoked", "unknown"} for receipt in receipts.values()
-    ):
+    if has_unresolved_images(job.configuration):
         raise ApiError(
             409,
             "PROVIDER_OUTCOME_UNKNOWN",

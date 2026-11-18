@@ -23,6 +23,7 @@ from .generation_image_stage import GenerationImageStage, staged_or_stored
 from .models import JobAttemptRecord, JobItemRecord, JobPlanRecord, JobRecord, utc_now
 from .new_detail_skill_provider import BundledSkillManifestValidator
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
+from .provider_diagnostics import retained_metrics
 from .services import canonical_hash, get_ready_assets
 from .storage import (
     STORAGE_PENDING_MESSAGE,
@@ -491,6 +492,7 @@ class FastMainImageProvider:
                 "main_image_speed": "native_fast",
                 "planning_rounds": 1,
                 "metrics": {
+                    **retained_metrics(result.raw_usage),
                     "api_latency_seconds": result.api_latency_seconds,
                     "skill_id": plan["skill_id"],
                     "skill_content_hash": plan["skill_content_hash"],

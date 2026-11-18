@@ -24,6 +24,7 @@ from app.models import (
     JobRecord,
     WorkspaceCreditAccountRecord,
 )
+from app.provider import ProviderOutcome
 from app.services import canonical_hash
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import FakeXingheGateway
@@ -319,6 +320,69 @@ def test_native_fast_unknown_call_blocks_retry_and_clone(client, tmp_path):
         assert response.json()["error"]["code"] == "PROVIDER_OUTCOME_UNKNOWN"
     assert gateway.unknown_calls == 1 and len(gateway.image_calls) == 5
     assert len(gateway.planner_calls) == 1
+
+
+def test_native_fast_retains_redacted_upstream_failure_without_replaying(
+    client, tmp_path
+):
+    class Rejected(NativeGateway):
+        async def edit(self, request):
+            result = await super().edit(request)
+            return replace(
+                result,
+                outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                artifact=None,
+                provider_request_id=None,
+                normalized_usage={"reported": False},
+                raw_usage={
+                    "metrics": {
+                        "provider_error": {
+                            "code": "upstream_unavailable",
+                            "message": (
+                                "Bearer secret-value at https://private.test/error"
+                            ),
+                        },
+                        "provider_attempts": [{
+                            "route": "primary", "host": "images.test",
+                            "model": "image-model", "http_status": 503,
+                            "request_id": None, "authorization": "must-not-persist",
+                        }],
+                    },
+                },
+                actual_cost_micros=None,
+                http_status=503,
+                error_code="IMAGE_REQUEST_FAILED",
+            )
+
+    gateway = Rejected()
+    job_id, _ = create(client, tmp_path, gateway=gateway)
+    dispatch_pending(client)
+    current = detail(client, job_id)
+    assert current["status"] == "failed"
+    for item in current["items"]:
+        assert item["error_code"] == "PROVIDER_OUTCOME_UNKNOWN"
+        assert item["error_details"]["provider_error"]["code"] == "upstream_unavailable"
+        attempts = item["error_details"]["provider_attempts"]
+        assert attempts == [{
+            "route": "primary", "host": "images.test", "model": "image-model",
+            "http_status": 503, "request_id": None,
+        }]
+        assert "secret-value" not in str(item["error_details"])
+        assert "private.test" not in str(item["error_details"])
+        assert "must-not-persist" not in str(item["error_details"])
+    with client.app.state.session_factory() as db:
+        receipts = db.get(JobRecord, job_id).configuration[RECEIPTS_KEY]
+        assert all(
+            r["usage"]["metrics"]["provider_error"]["code"] == "upstream_unavailable"
+            for r in receipts.values()
+        )
+        assert "secret-value" not in str(receipts)
+    response = client.post(
+        BASE + f"/jobs/{job_id}/retry", headers=idem(),
+        json={"scope": "failed", "item_ids": []},
+    )
+    assert response.status_code == 409
+    assert len(gateway.image_calls) == 6
 
 
 def test_native_fast_plan_save_failure_can_replan_with_original_inputs(

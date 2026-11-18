@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { verifiedPicomatchPatches } from "../build/patch-picomatch-security.mjs";
 
 const advisoryUrl = "https://github.com/advisories/GHSA-fc5q-39xc-vjpf";
+const reviewedRanges = new Set(["<=4.0.7", "<4.0.8", "<4.0.8-0"]);
 
 // npm identifies packages by published version, so it also reports locally
 // backported fixes. Recognize this advisory only when every affected installed
@@ -39,8 +40,10 @@ export function evaluateAudit(report, verifiedPackages = new Set()) {
     assert.ok(sources.length > 0, `Unresolved high-severity finding for ${name}`);
 
     for (const source of sources) {
+      const reviewedScope = source.severity === "high" && typeof source.range === "string" &&
+        reviewedRanges.has(source.range.replace(/\s+/g, ""));
       if (
-        source.name === "picomatch" && source.url === advisoryUrl && reviewedInstallation
+        source.name === "picomatch" && source.url === advisoryUrl && reviewedScope && reviewedInstallation
       ) {
         mitigated.add(source.url);
       } else {

@@ -50,10 +50,18 @@ test("new affected copies require their own verified patch", () => {
 });
 
 test("metadata renumbering and range formatting do not invalidate verified code", () => {
-  for (const change of [{ source: 999 }, { range: "<4.0.8" }, { severity: "critical" }]) {
+  for (const change of [{ source: 999 }, { range: "<4.0.8" }, { range: "<= 4.0.7" }, { range: "<4.0.8-0" }]) {
     const report = fixture();
     Object.assign(report.vulnerabilities.picomatch.via[0], change);
     assert.equal(evaluateAudit(report, verifiedPackages).blocking.length, 0);
+  }
+});
+
+test("expanded advisory scope and severity still require another review", () => {
+  for (const change of [{ severity: "critical" }, { range: "<=4.0.8" }, { range: "*" }]) {
+    const report = fixture();
+    Object.assign(report.vulnerabilities.picomatch.via[0], change);
+    assert.equal(evaluateAudit(report, verifiedPackages).blocking.length, 1);
   }
 });
 

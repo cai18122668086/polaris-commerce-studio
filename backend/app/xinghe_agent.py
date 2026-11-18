@@ -10935,7 +10935,9 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
     if request.planning_profile == "crossborder_detail":
-        from .crossborder_planning_contract import response_format as crossborder_response_format
+        from .crossborder_planning_contract import (
+            response_format as crossborder_response_format,
+        )
 
         return crossborder_response_format(request.page_count)
     if request.planning_profile == "aurora_native_fast_identity":

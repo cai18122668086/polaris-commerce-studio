@@ -2163,7 +2163,11 @@ def _inspect_image(payload: bytes) -> tuple[int, int, str]:
 
 def _provider_generation_size(target: TargetSpec, *, skill_id: str = "") -> str:
     target_width, target_height = target.dimensions
-    if skill_id == _MODEL_POSE_TRANSFER_SKILL_ID:
+    if skill_id == _MODEL_POSE_TRANSFER_SKILL_ID or (
+        target.fit == "contain" and skill_id != "xinghe-amazon-visual-suite"
+    ):
+        # Follow-source and follow-reference resolve to contain targets. A
+        # generic 2:3/3:2 request adds padding when restored to their canvas.
         return f"{target_width}x{target_height}"
     if skill_id == "xinghe-amazon-visual-suite":
         amazon_canvas = {

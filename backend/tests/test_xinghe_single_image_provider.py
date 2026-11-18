@@ -1006,6 +1006,54 @@ def test_reference_follow_target_uses_real_first_style_canvas_for_final_delivery
     assert prompt["target"]["fit"] == "contain"
 
 
+@pytest.mark.parametrize("reference_size", [(1280, 1707), (1577, 1280)])
+@pytest.mark.parametrize("mode", ["reference", "exact-reference", "creative-reference"])
+def test_follow_reference_request_does_not_create_transparent_canvas_padding(
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
+    reference_size: tuple[int, int],
+    mode: str,
+) -> None:
+    provider, request = _reference_follow_request(
+        harness, reference_payload=_image_bytes(reference_size),
+        exact_skill=mode == "exact-reference",
+    )
+    if mode == "creative-reference":
+        with harness.session_factory() as db:
+            job = db.get(JobRecord, "job_test")
+            attempt = db.get(JobAttemptRecord, "attempt_test")
+            assert job is not None and attempt is not None
+            job.type = "creative_image"
+            attempt.operation = "creative_image"
+            for binding in db.query(JobAssetRecord).filter_by(role="style_reference"):
+                binding.role = "competitor_reference"
+            db.commit()
+        envelope = request.configuration[SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY]
+        envelope.update(skill_id="xinghe-ecommerce-creative-image", operation="creative_image")
+        for source in envelope["source_assets"]:
+            if source["role"] == "style_reference":
+                source["role"] = "competitor_reference"
+        envelope["prompt_input"] = {"planning_mode": "reference", "user_instruction": "Use visible product facts only."}
+        provider = harness.provider(operation="creative_image", skill_id="xinghe-ecommerce-creative-image")
+        request = _request(envelope, operation="creative_image")
+
+    async def native_canvas_edit(image_request: ImageEditRequest) -> ImageCallResult:
+        harness.gateway.requests.append(image_request)
+        dimensions = tuple(map(int, image_request.size.split("x")))
+        return replace(harness.gateway.result, artifact=_artifact(dimensions))
+
+    monkeypatch.setattr(harness.gateway, "edit", native_canvas_edit)
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert result.artifact is not None
+    with Image.open(BytesIO(result.artifact.payload)) as output:
+        assert output.size == reference_size
+        assert output.convert("RGBA").getchannel("A").getextrema() == (255, 255)
+    assert harness.gateway.requests[0].size == "x".join(map(str, reference_size))
+    assert len(harness.gateway.requests) == 1
+
+
 def test_inspiration_follow_target_prefers_competitor_reference_canvas(
     harness: Harness,
 ) -> None:

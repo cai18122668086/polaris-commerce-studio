@@ -688,6 +688,72 @@ def test_success_calls_edit_once_and_returns_real_accounting(harness: Harness) -
     assert harness.manifest.calls == [SKILL_ID]
 
 
+def test_model_pose_transfer_preserves_redacted_gateway_failure(
+    harness: Harness,
+) -> None:
+    provider, request = _model_pose_request(harness)
+    harness.gateway.result = replace(
+        _success_result(raw_usage={
+            "metrics": {"provider_error": {
+                "code": "capacity_busy", "message": "Bearer secret-pose-token",
+            }},
+        }),
+        outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+        artifact=None,
+        error_code="IMAGE_REQUEST_FAILED",
+        http_status=503,
+    )
+
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.OUTCOME_UNKNOWN
+    metrics = result.raw_usage["metrics"]
+    assert metrics["provider_error"]["code"] == "capacity_busy"
+    assert "secret-pose-token" not in str(metrics)
+    assert metrics["review_mode"] == "human_required"
+    assert metrics["automatic_retry"] is False
+    assert len(harness.gateway.requests) == 1
+    assert harness.gateway.plan_calls == 0
+
+
+@pytest.mark.parametrize("source_size", [(64, 48), (1086, 1448)])
+def test_model_pose_transfer_uses_source_canvas_without_added_transparent_borders(
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
+    source_size: tuple[int, int],
+) -> None:
+    payload = _image_bytes(source_size)
+    harness.source_payload = payload
+    harness.storage.objects["ws_test/product.png"] = payload
+    with harness.session_factory() as db:
+        source = db.get(AssetRecord, "asset_product")
+        assert source is not None
+        source.width, source.height = source_size
+        source.byte_size = len(payload)
+        source.sha256 = hashlib.sha256(payload).hexdigest()
+        db.commit()
+    provider, request = _model_pose_request(harness)
+
+    async def native_canvas_edit(image_request: ImageEditRequest) -> ImageCallResult:
+        harness.gateway.requests.append(image_request)
+        width, height = map(int, image_request.size.split("x"))
+        return replace(harness.gateway.result, artifact=_artifact((width, height)))
+
+    monkeypatch.setattr(harness.gateway, "edit", native_canvas_edit)
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    assert result.artifact is not None
+    with Image.open(BytesIO(harness.source_payload)) as source:
+        source_size = source.size
+    with Image.open(BytesIO(result.artifact.payload)) as output:
+        assert output.size == source_size
+        assert output.convert("RGBA").getchannel("A").getextrema() == (255, 255)
+    assert harness.gateway.requests[0].size == "x".join(map(str, source_size))
+    assert len(harness.gateway.requests) == 1
+    assert harness.gateway.plan_calls == 0
+
+
 def test_model_pose_transfer_sends_both_images_once_in_fixed_role_order(
     harness: Harness,
 ) -> None:
@@ -734,7 +800,10 @@ def test_model_pose_transfer_sends_both_images_once_in_fixed_role_order(
     assert "leg chains" not in image_request.prompt
     assert "forefoot" not in image_request.prompt
     assert '"Match the target pose only."' in image_request.prompt
-    assert "model-pose-direct-edit-v1" in image_request.prompt
+    assert "model-pose-direct-edit-v2" in image_request.prompt
+    assert "garment lengths and coverage on each limb" in image_request.prompt
+    assert "never import exposed skin from Image 2" in image_request.prompt
+    assert "Do not add canvas padding or borders" in image_request.prompt
     protocol = provider._load_protocol(CONTENT_HASH)
     assert f"source_sha256={protocol.source_content_hash}" in image_request.prompt
     assert f"protocol_sha256={protocol.sha256}" in image_request.prompt

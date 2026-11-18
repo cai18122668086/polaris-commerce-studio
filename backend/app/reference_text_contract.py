@@ -5,7 +5,8 @@ def instruction(language: str) -> str:
     locale = language.lower().split("-", 1)[0]
     fallback = {"zh": "商品展示", "en": "PRODUCT"}.get(locale)
     replacement = (
-        f"use exactly '{fallback}' for a dominant headline, or leave that text area clean. "
+        f"use exactly '{fallback}' for a dominant headline, "
+        "or leave that text area clean. "
         if fallback else "leave that text area clean. "
     )
     return (

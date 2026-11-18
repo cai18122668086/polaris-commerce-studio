@@ -376,11 +376,7 @@ def plan_suite(
             {"response_sha256": sha256(response_path)},
         )
         atomic_json(folder / "tutorial-plan.json", tutorial)
-    raw, adaptations = normalize_suite_output(
-        raw,
-        transcript,
-        repair_caption_lines=snapshot.get("engine") == EDITORIAL_ENGINE,
-    )
+    raw, adaptations = normalize_suite_output(raw, transcript)
     plan = verify_plan(
         raw,
         transcript,

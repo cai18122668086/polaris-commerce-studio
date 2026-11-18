@@ -14,6 +14,7 @@ from app.video_editing_apple_contracts import (
     verify_plan,
 )
 from app.video_editing_contracts import Transcript, TranscriptToken
+from app.video_planner_policy import normalize_suite_output
 from tests.test_video_editing_apple_contracts import cards, plan, span, transcript
 
 
@@ -110,6 +111,55 @@ def make_transcript(words):
             for i, s in enumerate(words)
         ],
     )
+
+
+def test_saved_suite_caption_repairs_keep_recorded_cues_and_pass_strict_validation():
+    first = "详情图里选好想参考的风格，"
+    second = "一组套用了咱们自己产品的商品图就做好了。"
+    source = make_transcript(list(first + second))
+    start = len(first)
+    value = semantic_plan()
+    value["captions"] = [
+        {**span(0, start - 1), "emphasis": [span(0, start - 1)]},
+        {
+            **span(start, len(source.tokens) - 1),
+            "emphasis": [],
+            "line_break_after_token_id": f"w{start + second.index('产')}",
+        },
+    ]
+    original = copy.deepcopy(value)
+    with pytest.raises(ValueError, match="exceeds its template text capacity"):
+        semantic_caption_rows(AppleSuitePlan.model_validate(value), source)
+
+    repaired, evidence = normalize_suite_output(value, source)
+    rows = semantic_caption_rows(AppleSuitePlan.model_validate(repaired), source)
+
+    assert value == original
+    assert [row["text"] for row in rows] == [first, second]
+    assert [row["time"] for row in rows] == [[0, start], [start, len(source.tokens)]]
+    assert 0 < len(rows[0]["emphasis"]) <= 10
+    assert not rows[1]["lines"][0]["text"].endswith("产")
+    assert {entry["kind"] for entry in evidence} == {
+        "caption_emphasis_fitted",
+        "caption_line_break_fitted",
+    }
+    assert normalize_suite_output(repaired, source) == (repaired, [])
+
+
+def test_saved_suite_caption_repair_does_not_invent_a_missing_word_id():
+    source = make_transcript(["出图", "前先", "核对", "产品。"])
+    value = semantic_plan()
+    value["captions"] = [
+        {
+            **span(0, 3),
+            "emphasis": [span(2, 2)],
+            "line_break_after_token_id": "missing",
+        }
+    ]
+    repaired, evidence = normalize_suite_output(value, source)
+    assert not evidence and repaired == value
+    with pytest.raises(ValueError, match="Unknown recorded word ID: missing"):
+        semantic_caption_rows(AppleSuitePlan.model_validate(repaired), source)
 
 
 def test_word_split_is_rejected_even_when_asr_has_one_token_per_character():

@@ -125,13 +125,13 @@ def test_editorial_caption_reflow_keeps_the_recorded_span_and_saved_response():
         "emphasis": [],
     }
     raw = {"captions": [cue]}
-    changed, repairs = normalize_suite_output(raw, source, repair_caption_lines=True)
+    changed, repairs = normalize_suite_output(raw, source)
     [row] = changed["captions"]
     assert row["line_break_after_token_id"] is not None
     assert {**row, "line_break_after_token_id": None} == cue
     assert cue["line_break_after_token_id"] is None
-    assert repairs[0]["kind"] == "editorial_caption_line"
-    assert normalize_suite_output(raw, source)[0] == raw
+    assert repairs[0]["kind"] == "caption_line_break_fitted"
+    assert normalize_suite_output(changed, source) == (changed, [])
 
 
 @pytest.mark.parametrize("unsafe", [False, True])

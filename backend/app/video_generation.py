@@ -80,7 +80,8 @@ LEGACY_H3_PROMPT = (
     "张开，不主动连续说话，不张嘴喘气，不大笑，便于后续音频驱动。手不遮脸，不点头"
     "晃头，不走动、不转身、不运镜、不切镜，无配音、无文字水印。"
 )
-H3_TEMPLATE_MODEL = "Minimax-H3-768p-913"
+# The 913 line has a fixed 15-second duration; 803 accepts ten-second clips.
+H3_TEMPLATE_MODEL = "Minimax-H3-768p-803"
 YIYUAN_TEMPLATE_MODEL = "muse-video"
 LEGACY_WEB_TEMPLATE_PROMPT = (
     "生成15秒固定机位真人口播模板，动作自然，首尾回到中性姿态，双手不遮脸，口周清晰。"

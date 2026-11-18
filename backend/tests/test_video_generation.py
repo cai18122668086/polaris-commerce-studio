@@ -229,7 +229,7 @@ def test_self_owned_template_generates_then_registers_and_can_lipsync(
         )
     else:
         assert generation["referenceImages"]
-        assert generation["model"] == "Minimax-H3-768p-913"
+        assert generation["model"] == "Minimax-H3-768p-803"
         assert generation["duration"] == 10
     jobs = client.get(root + "/generation-tasks").json()
     assert jobs[0]["status"] == "awaiting_review"

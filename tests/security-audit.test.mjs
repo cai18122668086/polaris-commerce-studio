@@ -70,7 +70,7 @@ test("unreviewed installations and changed advisory scope require another review
     changed.packages["node_modules/vite/node_modules/picomatch"] = installation;
     assert.equal(evaluateAudit(fixture(), changed, reviewDate).blocking.length, 1);
   }
-  for (const change of [{ source: 999 }, { range: "*" }, { name: "other" }]) {
+  for (const change of [{ source: 999 }, { range: "*" }, { name: "other" }, { severity: "critical" }]) {
     const report = fixture();
     Object.assign(report.vulnerabilities.picomatch.via[0], change);
     assert.equal(evaluateAudit(report, lockfile, reviewDate).blocking.length, 1);

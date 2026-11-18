@@ -43,7 +43,7 @@ export function evaluateAudit(report, lockfile, now = new Date()) {
 
     for (const source of sources) {
       if (
-        source.name === "picomatch" && source.source === 1247710 &&
+        source.name === "picomatch" && source.source === 1247710 && source.severity === "high" &&
         source.url === advisoryUrl && source.range === "<=4.0.7" &&
         now < exceptionExpires && reviewedInstallation
       ) {

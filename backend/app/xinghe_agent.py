@@ -10934,6 +10934,12 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile == "crossborder_detail":
+        from .crossborder_planning_contract import (
+            response_format as crossborder_response_format,
+        )
+
+        return crossborder_response_format(request.page_count)
     if request.planning_profile == "aurora_native_fast_identity":
         return _planner_response_format(replace(request, planning_profile="aurora_identity"))
     if request.planning_profile == "replica_exact_compact":
@@ -11233,6 +11239,13 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.authoring_stage:
         return authoring.prompt(request)
     prompt = _planner_prompt_body(request)
+    if request.planning_profile == "reference_visual_remix" or (
+        request.planning_profile == "creative_image"
+        and any(source.source_role == "competitor_reference" for source in request.sources)
+    ):
+        from .reference_text_contract import instruction as reference_text_instruction
+
+        prompt += "\n\n" + reference_text_instruction(request.language)
     if request.planning_profile in {"detail_pack", "crossborder_detail"}:
         prompt += (
             "\nWIRE FIELD CONTRACT: plan.design_strength_lock.rhythm_map is an array "
@@ -11263,7 +11276,7 @@ def _planner_prompt(request: PlannerRequest) -> str:
                 "Do not adopt product_reference images as style reference patterns. "
                 "Their observed product features remain factual identity evidence."
             )
-    if request.planning_profile == "amazon_visual_suite_fast":
+    if request.planning_profile in {"amazon_visual_suite_fast", "crossborder_detail"}:
         prompt += "\nresponse_schema=" + json.dumps(_planner_response_format(request)["json_schema"]["schema"], ensure_ascii=False)
     return prompt
 

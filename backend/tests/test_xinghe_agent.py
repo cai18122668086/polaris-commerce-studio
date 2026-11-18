@@ -64,6 +64,7 @@ from app.xinghe_agent import (
     _json_pointer,
     _planner_content_payload_with_trace,
     _planner_prompt,
+    _planner_response_format,
     _planner_structure_fingerprint,
     _planner_structure_profile,
     build_resume_signature,
@@ -871,6 +872,51 @@ def test_crossborder_detail_prompt_keeps_product_and_style_reference_roles() -> 
     assert "style_reference image(s) are optional visual references" in prompt
     assert "references/reference-page-analysis.md" in prompt
     assert "Never copy their product, brand, wording" in prompt
+
+
+def test_crossborder_transport_declares_fields_required_by_local_validation() -> None:
+    from dataclasses import replace
+
+    from jsonschema import Draft202012Validator
+
+    from app.xinghe_agent import _SUBJECT_SCALES
+
+    request = replace(_amazon_planner_contract_request(),
+                      planning_profile="crossborder_detail", page_count=8)
+    wire = _planner_response_format(request)
+    assert wire["type"] == "json_schema"
+    transport = _RecordingTransport()
+    gateway = TengliOpenAICompatibleGateway(
+        api_key="test-placeholder-key", base_url="https://api.example.test",
+        planner_model="planner", image_model="image", transport=transport,
+    )
+    asyncio.run(gateway.plan(request))
+    assert transport.json_calls[0]["payload"]["response_format"] == wire
+    schema = wire["json_schema"]["schema"]
+    validator = Draft202012Validator(schema)
+    screen_schema = schema["properties"]["plan"]["properties"]["screens"]
+    assert screen_schema["minItems"] == screen_schema["maxItems"] == 8
+    assert set(screen_schema["items"]["properties"]["subject_scale"]["enum"]) == _SUBJECT_SCALES
+    assert json.loads(_planner_prompt(request).split("\nresponse_schema=")[-1]) == schema
+
+    payload = _valid_planner_content(8)
+    payload["analysis"]["product_master_description"] = {"identity": "visible fan"}
+    payload["plan"]["product_consistency_lock"] = {"identity": "same visible fan"}
+    payload["plan"]["layout_diversity_lock"] = {"max_same_layout_family": 2}
+    for index, screen in enumerate(payload["plan"]["screens"]):
+        screen.update({key: f"authored {key} {index}" for key in (
+            "buyer_question", "layout_family", "camera_angle", "product_position",
+            "background_system", "prop_strategy", "copy_density",
+        )})
+    validator.validate(payload)
+    validate_planner_payload(payload, 8, require_cross_page_locks=True)
+    # The production failure omitted layout_family from every screen. The
+    # outbound contract must reject omission of every required per-screen field.
+    for field in screen_schema["items"]["required"]:
+        missing = deepcopy(payload)
+        del missing["plan"]["screens"][0][field]
+        errors = list(validator.iter_errors(missing))
+        assert any(error.validator == "required" and field in error.message for error in errors)
 
 
 def test_fake_amazon_plan_matches_original_skill_contract() -> None:

@@ -357,7 +357,7 @@ class EditingWorkResponse(StrictVideoModel):
     project_id: str
     project_title: str
     created_at: datetime
-    mode: Literal["subtitles", "native_plan"]
+    mode: Literal["subtitles", "native_plan", "suite_plan"]
     final: EditingArtifactResponse
 
 

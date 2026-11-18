@@ -7749,7 +7749,8 @@
           "mode": {
             "enum": [
               "subtitles",
-              "native_plan"
+              "native_plan",
+              "suite_plan"
             ],
             "title": "Mode",
             "type": "string"

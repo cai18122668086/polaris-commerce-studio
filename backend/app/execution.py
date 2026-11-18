@@ -45,6 +45,7 @@ from .domain import (
     PlanValidationStatus,
     UsageCompleteness,
 )
+from .errors import ApiError
 from .models import (
     AmazonSuiteReviewAttemptRecord,
     AssetRecord,
@@ -68,7 +69,12 @@ from .provider import (
 from .provider_quota_ledger import ProviderQuotaLedgerError, usage_request_count
 from .services import canonical_hash, new_id, settle_credits, transition_job
 from .skill_runtime import build_fake_skill_runtime_provider
-from .storage import ImageStorage, ValidatedImage
+from .storage import (
+    STORAGE_WRITE_UNAVAILABLE,
+    ImageStorage,
+    ValidatedImage,
+    require_image_storage_write,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -623,6 +629,22 @@ class ExecutionCoordinator:
             )
             if planner is None:
                 return self.fail_missing_detail_planner(job_id)
+            if self.artifact_storage is not None:
+                with self.session_factory() as session:
+                    job = session.get(JobRecord, job_id)
+                    probe_storage = job is not None and (
+                        self._fast_main_image_record(job)
+                        or detail_fast_runtime.is_independent(job.configuration)
+                    )
+                if probe_storage:
+                    try:
+                        await require_image_storage_write(self.artifact_storage)
+                    except ApiError as error:
+                        if error.code != STORAGE_WRITE_UNAVAILABLE:
+                            raise
+                        return self.fail_missing_detail_planner(
+                            job_id, code=error.code, message=error.message,
+                        )
             try:
                 planned = await planner.plan(job_id)
             except Exception as exc:
@@ -1528,8 +1550,12 @@ class ExecutionCoordinator:
                 session.commit()
             return JobStatus(job.status)
 
-    def fail_missing_detail_planner(self, job_id: str) -> JobStatus | None:
-        """Fail closed; static/template planning fallback is forbidden."""
+    def fail_missing_detail_planner(
+        self, job_id: str, *,
+        code: str = "DETAIL_PLANNER_UNAVAILABLE",
+        message: str = "The mandatory detail planner is unavailable.",
+    ) -> JobStatus | None:
+        """Fail before a planning request was submitted and release its reservation."""
 
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
@@ -1554,13 +1580,13 @@ class ExecutionCoordinator:
             for item in items:
                 item.status = JobItemStatus.FAILED.value
                 item.stage = "planning_failed"
-                item.error_code = "DETAIL_PLANNER_UNAVAILABLE"
-                item.error_message = "The mandatory detail planner is unavailable."
+                item.error_code = code
+                item.error_message = message
                 item.finished_at = now
                 item.state_version += 1
             job.failed_item_count = len(items)
-            job.error_code = "DETAIL_PLANNER_UNAVAILABLE"
-            job.error_message = "The mandatory detail planner is unavailable."
+            job.error_code = code
+            job.error_message = message
             transition_job(
                 job,
                 JobStatus.FAILED,
@@ -3551,6 +3577,7 @@ def build_fake_coordinator(
     fast_gateway = DurableFastDetailGateway(
         session_factory, gateway, storage, skill_id=detail_fast.SKILL_ID,
         skill_content_hash=BundledSkillManifestValidator().validate(detail_fast.SKILL_ID),
+        stage_root=aurora_work_root,
     )
     fast_detail_provider = detail_fast.FastDetailProvider(XingheImageProvider(
         session_factory, fast_gateway, storage=storage, skill_root=fast_skill_root,
@@ -3631,7 +3658,9 @@ def build_fake_coordinator(
 
     aurora_provider = MainImageProviderRouter(
         session_factory, aurora_provider,
-        FastMainImageProvider(session_factory, gateway, storage),
+        FastMainImageProvider(
+            session_factory, gateway, storage, stage_root=aurora_work_root,
+        ),
     )
     if xinghe_gateway is None:
         new_routes: dict[str, Provider] = {

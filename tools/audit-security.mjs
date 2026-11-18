@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import semverSubset from "semver/ranges/subset.js";
+
+import { verifiedPicomatchPatches } from "../build/patch-picomatch-security.mjs";
 
 const advisoryUrl = "https://github.com/advisories/GHSA-fc5q-39xc-vjpf";
-const exceptionExpires = new Date("2026-11-25T00:00:00+08:00");
-const reviewedVersions = new Set(["2.3.2", "4.0.4", "4.0.7"]);
+const reviewedRange = "<4.0.8";
 
-// Reviewed 2026-11-18. Vite and ESLint use these locked development dependencies
-// for repository-controlled file patterns. Application code accepts no external
-// glob patterns. Upstream has no patched release for this advisory. Reassess by
-// 2026-11-25, or remove this exception when a patched release becomes available.
-export function evaluateAudit(report, lockfile, now = new Date()) {
+// npm identifies packages by published version, so it also reports locally
+// backported fixes. Recognize this advisory only when every affected installed
+// parser has the exact reviewed patched bytes. Other high/critical findings block.
+export function evaluateAudit(report, verifiedPackages = new Set()) {
   assert.equal(report.auditReportVersion, 2, "Unsupported npm audit report");
   assert.ok(!report.error, "npm audit returned an error");
   assert.ok(
@@ -19,14 +20,12 @@ export function evaluateAudit(report, lockfile, now = new Date()) {
     !Array.isArray(report.vulnerabilities),
     "Missing npm vulnerability report",
   );
-  assert.ok(Number.isFinite(now.getTime()), "Invalid audit date");
 
   const blocking = new Set();
-  const exceptions = new Set();
+  const mitigated = new Set();
   const picomatch = report.vulnerabilities.picomatch;
   const reviewedInstallation = picomatch?.nodes?.length > 0 && picomatch.nodes.every(node => {
-    const installed = lockfile.packages?.[node];
-    return installed?.dev === true && reviewedVersions.has(installed.version);
+    return verifiedPackages.has(node);
   });
 
   for (const [name, vulnerability] of Object.entries(report.vulnerabilities)) {
@@ -42,18 +41,18 @@ export function evaluateAudit(report, lockfile, now = new Date()) {
     assert.ok(sources.length > 0, `Unresolved high-severity finding for ${name}`);
 
     for (const source of sources) {
+      const reviewedScope = source.severity === "high" && typeof source.range === "string" &&
+        semverSubset(source.range, reviewedRange);
       if (
-        source.name === "picomatch" && source.source === 1247710 && source.severity === "high" &&
-        source.url === advisoryUrl && source.range === "<=4.0.7" &&
-        now < exceptionExpires && reviewedInstallation
+        source.name === "picomatch" && source.url === advisoryUrl && reviewedScope && reviewedInstallation
       ) {
-        exceptions.add(source.url);
+        mitigated.add(source.url);
       } else {
         blocking.add(`${source.name}: ${source.title} (${source.url})`);
       }
     }
   }
-  return { blocking: [...blocking], exceptions: [...exceptions] };
+  return { blocking: [...blocking], mitigated: [...mitigated] };
 }
 
 function advisorySources(name, vulnerabilities, ancestors = new Set()) {
@@ -78,11 +77,11 @@ function main() {
   ], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 60000, windowsHide: true });
   assert.ok(!audit.error && [0, 1].includes(audit.status), "npm audit could not complete");
   const report = JSON.parse(audit.stdout);
-  const lockfile = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
-  const result = evaluateAudit(report, lockfile);
-  console.log(JSON.stringify(report.metadata?.vulnerabilities ?? {}));
-  for (const url of result.exceptions) {
-    console.warn(`Temporary reviewed exception until 2026-11-25 00:00 Asia/Shanghai: ${url}`);
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const result = evaluateAudit(report, verifiedPicomatchPatches(root));
+  console.log("npm advisory counts", JSON.stringify(report.metadata?.vulnerabilities ?? {}));
+  for (const url of result.mitigated) {
+    console.log(`Verified installed local fix: ${url}`);
   }
   for (const finding of result.blocking) console.error(finding);
   process.exitCode = result.blocking.length ? 1 : 0;

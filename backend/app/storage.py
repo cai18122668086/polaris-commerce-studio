@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import logging
 import re
 from dataclasses import dataclass
 from io import BytesIO
@@ -16,7 +17,35 @@ from fastapi import UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .config import Settings
-from .errors import UploadValidationError
+from .errors import ApiError, UploadValidationError
+
+logger = logging.getLogger(__name__)
+
+STORAGE_WRITE_UNAVAILABLE = "STORAGE_WRITE_UNAVAILABLE"
+STORAGE_RESULT_PENDING = "STORAGE_RESULT_PENDING"
+STORAGE_WRITE_MESSAGE = "结果存储暂不可写，尚未提交新的生成请求。请稍后重试。"
+STORAGE_PENDING_MESSAGE = "原图已生成并暂存，存储恢复后可重试交付，无需重新生成。"
+
+
+async def require_image_storage_write(storage: "ImageStorage") -> None:
+    probe = getattr(storage, "probe_write", None)
+    if probe is None:
+        return
+    try:
+        await probe()
+    except Exception as error:
+        provider_code = (
+            error.response.get("Error", {}).get("Code")
+            if isinstance(error, ClientError)
+            else None
+        )
+        logger.warning(
+            "Image storage write probe failed: type=%s code=%s",
+            type(error).__name__,
+            provider_code,
+        )
+        raise ApiError(503, STORAGE_WRITE_UNAVAILABLE, STORAGE_WRITE_MESSAGE) from error
+
 
 ALLOWED_IMAGE_FORMATS = {
     "JPEG": (".jpg", "image/jpeg"),
@@ -176,6 +205,18 @@ class LocalImageStorage:
         self.provider_name = "local"
         self.bucket_name = "local"
 
+    async def probe_write(self) -> None:
+        await asyncio.to_thread(self._probe_write)
+
+    def _probe_write(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        probe = self.root / (".write-probe-" + uuid4().hex)
+        try:
+            with probe.open("xb") as stream:
+                stream.write(b"polaris")
+        finally:
+            probe.unlink(missing_ok=True)
+
     async def save_image(
         self,
         upload: UploadFile,
@@ -277,6 +318,16 @@ class S3ImageStorage:
             ),
         )
         self._bucket_ready = False
+
+    async def probe_write(self) -> None:
+        await asyncio.to_thread(self._probe_write)
+
+    def _probe_write(self) -> None:
+        self._ensure_bucket()
+        key = "_polaris_internal/write-probes/" + uuid4().hex
+        # HeadBucket and ListObjects still succeed on a read-only/full MinIO.
+        result = self.client.put_object(Bucket=self.bucket, Key=key, Body=b"polaris")
+        self._delete_object(key, str(result.get("VersionId") or ""))
 
     async def save_image(
         self,

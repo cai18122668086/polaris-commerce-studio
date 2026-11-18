@@ -129,6 +129,15 @@ export function jobNote(job: Job | JobDetail): string {
 }
 
 export function safeJobFailureSummary(errorCode?: string | null, errorDetails?: unknown): string {
+  if (errorCode === "STORAGE_WRITE_UNAVAILABLE") {
+    return "结果存储暂不可写，未提交新的生成请求。存储恢复后可重试。";
+  }
+  if (errorCode === "STORAGE_RESULT_PENDING") {
+    return "原图已生成并暂存。存储恢复后，重试会继续交付原图，无需重新生成。";
+  }
+  if (errorCode === "OUTPUT_STORAGE_FAILED") {
+    return "图片交付时写入存储失败，请稍后重试或联系管理员。";
+  }
   if (errorCode === "PROVIDER_OUTCOME_UNKNOWN") {
     return "生成请求的结果尚未确认，系统已停止自动重试，请联系管理员核查，避免重复生成。";
   }

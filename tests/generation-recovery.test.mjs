@@ -24,3 +24,8 @@ test("failed job uses its item error when the job-level error is absent", () => 
 test("unconfirmed image requests do not encourage automatic regeneration", () => {
   assert.match(safeJobFailureSummary("PROVIDER_OUTCOME_UNKNOWN"), /已停止自动重试/);
 });
+
+test("storage failures distinguish a blocked submission from a recoverable image", () => {
+  assert.match(safeJobFailureSummary("STORAGE_WRITE_UNAVAILABLE"), /未提交新的生成请求/);
+  assert.match(safeJobFailureSummary("STORAGE_RESULT_PENDING"), /继续交付原图/);
+});

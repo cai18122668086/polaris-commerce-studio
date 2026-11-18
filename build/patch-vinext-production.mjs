@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { patchPicomatchSecurity } from "./patch-picomatch-security.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const defaultVinextRoot = path.join(root, "node_modules", "vinext");
@@ -72,5 +73,6 @@ if (
   process.argv[1] &&
   await realpath(path.resolve(process.argv[1])) === await realpath(fileURLToPath(import.meta.url))
 ) {
+  patchPicomatchSecurity(root);
   await patchVinextProduction();
 }

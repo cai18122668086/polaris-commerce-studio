@@ -291,6 +291,26 @@ def test_runtime_capabilities_report_mock_and_tengli_execution(
     assert tengli.capabilities.external_authentication.availability == "unavailable"
 
 
+def test_runtime_reports_registered_external_authentication(client, monkeypatch):
+    from app.auth import Principal, get_principal
+
+    monkeypatch.setattr(client.app.state.settings, "auth_mode", "external")
+    monkeypatch.setattr(client.app.state, "external_auth_backend", object())
+    client.app.dependency_overrides[get_principal] = lambda: Principal(
+        user_id="usr_test"
+    )
+    try:
+        response = client.get("/api/v1/runtime")
+    finally:
+        client.app.dependency_overrides.pop(get_principal)
+    assert response.status_code == 200
+    assert response.json()["capabilities"]["external_authentication"] == {
+        "availability": "available",
+        "execution": "provider",
+        "reason_code": None,
+    }
+
+
 @pytest.mark.parametrize(
     ("setting_name", "feature_name"),
     [

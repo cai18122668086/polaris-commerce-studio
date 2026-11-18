@@ -11,6 +11,7 @@ import logging
 from contextlib import suppress
 from dataclasses import replace
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 from PIL import Image
@@ -18,11 +19,17 @@ from sqlalchemy import select
 
 from .aurora_main_image_planner import PAGE_ROLES
 from .errors import ApiError
+from .generation_image_stage import GenerationImageStage, staged_or_stored
 from .models import JobAttemptRecord, JobItemRecord, JobPlanRecord, JobRecord, utc_now
 from .new_detail_skill_provider import BundledSkillManifestValidator
 from .provider import ProviderArtifact, ProviderOutcome, ProviderRequest, ProviderResult
 from .services import canonical_hash, get_ready_assets
-from .storage import ValidatedImage
+from .storage import (
+    STORAGE_PENDING_MESSAGE,
+    STORAGE_RESULT_PENDING,
+    ValidatedImage,
+    require_image_storage_write,
+)
 from .xinghe_agent import ImageEditRequest, SourceImage, XingheGateway
 
 logger = logging.getLogger(__name__)
@@ -65,11 +72,19 @@ def image_prompt(plan: dict[str, Any], page: dict[str, Any]) -> str:
 
 class FastMainImageProvider:
     def __init__(
-        self, session_factory: Any, gateway: XingheGateway, storage: Any
+        self,
+        session_factory: Any,
+        gateway: XingheGateway,
+        storage: Any,
+        *,
+        stage_root: Path | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage
+        self.stage = (
+            GenerationImageStage(stage_root, "main-image") if stage_root else None
+        )
         self.name = getattr(gateway, "provider_name", "main-image-fast")
         self.model = getattr(gateway, "image_model", "none")
         self.pricing_version = getattr(gateway, "pricing_version", VERSION)
@@ -273,7 +288,7 @@ class FastMainImageProvider:
                 raise ApiError(
                     409, "FAST_MAIN_IMAGE_PLAN_CHANGED", "已有图片不属于当前冻结方案。"
                 )
-            if old.get("state") == "returned" or (
+            if old.get("state") in {"returned", "storage_pending"} or (
                 old.get("state") == "rejected"
                 and old.get("object_key")
                 and not skip_rejected_cache
@@ -315,10 +330,10 @@ class FastMainImageProvider:
             receipts = dict(job.configuration.get(RECEIPTS_KEY, {}))
             key = str(page["page_index"])
             old = receipts.get(key, {})
-            if (
-                old.get("attempt_id") != request.attempt_id
-                or old.get("state") != "invoked"
-            ):
+            if old.get("attempt_id") != request.attempt_id or old.get("state") not in {
+                "invoked",
+                "storage_pending",
+            }:
                 raise ApiError(
                     409, "FAST_MAIN_IMAGE_SCOPE_INVALID", "生图回执已被接续。"
                 )
@@ -372,6 +387,7 @@ class FastMainImageProvider:
         invoked = False
         result = None
         artifact: ProviderArtifact | None = None
+        pending = False
         try:
             plan, page, records = self._load(request)
             sources = []
@@ -394,13 +410,41 @@ class FastMainImageProvider:
                         source_role="product_reference",
                     )
                 )
+            await require_image_storage_write(self.storage)
+            if self.stage:
+                self.stage.require_writable(self.storage.validator.max_upload_bytes)
             cached = self._claim(plan, page, request)
             while cached:
-                data = await self.storage.read_bytes(cached["object_key"])
-                if hashlib.sha256(data).hexdigest() != cached["sha256"]:
+                stage_path = (
+                    self.stage.path(
+                        request.workspace_id, cached["job_id"], cached["attempt_id"]
+                    )
+                    if self.stage and cached["state"] == "storage_pending"
+                    else None
+                )
+                try:
+                    data, staged = await staged_or_stored(
+                        self.storage,
+                        self.stage,
+                        stage_path,
+                        cached["object_key"],
+                        cached["sha256"],
+                    )
+                except ValueError as error:
                     raise ApiError(
                         409, "FAST_MAIN_IMAGE_RESULT_CHANGED", "已生成图片校验不一致。"
-                    )
+                    ) from error
+                if staged:
+                    assert self.stage and stage_path
+                    try:
+                        await self.storage.save_validated(
+                            _prepared_image(data, cached["object_key"])
+                        )
+                    except Exception as error:
+                        raise ApiError(
+                            503, STORAGE_RESULT_PENDING, STORAGE_PENDING_MESSAGE
+                        ) from error
+                    self.stage.discard(stage_path)
                 try:
                     artifact = self._artifact(data, plan["canvas"], strict_square=True)
                 except ApiError:
@@ -489,28 +533,37 @@ class FastMainImageProvider:
                     http_status=result.http_status,
                 )
             data = result.artifact.payload
-            with Image.open(BytesIO(data)) as image:
-                image.load()
-                w, h = image.size
-                fmt = image.format or ""
-                content_type = Image.MIME[fmt]
-                suffix = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}[fmt]
-            sha = hashlib.sha256(data).hexdigest()
-            key = (
+            prefix = (
                 f"{request.workspace_id}/main-image-fast/{request.job_id}/"
-                f"{page['page_index']}/{sha}{suffix}"
+                f"{page['page_index']}/"
             )
-            await self.storage.save_validated(
-                ValidatedImage(
-                    payload=data,
-                    filename="generated-main-image" + suffix,
-                    content_type=content_type,
-                    width=w,
-                    height=h,
-                    object_key=key,
-                    sha256=sha,
+            image = _prepared_image(data, prefix)
+            key, sha = image.object_key, image.sha256
+            stage_path = (
+                self.stage.path(
+                    request.workspace_id, request.job_id, request.attempt_id
                 )
+                if self.stage
+                else None
             )
+            if self.stage and stage_path:
+                self.stage.save(
+                    stage_path, image, self.storage.validator.max_upload_bytes
+                )
+                self._finish(
+                    page,
+                    request,
+                    {
+                        "state": "storage_pending",
+                        "object_key": key,
+                        "sha256": sha,
+                        "provider_request_id": result.provider_request_id,
+                        "usage": usage,
+                        "actual_cost_micros": result.actual_cost_micros,
+                    },
+                )
+                pending = True
+            await self.storage.save_validated(image)
             artifact = None
             with suppress(ApiError):
                 artifact = self._artifact(data, plan["canvas"], strict_square=True)
@@ -526,6 +579,8 @@ class FastMainImageProvider:
                     "actual_cost_micros": result.actual_cost_micros,
                 },
             )
+            if self.stage and stage_path:
+                self.stage.discard(stage_path)
             return ProviderResult(
                 outcome=ProviderOutcome.SUCCEEDED
                 if artifact
@@ -555,19 +610,33 @@ class FastMainImageProvider:
                 getattr(error, "code", None),
                 exc_info=True,
             )
-            unknown = invoked and (
-                result is None or result.outcome != ProviderOutcome.FAILED
+            unknown = (
+                invoked
+                and not pending
+                and (result is None or result.outcome != ProviderOutcome.FAILED)
             )
             return ProviderResult(
                 outcome=ProviderOutcome.OUTCOME_UNKNOWN
                 if unknown
                 else ProviderOutcome.FAILED,
-                error_code="PROVIDER_OUTCOME_UNKNOWN"
-                if unknown
-                else getattr(error, "code", "FAST_MAIN_IMAGE_EXECUTION_FAILED"),
-                error_message="原生图结果尚未核实，已停止重复提交。"
-                if unknown
-                else "快速主图未完成，请核对任务后重试。",
+                error_code=(
+                    STORAGE_RESULT_PENDING
+                    if pending
+                    else "PROVIDER_OUTCOME_UNKNOWN"
+                    if unknown
+                    else getattr(error, "code", "FAST_MAIN_IMAGE_EXECUTION_FAILED")
+                ),
+                error_message=(
+                    STORAGE_PENDING_MESSAGE
+                    if pending
+                    else "原生图结果尚未核实，已停止重复提交。"
+                    if unknown
+                    else str(error)
+                    if isinstance(error, ApiError)
+                    else "快速主图未完成，请核对任务后重试。"
+                ),
+                provider_request_id=getattr(result, "provider_request_id", None),
+                usage_reported=bool(result and result.normalized_usage.get("reported")),
                 actual_cost_micros=getattr(result, "actual_cost_micros", None)
                 if invoked
                 else 0,
@@ -580,3 +649,24 @@ class FastMainImageProvider:
                     "review_status": "NOT_REVIEWED",
                 },
             )
+
+
+def _prepared_image(data: bytes, key: str) -> ValidatedImage:
+    with Image.open(BytesIO(data)) as image:
+        image.load()
+        width, height = image.size
+        fmt = image.format or ""
+        content_type = Image.MIME[fmt]
+        suffix = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}[fmt]
+    sha = hashlib.sha256(data).hexdigest()
+    if key.endswith("/"):
+        key += sha + suffix
+    return ValidatedImage(
+        payload=data,
+        filename="generated-main-image" + suffix,
+        content_type=content_type,
+        width=width,
+        height=height,
+        object_key=key,
+        sha256=sha,
+    )

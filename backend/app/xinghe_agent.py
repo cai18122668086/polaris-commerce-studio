@@ -9052,7 +9052,12 @@ def _image_usage_record(
         and isinstance(result.raw_usage.get("metrics"), Mapping)
         else {}
     )
+    network_requests = normalized.get("network_requests")
+    if type(network_requests) is not int and isinstance(result.raw_usage, Mapping):
+        network_requests = result.raw_usage.get("network_requests")
+    counted = type(network_requests) is int and network_requests >= 0
     return {
+        **({"network_requests": network_requests} if counted else {}),
         "raw": result.raw_usage,
         "normalized": normalized,
         "input_tokens": normalized.get("input_tokens"),
@@ -9062,7 +9067,7 @@ def _image_usage_record(
         "output_images": 1 if result.artifact is not None else 0,
         "metrics": {
             **provider_metrics,
-            "provider_called": True,
+            "provider_called": network_requests != 0 or not counted,
             "request_api_latency": result.api_latency_seconds,
             "started_at": started_at.isoformat(),
             "finished_at": finished_at.isoformat(),

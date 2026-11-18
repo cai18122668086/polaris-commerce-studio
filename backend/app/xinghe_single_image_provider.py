@@ -1496,6 +1496,9 @@ class XingheSingleImageProvider:
         width = envelope.target.width or 1024
         height = envelope.target.height or 1536
         language = str(envelope.prompt_input.get("language") or "zh-CN")
+        from .reference_text_contract import instruction as reference_text_instruction
+
+        reference_text_policy = reference_text_instruction(language)
         product_first = envelope.prompt_input.get("inspiration_product_first") is True
         image_role_instruction = (
             "Image 1 is the product-identity reference and the only authority for "
@@ -1514,6 +1517,7 @@ class XingheSingleImageProvider:
         prompt = "\n\n".join(
             (
                 "Create exactly ONE original ecommerce image. " + image_role_instruction,
+                reference_text_policy,
                 (
                     f"OUTPUT CONTRACT\nCanvas: {width}x{height}; aspect ratio: "
                     f"{envelope.target.aspect_ratio}; language: {language}; quality: "
@@ -1552,8 +1556,9 @@ class XingheSingleImageProvider:
                     "mark already printed on the product. Do not redesign those parts to "
                     "match the reference product, and do not erase a mark that is visible "
                     "on the product photo. Do not invent a new brand. Composition, crop, "
-                    "light, and typography still follow the reference."
+                    "light, and typography geometry still follow the reference."
                 ),
+                reference_text_policy,
                 (
                     "Compiled from verified Skill "
                     f"{protocol.skill_id}@{protocol.source_content_hash}."

@@ -1305,6 +1305,48 @@ def test_reference_execution_prompt_drops_echoed_skill_protocol(
     assert len(prompt.encode("utf-8")) < 24_000
 
 
+@pytest.mark.parametrize("language,headline", [("zh-CN", "商品展示"), ("en-US", "PRODUCT")])
+@pytest.mark.parametrize("product_first", [False, True])
+def test_reference_wordmark_geometry_never_authorizes_source_brand_copy(
+    harness: Harness,
+    monkeypatch: pytest.MonkeyPatch,
+    language: str,
+    headline: str,
+    product_first: bool,
+) -> None:
+    from app.reference_text_contract import instruction
+    from app.xinghe_agent import _planner_prompt
+
+    provider, request = _reference_follow_request(
+        harness, reference_payload=_image_bytes((900, 1200)), exact_skill=True,
+        inspiration_product_first=product_first,
+    )
+    request.configuration[SINGLE_IMAGE_ADAPTER_CONFIGURATION_KEY]["prompt_input"]["language"] = language
+    original_plan = harness.gateway.plan
+
+    async def source_wordmark_analysis(planner_request: object) -> object:
+        result = await original_plan(planner_request)
+        result.payload = {**result.payload,
+                          "typography_zones": "giant SOURCE_LABEL letter-shaped background",
+                          "original_remix_prompt": "preserve SOURCE_LABEL background geometry"}
+        return result
+
+    monkeypatch.setattr(harness.gateway, "plan", source_wordmark_analysis)
+    result = asyncio.run(provider.execute(request))
+
+    assert result.outcome == ProviderOutcome.SUCCEEDED
+    policy = instruction(language)
+    assert f"'{headline}'" in policy
+    assert "partial name or a near-spelling" in policy
+    assert "Preserve marks actually printed on the user's product" in policy
+    assert policy in _planner_prompt(harness.gateway.plan_requests[0])
+    prompt = harness.gateway.requests[0].prompt
+    assert prompt.count(policy) == 2
+    assert prompt.index(policy) < prompt.index("TYPOGRAPHY ZONES")
+    assert prompt.rindex(policy) > prompt.index("IMAGE EXECUTION PROMPT")
+    assert len(harness.gateway.requests) == harness.gateway.plan_calls == 1
+
+
 def test_reference_visual_direct_prompt_keeps_reference_first_without_planner(
     harness: Harness,
 ) -> None:

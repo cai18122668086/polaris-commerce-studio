@@ -9,7 +9,7 @@ import path from "node:path";
 // https://github.com/micromatch/picomatch/pull/263/commits/9ca61909ab0ec680953e21bac80a6e825e1ede81
 // Picomatch is MIT licensed. See picomatch.LICENSE for the upstream notice.
 // Audit recognition verifies the exact patched parser bytes against these hashes.
-const parserHashes = {
+export const parserHashes = {
   "2.3.2": {
     original: "3a91656f440069aa8f8e15c9d695b9f6b2209df1eab2be8127c72cbcca45ff5f",
     patched: "1dd0cf4e8cb48a6e832f9f07265cf04ac0b82175e4a5a42784081140122d07fb",
@@ -23,6 +23,7 @@ const parserHashes = {
     patched: "62808d72424082c04e8ba59f98d9fec2e3cab0a56d98f292e44c6255fafaf44e",
   },
 };
+export const picomatchPackagePath = /(?:^|\/)node_modules\/picomatch$/;
 
 export const parserReplacements = [
   [
@@ -256,7 +257,7 @@ function digest(source) {
 function installations(root) {
   const lockfile = JSON.parse(readFileSync(path.join(root, "package-lock.json"), "utf8"));
   return Object.entries(lockfile.packages)
-    .filter(([name]) => name.endsWith("/picomatch"))
+    .filter(([name]) => picomatchPackagePath.test(name))
     .map(([name, item]) => {
       const directory = path.resolve(root, name);
       const relative = path.relative(root, directory);

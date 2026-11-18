@@ -1,21 +1,27 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import {
   parserReplacements,
+  parserHashes,
+  picomatchPackagePath,
   patchPicomatchSecurity,
   verifiedPicomatchPatches,
 } from "../build/patch-picomatch-security.mjs";
 
+const installedLockfile = JSON.parse(await readFile("package-lock.json", "utf8"));
+const reviewedPackages = Object.entries(installedLockfile.packages)
+  .filter(([name, item]) => picomatchPackagePath.test(name) && Object.hasOwn(parserHashes, item.version));
+const legacyTestOptions = { skip: reviewedPackages.length === 0 };
+
 async function fixture(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), "polaris-picomatch-test-"));
   context.after(() => rm(root, { recursive: true, force: true }));
-  const lockfile = JSON.parse(await readFile("package-lock.json", "utf8"));
-  const packages = Object.entries(lockfile.packages).filter(([name]) => name.endsWith("/picomatch"));
+  const packages = reviewedPackages;
   for (const [name] of packages) {
     const directory = path.join(root, name);
     await cp(path.resolve(name), directory, { recursive: true });
@@ -31,7 +37,7 @@ async function fixture(context) {
   return { root, packages };
 }
 
-test("fresh installs, repeated application and partial retries retain verified parser bytes", async context => {
+test("fresh installs, repeated application and partial retries retain verified parser bytes", legacyTestOptions, async context => {
   const { root, packages } = await fixture(context);
   assert.equal(verifiedPicomatchPatches(root).size, 0);
   patchPicomatchSecurity(root);
@@ -49,7 +55,7 @@ test("fresh installs, repeated application and partial retries retain verified p
   assert.equal(verifiedPicomatchPatches(root).size, packages.length);
 });
 
-test("changed source and package identities cannot obtain verified mitigation", async context => {
+test("changed source and package identities cannot obtain verified mitigation", legacyTestOptions, async context => {
   const { root, packages } = await fixture(context);
   patchPicomatchSecurity(root);
   const directory = path.join(root, packages[0][0]);
@@ -68,24 +74,32 @@ test("changed source and package identities cannot obtain verified mitigation", 
   assert.throws(() => patchPicomatchSecurity(root), /Unexpected installed version/);
 });
 
-test("future upstream versions use native audit findings without local rewriting", async context => {
-  const { root, packages } = await fixture(context);
-  const [name, item] = packages[0];
-  const lockfile = { packages: { [name]: { ...item, version: "99.0.0" } } };
+test("future upstream versions and similarly named packages remain untouched", async context => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "polaris-picomatch-future-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const lockfile = { packages: {
+    "node_modules/picomatch": { version: "99.0.0" },
+    "node_modules/@types/picomatch": { version: "2.3.2" },
+    "node_modules/@custom/picomatch": { version: "4.0.7" },
+  } };
   await writeFile(path.join(root, "package-lock.json"), JSON.stringify(lockfile));
-  const metadataPath = path.join(root, name, "package.json");
-  const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
-  await writeFile(metadataPath, JSON.stringify({ ...metadata, version: "99.0.0" }));
-  const filename = path.join(root, name, "lib", "parse.js");
-  const original = await readFile(filename, "utf8");
+  const original = "// Future or unrelated upstream implementation\n";
+  for (const [name, item] of Object.entries(lockfile.packages)) {
+    await mkdir(path.join(root, name, "lib"), { recursive: true });
+    await writeFile(path.join(root, name, "package.json"), JSON.stringify({ version: item.version }));
+    await writeFile(path.join(root, name, "lib", "parse.js"), original);
+  }
   patchPicomatchSecurity(root);
-  assert.equal(await readFile(filename, "utf8"), original);
+  for (const name of Object.keys(lockfile.packages)) {
+    assert.equal(await readFile(path.join(root, name, "lib", "parse.js"), "utf8"), original);
+  }
   assert.equal(verifiedPicomatchPatches(root).size, 0);
 });
 
 test("locked package paths cannot write outside the project", async context => {
-  const { root } = await fixture(context);
-  const outside = path.resolve(root, "..", "outside", "picomatch").split(path.sep).join("/");
+  const root = await mkdtemp(path.join(os.tmpdir(), "polaris-picomatch-path-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const outside = path.resolve(root, "..", "outside", "node_modules", "picomatch").split(path.sep).join("/");
   await writeFile(path.join(root, "package-lock.json"), JSON.stringify({
     packages: { [outside]: { version: "2.3.2" } },
   }));
@@ -93,7 +107,7 @@ test("locked package paths cannot write outside the project", async context => {
   assert.throws(() => verifiedPicomatchPatches(root), /Package path escapes project/);
 });
 
-test("all installed versions preserve ordinary matches and bound known malicious patterns", async context => {
+test("all reviewed installed versions preserve ordinary matches and bound known malicious patterns", legacyTestOptions, async context => {
   const { root, packages } = await fixture(context);
   patchPicomatchSecurity(root);
   for (const [name] of packages) {

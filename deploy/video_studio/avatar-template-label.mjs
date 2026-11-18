@@ -1,5 +1,5 @@
 // Preserve the observed live frontend and change only the template duration copy.
-const fs = require("node:fs");
+import fs from "node:fs";
 const path = "/app/components/video-studio/video-studio.tsx";
 const before = "15 秒 · 自然讲述动作";
 const after = "10 秒 · 自然讲述动作";

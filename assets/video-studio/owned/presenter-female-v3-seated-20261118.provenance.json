@@ -1,0 +1,33 @@
+{
+  "asset": "presenter-female-v3-seated-20261118.png",
+  "image_source": "built-in image_gen.imagegen",
+  "created_date": "2026-11-18",
+  "identity": "Fictional adult female presenter",
+  "portrait_prompt_file": "presenter-female-v3-seated-20261118.portrait-prompt.txt",
+  "motion_prompt_file": "presenter-female-v3-seated-20261118.motion-prompt.txt",
+  "image_sha256": "c1e1e9e3e484c80da558353960e860466c654760df68a9190079527e5ccf1732",
+  "motion_provider": "yiyuan",
+  "motion_model": "muse-video",
+  "task_id": "task_51GKH3ZTBPn0YolNpUPnwSTaLvEjeT25",
+  "requested_seconds": 20,
+  "measured_seconds": 20.0,
+  "sample_path": "E:\\TengliVideo\\D\\Desktop\\cyh\\tengli\\worktrees\\yiyuan-avatar-template-20261117\\assets\\video-studio\\owned\\presenter-female-v3-seated-20261118.preview.mp4",
+  "video_sha256": "821460545de48a808fb47d888df1dab4246f7df0241ef183b09a71a8d783a08b",
+  "postprocessing": "None; original provider video; complete decoding checked",
+  "review_status": "reviewed preview",
+  "review_note": "Hands remain near the desktop with small finger adjustments. Mild head turns, gaze changes, blinks and smile changes remain. First and last poses and expressions differ slightly. Suitable for user review before adoption.",
+  "duration_trials": [
+    {
+      "requested_seconds": 30,
+      "measured_seconds": 10.0
+    },
+    {
+      "requested_seconds": 20,
+      "measured_seconds": 20.041016
+    },
+    {
+      "requested_seconds": 20,
+      "measured_seconds": 20.0
+    }
+  ]
+}

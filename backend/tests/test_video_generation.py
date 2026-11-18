@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import shutil
@@ -15,6 +16,12 @@ from pydantic import SecretStr
 
 from app.errors import ApiError
 from app.main import create_app
+from app.video_generation import (
+    H3_PROMPT,
+    LEGACY_H3_PROMPT,
+    LEGACY_WEB_TEMPLATE_PROMPT,
+    GenerationRequest,
+)
 from app.video_generation_models import VideoGenerationRecord
 from app.video_providers import VideoProviders, safe_media_url
 from tests.test_auth_external import (
@@ -223,7 +230,7 @@ def test_self_owned_template_generates_then_registers_and_can_lipsync(
     else:
         assert generation["referenceImages"]
         assert generation["model"] == "Minimax-H3-768p-913"
-        assert generation["duration"] == 15
+        assert generation["duration"] == 10
     jobs = client.get(root + "/generation-tasks").json()
     assert jobs[0]["status"] == "awaiting_review"
     assert len(provider.posts) == 1
@@ -366,6 +373,111 @@ def test_existing_h3_task_downloads_from_original_channel_after_enabling_yiyuan(
         provider.downloads[0][0] == "https://www.wuyeai.cn/v1/videos/h3-fixture/content"
     )
     assert [vendor for vendor, _, _ in provider.posts] == ["wuye"]
+
+
+@pytest.mark.parametrize(
+    "legacy_prompt", [LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT]
+)
+def test_legacy_template_prompts_use_ten_second_natural_motion(
+    video_gen, legacy_prompt
+):
+    client, _, provider, root, _, _ = video_gen
+    client.app.state.settings.yiyuan_api_key = SecretStr("fixture")
+    response = client.post(
+        root + "/generation-tasks",
+        json={
+            "request_id": str(uuid4()),
+            "kind": "h3_template",
+            "avatar_id": "self-presenter-female-v3-seated",
+            "prompt": legacy_prompt,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert provider.posts[0][0] == "yiyuan"
+    assert provider.posts[0][2]["seconds"] == "10"
+    assert provider.posts[0][2]["prompt"] == H3_PROMPT
+    assert "fingertips" in H3_PROMPT
+    assert (
+        client.get(root + "/generation-tasks").json()[0]["status"] == "awaiting_review"
+    )
+
+
+@pytest.mark.parametrize(
+    "legacy_prompt", [LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT]
+)
+def test_preupgrade_request_replay_keeps_original_paid_job(video_gen, legacy_prompt):
+    client, _, provider, root, _, _ = video_gen
+    body = {
+        "request_id": str(uuid4()),
+        "kind": "h3_template",
+        "avatar_id": "self-presenter-female-v1",
+    }
+    first = client.post(root + "/generation-tasks", json=body)
+    assert first.status_code == 200, first.text
+    legacy = GenerationRequest.model_validate(body).model_copy(
+        update={"prompt": legacy_prompt}
+    )
+    with client.app.state.session_factory() as session:
+        row = session.get(VideoGenerationRecord, first.json()["id"])
+        row.request_hash = hashlib.sha256(legacy.model_dump_json().encode()).hexdigest()
+        session.commit()
+    replay = client.post(root + "/generation-tasks", json=body)
+    assert replay.status_code == 200 and replay.json()["id"] == first.json()["id"]
+    changed = client.post(
+        root + "/generation-tasks", json={**body, "prompt": "新的自定义动作" * 5}
+    )
+    assert changed.status_code == 409
+    assert len(provider.posts) == 1
+
+
+def test_long_upstream_template_is_bounded_locally_without_another_generation(
+    video_gen, tmp_path
+):
+    from app.video_template_media import video_info
+
+    client, _, provider, root, _, _ = video_gen
+    client.app.state.settings.yiyuan_api_key = SecretStr("fixture")
+    upstream = tmp_path / "long-provider-output.mp4"
+    subprocess.run(
+        [
+            imageio_ffmpeg.get_ffmpeg_exe(),
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=64x96:rate=12:duration=11",
+            "-c:v",
+            "libx264",
+            str(upstream),
+        ],
+        check=True,
+    )
+    download = provider.download
+
+    def long_video(url, target, **kwargs):
+        download(url, target, **kwargs)
+        if target.name == "template.mp4":
+            shutil.copyfile(upstream, target)
+
+    provider.download = long_video
+    response = client.post(
+        root + "/generation-tasks",
+        json={
+            "request_id": str(uuid4()),
+            "kind": "h3_template",
+            "avatar_id": "self-presenter-female-v1",
+        },
+    )
+    assert response.status_code == 200, response.text
+    job = client.get(root + "/generation-tasks").json()[0]
+    assert job["status"] == "awaiting_review"
+    with client.app.state.session_factory() as session:
+        row = session.get(VideoGenerationRecord, job["id"])
+        assert row.details["template_source_seconds"] == 11
+        assert row.details["template_duration_seconds"] == 10
+        assert video_info(Path(row.details["result_path"]))["duration"] == 10
+    assert len(provider.posts) == 1
 
 
 @pytest.mark.parametrize("rejected", [True, False])

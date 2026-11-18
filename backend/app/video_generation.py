@@ -52,6 +52,7 @@ from .video_stage_timing import transition
 from .video_studio_models import VideoProjectRecord
 from .video_studio_routes import VideoWorkspace, append_version, scope
 from .video_studio_schemas import StrictVideoModel
+from .video_template_media import prepare_forward, video_info
 from .video_tts import synthesize
 from .video_voice_catalog import VOICES, official_voices, preview_path, select_tao_voice
 from .video_voice_cloning import catalog as cloned_voice_catalog
@@ -65,7 +66,8 @@ OWNED_IMAGE = (
     Path(__file__).resolve().parents[2]
     / "assets/video-studio/owned/presenter-female-v1.png"
 )
-H3_PROMPT = (
+SEATED_IMAGE = OWNED_IMAGE.with_name("presenter-female-v3-seated-20261118.png")
+LEGACY_H3_PROMPT = (
     "以 @图1 为唯一人物、服装、背景和起始姿态参考，生成15秒真人感强、安定从容的"
     "口播数字人动作底片。竖屏腰部以上，双手完整可见，固定机位，曝光光线稳定，保留"
     "真实皮肤细节和人物一致性。身体直立放松，头部、躯干与胸肩位置稳定，肩线高度几乎"
@@ -80,22 +82,26 @@ H3_PROMPT = (
 )
 H3_TEMPLATE_MODEL = "Minimax-H3-768p-913"
 YIYUAN_TEMPLATE_MODEL = "muse-video"
-YIYUAN_TEMPLATE_PROMPT = (
-    "以参考图为唯一人物、服装、背景和起始姿态参考，生成竖屏10秒真人口播动作底片。"
-    "腰部以上，双手完整入画，固定机位，光线稳定，保持人物五官与服装一致。"
-    "人物精神饱满、亲切自信，目光专注看镜头，眼睛明亮，"
-    "面带自然的浅笑，站姿挺拔放松，全程安静地演示手势，双唇自然合拢。"
-    "以日常交流的正常速度连续完成三个清晰手势，"
-    "抬手、强调、收手都有明确的起落和轻快的节奏，每次单向动作约0.5到0.8秒，"
-    "动作之间只做短暂自然停顿。第1秒内开始动作；1到3秒右手掌心向上向前解释并收回；"
-    "3到6秒左手做一次清晰的开放手掌强调并收回；6到9秒双手在腰腹前展开解释后收回；"
-    "最后约0.5秒回到起始姿态。手势幅度适中，手臂和手腕协调发力，"
-    "身体有轻微自然的重心变化，头部朝向镜头保持正直，配合一次简短点头和自然眨眼。"
-    "嘴唇持续放松轻闭，不说话、不模仿说话、不做发音口型，手势在胸部以下，面部清晰。"
-    "Silent hand-gesture demonstration. Lips gently closed throughout, "
-    "no speaking or lip movements. Natural real-time gestures with clear energetic "
-    "starts and stops, head upright facing the camera. "
-    "画面保持单一连续镜头，无配音、无字幕、无水印。"
+LEGACY_WEB_TEMPLATE_PROMPT = (
+    "生成15秒固定机位真人口播模板，动作自然，首尾回到中性姿态，双手不遮脸，口周清晰。"
+)
+H3_PROMPT = (
+    "生成10秒真人口播动作底片。A continuous 10-second real-time recording of the "
+    "person in the reference photograph during a quiet pause before speaking. "
+    "Preserve the reference person's identity, clothes, background and composition, "
+    "including their original seated or standing posture. The person looks alert, "
+    "calm, professional and approachable, maintaining warm, steady eye contact "
+    "with the camera and a subtle relaxed closed-lip smile. Both arms and hands "
+    "remain near their original resting positions; forearms stay supported if "
+    "there is a desk. At most one tiny relaxed adjustment of the fingertips. "
+    "The body remains nearly stationary while natural breathing, tiny changes "
+    "in gaze focus and almost imperceptible facial microexpressions create "
+    "lifelike presence. Natural brief blinks, head upright, lips resting gently "
+    "together. At the end, settle into the same hand position, head position, "
+    "gaze and gentle expression as the beginning. Locked-off camera, consistent "
+    "lighting, skin texture, hair and clothes, one uninterrupted take. "
+    "No broad hand gestures, raised arms, exaggerated expressions, deliberate "
+    "nodding, speaking, camera movement, subtitles, watermark or voiceover."
 )
 
 
@@ -294,6 +300,23 @@ def _process_generation(
                     )
                 ):
                     return
+                if job.details.get(
+                    "template_requested_seconds"
+                ) == 10 and not job.details.get("template_duration_seconds"):
+                    info = video_info(local)
+                    source_seconds = info["duration"]
+                    if source_seconds > 10.05:
+                        bounded = local.with_name("template-10s.mp4")
+                        prepare_forward(local, bounded, 10)
+                        bounded.replace(local)
+                        info = video_info(local)
+                    set_stage(
+                        session,
+                        job,
+                        job.stage,
+                        template_duration_seconds=info["duration"],
+                        template_source_seconds=source_seconds,
+                    )
                 if not job.details.get("review_approved"):
                     set_stage(session, job, "awaiting_review", result_path=str(local))
                     job.status = "awaiting_review"
@@ -493,12 +516,14 @@ def submit_template(
     **routing: Any,
 ) -> None:
     prompt = job.details["prompt"]
+    if prompt in {LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT}:
+        prompt = H3_PROMPT
     reference_url = job.details["reference_url"]
     model = YIYUAN_TEMPLATE_MODEL if vendor == "yiyuan" else H3_TEMPLATE_MODEL
     if vendor == "yiyuan":
         body = {
             "model": model,
-            "prompt": YIYUAN_TEMPLATE_PROMPT if prompt == H3_PROMPT else prompt,
+            "prompt": prompt,
             "seconds": "10",
             "aspect_ratio": "9:16",
             "input_reference": reference_url,
@@ -507,7 +532,7 @@ def submit_template(
         body = {
             "model": model,
             "prompt": prompt,
-            "duration": 15,
+            "duration": 10,
             "ratio": "9:16",
             "resolution": "768p",
             "referenceImages": [reference_url],
@@ -518,6 +543,8 @@ def submit_template(
         "h3_submitting",
         template_provider=vendor,
         template_model=model,
+        template_requested_seconds=10,
+        template_prompt=prompt,
         **routing,
     )
     task_id = provider.request(vendor, "POST", "/v1/videos", json=body).get("id")
@@ -670,20 +697,26 @@ def avatars(
             row.name, row.video_url, row.active = model["model_name"], url, True
             session.add(row)
         session.commit()
-    if (
-        OWNED_IMAGE.exists()
-        and session.get(VideoAvatarRecord, "self-presenter-female-v1") is None
+    for avatar_id, name, image in (
+        ("self-presenter-female-v1", "清禾·原创形象", OWNED_IMAGE),
+        ("self-presenter-female-v3-seated", "知禾·专业主播", SEATED_IMAGE),
     ):
-        session.add(
-            VideoAvatarRecord(
-                id="self-presenter-female-v1",
-                source="self_owned",
-                name="清禾·原创形象",
-                gender="女",
-                cover_path=str(OWNED_IMAGE),
+        if image.exists() and session.get(VideoAvatarRecord, avatar_id) is None:
+            session.add(
+                VideoAvatarRecord(
+                    id=avatar_id,
+                    source="self_owned",
+                    name=name,
+                    gender="女",
+                    cover_path=str(image),
+                )
             )
-        )
-        session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                if session.get(VideoAvatarRecord, avatar_id) is None:
+                    raise
     rows = session.scalars(
         select(VideoAvatarRecord)
         .where(VideoAvatarRecord.active.is_(True), avatar_scope(workspace))
@@ -924,6 +957,13 @@ def submit_generation(
 ) -> dict[str, Any]:
     require_workspace_write(workspace)
     fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
+    accepted_fingerprints = {fingerprint}
+    if "prompt" not in body.model_fields_set:
+        for legacy_prompt in (LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT):
+            legacy_body = body.model_copy(update={"prompt": legacy_prompt})
+            accepted_fingerprints.add(
+                hashlib.sha256(legacy_body.model_dump_json().encode()).hexdigest()
+            )
     old = session.scalar(
         select(VideoGenerationRecord).where(
             VideoGenerationRecord.workspace_id == workspace.workspace_id,
@@ -932,7 +972,7 @@ def submit_generation(
         )
     )
     if old:
-        if old.request_hash != fingerprint:
+        if old.request_hash not in accepted_fingerprints:
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求标识已用于其他内容。")
         return job_response(old)
     if not request.app.state.settings.video_providers_enabled:
@@ -1104,7 +1144,7 @@ def submit_generation(
                 VideoGenerationRecord.request_id == str(body.request_id),
             )
         )
-        if not old or old.request_hash != fingerprint:
+        if not old or old.request_hash not in accepted_fingerprints:
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求冲突。") from None
         return job_response(old)
     background.add_task(

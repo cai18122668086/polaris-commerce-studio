@@ -3,7 +3,9 @@ import subprocess
 from uuid import uuid4
 
 import imageio_ffmpeg
+import pytest
 from PIL import Image
+from pydantic import SecretStr
 
 from app.video_generation_models import VideoAvatarRecord, VideoGenerationRecord
 from tests.test_auth_external import verified_identity
@@ -33,15 +35,22 @@ def upload(env, data=None, filename="portrait.png", request_id=None, **changes):
     )
 
 
+@pytest.mark.parametrize("vendor", ["wuye", "yiyuan"])
 def test_image_uses_uploaded_reference_and_requires_review_before_registration(
     video_gen,
+    vendor,
 ):
     client, _, provider, root, _, _ = video_gen
+    if vendor == "yiyuan":
+        client.app.state.settings.yiyuan_api_key = SecretStr("fixture")
     response = upload(video_gen)
     assert response.status_code == 200, response.text
     job = client.get(root + "/generation-tasks").json()[0]
     assert job["status"] == "awaiting_review"
     assert [path for _, path, _ in provider.posts] == ["/v1/videos"]
+    assert provider.posts[0][0] == vendor
+    generation = provider.posts[0][2]
+    assert generation.get("seconds", generation.get("duration")) in {"10", 10}
     sample = provider.uploads[0][0]
     assert sample.name == "cover.png" and "avatar-uploads" in str(sample)
     assert client.get(job["video_url"]).status_code == 200

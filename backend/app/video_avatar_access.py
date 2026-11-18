@@ -10,7 +10,9 @@ from .video_generation_models import VideoAvatarRecord, VideoGenerationRecord
 def avatar_scope(workspace: WorkspaceContext) -> ColumnElement[bool]:
     return or_(
         VideoAvatarRecord.source == "quanyu_public",
-        VideoAvatarRecord.id == "self-presenter-female-v1",
+        VideoAvatarRecord.id.in_(
+            ["self-presenter-female-v1", "self-presenter-female-v3-seated"]
+        ),
         exists(
             select(VideoGenerationRecord.id).where(
                 VideoGenerationRecord.avatar_id == VideoAvatarRecord.id,

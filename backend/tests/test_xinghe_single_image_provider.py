@@ -1182,6 +1182,13 @@ def test_inspiration_competitor_reference_runs_reference_planner_before_edit(
     ]
     assert "HARD COMPOSITION SKELETON" in image_request.prompt
     assert "EXECUTION PROMPT" in image_request.prompt
+    from app.reference_text_contract import instruction
+    from app.xinghe_agent import _planner_prompt
+
+    policy = instruction("zh-CN")
+    assert policy in _planner_prompt(analysis_request)
+    assert image_request.prompt.startswith(policy)
+    assert image_request.prompt.endswith(policy)
 
 
 def test_inspiration_follow_target_falls_back_to_first_product_canvas(

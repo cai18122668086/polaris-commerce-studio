@@ -809,6 +809,13 @@ class XingheSingleImageProvider:
                 "Do not redesign the product, add variants, import the source background, or invent unsupported claims.",
             )
         )
+        if any(source.role == "competitor_reference" for source in envelope.source_assets):
+            from .reference_text_contract import (
+                instruction as reference_text_instruction,
+            )
+
+            policy = reference_text_instruction(str(envelope.prompt_input.get("language") or "zh-CN"))
+            prompt = policy + "\n\n" + prompt + "\n\n" + policy
         if len(prompt.encode("utf-8")) > 24_000:
             raise SingleImageProviderError(
                 "CREATIVE_VISUAL_ANALYSIS_INVALID",

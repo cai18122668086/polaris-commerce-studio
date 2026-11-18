@@ -11239,7 +11239,10 @@ def _planner_prompt(request: PlannerRequest) -> str:
     if request.authoring_stage:
         return authoring.prompt(request)
     prompt = _planner_prompt_body(request)
-    if request.planning_profile == "reference_visual_remix":
+    if request.planning_profile == "reference_visual_remix" or (
+        request.planning_profile == "creative_image"
+        and any(source.source_role == "competitor_reference" for source in request.sources)
+    ):
         from .reference_text_contract import instruction as reference_text_instruction
 
         prompt += "\n\n" + reference_text_instruction(request.language)

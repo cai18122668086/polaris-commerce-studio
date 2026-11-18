@@ -49,8 +49,11 @@ test("new affected copies require their own verified patch", () => {
   assert.equal(evaluateAudit(report, verifiedPackages).blocking.length, 1);
 });
 
-test("metadata renumbering and range formatting do not invalidate verified code", () => {
-  for (const change of [{ source: 999 }, { range: "<4.0.8" }, { range: "<= 4.0.7" }, { range: "<4.0.8-0" }]) {
+test("metadata renumbering, equivalent ranges and narrowing do not invalidate verified code", () => {
+  for (const change of [
+    { source: 999 }, { range: "<4.0.8" }, { range: "<= 4.0.7" }, { range: "<4.0.8-0" },
+    { range: "<=2.3.2 || >=4.0.4 <4.0.8" }, { range: ">=2.0.0 <=4.0.7" },
+  ]) {
     const report = fixture();
     Object.assign(report.vulnerabilities.picomatch.via[0], change);
     assert.equal(evaluateAudit(report, verifiedPackages).blocking.length, 0);
@@ -99,6 +102,9 @@ test("incomplete reports and unresolved high findings fail closed", () => {
     { ...fixture(), error: { code: "NETWORK_ERROR" } },
     { ...fixture(), vulnerabilities: null },
     { ...fixture(), vulnerabilities: [] },
+    { auditReportVersion: 2, vulnerabilities: {
+      picomatch: { severity: "high", via: [{ ...advisory, range: "invalid-range" }], nodes: [...verifiedPackages] },
+    } },
     { auditReportVersion: 2, vulnerabilities: { missing: { severity: "high", via: [] } } },
     { auditReportVersion: 2, vulnerabilities: { missing: { severity: "high", via: ["unknown"] } } },
     { auditReportVersion: 2, vulnerabilities: { cycle: { severity: "high", via: ["cycle"] } } },

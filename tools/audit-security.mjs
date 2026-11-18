@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import semverSubset from "semver/ranges/subset.js";
 
 import { verifiedPicomatchPatches } from "../build/patch-picomatch-security.mjs";
 
 const advisoryUrl = "https://github.com/advisories/GHSA-fc5q-39xc-vjpf";
-const reviewedRanges = new Set(["<=4.0.7", "<4.0.8", "<4.0.8-0"]);
+const reviewedRange = "<4.0.8";
 
 // npm identifies packages by published version, so it also reports locally
 // backported fixes. Recognize this advisory only when every affected installed
@@ -41,7 +42,7 @@ export function evaluateAudit(report, verifiedPackages = new Set()) {
 
     for (const source of sources) {
       const reviewedScope = source.severity === "high" && typeof source.range === "string" &&
-        reviewedRanges.has(source.range.replace(/\s+/g, ""));
+        semverSubset(source.range, reviewedRange);
       if (
         source.name === "picomatch" && source.url === advisoryUrl && reviewedScope && reviewedInstallation
       ) {

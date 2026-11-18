@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
@@ -45,11 +47,12 @@ from .video_generation_runtime import (
     unconfirmed_paid_submission,
 )
 from .video_lipsync import run_lipsync
-from .video_providers import VideoProviders, safe_media_url
+from .video_providers import YIYUAN_HOST, VideoProviders, safe_media_url
 from .video_stage_timing import transition
 from .video_studio_models import VideoProjectRecord
 from .video_studio_routes import VideoWorkspace, append_version, scope
 from .video_studio_schemas import StrictVideoModel
+from .video_template_media import prepare_forward, video_info
 from .video_tts import synthesize
 from .video_voice_catalog import VOICES, official_voices, preview_path, select_tao_voice
 from .video_voice_cloning import catalog as cloned_voice_catalog
@@ -63,7 +66,8 @@ OWNED_IMAGE = (
     Path(__file__).resolve().parents[2]
     / "assets/video-studio/owned/presenter-female-v1.png"
 )
-H3_PROMPT = (
+SEATED_IMAGE = OWNED_IMAGE.with_name("presenter-female-v3-seated-20261118.png")
+LEGACY_H3_PROMPT = (
     "以 @图1 为唯一人物、服装、背景和起始姿态参考，生成15秒真人感强、安定从容的"
     "口播数字人动作底片。竖屏腰部以上，双手完整可见，固定机位，曝光光线稳定，保留"
     "真实皮肤细节和人物一致性。身体直立放松，头部、躯干与胸肩位置稳定，肩线高度几乎"
@@ -75,6 +79,30 @@ H3_PROMPT = (
     "中性位置并安静保持，方便正向首尾衔接。表情平和，口周清晰放松，嘴唇闭合或轻微"
     "张开，不主动连续说话，不张嘴喘气，不大笑，便于后续音频驱动。手不遮脸，不点头"
     "晃头，不走动、不转身、不运镜、不切镜，无配音、无文字水印。"
+)
+# The 913 line has a fixed 15-second duration; 803 accepts ten-second clips.
+H3_TEMPLATE_MODEL = "Minimax-H3-768p-803"
+YIYUAN_TEMPLATE_MODEL = "muse-video"
+LEGACY_WEB_TEMPLATE_PROMPT = (
+    "生成15秒固定机位真人口播模板，动作自然，首尾回到中性姿态，双手不遮脸，口周清晰。"
+)
+H3_PROMPT = (
+    "生成10秒真人口播动作底片。A continuous 10-second real-time recording of the "
+    "person in the reference photograph during a quiet pause before speaking. "
+    "Preserve the reference person's identity, clothes, background and composition, "
+    "including their original seated or standing posture. The person looks alert, "
+    "calm, professional and approachable, maintaining warm, steady eye contact "
+    "with the camera and a subtle relaxed closed-lip smile. Both arms and hands "
+    "remain near their original resting positions; forearms stay supported if "
+    "there is a desk. At most one tiny relaxed adjustment of the fingertips. "
+    "The body remains nearly stationary while natural breathing, tiny changes "
+    "in gaze focus and almost imperceptible facial microexpressions create "
+    "lifelike presence. Natural brief blinks, head upright, lips resting gently "
+    "together. At the end, settle into the same hand position, head position, "
+    "gaze and gentle expression as the beginning. Locked-off camera, consistent "
+    "lighting, skin texture, hair and clothes, one uninterrupted take. "
+    "No broad hand gestures, raised arms, exaggerated expressions, deliberate "
+    "nodding, speaking, camera movement, subtitles, watermark or voiceover."
 )
 
 
@@ -265,53 +293,31 @@ def _process_generation(
                     if job.details.get("uploaded_video_path")
                     else settings.video_media_dir / "jobs" / job.id / "template.mp4"
                 )
-                if not job.details.get("uploaded_video_path"):
-                    if not job.provider_task_id:
-                        if not job.details.get("reference_url"):
-                            set_stage(session, job, "uploading_reference")
-                            ref = provider.upload(
-                                Path(
-                                    job.details.get("reference_path", str(OWNED_IMAGE))
-                                ),
-                                "image/png",
-                                "digital_human_model",
-                            )
-                            set_stage(
-                                session, job, "reference_ready", reference_url=ref
-                            )
-                        set_stage(session, job, "h3_submitting")
-                        data = provider.request(
-                            "wuye",
-                            "POST",
-                            "/v1/videos",
-                            json={
-                                "model": "Minimax-H3-768p-913",
-                                "prompt": job.details["prompt"],
-                                "duration": 15,
-                                "ratio": "9:16",
-                                "resolution": "768p",
-                                "referenceImages": [job.details["reference_url"]],
-                            },
-                        )
-                        if not data.get("id"):
-                            raise ApiError(
-                                502,
-                                "VIDEO_PROVIDER_OUTCOME_UNKNOWN",
-                                "生成结果未能确认。",
-                            )
-                        job.provider_task_id = data["id"]
-                        set_stage(session, job, "h3_generating")
-                    if not poll_until_complete(session, job, provider, "wuye"):
-                        return
-                    if not local.exists():
-                        set_stage(session, job, "downloading_template")
-                        provider.download(
-                            "https://www.wuyeai.cn/v1/videos/"
-                            + provider_task_id(job)
-                            + "/content",
-                            local,
-                            vendor="wuye",
-                        )
+                if (
+                    not job.details.get("uploaded_video_path")
+                    and not local.is_file()
+                    and not prepare_template_preview(
+                        session, job, settings, provider, local
+                    )
+                ):
+                    return
+                if job.details.get(
+                    "template_requested_seconds"
+                ) == 10 and not job.details.get("template_duration_seconds"):
+                    info = video_info(local)
+                    source_seconds = info["duration"]
+                    if source_seconds > 10.05:
+                        bounded = local.with_name("template-10s.mp4")
+                        prepare_forward(local, bounded, 10)
+                        bounded.replace(local)
+                        info = video_info(local)
+                    set_stage(
+                        session,
+                        job,
+                        job.stage,
+                        template_duration_seconds=info["duration"],
+                        template_source_seconds=source_seconds,
+                    )
                 if not job.details.get("review_approved"):
                     set_stage(session, job, "awaiting_review", result_path=str(local))
                     job.status = "awaiting_review"
@@ -503,6 +509,124 @@ def _process_generation(
             session.commit()
 
 
+def submit_template(
+    session: Session,
+    job: VideoGenerationRecord,
+    provider: VideoProviders,
+    vendor: str,
+    **routing: Any,
+) -> None:
+    prompt = job.details["prompt"]
+    if prompt in {LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT}:
+        prompt = H3_PROMPT
+    reference_url = job.details["reference_url"]
+    model = YIYUAN_TEMPLATE_MODEL if vendor == "yiyuan" else H3_TEMPLATE_MODEL
+    if vendor == "yiyuan":
+        body = {
+            "model": model,
+            "prompt": prompt,
+            "seconds": "10",
+            "aspect_ratio": "9:16",
+            "input_reference": reference_url,
+        }
+    else:
+        body = {
+            "model": model,
+            "prompt": prompt,
+            "duration": 10,
+            "ratio": "9:16",
+            "resolution": "768p",
+            "referenceImages": [reference_url],
+        }
+    set_stage(
+        session,
+        job,
+        "h3_submitting",
+        template_provider=vendor,
+        template_model=model,
+        template_requested_seconds=10,
+        template_prompt=prompt,
+        **routing,
+    )
+    task_id = provider.request(vendor, "POST", "/v1/videos", json=body).get("id")
+    if not task_id or (
+        vendor == "yiyuan"
+        and (
+            not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", task_id)
+        )
+    ):
+        raise ApiError(502, "VIDEO_PROVIDER_OUTCOME_UNKNOWN", "生成结果未能确认。")
+    job.provider_task_id = task_id
+    set_stage(session, job, "h3_generating")
+
+
+def template_failover_allowed(error: ApiError) -> bool:
+    if error.code == "VIDEO_PROVIDER_TASK_FAILED":
+        return True
+    details = error.details or {}
+    return error.code == "VIDEO_PROVIDER_REJECTED" and (
+        details.get("upstream_status") in {400, 401, 402, 403, 404, 422, 429}
+        or details.get("model_unavailable") is True
+    )
+
+
+def prepare_template_preview(
+    session: Session,
+    job: VideoGenerationRecord,
+    settings: Settings,
+    provider: VideoProviders,
+    target: Path,
+) -> bool:
+    vendor = job.details.get("template_provider") or (
+        "yiyuan" if not job.provider_task_id and settings.yiyuan_api_key else "wuye"
+    )
+    if not job.provider_task_id and not job.details.get("reference_url"):
+        set_stage(session, job, "uploading_reference")
+        reference_url = provider.upload(
+            Path(job.details.get("reference_path", str(OWNED_IMAGE))),
+            "image/png",
+            "digital_human_model",
+        )
+        set_stage(session, job, "reference_ready", reference_url=reference_url)
+    if job.stage not in {
+        "provider_completed",
+        "downloading_template",
+        "awaiting_review",
+    }:
+        try:
+            if not job.provider_task_id:
+                submit_template(session, job, provider, vendor)
+            if not poll_until_complete(session, job, provider, vendor):
+                return False
+        except ApiError as error:
+            if (
+                vendor != "yiyuan"
+                or not settings.wuye_api_key
+                or not template_failover_allowed(error)
+            ):
+                raise
+            primary_task_id = job.provider_task_id
+            job.provider_task_id = None
+            vendor = "wuye"
+            submit_template(
+                session,
+                job,
+                provider,
+                vendor,
+                template_primary_task_id=primary_task_id,
+                template_failover_reason=error.code,
+            )
+            if not poll_until_complete(session, job, provider, vendor):
+                return False
+    set_stage(session, job, "downloading_template")
+    host = YIYUAN_HOST if vendor == "yiyuan" else "www.wuyeai.cn"
+    task_id = quote(provider_task_id(job), safe="")
+    provider.download(
+        f"https://{host}/v1/videos/{task_id}/content", target, vendor=vendor
+    )
+    return True
+
+
 def poll_until_complete(
     session: Session, job: VideoGenerationRecord, provider: VideoProviders, vendor: str
 ) -> bool:
@@ -510,11 +634,7 @@ def poll_until_complete(
         guard_run(session)
         job.updated_at = utc_now()
         session.commit()
-        path = (
-            "/v1/videos/" + provider_task_id(job)
-            if vendor == "wuye"
-            else "/api/status/" + provider_task_id(job)
-        )
+        path = "/v1/videos/" + quote(provider_task_id(job), safe="")
         try:
             data = provider.request(vendor, "GET", path)
         except ApiError:
@@ -529,7 +649,7 @@ def poll_until_complete(
                 provider_result=data.get("result", {}),
             )
             return True
-        if status in {"failed", "error", "cancelled"}:
+        if status in {"failed", "error", "cancelled", "canceled"}:
             raise ApiError(502, "VIDEO_PROVIDER_TASK_FAILED", "供应商任务失败。")
         time.sleep(5)
     job.status = "awaiting_resume"
@@ -578,20 +698,26 @@ def avatars(
             row.name, row.video_url, row.active = model["model_name"], url, True
             session.add(row)
         session.commit()
-    if (
-        OWNED_IMAGE.exists()
-        and session.get(VideoAvatarRecord, "self-presenter-female-v1") is None
+    for avatar_id, name, image in (
+        ("self-presenter-female-v1", "清禾·原创形象", OWNED_IMAGE),
+        ("self-presenter-female-v3-seated", "知禾·专业主播", SEATED_IMAGE),
     ):
-        session.add(
-            VideoAvatarRecord(
-                id="self-presenter-female-v1",
-                source="self_owned",
-                name="清禾·原创形象",
-                gender="女",
-                cover_path=str(OWNED_IMAGE),
+        if image.exists() and session.get(VideoAvatarRecord, avatar_id) is None:
+            session.add(
+                VideoAvatarRecord(
+                    id=avatar_id,
+                    source="self_owned",
+                    name=name,
+                    gender="女",
+                    cover_path=str(image),
+                )
             )
-        )
-        session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                if session.get(VideoAvatarRecord, avatar_id) is None:
+                    raise
     rows = session.scalars(
         select(VideoAvatarRecord)
         .where(VideoAvatarRecord.active.is_(True), avatar_scope(workspace))
@@ -832,6 +958,13 @@ def submit_generation(
 ) -> dict[str, Any]:
     require_workspace_write(workspace)
     fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
+    accepted_fingerprints = {fingerprint}
+    if "prompt" not in body.model_fields_set:
+        for legacy_prompt in (LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT):
+            legacy_body = body.model_copy(update={"prompt": legacy_prompt})
+            accepted_fingerprints.add(
+                hashlib.sha256(legacy_body.model_dump_json().encode()).hexdigest()
+            )
     old = session.scalar(
         select(VideoGenerationRecord).where(
             VideoGenerationRecord.workspace_id == workspace.workspace_id,
@@ -840,7 +973,7 @@ def submit_generation(
         )
     )
     if old:
-        if old.request_hash != fingerprint:
+        if old.request_hash not in accepted_fingerprints:
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求标识已用于其他内容。")
         return job_response(old)
     if not request.app.state.settings.video_providers_enabled:
@@ -886,7 +1019,6 @@ def submit_generation(
             )
         details["prompt"] = body.prompt
         details["reference_path"] = avatar.cover_path or str(OWNED_IMAGE)
-        details["h3_model"] = "Minimax-H3-768p-913"
     else:
         project = session.scalar(
             select(VideoProjectRecord)
@@ -1013,7 +1145,7 @@ def submit_generation(
                 VideoGenerationRecord.request_id == str(body.request_id),
             )
         )
-        if not old or old.request_hash != fingerprint:
+        if not old or old.request_hash not in accepted_fingerprints:
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求冲突。") from None
         return job_response(old)
     background.add_task(

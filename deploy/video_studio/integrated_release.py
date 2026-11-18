@@ -154,18 +154,19 @@ def prepare(root, revision, assets, backend, frontend):
         if not runtime.get(key):
             runtime[key] = shared[key]
     supplied = json.load(sys.stdin)
-    allowed = {
+    required_credentials = {
         "POLARIS_WUYE_API_KEY",
         "POLARIS_QUANYU_API_KEY",
         "POLARIS_TAO_API_KEY",
         "POLARIS_VIDEO_SCRIPT_API_KEY",
     }
-    if set(supplied) - allowed:
+    optional_credentials = {"POLARIS_YIYUAN_API_KEY"}
+    if set(supplied) - (required_credentials | optional_credentials):
         raise ValueError("Unsupported credential override")
     for key, value in supplied.items():
         if not runtime.get(key) and value:
             runtime[key] = value
-    for key in allowed:
+    for key in required_credentials:
         if not runtime.get(key):
             raise ValueError("Required video credential missing: " + key)
     runtime.update(
@@ -248,6 +249,7 @@ def prepare(root, revision, assets, backend, frontend):
         "com.polaris.video.revision": revision,
     }
     worker = copy.deepcopy(api)
+    worker["environment"].pop("POLARIS_YIYUAN_API_KEY", None)
     worker["command"] = [
         "python",
         "-m",

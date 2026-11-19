@@ -1,5 +1,8 @@
 """Default music for suites with an approved soundtrack."""
 
+import json
+import math
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
@@ -159,7 +162,42 @@ def mix_suite_music(
         raise ValueError("Approved suite music asset is missing or changed")
     duration = duration_ms / 1000
     entrance = min(track.entrance, max(0, duration - 1.5))
-    gain = track.gain_db - (MUSIC_REDUCTION_DB if preference == "lower" else 0)
+    root.mkdir(parents=True, exist_ok=True)
+    meter = run(
+        [
+            settings.video_editing_ffmpeg,
+            "-nostdin",
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            str(speech),
+            "-t",
+            str(duration),
+            "-vn",
+            "-af",
+            "loudnorm=print_format=json",
+            "-f",
+            "null",
+            "-",
+        ],
+        root,
+        settings,
+        guard,
+        "measure_suite_speech",
+    )
+    match = re.search(r'\{\s*"input_i".*?\}', meter.read_text("utf8"), re.DOTALL)
+    if match is None:
+        raise ValueError("Suite speech loudness could not be measured")
+    measured = float(json.loads(match[0])["input_i"])
+    speech_lufs = measured if math.isfinite(measured) else None
+    # The approved beds were fitted against normal conversational speech.
+    # Quiet recordings need the bed lowered before the syllable-level ducking.
+    speech_trim = min(0, measured + 20) if speech_lufs is not None else 0
+    gain = (
+        track.gain_db
+        + speech_trim
+        - (MUSIC_REDUCTION_DB if preference == "lower" else 0)
+    )
     # Keep the original speech separate as the compressor's detector. Cue peaks
     # do not trigger ducking and tutorial holds let the bed continue underneath.
     fade_in = 0.25 if template_id == "bihuo-33-v1" else 0.42
@@ -178,7 +216,6 @@ def mix_suite_music(
         "[master][ducked]amix=inputs=2:duration=first:normalize=0,"
         "alimiter=limit=0.97:level=0:latency=1[audio]"
     )
-    root.mkdir(parents=True, exist_ok=True)
     final = root / "final.mp4"
     run(
         [
@@ -224,5 +261,7 @@ def mix_suite_music(
         "source_start_ms": round(track.offset * 1000),
         "entry_ms": round(entrance * 1000),
         "gain_db": round(gain, 2),
+        "speech_lufs": speech_lufs,
+        "speech_level_trim_db": round(speech_trim, 2),
         "speech_ducking": True,
     }

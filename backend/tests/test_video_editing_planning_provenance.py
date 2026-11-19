@@ -21,6 +21,7 @@ from app.video_editing_planning_provenance import (
     verify_gateway_planning,
     verify_render_provenance,
 )
+from app.video_editing_sound_palettes import PALETTES
 from app.video_editing_task_models import (
     EditingArtifactRecord,
     EditingNativePlanRecord,
@@ -288,7 +289,9 @@ def test_overlay_candidate_endpoint_uses_frozen_words_and_replays_without_model(
             == sound["fx"][-1]["event_path"]
             == "/events/mark/0"
         )
-        assert sound["fx"][0]["asset_id"] == sound["fx"][-1]["asset_id"]
+        repeated_assets = {sound["fx"][0]["asset_id"], sound["fx"][-1]["asset_id"]}
+        assert len(repeated_assets) == 2
+        assert repeated_assets <= {cue[0] for cue in PALETTES["news"]["emphasis"]}
 
 
 def test_current_rules_can_save_a_distinct_plan_from_the_same_capture(

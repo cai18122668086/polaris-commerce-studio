@@ -141,6 +141,19 @@ def load_transcript(
 
         binding = confirmed_input(snapshot, prepared)
         if binding:
+            previous = snapshot.get("prior_confirmed_transcript")
+            if previous and not snapshot["checkpoint"].get("transcript"):
+                cached_id, cached = previous
+                return load_confirmed(
+                    cached_id,
+                    root,
+                    prepared,
+                    {**snapshot, "checkpoint": {"transcript": cached}},
+                    binding,
+                    settings,
+                    guard,
+                    stage,
+                )
             return load_confirmed(
                 task_id, root, prepared, snapshot, binding, settings, guard, stage
             )
@@ -466,6 +479,53 @@ def stage_plan_materials(
         raise EditingFailure("EDITING_MATERIAL_CHANGED") from error
 
 
+def prior_confirmed_transcript(
+    session: Session,
+    row: EditingTaskRecord,
+    source: EditingSourceRecord,
+    settings: Settings,
+) -> tuple[str, dict] | None:
+    previous = session.execute(
+        select(EditingTaskRecord, EditingArtifactRecord)
+        .join(
+            EditingSourceRecord, EditingTaskRecord.source_id == EditingSourceRecord.id
+        )
+        .join(
+            EditingArtifactRecord, EditingArtifactRecord.task_id == EditingTaskRecord.id
+        )
+        .where(
+            EditingTaskRecord.id != row.id,
+            EditingTaskRecord.workspace_id == row.workspace_id,
+            EditingTaskRecord.owner_user_id == row.owner_user_id,
+            EditingTaskRecord.project_id == row.project_id,
+            EditingTaskRecord.status == "completed",
+            EditingTaskRecord.options["mode"].as_string() == "transcript",
+            EditingTaskRecord.options["language"].as_string()
+            == row.options.get("language", "zh"),
+            EditingSourceRecord.kind == "generation_task",
+            EditingSourceRecord.generation_task_id == source.generation_task_id,
+            EditingSourceRecord.confirmed_version_id == source.confirmed_version_id,
+            EditingSourceRecord.media_sha256 == source.media_sha256,
+            EditingArtifactRecord.role == "transcript",
+        )
+        .order_by(EditingTaskRecord.created_at.desc())
+        .limit(8)
+    )
+    for task, artifact in previous:
+        cached = task.checkpoint.get("transcript") or {}
+        if (
+            cached.get("confirmed_alignment_evidence")
+            and cached.get("path") == artifact.path
+            and cached.get("sha256") == artifact.sha256
+            and verified_delivery_file(
+                artifact, (settings.video_editing_tasks_dir / task.id).resolve()
+            )
+        ):
+            # load_confirmed checks the model, evidence, script and prepared audio.
+            return task.id, cached
+    return None
+
+
 def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) -> None:
     token = str(uuid4())
     now = datetime.now(UTC)
@@ -554,6 +614,16 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             and version.project_id == source.project_id
             and version.kind == "confirmed"
         )
+        if (
+            source.kind == "generation_task"
+            and snapshot["reference"]
+            and row.options.get("mode") in {"transcript", "subtitles"}
+            and not row.options.get("transcript_revision_id")
+            and not row.checkpoint.get("transcript")
+        ):
+            snapshot["prior_confirmed_transcript"] = prior_confirmed_transcript(
+                session, row, source, settings
+            )
         snapshot["confirmed_writing_origin"] = (
             version.writing_origin if version else None
         )
@@ -942,7 +1012,10 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     transcript_files["source_receipt"] = delivery_file(
                         root / "source-receipt.json"
                     )
-                if correction:
+                if (
+                    correction
+                    or transcript.confirmed_alignment.get("status") == "aligned"
+                ):
                     transcript_files["alignment_receipt"] = delivery_file(
                         root / "alignment-receipt.json"
                     )
@@ -1062,6 +1135,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
                     root / "tutorial",
                     settings,
                     guard,
+                    retain_native_mix=validation.get("native_mix_validation")
+                    == "passed",
                 )
                 validation = {
                     **tutorial_validation,

@@ -240,6 +240,7 @@ from .video_editing_question_card import (
     question_card_b_input,
 )
 from .video_editing_role_scene import ROLE_IMAGES, bind_role_scene
+from .video_editing_sound_palettes import overlay_family, select_sound
 from .video_editing_story_panels import (
     PANEL_GROUPS,
     TRIPTYCH,
@@ -3055,8 +3056,9 @@ def _overlay_sounds(
     paths: tuple[str | None, ...],
     *,
     has_material: bool = False,
+    occurrences: dict[str, int] | None = None,
 ) -> list[NativeSoundCue]:
-    if template_id not in TEMPLATE_TRACKS:
+    if template_id not in TEMPLATE_TRACKS and occurrences is None:
         return [
             _entry_sound(beat, anchors, transcript.duration_ms, avoided, path)
             for path in paths
@@ -3098,6 +3100,29 @@ def _overlay_sounds(
             ):
                 continue
             extra_times.append(anchor_ms)
+        if template_id in TEMPLATE_TRACKS:
+            sound = template_sound(
+                template_id,
+                beat.group_id,
+                material=path in primary and has_material,
+                index=index,
+                opening=anchor_ms < 6000,
+            )
+        else:
+            action = _palette_action(
+                beat.group_id, path, has_material and path in primary
+            )
+            sound = None
+            if action is not None:
+                occurrence = occurrences.get(action, 0)
+                occurrences[action] = occurrence + 1
+                sound = select_sound(
+                    overlay_family(template_id),
+                    action,
+                    transcript.source_sha256,
+                    occurrence,
+                    avoided=avoided,
+                )
         cues.append(
             _entry_sound(
                 beat,
@@ -3105,16 +3130,28 @@ def _overlay_sounds(
                 transcript.duration_ms,
                 avoided,
                 path,
-                default=template_sound(
-                    template_id,
-                    beat.group_id,
-                    material=path in primary and has_material,
-                    index=index,
-                    opening=anchor_ms < 6000,
-                ),
+                default=sound,
             )
         )
     return cues
+
+
+def _palette_action(group: str, path: str, has_material: bool) -> str | None:
+    if group in {JUDGMENT_GROUP, ROLE_CHAIN_GROUP, WHY_GROUP}:
+        return None  # Original evidence and narrative effects have specific sounds.
+    if group in {QUESTION_GROUP, QUESTION_CARD_GROUP} or "question" in path:
+        return "question"
+    if has_material or "image_in" in path:
+        return "media"
+    if path == VISIBLE_SHOT_START or group in YY_OPENING_ALL_GROUPS:
+        return "opening"
+    if "submitted" in path or "select" in path:
+        return "click"
+    if "type" in path or group == PAPER_GROUP:
+        return "type"
+    if any(word in path for word in ("emphasis", "keyword", "focus", "mark")):
+        return "emphasis"
+    return "text"
 
 
 def build_text_effect_replacement(
@@ -3183,6 +3220,7 @@ def build_overlay_recipes(
         if row.get("kind") in {"image", "video"}
         and row.get("sha256") != transcript.source_sha256
     }
+    occurrences: dict[str, int] = {}
     for beat in beats:
         group = groups[beat.group_id]
         entries[beat.id], anchors, paths = _overlay_entry(
@@ -3203,6 +3241,7 @@ def build_overlay_recipes(
                 avoided,
                 paths,
                 has_material=bool(material_ids.intersection(beat.asset_ids)),
+                occurrences=occurrences,
             )
         )
     music_start: SoundBoundary = "episode_start"

@@ -751,6 +751,7 @@ def render_tutorial(
     guard: Callable,
     *,
     preview_at: float | None = None,
+    retain_native_mix: bool = False,
 ) -> tuple[Path, dict]:
     if sha256(source) != transcript.source_sha256:
         raise ValueError("Tutorial narration source changed")
@@ -930,7 +931,7 @@ def render_tutorial(
     voice_input = 5 if layout.presenter else 4
     voice_map = f"{voice_input}:a:0"
     sound = None
-    if template_id in TEMPLATE_TRACKS:
+    if retain_native_mix or template_id in TEMPLATE_TRACKS:
         native = decode_voice(
             base,
             transcript.duration_ms,

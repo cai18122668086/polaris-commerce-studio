@@ -6,12 +6,12 @@ import { editingMusicLabels, type EditingMusicPreference } from "@/features/vide
 import { Dialog } from "./studio-primitives";
 import flow from "./editing-flow.module.css";
 
-export function EditingMusicPicker({ value, onChange, disabled, voiceOnly = false }: {
-  value: EditingMusicPreference; onChange: (value: EditingMusicPreference) => void; disabled?: boolean; voiceOnly?: boolean;
+export function EditingMusicPicker({ value, onChange, disabled, voiceOnly = false, templateSound = false }: {
+  value: EditingMusicPreference; onChange: (value: EditingMusicPreference) => void; disabled?: boolean; voiceOnly?: boolean; templateSound?: boolean;
 }) {
   const [opened, setOpened] = useState(false);
   const [draft, setDraft] = useState(value);
-  if (voiceOnly) return <div className={flow.sourceOption}><h3><Music2 size={15} />音乐</h3><label className={flow.voiceOnly}><input type="radio" name="apple-voice-only" checked readOnly />口播原声</label></div>;
+  if (voiceOnly) return <div className={flow.sourceOption}><h3><Music2 size={15} />音乐</h3><label className={flow.voiceOnly}><input type="radio" name="apple-voice-only" checked readOnly />{templateSound ? "口播与模板音效" : "口播原声"}</label></div>;
   return <div className={flow.sourceOption}>
     <h3><Music2 size={15} />音乐</h3>
     <button type="button" className={flow.optionPicker} disabled={disabled} onClick={() => { setDraft(value); setOpened(true); }}>

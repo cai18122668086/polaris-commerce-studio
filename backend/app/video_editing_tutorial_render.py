@@ -23,6 +23,7 @@ from .motion_library import atomic_json, read_json, sha256
 from .video_editing_captioning import measured_caption_rows, text_boundaries
 from .video_editing_contracts import Transcript
 from .video_editing_pipeline import decode_av, probe, run
+from .video_editing_template_audio import TEMPLATE_TRACKS
 from .video_editing_tutorial_plan import (
     RecordingActivity,
     digest,
@@ -31,6 +32,7 @@ from .video_editing_tutorial_plan import (
     source_to_output,
     timestamp_expression,
 )
+from .video_editing_tutorial_sound import recording_sound
 from .video_editing_tutorial_surfaces import (
     SIZE,
     Surface,
@@ -45,6 +47,7 @@ VERSION = "tengli.tutorial-presentation/5"
 LARGE_VIEW = (0, 162, 1080, 1280)
 CAPTION_SIZE = 62
 CAPTION_WIDTH = SIZE[0] - 2 * (68 + 5)
+RECORDING_TIMESCALE = 15360
 
 
 def recording_activity(
@@ -186,15 +189,19 @@ def _recording_graph(
     normal = f"{fit(nw, nh)},pad={wc}:{hc}:0:0{pad}"
     large = crop() + fit(wc, hc)
     if normal_frames == 0:
-        return f"{prefix},{large}[full]"
-    if normal_frames == frames:
-        return f"{prefix},{normal}[full]"
-    return (
-        f"{prefix},split[a][b];"
-        f"[a]trim=end_frame={normal_frames},setpts=PTS-STARTPTS,{normal}[small];"
-        f"[b]trim=start_frame={normal_frames},setpts=PTS-STARTPTS,{large}[large];"
-        "[small][large]concat=n=2:v=1:a=0[full]"
-    )
+        graph = f"{prefix},{large}"
+    elif normal_frames == frames:
+        graph = f"{prefix},{normal}"
+    else:
+        graph = (
+            f"{prefix},split[a][b];"
+            f"[a]trim=end_frame={normal_frames},setpts=PTS-STARTPTS,{normal}[small];"
+            f"[b]trim=start_frame={normal_frames},setpts=PTS-STARTPTS,{large}[large];"
+            "[small][large]concat=n=2:v=1:a=0"
+        )
+    # concat can emit a microsecond time base. The subsequent demuxer playlist
+    # requires all recordings to use the same clock.
+    return f"{graph},settb=expr=1/30,setpts=N[full]"
 
 
 def prepare_recording(
@@ -223,6 +230,7 @@ def prepare_recording(
             "frames": frames,
             "normal_frames": normal_frames,
             "large_crop": step["large_crop"],
+            "recording_timescale": RECORDING_TIMESCALE,
             "version": VERSION,
             "viewport_size": viewport_size,
             "background": layout.pad_color,
@@ -258,6 +266,10 @@ def prepare_recording(
             "[full]",
             "-frames:v",
             str(frames),
+            "-r",
+            "30",
+            "-video_track_timescale",
+            str(RECORDING_TIMESCALE),
             "-an",
             "-c:v",
             "libx264",
@@ -278,10 +290,13 @@ def prepare_recording(
         "tutorial_material",
     )
     info = probe(context, settings)
-    if int(info["streams"][0].get("nb_frames", 0)) != frames:
-        raise ValueError(
-            "Prepared tutorial recording ended before its full source range"
-        )
+    video = info["streams"][0]
+    if (
+        int(video.get("nb_frames", 0)) != frames
+        or video["time_base"] != f"1/{RECORDING_TIMESCALE}"
+        or video["duration_ts"] != frames * (RECORDING_TIMESCALE // 30)
+    ):
+        raise ValueError("Prepared tutorial recording has an invalid playback clock")
     value = {
         "context": str(context),
         "context_sha256": sha256(context),
@@ -324,9 +339,15 @@ def _voice_chunks(reader: wave.Wave_read, clock: dict) -> Iterator[bytes]:
 
 
 def decode_voice(
-    source: Path, duration_ms: int, root: Path, settings: Any, guard: Callable
+    source: Path,
+    duration_ms: int,
+    root: Path,
+    settings: Any,
+    guard: Callable,
+    *,
+    filename: str = "source-voice.wav",
 ) -> Path:
-    baseline = root / "source-voice.wav"
+    baseline = root / filename
     run(
         [
             settings.video_editing_ffmpeg,
@@ -397,8 +418,15 @@ def quiet_boundaries(
     return result
 
 
-def prepare_voice(baseline: Path, clock: dict, root: Path, guard: Callable) -> Path:
-    proof = root / "narration.wav"
+def prepare_voice(
+    baseline: Path,
+    clock: dict,
+    root: Path,
+    guard: Callable,
+    *,
+    filename: str = "narration.wav",
+) -> Path:
+    proof = root / filename
     with wave.open(str(baseline)) as original, wave.open(str(proof), "wb") as output:
         output.setparams(original.getparams())
         for chunk in _voice_chunks(original, clock):
@@ -723,6 +751,8 @@ def render_tutorial(
     guard: Callable,
     *,
     preview_at: float | None = None,
+    retain_native_mix: bool = False,
+    mix_native_sound: Callable[[Path, dict], Path] | None = None,
 ) -> tuple[Path, dict]:
     if sha256(source) != transcript.source_sha256:
         raise ValueError("Tutorial narration source changed")
@@ -900,15 +930,36 @@ def render_tutorial(
     final = root / "tutorial-final.mp4"
     voice = prepare_voice(baseline_voice, clock, root, guard)
     voice_input = 5 if layout.presenter else 4
+    voice_map = f"{voice_input}:a:0"
+    sound = None
+    audio_base = mix_native_sound(base, clock) if mix_native_sound else base
+    if mix_native_sound or retain_native_mix or template_id in TEMPLATE_TRACKS:
+        native = decode_voice(
+            audio_base,
+            transcript.duration_ms,
+            root,
+            settings,
+            guard,
+            filename="native-mix-source.wav",
+        )
+        voice = prepare_voice(native, clock, root, guard, filename="native-mix.wav")
+        fx, sound = recording_sound(clock, assets, root, settings, guard)
+        args += ["-i", str(voice), "-i", str(fx)]
+        graph += [
+            f"[{voice_input + 1}:a:0]aformat=channel_layouts=stereo[recording_fx]",
+            f"[{voice_input}:a:0][recording_fx]amix=inputs=2:duration=first:normalize=0,"
+            "alimiter=limit=0.97:level=0:latency=1[mixed_voice]",
+        ]
+        voice_map = "[mixed_voice]"
+    else:
+        args += ["-i", str(voice)]
     args += [
-        "-i",
-        str(voice),
         "-filter_complex",
         ";".join(graph),
         "-map",
         f"[{current}]",
         "-map",
-        f"{voice_input}:a:0",
+        voice_map,
         "-t",
         str(duration),
         "-c:v",
@@ -934,7 +985,7 @@ def render_tutorial(
     run(args, root, settings, guard, "tutorial_compose")
     return final, validate_tutorial(
         final,
-        base,
+        audio_base,
         source,
         transcript,
         shared,
@@ -944,6 +995,7 @@ def render_tutorial(
         root,
         settings,
         guard,
+        sound=sound,
     )
 
 
@@ -959,6 +1011,8 @@ def validate_tutorial(
     root: Path,
     settings: Any,
     guard: Callable,
+    *,
+    sound: dict | None = None,
 ) -> dict:
     decode_av(final, root, settings, guard, "decode_tutorial")
     info = probe(final, settings)
@@ -996,6 +1050,7 @@ def validate_tutorial(
         "model_calls": 0,
         "narration_validation": voice,
         "material_view_validation": views,
+        **({"recording_sound": sound} if sound is not None else {}),
         "visual_review": "unreviewed",
         "listening_review": "unreviewed",
     }

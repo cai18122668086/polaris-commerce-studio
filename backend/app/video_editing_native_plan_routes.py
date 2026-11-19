@@ -92,6 +92,7 @@ def native_music_options(
             row.recipes.get("sound"),
             transcript,
             row.choice_snapshot,
+            tasks_root=settings.video_editing_tasks_dir,
         )
     except (ValueError, KeyError, OSError) as error:
         raise ApiError(

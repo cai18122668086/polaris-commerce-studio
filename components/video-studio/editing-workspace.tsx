@@ -134,6 +134,9 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const candidates = jobs.filter(job => job.project_id === projectId && job.kind === "lipsync" && job.status === "completed");
   const selected = sourceChoice ?? candidates.find(job => job.id === requestedGeneration)?.id ?? "";
   const selectedGeneration = candidates.find(job => job.id === selected);
+  const referenceConfirmed = !!selectedGeneration?.confirmed_version_id
+    && selectedGeneration.snapshot?.draft.drive !== "audio"
+    && !!selectedGeneration.snapshot?.draft.text;
   const initializedReference = useRef("");
   useEffect(() => {
     if (!selectedGeneration || initializedReference.current === selectedGeneration.id) return;
@@ -317,6 +320,11 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       setFile(undefined);
       setSubtitles(previous.options.source_subtitles);
     }
+    if (previous?.source_origin?.kind === "generation_task" && previous.source_origin.generation_task_id) {
+      setSelected(previous.source_origin.generation_task_id);
+      setFile(undefined);
+      setSubtitles(previous.options.source_subtitles);
+    }
     if (previous) setReferenceText(previous.options.reference_script || "");
     setPlanningTask(taskId);
     openPlanning();
@@ -327,9 +335,23 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     if (nativePanel.current) nativePanel.current.open = true;
     (document.getElementById(`editing-native-plan-${selection.planId}`) ?? document.getElementById("editing-native-plans"))?.scrollIntoView({ block: "start" });
   };
-  const transcriptReady = tasks.some(task => task.id === planningTask && task.status === "completed" && matchesReferenceScript(task.options, referenceText) && task.artifacts.some(a => a.role === "transcript"));
-  const sourceTask = tasks.find(task => task.id === planningTask);
+  const reusableAlignment = referenceConfirmed ? tasks.find(task =>
+    task.status === "completed"
+    && task.options.mode === "transcript"
+    && !task.options.transcript_revision_id
+    && task.options.source_subtitles === subtitles
+    && matchesReferenceScript(task.options, referenceText)
+    && task.source_origin?.kind === "generation_task"
+    && task.source_origin.generation_task_id === selectedGeneration?.id
+    && task.source_origin.confirmed_version_id === selectedGeneration?.confirmed_version_id
+    && task.artifacts.some(artifact => artifact.role === "transcript")
+    && task.artifacts.some(artifact => artifact.role === "alignment_receipt")
+  ) : undefined;
+  const sourceTask = tasks.find(task => task.id === planningTask) ?? reusableAlignment;
+  const transcriptReady = sourceTask?.status === "completed" && matchesReferenceScript(sourceTask.options, referenceText) && sourceTask.artifacts.some(a => a.role === "transcript");
+  const activeTranscriptId = transcriptReady ? sourceTask.id : "";
   const recognizing = !!sourceTask && ["queued", "running"].includes(sourceTask.status);
+  const recognitionLabel = referenceConfirmed ? "正在对齐原稿" : "正在识别口播";
   useEffect(() => {
     if (!continueAfterRecognition || !transcriptReady || primaryState?.phase !== "prepare" || primaryState.disabled) return;
     let live = true;
@@ -377,7 +399,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     begin();
   }, [saved, busy, begin]);
   const historyTasks = tasks.filter(task => (task.options.mode !== "transcript" || task.id === focusedTaskId) && (!historyQuery.trim() || `${task.template_name || ""} ${stageLabel[task.stage] || task.status} ${new Date(task.created_at).toLocaleDateString("zh-CN")}`.includes(historyQuery.trim())));
-  const actionLabel = busy ? "正在提交…" : recognizing ? "正在识别口播…" : primaryState?.phase === "waiting" ? primaryState.label : primaryState?.phase === "recover" ? "继续处理已保存结果" : primaryState?.phase === "rendering" ? "查看剪辑进度" : transcriptReady && primaryState?.phase === "preview" ? "查看剪辑结果" : "开始智能剪辑";
+  const actionLabel = busy ? "正在提交…" : recognizing ? `${recognitionLabel}…` : primaryState?.phase === "waiting" ? primaryState.label : primaryState?.phase === "recover" ? "继续处理已保存结果" : primaryState?.phase === "rendering" ? "查看剪辑进度" : transcriptReady && primaryState?.phase === "preview" ? "查看剪辑结果" : "开始智能剪辑";
   return <section className={`${styles.panel} ${flow.workbench} ${compact ? flow.compact : ""}`} aria-label="口播剪辑">
     <EditingTemplateGallery key={`gallery:${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={saved ? projectId : ""} selected={template?.id || ""} onRestore={chooseTemplate} sampleRevision={tasks.flatMap(task => task.artifacts.filter(a => a.role === "final").map(a => a.sha256)).join(",")} onSelect={chooseTemplate} />
     <section id="editing-source" className={`${flow.step} ${flow.source}`} aria-label="准备口播"><div className={flow.sourceHeading}><h2>剪辑</h2><label className={flow.uploadButton}>手动上传视频<input ref={sourceUpload} disabled={busy || recognizing} aria-label="上传口播视频" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => { cancelAutomatic(); setSelected("upload"); setFile(event.target.files?.[0]); setPlanningTask(""); setReferenceVersion(""); setReferenceText(""); setSubtitles("none"); }} /></label></div>
@@ -405,19 +427,19 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       <p className={styles.note}>{confirmedVersions === "unavailable" ? "暂时无法读取确认稿。重新选择上传原片可重试。" : confirmedVersions === undefined && saved ? "正在读取本项目确认稿。" : "参考稿用于回查写稿来源，字幕和词级时间轴以原片实际口播为准。"}</p>
       </details>
     </>}
-    {recognizing && <p role="status">{stageLabel[sourceTask?.stage || ""] || "正在识别口播"}，完成后自动检查素材。</p>}
-    {sourceTask?.status === "failed" && <p role="alert" className={styles.error}>{editingMessage(errorLabel[sourceTask.error_code || ""], "口播识别未完成，请检查原片声音后重新开始。")}</p>}
+    {recognizing && <p role="status">{sourceTask?.stage === "queued" ? stageLabel.queued : recognitionLabel}，完成后自动检查素材。</p>}
+    {sourceTask?.status === "failed" && <p role="alert" className={styles.error}>{editingMessage(errorLabel[sourceTask.error_code || ""], referenceConfirmed ? "原稿对齐未完成，请检查原稿和原片声音后重试。" : "口播识别未完成，请检查原片声音后重新开始。")}</p>}
     <details id="editing-source-options" hidden={!selected}><summary>更多选项</summary><label className={flow.sourceSubtitleChoice}><input id="editing-subtitles" type="checkbox" disabled={busy || recognizing} checked={subtitles === "present"} onChange={event => { cancelAutomatic(); setSubtitles(event.target.checked ? "present" : "none"); setPlanningTask(""); setError(""); }} />原片已有字幕</label><div className={styles.correctionActions}>
-      <button type="button" onClick={() => void submit("transcript")} disabled={busy || !canSubmit}>识别口播，准备动效剪辑</button>
+      <button type="button" onClick={() => transcriptReady ? openPlanning() : void submit("transcript")} disabled={busy || !canSubmit || recognizing}>{referenceConfirmed ? (transcriptReady ? "使用已对齐字幕" : "对齐原稿，准备动效剪辑") : "识别口播，准备动效剪辑"}</button>
       <button type="button" onClick={() => void submit("subtitles")} disabled={busy || !canSubmit}>生成基础字幕片</button>
     </div></details>
-    <EditingMusicPicker value={music} onChange={value => { cancelAutomatic(); setMusic(value); }} disabled={busy || recognizing} voiceOnly={isEditingSuite(template?.engine)} />
+    <EditingMusicPicker value={music} onChange={value => { cancelAutomatic(); setMusic(value); }} disabled={busy || recognizing} voiceOnly={isEditingSuite(template?.engine) && !template?.capabilities?.includes("music")} templateSound={template?.engine === "bihuo-full-suite"} />
     {isEditingSuite(template?.engine) && <EditingCoverPicker value={creativeOptions.cover || "auto"} onChange={cover => { cancelAutomatic(); setCreativeOptions(current => ({ ...current, cover })); }} disabled={busy || recognizing} />}
     </section>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}
     {taskLinkError && taskLinkError.id === focusedTaskId && <p className={styles.error} role="alert">{taskLinkError.message}</p>}
-    {saved && template && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} actionRef={primaryAction} onPrimaryState={setPrimaryState} selected={transcriptReady ? planningTask : ""} onSelect={planFromTranscript} template={template} music={music} creativeOptions={creativeOptions} onCreativeChange={value => { cancelAutomatic(); setCreativeOptions(value); }} onInputsChanged={cancelAutomatic} referenceText={referenceText} referenceConfirmed={!!selectedGeneration?.confirmed_version_id && selectedGeneration.snapshot?.draft.drive !== "audio" && !!selectedGeneration.snapshot?.draft.text} referenceDisabled={busy || recognizing} onReferenceChange={value => { cancelAutomatic(); setReferenceText(value); setPlanningTask(""); }} onNativePlan={() => { setPlansVersion(value => value + 1); setNativeOpened(true); if (nativePanel.current) { nativePanel.current.open = true; nativePanel.current.scrollIntoView({ block: "start" }); } }}
+    {saved && template && <EditingPlanning key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} tasks={tasks} actionRef={primaryAction} onPrimaryState={setPrimaryState} selected={activeTranscriptId} onSelect={planFromTranscript} template={template} music={music} creativeOptions={creativeOptions} onCreativeChange={value => { cancelAutomatic(); setCreativeOptions(value); }} onInputsChanged={cancelAutomatic} referenceText={referenceText} referenceConfirmed={referenceConfirmed} referenceDisabled={busy || recognizing} onReferenceChange={value => { cancelAutomatic(); setReferenceText(value); setPlanningTask(""); }} onNativePlan={() => { setPlansVersion(value => value + 1); setNativeOpened(true); if (nativePanel.current) { nativePanel.current.open = true; nativePanel.current.scrollIntoView({ block: "start" }); } }}
       carryFrom={carrySelection?.projectId === projectId ? carrySelection : undefined} onClearCarry={() => setCarrySelection(undefined)} onPreview={previews => {
         const ids = previews.map(task => task.id);
         setTasks(rows => [...previews, ...rows.filter(row => !ids.includes(row.id))]);

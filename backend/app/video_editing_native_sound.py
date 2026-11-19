@@ -58,6 +58,11 @@ from .video_editing_subtitle_sound_clock import (
     SUBTITLE_ENTRY_SYNC,
     subtitle_entry_clock,
 )
+from .video_editing_template_audio import (
+    TEMPLATE_TRACKS,
+    VISIBLE_SHOT_START,
+    template_tracks,
+)
 from .video_editing_unified_scenes import unified_action_frame, unified_sound_paths
 from .video_editing_yy6_scenes import YY6_SOUND_EVENTS
 from .video_editing_yy_openings import (
@@ -165,6 +170,8 @@ def music_replacement_options(
     transcript: Transcript,
     choices: dict,
     selected_id: str | None = None,
+    *,
+    tasks_root: Path | None = None,
 ) -> EditingMusicOptions | None:
     if len((sound or {}).get("music", [])) != 1:
         return None
@@ -181,6 +188,9 @@ def music_replacement_options(
         for row in read_json(package / "asset-manifest.json")["assets"]
         if row["kind"] == "music"
     }
+    private_tracks = template_tracks(tasks_root)
+    if track.asset_id in private_tracks:
+        assets.update(private_tracks)
     avoided = _avoided_sound_assets(choices)
 
     def info(row: dict) -> EditingMusicChoice:
@@ -191,13 +201,20 @@ def music_replacement_options(
         )
 
     current = assets[track.asset_id]
+    if (
+        track.asset_id in private_tracks
+        and sha256(Path(current["path"])) != current["sha256"]
+    ):
+        raise ValueError("Template music bytes changed")
     options = []
     for aid, row in assets.items():
         if (selected_id is not None and aid != selected_id) or not _music_can_replace(
             row, track, end - start, avoided
         ):
             continue
-        path = inside(package, row["path"])
+        path = (
+            Path(row["path"]) if aid in private_tracks else inside(package, row["path"])
+        )
         if path.is_file() and sha256(path) == row["sha256"]:
             options.append(info(row))
     return EditingMusicOptions(original=info(current), choices=options)
@@ -228,6 +245,7 @@ def compile_sound(
     choice_snapshot: dict[str, Any] | None,
     edits: NativeRenderEdits | None = None,
     *,
+    tasks_root: Path | None = None,
     sync_subtitle_entries: bool = False,
     sync_yy_opening_entries: bool = False,
     sync_presenter_motion_entries: bool = False,
@@ -259,6 +277,8 @@ def compile_sound(
         item["id"]: item
         for item in read_json(package / "asset-manifest.json")["assets"]
     }
+    private_tracks = template_tracks(tasks_root) if design.music else {}
+    stock.update(private_tracks)
     runtime_fx = {
         item["id"]: item
         for item in read_json(package / "assets/sfx/runtime-assets.json")["assets"]
@@ -267,10 +287,15 @@ def compile_sound(
 
     def asset(asset_id: str, kinds: set[str]) -> dict:
         row = stock[asset_id]
+        path = (
+            Path(row["path"])
+            if asset_id in private_tracks
+            else inside(package, row["path"])
+        )
         if (
             asset_id in avoided
             or row["kind"] not in kinds
-            or sha256(inside(package, row["path"])) != row["sha256"]
+            or sha256(path) != row["sha256"]
         ):
             raise ValueError(
                 "Original audio asset does not match the current selection"
@@ -308,12 +333,29 @@ def compile_sound(
         if key in used_events:
             raise ValueError("A native action already has an FX cue")
         used_events.add(key)
-        shot_index, binding = event_bindings[key]
+        first_frame = cue.event_path == VISIBLE_SHOT_START
+        if first_frame:
+            shot_index, _ = event_bindings[cue.beat_id, "/events/mark/0"]
+            start = episode["shots"][shot_index]["start_seconds"]
+            binding = {
+                "path": VISIBLE_SHOT_START,
+                "unit": "seconds",
+                "value": 0,
+                "measured_anchor_ms": round(start * 1000),
+            }
+        else:
+            shot_index, binding = event_bindings[key]
         shot = episode["shots"][shot_index]
         unit = binding["unit"]
         hypit_entry = binding.get("hypit_entry")
         native_ref = {}
-        if hypit_entry:
+        if first_frame:
+            if shot["group_id"] != "AHG-S02" or shot["layer"] != "subtitle":
+                raise ValueError(
+                    "Visible first-frame cue needs its original subtitle shot"
+                )
+            value = 0
+        elif hypit_entry:
             if (
                 cue.phase != "entry"
                 or unit != "frames"
@@ -348,7 +390,12 @@ def compile_sound(
         ):
             # The original parameter is the slide's length. Its start is zero.
             entry_seconds = shot["start_seconds"]
-        seconds = entry_seconds
+        fps_out = episode["output"]["fps"]
+        seconds = (
+            math.ceil(round(entry_seconds * 1000) * fps_out / 1000) / fps_out
+            if first_frame
+            else entry_seconds
+        )
         question_entry = package_entry = judgment_entry = None
         card_entry = {}
         question_card_entry = yy_opening_entry = presenter_motion_entry = azl_entry = (
@@ -507,6 +554,7 @@ def compile_sound(
                 "word_binding": binding,
                 "beat_id": cue.beat_id,
                 "group_id": shot["group_id"],
+                **({"visible_shot_start": shot_index} if first_frame else {}),
                 **({"hypit_entry": hypit_entry} if hypit_entry else {}),
                 **({"question_entry": question_entry} if question_entry else {}),
                 **(
@@ -583,6 +631,11 @@ def compile_sound(
             {
                 **event,
                 "asset_sha256": row["sha256"],
+                **(
+                    {"private_template_track": True}
+                    if track.asset_id in TEMPLATE_TRACKS.values()
+                    else {}
+                ),
                 "loop_allowed": track.loop,
                 **(
                     {"original_gain_db": track.gain_db}
@@ -646,7 +699,19 @@ def verify_rendered_sound(
                     / episode["output"]["fps"],
                 }
         onset_delta = actual["effective_onset_seconds"] - cue["anchor_seconds"]
-        if subtitle_entry and subtitle_entry["aligned_to_frame"]:
+        if "visible_shot_start" in cue:
+            if episode is None:
+                episode = read_json(root / "episode.json")
+            shot = episode["shots"][cue["visible_shot_start"]]
+            fps = episode["output"]["fps"]
+            frame = math.ceil(round(shot["start_seconds"] * 1000) * fps / 1000)
+            anchor_valid = (
+                anchor["kind"] == "explicit_current_clock"
+                and shot["group_id"] == "AHG-S02"
+                and shot["layer"] == "subtitle"
+                and cue["anchor_seconds"] == frame / fps
+            )
+        elif subtitle_entry and subtitle_entry["aligned_to_frame"]:
             anchor_valid = anchor["kind"] == "explicit_current_clock"
         elif hypit_entry := cue.get("hypit_entry"):
             verify_stagger_entry(root, hypit_entry)

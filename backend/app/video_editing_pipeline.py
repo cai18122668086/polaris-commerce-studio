@@ -1173,6 +1173,8 @@ def native_export(root: Path, settings: Settings, guard: Callable[[], None]) -> 
                     command,
                     "--instance",
                     str(root),
+                    "--tasks-root",
+                    str(settings.video_editing_tasks_dir.resolve()),
                     *(
                         [
                             "--native-bindings",

@@ -108,6 +108,32 @@ def test_native_asset_bindings_only_add_already_selected_ids():
     assert repairs == [{"beat_id": "b0", "added_selected_assets": ["selected"]}]
 
 
+def test_editorial_caption_reflow_keeps_the_recorded_span_and_saved_response():
+    from app.video_editing_contracts import TranscriptToken
+    from tests.test_video_editing_apple_contracts import transcript
+
+    text = "按顺序选择参考图片确认生成结果并检查排版"
+    source = transcript()
+    source.tokens = [
+        TranscriptToken(id=f"w{i}", text=char, start_ms=i * 100, end_ms=(i + 1) * 100)
+        for i, char in enumerate(text)
+    ]
+    cue = {
+        "first_token_id": "w0",
+        "last_token_id": f"w{len(text) - 1}",
+        "line_break_after_token_id": None,
+        "emphasis": [],
+    }
+    raw = {"captions": [cue]}
+    changed, repairs = normalize_suite_output(raw, source)
+    [row] = changed["captions"]
+    assert row["line_break_after_token_id"] is not None
+    assert {**row, "line_break_after_token_id": None} == cue
+    assert cue["line_break_after_token_id"] is None
+    assert repairs[0]["kind"] == "caption_line_break_fitted"
+    assert normalize_suite_output(changed, source) == (changed, [])
+
+
 @pytest.mark.parametrize("unsafe", [False, True])
 def test_measured_azl_window_only_absorbs_plain_contiguous_source(unsafe):
     from tests.test_video_editing_apple_contracts import transcript

@@ -67,6 +67,7 @@ from .video_editing_task_models import (
     EditingTaskRecord,
     EditingTranscriptRevisionRecord,
 )
+from .video_editing_template_audio import template_tracks
 from .video_editing_template_styles import STYLES
 from .video_editing_transcript_store import recorded_source_frame
 from .video_generation import own_job
@@ -597,9 +598,14 @@ def preview_audio(
     request: Request,
     workspace: VideoWorkspace,
 ) -> FileResponse:
-    package = enabled(request).video_editing_library_dir
+    settings = enabled(request)
     try:
-        asset, path = audio_asset(package, asset_id)
+        if asset := template_tracks(settings.video_editing_tasks_dir).get(asset_id):
+            path = Path(asset["path"])
+            if sha256(path) != asset["sha256"]:
+                raise ValueError("Template track changed")
+        else:
+            asset, path = audio_asset(settings.video_editing_library_dir, asset_id)
     except LookupError:
         raise ApiError(404, "EDITING_AUDIO_NOT_FOUND", "未找到原包音频。") from None
     except ValueError:

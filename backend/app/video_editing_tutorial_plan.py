@@ -348,7 +348,7 @@ def _playback(
     return result
 
 
-def _played_until(segments: list[dict], source_ms: int) -> int:
+def playback_elapsed_ms(segments: list[dict], source_ms: int) -> int:
     return round(
         sum(
             seg["output_ms"]
@@ -406,7 +406,7 @@ def schedule(
         pause = max(0, max(playback_end, frame_end) - (boundary + delay))
         large_start = boundary + delay if pause else None
         if profile.detail_from_ms is not None and duration >= window - 1300:
-            detail_at = start + _played_until(segments, profile.detail_from_ms)
+            detail_at = start + playback_elapsed_ms(segments, profile.detail_from_ms)
             if playback_end - detail_at >= 800:
                 large_start = (
                     min(large_start, detail_at)

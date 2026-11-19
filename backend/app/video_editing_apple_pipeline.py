@@ -678,6 +678,34 @@ def render_suite(
         "visual_review": "unreviewed",
         "listening_review": "unreviewed",
     }
+    from .video_editing_suite_actions import SUITE_FAMILIES
+
+    suite_sound = (
+        frozen.get("engine") == "bihuo-full-suite"
+        and frozen["template_id"] in SUITE_FAMILIES
+    )
+
+    def mix_native_sound(base: Path, clock: dict | None = None) -> Path:
+        from .video_editing_suite_sound import enhance_suite_sound
+
+        mixed, audio = enhance_suite_sound(
+            base,
+            config,
+            duration,
+            source_sha,
+            root / "suite-audio",
+            settings,
+            guard,
+            scan_recordings=clock is None,
+            tutorial_clock=clock,
+        )
+        if mixed != base:
+            decode_av(mixed, root, settings, guard, "decode_suite_audio")
+        validation.update(sha256=sha256(mixed), template_sound=audio)
+        return mixed
+
+    if suite_sound and tutorial is None:
+        final = mix_native_sound(final)
     if tutorial is not None:
         from .video_editing_tutorial_render import render_tutorial
 
@@ -692,9 +720,29 @@ def render_suite(
             root / "tutorial",
             settings,
             guard,
+            mix_native_sound=mix_native_sound if suite_sound else None,
         )
         validation = {**tutorial_validation, "base_native_validation": validation}
         duration = validation["duration_ms"]
+    if suite_sound:
+        from .video_editing_suite_music import mix_suite_music
+
+        music = mix_suite_music(
+            final,
+            root / "tutorial/narration.wav"
+            if tutorial is not None
+            else original_source_path,
+            frozen["template_id"],
+            frozen.get("music") or "template",
+            duration,
+            root / "suite-music",
+            settings,
+            guard,
+        )
+        if music is not None:
+            final, track = music
+            decode_av(final, root, settings, guard, "decode_suite_music")
+            validation.update(sha256=sha256(final), template_music=track)
     (root / "outputs").mkdir(exist_ok=True)
     stage("building_preview")
     preview, preview_receipt = build_preview(final, root, validation, settings, guard)

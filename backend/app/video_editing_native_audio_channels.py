@@ -16,6 +16,7 @@ from .video_editing_source_aspect import (
     fit_source_picture,
     source_aspect_scene,
 )
+from .video_editing_template_audio import TEMPLATE_TRACKS, template_tracks
 
 _EPISODE_SHA256 = "ec5115f41bbb44c034bccc66b06169f92a389d4a270eea8c6c6cd1d2e3472038"
 _VOICE = ",asplit=2[voice][voice_stem]"
@@ -58,7 +59,9 @@ def stereo_composition_graph(graph: str, offset_samples: int = 0) -> str:
     )
 
 
-def install_native_stereo_composition(package: Path, root: Path) -> None:
+def install_native_stereo_composition(
+    package: Path, root: Path, *, tasks_root: Path | None = None
+) -> None:
     """Adapt the pinned original episode composition within this task process."""
     path = package / "commercial_runtime/episode.py"
     if sha256(path) != _EPISODE_SHA256:
@@ -84,6 +87,33 @@ def install_native_stereo_composition(package: Path, root: Path) -> None:
 
     plan_path = root / "episode.json"
     plan = read_json(plan_path) if plan_path.is_file() else {}
+    selected = {
+        row["asset_id"]
+        for row in plan.get("music", [])
+        if row["asset_id"] in TEMPLATE_TRACKS.values()
+    }
+    if selected:
+        catalog = template_tracks(tasks_root)
+        if not selected <= catalog.keys():
+            raise ValueError("The selected template soundtrack is missing")
+        manifest = package / "asset-manifest.json"
+        original_read = episode.read
+
+        def read(path: Path) -> Any:
+            value = original_read(path)
+            if Path(path) != manifest:
+                return value
+            # Keep the pinned library immutable. The original composer verifies
+            # the separately staged track against the same digest before opening it.
+            return {
+                **value,
+                "assets": [
+                    *value["assets"],
+                    *(catalog[aid] for aid in sorted(selected)),
+                ],
+            }
+
+        episode.read = read
     source_canvas = None
     if plan.get("design", {}).get("id") == SOURCE_ASPECT_DESIGN:
         scenes: Any = importlib.import_module("commercial_runtime.scene_composer")

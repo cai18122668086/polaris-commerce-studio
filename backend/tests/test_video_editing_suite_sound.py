@@ -6,7 +6,7 @@ from app.video_editing_suite_music import SUITE_MUSIC
 
 def test_every_bihuo_suite_has_a_bounded_sound_palette():
     assert SUITE_FAMILIES.keys() == definitions().keys()
-    assert SUITE_MUSIC.keys() <= SUITE_FAMILIES.keys()
+    assert SUITE_MUSIC.keys() == SUITE_FAMILIES.keys()
     sizes = {
         family: len({row[0] for candidates in actions.values() for row in candidates})
         for family, actions in PALETTES.items()

@@ -37,17 +37,24 @@ def test_catalog_retains_all_templates_without_changing_snapshots(tmp_path):
     assert "question-card-b-story-v1" not in {c["id"] for c in cards}
 
 
-def test_bihuo_catalog_only_offers_music_when_a_default_is_installed(tmp_path):
+@pytest.mark.parametrize("all_installed", [False, True])
+def test_bihuo_catalog_only_offers_music_when_a_default_is_installed(
+    tmp_path, all_installed
+):
     settings = Settings(_env_file=None, video_editing_tasks_dir=tmp_path)
-    asset = music_file(settings, SUITE_MUSIC["bihuo-33-v1"])
-    asset.parent.mkdir()
-    asset.touch()
+    installed = (
+        SUITE_MUSIC if all_installed else {"bihuo-33-v1": SUITE_MUSIC["bihuo-33-v1"]}
+    )
+    for track in installed.values():
+        asset = music_file(settings, track)
+        asset.parent.mkdir(exist_ok=True)
+        asset.touch()
     cards = template_catalog(settings, "ws_test")
     assert {
         row["id"]
         for row in cards
         if row.get("engine") == "bihuo-full-suite" and "music" in row["capabilities"]
-    } == {"bihuo-33-v1"}
+    } == set(installed)
 
 
 def install_example(tmp_path: Path):

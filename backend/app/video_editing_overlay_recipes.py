@@ -3109,6 +3109,7 @@ def _overlay_sounds(
                 opening=anchor_ms < 6000,
             )
         else:
+            assert occurrences is not None
             action = _palette_action(
                 beat.group_id, path, has_material and path in primary
             )

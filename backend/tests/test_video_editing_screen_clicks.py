@@ -84,5 +84,45 @@ def test_recording_click_follows_retimed_visual(tmp_path, monkeypatch):
         None,
         lambda: None,
     )
-    assert [event["at_ms"] for event in evidence["events"]] == [1033, 2401]
+    assert [event["at_ms"] for event in evidence["events"]] == [1033, 2433]
     assert evidence["detected_clicks"] == 1
+
+
+def test_click_follows_a_stable_blue_focus_change_not_a_filled_button(monkeypatch):
+    frames = []
+    for index in range(102):
+        frame = np.full((600, 960, 3), 236, dtype=np.uint8)
+        cv2.rectangle(frame, (110, 470), (850, 540), (250, 100, 0), -1)
+        if index < 30:
+            cv2.rectangle(frame, (90, 80), (850, 169), (250, 100, 0), 6)
+        elif index < 32:
+            cv2.rectangle(frame, (100, 186), (830, 280), (250, 100, 0), 6)
+        else:
+            cv2.rectangle(frame, (100, 315), (830, 409), (250, 100, 0), 6)
+        frames.append(frame)
+
+    class Capture:
+        index = 0
+
+        def get(self, property_id):
+            return 30 if property_id == cv2.CAP_PROP_FPS else len(frames)
+
+        def isOpened(self):
+            return True
+
+        def grab(self):
+            self.index += 1
+            return True
+
+        def read(self):
+            frame = frames[self.index]
+            self.index += 1
+            return True, frame
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(cv2, "VideoCapture", lambda _path: Capture())
+    assert detect_screen_clicks(Path("fixture.mp4"), 3400, lambda: None) == [
+        {"source_ms": 1067, "evidence": "control_focus_outline"}
+    ]

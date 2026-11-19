@@ -64,7 +64,7 @@ _TITLE_FRAMES = {
     32: ("title", 4),
     34: ("opening_title", 3),
     36: ("title", 3),
-    47: ("title", 3),
+    47: ("title", 2),
     48: ("title", 3),
 }
 
@@ -190,6 +190,13 @@ def _layout_actions(number: int, cfg: dict, fps: int) -> Iterator[tuple[float, s
         yield cfg["handoff"] / fps, "transition"
         yield cfg["outer_start"] / fps, "closing"
     elif number == 47:
+        if cfg.get("support") and cfg["opening_end"] > 0.88:
+            yield 22 / fps, "type"
+        identity = cfg.get("identity") or {}
+        if identity.get("enabled") and (
+            identity.get("name") or identity.get("description")
+        ):
+            yield 4 / fps, "text"
         if cfg.get("iris_at") is not None:
             yield round(cfg["iris_at"] * fps) / fps, "transition"
         yield from ((row["start"], "text") for row in cfg["columns"])

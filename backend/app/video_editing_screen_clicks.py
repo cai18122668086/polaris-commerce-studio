@@ -13,10 +13,38 @@ _DEBOUNCE_MS = 145
 _MAX_CLICKS = 60
 
 
+def _blue_focus_outline(hsv: np.ndarray) -> np.ndarray | None:
+    """Find a single thin control outline in a half-size recording frame."""
+    small = hsv[::2, ::2]
+    mask = cv2.inRange(small, (98, 140, 150), (114, 255, 255))
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+    outlines = []
+    for index, (x, y, width, height, area) in enumerate(stats[1:], 1):
+        if (
+            width < 0.15 * mask.shape[1]
+            or not 0.035 * mask.shape[1] <= height <= 0.48 * mask.shape[1]
+            or not 0.012 <= area / (width * height) <= 0.22
+        ):
+            continue
+        border = labels[y : y + height, x : x + width] == index
+        band = max(2, round(min(width, height) * 0.09))
+        if (
+            min(
+                border[:band].any(axis=0).mean(),
+                border[-band:].any(axis=0).mean(),
+                border[:, :band].any(axis=1).mean(),
+                border[:, -band:].any(axis=1).mean(),
+            )
+            >= 0.80
+        ):
+            outlines.append(np.array([x, y, width, height]))
+    return outlines[0] if len(outlines) == 1 else None
+
+
 def detect_screen_clicks(
     path: Path, duration_ms: int, guard: Callable[[], None]
 ) -> list[dict]:
-    """Find newly checked indicators and pointer-confirmed screen transitions."""
+    """Find persistent selection, focus-outline and pointer feedback."""
     capture = cv2.VideoCapture(str(path))
     clicks: list[dict] = []
     try:
@@ -33,6 +61,8 @@ def detect_screen_clicks(
         previous_gray = None
         previous_cursor = None
         stable_cursor = 0
+        focus_probe = previous_focus = None
+        focus_first_ms = focus_samples = 0
         for frame_no in range(frames):
             if frame_no % stride:
                 if not capture.grab():
@@ -89,6 +119,19 @@ def detect_screen_clicks(
                 known.update(markers)
             fresh = []
             possible: list[tuple[int, str]] = []
+            focus = _blue_focus_outline(hsv)
+            if focus is None:
+                focus_probe = None
+            elif focus_probe is None or np.max(np.abs(focus - focus_probe)) > 5:
+                focus_probe, focus_first_ms, focus_samples = focus, at, 1
+            else:
+                focus_samples += 1
+                if focus_samples == 3 and (
+                    previous_focus is None
+                    or np.max(np.abs(focus - previous_focus)) > 10
+                ):
+                    previous_focus = focus
+                    possible.append((focus_first_ms, "control_focus_outline"))
             for marker in sorted(markers):
                 # Nearby keys cover an indicator's antialiasing across the grid.
                 adjacent = {

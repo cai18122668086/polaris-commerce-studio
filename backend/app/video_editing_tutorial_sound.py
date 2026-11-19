@@ -15,7 +15,7 @@ from .video_editing_template_audio import SCREEN_CLICK, SoundSlice
 from .video_editing_tutorial_plan import frame_at, playback_elapsed_ms
 
 RATE = 48_000
-VERSION = "tengli.tutorial-sound/2"
+VERSION = "tengli.tutorial-sound/3"
 
 
 def _cue_wave(
@@ -107,7 +107,8 @@ def recording_sound(
     events: list[dict] = []
     for step in clock["steps"]:
         asset_id = step["asset_id"]
-        visible_ms = round(frame_at(step["start_ms"]) * 1000 / 30)
+        entry_frame = frame_at(step["start_ms"])
+        visible_ms = round(entry_frame * 1000 / 30)
         events.append(
             {
                 "asset_id": asset_id,
@@ -124,9 +125,8 @@ def recording_sound(
         for click in clicks:
             if not step["source_in_ms"] <= click["source_ms"] < step["source_out_ms"]:
                 continue
-            at = step["start_ms"] + playback_elapsed_ms(
-                step["playback_segments"], click["source_ms"]
-            )
+            elapsed = playback_elapsed_ms(step["playback_segments"], click["source_ms"])
+            at = round((entry_frame + round(elapsed * 30 / 1000)) * 1000 / 30)
             if at - visible_ms >= 145:
                 events.append({"asset_id": asset_id, "at_ms": at, **click})
     selections = [(event["at_ms"], SCREEN_CLICK) for event in events]

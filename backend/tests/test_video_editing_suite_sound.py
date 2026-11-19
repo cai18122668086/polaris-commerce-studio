@@ -1,6 +1,11 @@
 from pathlib import Path
 
+import json
+from hashlib import sha256
+
+from app import video_editing_suite_music as music
 from app.bihuo_suite.registry import definitions
+from app.config import Settings
 from app.video_editing_sound_palettes import PALETTES, select_sound
 from app.video_editing_suite_actions import SUITE_FAMILIES, suite_actions
 from app.video_editing_suite_music import SUITE_MUSIC
@@ -21,6 +26,52 @@ def test_every_bihuo_suite_has_a_bounded_sound_palette():
     ]
     assert len(set(cues[:3])) == 3
     assert cues[0] == cues[3]
+
+
+def test_quiet_speech_lowers_the_music_baseline_before_ducking(tmp_path, monkeypatch):
+    settings = Settings(_env_file=None, video_editing_tasks_dir=tmp_path)
+    source = b"private soundtrack fixture"
+    track = music.SuiteMusic(
+        "fixture",
+        "fixture.mp3",
+        sha256(source).hexdigest(),
+        0,
+        0.2,
+        -12,
+    )
+    monkeypatch.setitem(music.SUITE_MUSIC, "bihuo-47-v1", track)
+    asset = music.music_file(settings, track)
+    asset.parent.mkdir()
+    asset.write_bytes(source)
+    measurements = iter(["-17", "-32", "-inf"])
+
+    def fake_run(arguments, root, settings, guard, name):
+        log = root / "meter.log"
+        if name == "measure_suite_speech":
+            log.write_text(json.dumps({"input_i": next(measurements)}), encoding="utf8")
+        else:
+            (root / "final.mp4").touch()
+        return log
+
+    monkeypatch.setattr(music, "run", fake_run)
+    results = []
+    for label in ("normal", "quiet", "silent"):
+        _, result = music.mix_suite_music(
+            tmp_path / "master.mp4",
+            tmp_path / "speech.wav",
+            "bihuo-47-v1",
+            "template",
+            10000,
+            tmp_path / label,
+            settings,
+            lambda: None,
+        )
+        results.append(result)
+    normal, quiet, silent = results
+    assert quiet["gain_db"] <= normal["gain_db"] - 10
+    assert quiet["speech_ducking"] is True
+    assert silent["speech_lufs"] is None
+    json.dumps(silent, allow_nan=False)
 
 
 def test_native_sound_follows_the_visible_paper_and_picture_clocks():

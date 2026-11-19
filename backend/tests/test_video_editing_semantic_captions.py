@@ -162,6 +162,86 @@ def test_saved_suite_caption_repair_does_not_invent_a_missing_word_id():
         semantic_caption_rows(AppleSuitePlan.model_validate(repaired), source)
 
 
+def test_saved_suite_plan_fits_fragments_opening_and_oversized_point():
+    words = [
+        "手机",
+        "出图，",
+        "先",
+        "上传",
+        "产品图，",
+        "然后确认，",
+        "生成方案并核对商品主体",
+        "和包装上的所有文字细节，",
+        "再检查排版。",
+    ]
+    source = make_transcript(words).model_copy(
+        update={"reference_reconciliation": {"status": "applied"}}
+    )
+    value = semantic_plan()
+    value["opening"] = {
+        "title": span(0, 0),
+        "subtitle": span(0, 0),
+        "intro_last_token_id": "w0",
+    }
+    value.update(
+        body_variant="points",
+        materials=[],
+        points=[span(6, 8)],
+        features=[],
+        conclusion=None,
+        quote_start_token_id=None,
+        chapters=[],
+        emphasis=[],
+        captions=[
+            {**span(a, b), "emphasis": [span(a, a)] if a < 6 else []}
+            for a, b in [(0, 1), (2, 3), (4, 4), (5, 5), (6, 7), (8, 8)]
+        ],
+    )
+    original = copy.deepcopy(value)
+
+    repaired, evidence = normalize_suite_output(value, source)
+    validated = verify_plan(repaired, source, [], require_semantic_captions=True)
+    rows = semantic_caption_rows(AppleSuitePlan.model_validate(validated), source)
+
+    assert value == original
+    assert repaired["opening"]["intro_last_token_id"] == "w1"
+    assert repaired["points"] == [span(6, 7)]
+    assert rows[1]["time"] == [2, 5]
+    assert [line["text"] for line in rows[1]["lines"]] == ["先上传", "产品图，"]
+    assert rows[1]["emphasis_token_spans"] == [span(2, 2), span(4, 4)]
+    assert "".join(row["text"] for row in rows) == "".join(words)
+    assert {row["kind"] for row in evidence} == {
+        "caption_clause_fragments_joined",
+        "caption_line_break_fitted",
+        "opening_duration_fitted",
+        "point_clause_fitted",
+    }
+    assert normalize_suite_output(repaired, source) == (repaired, [])
+
+
+@pytest.mark.parametrize(
+    "words,second_start",
+    [
+        (["先上传", "参考图。", "再选择模板。"], 1),
+        (["先上传", "参考图和商品包装图并确认所有文字和边角细节。"], 1),
+        (["先上传", "参考图", "并选择模板。"], 2),
+    ],
+)
+def test_saved_suite_does_not_merge_sentences_oversized_lines_or_gaps(
+    words, second_start
+):
+    source = make_transcript(words).model_copy(
+        update={"reference_reconciliation": {"status": "applied"}}
+    )
+    value = {
+        "captions": [
+            {**span(0, 0), "emphasis": []},
+            {**span(second_start, len(words) - 1), "emphasis": []},
+        ]
+    }
+    assert normalize_suite_output(value, source) == (value, [])
+
+
 def test_word_split_is_rejected_even_when_asr_has_one_token_per_character():
     value = semantic_plan()
     value["captions"] = [{**span(0, 1), "emphasis": []}, {**span(2, 4), "emphasis": []}]

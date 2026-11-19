@@ -1,21 +1,106 @@
-"""Repair suite subtitle display choices inside their recorded cue boundaries."""
+"""Repair suite subtitle layout against the recorded word boundaries."""
 
 from typing import Any
 
-from .video_editing_apple_contracts import PLAN_VERSION, _join
+from pydantic import ValidationError
+
+from .video_editing_apple_contracts import PLAN_VERSION, AppleCaption, _join
 from .video_editing_caption_emphasis import readable
 from .video_editing_captioning import text_boundaries
 from .video_editing_contracts import Transcript
+from .video_editing_reference_text import caption_boundaries
 
 # Match the strict contract in semantic_caption_rows.
 EMPHASIS_CAPACITY = 10
 LINE_CAPACITY = 18
 
 
+def _merge_clause_fragments(
+    captions: list, transcript: Transcript, breaks: set[int], widths: list[int]
+) -> list[dict[str, Any]]:
+    policy = caption_boundaries(transcript)
+    if not policy:
+        return []
+    try:
+        cues = [AppleCaption.model_validate(cue) for cue in captions]
+    except ValidationError:
+        return []
+
+    positions = {t.id: i for i, t in enumerate(transcript.tokens)}
+    clause_ends = set(policy["cue_end_token_ids"]) | set(
+        policy["long_clause_token_ids"]
+    )
+    sentence_ends = set(policy["sentence_end_token_ids"])
+    merged = []
+    repairs: list[dict[str, Any]] = []
+    index = 0
+    while index < len(cues):
+        left = cues[index]
+        merged.append(captions[index])
+        index += 1
+        if left.last_token_id in clause_ends or index == len(cues):
+            continue
+        right = cues[index]
+        first = positions.get(left.first_token_id, -1)
+        cut = positions.get(left.last_token_id, -1) + 1
+        stop = positions.get(right.last_token_id, -1) + 1
+        if (
+            not 0 <= first < cut < stop
+            or positions.get(right.first_token_id) != cut
+            or cut not in breaks
+            or (first != 0 and first not in breaks)
+            or (stop != len(widths) - 1 and stop not in breaks)
+            or right.last_token_id not in clause_ends
+            or any(
+                token.id in sentence_ends
+                for token in transcript.tokens[first : stop - 1]
+            )
+            or not 0 < widths[cut] - widths[first] <= LINE_CAPACITY
+            or not 0 < widths[stop] - widths[cut] <= LINE_CAPACITY
+        ):
+            continue
+        # Keep every selected highlight in its original line and preserve strict limits.
+        if len(left.emphasis) + len(right.emphasis) > 2 or any(
+            not start
+            <= positions.get(span.first_token_id, -1)
+            <= positions.get(span.last_token_id, -1)
+            < end
+            for cue, start, end in ((left, first, cut), (right, cut, stop))
+            for span in cue.emphasis
+        ):
+            continue
+        if any(
+            cue.line_break_after_token_id is not None
+            and not start <= positions.get(cue.line_break_after_token_id, -1) < end - 1
+            for cue, start, end in ((left, first, cut), (right, cut, stop))
+        ):
+            continue
+        merged[-1] = {
+            **captions[index - 1],
+            "last_token_id": right.last_token_id,
+            "line_break_after_token_id": left.last_token_id,
+            "emphasis": [
+                *captions[index - 1]["emphasis"],
+                *captions[index]["emphasis"],
+            ],
+        }
+        repairs.append(
+            {
+                "kind": "caption_clause_fragments_joined",
+                "first_token_id": left.first_token_id,
+                "line_break_after_token_id": left.last_token_id,
+                "last_token_id": right.last_token_id,
+            }
+        )
+        index += 1
+    captions[:] = merged
+    return repairs
+
+
 def repair_suite_captions(
     plan: dict[str, Any], transcript: Transcript
 ) -> list[dict[str, Any]]:
-    """Adapt a working copy before strict validation; leave cue spans intact."""
+    """Adapt a working copy before strict validation."""
     captions = plan.get("captions")
     if plan.get("schema_version", PLAN_VERSION) != PLAN_VERSION or not isinstance(
         captions, list
@@ -31,7 +116,7 @@ def repair_suite_captions(
         widths.append(widths[-1] + readable(part))
     safe, preferred = text_boundaries("".join(parts))
     breaks = {i for i, offset in enumerate(offsets) if offset in safe}
-    repairs: list[dict[str, Any]] = []
+    repairs = _merge_clause_fragments(captions, transcript, breaks, widths)
 
     def position(value: Any) -> int:
         return positions.get(value, -1) if isinstance(value, str) else -1

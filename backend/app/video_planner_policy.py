@@ -6,11 +6,18 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from .errors import ApiError
+from .video_editing_apple_contracts import AppleSuitePlan, _join
+from .video_editing_captioning import text_boundaries
 from .video_editing_contracts import Transcript
+from .video_editing_reference_text import caption_boundaries
 from .video_editing_suite_caption_repair import repair_suite_captions
 
 EMPTY_RESPONSE = "EDITING_PLAN_EMPTY_RESPONSE"
+MIN_SUITE_INTRO_MS = 1600
+SUITE_POINT_CAPACITY = 24
 
 
 def normalize_material_anchors(
@@ -110,7 +117,107 @@ def normalize_suite_output(
             kept.append(chapter)
         changed["chapters"] = kept
     repairs.extend(repair_suite_captions(changed, transcript))
+    repairs.extend(_fit_suite_display_spans(changed, transcript, positions))
     return changed, repairs
+
+
+def _fit_suite_display_spans(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Fit opening duration and point labels using existing recorded anchors."""
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    tokens = transcript.tokens
+    intro_id = plan.opening.intro_last_token_id
+    intro = positions.get(intro_id)
+    short_intro = intro is not None and tokens[intro].end_ms < MIN_SUITE_INTRO_MS
+    oversized = []
+    for index, point in enumerate(plan.points):
+        first, last = (
+            positions.get(point.first_token_id),
+            positions.get(point.last_token_id),
+        )
+        if (
+            first is not None
+            and last is not None
+            and first < last
+            and len(_join([token.text for token in tokens[first : last + 1]]))
+            > SUITE_POINT_CAPACITY
+        ):
+            oversized.append((index, first, last))
+    if not short_intro and not oversized:
+        return []
+
+    lexical, _ = text_boundaries("".join(token.text for token in tokens))
+    offset = 0
+    word_ends = set()
+    for index, token in enumerate(tokens):
+        offset += len(token.text)
+        if offset in lexical:
+            word_ends.add(index)
+    repairs = []
+
+    if short_intro and intro is not None:
+        title_ends = [
+            positions.get(plan.opening.title.last_token_id),
+            positions.get(plan.opening.subtitle.last_token_id),
+        ]
+        body_anchors = [
+            *(point.first_token_id for point in plan.points),
+            *(feature.first_token_id for feature in plan.features),
+            *(material.show_at_token_id for material in plan.materials),
+        ]
+        if plan.quote_start_token_id is not None:
+            body_anchors.append(plan.quote_start_token_id)
+        body_positions = [positions.get(anchor) for anchor in body_anchors]
+        if all(end is not None and end <= intro for end in title_ends) and all(
+            start is not None and start > intro for start in body_positions
+        ):
+            # Leave the body content and the original title anchors intact.
+            body_start = min(
+                (
+                    tokens[start].start_ms
+                    for start in body_positions
+                    if start is not None
+                ),
+                default=transcript.duration_ms,
+            )
+            for index in range(intro + 1, len(tokens)):
+                token = tokens[index]
+                if token.end_ms >= body_start:
+                    break
+                if index in word_ends and token.end_ms >= MIN_SUITE_INTRO_MS:
+                    raw["opening"]["intro_last_token_id"] = token.id
+                    repairs.append(
+                        {
+                            "kind": "opening_duration_fitted",
+                            "from": intro_id,
+                            "to": token.id,
+                        }
+                    )
+                    break
+
+    clause_ends = set(caption_boundaries(transcript).get("cue_end_token_ids", []))
+    for index, first, last in oversized:
+        if first and first - 1 not in word_ends:
+            continue
+        for end in range(first, last):
+            tokens_text = _join([token.text for token in tokens[first : end + 1]])
+            if len(tokens_text) > SUITE_POINT_CAPACITY:
+                break
+            if end in word_ends and tokens[end].id in clause_ends:
+                raw["points"][index]["last_token_id"] = tokens[end].id
+                repairs.append(
+                    {
+                        "kind": "point_clause_fitted",
+                        "from": tokens[last].id,
+                        "to": tokens[end].id,
+                    }
+                )
+                break
+    return repairs
 
 
 def bind_selected_native_assets(

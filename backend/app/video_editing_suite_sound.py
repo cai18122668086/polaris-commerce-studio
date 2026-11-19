@@ -44,7 +44,7 @@ def enhance_suite_sound(
     elif "resolved" in payload:
         from .video_editing_sound_palettes import overlay_family
 
-        family = overlay_family(template_id)
+        family = overlay_family(payload["template_id"])
         fps = 30
         actions = editorial_actions(payload["resolved"])
     else:

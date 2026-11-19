@@ -14,6 +14,8 @@ from .video_editing_screen_clicks import detect_screen_clicks
 from .video_editing_sound_palettes import select_sound
 from .video_editing_suite_actions import (
     SUITE_FAMILIES,
+    apple_actions,
+    editorial_actions,
     recording_windows,
     suite_actions,
 )
@@ -33,12 +35,23 @@ def enhance_suite_sound(
     scan_recordings: bool,
     tutorial_clock: dict | None = None,
 ) -> tuple[Path, dict]:
-    template_id = payload["template_id"]
-    family = SUITE_FAMILIES[template_id]
-    cfg = payload["config"]
-    fps = cfg.get("fps", 25)
-    actions = suite_actions(template_id, cfg)
-    if scan_recordings:
+    template_id = payload.get("template_id")
+    cfg = payload.get("config", payload)
+    if template_id in SUITE_FAMILIES:
+        family = SUITE_FAMILIES[template_id]
+        fps = cfg.get("fps", 25)
+        actions = suite_actions(template_id, cfg)
+    elif "resolved" in payload:
+        from .video_editing_sound_palettes import overlay_family
+
+        family = overlay_family(template_id)
+        fps = 30
+        actions = editorial_actions(payload["resolved"])
+    else:
+        family = "application"
+        fps = cfg["fps"]
+        actions = apple_actions(cfg)
+    if scan_recordings and template_id in SUITE_FAMILIES:
         for material, window_ms, source_start in recording_windows(template_id, cfg):
             try:
                 clicks = detect_screen_clicks(Path(material["path"]), window_ms, guard)
@@ -82,11 +95,7 @@ def enhance_suite_sound(
     for at, action in sorted(
         visible_actions, key=lambda row: (row[0], row[1] != "media")
     ):
-        if (
-            at < 0
-            or duration_ms - at < 90
-            or (at - previous_ms < 70 and action != "click")
-        ):
+        if at < 0 or duration_ms - at < 90 or (at == previous_ms and action != "click"):
             continue
         selection = select_sound(
             family, action, series, occurrences[action], previous=previous_sound

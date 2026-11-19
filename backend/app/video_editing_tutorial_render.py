@@ -930,10 +930,11 @@ def render_tutorial(
     final = root / "tutorial-final.mp4"
     voice = prepare_voice(baseline_voice, clock, root, guard)
     voice_input = 5 if layout.presenter else 4
-    voice_map = f"{voice_input}:a:0"
-    sound = None
     audio_base = mix_native_sound(base, clock) if mix_native_sound else base
-    if mix_native_sound or retain_native_mix or template_id in TEMPLATE_TRACKS:
+    preserve_native = (
+        audio_base != base or retain_native_mix or template_id in TEMPLATE_TRACKS
+    )
+    if preserve_native:
         native = decode_voice(
             audio_base,
             transcript.duration_ms,
@@ -943,23 +944,21 @@ def render_tutorial(
             filename="native-mix-source.wav",
         )
         voice = prepare_voice(native, clock, root, guard, filename="native-mix.wav")
-        fx, sound = recording_sound(clock, assets, root, settings, guard)
-        args += ["-i", str(voice), "-i", str(fx)]
-        graph += [
-            f"[{voice_input + 1}:a:0]aformat=channel_layouts=stereo[recording_fx]",
-            f"[{voice_input}:a:0][recording_fx]amix=inputs=2:duration=first:normalize=0,"
-            "alimiter=limit=0.97:level=0:latency=1[mixed_voice]",
-        ]
-        voice_map = "[mixed_voice]"
-    else:
-        args += ["-i", str(voice)]
+    fx, sound = recording_sound(clock, assets, root, settings, guard)
+    sound["native_mix_retained"] = preserve_native
+    args += ["-i", str(voice), "-i", str(fx)]
+    graph += [
+        f"[{voice_input + 1}:a:0]aformat=channel_layouts=stereo[recording_fx]",
+        f"[{voice_input}:a:0][recording_fx]amix=inputs=2:duration=first:normalize=0,"
+        "alimiter=limit=0.97:level=0:latency=1[mixed_voice]",
+    ]
     args += [
         "-filter_complex",
         ";".join(graph),
         "-map",
         f"[{current}]",
         "-map",
-        voice_map,
+        "[mixed_voice]",
         "-t",
         str(duration),
         "-c:v",

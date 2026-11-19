@@ -680,7 +680,7 @@ def render_suite(
     }
     from .video_editing_suite_actions import SUITE_FAMILIES
 
-    suite_sound = (
+    bihuo_mix = (
         frozen.get("engine") == "bihuo-full-suite"
         and frozen["template_id"] in SUITE_FAMILIES
     )
@@ -704,7 +704,7 @@ def render_suite(
         validation.update(sha256=sha256(mixed), template_sound=audio)
         return mixed
 
-    if suite_sound and tutorial is None:
+    if tutorial is None:
         final = mix_native_sound(final)
     if tutorial is not None:
         from .video_editing_tutorial_render import render_tutorial
@@ -720,11 +720,11 @@ def render_suite(
             root / "tutorial",
             settings,
             guard,
-            mix_native_sound=mix_native_sound if suite_sound else None,
+            mix_native_sound=mix_native_sound,
         )
         validation = {**tutorial_validation, "base_native_validation": validation}
         duration = validation["duration_ms"]
-    if suite_sound:
+    if bihuo_mix:
         from .video_editing_suite_music import mix_suite_music
 
         music = mix_suite_music(

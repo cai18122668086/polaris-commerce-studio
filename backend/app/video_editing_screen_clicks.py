@@ -179,7 +179,7 @@ def detect_screen_clicks(
             previous_gray = gray
             previous_cursor = cursor
             for when, evidence in sorted(possible):
-                if when >= 160 and all(
+                if when > 0 and all(
                     abs(when - click["source_ms"]) >= _DEBOUNCE_MS for click in clicks
                 ):
                     clicks.append({"source_ms": when, "evidence": evidence})

@@ -84,8 +84,8 @@ def test_recording_click_follows_retimed_visual(tmp_path, monkeypatch):
         None,
         lambda: None,
     )
-    assert [event["at_ms"] for event in evidence["events"]] == [1033, 2433]
-    assert evidence["detected_clicks"] == 1
+    assert [event["at_ms"] for event in evidence["events"]] == [1033, 1133, 2433]
+    assert evidence["detected_clicks"] == 2
 
 
 def test_click_follows_a_stable_blue_focus_change_not_a_filled_button(monkeypatch):

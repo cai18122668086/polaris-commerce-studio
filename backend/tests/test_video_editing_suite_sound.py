@@ -103,3 +103,44 @@ def test_fullscreen_recording_silences_the_native_effect_hidden_behind_it(
         (2000, "transition"),
         (6000, "text"),
     ]
+
+
+def test_business_flower_text_and_sparkles_use_individual_visible_starts(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("app.video_editing_suite_sound.run", lambda *_: None)
+    monkeypatch.setattr(
+        "app.video_editing_suite_sound.write_cue_track", lambda *_: None
+    )
+    _, sound = enhance_suite_sound(
+        Path("base.mp4"),
+        {
+            "template_id": "bihuo-47-v1",
+            "config": {
+                "fps": 25,
+                "opening_end": 2,
+                "title": "Title",
+                "support": "Support",
+                "identity": {"enabled": True, "name": "Name"},
+                "columns": [],
+                "star_count": 10,
+                "stars_at": 5,
+            },
+        },
+        8000,
+        "fixture",
+        tmp_path,
+        type("Settings", (), {"video_editing_ffmpeg": "ffmpeg"})(),
+        lambda: None,
+        scan_recordings=False,
+        tutorial_clock={
+            "holds": [],
+            "steps": [{"large_start_ms": 4500, "end_ms": 5400}],
+        },
+    )
+    assert [(event["at_ms"], event["action"]) for event in sound["events"]] == [
+        (80, "type"),
+        (160, "text"),
+        (880, "type"),
+        (5400, "confirm"),
+    ]

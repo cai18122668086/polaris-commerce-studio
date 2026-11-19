@@ -1,6 +1,7 @@
 """Attach library effects to the native suite clocks."""
 
 import math
+from bisect import bisect_left
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
@@ -56,12 +57,31 @@ def enhance_suite_sound(
         for step in (tutorial_clock or {}).get("steps", [])
         if step["large_start_ms"] is not None
     ]
-    for start, action in sorted(actions, key=lambda row: (row[0], row[1] != "media")):
+    visible_actions = []
+    for start, action in actions:
         at = round(math.ceil(start * fps - 1e-7) / fps * 1000)
         if fullscreen and tutorial_clock is not None:
             frame = frame_at(source_to_output(tutorial_clock, at))
-            if any(first <= frame < last for first, last in fullscreen):
-                continue
+            hidden_until = next(
+                (last for first, last in fullscreen if first <= frame < last), None
+            )
+            if hidden_until is not None:
+                # The business sparkles may still be visible when the recording exits.
+                if template_id != "bihuo-47-v1" or action != "confirm":
+                    continue
+                last_visible = round((cfg["stars_at"] + 0.82) * 1000)
+                resume = round(hidden_until * 1000 / 30)
+                at += bisect_left(
+                    range(at, last_visible),
+                    resume,
+                    key=lambda point: source_to_output(tutorial_clock, point),
+                )
+                if at >= last_visible:
+                    continue
+        visible_actions.append((at, action))
+    for at, action in sorted(
+        visible_actions, key=lambda row: (row[0], row[1] != "media")
+    ):
         if (
             at < 0
             or duration_ms - at < 90

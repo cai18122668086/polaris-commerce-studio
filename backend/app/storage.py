@@ -14,7 +14,7 @@ from botocore.client import BaseClient
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 from fastapi import UploadFile
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 
 from .config import Settings
 from .errors import ApiError, UploadValidationError
@@ -537,7 +537,10 @@ def validate_prepared_image(
         with Image.open(BytesIO(image.payload)) as opened:
             image_format = str(opened.format or "")
             opened.load()
-            width, height = ImageOps.exif_transpose(opened).size
+            # Upload metadata and preserved provider artifacts describe the
+            # encoded pixel matrix. EXIF changes display orientation, not the
+            # immutable bytes or their declared width/height.
+            width, height = opened.size
     except (
         Image.DecompressionBombError,
         UnidentifiedImageError,

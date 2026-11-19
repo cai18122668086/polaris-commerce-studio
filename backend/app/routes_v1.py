@@ -897,6 +897,10 @@ async def upload_asset(
     storage: ImageStorage = request.app.state.storage
     try:
         stored = await storage.save_validated(validated)
+    except UploadValidationError as exc:
+        # Full decoding at the persistence boundary can catch a truncated file
+        # that passed header verification. Validation runs before any write.
+        raise ApiError(status.HTTP_400_BAD_REQUEST, exc.code, exc.message) from exc
     except asyncio.CancelledError:
         await _finish_cleanup_before_cancellation(
             storage,

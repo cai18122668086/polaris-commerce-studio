@@ -71,8 +71,15 @@ jobs:
                   env.write(f"POLARIS_BROWSER_EXECUTABLE={p.chromium.executable_path}\n")
           PY
       - run: npm test
-      - name: Install Chinese fonts for visual verification
-        run: sudo apt-get update -qq && sudo apt-get install -y fonts-noto-cjk
+      - name: Verify Chinese font coverage for visual verification
+        # Chromium's pinned native dependencies already install CJK fonts.
+        run: |
+          cjk_fonts="$(fc-list ':lang=zh' family)"
+          if [ -z "$cjk_fonts" ]; then
+            echo "::error::Chromium dependencies did not provide a Chinese font."
+            exit 1
+          fi
+          printf '%s\n' "$cjk_fonts"
       - name: Verify mobile layouts and processing consent in Chromium
         run: |
           mkdir -p "$POLARIS_BROWSER_OUTPUT"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -12,6 +13,7 @@ import httpx
 from .config import Settings
 from .errors import ApiError
 
+YIYUAN_HOST = "yy.shagentai.com"
 MEDIA_HOSTS = {
     "skyhumanapi.pilihu.vip",
     "cdn-oss.pilihu.vip",
@@ -24,7 +26,19 @@ MEDIA_HOSTS = {
 }
 
 
-def safe_media_url(url: str) -> str:
+def _yiyuan_model_unavailable(data: dict[str, Any]) -> bool:
+    message = data.get("message")
+    if data.get("code") != "fail_to_fetch_task" or not isinstance(message, str):
+        return False
+    try:
+        error_body = json.loads(message)
+    except ValueError:
+        return False
+    error = error_body.get("error") if isinstance(error_body, dict) else None
+    return isinstance(error, dict) and error.get("code") == "model_not_found"
+
+
+def safe_media_url(url: str, *, vendor: str | None = None) -> str:
     try:
         parts = urlsplit(url)
         port = parts.port
@@ -32,7 +46,10 @@ def safe_media_url(url: str) -> str:
         raise ApiError(502, "VIDEO_MEDIA_HOST_REJECTED", "素材地址无效。") from None
     if (
         parts.scheme != "https"
-        or parts.hostname not in MEDIA_HOSTS
+        or (
+            parts.hostname not in MEDIA_HOSTS
+            and not (vendor == "yiyuan" and parts.hostname == YIYUAN_HOST)
+        )
         or parts.username
         or parts.password
         or port not in {None, 443}
@@ -53,12 +70,13 @@ class VideoProviders:
     ) -> dict[str, Any]:
         if not self.settings.video_providers_enabled:
             raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
-        if vendor not in {"quanyu", "wuye", "skyhuman"}:
+        if vendor not in {"quanyu", "wuye", "skyhuman", "yiyuan"}:
             raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
         key = {
             "quanyu": self.settings.quanyu_api_key,
             "wuye": self.settings.wuye_api_key,
             "skyhuman": self.settings.skyhuman_api_key,
+            "yiyuan": self.settings.yiyuan_api_key,
         }[vendor].get_secret_value()
         if not key:
             raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
@@ -66,6 +84,7 @@ class VideoProviders:
             "quanyu": "https://quanyu.sowa.chat",
             "wuye": "https://www.wuyeai.cn",
             "skyhuman": "https://skyhumanapi.pilihu.vip",
+            "yiyuan": "https://" + YIYUAN_HOST,
         }[vendor]
         headers = (
             {"X-API-Key": key}
@@ -108,6 +127,18 @@ class VideoProviders:
             and (path.startswith("/api/status/") or path.startswith("/v1/videos/"))
         )
         if (
+            vendor == "yiyuan"
+            and method == "POST"
+            and response.status_code == 503
+            and _yiyuan_model_unavailable(data)
+        ):
+            raise ApiError(
+                502,
+                "VIDEO_PROVIDER_REJECTED",
+                "艺源没有可用的模型渠道。",
+                {"vendor": vendor, "upstream_status": 503, "model_unavailable": True},
+            )
+        if (
             not response.is_success
             or data.get("error")
             and not task_status_response
@@ -119,7 +150,12 @@ class VideoProviders:
                 502,
                 "VIDEO_PROVIDER_OUTCOME_UNKNOWN"
                 if method == "POST"
-                and (response.status_code >= 500 or response.status_code == 408)
+                and (
+                    response.status_code >= 500
+                    or response.status_code == 408
+                    or vendor == "yiyuan"
+                    and response.is_success
+                )
                 else "VIDEO_PROVIDER_REJECTED",
                 "供应商未接受请求，请检查余额、形象或音色配置。",
                 {"vendor": vendor, "upstream_status": response.status_code},
@@ -199,7 +235,7 @@ class VideoProviders:
         limit: int = 200 * 1024 * 1024,
         vendor: str | None = None,
     ) -> None:
-        safe_media_url(url)
+        safe_media_url(url, vendor=vendor)
         headers = (
             {"Authorization": "Bearer " + self.settings.wuye_api_key.get_secret_value()}
             if vendor == "wuye"
@@ -207,6 +243,11 @@ class VideoProviders:
         )
         if vendor == "quanyu":
             headers = {"X-API-Key": self.settings.quanyu_api_key.get_secret_value()}
+        if vendor == "yiyuan" and urlsplit(url).hostname == YIYUAN_HOST:
+            headers = {
+                "Authorization": "Bearer "
+                + self.settings.yiyuan_api_key.get_secret_value()
+            }
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_suffix(target.suffix + "." + str(uuid4()) + ".part")
         with httpx.Client(
@@ -215,7 +256,9 @@ class VideoProviders:
             for _ in range(4):
                 with client.stream("GET", url, headers=headers) as response:
                     if response.is_redirect:
-                        url = safe_media_url(str(response.headers.get("location", "")))
+                        url = safe_media_url(
+                            str(response.headers.get("location", "")), vendor=vendor
+                        )
                         headers = {}  # Never forward credentials to a media host.
                         continue
                     response.raise_for_status()

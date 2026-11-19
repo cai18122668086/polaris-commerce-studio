@@ -24,6 +24,7 @@ from app.models import (
     JobRecord,
     WorkspaceCreditAccountRecord,
 )
+from app.provider import ProviderOutcome
 from app.services import canonical_hash
 from app.task_runner import MockTaskRunner
 from app.xinghe_agent import FakeXingheGateway
@@ -255,6 +256,7 @@ def test_native_fast_failed_page_retry_uses_frozen_native_prompt_only(client, tm
     dispatch_pending(client)
     initial = detail(client, job_id)
     assert initial["status"] == "partial" and initial["succeeded_item_count"] == 5
+    assert {"retry", "clone"} <= set(initial["allowed_actions"])
     original = private_plan(client, job_id)
     assert_no_native_closure(original)
     child_id = retry(client, job_id)
@@ -307,7 +309,12 @@ def test_native_fast_unknown_call_blocks_retry_and_clone(client, tmp_path):
     gateway = Unknown()
     job_id, _ = create(client, tmp_path, gateway=gateway)
     dispatch_pending(client)
-    assert detail(client, job_id)["status"] == "partial"
+    current = detail(client, job_id)
+    assert current["status"] == "partial"
+    assert not {"retry", "clone"} & set(current["allowed_actions"])
+    history = client.get(BASE + "/jobs").json()["items"]
+    listed = next(job for job in history if job["id"] == job_id)
+    assert not {"retry", "clone"} & set(listed["allowed_actions"])
     for suffix, body in [
         ("retry", {"scope": "failed", "item_ids": []}),
         ("clone", None),
@@ -319,6 +326,69 @@ def test_native_fast_unknown_call_blocks_retry_and_clone(client, tmp_path):
         assert response.json()["error"]["code"] == "PROVIDER_OUTCOME_UNKNOWN"
     assert gateway.unknown_calls == 1 and len(gateway.image_calls) == 5
     assert len(gateway.planner_calls) == 1
+
+
+def test_native_fast_retains_redacted_upstream_failure_without_replaying(
+    client, tmp_path
+):
+    class Rejected(NativeGateway):
+        async def edit(self, request):
+            result = await super().edit(request)
+            return replace(
+                result,
+                outcome=ProviderOutcome.OUTCOME_UNKNOWN,
+                artifact=None,
+                provider_request_id=None,
+                normalized_usage={"reported": False},
+                raw_usage={
+                    "metrics": {
+                        "provider_error": {
+                            "code": "upstream_unavailable",
+                            "message": (
+                                "Bearer secret-value at https://private.test/error"
+                            ),
+                        },
+                        "provider_attempts": [{
+                            "route": "primary", "host": "images.test",
+                            "model": "image-model", "http_status": 503,
+                            "request_id": None, "authorization": "must-not-persist",
+                        }],
+                    },
+                },
+                actual_cost_micros=None,
+                http_status=503,
+                error_code="IMAGE_REQUEST_FAILED",
+            )
+
+    gateway = Rejected()
+    job_id, _ = create(client, tmp_path, gateway=gateway)
+    dispatch_pending(client)
+    current = detail(client, job_id)
+    assert current["status"] == "failed"
+    for item in current["items"]:
+        assert item["error_code"] == "PROVIDER_OUTCOME_UNKNOWN"
+        assert item["error_details"]["provider_error"]["code"] == "upstream_unavailable"
+        attempts = item["error_details"]["provider_attempts"]
+        assert attempts == [{
+            "route": "primary", "host": "images.test", "model": "image-model",
+            "http_status": 503, "request_id": None,
+        }]
+        assert "secret-value" not in str(item["error_details"])
+        assert "private.test" not in str(item["error_details"])
+        assert "must-not-persist" not in str(item["error_details"])
+    with client.app.state.session_factory() as db:
+        receipts = db.get(JobRecord, job_id).configuration[RECEIPTS_KEY]
+        assert all(
+            r["usage"]["metrics"]["provider_error"]["code"] == "upstream_unavailable"
+            for r in receipts.values()
+        )
+        assert "secret-value" not in str(receipts)
+    response = client.post(
+        BASE + f"/jobs/{job_id}/retry", headers=idem(),
+        json={"scope": "failed", "item_ids": []},
+    )
+    assert response.status_code == 409
+    assert len(gateway.image_calls) == 6
 
 
 def test_native_fast_plan_save_failure_can_replan_with_original_inputs(
@@ -344,9 +414,12 @@ def test_native_fast_plan_save_failure_can_replan_with_original_inputs(
     assert source["stage"] == "planning_failed" and source["plan"] is None
     assert not gateway.image_calls and len(gateway.planner_calls) == 1
     with client.app.state.session_factory() as db:
-        assert db.get(JobRecord, job_id).configuration[
-            "_main_image_fast_planning"
-        ]["state"] == "invoked"
+        assert (
+            db.get(JobRecord, job_id).configuration["_main_image_fast_planning"][
+                "state"
+            ]
+            == "invoked"
+        )
     key = idem()
     response = client.post(
         BASE + f"/jobs/{job_id}/retry",
@@ -570,3 +643,34 @@ def test_standard_default_serialization_preserves_existing_request_identity():
         **data, main_image_speed="standard"
     ).model_dump()
     assert omitted == explicit and "main_image_speed" not in omitted
+
+
+def test_full_storage_stops_before_planning_and_retry_completes(
+    client,
+    tmp_path,
+    monkeypatch,
+):
+    async def full():
+        raise OSError("mock MinIO free-space refusal")
+
+    storage = client.app.state.storage
+    with monkeypatch.context() as failed:
+        failed.setattr(storage, "probe_write", full)
+        job_id, gateway = create(client, tmp_path)
+        dispatch_pending(client)
+    current = detail(client, job_id)
+    assert current["status"] == "failed"
+    assert current["error_code"] == "STORAGE_WRITE_UNAVAILABLE"
+    assert current["api_request_count"] == 0
+    assert len(gateway.planner_calls) == len(gateway.image_calls) == 0
+
+    response = client.post(
+        BASE + f"/jobs/{job_id}/retry",
+        headers=idem(),
+        json={"scope": "failed"},
+    )
+    assert response.status_code == 201, response.text
+    dispatch_pending(client)
+    assert_delivery(client, response.json()["id"])
+    assert len(gateway.planner_calls) == 1
+    assert len(gateway.image_calls) == 6

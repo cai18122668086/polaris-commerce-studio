@@ -149,6 +149,7 @@ class Settings(BaseSettings):
         return value
 
     wuye_api_key: SecretStr = SecretStr("")
+    yiyuan_api_key: SecretStr = SecretStr("")
     video_media_dir: Path = (
         Path(__file__).resolve().parents[1] / ".data" / "video-studio"
     )

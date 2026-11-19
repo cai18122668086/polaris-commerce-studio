@@ -7063,7 +7063,7 @@ export interface components {
              * Mode
              * @enum {string}
              */
-            mode: "subtitles" | "native_plan";
+            mode: "subtitles" | "native_plan" | "suite_plan";
             /** Project Id */
             project_id: string;
             /** Project Title */
@@ -7172,7 +7172,7 @@ export interface components {
             project_id?: string | null;
             /**
              * Prompt
-             * @default 以 @图1 为唯一人物、服装、背景和起始姿态参考，生成15秒真人感强、安定从容的口播数字人动作底片。竖屏腰部以上，双手完整可见，固定机位，曝光光线稳定，保留真实皮肤细节和人物一致性。身体直立放松，头部、躯干与胸肩位置稳定，肩线高度几乎固定，身体只有几乎不可察觉的缓慢微动。不耸肩、不挺胸、不深吸气、不急促喘气、不前后摇晃，不用胸肩带动手势。动作集中于前臂和手腕，每次仅一组低幅度手势，手肘靠近身体，动作之间有自然停顿。0至3秒保持参考图中性姿态；3至6秒右手在腰腹前小幅掌心向上解释，躯干不动；6至9秒右手缓慢回位并停顿；9至11秒左手做一次轻微补充手势并回位；11至15秒双手、头部、视线、肩线回到与开头一致的中性位置并安静保持，方便正向首尾衔接。表情平和，口周清晰放松，嘴唇闭合或轻微张开，不主动连续说话，不张嘴喘气，不大笑，便于后续音频驱动。手不遮脸，不点头晃头，不走动、不转身、不运镜、不切镜，无配音、无文字水印。
+             * @default 生成10秒真人口播动作底片。A continuous 10-second real-time recording of the person in the reference photograph during a quiet pause before speaking. Preserve the reference person's identity, clothes, background and composition, including their original seated or standing posture. The person looks alert, calm, professional and approachable, maintaining warm, steady eye contact with the camera and a subtle relaxed closed-lip smile. Both arms and hands remain near their original resting positions; forearms stay supported if there is a desk. At most one tiny relaxed adjustment of the fingertips. The body remains nearly stationary while natural breathing, tiny changes in gaze focus and almost imperceptible facial microexpressions create lifelike presence. Natural brief blinks, head upright, lips resting gently together. At the end, settle into the same hand position, head position, gaze and gentle expression as the beginning. Locked-off camera, consistent lighting, skin texture, hair and clothes, one uninterrupted take. No broad hand gestures, raised arms, exaggerated expressions, deliberate nodding, speaking, camera movement, subtitles, watermark or voiceover.
              */
             prompt: string;
             /**

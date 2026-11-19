@@ -425,3 +425,33 @@ python -m app.ecommerce_local_worker
 `GET /api/ecommerce/workers?workspace_id=...` 确认 Worker 在线，再执行单链接抓取验收。
 Worker 离线、登录要求或风控页面必须作为失败状态处理，不得伪造成功或静默回落到其他
 服务器浏览器。
+
+## Generation storage capacity
+
+MinIO health and bucket reads can succeed even when the backing filesystem
+refuses writes. Keep at least 14 GiB available on the production MinIO and
+generation-work volumes and investigate at the first warning. Run the check
+from the Docker host, with the actual mount sources from
+`docker inspect --format '{{json .Mounts}}' <container>`:
+
+```sh
+python3 deploy/storage_capacity_check.py <minio-volume-path> <generation-work-volume-path>
+```
+
+The check exits 1 for warning and 2 for critical or an unreadable volume. Feed
+it into the host's existing monitor or systemd journal. Expand storage or move
+verified or byte-identical release archives to a separate volume before the
+critical threshold. Preserve rollback archive contents, active images, and
+customer objects. The check never prunes data.
+
+For fast domestic main images and fast detail packs:
+
+- `STORAGE_WRITE_UNAVAILABLE`: no new model call was submitted at that step.
+  Restore both storage volumes before retrying.
+- `STORAGE_RESULT_PENDING`: the receipt references the original bytes in the
+  private `delivery-spool` directory under `POLARIS_AURORA_WORK_ROOT`. Keep this
+  volume mounted across worker replacements. After storage recovers, the retry
+  verifies and publishes the original and reuses previously delivered pages.
+- `PROVIDER_OUTCOME_UNKNOWN`: no verified result is available. Reconcile the
+  original dispatch before authorizing a new generation; do not delete receipts
+  or attempt records to bypass the fence.

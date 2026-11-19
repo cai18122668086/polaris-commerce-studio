@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from contextlib import suppress
 from dataclasses import replace
 from io import BytesIO
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
@@ -15,13 +17,22 @@ from PIL import Image
 from sqlalchemy import select
 
 from .errors import ApiError
+from .generation_image_stage import GenerationImageStage, staged_or_stored
 from .models import JobAttemptRecord, JobItemRecord, JobPlanRecord, JobRecord, utc_now
 from .provider import ProviderArtifact, ProviderOutcome
-from .storage import ALLOWED_IMAGE_FORMATS, ImageStorage, ValidatedImage
+from .storage import (
+    ALLOWED_IMAGE_FORMATS,
+    STORAGE_PENDING_MESSAGE,
+    STORAGE_RESULT_PENDING,
+    ImageStorage,
+    ValidatedImage,
+    require_image_storage_write,
+)
 from .xinghe_agent import ImageCallResult, ImageEditRequest
 
 PIPELINE = "xinghe-domestic-detail-v4.0-fast"
 RECEIPTS = "_detail_fast_invocations"
+logger = logging.getLogger(__name__)
 
 
 def _hash(value: Any) -> str:
@@ -48,10 +59,12 @@ class DurableFastDetailGateway:
         *,
         skill_id: str,
         skill_content_hash: str,
+        stage_root: Path | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.gateway = gateway
         self.storage = storage
+        self.stage = GenerationImageStage(stage_root, "detail") if stage_root else None
         self.skill_id = skill_id
         self.skill_content_hash = skill_content_hash
 
@@ -190,7 +203,7 @@ class DurableFastDetailGateway:
                         raise ApiError(
                             409, "DETAIL_FAST_SCOPE_INVALID", "原图回执归属不一致。"
                         )
-                    if old.get("state") == "returned":
+                    if old.get("state") in {"returned", "storage_pending"}:
                         return dict(old)
                     if (
                         old.get("state") in {"unknown", "invoked"}
@@ -276,10 +289,10 @@ class DurableFastDetailGateway:
                 raise ApiError(409, "DETAIL_FAST_SCOPE_INVALID", "任务回执归属无效。")
             receipts = dict(job.configuration.get(RECEIPTS, {}))
             old = receipts.get(request.job_item_id, {})
-            if (
-                old.get("attempt_id") != request.attempt_id
-                or old.get("state") != "invoked"
-            ):
+            if old.get("attempt_id") != request.attempt_id or old.get("state") not in {
+                "invoked",
+                "storage_pending",
+            }:
                 raise ApiError(409, "PROVIDER_OUTCOME_UNKNOWN", "调用回执已被接续。")
             receipts[request.job_item_id] = {
                 **old,
@@ -316,9 +329,49 @@ class DurableFastDetailGateway:
             raise ApiError(409, "DETAIL_FAST_SCOPE_INVALID", "原图存储归属无效。")
         if self.storage is None:
             raise ApiError(503, "DETAIL_FAST_STORAGE_REQUIRED", "原图存储服务不可用。")
-        data = await self.storage.read_bytes(record["object_key"])
-        if hashlib.sha256(data).hexdigest() != record["sha256"]:
-            raise ApiError(409, "DETAIL_FAST_RESULT_CHANGED", "保留原图校验不一致。")
+        stage_path = (
+            self.stage.path(
+                request.workspace_id, receipt["job_id"], receipt["attempt_id"]
+            )
+            if self.stage and receipt["state"] == "storage_pending"
+            else None
+        )
+        try:
+            data, staged = await staged_or_stored(
+                self.storage,
+                self.stage,
+                stage_path,
+                record["object_key"],
+                sha,
+            )
+        except ValueError as error:
+            raise ApiError(
+                409, "DETAIL_FAST_RESULT_CHANGED", "保留原图校验不一致。"
+            ) from error
+        if staged:
+            assert self.stage and stage_path
+            try:
+                await self.storage.save_validated(
+                    ValidatedImage(
+                        payload=data,
+                        **{
+                            key: record[key]
+                            for key in (
+                                "filename",
+                                "content_type",
+                                "width",
+                                "height",
+                                "sha256",
+                                "object_key",
+                            )
+                        },
+                    )
+                )
+            except Exception as error:
+                raise ApiError(
+                    503, STORAGE_RESULT_PENDING, STORAGE_PENDING_MESSAGE
+                ) from error
+            self.stage.discard(stage_path)
         artifact = ProviderArtifact(
             payload=data,
             **{
@@ -349,9 +402,9 @@ class DurableFastDetailGateway:
             http_status=200,
         )
 
-    async def _save(
+    def _prepared_image(
         self, request: ImageEditRequest, artifact: ProviderArtifact
-    ) -> dict[str, Any]:
+    ) -> ValidatedImage:
         with Image.open(BytesIO(artifact.payload)) as image:
             image.load()
             suffix, content_type = ALLOWED_IMAGE_FORMATS[image.format or ""]
@@ -361,27 +414,28 @@ class DurableFastDetailGateway:
             f"{request.workspace_id}/detail-fast/"
             f"{request.job_id}/page-{request.page_number:03d}-{sha}{suffix}"
         )
-        if self.storage is None:
-            raise ApiError(503, "DETAIL_FAST_STORAGE_REQUIRED", "原图存储服务不可用。")
-        stored = await self.storage.save_validated(
-            ValidatedImage(
-                payload=artifact.payload,
-                filename="detail-fast-original" + suffix,
-                content_type=content_type,
-                width=width,
-                height=height,
-                object_key=key,
-                sha256=sha,
-            )
+        return ValidatedImage(
+            payload=artifact.payload,
+            filename="detail-fast-original" + suffix,
+            content_type=content_type,
+            width=width,
+            height=height,
+            object_key=key,
+            sha256=sha,
         )
+
+    @staticmethod
+    def _image_record(image: ValidatedImage) -> dict[str, Any]:
         return {
-            "object_key": stored.object_key,
-            "object_version": stored.object_version,
-            "filename": stored.filename,
-            "content_type": content_type,
-            "width": width,
-            "height": height,
-            "sha256": sha,
+            key: getattr(image, key)
+            for key in (
+                "object_key",
+                "filename",
+                "content_type",
+                "width",
+                "height",
+                "sha256",
+            )
         }
 
     @staticmethod
@@ -413,6 +467,9 @@ class DurableFastDetailGateway:
                     503, "DETAIL_FAST_STORAGE_REQUIRED", "原图存储服务不可用。"
                 )
             binding = self._binding(request)
+            await require_image_storage_write(self.storage)
+            if self.stage:
+                self.stage.require_writable(self.storage.validator.max_upload_bytes)
             cached = self._claim(request, binding)
             if cached:
                 recovery = cached.get("recovery")
@@ -423,6 +480,8 @@ class DurableFastDetailGateway:
 
         started = monotonic()
         result: ImageCallResult | None = None
+        pending = False
+        stage_path: Path | None = None
         try:
             wire_request = (
                 replace(
@@ -483,7 +542,32 @@ class DurableFastDetailGateway:
                 result.outcome == ProviderOutcome.SUCCEEDED
                 and result.artifact is not None
             ):
-                artifact = await self._save(request, result.artifact)
+                image = self._prepared_image(request, result.artifact)
+                artifact = self._image_record(image)
+                if self.stage:
+                    stage_path = self.stage.path(
+                        request.workspace_id, request.job_id, request.attempt_id
+                    )
+                    self.stage.save(
+                        stage_path, image, self.storage.validator.max_upload_bytes
+                    )
+                    self._finish(
+                        request,
+                        {
+                            "state": "storage_pending",
+                            "artifact": artifact,
+                            "provider_request_id": result.provider_request_id,
+                            "original_provider_request_id": result.normalized_usage.get(
+                                "original_provider_request_id"
+                            ),
+                            "usage": result.normalized_usage,
+                            "actual_cost_micros": result.actual_cost_micros,
+                            "error_code": STORAGE_RESULT_PENDING,
+                        },
+                    )
+                    pending = True
+                stored = await self.storage.save_validated(image)
+                artifact["object_version"] = stored.object_version
                 state = "returned"
             self._finish(
                 request,
@@ -503,6 +587,8 @@ class DurableFastDetailGateway:
                     "error_code": result.error_code,
                 },
             )
+            if self.stage and stage_path:
+                self.stage.discard(stage_path)
             if unknown:
                 return replace(
                     result,
@@ -520,10 +606,33 @@ class DurableFastDetailGateway:
                 retryable=False,
             )
         except BaseException as error:
+            logger.warning(
+                "Fast detail interrupted: job=%s item=%s phase=%s type=%s code=%s",
+                request.job_id,
+                request.job_item_id,
+                "storage" if result and result.artifact else "generation",
+                type(error).__name__,
+                getattr(error, "code", None),
+                exc_info=True,
+            )
             # A timeout, cancellation, image download/storage failure or failed
             # receipt write cannot prove that no paid generation took place.
             # The durable pre-dispatch receipt still fences retries if this
             # best-effort diagnostic update cannot be committed.
+            if pending:
+                if isinstance(
+                    error, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)
+                ):
+                    raise
+                assert result is not None
+                return replace(
+                    result,
+                    outcome=ProviderOutcome.FAILED,
+                    artifact=None,
+                    retryable=False,
+                    error_code=STORAGE_RESULT_PENDING,
+                    error_message=STORAGE_PENDING_MESSAGE,
+                )
             with suppress(Exception):
                 self._finish(
                     request,

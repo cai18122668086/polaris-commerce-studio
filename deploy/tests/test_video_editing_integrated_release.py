@@ -111,7 +111,10 @@ class IntegratedVideoReleaseTests(unittest.TestCase):
                 ),
                 patch.object(release, "observed", side_effect=observed),
                 patch.object(release, "compose"),
-                patch("sys.stdin", io.StringIO("{}")),
+                patch(
+                    "sys.stdin",
+                    io.StringIO(json.dumps({"POLARIS_YIYUAN_API_KEY": "synthetic$yy"})),
+                ),
             ):
                 release.prepare(
                     root,
@@ -140,10 +143,15 @@ class IntegratedVideoReleaseTests(unittest.TestCase):
                 services["video-api"]["environment"]["POLARIS_WUYE_API_KEY"],
                 "synthetic$$a",
             )
+            self.assertEqual(
+                services["video-api"]["environment"]["POLARIS_YIYUAN_API_KEY"],
+                "synthetic$$yy",
+            )
             self.assertTrue(
                 all("ports" not in service for service in services.values())
             )
             worker = services["editing-worker"]
+            self.assertNotIn("POLARIS_YIYUAN_API_KEY", worker["environment"])
             self.assertEqual(
                 worker["networks"]["existing-private"]["aliases"], ["editing-worker"]
             )

@@ -82,7 +82,7 @@ SINGLE_IMAGE_ADAPTER_SCHEMA_VERSION = "single-image-skill-adapter-v1"
 SINGLE_IMAGE_PROMPT_SCHEMA_VERSION = "single-image-prompt-v1"
 _MODEL_POSE_TRANSFER_SKILL_ID = "ecommerce-model-pose-transfer"
 _REFERENCE_VISUAL_REMIX_SKILL_ID = "reference-visual-reverse-remix"
-_MODEL_POSE_PROMPT_CONTRACT_VERSION = "model-pose-direct-edit-v1"
+_MODEL_POSE_PROMPT_CONTRACT_VERSION = "model-pose-direct-edit-v2"
 _MODEL_POSE_REQUIRED_PROTOCOL_CLAUSES = (
     "Send `model_source` first as Image 1 and the only editable base.",
     "Send `pose_reference` second as Image 2 and pose guidance only.",
@@ -809,6 +809,13 @@ class XingheSingleImageProvider:
                 "Do not redesign the product, add variants, import the source background, or invent unsupported claims.",
             )
         )
+        if any(source.role == "competitor_reference" for source in envelope.source_assets):
+            from .reference_text_contract import (
+                instruction as reference_text_instruction,
+            )
+
+            policy = reference_text_instruction(str(envelope.prompt_input.get("language") or "zh-CN"))
+            prompt = policy + "\n\n" + prompt + "\n\n" + policy
         if len(prompt.encode("utf-8")) > 24_000:
             raise SingleImageProviderError(
                 "CREATIVE_VISUAL_ANALYSIS_INVALID",
@@ -896,7 +903,10 @@ class XingheSingleImageProvider:
             measured_latency=elapsed,
         )
         raw_usage = dict(result.raw_usage)
-        raw_usage["metrics"] = _direct_pose_transfer_metrics()
+        raw_usage["metrics"] = {
+            **raw_usage.get("metrics", {}),
+            **_direct_pose_transfer_metrics(),
+        }
         return replace(result, raw_usage=raw_usage)
 
     def _compile_direct_model_pose_prompt(
@@ -940,6 +950,9 @@ class XingheSingleImageProvider:
             "substitute a similar pose. Discard Image 1's old pose. Image 2 supplies "
             "pose only; "
             "never copy its person, body appearance, clothing, footwear, or scene. "
+            "Keep Image 1's garment lengths and coverage on each limb; rebuild "
+            "its outfit over the new pose, never import exposed skin from Image 2. "
+            "Do not add canvas padding or borders. "
             "Generate one edited image only. "
             f"Contract binding: {_MODEL_POSE_PROMPT_CONTRACT_VERSION}; "
             f"source_sha256={protocol.source_content_hash}; "
@@ -1490,6 +1503,9 @@ class XingheSingleImageProvider:
         width = envelope.target.width or 1024
         height = envelope.target.height or 1536
         language = str(envelope.prompt_input.get("language") or "zh-CN")
+        from .reference_text_contract import instruction as reference_text_instruction
+
+        reference_text_policy = reference_text_instruction(language)
         product_first = envelope.prompt_input.get("inspiration_product_first") is True
         image_role_instruction = (
             "Image 1 is the product-identity reference and the only authority for "
@@ -1508,6 +1524,7 @@ class XingheSingleImageProvider:
         prompt = "\n\n".join(
             (
                 "Create exactly ONE original ecommerce image. " + image_role_instruction,
+                reference_text_policy,
                 (
                     f"OUTPUT CONTRACT\nCanvas: {width}x{height}; aspect ratio: "
                     f"{envelope.target.aspect_ratio}; language: {language}; quality: "
@@ -1546,8 +1563,9 @@ class XingheSingleImageProvider:
                     "mark already printed on the product. Do not redesign those parts to "
                     "match the reference product, and do not erase a mark that is visible "
                     "on the product photo. Do not invent a new brand. Composition, crop, "
-                    "light, and typography still follow the reference."
+                    "light, and typography geometry still follow the reference."
                 ),
+                reference_text_policy,
                 (
                     "Compiled from verified Skill "
                     f"{protocol.skill_id}@{protocol.source_content_hash}."
@@ -2157,6 +2175,12 @@ def _inspect_image(payload: bytes) -> tuple[int, int, str]:
 
 def _provider_generation_size(target: TargetSpec, *, skill_id: str = "") -> str:
     target_width, target_height = target.dimensions
+    if skill_id == _MODEL_POSE_TRANSFER_SKILL_ID or (
+        target.fit == "contain" and skill_id != "xinghe-amazon-visual-suite"
+    ):
+        # Follow-source and follow-reference resolve to contain targets. A
+        # generic 2:3/3:2 request adds padding when restored to their canvas.
+        return f"{target_width}x{target_height}"
     if skill_id == "xinghe-amazon-visual-suite":
         amazon_canvas = {
             (2000, 2000): "2048x2048",

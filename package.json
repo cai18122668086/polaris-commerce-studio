@@ -17,7 +17,7 @@
     "api:generate": "openapi-typescript docs/openapi-v1.json -o lib/api/generated/openapi.d.ts",
     "api:check": "npm run api:export && npm run api:generate && git diff --exit-code -- docs/openapi-v1.json lib/api/generated/openapi.d.ts",
     "db:generate": "drizzle-kit generate",
-    "audit:security": "npm audit --audit-level=high"
+    "audit:security": "node tools/audit-security.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
@@ -42,6 +42,7 @@
     "eslint-config-next": "16.4.3",
     "openapi-typescript": "^7.13.0",
     "react-server-dom-webpack": "19.2.9",
+    "semver": "7.8.0",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vinext": "0.0.50",

@@ -509,10 +509,12 @@ def test_mutable_plan_metrics_hash_does_not_break_frozen_image_recovery(client):
 def test_compact_private_key_saves_and_reuses_under_real_workspace_length(client):
     # Use this checkout's resolved path, not pytest's unrelated temporary root.
     # The previous job/item/SHA layout exceeds MAX_PATH for these real IDs.
-    base = Path(os.environ.get(
-        "POLARIS_TEST_STORAGE_ROOT",
-        str(Path(__file__).resolve().parents[2] / "backend" / ".data"),
-    ))
+    base = Path(
+        os.environ.get(
+            "POLARIS_TEST_STORAGE_ROOT",
+            str(Path(__file__).resolve().parents[2] / "backend" / ".data"),
+        )
+    )
     root = (base / ("df-gateway-longpath-" + uuid4().hex[:8])).resolve()
     storage = LocalImageStorage(root, ImageValidator(2 * 1024 * 1024, 2_000_000))
     gateway = Gateway()
@@ -570,3 +572,46 @@ def test_query_only_recovery_never_posts_on_polaris_provider(client):
     assert result.error_code == "PROVIDER_OUTCOME_UNKNOWN"
     assert result.actual_cost_micros == result.estimated_cost_micros == 0
     assert result.raw_usage["network_requests"] == 0
+
+
+def test_midflight_storage_failure_resumes_detail_without_duplicate_charge(
+    client,
+    monkeypatch,
+    tmp_path,
+):
+    from app.generation_image_stage import GenerationImageStage
+
+    gateway = Gateway()
+    durable = wrapper(client, gateway)
+    durable.stage = GenerationImageStage(tmp_path, "detail")
+    request = make_request(client)
+    storage = client.app.state.storage
+    save = storage.save_validated
+
+    async def unavailable(image):
+        raise OSError("object storage full only after generation starts")
+
+    monkeypatch.setattr(storage, "save_validated", unavailable)
+    pending = asyncio.run(durable.edit(request))
+    assert pending.error_code == "STORAGE_RESULT_PENDING"
+    assert pending.outcome == ProviderOutcome.FAILED
+    saved = receipt(client, request)
+    assert saved["state"] == "storage_pending"
+    spool = durable.stage.path(request.workspace_id, request.job_id, request.attempt_id)
+    assert spool.exists()
+
+    monkeypatch.setattr(storage, "save_validated", save)
+    recreated = wrapper(client, gateway)
+    recreated.stage = GenerationImageStage(tmp_path, "detail")
+    retry = make_request(client, request)
+    recovered = asyncio.run(recreated.edit(retry))
+    assert recovered.outcome == ProviderOutcome.SUCCEEDED
+    assert recovered.artifact.sha256 == saved["artifact"]["sha256"]
+    assert recovered.actual_cost_micros == 0
+    assert recovered.raw_usage["network_requests"] == 0
+    assert (
+        asyncio.run(storage.read_bytes(saved["artifact"]["object_key"]))
+        == recovered.artifact.payload
+    )
+    assert not spool.exists()
+    assert len(gateway.requests) == 1

@@ -505,6 +505,7 @@ def runtime_status_response(
     environment: Literal["development", "test", "production"],
     authentication_mode: Literal["development", "external"],
     task_runner: Literal["mock", "tengli"],
+    external_authentication_enabled: bool = False,
     product_image_provider_enabled: bool = False,
     reference_remix_provider_enabled: bool = False,
     model_pose_transfer_provider_enabled: bool = False,
@@ -588,10 +589,16 @@ def runtime_status_response(
             ),
             local_edit=local_edit,
             detail_pack=detail_pack,
-            external_authentication=CapabilityStatus(
-                availability="unavailable",
-                execution="none",
-                reason_code="EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
+            external_authentication=(
+                CapabilityStatus(
+                    availability="available", execution="provider", reason_code=None,
+                )
+                if authentication_mode == "external" and external_authentication_enabled
+                else CapabilityStatus(
+                    availability="unavailable",
+                    execution="none",
+                    reason_code="EXTERNAL_AUTHENTICATION_NOT_IMPLEMENTED",
+                )
             ),
         ),
     )
@@ -617,6 +624,9 @@ def get_runtime_status(
         environment=settings.environment,
         authentication_mode=settings.auth_mode,
         task_runner=settings.task_runner,
+        external_authentication_enabled=(
+            request.app.state.external_auth_backend is not None
+        ),
         product_image_provider_enabled=settings.product_image_provider_enabled,
         reference_remix_provider_enabled=settings.reference_remix_provider_enabled,
         model_pose_transfer_provider_enabled=(
@@ -5070,9 +5080,28 @@ def _validate_domestic_detail_retry(
     if (
         source.type != JobType.DETAIL_PACK.value
         or settings.get("market_region") != "domestic"
-        or detail_fast_runtime.is_independent(source.configuration)
     ):
         return
+    if detail_fast_runtime.is_independent(source.configuration):
+        uncertain_item_id = session.scalar(
+            select(JobItemRecord.id)
+            .where(
+                JobItemRecord.job_id == source.id,
+                JobItemRecord.id.in_(selected),
+                JobItemRecord.error_code.in_(
+                    ("PROVIDER_OUTCOME_UNKNOWN", "IMAGE_RESULT_DOWNLOAD_UNCONFIRMED")
+                ),
+            )
+            .limit(1)
+        )
+        if uncertain_item_id is not None:
+            raise ApiError(
+                409,
+                "PROVIDER_OUTCOME_UNKNOWN",
+                "原生图结果尚未核实，请核查原任务，避免重复提交。",
+            )
+        return
+
     from .aurora_detail_runtime import detail_workspace
 
     try:

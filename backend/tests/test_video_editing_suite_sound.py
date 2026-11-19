@@ -1,7 +1,6 @@
-from pathlib import Path
-
 import json
 from hashlib import sha256
+from pathlib import Path
 
 from app import video_editing_suite_music as music
 from app.bihuo_suite.registry import definitions

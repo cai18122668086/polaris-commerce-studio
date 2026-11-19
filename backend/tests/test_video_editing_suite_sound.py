@@ -6,7 +6,12 @@ from app import video_editing_suite_music as music
 from app.bihuo_suite.registry import definitions
 from app.config import Settings
 from app.video_editing_sound_palettes import PALETTES, select_sound
-from app.video_editing_suite_actions import SUITE_FAMILIES, suite_actions
+from app.video_editing_suite_actions import (
+    SUITE_FAMILIES,
+    apple_actions,
+    editorial_actions,
+    suite_actions,
+)
 from app.video_editing_suite_music import SUITE_MUSIC
 from app.video_editing_suite_sound import enhance_suite_sound
 
@@ -118,6 +123,63 @@ def test_caption_changes_never_add_a_sound():
             )
             == []
         )
+
+
+def test_independent_title_roles_use_the_native_entry_clock():
+    assert suite_actions(
+        "bihuo-24-v1",
+        {
+            "title": "Title",
+            "support": "Support",
+            "title_events": {"main_entry": [2, 10], "support_entry": [4, 12]},
+            "name_card": {"enabled": False, "name": "Hidden"},
+        },
+    ) == [(0.08, "type"), (0.16, "type")]
+
+
+def test_unrendered_or_covered_text_does_not_produce_a_cue():
+    plan = {
+        "duration": 16,
+        "final_start": 14,
+        "materials": [{"start": 2, "end": 4}],
+        "text_items": [
+            {"start": 2.8, "end": 3.6, "text": "Covered by picture"},
+            {"start": 3.8, "end": 5.2, "text": "Visible after picture"},
+        ],
+        "conclusion": {"first": {"start": 14, "end": 16, "text": "Unrendered"}},
+    }
+    assert suite_actions("bihuo-33-v1", plan) == [(2, "media")]
+    assert suite_actions("bihuo-40-v1", plan) == [(2, "media"), (4.16, "text")]
+
+
+def test_apple_and_editorial_cues_ignore_caption_fallbacks():
+    captions = [{"time": [5, 6], "text": "Speech", "emphasis": "Speech"}]
+    apple = {
+        "fps": 25,
+        "opening_variant": "B",
+        "title": "Headline",
+        "subtitle": "Independent title line",
+        "chapters": [{"time": 4, "text": "Chapter"}],
+    }
+    assert apple_actions({**apple, "captions": captions}) == [
+        (0.32, "type"),
+        (1, "type"),
+        (4.04, "text"),
+    ]
+    editorial = {
+        "duration": 12,
+        "title": "Headline",
+        "chapters": [],
+        "points": [],
+        "features": [],
+        "conclusion": {},
+        "materials": [],
+        "captions": captions,
+    }
+    assert editorial_actions(editorial) == [(0, "type")]
+    assert editorial_actions(
+        {**editorial, "points": [{"start": 5, "text": "Visible card"}]}
+    ) == [(0, "type"), (5, "text")]
 
 
 def test_fullscreen_recording_silences_the_native_effect_hidden_behind_it(

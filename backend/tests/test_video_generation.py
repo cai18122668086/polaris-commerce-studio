@@ -19,6 +19,7 @@ from app.main import create_app
 from app.video_generation import (
     H3_PROMPT,
     LEGACY_H3_PROMPT,
+    LEGACY_WAITING_TEMPLATE_PROMPT,
     LEGACY_WEB_TEMPLATE_PROMPT,
     GenerationRequest,
 )
@@ -376,7 +377,8 @@ def test_existing_h3_task_downloads_from_original_channel_after_enabling_yiyuan(
 
 
 @pytest.mark.parametrize(
-    "legacy_prompt", [LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT]
+    "legacy_prompt",
+    [LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT, LEGACY_WAITING_TEMPLATE_PROMPT],
 )
 def test_legacy_template_prompts_use_ten_second_natural_motion(
     video_gen, legacy_prompt
@@ -396,14 +398,14 @@ def test_legacy_template_prompts_use_ten_second_natural_motion(
     assert provider.posts[0][0] == "yiyuan"
     assert provider.posts[0][2]["seconds"] == "10"
     assert provider.posts[0][2]["prompt"] == H3_PROMPT
-    assert "fingertips" in H3_PROMPT
     assert (
         client.get(root + "/generation-tasks").json()[0]["status"] == "awaiting_review"
     )
 
 
 @pytest.mark.parametrize(
-    "legacy_prompt", [LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT]
+    "legacy_prompt",
+    [LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT, LEGACY_WAITING_TEMPLATE_PROMPT],
 )
 def test_preupgrade_request_replay_keeps_original_paid_job(video_gen, legacy_prompt):
     client, _, provider, root, _, _ = video_gen

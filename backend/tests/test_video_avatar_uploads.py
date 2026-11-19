@@ -7,6 +7,7 @@ import pytest
 from PIL import Image
 from pydantic import SecretStr
 
+from app.video_generation import H3_PROMPT
 from app.video_generation_models import VideoAvatarRecord, VideoGenerationRecord
 from tests.test_auth_external import verified_identity
 
@@ -51,6 +52,7 @@ def test_image_uses_uploaded_reference_and_requires_review_before_registration(
     assert provider.posts[0][0] == vendor
     generation = provider.posts[0][2]
     assert generation.get("seconds", generation.get("duration")) in {"10", 10}
+    assert generation["prompt"] == H3_PROMPT
     sample = provider.uploads[0][0]
     assert sample.name == "cover.png" and "avatar-uploads" in str(sample)
     assert client.get(job["video_url"]).status_code == 200
@@ -70,6 +72,7 @@ def test_image_uses_uploaded_reference_and_requires_review_before_registration(
     assert client.get(avatar["preview_url"]).status_code == 200
     with client.app.state.session_factory() as session:
         saved = session.get(VideoGenerationRecord, job["id"])
+        assert saved.details["template_prompt"] == H3_PROMPT
         assert saved.details["consent_version"] == "avatar-v1"
         assert saved.details["sample_sha256"] and saved.details["consent_at"]
 

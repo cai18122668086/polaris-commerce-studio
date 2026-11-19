@@ -92,27 +92,6 @@ def recording_windows(template_id: str, cfg: dict) -> Iterator[tuple[dict, int, 
             yield row, span, round(row["start"] * fps) / fps
 
 
-def _caption_actions(cfg: dict, fps: int) -> Iterator[tuple[float, str]]:
-    for row in cfg.get("captions", []):
-        emphasis = (
-            row.get("emphasis_spans")
-            or row.get("emphasis")
-            or row.get("emphasis_token_spans")
-            or row.get("bold")
-            or any(line.get("emphasis_spans") for line in row.get("lines", []))
-        )
-        if not emphasis:
-            continue
-        if row.get("time"):
-            yield row["time"][0], "emphasis"
-        elif row.get("range"):
-            yield row["range"][0] / fps, "emphasis"
-        elif row.get("frames"):
-            yield row["frames"][0] / fps, "emphasis"
-        elif "first" in row:
-            yield row["first"] / fps, "emphasis"
-
-
 def _window_actions(number: int, cfg: dict) -> Iterator[tuple[float, str]]:
     if number == 2:
         spec = cfg["_list_spec"]
@@ -203,11 +182,6 @@ def _layout_actions(number: int, cfg: dict, fps: int) -> Iterator[tuple[float, s
         if browser.get("lines"):
             yield browser["start"], "transition"
         yield from ((row["start"], "text") for row in steps["items"])
-    elif number == 32:
-        selected = set(cfg["glyph_caption_ids"])
-        yield from (
-            (row["time"][0], "type") for row in cfg["captions"] if row["id"] in selected
-        )
     elif number == 34:
         yield cfg["cut_frame"] / fps, "transition"
         if glyphs := cfg["header"].get("glyph_start"):
@@ -216,6 +190,8 @@ def _layout_actions(number: int, cfg: dict, fps: int) -> Iterator[tuple[float, s
         yield cfg["handoff"] / fps, "transition"
         yield cfg["outer_start"] / fps, "closing"
     elif number == 47:
+        if cfg.get("iris_at") is not None:
+            yield round(cfg["iris_at"] * fps) / fps, "transition"
         yield from ((row["start"], "text") for row in cfg["columns"])
         if cfg["star_count"]:
             yield cfg["stars_at"] + 1 / fps, "confirm"
@@ -224,7 +200,7 @@ def _layout_actions(number: int, cfg: dict, fps: int) -> Iterator[tuple[float, s
 def suite_actions(template_id: str, cfg: dict[str, Any]) -> list[tuple[float, str]]:
     number = int(template_id.split("-")[1])
     fps = cfg.get("fps", 25)
-    events: list[tuple[float, str]] = [(1 / fps, "opening")]
+    events: list[tuple[float, str]] = []
     if number == 33 and (cfg.get("title") or cfg.get("subtitle")):
         events.append((cfg["opening_end"] * 8 / 77, "type"))
     if number in _TITLE_FRAMES:
@@ -235,6 +211,5 @@ def suite_actions(template_id: str, cfg: dict[str, Any]) -> list[tuple[float, st
         at = _material_start(number, row, fps)
         if at is not None:
             events.append((at, "media"))
-    events.extend(_caption_actions(cfg, fps))
     events.extend(_layout_actions(number, cfg, fps))
     return [(at, action) for at, action in events if math.isfinite(at) and at >= 0]

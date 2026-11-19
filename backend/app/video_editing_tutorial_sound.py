@@ -11,11 +11,11 @@ import numpy as np
 from .motion_library import inside, read_json, sha256
 from .video_editing_pipeline import run
 from .video_editing_screen_clicks import detect_screen_clicks
-from .video_editing_template_audio import SCREEN_CLICK, SCREEN_ENTRY, SoundSlice
-from .video_editing_tutorial_plan import playback_elapsed_ms
+from .video_editing_template_audio import SCREEN_CLICK, SoundSlice
+from .video_editing_tutorial_plan import frame_at, playback_elapsed_ms
 
 RATE = 48_000
-VERSION = "tengli.tutorial-sound/1"
+VERSION = "tengli.tutorial-sound/2"
 
 
 def _cue_wave(
@@ -107,10 +107,11 @@ def recording_sound(
     events: list[dict] = []
     for step in clock["steps"]:
         asset_id = step["asset_id"]
+        visible_ms = round(frame_at(step["start_ms"]) * 1000 / 30)
         events.append(
             {
                 "asset_id": asset_id,
-                "at_ms": step["start_ms"],
+                "at_ms": visible_ms,
                 "evidence": "recording_entry",
             }
         )
@@ -120,23 +121,15 @@ def recording_sound(
             )
         except cv2.error:
             clicks = []
-        events.extend(
-            {
-                "asset_id": asset_id,
-                "at_ms": step["start_ms"]
-                + playback_elapsed_ms(step["playback_segments"], click["source_ms"]),
-                **click,
-            }
-            for click in clicks
-            if step["source_in_ms"] <= click["source_ms"] < step["source_out_ms"]
-        )
-    selections = [
-        (
-            event["at_ms"],
-            SCREEN_ENTRY if event["evidence"] == "recording_entry" else SCREEN_CLICK,
-        )
-        for event in events
-    ]
+        for click in clicks:
+            if not step["source_in_ms"] <= click["source_ms"] < step["source_out_ms"]:
+                continue
+            at = step["start_ms"] + playback_elapsed_ms(
+                step["playback_segments"], click["source_ms"]
+            )
+            if at - visible_ms >= 145:
+                events.append({"asset_id": asset_id, "at_ms": at, **click})
+    selections = [(event["at_ms"], SCREEN_CLICK) for event in events]
     output = root / "recording-fx.wav"
     write_cue_track(output, clock["duration_ms"], selections, settings, guard)
     return output, {

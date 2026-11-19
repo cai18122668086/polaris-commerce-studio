@@ -86,7 +86,7 @@ YIYUAN_TEMPLATE_MODEL = "muse-video"
 LEGACY_WEB_TEMPLATE_PROMPT = (
     "生成15秒固定机位真人口播模板，动作自然，首尾回到中性姿态，双手不遮脸，口周清晰。"
 )
-H3_PROMPT = (
+LEGACY_WAITING_TEMPLATE_PROMPT = (
     "生成10秒真人口播动作底片。A continuous 10-second real-time recording of the "
     "person in the reference photograph during a quiet pause before speaking. "
     "Preserve the reference person's identity, clothes, background and composition, "
@@ -103,6 +103,26 @@ H3_PROMPT = (
     "lighting, skin texture, hair and clothes, one uninterrupted take. "
     "No broad hand gestures, raised arms, exaggerated expressions, deliberate "
     "nodding, speaking, camera movement, subtitles, watermark or voiceover."
+)
+LEGACY_TEMPLATE_PROMPTS = (
+    LEGACY_H3_PROMPT,
+    LEGACY_WEB_TEMPLATE_PROMPT,
+    LEGACY_WAITING_TEMPLATE_PROMPT,
+)
+H3_PROMPT = (
+    "生成10秒真人口播动作底片。One fixed-camera take of the reference person "
+    "giving a calm, matter-of-fact explanation to one viewer at an ordinary "
+    "conversation pace. Preserve the original identity, clothes, framing, "
+    "background and stance. Use natural speech and mouth movements, relaxed "
+    "eyebrows, steady eye contact and brief natural blinks. Keep the head, "
+    "shoulders and body weight steady. Let an already extended hand stay "
+    "extended at its original height and direction, with the palm facing the "
+    "same way and just a small finger adjustment in the middle. Keep the other "
+    "hand where it starts. Spend the first and last half-second in the same "
+    "settled pose, matching head angle, gaze, shoulders, body weight, elbow "
+    "positions, hand placement and palm shape. Finish in that pose, with the "
+    "eyes open and facial expression matching the opening. Keep camera and "
+    "lighting fixed. No captions or watermarks."
 )
 
 
@@ -517,7 +537,7 @@ def submit_template(
     **routing: Any,
 ) -> None:
     prompt = job.details["prompt"]
-    if prompt in {LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT}:
+    if prompt in LEGACY_TEMPLATE_PROMPTS:
         prompt = H3_PROMPT
     reference_url = job.details["reference_url"]
     model = YIYUAN_TEMPLATE_MODEL if vendor == "yiyuan" else H3_TEMPLATE_MODEL
@@ -960,7 +980,7 @@ def submit_generation(
     fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
     accepted_fingerprints = {fingerprint}
     if "prompt" not in body.model_fields_set:
-        for legacy_prompt in (LEGACY_H3_PROMPT, LEGACY_WEB_TEMPLATE_PROMPT):
+        for legacy_prompt in LEGACY_TEMPLATE_PROMPTS:
             legacy_body = body.model_copy(update={"prompt": legacy_prompt})
             accepted_fingerprints.add(
                 hashlib.sha256(legacy_body.model_dump_json().encode()).hexdigest()

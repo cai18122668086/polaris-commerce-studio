@@ -16,6 +16,7 @@ from .video_editing_suite_actions import (
     recording_windows,
     suite_actions,
 )
+from .video_editing_tutorial_plan import frame_at, source_to_output
 from .video_editing_tutorial_sound import write_cue_track
 
 
@@ -29,6 +30,7 @@ def enhance_suite_sound(
     guard: Callable[[], None],
     *,
     scan_recordings: bool,
+    tutorial_clock: dict | None = None,
 ) -> tuple[Path, dict]:
     template_id = payload["template_id"]
     family = SUITE_FAMILIES[template_id]
@@ -49,8 +51,17 @@ def enhance_suite_sound(
     selections = []
     previous_ms = -1000
     previous_sound = ""
+    fullscreen = [
+        (frame_at(step["large_start_ms"]), frame_at(step["end_ms"]))
+        for step in (tutorial_clock or {}).get("steps", [])
+        if step["large_start_ms"] is not None
+    ]
     for start, action in sorted(actions, key=lambda row: (row[0], row[1] != "media")):
         at = round(math.ceil(start * fps - 1e-7) / fps * 1000)
+        if fullscreen and tutorial_clock is not None:
+            frame = frame_at(source_to_output(tutorial_clock, at))
+            if any(first <= frame < last for first, last in fullscreen):
+                continue
         if (
             at < 0
             or duration_ms - at < 90
@@ -67,6 +78,8 @@ def enhance_suite_sound(
         selections.append((at, (asset_id, source_at, length, peak + 5.5)))
         events.append({"at_ms": at, "action": action, "asset_id": selection[0]})
         previous_ms, previous_sound = at, selection[0]
+    if not events:
+        return base, {"family": family, "events": []}
     root.mkdir(parents=True, exist_ok=True)
     track = root / "sound-effects.wav"
     write_cue_track(track, duration_ms, selections, settings, guard)

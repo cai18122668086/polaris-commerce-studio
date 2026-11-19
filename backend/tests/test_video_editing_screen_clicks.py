@@ -50,7 +50,10 @@ def test_only_persistent_single_selection_receives_a_click(monkeypatch):
 def test_recording_click_follows_retimed_visual(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "app.video_editing_tutorial_sound.detect_screen_clicks",
-        lambda *_: [{"source_ms": 2400, "evidence": "selection_feedback"}],
+        lambda *_: [
+            {"source_ms": 200, "evidence": "selection_feedback"},
+            {"source_ms": 2400, "evidence": "selection_feedback"},
+        ],
     )
     monkeypatch.setattr(
         "app.video_editing_tutorial_sound._cue_wave",
@@ -62,7 +65,7 @@ def test_recording_click_follows_retimed_visual(tmp_path, monkeypatch):
             "steps": [
                 {
                     "asset_id": "recording",
-                    "start_ms": 1000,
+                    "start_ms": 1001,
                     "source_in_ms": 0,
                     "source_out_ms": 3000,
                     "playback_segments": [
@@ -81,4 +84,5 @@ def test_recording_click_follows_retimed_visual(tmp_path, monkeypatch):
         None,
         lambda: None,
     )
-    assert [event["at_ms"] for event in evidence["events"]] == [1000, 2400]
+    assert [event["at_ms"] for event in evidence["events"]] == [1033, 2401]
+    assert evidence["detected_clicks"] == 1

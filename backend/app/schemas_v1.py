@@ -46,6 +46,7 @@ class CurrentUserResponse(BaseModel):
 class VideoStudioAccessResponse(BaseModel):
     allowed: Literal[True] = True
     user_id: str
+    internal_tools: bool = False
 
 
 class WorkspaceResponse(BaseModel):

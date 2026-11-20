@@ -17,7 +17,8 @@ export function useVideoStudioGrantState() {
     if (result.response.status === 401) return { status: "revoked" };
     if (result.response.status === 403 || result.response.status === 404) return { status: "denied" };
     if (!result.response.ok || result.error || !isVideoStudioGrant(result.data)) throw new Error("VIDEO_ACCESS_CHECK_FAILED");
-    return { status: "allowed", userId: (result.data as { user_id: string }).user_id };
+    const grant = result.data as { user_id: string; internal_tools?: boolean };
+    return { status: "allowed", userId: grant.user_id, internalTools: grant.internal_tools === true };
   }));
   const state = useSyncExternalStore(session.subscribe, session.snapshot, session.serverSnapshot);
   useEffect(() => {

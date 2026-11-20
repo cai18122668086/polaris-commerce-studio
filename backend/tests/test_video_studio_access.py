@@ -123,3 +123,20 @@ def test_future_api_can_reuse_same_dependency(tmp_path: Path):
         assert client.get("/test-video-business").status_code == 404
         backend.identity = verified_identity(email=EMAIL)
         assert client.get("/test-video-business").status_code == 200
+
+
+def test_internal_review_tools_only_for_platform_admins(tmp_path: Path):
+    backend = FakeExternalAuthBackend(identity=verified_identity(email=EMAIL))
+    plain_dir, admin_dir = tmp_path / "plain", tmp_path / "admin"
+    plain_dir.mkdir()
+    admin_dir.mkdir()
+    with TestClient(create_app(external_settings(plain_dir), backend)) as client:
+        assert client.get(ACCESS).json()["internal_tools"] is False
+    settings = external_settings(admin_dir)
+    settings.announcement_admin_emails = [EMAIL]
+    with TestClient(create_app(settings, backend)) as client:
+        response = client.get(ACCESS)
+    assert response.status_code == 200
+    assert response.json()["internal_tools"] is True
+    assert EMAIL not in response.text
+

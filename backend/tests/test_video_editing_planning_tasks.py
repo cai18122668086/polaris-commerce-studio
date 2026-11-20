@@ -1734,3 +1734,17 @@ def test_yy6_preparation_requires_measured_quantity_pairs_and_distinct_stills():
         "measured_quantity_required" in unavailable[group] for group in YY6_GROUPS
     )
     assert "measured_question_required" in unavailable["YY6O01"]
+
+
+def test_active_works_include_planning_waiting_for_the_user(
+    video, tmp_path, monkeypatch
+):
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    prepared = prepare(client, ws, settings, task)
+    items = client.get(base(ws) + "/editing-works/active").json()["items"]
+    assert [(item["kind"], item["task_id"], item["status"]) for item in items] == [
+        ("planning", prepared["id"], "prepared")
+    ]
+    assert items[0]["project_id"] == task["project_id"]
+    assert items[0]["preview"] is None
+

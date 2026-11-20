@@ -2310,6 +2310,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-works/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Active Editing Works
+         * @description Each project's newest planning or editing task while it still needs attention.
+         *
+         *     Finished works stay in ``/editing-works``; this list covers what is still
+         *     running, waiting for the user to confirm a preview, or stopped with a
+         *     failure, so a refreshed page can lead back to the original task.
+         */
+        get: operations["list_active_editing_works_api_v1_video_studio_workspaces__workspace_id__editing_works_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/generation-prices": {
         parameters: {
             query?: never;
@@ -6064,6 +6088,36 @@ export interface components {
          * @enum {string}
          */
         EcommerceLoginState: "unknown" | "ready" | "needs_login";
+        /** EditingActiveWorkResponse */
+        EditingActiveWorkResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "planning" | "editing";
+            preview: components["schemas"]["EditingArtifactResponse"] | null;
+            /** Project Id */
+            project_id: string;
+            /** Project Title */
+            project_title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "prepared" | "awaiting_review" | "failed";
+            /** Task Id */
+            task_id: string;
+        };
+        /** EditingActiveWorksResponse */
+        EditingActiveWorksResponse: {
+            /** Items */
+            items: components["schemas"]["EditingActiveWorkResponse"][];
+        };
         /** EditingAppleCreativeOptions */
         EditingAppleCreativeOptions: {
             /**
@@ -9190,6 +9244,11 @@ export interface components {
              * @constant
              */
             allowed: true;
+            /**
+             * Internal Tools
+             * @default false
+             */
+            internal_tools: boolean;
             /** User Id */
             user_id: string;
         };
@@ -14557,6 +14616,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingWorksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_active_editing_works_api_v1_video_studio_workspaces__workspace_id__editing_works_active_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingActiveWorksResponse"];
                 };
             };
             /** @description Validation Error */

@@ -366,6 +366,20 @@ class EditingWorksResponse(StrictVideoModel):
     next_before: str | None
 
 
+class EditingActiveWorkResponse(StrictVideoModel):
+    kind: Literal["planning", "editing"]
+    task_id: str
+    project_id: str
+    project_title: str
+    status: Literal["queued", "running", "prepared", "awaiting_review", "failed"]
+    created_at: datetime
+    preview: EditingArtifactResponse | None
+
+
+class EditingActiveWorksResponse(StrictVideoModel):
+    items: list[EditingActiveWorkResponse]
+
+
 class EditingTemplateSample(StrictVideoModel):
     template_id: str
     task_id: str

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { CircleHelp, LoaderCircle, WifiOff } from "lucide-react";
 import { useVideoStudioGrantState } from "@/features/video-studio/access";
+import { InternalToolsContext } from "@/features/video-studio/internal-tools";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { VideoStudio, type StudioScreen } from "./video-studio";
 import styles from "./video-studio.module.css";
@@ -29,7 +30,9 @@ export function VideoStudioGate({ screen }: { screen: StudioScreen }) {
       <WifiOff size={15} />连接暂时中断，已载入的内容仍保留。<button type="button" className={styles.textButton} onClick={() => { grant.retry(); void workspaceQuery.refetch(); }}>重新检查</button>
     </div>}
     {userId && workspace && <div>
-      <VideoStudio key={`${userId}:${workspace.id}`} screen={screen} userId={userId} workspaceId={workspace.id} />
+      <InternalToolsContext.Provider value={grant.internalTools === true}>
+        <VideoStudio key={`${userId}:${workspace.id}`} screen={screen} userId={userId} workspaceId={workspace.id} />
+      </InternalToolsContext.Provider>
     </div>}
   </>;
 }

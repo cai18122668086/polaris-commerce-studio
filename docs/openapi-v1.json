@@ -4950,6 +4950,85 @@
         "title": "EcommerceLoginState",
         "type": "string"
       },
+      "EditingActiveWorkResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "planning",
+              "editing"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingArtifactResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_title": {
+            "title": "Project Title",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "prepared",
+              "awaiting_review",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "task_id",
+          "project_id",
+          "project_title",
+          "status",
+          "created_at",
+          "preview"
+        ],
+        "title": "EditingActiveWorkResponse",
+        "type": "object"
+      },
+      "EditingActiveWorksResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EditingActiveWorkResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EditingActiveWorksResponse",
+        "type": "object"
+      },
       "EditingAppleCreativeOptions": {
         "additionalProperties": false,
         "properties": {
@@ -13443,6 +13522,11 @@
             "const": true,
             "default": true,
             "title": "Allowed",
+            "type": "boolean"
+          },
+          "internal_tools": {
+            "default": false,
+            "title": "Internal Tools",
             "type": "boolean"
           },
           "user_id": {
@@ -24048,6 +24132,66 @@
           }
         ],
         "summary": "List Editing Works",
+        "tags": [
+          "video-editing-tasks"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-works/active": {
+      "get": {
+        "description": "Each project's newest planning or editing task while it still needs attention.\n\nFinished works stay in ``/editing-works``; this list covers what is still\nrunning, waiting for the user to confirm a preview, or stopped with a\nfailure, so a refreshed page can lead back to the original task.",
+        "operationId": "list_active_editing_works_api_v1_video_studio_workspaces__workspace_id__editing_works_active_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingActiveWorksResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Active Editing Works",
         "tags": [
           "video-editing-tasks"
         ]

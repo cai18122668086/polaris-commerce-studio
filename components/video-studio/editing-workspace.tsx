@@ -1,5 +1,6 @@
 "use client";
 
+import { useInternalTools } from "@/features/video-studio/internal-tools";
 import { UserRound, PackageOpen } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -64,6 +65,7 @@ const errorLabel: Record<string, string> = {
   EDITING_GENERATION_SCRIPT_CHANGED: "这条原口播的确认稿无法核对，请检查原生成任务。", EDITING_IMAGE_EDIT_INVALID: "这次选择的配图无法用于原图槽，请核对图片是否重复及透明图要求。", EDITING_MATERIAL_CHANGED: "配图原件已缺失或变化，请回到本期素材核对。", EDITING_HIGHLIGHT_INVALID: "这次选择的实录短语无法用于原动效，请返回编排重新选择。", EDITING_NO_SPEECH_RECOGNIZED: "没有识别到清晰口播，请检查原片声音。", EDITING_SOURCE_CHANGED: "原片已变化，请重新选择视频。", EDITING_CLOCK_REVIEW_REQUIRED: "原片音画起点需要校正，请更换原片或联系管理员。", EDITING_SOURCE_AUDIO_TAIL_REVIEW_REQUIRED: "请核对原片末尾的音画。画面结束后仍有声音，或音画时长差超出自动处理范围。", EDITING_ROTATION_REVIEW_REQUIRED: "此视频的旋转信息需要校正，请联系管理员。", EDITING_ORIGINAL_BROWSER_ASSETS_REQUIRED: "所选动效缺少会进入画面的原库图片，请联系管理员补齐原件。", EDITING_ORIGINAL_BROWSER_FONTS_REQUIRED: "所选动效需要原库启动字体，请在原库目录核对缺件。", EDITING_NATIVE_INPUTS_REQUIRED: "当前编排所需的原生参数或素材尚未备齐，请先补全编排。", EDITING_PLAN_SOURCE_CHANGED: "编排绑定的原片或转录已变化，请恢复原产物或保存新编排。", EDITING_NATIVE_PLAN_NOT_FOUND: "编排暂不可用，请联系管理员核对版本与运行配置。", EDITING_CAPTION_CAPACITY_REVIEW_REQUIRED: "当前识别词组超出字幕容量，请核对文字或联系管理员调整排版。", EDITING_CAPTION_DICTIONARY_MISSING: "剪辑服务缺少中文分词依赖，请联系管理员。", EDITING_CAPTION_DICTIONARY_CHANGED: "剪辑分词词典版本不匹配，请联系管理员核对。", EDITING_CAPTION_FONT_MISSING: "剪辑服务缺少已选定的原字幕字体，请联系管理员。", EDITING_CAPTION_FONT_CHANGED: "字幕字体与原库记录不一致，请联系管理员核对。", EDITING_CAPTION_LAYOUT_MISMATCH: "字幕换行与原生检查不一致，请先核对编排。" };
 
 export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact = false, onSaveProject }: { workspaceId: string; projectId: string; saved: boolean; jobs: GenerationJob[]; compact?: boolean; onSaveProject?: () => Promise<void> }) {
+  const internalTools = useInternalTools();
   const [tasks, setTasks] = useState<EditingTask[]>([]);
   const [sourceDialog, setSourceDialog] = useState(false);
   const [sourceChoice, setSelected] = useState<string>();
@@ -475,7 +477,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         {preview && (task.status === "awaiting_review" || task.status === "completed") && planId && <button type="button" disabled={busy} onClick={() => revise({
           planId, taskId: task.id, kind: "preview", preview: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 }, edits: task.options.native_edits,
         })}>调整本版</button>}
-        <details className={flow.technicalDetails}><summary>技术详情</summary><p>任务编号：{task.id} · 已处理 {task.attempts} 次</p>{task.error_code && <p>诊断信息：{task.error_code}</p>}
+        {internalTools && <details className={flow.technicalDetails}><summary>技术详情</summary><p>任务编号：{task.id} · 已处理 {task.attempts} 次</p>{task.error_code && <p>诊断信息：{task.error_code}</p>}
         {task.motion_counts && <p>{task.motion_counts.distinct_groups} 种动效 · {task.motion_counts.occurrences} 次</p>}
         {task.source_origin?.kind === "generation_task" && <p className={styles.note}>
           原口播任务 <code title={task.source_origin.generation_task_id ?? undefined}>{task.source_origin.generation_task_id?.slice(0, 8)}</code>
@@ -489,7 +491,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         </p>}
         {sourceReceipt && <a href={sourceReceipt.url} download>{task.source_origin?.kind === "upload_asset" ? "下载原片与参考稿核对记录" : "下载原片与配音核对记录"}</a>}
         {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
-        {layoutReceipt && <a href={layoutReceipt.url} download>下载版式检查记录</a>}
+        {layoutReceipt && <a href={layoutReceipt.url} download>下载版式检查记录</a>}</details>}
         {parent && <p className={styles.note}><a href={`#editing-task-${parent.task_id}`}>查看调整前的版本</a></p>}
         {task.carried_revision && <p className={styles.note}>已保留之前的调整 · <a href={`#editing-task-${task.carried_revision.preview_base.task_id}`}>查看原版本</a></p>}
         {task.options.native_edits && <p className={styles.note}>
@@ -504,7 +506,6 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
           setCarrySelection({ projectId, sourceId: task.source_id, base: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 } });
           openPlanning();
         }}>将人工调整带入另一份规划</button></details>}
-        </details>
         {task.status === "failed" && <p role="alert">{layoutFailed
           ? "画面中的文字排版需要调整，请修改对应片段后重新预览。"
           : errorLabel[task.error_code || ""] || "本次剪辑未完成，可以重试；已完成的配音不会重新生成。"}</p>}
@@ -517,12 +518,12 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
           planId, taskId: task.id, kind: "layout_failure", preview: parent, edits: task.options.native_edits, layoutFindings: task.layout_findings,
         })}>调整出错片段</button>}
         {task.status === "awaiting_review" && preview && <>
-          {audioReceipt && <EditingSoundReview key={`sound:${preview.id}:${audioReceipt.id}`} workspaceId={workspaceId} receipt={audioReceipt} media={preview} playerId={`editing-preview-${task.id}`} />}
+          {internalTools && audioReceipt && <EditingSoundReview key={`sound:${preview.id}:${audioReceipt.id}`} workspaceId={workspaceId} receipt={audioReceipt} media={preview} playerId={`editing-preview-${task.id}`} />}
           {previewFailures.includes(preview.id) && <button type="button" disabled={busy} onClick={() => void previewAction(task, preview, "repair")}>重新加载预览</button>}
         </>}
         {final && <>
-          {audioReceipt && <EditingSoundReview key={`sound:${final.id}:${audioReceipt.id}`} workspaceId={workspaceId} receipt={audioReceipt} media={final} playerId={`editing-film-${task.id}`} />}
-          <EditingFilmReview key={final.id} workspaceId={workspaceId} task={task} final={final} />
+          {internalTools && audioReceipt && <EditingSoundReview key={`sound:${final.id}:${audioReceipt.id}`} workspaceId={workspaceId} receipt={audioReceipt} media={final} playerId={`editing-film-${task.id}`} />}
+          {internalTools && <EditingFilmReview key={final.id} workspaceId={workspaceId} task={task} final={final} />}
         </>}
         {task.status === "completed" && task.options.mode === "transcript" && transcript && <>
           {transcriptAudio && <audio id={`editing-transcript-audio-${task.id}`} controls preload="none" src={transcriptAudio.url} aria-label="口播原声试听" />}

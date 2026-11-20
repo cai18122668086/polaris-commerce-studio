@@ -1,5 +1,5 @@
-export type VideoGrantResult = { status: "allowed"; userId: string } | { status: "denied" | "revoked" };
-export type VideoGrantState = { path: string; status: "checking" | "allowed" | "denied" | "revoked" | "error"; userId?: string; checking: boolean };
+export type VideoGrantResult = { status: "allowed"; userId: string; internalTools?: boolean } | { status: "denied" | "revoked" };
+export type VideoGrantState = { path: string; status: "checking" | "allowed" | "denied" | "revoked" | "error"; userId?: string; internalTools?: boolean; checking: boolean };
 export const INITIAL_VIDEO_GRANT: VideoGrantState = { path: "", status: "checking", checking: false };
 
 // Ephemeral state for one mounted consumer. Never persisted or reused across
@@ -37,7 +37,7 @@ export class VideoAccessSession {
     const promise = Promise.resolve().then(() => this.verify(controller.signal)).then(result => {
       if (revision !== this.revision || controller.signal.aborted) return;
       this.publish(result.status === "allowed"
-        ? { path: this.state.path, status: "allowed", userId: result.userId, checking: false }
+        ? { path: this.state.path, status: "allowed", userId: result.userId, internalTools: result.internalTools === true, checking: false }
         : { path: this.state.path, status: result.status, checking: false });
     }).catch(() => {
       if (revision !== this.revision || controller.signal.aborted) return;

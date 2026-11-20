@@ -1201,3 +1201,31 @@
 .sectionHeading > div > div { min-width:0; }
 .sectionHeading p { overflow-wrap:anywhere; }
 @media(max-width:360px){.uploadPanel > .uploadActions[data-has-library]{grid-template-columns:minmax(0,1fr)}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .workspacePage{--studio-orange:#e9e8e7;--studio-orange-dark:#e9e8e7;--studio-orange-soft:#1a1918}
+:global(.theme-ember) .safetyBadge{background:#0f0e0d}
+:global(.theme-ember) .stepBar{background:#0f0e0d}
+:global(.theme-ember) .stepBar span[data-active]{background:#181715;color:#e9e8e7}
+:global(.theme-ember) .card,:global(.theme-ember) .summaryCard,:global(.theme-ember) .guardrailCard,:global(.theme-ember) .resultSection,:global(.theme-ember) .resultEmpty{background:#0f0e0d}
+:global(.theme-ember) .uploadIcon{background:#0f0e0d}
+:global(.theme-ember) .uploadActions > button{background:#0f0e0d}
+:global(.theme-ember) .libraryAsset{background:#0f0e0d}
+:global(.theme-ember) .libraryAssetPreview i{color:#0f0e0d}
+:global(.theme-ember) .libraryDialogBackdrop{background:rgb(0 0 0 / 0.7)}
+:global(.theme-ember) .libraryDialog{border:1px solid rgb(15 14 13 / 0.68);background:#0f0e0d;box-shadow:0 24px 80px rgb(0 0 0 / 0.504)}
+:global(.theme-ember) .libraryDialogBody .assetPickerHeading{background:#0f0e0d}
+:global(.theme-ember) .libraryDialogFooter button{background:#0f0e0d}
+:global(.theme-ember) .libraryDialogFooter button[data-primary]{color:#0f0e0d}
+:global(.theme-ember) .formGrid select,:global(.theme-ember) .colorField input,:global(.theme-ember) .instructionField textarea{background:#0f0e0d}
+:global(.theme-ember) .progressTrack i{background:linear-gradient(90deg, var(--studio-orange, var(--violet-600)), #e6e2db)}
+:global(.theme-ember) .planReview article{background:#0f0e0d}
+:global(.theme-ember) .businessQuality{border:1px solid var(--amber-200, #482902);background:var(--amber-50, #151412)}
+:global(.theme-ember) .businessQuality[data-status="failed"]{border-color:var(--red-200, #591c02);background:var(--red-50, #191816)}
+:global(.theme-ember) .businessQuality[data-status="passed"]{border-color:var(--green-200, #21201e);background:var(--green-50, #141312)}
+:global(.theme-ember) .stickyBar{background:rgb(15 14 13 / 0.94);box-shadow:0 -6px 24px rgb(0 0 0 / 0.056)}
+:global(.theme-ember) .primaryAction{color:#0f0e0d}
+:global(.theme-ember) .primaryAction:disabled{border-color:#2e2c29}
+:global(.theme-ember) .secondaryAction{background:#0f0e0d}
+@media (max-width: 760px){:global(.theme-ember) .stickyBar{box-shadow:0 -6px 24px rgb(0 0 0 / 0.056)}}
+/* ember-dark:end */

@@ -1,54 +1,22 @@
-"""Generate a homepage-scoped dark (熔光) override sheet from the existing light CSS.
+"""全站暗色（熔光）生成器。
 
-Every colour declaration in a rule that can affect the homepage is re-emitted under
-`.app-shell--home`, with its colours mapped into the 熔光 palette:
-  * neutrals and all cool / lime / lilac hues  -> warm neutrals with inverted lightness
-  * warm saturated hues (red/orange/amber)      -> ember family, lightness adapted
-  * shadows stay dark; light shadow colours become faint white hairlines
-usage: python3 -I home_dark_gen.py <repo> <out.css>
+把现有浅色样式里的每一条颜色声明，按熔光色板换算后重新输出到 `.theme-ember`（挂在 <html> 上）作用域下：
+  * 中性色、以及所有蓝/紫/青柠色      -> 暖中性色，明度反转（浅底变深底，深字变浅字）
+  * 暖色（红/橙/琥珀）                -> ember 色系，明度按黑底调整
+  * 阴影保持深色；浅色阴影变成极淡的白色细线
+输出：
+  * app/ember-dark.generated.css     —— 全局样式（app/*.css）的暗色映射
+  * 每个 *.module.css 末尾的 ember-dark:start/end 块 —— 该模块的暗色映射（:global(.theme-ember) 作用域）
+浅色样式改动后重新运行即可：python3 -I scripts/ember-dark-gen.py .
 """
-import colorsys, os, re, sys
+import colorsys, glob, os, re, sys
 
-ROOT, OUT = sys.argv[1], sys.argv[2]
-CSS_FILES = ['app/globals.css', 'app/focus-inspired.css', 'app/commerce-theme.css',
-             'app/commerce-surfaces.css', 'app/commerce-workspaces.css', 'app/commerce-forms.css',
-             'app/commerce-readability.css', 'app/showcase-cases.css']
-ENTRY = ['app/page.tsx', 'components/app-shell.tsx']
-SCOPE = '.app-shell--home'
-
-# ---------- collect words used by the homepage component tree ----------
-def resolve(spec, base):
-    if spec.startswith('@/'):
-        p = os.path.join(ROOT, spec[2:])
-    elif spec.startswith('.'):
-        p = os.path.normpath(os.path.join(os.path.dirname(base), spec))
-    else:
-        return None
-    for cand in (p, p + '.tsx', p + '.ts', os.path.join(p, 'index.tsx'), os.path.join(p, 'index.ts')):
-        if os.path.isfile(cand):
-            return cand
-    return None
-
-modules = set()
-seen, stack, words = set(), [os.path.join(ROOT, e) for e in ENTRY], set()
-IMP = re.compile(r'''(?:import|from)\s*(?:[^'"]*?from\s*)?['"]([^'"]+)['"]''')
-while stack:
-    f = stack.pop()
-    if f in seen:
-        continue
-    seen.add(f)
-    src = open(f, encoding='utf-8').read()
-    words.update(re.findall(r'[A-Za-z][\w-]*', src))
-    for spec in IMP.findall(src):
-        if spec.endswith('.module.css'):
-            mp = os.path.join(ROOT, spec[2:]) if spec.startswith('@/') else os.path.normpath(os.path.join(os.path.dirname(f), spec))
-            if os.path.isfile(mp):
-                modules.add(mp)
-            continue
-        r = resolve(spec, f)
-        if r and r.endswith(('.tsx', '.ts')):
-            stack.append(r)
-words.discard('')
+ROOT = sys.argv[1]
+OUT = os.path.join(ROOT, 'app/ember-dark.generated.css')
+OWN = {'app/ember-dark.generated.css', 'app/ember-dark.css', 'app/home-ember-dark.css'}
+SCOPE = '.theme-ember'
+START, END = '/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */', '/* ember-dark:end */'
+OLD_MARKERS = [('/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */', '/* home-ember-dark:end */')]
 
 # ---------- colour maths ----------
 def srgb2lin(c):
@@ -73,7 +41,7 @@ def inv(L):
     # white 100 -> 4 (#0b0b0b), 97 -> 7, 90 -> 15 (hairline), ink 10 -> 92 (#edeae4), 50 -> 58
     if L >= 50:
         return 58 - (L - 50) * (54 / 50) if L < 88 else 17 - (L - 88) * (13 / 12)
-    return 92 - L * (34 / 50) if L > 10 else 92
+    return 92 - (L - 22) * (34 / 28) if L > 22 else 92  # 最深的墨色（主按钮、正文）都映射成接近白色的 #edeae4
 
 WARM = 34 / 360
 def map_rgb(r, g, b, role):
@@ -100,6 +68,16 @@ ALL = re.compile(r'(?P<hex>' + HEX.pattern + r')|(?P<rgb>' + RGB.pattern + r')|(
 NAMED = {'white': (255, 255, 255), 'black': (0, 0, 0), '#fff': (255, 255, 255)}
 
 def conv(r, g, b, a, role):
+    # 半透明深色铺底（遮罩、图片上的暗角）在暗色下仍是深色，不反转
+    if role == 'scrim' and a is not None and a >= 0.25 and lstar(r, g, b) < 25:
+        return fmt(0, 0, 0, min(1, a * 1.25))
+    if role == 'scrim':
+        role = 'paint'
+        # 彩色实底（原来的紫/蓝/青柠色按钮、强调卡片，配白字）→ 接近白色的实底，白字会同步反转成深色
+        h, l, s_ = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+        hue, L = h * 360, lstar(r, g, b)
+        if max(r, g, b) - min(r, g, b) > 40 and 50 <= hue <= 335 and 25 <= L <= 65 and (a is None or a > 0.6):
+            return fmt(0xe6, 0xe2, 0xdb, a)
     nr, ng, nb, na = map_rgb(r, g, b, role)
     if na is not None:
         a = (a if a is not None else 1) * (na / 1)
@@ -165,28 +143,22 @@ def split_top(s, sep):
     out.append(cur)
     return out
 
-CLASS = re.compile(r'\.(-?[A-Za-z_][\w-]*)')
-ELEM_ONLY = re.compile(r'^[a-z0-9\s>+~:\-\(\)\[\]="\'*,_.]*$')
 
 MODULE_MODE = [False]
 def scope_selector(sel):
     sel = sel.strip()
-    if MODULE_MODE[0]:
-        if not sel or sel.startswith((':root', 'html', 'body', '::')) or 'app-shell--home' in sel:
-            return None
-        return ':global(.app-shell--home) ' + sel
-    if not sel or sel.startswith((':root', 'html', 'body', '::')) or '@' in sel:
-        return None
-    classes = CLASS.findall(sel)
-    if classes:
-        if not any(c in words for c in classes if not c.startswith(('is-', 'has-'))):
-            return None
-    elif not re.match(r'^(a|button|input|textarea|select|h[1-6]|p|small|strong|em|label|code|kbd|hr|svg|img)\b', sel):
+    if not sel or '@' in sel or sel.startswith(('from', 'to')) or re.match(r'^[\d.]+%$', sel):
         return None
     if SCOPE in sel:
         return sel
-    if re.search(r'\.app-shell(?![\w-])', sel):
-        return re.sub(r'\.app-shell(?![\w-])', '.app-shell' + SCOPE, sel, count=1)
+    if MODULE_MODE[0]:
+        if sel.startswith((':root', 'html')):
+            return None
+        return ':global(' + SCOPE + ') ' + sel
+    if sel.startswith(':root'):
+        return SCOPE + sel[5:]
+    if re.match(r'^html(?![\w-])', sel):
+        return 'html' + SCOPE + sel[4:]
     return SCOPE + ' ' + sel
 
 def decls(body):
@@ -201,7 +173,17 @@ def decls(body):
         if p == 'filter' and 'drop-shadow' not in v:
             continue
         role = 'shadow' if p in ('box-shadow', 'text-shadow', 'filter') or (p.startswith('--') and 'shadow' in p) else 'paint'
+        if role == 'paint' and p.startswith('background'):
+            role = 'scrim'
         out.append(f'{p}:{map_value(v.strip(), role)}')
+    # background 简写会把同一规则里的 background-clip/size/position 等重置，需原样补回
+    if any(d.startswith('background:') for d in out):
+        for d in split_top(body, ';'):
+            if ':' in d:
+                p, v = d.split(':', 1)
+                p = p.strip().lower()
+                if re.match(r'^(-webkit-)?background-(clip|origin|size|position(-x|-y)?|repeat|attachment|blend-mode)$', p):
+                    out.append(f'{p}:{v.strip()}')
     return out
 
 emitted = []
@@ -225,26 +207,53 @@ def walk(css, wrap=None):
             rule = ','.join(sels) + '{' + ';'.join(ds) + '}'
             emitted.append(f'{wrap}{{{rule}}}' if wrap else rule)
 
-for f in CSS_FILES:
-    walk(strip_comments(open(os.path.join(ROOT, f), encoding='utf-8').read()))
+emitted = []
+def walk(css, wrap=None):
+    for prelude, body in blocks(css):
+        if prelude.startswith('@'):
+            if prelude.startswith(('@media', '@supports', '@layer', '@container')):
+                walk(body, prelude)
+            continue
+        sels = [s for s in (scope_selector(x) for x in split_top(prelude, ',')) if s]
+        if not sels:
+            continue
+        ds = decls(body)
+        if ds:
+            rule = ','.join(sels) + '{' + ';'.join(ds) + '}'
+            emitted.append(f'{wrap}{{{rule}}}' if wrap else rule)
 
-START, END = '/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */', '/* home-ember-dark:end */'
+ORDER = ['globals', 'focus-inspired', 'commerce-theme', 'commerce-surfaces', 'commerce-workspaces',
+         'commerce-forms', 'commerce-readability', 'showcase-cases']
+files = sorted((os.path.relpath(p, ROOT) for p in glob.glob(os.path.join(ROOT, 'app', '**', '*.css'), recursive=True)
+                if not p.endswith('.module.css')),
+               key=lambda p: (ORDER.index(os.path.basename(p)[:-4]) if os.path.basename(p)[:-4] in ORDER else 99, p))
+for f in files:
+    if f in OWN or f.startswith('app/home-ember-dark'):
+        continue
+    walk(strip_comments(open(os.path.join(ROOT, f), encoding='utf-8').read()))
+    print('global', f)
+
 MODULE_MODE[0] = True
-for mp in sorted(modules):
+mods = [p for p in glob.glob(os.path.join(ROOT, '**', '*.module.css'), recursive=True)
+        if '/node_modules/' not in p and '/dist/' not in p and '/.next/' not in p]
+for mp in sorted(mods):
     src = open(mp, encoding='utf-8').read()
-    base = re.sub(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', '', src, flags=re.S).rstrip('\n') + '\n'
-    emitted_before = len(emitted)
+    base = src
+    for a, b in OLD_MARKERS + [(START, END)]:
+        base = re.sub(r'\n?' + re.escape(a) + r'.*?' + re.escape(b) + r'\n?', '\n', base, flags=re.S)
+    base = base.rstrip('\n') + '\n'
+    before = len(emitted)
     walk(strip_comments(base))
-    block = emitted[emitted_before:]
-    del emitted[emitted_before:]
+    block = emitted[before:]
+    del emitted[before:]
     new = base + ('\n' + START + '\n' + '\n'.join(block) + '\n' + END + '\n' if block else '')
     if new != src:
         open(mp, 'w', encoding='utf-8').write(new)
-    print('module', os.path.relpath(mp, ROOT), len(block))
 MODULE_MODE[0] = False
+print('modules:', len(mods))
 
 with open(OUT, 'w', encoding='utf-8') as fh:
-    fh.write('/* 首页暗色（熔光）——由 scripts/home-dark-gen.py 从现有浅色样式自动映射生成，请勿手改。\n'
-             '   手调覆盖写在 app/home-ember-dark.css。 */\n')
+    fh.write('/* 全站暗色（熔光）——由 scripts/ember-dark-gen.py 从现有浅色样式自动映射生成，请勿手改。\n'
+             '   手调覆盖写在 app/ember-dark.css（全站）和 app/home-ember-dark.css（首页）。 */\n')
     fh.write('\n'.join(emitted) + '\n')
-print('component files:', len(seen), 'rules:', len(emitted), 'bytes:', os.path.getsize(OUT))
+print('rules:', len(emitted), 'bytes:', os.path.getsize(OUT))

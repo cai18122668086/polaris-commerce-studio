@@ -26,3 +26,28 @@
 .menu[data-layout="grid"] button>svg{position:absolute;right:4px;top:4px;width:10px;height:10px}
 @media(prefers-reduced-motion:reduce){.menu button{transition:none}}
 .trigger.trigger[data-size="compact"] { display:flex;align-items:center;justify-content:space-between;width:auto;min-height:36px;padding:7px 10px;border-radius:8px;background:#fff;color:var(--ink-700);font-size:12px; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .trigger{border:1px solid #22211f;background:#151514;color:#e0dedc}
+:global(.theme-ember) .trigger svg{color:#6e6962}
+:global(.theme-ember) .trigger:hover{border-color:#363330}
+:global(.theme-ember) .trigger:focus-visible,:global(.theme-ember) .open{border-color:#e9e8e6;box-shadow:0 0 0 1px #000000}
+:global(.theme-ember) .menu{border:1px solid #1d1c1b;background:#0f0e0d;box-shadow:0 10px 32px rgb(0 0 0 / 0.155),0 2px 6px rgb(0 0 0 / 0.056);scrollbar-color:#2a2825 transparent}
+:global(.theme-ember) .menu button{color:#c8c5c1}
+:global(.theme-ember) .menu button:hover,:global(.theme-ember) .menu button:focus-visible{background:#181716}
+:global(.theme-ember) .menu .selected{background:#191817;color:#e9e8e6}
+:global(.theme-ember) .selected svg{color:var(--violet-600,#89837a)}
+:global(.theme-ember) .trigger{border-color:#262422;background:#121211;color:#e7e6e4}
+:global(.theme-ember) .trigger:hover:not(:disabled){border-color:#433f3b;background:#151412}
+:global(.theme-ember) .trigger:focus-visible,:global(.theme-ember) .open{border-color:#716b64;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .menu{border-color:#262422;box-shadow:0 15px 40px rgb(0 0 0 / 0.226)}
+:global(.theme-ember) .menu button:hover,:global(.theme-ember) .menu button:focus-visible{background:#1d1b1a}
+:global(.theme-ember) .menu .selected{color:#e9e8e7;background:#181716}
+:global(.theme-ember) .selected svg{color:#e9e8e7}
+:global(.theme-ember) .search{border:1px solid #242220;color:#746e67;background:#171615}
+:global(.theme-ember) .search input{color:#e9e8e6}
+:global(.theme-ember) .empty{color:#79736c}
+:global(.theme-ember) .menu[data-layout="grid"] button{background:#151413}
+:global(.theme-ember) .menu[data-layout="grid"] button.selected{background:#181716}
+:global(.theme-ember) .trigger.trigger[data-size="compact"]{background:#0f0e0d}
+/* ember-dark:end */

@@ -52,3 +52,10 @@
 .status span { justify-content:center;line-height:1.7; }
 
 @media(max-width:640px){.viewport > .emptyState{min-height:210px;padding-inline:4px}.emptyState h3{font-size:14px}.emptyState p{font-size:12px}.viewport > .status{padding-block:9px}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .viewport > .emptyState{color:#807a72}
+:global(.theme-ember) .emptyState h3{color:#d3d0cd}
+:global(.theme-ember) .emptyState p{color:#9a958e}
+:global(.theme-ember) .viewport > .stack{background:#2b2928;box-shadow:0 9px 32px rgb(0 0 0 / 0.396)}
+/* ember-dark:end */

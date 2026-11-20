@@ -64,3 +64,44 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 900px) { .page { padding: 24px 16px 48px; } .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .header { flex-direction: column; } .metric { padding: 17px; } .tab { padding: 12px 14px; } }
 @media (max-width: 480px) { .details { grid-template-columns: 1fr; } .toolbar { padding: 14px; } .search { min-width: 100%; } .metric strong { font-size: 23px; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{color:#e9e8e6}
+:global(.theme-ember) .eyebrow{color:#97918a}
+:global(.theme-ember) .header p,:global(.theme-ember) .muted{color:#8a847b}
+:global(.theme-ember) .button,:global(.theme-ember) .primary,:global(.theme-ember) .danger{border:1px solid #272522;background:#0f0e0d;color:#b6b2ad}
+:global(.theme-ember) .primary{background:#e6e2db;border-color:#98928b;color:#0f0e0d}
+:global(.theme-ember) .danger{color:#fa682a;background:#161514;border-color:#2c2a27}
+:global(.theme-ember) .button:focus-visible,:global(.theme-ember) .primary:focus-visible,:global(.theme-ember) .danger:focus-visible,:global(.theme-ember) .tab:focus-visible{outline:3px solid #514d48}
+:global(.theme-ember) .metric{border:1px solid #23221f;background:#0f0e0d}
+:global(.theme-ember) .metric small{color:#7c766e}
+:global(.theme-ember) .metric em{color:#7f7971}
+:global(.theme-ember) .workspace{background:#201e1c;border:1px solid #302e2b}
+:global(.theme-ember) .panel{border:1px solid #242220;background:#0f0e0d}
+:global(.theme-ember) .tabs{border-bottom:1px solid #211f1d}
+:global(.theme-ember) .tab{color:#847d75}
+:global(.theme-ember) .active{color:#a19c95;border-bottom-color:#928c85}
+:global(.theme-ember) .toolbar input,:global(.theme-ember) .toolbar select,:global(.theme-ember) .form input,:global(.theme-ember) .form textarea,:global(.theme-ember) .form select{border:1px solid #2d2b28;color:#dedcda;background:#0f0e0d}
+:global(.theme-ember) .table th{background:#151514;color:#817b72;border-block:1px solid #1f1d1b}
+:global(.theme-ember) .table td{border-bottom:1px solid #1d1c1a;color:#c0bcb8}
+:global(.theme-ember) .table tbody tr:hover{background:#121211}
+:global(.theme-ember) .table td strong{color:#e0dfdc}
+:global(.theme-ember) .table td small{color:#6f6a63}
+:global(.theme-ember) .badge{color:#9d9790;background:#1e1d1b}
+:global(.theme-ember) .good{color:#9e9891;background:#1a1917}
+:global(.theme-ember) .warn{color:#fa682a;background:#191816}
+:global(.theme-ember) .bad{color:#fa682a;background:#1c1b19}
+:global(.theme-ember) .empty{color:#706a63}
+:global(.theme-ember) .pagination{color:#7a746c}
+:global(.theme-ember) .message,:global(.theme-ember) .error{border:1px solid #242220;background:#171615;color:#9d9891}
+:global(.theme-ember) .error{color:#fa682a;border-color:#2b2926;background:#171514}
+:global(.theme-ember) .dialog{border:1px solid #292725;color:#e0dedc;box-shadow:0 25px 100px rgb(0 0 0 / 0.36)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.5)}
+:global(.theme-ember) .dialogHeader{border-bottom:1px solid #211f1d}
+:global(.theme-ember) .dialogHeader p{color:#79736b}
+:global(.theme-ember) .details{background:#171615}
+:global(.theme-ember) .details dt{color:#767069}
+:global(.theme-ember) .form{border-top:1px solid #211f1d}
+:global(.theme-ember) .form label{color:#918b83}
+:global(.theme-ember) .form p{color:#756f68}
+/* ember-dark:end */

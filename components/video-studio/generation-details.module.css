@@ -35,3 +35,30 @@
 .proofread textarea[readonly] { color:#807488; background:#faf8fc; border-color:#ebe5f0; }
 .proofreadStatus { display:flex; align-items:center; gap:7px; color:#877493; font-size:11px; margin:14px 0 0!important; }
 @media(max-width:600px) { .actions { margin-inline:-18px; padding:14px 18px; justify-content:flex-start; gap:9px; } .proofread { grid-template-columns:1fr; gap:12px; } .proofread textarea { min-height:160px; height:24dvh; } .proofread > label { padding:12px; } .review { padding:12px; gap:12px; } .review h3 { font-size:14px; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .timingGroup{background:#141313;border:1px solid #1e1c1b}
+:global(.theme-ember) .stageNumber{background:#211f1d;color:#98928a}
+:global(.theme-ember) .timingGroup b{color:#d2d0cc}
+:global(.theme-ember) .timingGroup small{color:#7e786f}
+:global(.theme-ember) .timingGroup strong{color:#b5b1ab}
+:global(.theme-ember) .timingGroup[data-state=active]{border-color:#34322e;background:#191816}
+:global(.theme-ember) .timingTrace li{border-bottom:1px solid #1d1c1b;color:#aaa69f}
+:global(.theme-ember) .timingTrace time{color:#7c766e}
+:global(.theme-ember) .timingTrace em{color:#dc7f06;background:#161513}
+:global(.theme-ember) .traceDot{background:#4d4944}
+:global(.theme-ember) .media{background:#1c1b19}
+:global(.theme-ember) .timestamp{color:#7d776f}
+:global(.theme-ember) .actions{border-top:1px solid #242220;background:#0f0e0d}
+:global(.theme-ember) .handoffNote{color:#7d766e}
+:global(.theme-ember) .review{border:1px solid #21201d;background:#151413}
+:global(.theme-ember) .review > img{background:#21201d}
+:global(.theme-ember) .review span{color:#928c84}
+:global(.theme-ember) .review small{color:#756f67}
+:global(.theme-ember) .proofreadIntro{color:#878078}
+:global(.theme-ember) .proofread > label{border:1px solid #242220;background:#151413}
+:global(.theme-ember) .proofread label > span{color:#c0bdb8}
+:global(.theme-ember) .proofread label small{color:#867f77;background:#211f1d}
+:global(.theme-ember) .proofread textarea[readonly]{color:#8f8981;background:#151413;border-color:#23211f}
+:global(.theme-ember) .proofreadStatus{color:#8d867e}
+/* ember-dark:end */

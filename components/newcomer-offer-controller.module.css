@@ -450,3 +450,29 @@
     backdrop-filter: none;
   }
 }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .dialog{border:1px solid #591c02;background:#141312;color:#fa682a;box-shadow:0 28px 90px rgb(0 0 0 / 0.565)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.627)}
+:global(.theme-ember) .top{background:linear-gradient(115deg,#fa682a,#fa682a);color:#0f0e0d;border-bottom:3px solid #482902}
+:global(.theme-ember) .top:before,:global(.theme-ember) .top:after{border-top:3px solid #482902;box-shadow:0 -5px 0 rgb(255 255 255 / 0.031),0 -10px 0 rgb(255 255 255 / 0.017)}
+:global(.theme-ember) .badge{color:#482902}
+:global(.theme-ember) .close{color:#0f0e0d}
+:global(.theme-ember) .creditValue{border-left:1px solid #482902}
+:global(.theme-ember) .countdown{border:1px solid #482902;background:#482902}
+:global(.theme-ember) .countdown b{background:#fa682a;color:#0f0e0d}
+:global(.theme-ember) .buy{border:1px solid #482902;background:linear-gradient(115deg,#482902,#482902);color:#fa682a}
+:global(.theme-ember) .buy:hover{background:#482902}
+:global(.theme-ember) .bottom{color:#fa682a}
+:global(.theme-ember) .bottom details{color:#fa682a}
+:global(.theme-ember) .dialog button:focus-visible,:global(.theme-ember) .buy:focus-visible,:global(.theme-ember) .bottom summary:focus-visible{outline:3px solid #dc7f06}
+:global(.theme-ember) .floating{border:1px solid #482902;background:linear-gradient(135deg,#fa682a,#fa682a);color:#0f0e0d;box-shadow:0 7px 20px rgb(0 0 0 / 0.36)}
+:global(.theme-ember) .floating:before,:global(.theme-ember) .floating:after{border:2px solid #482902}
+:global(.theme-ember) .floatingPrice{color:#482902}
+:global(.theme-ember) .floating time{background:#482902;color:#fa682a}
+:global(.theme-ember) .floatingClose{border:1px solid #482902;background:#131211;color:#fa682a;box-shadow:0 2px 6px rgb(0 0 0 / 0.184)}
+:global(.theme-ember) .floating:focus-visible,:global(.theme-ember) .floatingClose:focus-visible{outline:3px solid #dc7f06}
+:global(.theme-ember) .stageHint{border:1px solid #2b2926;background:#151413;color:#fa682a}
+:global(.theme-ember) .stageHint a{color:#fa682a}
+:global(.theme-ember) .stageHint a:focus-visible{outline:3px solid #dc7f06}
+/* ember-dark:end */

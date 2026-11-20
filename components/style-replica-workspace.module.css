@@ -106,3 +106,107 @@
 
 .retrySuiteButton{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:9px 14px;border:0;border-radius:8px;background:var(--violet-600);color:#fff;font:inherit;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer}.retrySuiteButton:disabled{opacity:.55;cursor:wait}.retrySuiteButton:focus-visible{outline:2px solid var(--violet-400);outline-offset:3px}
 @media(max-width:640px){.planIntro{flex-direction:column;align-items:stretch;gap:12px}.planIntro>div:last-child{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.retrySuiteButton{min-height:42px}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{--accent:var(--violet-600,#a29d96);--accent-soft:var(--violet-50,#161514);background:#151514;color:#e9e8e6}
+:global(.theme-ember) .stepItem{color:#5b5751}
+:global(.theme-ember) .stepItem span{background:#201f1d}
+:global(.theme-ember) .stepItem i{background:#2a2825}
+:global(.theme-ember) .stepCurrent{color:#e9e8e6}
+:global(.theme-ember) .stepCurrent span{color:#0f0e0d}
+:global(.theme-ember) .sidebar,:global(.theme-ember) .stage{background:#0f0e0d;border:1px solid #242322}
+:global(.theme-ember) .fieldHeading small{color:#6a6762}
+:global(.theme-ember) .page em{color:#fa682a}
+:global(.theme-ember) .hint{color:#6a655e}
+:global(.theme-ember) .uploadArea{border:1px dashed #292725;background:#131211}
+:global(.theme-ember) .uploadTarget,:global(.theme-ember) .addUpload{color:#79736b}
+:global(.theme-ember) .uploadTarget svg{background:#1b1a18;color:#6d6861}
+:global(.theme-ember) .uploadTarget small{color:#5d5852}
+:global(.theme-ember) .uploadThumb{background:#1c1b19}
+:global(.theme-ember) .uploadThumb button{background:#0f0e0d;border:1px solid #272522}
+:global(.theme-ember) .imagePlaceholder{color:#56524c}
+:global(.theme-ember) .modeTabs{background:#181716}
+:global(.theme-ember) .modeTabs button{color:#756f67}
+:global(.theme-ember) .modeTabs .activeTab{background:#e9e8e6;color:#0f0e0d;box-shadow:0 2px 5px rgb(0 0 0 / 0.184)}
+:global(.theme-ember) .guide{background:#161514}
+:global(.theme-ember) .guide p{color:#756f68}
+:global(.theme-ember) .field small{color:#605b55}
+:global(.theme-ember) .field select,:global(.theme-ember) .field input,:global(.theme-ember) .field textarea,:global(.theme-ember) .planCard textarea{border:1px solid #211f1d;background:#141413;color:#c9c6c2}
+:global(.theme-ember) .field input::placeholder,:global(.theme-ember) .field textarea::placeholder,:global(.theme-ember) .planCard textarea::placeholder{color:#504c47}
+:global(.theme-ember) .linkInput button{background:#e9e8e6;color:#0f0e0d}
+:global(.theme-ember) .startButton{color:#0f0e0d;box-shadow:0 3px 8px rgb(0 0 0 / 0.184)}
+:global(.theme-ember) .footerNote{color:#5b5650}
+:global(.theme-ember) .stageHeader>div>span{color:#5f5a54}
+:global(.theme-ember) .stageHeader button,:global(.theme-ember) .textButton,:global(.theme-ember) .resultActions button,:global(.theme-ember) .resultActions a{background:#171615;color:#9d9890}
+:global(.theme-ember) .stageHeader button svg{color:#8d867e}
+:global(.theme-ember) .emptyIcon{border:1px solid #1c1b19}
+:global(.theme-ember) .emptyState h2{color:#958f87}
+:global(.theme-ember) .emptyState p{color:#5e5953}
+:global(.theme-ember) .emptySteps{color:#625d57}
+:global(.theme-ember) .emptyState>button{border:1px solid #272522}
+:global(.theme-ember) .error{background:#191817;color:#fa682a;border:1px solid #262422}
+:global(.theme-ember) .sourceHeading>span{color:#706a63}
+:global(.theme-ember) .sourceTabs{border-bottom:1px solid #1e1c1a}
+:global(.theme-ember) .sourceTabs button{color:#69645d}
+:global(.theme-ember) .sourceTabs b{background:#191917}
+:global(.theme-ember) .sourceTile{background:#181716}
+:global(.theme-ember) .sourceTile>button{border:1px solid #2e2b28;background:#0f0e0d;color:#6d6760}
+:global(.theme-ember) .sourceSelected>button{color:#0f0e0d}
+:global(.theme-ember) .orbit{border:1px solid #262522}
+:global(.theme-ember) .analysisState p{color:#635e58}
+:global(.theme-ember) .analysisState progress::-webkit-progress-bar{background:#1b1a18}
+:global(.theme-ember) .analysisState small{color:#5c5752}
+:global(.theme-ember) .planIntro p{color:#625d57}
+:global(.theme-ember) .planCard{border:1px solid #201f1d}
+:global(.theme-ember) .planReference{background:#151514}
+:global(.theme-ember) .planCard p{color:#78726b}
+:global(.theme-ember) .planCard details p{background:#151413}
+:global(.theme-ember) .confirmBar{background:#151412;border:1px solid #1f1d1b}
+:global(.theme-ember) .confirmBar small{color:#6a645e}
+:global(.theme-ember) .resultCard{border:1px solid #22201e}
+:global(.theme-ember) .resultMedia{background:#131211}
+:global(.theme-ember) .generating span{color:#8b857c}
+:global(.theme-ember) .generating small{color:#5b5751}
+:global(.theme-ember) .resultMeta>span{color:#635e58}
+:global(.theme-ember) .overlay,:global(.theme-ember) .lightbox{background:rgb(0 0 0 / 0.627)}
+:global(.theme-ember) .modal{background:#0f0e0d}
+:global(.theme-ember) .modal p,:global(.theme-ember) .modal li{color:#736d66}
+:global(.theme-ember) .closeModal{background:#171615;color:#716b64}
+:global(.theme-ember) .lightbox{background:#000000}
+:global(.theme-ember) .lightbox>button{color:#0f0e0d;background:rgb(15 14 13 / 0.082)}
+:global(.theme-ember) .sidebarFooter{background:#0f0e0d}
+:global(.theme-ember) .selectionActions{color:#6b665f}
+:global(.theme-ember) .selectionActions button{background:#181716;color:#a09a93}
+:global(.theme-ember) .sourceTile>button.previewTile{background:rgb(15 14 13 / 0.929);color:#aca7a1}
+:global(.theme-ember) .resultActions .localEditButton{background:#e9e8e7;color:#0f0e0d}
+:global(.theme-ember) .resultActions .localEditButton:hover{background:#1d1b1a;color:#e9e8e7}
+:global(.theme-ember) .resultPreviewButton:focus-visible{outline:2px solid #e9e8e7}
+:global(.theme-ember) .editedBadge{background:#000000;color:#0f0e0d}
+:global(.theme-ember) .stageHeader .newReplicaButton{background:#0f0e0d;color:#cbc8c5;border:1px solid #2b2926}
+:global(.theme-ember) .stageHeader .newReplicaButton:focus-visible{outline:3px solid #4c4843}
+:global(.theme-ember) .executionProgress{border:1px solid #1c1b19;background:#151412}
+:global(.theme-ember) .executionProgress progress{accent-color:#89837a}
+:global(.theme-ember) .executionProgress span{color:#bbb7b2}
+:global(.theme-ember) .executionProgress small{color:#99938c}
+:global(.theme-ember) .auditReasons{color:#fa682a}
+:global(.theme-ember) .outputGroup{border:1px solid #252320;background:#141312}
+:global(.theme-ember) .page{--accent:#e9e8e7;--accent-soft:#1d1c1a;color:#e9e8e7}
+:global(.theme-ember) .sidebar,:global(.theme-ember) .stage{border-color:#242220;box-shadow:0 6px 25px rgb(0 0 0 / 0.028)}
+:global(.theme-ember) .stepCurrent span{background:#1d1b1a;color:#e9e8e7;box-shadow:0 0 0 4px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .uploadArea{background:#121211;border-color:#2e2c29}
+:global(.theme-ember) .field select,:global(.theme-ember) .field input,:global(.theme-ember) .field textarea,:global(.theme-ember) .planCard textarea{background:#141313;color:#d3d0cd;border-color:#23211f}
+:global(.theme-ember) .modeTabs .modeActive{background:#0f0e0d;color:#e9e8e7}
+:global(.theme-ember) .startButton{background:#e9e8e7}
+:global(.theme-ember) .stageHeader .newReplicaButton{background:#0f0e0d}
+:global(.theme-ember) .startButton:hover:not(:disabled),:global(.theme-ember) .stageHeader .newReplicaButton:hover:not(:disabled){color:#e9e8e7;background:#1d1b1a}
+:global(.theme-ember) .emptyState h2{color:#e9e8e6}
+:global(.theme-ember) .emptyState p{color:#746e67}
+:global(.theme-ember) .emptyState>button{color:#e9e8e7;background:#181715;border-color:#242220}
+:global(.theme-ember) .executionProgress,:global(.theme-ember) .confirmBar{background:#181715;border-color:#262422}
+:global(.theme-ember) .executionProgress span,:global(.theme-ember) .executionProgress small{color:#948e86}
+:global(.theme-ember) .sourceSelected{border-color:#413e39}
+:global(.theme-ember) .sourceSelected>button{color:#e9e8e7;background:#1d1b1a;border-color:#413e39}
+:global(.theme-ember) .factsSection textarea{background:#0f0e0d}
+:global(.theme-ember) .sidebar .sidebarFooter{border-top:1px solid #1f1e1c;background:#0f0e0d}
+:global(.theme-ember) .retrySuiteButton{color:#0f0e0d}
+/* ember-dark:end */

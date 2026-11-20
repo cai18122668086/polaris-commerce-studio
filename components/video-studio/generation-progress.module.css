@@ -39,3 +39,25 @@
 @media(max-width:480px) { .steps { gap:4px; } .steps li { font-size:10px; gap:4px; } .steps li > span { width:16px; height:16px; } .heading h3 { font-size:14px; } }
 @media(prefers-reduced-motion:reduce) { .panel *, .spinner, .scan { animation:none!important; transition:none!important; } }
 .panel[data-state=waiting] .core { box-shadow:none; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .panel{color:#e9e8e6}
+:global(.theme-ember) .core{color:#97918a;border:1px solid #272523;background:#1b1918;box-shadow:0 10px 28px rgb(0 0 0 / 0.226)}
+:global(.theme-ember) .orbit,:global(.theme-ember) .orbitInner{border:1px solid #211f1d;border-top-color:#55514c}
+:global(.theme-ember) .orbitInner{border-color:#2f2d2a}
+:global(.theme-ember) .sparkle{color:#857e76}
+:global(.theme-ember) .dot{background:#5d5852}
+:global(.theme-ember) .heading time{color:#8a847b}
+:global(.theme-ember) .track{background:#211f1d}
+:global(.theme-ember) .track > span{background:#e6e2db}
+:global(.theme-ember) .panel[data-state=active] .track > span::after{background:linear-gradient(90deg,transparent,rgb(15 14 13 / 0.639),transparent)}
+:global(.theme-ember) .steps li{color:#716b64}
+:global(.theme-ember) .steps li > span{background:#1d1c1a}
+:global(.theme-ember) .steps li[data-state=done],:global(.theme-ember) .steps li[data-state=current]{color:#a29d96}
+:global(.theme-ember) .steps li[data-state=current] > span{background:#e6e2db;color:#0f0e0d;box-shadow:0 0 0 4px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .panel > p{color:#837d74}
+:global(.theme-ember) .panel[data-state=stopped] .track > span{background:#dc7f06}
+:global(.theme-ember) .panel[data-state=stopped] .core{background:#151413;border-color:#272522;color:#dc7f06}
+:global(.theme-ember) .imageStatus.imageStatus{background:rgb(0 0 0 / 0.451);color:#0f0e0d}
+:global(.theme-ember) .scan{background:linear-gradient(transparent,rgb(85 81 75 / 0.259));border-bottom:1px solid rgb(46 43 40 / 0.722)}
+/* ember-dark:end */

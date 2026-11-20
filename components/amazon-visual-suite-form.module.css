@@ -215,3 +215,10 @@
     white-space: normal;
   }
 }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .simpleField input,:global(.theme-ember) .simpleField textarea{background:#0f0e0d}
+:global(.theme-ember) .advancedSection{background:#0f0e0d}
+:global(.theme-ember) .advancedSection[open]{background:linear-gradient(180deg, var(--ink-50), #0f0e0d 88px)}
+:global(.theme-ember) .advancedSection > summary::after{background:#0f0e0d}
+/* ember-dark:end */

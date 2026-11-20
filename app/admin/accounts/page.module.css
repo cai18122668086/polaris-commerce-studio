@@ -28,3 +28,23 @@ td small { margin-top: 5px; color: #85899a; }
 .center { display: grid; justify-items: center; gap: 12px; min-height: 50vh; padding: 80px 20px; text-align: center; color: #666b7c; }
 .center h1 { margin: 0; color: #202236; }
 @media (max-width: 720px) { .page { padding: 28px 18px 50px; } .header, .sectionHeader { flex-direction: column; } .form { grid-template-columns: 1fr; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{color:#e9e8e6}
+:global(.theme-ember) .eyebrow{color:#97928a}
+:global(.theme-ember) .header p,:global(.theme-ember) .sectionHeader p,:global(.theme-ember) .center p{color:#867f76}
+:global(.theme-ember) .card{border:1px solid #22201e;background:#0f0e0d;box-shadow:0 12px 40px rgb(0 0 0 / 0.09)}
+:global(.theme-ember) .primary{color:#0f0e0d;background:#e6e2db}
+:global(.theme-ember) .secondary,:global(.theme-ember) .action{color:#ada8a3;border:1px solid #272623;background:#0f0e0d}
+:global(.theme-ember) .form{background:#161514}
+:global(.theme-ember) .form label{color:#9f9a93}
+:global(.theme-ember) .form input,:global(.theme-ember) .form select{border:1px solid #282623;background:#0f0e0d}
+:global(.theme-ember) th,:global(.theme-ember) td{border-bottom:1px solid #1b1b19}
+:global(.theme-ember) th{color:#7d766e}
+:global(.theme-ember) td small{color:#7d766e}
+:global(.theme-ember) .success{color:#a09b94;background:#151413}
+:global(.theme-ember) .error{color:#fa682a;background:#191816}
+:global(.theme-ember) .empty{color:#7d766e}
+:global(.theme-ember) .center{color:#9f9992}
+:global(.theme-ember) .center h1{color:#e9e8e6}
+/* ember-dark:end */

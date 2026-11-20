@@ -177,3 +177,77 @@
 .pickerFooter { flex-wrap:wrap; row-gap:12px; }
 .pickerResultMeta { gap:12px; }
 @media(max-width:600px) { .voiceRowText small { font-size:11px; } .avatarPickerCaption small { font-size:10px; line-height:1.7; } .pickerResultMeta small { font-size:10px; } .pickerFooter .pickerSelection { flex:1 0 100%; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .voicePreviewButton{background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .voicePreviewButton:hover:not(:disabled),:global(.theme-ember) .voicePreviewButton[aria-pressed=true]{background:#e6e2db;box-shadow:0 0 0 4px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .pickerLoadStatus{color:#a19c95}
+:global(.theme-ember) .voiceDialog.voiceDialog,:global(.theme-ember) .avatarPickerDialog.avatarPickerDialog{border-color:#262422}
+:global(.theme-ember) .voiceDialog > div,:global(.theme-ember) .avatarPickerDialog > div{background:radial-gradient(ellipse at 100% 0, rgb(27 26 24 / 0.439), transparent 45%), #0f0e0d}
+:global(.theme-ember) .voiceDialog > div > header h2,:global(.theme-ember) .avatarPickerDialog > div > header h2{color:#e9e8e6}
+:global(.theme-ember) .pickerTabs{border-bottom:1px solid #21201d}
+:global(.theme-ember) .pickerTabs button{color:#a6a19b}
+:global(.theme-ember) .pickerTabs button:hover{background:#181716;color:#e9e8e6}
+:global(.theme-ember) .pickerTabs button[aria-selected=true]{color:#e9e8e6}
+:global(.theme-ember) .pickerTabs button::after{background:#2e2b29}
+:global(.theme-ember) .pickerSegments{background:#1a1918}
+:global(.theme-ember) .pickerSegments button{color:#969088}
+:global(.theme-ember) .pickerSegments button[aria-pressed=true]{color:#e8e7e5;background:#0f0e0d;box-shadow:0 1px 5px rgb(0 0 0 / 0.141)}
+:global(.theme-ember) .pickerSegments button:hover:not([aria-pressed=true]){background:#242320;color:#dfdddb}
+:global(.theme-ember) .pickerSearch{background:#171716;color:#a6a19b}
+:global(.theme-ember) .pickerSearch:focus-within{border-color:#5c5852;background:#0f0e0d;box-shadow:0 0 0 3px rgb(255 255 255 / 0.03)}
+:global(.theme-ember) .pickerSearch input{color:#e4e2e0}
+:global(.theme-ember) .pickerSearch button{color:#a6a19b;background:#23221f}
+:global(.theme-ember) .pickerResultMeta{color:#918b83}
+:global(.theme-ember) .pickerResultMeta b{background:#1d1c1a;color:#a49f98}
+:global(.theme-ember) .pickerResultMeta small{color:#a6a19b}
+:global(.theme-ember) .pickerFooter{border-top:1px solid #201f1c;background:linear-gradient(110deg, #131211, #0f0e0d 70%)}
+:global(.theme-ember) .pickerSelection{color:#a6a19b}
+:global(.theme-ember) .pickerSelection > b{color:#d6d4d1}
+:global(.theme-ember) .pickerSelection > small{color:#a6a19b}
+:global(.theme-ember) .selectedPill{background:#1d1b19;color:#9f9992}
+:global(.theme-ember) .avatarPickerResults{scrollbar-color:#363430 transparent}
+:global(.theme-ember) .avatarPickerCard{border:1px solid #22201e;background:#0f0e0d}
+:global(.theme-ember) .avatarPickerCard:hover{border-color:#494641;box-shadow:0 5px 16px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .avatarPickerCard.avatarPickerSelected{border-color:#55514b;box-shadow:0 0 0 1px rgb(255 255 255 / 0.1);background:#11100f}
+:global(.theme-ember) .avatarPickerStage{background:#242220}
+:global(.theme-ember) .avatarPickerStage::after{background:linear-gradient(140deg, rgb(28 27 25 / 0.22), rgb(19 18 17 / 0.102))}
+:global(.theme-ember) .avatarPickerCaption b{color:#e0dfdc}
+:global(.theme-ember) .avatarPickerCaption small{color:#a6a19b}
+:global(.theme-ember) .avatarPickerCheck{background:#23211f;color:#d6d4d1;box-shadow:0 2px 8px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .avatarPickerPreview{border:1px solid rgb(15 14 13 / 0.678);background:rgb(0 0 0 / 0.833);color:#0f0e0d}
+:global(.theme-ember) .avatarPickerPreview:hover{background:#e9e8e6}
+:global(.theme-ember) .pickerPagination > span{color:#a6a19b}
+:global(.theme-ember) .pickerPagination button{color:#a6a19b}
+:global(.theme-ember) .pickerPagination button:hover:not(:disabled){background:#1f1d1b;color:#deddda}
+:global(.theme-ember) .pickerPagination button[aria-current=page]{color:#e8e7e5;background:#1b1a18}
+:global(.theme-ember) .avatarSkeleton{background:linear-gradient(100deg, #1b1a18 30%, #131211 50%, #1b1a18 70%);background-size:250% 100%}
+:global(.theme-ember) .pickerPreviewMedia{background:#1b1a19}
+:global(.theme-ember) .pickerPreviewNote{color:#a6a19b}
+:global(.theme-ember) .voiceGenderFilter > span,:global(.theme-ember) .voiceLanguageFilter > span{color:#a6a19b}
+:global(.theme-ember) .voiceSearchButton{background:#e9e8e6;color:#0f0e0d;border:1px solid #e9e8e6}
+:global(.theme-ember) .voiceSearchButton:hover{background:#23211f;color:#e9e8e6;border-color:#23211f}
+:global(.theme-ember) .voiceLanguageFilter select{background:#0f0e0d;color:#a29d96}
+:global(.theme-ember) .voiceBrowserDialog .voiceResults{scrollbar-color:#363430 transparent}
+:global(.theme-ember) .voiceRow{border:1px solid #22201e;background:#0f0e0d}
+:global(.theme-ember) .voiceRow:hover{border-color:#4e4a45;box-shadow:0 4px 13px rgb(0 0 0 / 0.085)}
+:global(.theme-ember) .voiceRow.voiceRowSelected{border-color:#484540;background:linear-gradient(110deg, #121211, #141312);box-shadow:0 0 0 1px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .voiceRow[data-playing]{border-color:#69645d;background:#171614}
+:global(.theme-ember) .voiceAvatar{background:linear-gradient(140deg, #302e2b, #e6e2db);color:#0f0e0d}
+:global(.theme-ember) .voiceAvatarMale{background:linear-gradient(140deg, #2d2b28, #6b665f)}
+:global(.theme-ember) .voiceAvatarFemale{background:linear-gradient(140deg, #2e2c29, #625d57)}
+:global(.theme-ember) .voiceRowText b{color:#c7c4c0}
+:global(.theme-ember) .voiceRowText small{color:#a6a19b;background:#1b1a19}
+:global(.theme-ember) .voiceRowText .maleVoiceTag{color:#8d877f;background:#21201e}
+:global(.theme-ember) .voiceRowText .femaleVoiceTag{color:#a6a19b;background:#1a1917}
+:global(.theme-ember) .voiceRowCheck{color:#b3aea9}
+:global(.theme-ember) .voiceRowSelected .voiceRowCheck{background:#201f1d}
+:global(.theme-ember) .voicePreviewOverlay{background:rgb(0 0 0 / 0.333);border:1px solid rgb(15 14 13 / 0.69);color:#0f0e0d}
+:global(.theme-ember) .voicePreviewOverlay:hover:not(:disabled),:global(.theme-ember) .voicePreviewOverlay[aria-pressed=true]{background:rgb(216 213 211 / 0.902);box-shadow:0 0 0 4px rgb(255 255 255 / 0.04)}
+:global(.theme-ember) .playingDot{background:#58544e}
+:global(.theme-ember) .voiceRowText b{color:#e9e8e6}
+:global(.theme-ember) .voiceRowText small{color:#a5a19a}
+:global(.theme-ember) .voiceAvatarMale{background:#e6e2db}
+:global(.theme-ember) .voiceAvatarFemale{background:#746e67}
+:global(.theme-ember) .pickerResultMeta small,:global(.theme-ember) .avatarPickerCaption small{color:#9c9790}
+/* ember-dark:end */

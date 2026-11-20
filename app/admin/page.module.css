@@ -190,3 +190,105 @@
 .permissionOptions { position: absolute; z-index: 2; right: 0; display: grid; min-width: 170px; gap: 7px; margin-top: 7px; padding: 10px; border: 1px solid #e1e3ed; border-radius: 9px; background: #fff; box-shadow: 0 12px 30px rgb(61 65 95 / 14%); }
 .permissionOptions label { display: flex; gap: 6px; align-items: center; color: #62687b; font-size: 10px; white-space: nowrap; }
 .permissionOptions button { margin-top: 2px; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{color:#e9e8e6}
+:global(.theme-ember) .header p,:global(.theme-ember) .sectionHeading p{color:#867f76}
+:global(.theme-ember) .eyebrow,:global(.theme-ember) .sectionEyebrow{color:#8b857c}
+:global(.theme-ember) .secondary,:global(.theme-ember) .primary{border:1px solid #262422;background:#0f0e0d;color:#c2bfba}
+:global(.theme-ember) .primary{border-color:#8e877f;background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .metricCard{border:1px solid #1e1d1c;background:linear-gradient(145deg, #0f0e0d, #131312);box-shadow:0 12px 30px rgb(0 0 0 / 0.072)}
+:global(.theme-ember) .metricCardWarn{border-color:#1c1b19;background:#131211}
+:global(.theme-ember) .metricIcon{background:#1d1b19;color:#8e877f}
+:global(.theme-ember) .metricCardWarn .metricIcon{background:#1c1b19;color:#89837a}
+:global(.theme-ember) .metricCard small,:global(.theme-ember) .platformHeading small,:global(.theme-ember) .accountRow small{color:#66615b}
+:global(.theme-ember) .metricCard p{color:#867f76}
+:global(.theme-ember) .section{border:1px solid #1e1d1c;background:#0f0e0d;box-shadow:0 15px 40px rgb(0 0 0 / 0.063)}
+:global(.theme-ember) .warningBadge{color:#fa682a;background:#1a1917}
+:global(.theme-ember) .readyBadge{color:#89827a;background:#171615}
+:global(.theme-ember) .platformCard{border:1px solid #1d1c1b;background:#121110}
+:global(.theme-ember) .statusNeedsLogin{color:#aca7a1;background:#1c1b19}
+:global(.theme-ember) .statusReady{color:#89827a;background:#171615}
+:global(.theme-ember) .platformStats{color:#777169}
+:global(.theme-ember) .platformStats b{color:#d4d2cf}
+:global(.theme-ember) .accountList{border-top:1px solid #1e1d1c}
+:global(.theme-ember) .accountMain strong{color:#c2bfba}
+:global(.theme-ember) .dot{background:#3f3c38}
+:global(.theme-ember) .dotReady{background:#5e5953;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .dotWarn{background:#e6e2db;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .busy{color:#979189;background:#1d1b19}
+:global(.theme-ember) .relogin{color:#aca7a1;background:#1c1b19}
+:global(.theme-ember) .empty{color:#66615b}
+:global(.theme-ember) .plannedGrid > div{background:#131312}
+:global(.theme-ember) .plannedGrid p{color:#7f7970}
+:global(.theme-ember) .generatedAt{color:#66615b}
+:global(.theme-ember) .center{color:#867f76}
+:global(.theme-ember) .center h1{color:#e9e8e6}
+:global(.theme-ember) .sectionCount{color:#777169}
+:global(.theme-ember) .table{color:#c2bfba}
+:global(.theme-ember) .table th{color:#6b665f}
+:global(.theme-ember) .table td{border-top:1px solid #1e1d1c}
+:global(.theme-ember) .table td strong{color:#d4d2cf}
+:global(.theme-ember) .table td small{color:#66615b}
+:global(.theme-ember) .tableEmpty{color:#66615b}
+:global(.theme-ember) .statusPill{color:#89827a;background:#171615}
+:global(.theme-ember) .warningText{color:#fa682a !important}
+:global(.theme-ember) .logFilters{border:1px solid #1e1d1c;background:#131312}
+:global(.theme-ember) .logFilters label{color:#7d766e}
+:global(.theme-ember) .logFilters input,:global(.theme-ember) .logFilters select{border:1px solid #262422;background:#0f0e0d;color:#c2bfba}
+:global(.theme-ember) .logPagination{color:#7d766e}
+:global(.theme-ember) .logPagination select{border:1px solid #262422;background:#0f0e0d;color:#c2bfba}
+:global(.theme-ember) .logStatus,:global(.theme-ember) .logStatusFailed{color:#89827a !important;background:#171615}
+:global(.theme-ember) .logStatusFailed{color:#fa682a !important;background:#1a1917}
+:global(.theme-ember) .detailButton{border:1px solid #2a2825;background:#161513;color:#9b958e}
+:global(.theme-ember) .detailButton:hover{border-color:#8e877f;background:#1d1b19}
+:global(.theme-ember) .dialogBackdrop{background:rgb(0 0 0 / 0.475)}
+:global(.theme-ember) .dialog{border:1px solid #1e1d1c;background:#0f0e0d;box-shadow:0 24px 80px rgb(0 0 0 / 0.396)}
+:global(.theme-ember) .dialogHeader{border-bottom:1px solid #1e1d1c}
+:global(.theme-ember) .dialogHeader h2{color:#e9e8e6}
+:global(.theme-ember) .dialogHeader p{color:#777169}
+:global(.theme-ember) .closeButton{border:1px solid #262422;background:#0f0e0d;color:#7d766e}
+:global(.theme-ember) .dialogLoading,:global(.theme-ember) .dialogError{color:#867f76}
+:global(.theme-ember) .dialogError{color:#fa682a}
+:global(.theme-ember) .detailSummary{background:#131312}
+:global(.theme-ember) .detailSummary small{color:#66615b}
+:global(.theme-ember) .detailSummary strong{color:#d4d2cf}
+:global(.theme-ember) .timelineHeading h3{color:#d4d2cf}
+:global(.theme-ember) .timelineHeading span{color:#66615b}
+:global(.theme-ember) .timeline::before{background:#252321}
+:global(.theme-ember) .timelineDot{border:3px solid #0f0e0d;background:#e6e2db;box-shadow:0 0 0 1px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .timelineMeta strong{color:#c2bfba}
+:global(.theme-ember) .timelineMeta time{color:#66615b}
+:global(.theme-ember) .timelineItem p{color:#867f76}
+:global(.theme-ember) .timelineItem small{color:#66615b}
+:global(.theme-ember) .adminNav{border:1px solid #23211f;background:#121110}
+:global(.theme-ember) .adminNav a{color:#969088}
+:global(.theme-ember) .adminNav a:hover{color:#a39e97;border-color:#292724;background:#161514}
+:global(.theme-ember) .adminNav .adminNavActive{color:#a39e97;border-color:#292724;background:#1a1817}
+:global(.theme-ember) .assetCard{border:1px solid #1e1d1c;background:#0f0e0d}
+:global(.theme-ember) .assetThumb{background:#191817}
+:global(.theme-ember) .assetPlaceholder{color:#66615b}
+:global(.theme-ember) .assetInfo small{color:#777169}
+:global(.theme-ember) .assetTitle strong{color:#d4d2cf}
+:global(.theme-ember) .assetTitle span{color:#9b958e;background:#1b1a18}
+:global(.theme-ember) .downloadLink{color:#9b958e}
+:global(.theme-ember) .downloadLink:hover{color:#bfbcb7}
+:global(.theme-ember) .jobItem{border:1px solid #1e1d1c;background:#131312}
+:global(.theme-ember) .jobItemHeader strong{color:#d4d2cf}
+:global(.theme-ember) .jobItemHeader small{color:#66615b}
+:global(.theme-ember) .jobItemMeta{color:#867f76}
+:global(.theme-ember) .jobItemError{color:#fa682a}
+:global(.theme-ember) .providerStages{border-top:1px solid #1e1d1c}
+:global(.theme-ember) .providerStages > small{color:#66615b}
+:global(.theme-ember) .providerStage{color:#a09b94}
+:global(.theme-ember) .adminCreateForm{border:1px solid #21201e;background:#121110}
+:global(.theme-ember) .adminCreateForm label{color:#a39d97}
+:global(.theme-ember) .adminCreateForm input{border:1px solid #272522;color:#d4d2cf;background:#0f0e0d}
+:global(.theme-ember) .adminCreateForm input:focus{border-color:#8e877f;box-shadow:0 0 0 3px rgb(0 0 0 / 0.216)}
+:global(.theme-ember) .adminError{color:#fa682a;background:#171615}
+:global(.theme-ember) .adminLoading{color:#777169}
+:global(.theme-ember) .superAdminBadge{color:#a39e97;background:#1d1b19}
+:global(.theme-ember) .permissionEditor summary{color:#9b958e}
+:global(.theme-ember) .permissionOptions{border:1px solid #262422;background:#0f0e0d;box-shadow:0 12px 30px rgb(0 0 0 / 0.252)}
+:global(.theme-ember) .permissionOptions label{color:#a39d97}
+/* ember-dark:end */

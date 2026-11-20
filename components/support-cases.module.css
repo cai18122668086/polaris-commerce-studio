@@ -106,3 +106,26 @@
   .formActions { flex-direction: column-reverse; align-items: stretch; gap: 5px; }
   .counter { align-self: flex-end; }
 }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .panel{border:1px solid #272523;background:#0f0e0d;color:#e9e8e6}
+:global(.theme-ember) .header p,:global(.theme-ember) .panel .empty{color:#aaa6a0}
+:global(.theme-ember) .panel .contact,:global(.theme-ember) .panel .submit,:global(.theme-ember) .historyError button{border:1px solid #312e2b;background:#191716;color:#d9d7d4}
+:global(.theme-ember) .panel .contact:hover,:global(.theme-ember) .historyError button:hover:not(:disabled){background:#21201e}
+:global(.theme-ember) .panel .submit{border-color:#d9d7d4;background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .panel .submit:hover:not(:disabled){background:#e6e2db}
+:global(.theme-ember) .panel :is(a, button, input, textarea):focus-visible{outline:2px solid #9a948d}
+:global(.theme-ember) .panel label small,:global(.theme-ember) .counter{color:#aaa6a0}
+:global(.theme-ember) .panel :is(input, textarea){border:1px solid #312f2c;background:#0f0e0d}
+:global(.theme-ember) .panel .success{background:#1a1917;color:#c1bdb9}
+:global(.theme-ember) .panel .error{background:#1a1817;color:#fa682a}
+:global(.theme-ember) .history{border-top:1px solid #23211f}
+:global(.theme-ember) .record{border:1px solid #23211f;background:#141312}
+:global(.theme-ember) .record p{color:#c7c4c0}
+:global(.theme-ember) .record .resolution{background:#1e1d1b}
+:global(.theme-ember) .record footer small{color:#aaa6a0}
+:global(.theme-ember) .record footer a{color:#cfccc9}
+:global(.theme-ember) .recordStatus{background:#201e1c;color:#c5c2be}
+:global(.theme-ember) .recordStatus[data-status="open"]{background:#1a1917;color:#dc7f06}
+:global(.theme-ember) .recordStatus[data-status="resolved"]{background:#1c1b19;color:#c1bdb9}
+/* ember-dark:end */

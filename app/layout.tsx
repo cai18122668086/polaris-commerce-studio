@@ -9,6 +9,8 @@ import "./commerce-workspaces.css";
 import "./commerce-forms.css";
 import "./commerce-readability.css";
 import "./showcase-cases.css";
+import "./home-ember-dark.generated.css";
+import "./home-ember-dark.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();

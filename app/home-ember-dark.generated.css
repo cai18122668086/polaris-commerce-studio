@@ -1,0 +1,456 @@
+/* 首页暗色（熔光）——由 scripts/home-dark-gen.py 从现有浅色样式自动映射生成，请勿手改。
+   手调覆盖写在 app/home-ember-dark.css。 */
+.app-shell--home button:focus-visible,.app-shell--home a:focus-visible,.app-shell--home input:focus-visible,.app-shell--home textarea:focus-visible,.app-shell--home select:focus-visible{outline:3px solid rgb(146 140 132 / 0.22)}
+.app-shell--home .top-nav{color:#0f0e0d;background:#e9e8e6;box-shadow:0 1px 0 rgb(255 255 255 / 0.008)}
+.app-shell--home .brand-mark{border:1px solid rgb(15 14 13 / 0.2);background:#9a958e;box-shadow:inset 0 1px 0 rgb(255 255 255 / 0.028)}
+.app-shell--home .brand-mark::before{background:rgb(15 14 13 / 0.95)}
+.app-shell--home .brand-mark i,.app-shell--home .brand-mark b{background:#0f0e0d;box-shadow:0 0 9px rgb(255 255 255 / 0.1)}
+.app-shell--home .brand-mark b{background:#534f49}
+.app-shell--home .brand-copy small{color:rgb(15 14 13 / 0.45)}
+.app-shell--home .main-nav > a,.app-shell--home .nav-menu__trigger{color:rgb(15 14 13 / 0.65)}
+.app-shell--home .main-nav__flame{color:#a09a93}
+.app-shell--home .main-nav > a::after,.app-shell--home .nav-menu__trigger::after{background:#6e6962}
+.app-shell--home .main-nav > a:hover,.app-shell--home .main-nav > a.active,.app-shell--home .nav-menu__trigger:hover,.app-shell--home .nav-menu__trigger.active{color:#0f0e0d;background:rgb(15 14 13 / 0.04)}
+.app-shell--home .nav-mega{background:#0f0e0d;box-shadow:0 24px 50px rgb(0 0 0 / 0.324)}
+.app-shell--home .nav-tool-link:hover{background:#0f0e0d}
+.app-shell--home .nav-tool-link__hot{color:#a09a93;filter:drop-shadow(0 1px 2px rgb(0 0 0 / 0.63))
+    drop-shadow(0 0 4px rgb(0 0 0 / 0.936))}
+.app-shell--home .mobile-nav-tool-link__hot{color:#a09a93;filter:drop-shadow(0 1px 2px rgb(0 0 0 / 0.63))
+    drop-shadow(0 0 4px rgb(0 0 0 / 0.936))}
+.app-shell--home .mobile-tool-entry{border:1px solid rgb(15 14 13 / 0.12);color:rgb(15 14 13 / 0.82);background:rgb(15 14 13 / 0.06)}
+.app-shell--home .top-nav .icon-button:hover{border-color:rgb(15 14 13 / 0.08);background:rgb(15 14 13 / 0.07)}
+.app-shell--home .task-trigger{border:1px solid rgb(15 14 13 / 0.09);color:#0f0e0d;background:rgb(15 14 13 / 0.06)}
+.app-shell--home .task-trigger i{color:#0f0e0d}
+.app-shell--home .user-menu{color:#0f0e0d}
+.app-shell--home .user-menu:hover{background:rgb(15 14 13 / 0.05)}
+.app-shell--home .avatar{border:1px solid rgb(15 14 13 / 0.18);color:#bdb9b4;background:#22211f}
+.app-shell--home .user-menu small{color:rgb(15 14 13 / 0.42)}
+.app-shell--home .tool-sidebar{background:#0f0e0d}
+.app-shell--home .new-task-button{color:#0f0e0d;box-shadow:0 4px 10px rgb(0 0 0 / 0.288)}
+.app-shell--home .new-task-button:hover{box-shadow:0 6px 14px rgb(0 0 0 / 0.378)}
+.app-shell--home .sidebar-tip span{color:#0f0e0d}
+.app-shell--home .secondary-button{background:#0f0e0d}
+.app-shell--home .tool-directory{background:#0f0e0d}
+.app-shell--home .tool-filter-row button.active span{color:#0f0e0d}
+.app-shell--home .market-category > button.active i{color:#0f0e0d}
+.app-shell--home .status-queued{color:#dc7f06;background:#1c1b19}
+.app-shell--home .status-planning{color:#9e9992;background:#1e1c1a}
+.app-shell--home .status-processing{color:#97928a;background:#1b1a18}
+.app-shell--home .drawer-overlay,.app-shell--home .mobile-overlay{background:rgb(233 232 230 / 0.42)}
+.app-shell--home .task-drawer{background:#0f0e0d;box-shadow:-24px 0 60px rgb(0 0 0 / 0.36)}
+.app-shell--home .live-dot{box-shadow:0 0 0 4px rgb(255 255 255 / 0.1)}
+.app-shell--home .workflow-steps .done i{border-color:#312e2b}
+.app-shell--home .workflow-steps .done em{background:#312e2b}
+.app-shell--home .workflow-steps .active i{color:#0f0e0d}
+.app-shell--home .toolbar-group button.active{background:#0f0e0d;box-shadow:0 1px 4px rgb(0 0 0 / 0.18)}
+.app-shell--home .generation-feedback.error{border-color:#591c02;background:#161514}
+.app-shell--home .generation-feedback.error > span{color:#fa682a}
+.app-shell--home .generation-feedback.success{border-color:#312e2b}
+.app-shell--home .help-steps .current i{color:#0f0e0d}
+.app-shell--home .market-region-switch button.active{background:#0f0e0d}
+.app-shell--home .view-toggle button.active{background:#0f0e0d;box-shadow:0 1px 4px rgb(0 0 0 / 0.18)}
+.app-shell--home .pagination button.active{color:#0f0e0d}
+.app-shell--home .help-filter-bar button.active{border-color:#591c02}
+@media (max-width: 1080px){.app-shell--home .tool-sidebar{box-shadow:20px 0 45px rgb(0 0 0 / 0.306)}}
+.app-shell--home .api-state{color:var(--text-secondary, #9b958e);background:#141312;border:1px dashed #2d2a28}
+.app-shell--home .api-state--error{color:#fa682a;background:#151413;border-color:#591c02}
+.app-shell--home .auth-status-page{background:radial-gradient(circle at 20% 10%, rgb(146 140 132 / 0.12), transparent 36%),
+    var(--ink-50, #161514)}
+.app-shell--home .auth-status{border:1px solid rgb(213 211 208 / 0.1);background:#0f0e0d;box-shadow:var(--shadow-xl, 0 24px 60px rgb(0 0 0 / 0.216))}
+.app-shell--home .auth-status h1{color:var(--ink-900, #d4d1ce)}
+.app-shell--home .auth-status > p{color:var(--ink-500, #928c85)}
+.app-shell--home .auth-status__icon{color:var(--violet-700, #a19c96);background:rgb(146 140 132 / 0.12)}
+.app-shell--home .announcement-banner{border-bottom:1px solid rgb(163 158 152 / 0.12);background:#161513;color:#d3d0cd}
+.app-shell--home .announcement-filter-tabs button.active{background:#1a1917;color:#979189}
+.app-shell--home .announcement-list-item.active{background:#141312}
+.app-shell--home .announcement-list-item.active{box-shadow:inset 3px 0 #000000}
+.app-shell--home .button.success{border:1px solid #7f7870;background:#7f7870;color:#0f0e0d}
+.app-shell--home .button.danger-ghost{border:1px solid #312e2b;background:#0f0e0d;color:#fa682a}
+.app-shell--home .icon-button{color:#857e76}
+.app-shell--home .icon-button:hover{background:#1a1817;color:#aca8a2}
+.app-shell--home .announcement-center__trigger{border:1px solid rgb(15 14 13 / 0.12);color:#1c1b19;background:rgb(205 202 199 / 0.88)}
+.app-shell--home .announcement-center__trigger:hover,.app-shell--home .announcement-center__trigger[aria-expanded="true"]{border-color:rgb(83 79 73 / 0.6);background:#fa682a}
+.app-shell--home .announcement-center__trigger svg:first-child{color:#591c02}
+.app-shell--home .announcement-center__trigger-chevron{color:#fa682a}
+.app-shell--home .announcement-center__trigger-dot{background:#534f49;box-shadow:0 0 0 2px #000000}
+.app-shell--home .announcement-center__overlay{background:rgb(233 232 230 / 0.72)}
+.app-shell--home .announcement-center__dialog{border:1px solid #fa682a;background:#151413;box-shadow:0 30px 100px rgb(0 0 0 / 0.756)}
+.app-shell--home .announcement-center__header{color:#171614;background:linear-gradient(135deg, #d4d2cf 0%, #fa682a 100%)}
+.app-shell--home .announcement-center__eyebrow{color:#591c02}
+.app-shell--home .announcement-center__header h1{color:#131211}
+.app-shell--home .announcement-center__close{border:1px solid rgb(15 14 13 / 0.16);color:#1c1b19;background:rgb(15 14 13 / 0.07)}
+.app-shell--home .announcement-center__close:hover{color:#0f0e0d;background:rgb(15 14 13 / 0.14)}
+.app-shell--home .announcement-center__tabs{background:#1c1b19}
+.app-shell--home .announcement-center__tab{color:#878178}
+.app-shell--home .announcement-center__tab:hover{color:#fa682a;background:rgb(15 14 13 / 0.58)}
+.app-shell--home .announcement-center__tab.is-active{border-color:#2d2b28;color:#fa682a;background:#131211;box-shadow:0 -1px 0 rgb(255 255 255 / 0.08)}
+.app-shell--home .announcement-center__tab.is-active svg{color:#89837a}
+.app-shell--home .announcement-center__scroll{background:#131211;scrollbar-color:#fa682a transparent}
+.app-shell--home .announcement-center__article{border:1px solid #1c1b19;background:#0f0e0d;box-shadow:0 5px 18px rgb(0 0 0 / 0.108)}
+.app-shell--home .announcement-center__article time{color:#6f6a63}
+.app-shell--home .announcement-center__pinned{color:#a09a93}
+.app-shell--home .announcement-center__article h2{color:#c6c3bf}
+.app-shell--home .announcement-center__summary,.app-shell--home .announcement-center__content{color:#a49f98}
+.app-shell--home .announcement-center__summary{color:#958f88}
+.app-shell--home .announcement-center__image{border:1px solid #1c1b19}
+.app-shell--home .announcement-center__link{color:#a09a93}
+.app-shell--home .announcement-center__meta{border-top:1px solid #23211f;color:#716b64}
+.app-shell--home .announcement-center__empty{color:#6e6962}
+.app-shell--home .announcement-center__empty-icon{border:1px solid #1c1b19;color:#767169;background:#1c1b19}
+.app-shell--home .announcement-center__empty strong{color:#a39e97}
+.app-shell--home .announcement-prompt__overlay{background:rgb(233 232 230 / 0.68)}
+.app-shell--home .announcement-prompt{border:1px solid #fa682a;background:#131211;box-shadow:0 30px 100px rgb(0 0 0 / 0.756)}
+.app-shell--home .announcement-prompt__header{color:#131211;background:linear-gradient(135deg, #d4d2cf 0%, #fa682a 100%)}
+.app-shell--home .announcement-prompt__icon{border:1px solid rgb(15 14 13 / 0.18);color:#591c02;background:rgb(15 14 13 / 0.08)}
+.app-shell--home .announcement-prompt__header > div:nth-child(2) > span{color:#591c02}
+.app-shell--home .announcement-prompt__header h2{color:#131211}
+.app-shell--home .announcement-prompt__close{border:1px solid rgb(15 14 13 / 0.16);color:#1c1b19;background:rgb(15 14 13 / 0.07)}
+.app-shell--home .announcement-prompt__close:hover{color:#0f0e0d;background:rgb(15 14 13 / 0.14)}
+.app-shell--home .announcement-prompt__body{color:#a49f98}
+.app-shell--home .announcement-prompt__pin{color:#a09a93}
+.app-shell--home .announcement-prompt__summary{color:#958f88}
+.app-shell--home .announcement-prompt__image{border:1px solid #1c1b19}
+.app-shell--home .announcement-prompt__footer{border-top:1px solid #21201d}
+.app-shell--home .announcement-prompt__check{color:#888279}
+.app-shell--home .announcement-prompt__check input{accent-color:#8b847c}
+.app-shell--home .secondary-button{background:#0f0e0d}
+@media (min-width: 1081px){.app-shell.app-shell--home,.app-shell--home .app-shell__body,.app-shell--home .tool-sidebar{background:#0f0e0d}}
+.app-shell--home{--ink-950:#e9e8e7;--ink-900:#cecdca;--ink-800:#c0bebb;--ink-700:#aeaca8;--ink-600:#999590;--ink-500:#807b76;--ink-400:#5b5854;--ink-300:#3e3c39;--ink-200:#2b2926;--ink-150:#21201e;--ink-100:#1c1b1a;--ink-50:#171615;--violet-700:#afaaa4;--violet-600:#a09a93;--violet-500:#928c84;--violet-400:#6d6861;--violet-300:#4b4742;--violet-200:#302d2a;--violet-100:#201f1d;--violet-50:#181715;--blue-600:#a09a93;--cyan-500:#fa682a;--green-600:#948e86;--green-100:#1b1a18;--amber-600:#dc7f06;--amber-100:#1a1917;--red-600:#fa682a;--red-100:#1e1d1b;--shadow-sm:0 1px 3px rgb(0 0 0 / 0.09);--shadow-md:0 8px 24px rgb(0 0 0 / 0.144);--shadow-lg:0 18px 45px rgb(0 0 0 / 0.234);--studio-orange:#a09a93;--studio-orange-dark:#afaaa4;--studio-orange-soft:#1c1b19;--studio-black:#d4d2d0;--studio-paper:#171615;--studio-line:#262422}
+.app-shell--home button:focus-visible,.app-shell--home a:focus-visible,.app-shell--home input:focus-visible,.app-shell--home textarea:focus-visible,.app-shell--home select:focus-visible{outline-color:rgb(160 154 147 / 0.3)}
+.app-shell--home .top-nav{color:#0f0e0d;box-shadow:0 1px 0 rgb(255 255 255 / 0.008)}
+.app-shell--home .brand-mark b{background:#2a2825}
+.app-shell--home .brand-copy small{color:rgb(15 14 13 / 0.44)}
+.app-shell--home .main-nav > a{color:rgb(15 14 13 / 0.76)}
+.app-shell--home .main-nav > a:hover,.app-shell--home .main-nav > a.active{color:#0f0e0d}
+.app-shell--home .task-trigger,.app-shell--home .top-nav .icon-button,.app-shell--home .user-menu{border:1px solid rgb(15 14 13 / 0.11);color:rgb(15 14 13 / 0.82);background:rgb(15 14 13 / 0.05)}
+.app-shell--home .task-trigger:hover,.app-shell--home .top-nav .icon-button:hover,.app-shell--home .user-menu:hover{border-color:rgb(15 14 13 / 0.22);color:#0f0e0d;background:rgb(15 14 13 / 0.09)}
+.app-shell--home .task-trigger i{color:#0f0e0d}
+.app-shell--home .task-trigger.is-active{border-color:rgb(250 104 42 / 0.42);color:#0f0e0d;background:rgb(160 154 147 / 0.18)}
+.app-shell--home .task-trigger.has-error{border-color:rgb(250 104 42 / 0.58);color:#0f0e0d;background:rgb(250 104 42 / 0.28)}
+.app-shell--home .task-trigger.has-error i{background:#fa682a}
+.app-shell--home .avatar{color:#fa682a;background:#2b2926}
+.app-shell--home .tool-sidebar{background:#0f0e0d}
+.app-shell--home .new-task-button{color:#0f0e0d}
+.app-shell--home .sidebar-tip{border:1px solid #1c1b19;background:#181715}
+.app-shell--home .sidebar-tip span{color:#0f0e0d}
+.app-shell--home .secondary-button{background:#0f0e0d}
+.app-shell--home .asset-card.selected{box-shadow:0 0 0 3px rgb(0 0 0 / 0.216)}
+.app-shell--home .asset-card.selected .asset-check{color:#0f0e0d}
+.app-shell--home .tool-market-page{background:#0f0e0d}
+.app-shell--home .market-category button.active i{color:#0f0e0d}
+.app-shell--home .workflow-steps > div.done em{background:#3d3a36}
+.app-shell--home .workflow-steps > div.active i{color:#0f0e0d}
+.app-shell--home .quality-options button.selected{box-shadow:0 0 0 2px rgb(0 0 0 / 0.144)}
+.app-shell--home .quality-options button.selected i{color:#0f0e0d}
+.app-shell--home .generation-feedback.active{border-color:#591c02}
+.app-shell--home .help-steps li.current i{color:#0f0e0d}
+.app-shell--home .market-region-switch button.active{border-color:#591c02;background:#0f0e0d}
+.app-shell--home .marketplace-grid button.active i{color:#0f0e0d}
+.app-shell--home .segmented-control button.active,.app-shell--home .page-count-control button.active{color:#0f0e0d}
+.app-shell--home .faq-list article.open{border-color:#591c02}
+.app-shell--home .focus-home{background:#0f0e0d}
+.app-shell--home .home-feature-card{background:#161514;box-shadow:0 4px 16px rgb(0 0 0 / 0.144)}
+.app-shell--home .home-feature-card__hot{color:#a09a93;filter:drop-shadow(0 2px 3px rgb(0 0 0 / 0.684))
+    drop-shadow(0 0 9px #000000)}
+.app-shell--home .home-feature-card > .home-feature-card__art{color:#fa682a;background:#1c1b19}
+.app-shell--home .home-feature-card__art--fallback{background:radial-gradient(circle at 68% 24%, rgb(15 14 13 / 0.74) 0 7%, transparent 8%),
+    linear-gradient(145deg, #1c1b19, #591c02) !important}
+.app-shell--home .home-feature--pack > .home-feature-card__art--fallback{color:#fa682a;background:radial-gradient(circle at 34% 28%, rgb(15 14 13 / 0.72) 0 8%, transparent 9%),
+    linear-gradient(145deg, #1c1b19, #591c02) !important}
+.app-shell--home .home-feature-card__visual-stage{background:#23211f}
+.app-shell--home .home-feature-card > div{color:#0f0e0d;background:rgb(214 212 210 / 0.74)}
+.app-shell--home .home-feature-card > div > span{color:rgb(15 14 13 / 0.78)}
+.app-shell--home .home-feature-card svg{color:#393633}
+.app-shell--home .home-feature-card:not(.is-unavailable):is(:hover, :focus-visible, :focus-within, .is-mobile-played){border-color:#43403b;box-shadow:0 10px 28px rgb(0 0 0 / 0.216)}
+.app-shell--home .home-feature-card:focus-visible{outline:3px solid rgb(137 131 122 / 0.32)}
+.app-shell--home .home-command--primary > label{border-color:#591c02;box-shadow:0 10px 28px rgb(0 0 0 / 0.234)}
+.app-shell--home .home-command > label{background:#0f0e0d;box-shadow:0 4px 18px rgb(0 0 0 / 0.09)}
+.app-shell--home .home-command label > button{color:#0f0e0d}
+.app-shell--home .home-search-empty button{color:#0f0e0d}
+.app-shell--home .home-search-recommendation{background:#0f0e0d}
+.app-shell--home .home-search-recommendation:hover{border-color:#591c02;background:#151413}
+.app-shell--home .workspace-sidebar-links a:last-child svg{color:#a09a93}
+.app-shell--home .home-ai-toolbox__item{background:linear-gradient(145deg, #0f0e0d, #131312);box-shadow:0 5px 16px rgb(0 0 0 / 0.09)}
+.app-shell--home .home-ai-toolbox__item:not(.is-unavailable):hover{border-color:#591c02;box-shadow:0 12px 28px rgb(0 0 0 / 0.18)}
+.app-shell--home .home-search-results{background:#0f0e0d;box-shadow:0 16px 34px rgb(0 0 0 / 0.18)}
+.app-shell--home .home-search-result.is-active,.app-shell--home .home-search-result:not(.is-unavailable):hover{border-color:#591c02;background:#151413}
+@media (min-width: 1081px){.app-shell--home .app-shell__body{background:#0f0e0d}}
+.app-shell--home .home-feature-card > div{background:linear-gradient(180deg, rgb(233 232 231 / 0) 0%, rgb(233 232 231 / 0.82) 76%)}
+.app-shell--home .home-feature-card strong{text-shadow:0 2px 12px rgb(0 0 0 / 0.504)}
+.app-shell--home .home-feature-card > div > span{text-shadow:0 2px 10px rgb(0 0 0 / 0.504)}
+.app-shell--home{--accent-lime:#1e1d1b;--accent-lilac:#282623;--ink-950:#e9e8e7;--ink-900:#cccac8;--ink-700:#aaa7a3;--ink-500:#8c8883;--ink-50:#161514;--violet-700:#aca7a1;--violet-600:#a29c96;--violet-500:#969088;--violet-100:#201e1c;--violet-50:#181715;--blue-600:#a29c96;--studio-orange:#a29c96;--studio-orange-dark:#b4b0aa;--studio-orange-soft:#201e1c;--studio-black:#d5d4d2;--studio-paper:#151413;--studio-line:#252422}
+.app-shell--home button:focus-visible,.app-shell--home a:focus-visible,.app-shell--home input:focus-visible,.app-shell--home textarea:focus-visible,.app-shell--home select:focus-visible{outline-color:#918a83}
+.app-shell.app-shell--home .top-nav{color:#d5d4d2;background:rgb(15 14 13 / 0.95);border-bottom:1px solid #23211f}
+.app-shell--home .top-nav{background:rgb(15 14 13 / 0.84);border-color:rgb(37 35 32 / 0.6)}
+.app-shell--home .top-nav[data-transparent="true"] .main-nav > a.active,.app-shell--home .top-nav[data-transparent="true"] .nav-menu__trigger.active{background:rgb(15 14 13 / 0.133)}
+.app-shell--home .top-nav[data-transparent="true"] :is(.announcement-center__trigger,.usage-pill,.user-menu){background:rgb(15 14 13 / 0.188);border-color:rgb(15 14 13 / 0.271)}
+.app-shell--home .brand-lockup{color:#e9e8e7}
+.app-shell--home .brand-lockup .brand-copy strong{color:#e9e8e7}
+.app-shell--home .brand-lockup .brand-copy small{color:#8f8880}
+.app-shell--home .top-nav .main-nav > a,.app-shell--home .top-nav .nav-menu__trigger{color:#aaa6a0}
+.app-shell--home .top-nav .main-nav > a:hover,.app-shell--home .top-nav .main-nav > a.active,.app-shell--home .top-nav .nav-menu__trigger:hover,.app-shell--home .top-nav .nav-menu__trigger.active{color:#d5d4d2;background:#171615}
+.app-shell--home .top-nav .main-nav > a::after,.app-shell--home .top-nav .nav-menu__trigger::after{background:#d5d4d2}
+.app-shell--home .top-nav .announcement-center__trigger{color:#a49f99;border:1px solid #262522;background:#161514}
+.app-shell--home .top-nav .announcement-center__trigger:hover,.app-shell--home .top-nav .announcement-center__trigger[aria-expanded="true"]{color:#c3c0bc;border-color:#45413d;background:#1d1c1a}
+.app-shell--home .top-nav .announcement-center__trigger svg{color:#98928b}
+.app-shell--home .top-nav :is(.usage-pill, .task-trigger, .icon-button, .user-menu, .mobile-tool-entry){color:#c1bdb9;border:1px solid #252422}
+.app-shell--home .top-nav :is(.usage-pill, .icon-button, .user-menu, .mobile-tool-entry):hover{color:#d5d4d2;background:#1a1917;border-color:#4b4742}
+.app-shell--home .top-nav .usage-pill svg{color:#a8a49d}
+.app-shell--home .top-nav .task-trigger{background:#d1cecb;color:#0f0e0d;border-color:#d1cecb}
+.app-shell--home .top-nav .task-trigger:hover{background:#b9b5b0;color:#0f0e0d}
+.app-shell--home .top-nav .task-trigger.is-active{color:#c9c6c2;border-color:#3a3733;background:#1a1917}
+.app-shell--home .top-nav .task-trigger.has-error{color:#fa682a;border-color:#591c02;background:#191817}
+.app-shell--home .top-nav .task-trigger i{color:#e9e8e7}
+.app-shell--home .top-nav .task-trigger.has-error i{color:#0f0e0d;background:#fa682a}
+.app-shell--home .top-nav .avatar{color:#b6b2ad;background:#211f1d}
+.app-shell--home .top-nav .nav-mega{color:#cbc9c7;border-color:#2a2826;background:#0f0e0d;box-shadow:0 22px 64px rgb(0 0 0 / 0.226)}
+.app-shell--home .top-nav .nav-tool-link:hover,.app-shell--home .top-nav .nav-tool-link.is-active{background:#191817}
+.app-shell--home .top-nav .nav-tool-link__hot,.app-shell--home .top-nav .main-nav__flame{color:#9f9993}
+.app-shell--home .top-nav .nav-mega__head span,.app-shell--home .top-nav .nav-mega__footer a{color:#9e9891}
+.app-shell--home .main-content--wide{background:#0f0e0d}
+.app-shell--home .focus-home{background:#0f0e0d}
+.app-shell--home .commerce-eyebrow{color:#a9a49e}
+.app-shell--home .commerce-eyebrow > span{background:#cac7c4;box-shadow:0 0 0 4px rgb(255 255 255 / 0.046)}
+.app-shell--home .commerce-hero{background:linear-gradient(180deg, #282623 0%, #1d1d1b 48%, #1a1917 100%)}
+.app-shell--home .commerce-color-wash i{background:radial-gradient(ellipse, rgb(29 28 26 / 0.788) 0%, rgb(27 26 24 / 0.639) 22%, rgb(26 25 23 / 0.302) 46%, transparent 70%)}
+.app-shell--home .commerce-color-wash i:nth-child(2){background:radial-gradient(ellipse, rgb(74 71 66 / 0.678) 0%, rgb(57 55 51 / 0.549) 25%, rgb(42 40 37 / 0.251) 48%, transparent 72%)}
+.app-shell--home .commerce-color-wash i:nth-child(3){background:radial-gradient(ellipse, rgb(89 28 2 / 0.471) 0%, rgb(89 28 2 / 0.251) 35%, transparent 70%)}
+.app-shell--home .commerce-hero::after{background:linear-gradient(transparent, rgb(15 14 13 / 0.78))}
+.app-shell--home .commerce-hero::before{background-image:linear-gradient(rgb(15 14 13 / 0.533) 1px, transparent 1px), linear-gradient(90deg, rgb(15 14 13 / 0.533) 1px, transparent 1px)}
+.app-shell--home .commerce-hero__wordmark{color:rgb(15 14 13 / 0.239)}
+.app-shell--home .commerce-hero h1{color:#e9e8e7}
+.app-shell--home .commerce-selection{border:1.5px dashed #a19b95;background:rgb(31 30 28 / 0.549)}
+.app-shell--home .commerce-selection i{background:#1e1d1b;border:1px solid #b2aea8}
+.app-shell--home .commerce-hero__description{color:#a39e97}
+.app-shell--home .commerce-button{border:1px solid #d5d4d2;color:#0f0e0d;background:#d5d4d2;box-shadow:3px 3px 0 rgb(255 255 255 / 0.065)}
+.app-shell--home .commerce-button:hover{color:#d5d4d2;background:#1e1d1b;box-shadow:4px 4px 0 #000000}
+.app-shell--home .commerce-text-link{border-bottom:1px solid #969089}
+.app-shell--home .commerce-hero__note{color:#8e8880}
+.app-shell--home .commerce-collage__shape{background:#201e1c}
+.app-shell--home .commerce-photo{border:1px solid #b2aea8;background:#0f0e0d;box-shadow:5px 5px 0 rgb(0 0 0 / 0.24)}
+.app-shell--home .commerce-photo:hover{box-shadow:8px 12px 0 rgb(0 0 0 / 0.339)}
+.app-shell--home .commerce-photo__bar > span{background:#4d4a45}
+.app-shell--home .commerce-photo__tag{color:#a09b94}
+.app-shell--home .commerce-collage__spark{color:#d0cdca}
+.app-shell--home .commerce-collage__sticker{border:1px solid #bfbbb7;color:#bebbb6;background:#1c1b19}
+.app-shell--home .commerce-collage__cursor svg{fill:#4e4a45;stroke:#cecbc8}
+.app-shell--home .commerce-collage__cursor b{color:#0f0e0d;background:#99948c}
+.app-shell--home .commerce-hero__bottom{border-top:1px solid rgb(180 176 171 / 0.149);color:#9b958e}
+.app-shell--home .commerce-hero__bottom button{color:#a09b94}
+.app-shell--home .focus-home .home-command h2{color:#d1cecb}
+.app-shell--home .focus-home .home-command > p{color:#7e7870}
+.app-shell--home .focus-home .home-command > label{border:1px solid #44413d;box-shadow:0 7px 0 rgb(255 255 255 / 0.1)}
+.app-shell--home .focus-home .home-command > label:focus-within{border-color:#8e877f;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1)}
+.app-shell--home .focus-home .home-command__icon{color:#b5b1ac;background:#1b1918}
+.app-shell--home .focus-home .home-command label > button{background:#cbc8c4}
+.app-shell--home .focus-home .home-command__promises{color:#7a746c}
+.app-shell--home .focus-home .home-command__promises svg{color:#928c84}
+.app-shell--home .focus-home .focus-home__section-head h2{color:#ceccc8}
+.app-shell--home .focus-home .focus-home__section-head p{color:#7a746c}
+.app-shell--home .focus-home .home-feature-card{border:1px solid #272523;background:#0f0e0d}
+.app-shell--home .focus-home .home-feature-card > div{background:#0f0e0d;color:#cecbc8}
+.app-shell--home .focus-home .home-feature-card > div > span{color:#7a746c}
+.app-shell--home .focus-home .home-feature-card > div > svg{color:#c7c4c0;background:#1b1a18}
+.app-shell--home .focus-home .home-feature-card:not(.is-unavailable):is(:hover, :focus-visible, :focus-within){border-color:#6e6962;box-shadow:0 10px 25px rgb(0 0 0 / 0.127)}
+.app-shell--home .focus-home .home-feature-card:hover > div > svg{background:#1e1d1b}
+.app-shell--home .focus-home .home-feature-card__hot{color:#cbc8c5;background:#1c1b19}
+.app-shell--home .focus-home .home-ai-toolbox{border-top:1px solid #23211f}
+.app-shell--home .focus-home .home-ai-toolbox__eyebrow{color:#938d86;background:#1b1a18;border-color:#252321}
+.app-shell--home .focus-home .home-ai-toolbox__header p{color:#7a746c}
+.app-shell--home .focus-home .home-ai-toolbox__item{border:1px solid #242220;background:#131212}
+.app-shell--home .focus-home .home-ai-toolbox__item:hover{border-color:#48443f;background:#181715}
+.app-shell--home .focus-home .home-ai-toolbox__icon{color:#a6a19b;background:#201f1d}
+.app-shell--home .focus-home .home-ai-toolbox__item:nth-child(3n + 2) .home-ai-toolbox__icon{color:#a29d97;background:#1e1d1b}
+.app-shell--home .focus-home .home-ai-toolbox__item:nth-child(3n) .home-ai-toolbox__icon{color:#a19c95;background:#1f1e1c}
+.app-shell--home .focus-home .home-ai-toolbox__copy strong{color:#bfbcb7}
+.app-shell--home .focus-home .home-ai-toolbox__copy small{color:#7a746c}
+.app-shell--home .home-showcase-footer{background:#171615}
+.app-shell--home .commerce-closing__flower{color:#22211e}
+.app-shell--home .home-showcase-footer__row{border-top:1px solid #292725}
+.app-shell--home .home-showcase-footer__row p{color:#726c65}
+.app-shell--home .home-showcase-footer__row nav{color:#928c85}
+.app-shell--home .home-showcase-footer__row nav a:hover{color:#ccc9c5}
+.app-shell--home .commerce-showcase{background:#0f0e0d}
+.app-shell--home .commerce-showcase__head p{color:#7f7971}
+.app-shell--home .commerce-showcase__tabs button{border:1px solid #252320;background:#131212;color:#8f8980}
+.app-shell--home .commerce-showcase__tabs button[aria-selected="true"]{color:#c6c3bf;background:#1e1c1a;border-color:#373431}
+.app-shell--home .commerce-showcase__tabs button:hover{border-color:#55504b}
+.app-shell--home .commerce-comparison{border:1px solid #272522;background:#181615;box-shadow:8px 8px 0 rgb(255 255 255 / 0.1)}
+.app-shell--home .commerce-comparison__images{background:#1e1c1a}
+.app-shell--home .commerce-comparison__label{background:rgb(15 14 13 / 0.851);color:#aeaaa4}
+.app-shell--home .commerce-comparison__label--after{background:rgb(27 26 24 / 0.875)}
+.app-shell--home .commerce-comparison__divider{background:#0f0e0d;box-shadow:0 0 12px rgb(0 0 0 / 0.6)}
+.app-shell--home .commerce-comparison__divider span{border:1px solid #a19b95;background:#1f1d1b;color:#c0bdb8;box-shadow:0 3px 8px rgb(0 0 0 / 0.339)}
+.app-shell--home .commerce-comparison:focus-within{outline:3px solid #5d5852}
+.app-shell--home .commerce-comparison__hint{color:#7e7870}
+.app-shell--home .commerce-showcase__copy p{color:#7f7971}
+.app-shell--home .commerce-showcase__copy small{color:#615c56}
+.app-shell--home .commerce-gallery{background:#151413}
+.app-shell--home .commerce-gallery__head button,.app-shell--home .commerce-reviews__foot button{color:#857e76;border-bottom:1px solid #4c4843}
+.app-shell--home .commerce-gallery__image{border:1px solid #312f2c;background:#0f0e0d}
+.app-shell--home .commerce-gallery__image span{color:#aaa59f}
+.app-shell--home .commerce-gallery .commerce-text-link{color:#a39e98}
+.app-shell--home .commerce-value__art{background:radial-gradient(ellipse, #262421 0%, rgb(29 28 26 / 0.251) 55%, transparent 70%)}
+.app-shell--home .commerce-value__sheet{border:1px solid #504c47;background:#0f0e0d;box-shadow:4px 5px 0 rgb(255 255 255 / 0.1)}
+.app-shell--home .commerce-value__sheet > span{color:#878078}
+.app-shell--home .commerce-value__seal{background:#201e1c;border:1px solid #938d85;color:#aaa59f}
+.app-shell--home .commerce-value__copy > p{color:#767069}
+.app-shell--home .commerce-value__copy li{color:#767169}
+.app-shell--home .commerce-value__copy li svg{color:#9d9790;background:#1b1918}
+.app-shell--home .commerce-value__copy li strong{color:#b0aca6}
+.app-shell--home .commerce-reviews{background:#1c1b19}
+.app-shell--home .commerce-reviews > header p{color:#827b73}
+.app-shell--home .commerce-reviews article{border:1px solid #2d2b28;background:#0f0e0d;box-shadow:0 5px 0 rgb(255 255 255 / 0.1)}
+.app-shell--home .commerce-reviews__stars{color:#736e66}
+.app-shell--home .commerce-reviews article h3{color:#aca7a2}
+.app-shell--home .commerce-reviews__text{color:#898279}
+.app-shell--home .commerce-reviews__person > img{border:2px solid #1e1d1b}
+.app-shell--home .commerce-reviews__person > span{color:#9e9992;background:#1f1d1b}
+.app-shell--home .commerce-reviews__person strong{color:#aeaaa4}
+.app-shell--home .commerce-reviews__person small{color:#6a655e}
+.app-shell--home .commerce-reviews__person em{color:#67625c}
+.app-shell--home .commerce-reviews__foot{color:#6d6861}
+.app-shell--home .commerce-reviews__foot button{color:#827b73;border-color:#44403c}
+.app-shell--home .tool-sidebar{background:#0f0e0d;border-color:#252320}
+.app-shell--home .tool-sidebar .new-task-button{background:#cbc8c5;color:#0f0e0d}
+.app-shell--home .tool-sidebar .new-task-button:hover{background:#b3afaa}
+.app-shell--home .tool-sidebar .tool-link.active{color:#bbb8b3;background:#1b1918;box-shadow:inset 3px 0 rgb(255 255 255 / 0.1)}
+.app-shell--home .tool-sidebar .tool-icon,.app-shell--home .nav-mega .tool-icon,.app-shell--home .visual-tool-card .tool-icon{color:#a49f99 !important;background:#1f1e1c !important}
+.app-shell--home .sidebar-tip{border-color:#252321;background:#171615}
+.app-shell--home .sidebar-tip span{color:#a39e97;background:#211f1d}
+@media (max-width: 1000px){.app-shell--home .top-nav .mobile-primary-navigation{color:#c7c4c0;background:#0f0e0d;border-color:#272522}}
+.app-shell--home{--violet-800:#b7b3ae;--violet-700:#afaaa4;--violet-600:#a09a93;--violet-500:#928c84;--violet-400:#6d6861;--violet-300:#4b4742;--violet-200:#302d2a;--violet-100:#201f1d;--violet-50:#181715;--studio-orange:#a09a93;--studio-orange-dark:#afaaa4;--studio-orange-soft:#201f1d;--accent-line:#262422;--accent-muted:#7f7b75;--accent-paper:#161413;--accent-gradient:linear-gradient(115deg, #21201d 0%, #1a1917 55%, #1c1b19 100%)}
+.app-shell--home .top-nav .commerce-workspace-link{color:#8e887f}
+.app-shell--home .top-nav .commerce-workspace-link:hover{color:#c0bcb8;background:#191816}
+.app-shell--home .commerce-hub-all{border:1px solid #282624;color:#9c9790;background:#171614}
+.app-shell--home .commerce-hub-all:hover{border-color:#4e4a45;background:#1c1b19}
+.app-shell--home .commerce-start-card{border:1px solid #262522;background:#0f0e0d}
+.app-shell--home .commerce-start-card:hover{border-color:#4e4a45;box-shadow:0 10px 23px rgb(0 0 0 / 0.127)}
+.app-shell--home .commerce-start-card__visual{background:#201f1d}
+.app-shell--home .commerce-start-card__visual > span{border:1px solid rgb(15 14 13 / 0.502);color:#a29d96;background:rgb(24 23 21 / 0.922)}
+.app-shell--home .commerce-start-card__visual > b{color:#0f0e0d;background:rgb(206 203 199 / 0.722)}
+.app-shell--home .commerce-start-card h3{color:#d2d0ce}
+.app-shell--home .commerce-start-card h3 svg{color:#827b73}
+.app-shell--home .commerce-start-card__body > strong{color:#9d9a95}
+.app-shell--home .commerce-start-card__body > p{color:#7f7b75}
+.app-shell--home .commerce-start-card dl{border-top:1px solid #1d1c1a}
+.app-shell--home .commerce-start-card dt{color:#7f7b75}
+.app-shell--home .commerce-start-card dd{color:#9d9a95}
+.app-shell--home .commerce-start-card__action{background:#181716;color:#9d9a95}
+.app-shell--home .commerce-start-card--one-click-replica .commerce-start-card__action{color:#c0bdb9;background:#1d1b1a}
+.app-shell--home .commerce-start-card:hover .commerce-start-card__action{color:#c6c2be;background:#1a1917}
+.app-shell--home .creation-start-hub__steps{background:#161514;color:#7f7b75}
+.app-shell--home .creation-start-hub__steps i{color:#89827a;background:#1f1d1b}
+.app-shell--home .creation-start-hub__steps b{color:#45423d}
+.app-shell--home .focus-home .focus-home__content{border-top:1px solid #211f1d}
+.app-shell--home .announcement-center__overlay,.app-shell--home .announcement-prompt__overlay{background:rgb(213 210 207 / 0.502)}
+.app-shell--home .announcement-center__dialog{border-color:#292724;background:#0f0e0d;box-shadow:0 30px 100px rgb(0 0 0 / 0.416)}
+.app-shell--home .announcement-center__header{color:#d2d0ce;border-bottom:1px solid #252321}
+.app-shell--home .announcement-center__header h1{color:#d2d0ce}
+.app-shell--home .announcement-center__eyebrow{color:#827b73}
+.app-shell--home .announcement-center__close{border-color:#33302d;color:#918b83;background:rgb(15 14 13 / 0.612)}
+.app-shell--home .announcement-center__close:hover{color:#b3afa9;background:#0f0e0d}
+.app-shell--home .announcement-center__tabs{background:#191816}
+.app-shell--home .announcement-center__tab{color:#7f7b75}
+.app-shell--home .announcement-center__tab:hover{color:#9d9a95;background:rgb(15 14 13 / 0.533)}
+.app-shell--home .announcement-center__tab.is-active{border-color:#272522;color:#b1aca6;background:#0f0e0d}
+.app-shell--home .announcement-center__tab.is-active svg{color:#969088}
+.app-shell--home .announcement-center__scroll{background:#0f0e0d;scrollbar-color:#36332f transparent}
+.app-shell--home .announcement-center__article{border-color:#242220;box-shadow:0 4px 15px rgb(0 0 0 / 0.056)}
+.app-shell--home .announcement-center__article time,.app-shell--home .announcement-center__meta{color:#7f7b75}
+.app-shell--home .announcement-center__pinned{color:#908a82;background:#191816}
+.app-shell--home .announcement-center__article h2{color:#d2d0ce}
+.app-shell--home .announcement-center__summary,.app-shell--home .announcement-center__content{color:#7f7b75}
+.app-shell--home .announcement-center__link{color:#9a958d}
+.app-shell--home .announcement-center__image,.app-shell--home .announcement-center__meta{border-color:#242220}
+.app-shell--home .announcement-center__empty{color:#7f7b75}
+.app-shell--home .announcement-center__empty-icon{color:#948e87;background:#1e1c1a;border-color:#2d2b28}
+.app-shell--home .announcement-center__empty strong{color:#9d9a95}
+.app-shell--home .announcement-center__trigger-dot{background:#4b4743;box-shadow:0 0 0 2px rgb(255 255 255 / 0.1)}
+.app-shell--home .announcement-prompt{border-color:#262421;background:#0f0e0d}
+.app-shell--home .announcement-prompt__header,.app-shell--home .announcement-prompt__footer{border-color:#242320}
+.app-shell--home .announcement-prompt__icon{color:#9a958d;background:#23211f}
+.app-shell--home .announcement-prompt__header h2{color:#d2d0ce}
+.app-shell--home .announcement-prompt__header span,.app-shell--home .announcement-prompt__pin{color:#837c74}
+.app-shell--home .announcement-prompt__content,.app-shell--home .announcement-prompt__summary{color:#878178}
+.app-shell--home .announcement-prompt__check input{accent-color:#7f7971}
+.app-shell--home .announcement-prompt__footer .button.primary{color:#0f0e0d;background:#c3bfbb}
+.app-shell--home .help-page .faq-list article.open{background:#131211}
+.app-shell--home .commerce-quick-start h2{color:#d2d0ce}
+.app-shell--home .commerce-quick-start nav > a{border:1px solid #262421;background:#0f0e0d}
+.app-shell--home .commerce-quick-start nav > a:hover{background:#161514;border-color:#3f3c38}
+.app-shell--home .commerce-quick-start nav > a > span{color:#5a5650}
+.app-shell--home .commerce-quick-start strong{color:#d2d0ce}
+.app-shell--home .commerce-quick-start small{color:#7f7b75}
+.app-shell--home .commerce-quick-start nav > a > svg{color:#7f7b75}
+.app-shell--home{--accent-lime:#1d1b1a;--accent-lilac:#282623;--ink-950:#d3d1cf;--ink-900:#cac8c6;--ink-800:#bbb8b5;--ink-700:#a7a39f;--ink-600:#958f87;--ink-500:#79736c;--ink-400:#595652;--ink-300:#363532;--ink-200:#252422;--ink-150:#1f1e1d;--ink-100:#1b1a19;--ink-50:#161514}
+.app-shell--home .commerce-button:hover{background:#1d1b1a}
+.app-shell--home .nav-mega .nav-tool-link{background:#181816;color:#cecdca}
+.app-shell--home .nav-mega .nav-tool-link:hover{border-color:#d3d1cf;background:#1a1918}
+.app-shell--home .nav-mega .nav-tool-link.is-active{color:#e9e8e7;background:#1d1b1a;border-color:#302e2b}
+.app-shell--home .nav-mega .nav-tool-link .tool-icon{background:#0f0e0d !important}
+.app-shell--home .nav-mega .nav-mega__head span{color:#bfbdba}
+.app-shell--home .nav-mega .nav-mega__head svg{color:#6d6861}
+.app-shell--home .top-nav .nav-tool-link.is-active{background:#1d1b1a}
+.app-shell--home .top-nav .nav-mega{box-shadow:0 12px 40px rgb(0 0 0 / 0.219)}
+.app-shell--home .nav-mega .nav-mega__footer{background:#0f0e0d}
+.app-shell--home .top-nav .nav-mega__footer a{color:#c2bfbc}
+.app-shell--home .tool-sidebar .new-task-button{color:#0f0e0d;background:#cecdca}
+.app-shell--home .commerce-sidebar-nav{border-bottom:1px solid #211f1d}
+.app-shell--home .commerce-sidebar-nav a{color:#7c766e}
+.app-shell--home .commerce-sidebar-nav a:hover{color:#c2bfbc;background:#191817}
+.app-shell--home .commerce-sidebar-nav a[aria-current="page"]{color:#cecdca;background:#1b1a18}
+.app-shell--home .commerce-sidebar-primary p{color:#66615b}
+.app-shell--home .commerce-sidebar-primary a{color:#938d85}
+.app-shell--home .commerce-sidebar-primary a:hover{color:#cecdca;background:#181715}
+.app-shell--home .top-nav .mobile-tool-entry{background:#181716}
+.app-shell--home .app-shell--creation{background:linear-gradient(115deg,#121110 0%,#131211 55%,#1c1b19 100%)}
+.app-shell--home .app-shell--creation .top-nav{border-bottom:1px solid #1e1c1a;background:#0f0e0d}
+.app-shell--home .creation-workspace-bar{background:linear-gradient(100deg,#11100f,#141312 65%,#1a1917);border-bottom:1px solid #1d1c1a}
+.app-shell--home .creation-back{border:1px solid #1d1c1b;color:#cecdca;background:rgb(15 14 13 / 0.788)}
+.app-shell--home .creation-back:hover{background:#0f0e0d;border-color:#4e4a45}
+.app-shell--home .workspace-tool-picker{border:1px solid #201f1d;color:#cfcecb;background:#181816}
+.app-shell--home .workspace-tool-picker:hover,.app-shell--home .workspace-tool-picker[aria-expanded="true"]{background:#191817;border-color:#252321}
+.app-shell--home .creation-workspace-bar .nav-mega{border:1px solid #242321;background:#0f0e0d;box-shadow:0 16px 45px rgb(0 0 0 / 0.261)}
+.app-shell--home .creation-workspace-bar .nav-mega__footer{border-top:1px solid #1d1c1b}
+.app-shell--home .creation-workspace-bar .nav-mega__footer a{color:#c2bfbc}
+.app-shell--home .creation-workspace-bar__right > a{color:#a8a39d;background:rgb(15 14 13 / 0.702)}
+.app-shell--home .creation-workspace-bar__right > a:hover{color:#e9e8e7;background:#191816}
+.app-shell--home .app-shell--creation .workspace-header h1{color:#d2d0ce}
+.app-shell--home .app-shell--creation .workspace-header > div:first-child > span{color:#837d74}
+.app-shell--home .app-shell--creation .workspace-header__actions > span{border:1px solid #23211f;background:rgb(15 14 13 / 0.702);color:#938d85}
+.app-shell--home .app-shell--creation .help-panel{background:#141312;border:1px solid #1e1d1b}
+.app-shell--home .app-shell--creation :is(.detail-form-card,.planning-card,.result-preview-card,.editor-card,.control-card,.marketplace-selector,.generation-footer,.help-card){border:1px solid #22211e;background:#0f0e0d;box-shadow:0 6px 24px rgb(0 0 0 / 0.035)}
+.app-shell--home .app-shell--creation .number-chip{color:#d2d0ce;background:#1b1918}
+.app-shell--home .app-shell--creation .workflow-steps .active i{box-shadow:0 0 0 4px rgb(255 255 255 / 0.1)}
+.app-shell--home .app-shell--creation .workflow-steps .done i{color:#9c968f;background:#181716}
+.app-shell--home .app-shell--creation :is(.market-region-switch,.marketplace-grid,.option-field) button.active,.app-shell--home .app-shell--creation .marketplace-grid button.active{color:#d4d2d0;border-color:#2b2927;background:#181715}
+.app-shell--home .app-shell--creation :is(input,textarea,select):focus-visible{outline-color:#47443f}
+.app-shell--home .app-shell--creation .primary-button,.app-shell--home .app-shell--creation .generate-button{color:#0f0e0d;background:#d2d0ce;border-color:#d2d0ce}
+.app-shell--home .app-shell--creation .primary-button:hover:not(:disabled),.app-shell--home .app-shell--creation .generate-button:hover:not(:disabled){color:#d2d0ce;background:#1d1b1a;border-color:#1d1b1a}
+.app-shell--home .app-shell--creation :is(.primary-button,.generate-button):disabled{color:#645f59;border-color:#222120;background:#1d1c1b}
+.app-shell--home .commerce-start-card h3,.app-shell--home .commerce-quick-start h2,.app-shell--home .commerce-quick-start strong{color:#d2d0ce}
+.app-shell--home .commerce-start-card__action{color:#c2bfbc;background:#181816}
+.app-shell--home .commerce-start-card--one-click-replica .commerce-start-card__action,.app-shell--home .commerce-start-card:hover .commerce-start-card__action{color:#d2d0ce;background:#1d1b1a}
+.app-shell--home .commerce-start-card__visual > span{color:#cccac7;background:rgb(24 23 21 / 0.929);border-color:#1f1e1c}
+.app-shell--home .commerce-hub-all{color:#b8b4af;border-color:#252321;background:#191817}
+.app-shell--home .commerce-hub-all:hover{color:#d0cecc;border-color:#292725;background:#181716}
+.app-shell--home .announcement-center__header{background:linear-gradient(112deg,#131211,#131211 50%,#211f1d)}
+.app-shell--home .announcement-center__tab.is-active{color:#d2d0ce;background:#0f0e0d;border-color:#23211f}
+.app-shell--home .announcement-center__tab.is-active svg{color:#8f8b85}
+.app-shell--home .announcement-center__empty strong{color:#c4c2bf}
+.app-shell--home .announcement-center__empty p{color:#7a746c}
+.app-shell--home .top-nav .announcement-center__trigger{color:#9e9992;background:#171615;border-color:#262421}
+.app-shell--home .top-nav .announcement-center__trigger svg{color:#807a72}
+.app-shell--home .top-nav .announcement-center__trigger:hover,.app-shell--home .top-nav .announcement-center__trigger[aria-expanded="true"]{color:#cbc9c7;background:#1f1d1b;border-color:#3c3935}
+.app-shell--home .top-nav .task-trigger{color:#0f0e0d;background:#cecdca;border-color:#cecdca}
+.app-shell--home .top-nav .task-trigger:hover{color:#cecdca;background:#1d1b1a;border-color:#1d1b1a}
+.app-shell--home .top-nav .nav-mega__footer a{color:#c2bfbc}
+.app-shell--home .app-shell--creation :is(input,textarea):not([type=radio]):not([type=checkbox]):focus{border-color:#56524d;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1);background:#0f0e0d}
+.app-shell--home{--accent-text-on-light:#c8c5c1;--accent-text-muted:#9a948d;--accent-text-on-dark:#0f0e0d;--accent-surface:#0f0e0d;--accent-surface-soft:#1a1917;--accent-control-dark:#cecdca;--accent-control-selected-bg:#1d1b1a;--accent-control-selected-text:#cecdca;--accent-control-disabled-bg:#211f1d;--accent-control-disabled-text:#9a948d;--ink-500:#9a948d;--ink-400:#969089}
+.app-shell.app-shell--home :is(input,textarea)::placeholder{color:#8e887f}
+.app-shell.app-shell--home :is(.primary-button,.generate-button,.button.primary):disabled{border-color:#2e2c29}
+.app-shell--home .commerce-photo--fashion>img,.app-shell--home .commerce-photo--product>img,.app-shell--home .commerce-photo--commerce>img{background:#1c1a18}
+.app-shell--home .commerce-value__sheet>img{background:#1a1917}
+.app-shell--home .commerce-comparison__images>img{background:#211f1d}
+.app-shell--home .commerce-gallery__track img{background:#1f1d1b}

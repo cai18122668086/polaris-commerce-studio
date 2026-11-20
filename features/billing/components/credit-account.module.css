@@ -4,3 +4,35 @@
 .accountHeader{height:76px;display:flex;align-items:center;justify-content:space-between;padding:0 36px;background:#fff;border-bottom:1px solid #e3e5df}.accountHeader>a{display:flex;align-items:center;gap:8px;color:#5e588e;text-decoration:none;font-size:13px}.accountHeader>a:last-child{background:#f3effb;padding:11px 15px;border-radius:9px}@media(max-width:600px){.accountHeader{height:66px;padding:0 18px}.accountHeader>a:last-child{font-size:12px;padding:10px}}
 
 .purchase{margin:24px 0;padding:20px;background:#faf8ff;border:1px solid #e9e1f5;border-radius:10px}.purchaseRow{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.purchaseRow>div{flex:1}.purchaseRow strong{font-size:19px;color:#5e588e}.purchase small{display:block;font-size:11px;color:#9c8eaa;line-height:1.8;margin-top:7px}.purchaseRow b{font-size:25px;color:#5e588e}.purchaseRow button{background:#5e588e;border:0;color:white;border-radius:8px;padding:10px 16px;cursor:pointer}.purchaseRow button:disabled{opacity:.6;cursor:default}.purchase p{font-size:12px;line-height:1.8}.purchase a{color:#6a5882}
+
+/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */
+:global(.app-shell--home) .panel{background:#0f0e0d;border:1px solid #252422;color:#aaa7a3}
+:global(.app-shell--home) .heading p{color:#6a655e}
+:global(.app-shell--home) .heading h2{color:#aca7a1}
+:global(.app-shell--home) .heading button{border:1px solid #252421;background:#181715;color:#969088}
+:global(.app-shell--home) .summary{background:#1d1c1a;border:1px solid #282623}
+:global(.app-shell--home) .summary span{color:#867f77}
+:global(.app-shell--home) .summary strong{color:#a29c96}
+:global(.app-shell--home) .summary>div:first-child strong{color:#aca7a1}
+:global(.app-shell--home) .help{color:#7f7970}
+:global(.app-shell--home) .table th{color:#79736c;background:#141312}
+:global(.app-shell--home) .table td,:global(.app-shell--home) .table th{border-bottom:1px solid #201e1c}
+:global(.app-shell--home) .table td a{color:#9b958e}
+:global(.app-shell--home) .table td small{color:#67625b}
+:global(.app-shell--home) .empty{color:#6a655e}
+:global(.app-shell--home) .notice{background:#1b1a18;border:1px solid #262422;color:#77716a}
+:global(.app-shell--home) .notice a{color:#a19b94}
+:global(.app-shell--home) .notice small{color:#68635c}
+:global(.app-shell--home) .notice>svg{color:#716c64}
+:global(.app-shell--home) .costHint{color:#9b958e}
+:global(.app-shell--home) .costHint a{color:#fa682a}
+:global(.app-shell--home) .accountHeader{background:#0f0e0d;border-bottom:1px solid #252422}
+:global(.app-shell--home) .accountHeader>a{color:#a29c96}
+:global(.app-shell--home) .accountHeader>a:last-child{background:#1b1a18}
+:global(.app-shell--home) .purchase{background:#151412;border:1px solid #252421}
+:global(.app-shell--home) .purchaseRow strong{color:#a29c96}
+:global(.app-shell--home) .purchase small{color:#726c65}
+:global(.app-shell--home) .purchaseRow b{color:#a29c96}
+:global(.app-shell--home) .purchaseRow button{background:#a29c96;color:#0f0e0d}
+:global(.app-shell--home) .purchase a{color:#a19b94}
+/* home-ember-dark:end */

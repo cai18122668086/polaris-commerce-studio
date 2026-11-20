@@ -23,3 +23,12 @@
 .accountMenuPanel small { font-size: 11px; color: #746a8b; }
 
 .header :global(.top-nav__actions){margin-left:auto;gap:10px}.header :global(.task-trigger){flex-shrink:0}@media(max-width:640px){.header :global(.top-nav__actions){gap:6px}.header :global(.top-nav__brand){max-width:100px}.header :global(.task-trigger){padding:8px;min-width:40px}}
+
+/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */
+:global(.app-shell--home) .taskNotice:global(.task-trigger) > i{color:#312f2b;background:rgb(15 14 13 / 0.12)}
+:global(.app-shell--home) .header .videoEntry{color:#a09a93}
+:global(.app-shell--home) .videoEntry > span{background:#211f1d;color:#7b756d}
+:global(.app-shell--home) .accountMenuPanel{border:1px solid #262422;background:#0f0e0d;box-shadow:0 14px 40px rgb(0 0 0 / 0.254);color:#a29c96}
+:global(.app-shell--home) .accountMenuPanel > a:hover,:global(.app-shell--home) .accountMenuPanel > button:hover{background:#1b1a18}
+:global(.app-shell--home) .accountMenuPanel small{color:#969089}
+/* home-ember-dark:end */

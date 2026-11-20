@@ -576,3 +576,314 @@
 @media(max-width:640px) { .editingStudio .projectName { flex:1 1 100%; min-width:0; } .editingStudio .editorHeader>select { flex:1; min-width:0; max-width:none; } }
 
 .editingStudio{background:#fff;color:#333}.editingStudio>.persistenceBody>.header{height:56px;min-height:56px;padding:10px 16px;border-bottom:1px solid #e8e8e8;box-shadow:none;background:white}.editingTitle{display:flex;gap:24px;align-items:center;font-size:14px}.editingTitle button{background:#f0f0f0!important;color:#666!important;border-radius:5px;padding:7px 14px}.editingStudio .previewBadge{display:none}.editingStudio .workspace{min-height:calc(100dvh - 56px);background:#fff}.editingStudio .main{padding:18px 20px 0}.editingProject{font-size:11px;color:#888;margin:0 310px 14px 0}.editingProject>summary{cursor:pointer}.editingProject[open]>.editorHeader{margin-top:12px;flex-wrap:wrap}.editingStudio .headerActions{gap:12px}.editingStudio .accountAvatar{background:#f1f1f1;color:#666}.editingStudio .returnSite{font-size:11px;color:#888}@media(max-width:850px){.editingProject{margin-right:0}}@media(max-width:540px){.editingStudio .main{padding:12px}.editingStudio .returnSite{display:none}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .studio{--accent:#aca7a1;--soft:#1d1b1a;--lime:#1d1b1a;--ink:#e9e8e7;--muted:#958f87;--border:#242320;background:#161514}
+:global(.theme-ember) .studio button:focus-visible,:global(.theme-ember) .studio a:focus-visible{outline:3px solid #56524d}
+:global(.theme-ember) .studio input:focus,:global(.theme-ember) .studio textarea:focus,:global(.theme-ember) .studio select:focus{border-color:#56524d;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .studio input,:global(.theme-ember) .studio textarea,:global(.theme-ember) .studio select{background:#0f0e0d}
+:global(.theme-ember) .studio input::placeholder,:global(.theme-ember) .studio textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .header{background:#0f0e0d}
+:global(.theme-ember) .brand em{color:#a5a09a}
+:global(.theme-ember) .brand small{color:#a6a19b}
+:global(.theme-ember) .brandDivider{color:#a6a19b}
+:global(.theme-ember) .previewBadge{color:#8c867d}
+:global(.theme-ember) .previewBadge i{background:#47443f}
+:global(.theme-ember) .returnSite{color:#8c867d !important}
+:global(.theme-ember) .studio .accountAvatar{border:1px solid #262422;background:#201f1d;color:#a09b94}
+:global(.theme-ember) .sidebar{background:#0f0e0d}
+:global(.theme-ember) .sideHome,:global(.theme-ember) .sidebar nav a{color:#9f9a93}
+:global(.theme-ember) .sidebar a:hover{background:#161615}
+:global(.theme-ember) .sidebar a.activeNav{background:#201f1d;color:#aca7a1}
+:global(.theme-ember) .sidebar nav small{background:#191917;color:#a6a19b}
+:global(.theme-ember) .navGroup{color:#a6a19b}
+:global(.theme-ember) .sidePromo{background:linear-gradient(135deg, #1b1a18, #151413);border:1px solid #21201d;color:#908a82}
+:global(.theme-ember) .sidePromo > b{color:#a5a099}
+:global(.theme-ember) .sidePromo > span{color:#a6a19b}
+:global(.theme-ember) .studio .sidePromo button{border-top:1px solid #262422;color:#a29c96}
+:global(.theme-ember) .studio .helpButton{color:#a6a19b}
+:global(.theme-ember) .main{background:#121211}
+:global(.theme-ember) .welcomeRow p,:global(.theme-ember) .pageHeading p{color:#a6a19b}
+:global(.theme-ember) .studio .primaryButton{background:#e9e8e7;border:1px solid #e9e8e7;color:#0f0e0d}
+:global(.theme-ember) .studio .primaryButton:hover:not(:disabled){color:#e9e8e6}
+:global(.theme-ember) .studio .outlineButton{background:#0f0e0d;border:1px solid #272523;color:#9f9a93}
+:global(.theme-ember) .studio .outlineButton:hover:not(:disabled){border-color:#4c4944;background:#161514}
+:global(.theme-ember) .studio .featureCard{border:1px solid #22201e}
+:global(.theme-ember) .studio .featureCard:hover{box-shadow:0 6px 20px rgb(0 0 0 / 0.078)}
+:global(.theme-ember) .featureCard h2 small{color:#a6a19b;border:1px solid #2c2a27}
+:global(.theme-ember) .featureCard p{color:#a6a19b}
+:global(.theme-ember) .featureCard div > span{color:#a6a19b}
+:global(.theme-ember) .featureCard > i{background:rgb(15 14 13 / 0.376);color:#a6a19b;border:1px solid rgb(15 14 13 / 0.69);box-shadow:5px 7px 10px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .featureAvatar{background:linear-gradient(125deg, #1f1d1b, #151413)}
+:global(.theme-ember) .featureVoice{background:linear-gradient(125deg, #211f1d, #161514)}
+:global(.theme-ember) .featureEdit{background:linear-gradient(125deg, #1a1917, #141311)}
+:global(.theme-ember) .featureEdit > i{color:#a6a19b}
+:global(.theme-ember) .featureCreate{background:linear-gradient(125deg, #1f1d1b, #141413)}
+:global(.theme-ember) .featureCreate > i{color:#a6a19b}
+:global(.theme-ember) .sectionHeading span{color:#a6a19b}
+:global(.theme-ember) .subtleLabel{border:1px solid #22211e}
+:global(.theme-ember) .studio .pills button{color:#a6a19b}
+:global(.theme-ember) .studio .pills button.activePill{background:#1f1d1b;border-color:#2a2825;color:#9b968f}
+:global(.theme-ember) .search{background:#0f0e0d;color:#a6a19b}
+:global(.theme-ember) .search:focus-within{border-color:#56524d}
+:global(.theme-ember) .studio .avatarCard{border:1px solid #22211f;background:#0f0e0d}
+:global(.theme-ember) .studio .avatarCard:hover{border-color:#55514b}
+:global(.theme-ember) .avatarImage{background:#1f1e1d}
+:global(.theme-ember) .avatarTag{background:rgb(15 14 13 / 0.812);color:#a6a19b}
+:global(.theme-ember) .cardHover{background:rgb(15 14 13 / 0.941);color:#a7a29c}
+:global(.theme-ember) .avatarCaption > span{color:#a6a19b}
+:global(.theme-ember) .avatarCaption svg{color:#a6a19b}
+:global(.theme-ember) .studio .tabs > button{color:#a6a19b}
+:global(.theme-ember) .studio .tabs > button.activeTab{color:#a8a39d}
+:global(.theme-ember) .activeTab::after{background:#e6e2db}
+:global(.theme-ember) .emptyIcon{background:#1a1917;color:#a6a19b}
+:global(.theme-ember) .empty h3{color:#8d867e}
+:global(.theme-ember) .empty p{color:#a6a19b}
+:global(.theme-ember) .voiceCard{background:#0f0e0d}
+:global(.theme-ember) .voiceCard span{color:#a6a19b}
+:global(.theme-ember) .voiceCard small{color:#a6a19b}
+:global(.theme-ember) .studio .voicePlay{color:#a6a19b;background:#1c1b19}
+:global(.theme-ember) .studio .selectedCard{border-color:#6c6760;box-shadow:0 0 0 1px #000000}
+:global(.theme-ember) .inlineNote{color:#a6a19b}
+:global(.theme-ember) .listHeading small{color:#a6a19b;background:#1d1b1a}
+:global(.theme-ember) .copyList article{background:#0f0e0d}
+:global(.theme-ember) .copyList article > div{color:#a6a19b}
+:global(.theme-ember) .copyList b{color:#a9a59f}
+:global(.theme-ember) .copyList time{color:#a6a19b}
+:global(.theme-ember) .copyList p{color:#a6a19b}
+:global(.theme-ember) .studio .textButton{color:#a6a19b}
+:global(.theme-ember) .editingWorks > p{color:#9b968e}
+:global(.theme-ember) .editingWorkVideo{background:#e9e8e6}
+:global(.theme-ember) .workCard{background:#0f0e0d}
+:global(.theme-ember) .studio .workImage{background:#211f1d}
+:global(.theme-ember) .workImage > span{background:rgb(15 14 13 / 0.902);color:#a6a19b}
+:global(.theme-ember) .workImage > i{background:rgb(15 14 13 / 0.69);color:#99938c}
+:global(.theme-ember) .workCard time{color:#a6a19b}
+:global(.theme-ember) .workCard p{color:#a6a19b}
+:global(.theme-ember) .editorMain{background:#0f0e0d}
+:global(.theme-ember) .back{color:#a6a19b !important}
+:global(.theme-ember) .projectName span{color:#a6a19b}
+:global(.theme-ember) .projectName input{border-color:#211f1d;color:#a6a19b;background:#111110}
+:global(.theme-ember) .autosave{color:#a6a19b}
+:global(.theme-ember) .portrait{background:#1f1e1c}
+:global(.theme-ember) .portraitBadge{background:rgb(15 14 13 / 0.851);color:#a6a19b}
+:global(.theme-ember) .portraitRatio{background:rgb(15 14 13 / 0.788);color:#a6a19b}
+:global(.theme-ember) .studio .selectAvatar{border:1px solid #2b2926;background:#141312;color:#a6a19b}
+:global(.theme-ember) .selectAvatar:hover{background:#1f1d1b}
+:global(.theme-ember) .portraitNote{color:#a6a19b}
+:global(.theme-ember) .studio .voiceSelector{border:1px solid #262522;background:#131211;color:#a6a19b}
+:global(.theme-ember) .voiceSelectorIcon{background:#1f1e1c}
+:global(.theme-ember) .voiceSelector b{color:#97928a}
+:global(.theme-ember) .voiceSelector small{color:#a6a19b}
+:global(.theme-ember) .voiceParams label > span{color:#a6a19b}
+:global(.theme-ember) .voiceParams label b{color:#a6a19b}
+:global(.theme-ember) .voiceParams select{color:#a6a19b}
+:global(.theme-ember) .voiceParams input[type=range]{accent-color:#79746c}
+:global(.theme-ember) .scriptBox{border:1px solid #252320}
+:global(.theme-ember) .scriptBox:focus-within{border-color:#57524d}
+:global(.theme-ember) .scriptToolbar > span{color:#a6a19b}
+:global(.theme-ember) .studio .scriptToolbar button{color:#a6a19b}
+:global(.theme-ember) .scriptBox textarea{color:#a19b95}
+:global(.theme-ember) .wordCount{color:#a6a19b}
+:global(.theme-ember) .studio .copyActions button{border:1px solid #262422;color:#a6a19b;background:#0f0e0d}
+:global(.theme-ember) .studio .copyActions button:hover{background:#191816}
+:global(.theme-ember) .editorFooter > label{color:#a6a19b}
+:global(.theme-ember) .editorFooter select{color:#a6a19b}
+:global(.theme-ember) .studio .generateButton{background:#e9e8e6;color:#0f0e0d}
+:global(.theme-ember) .studio .generateButton:hover{background:#1d1b1a;color:#e9e8e6}
+:global(.theme-ember) .editLater{color:#a6a19b;background:#0f0e0d}
+:global(.theme-ember) .editLater i{background:#252421}
+:global(.theme-ember) .editLater i::after{background:#0f0e0d}
+:global(.theme-ember) .editorAside{background:#0f0e0d}
+:global(.theme-ember) .studio .rightTabs button{color:#a6a19b}
+:global(.theme-ember) .studio .rightTabs .activeRightTab{color:#8c867e}
+:global(.theme-ember) .activeRightTab::after{background:#e6e2db}
+:global(.theme-ember) .rightTabs button > span{color:#a6a19b;background:#1c1a18}
+:global(.theme-ember) .assistantWelcome img{box-shadow:0 8px 20px rgb(0 0 0 / 0.169)}
+:global(.theme-ember) .assistantWelcome h2{color:#a6a19b}
+:global(.theme-ember) .assistantWelcome p{color:#a6a19b}
+:global(.theme-ember) .studio .promptSuggestions button{color:#a6a19b;background:#131211;border:1px solid #201f1d}
+:global(.theme-ember) .assistantComposer{border:1px solid #2a2825;background:#0f0e0d;box-shadow:0 4px 15px rgb(0 0 0 / 0.056)}
+:global(.theme-ember) .assistantSelect{background:#1a1817;color:#a6a19b}
+:global(.theme-ember) .assistantSelect select{color:#a6a19b}
+:global(.theme-ember) .assistantComposer textarea{color:#a6a19b}
+:global(.theme-ember) .assistantComposer textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .assistantComposer > div span{color:#a6a19b}
+:global(.theme-ember) .studio .assistantComposer > div button{color:#0f0e0d;background:#e6e2db}
+:global(.theme-ember) .assistantAnswer{border:1px solid #22211e;background:#131211}
+:global(.theme-ember) .assistantAnswer > span{color:#a6a19b}
+:global(.theme-ember) .assistantAnswer p{color:#a6a19b}
+:global(.theme-ember) .bigIcon{color:#a6a19b;background:#1b1a18}
+:global(.theme-ember) .audioDrive h2{color:#a6a19b}
+:global(.theme-ember) .audioDrive p{color:#a6a19b}
+:global(.theme-ember) .audioDrive > small{color:#a6a19b}
+:global(.theme-ember) .uploadButton{border:1px solid #322f2c;color:#a6a19b;background:#161514}
+:global(.theme-ember) .uploadButton:focus-within,:global(.theme-ember) .cloneDrop:focus-within{outline:3px solid #56524d}
+:global(.theme-ember) .audioFile{border:1px solid #22211e}
+:global(.theme-ember) .audioFile b{color:#a6a19b}
+:global(.theme-ember) .audioFile small{color:#a6a19b}
+:global(.theme-ember) .editorBrand{color:#a6a19b}
+:global(.theme-ember) .brandSmall b{color:#a6a19b}
+:global(.theme-ember) .brandSmall em{color:#a6a19b}
+:global(.theme-ember) .studio .dialog{border:1px solid #282624;background:#0f0e0d;box-shadow:0 30px 100px rgb(0 0 0 / 0.374)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.5)}
+:global(.theme-ember) .studio .iconButton{color:#a6a19b}
+:global(.theme-ember) .studio .iconButton:hover{background:#1b1918}
+:global(.theme-ember) .dialogFooter{background:#111010}
+:global(.theme-ember) .check{background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .rewriteContent label,:global(.theme-ember) .cloneForm > label{color:#a6a19b}
+:global(.theme-ember) .cloneForm .cloneDrop{border:1px dashed #34322e;background:#131211;color:#a6a19b}
+:global(.theme-ember) .cloneDrop b{color:#a6a19b}
+:global(.theme-ember) .cloneDrop span{color:#a6a19b}
+:global(.theme-ember) .cloneDrop small{color:#a6a19b}
+:global(.theme-ember) .generationReview > img{background:#1f1e1c}
+:global(.theme-ember) .generationReview p{color:#a6a19b}
+:global(.theme-ember) .demoNotice{background:#191816;color:#a6a19b}
+:global(.theme-ember) .demoPreview{background:#1b1918}
+:global(.theme-ember) .demoPreview > span{background:rgb(15 14 13 / 0.855);color:#a6a19b}
+:global(.theme-ember) .previewText{color:#a6a19b}
+:global(.theme-ember) .helpContent p{color:#a6a19b}
+:global(.theme-ember) .toast{border:1px solid #272523;box-shadow:0 6px 30px rgb(0 0 0 / 0.226);background:#0f0e0d;color:#8d877e}
+:global(.theme-ember) .studio .scriptToolbar > span,:global(.theme-ember) .studio .voiceParams label > span{color:#a6a19b}
+:global(.theme-ember) .studio .voiceParams select,:global(.theme-ember) .studio .editorFooter select{color:#918b83}
+:global(.theme-ember) .studio .copyActions button{color:#a6a19b}
+:global(.theme-ember) .studio .rightTabs button{color:#a6a19b}
+:global(.theme-ember) .studio .rightTabs .activeRightTab{color:#a29d96}
+:global(.theme-ember) .studio .scriptBox textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .studio .assistantWelcome h2{color:#a6a19b}
+:global(.theme-ember) .studio .assistantWelcome p,:global(.theme-ember) .studio .promptSuggestions button{color:#a6a19b}
+:global(.theme-ember) .studio .assistantComposer textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .editorHeader > select{color:#a6a19b;background:#111110}
+:global(.theme-ember) .persistenceNotice{background:#1b1918;color:#c6c2be}
+:global(.theme-ember) .persistenceNotice button{border:1px solid #312f2c;background:#0f0e0d}
+:global(.theme-ember) .studio button.avatarImage{background:#1d1c1b}
+:global(.theme-ember) .studio .primaryButton,:global(.theme-ember) .studio .generateButton{box-shadow:0 3px 0 rgb(0 0 0 / 0.141)}
+:global(.theme-ember) .studio .primaryButton:hover:not(:disabled),:global(.theme-ember) .studio .generateButton:hover:not(:disabled){box-shadow:0 6px 16px rgb(0 0 0 / 0.169)}
+:global(.theme-ember) .sidebar{background:linear-gradient(180deg, #0f0e0d 70%, #191816)}
+:global(.theme-ember) .sidebar a.activeNav{background:#21201e;color:#e9e8e6}
+:global(.theme-ember) .sidebar a.activeNav svg{color:#cbc9c5}
+:global(.theme-ember) .main{background:#121211}
+:global(.theme-ember) .studioIntro{border:1px solid #282624;background:linear-gradient(rgb(15 14 13 / 0.282) 1px, transparent 1px), linear-gradient(90deg, rgb(15 14 13 / 0.282) 1px, transparent 1px), linear-gradient(120deg, #242220 3%, #1f1e1c 50%, #181715 100%);background-size:32px 32px, 32px 32px, 100% 100%}
+:global(.theme-ember) .introEyebrow{color:#a39e97}
+:global(.theme-ember) .studioIntro mark{background:linear-gradient(transparent 60%, #1d1b1a 60%)}
+:global(.theme-ember) .studioIntro p{color:#b1ada7}
+:global(.theme-ember) .introOrbit{border:1px dashed rgb(135 129 120 / 0.349)}
+:global(.theme-ember) .introVoice{border:1px solid rgb(15 14 13 / 0.788);box-shadow:0 15px 45px rgb(0 0 0 / 0.162);background:rgb(15 14 13 / 0.78)}
+:global(.theme-ember) .introVoice > svg{color:#c3c0bc}
+:global(.theme-ember) .introVoice > span{color:#99938c}
+:global(.theme-ember) .introVoice b small{color:#948e86}
+:global(.theme-ember) .introWave i{background:#e6e2db}
+:global(.theme-ember) .introWave i:nth-child(3n){background:#4d4944}
+:global(.theme-ember) .introAvatar{background:#1a1917;box-shadow:0 8px 20px rgb(0 0 0 / 0.127);border:1px solid #2d2b28}
+:global(.theme-ember) .introTag{color:#918b83}
+:global(.theme-ember) .studio .featureCard:hover{box-shadow:0 10px 25px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .featureCard p{color:#8f8981}
+:global(.theme-ember) .featureCard div > span{color:#b0aba5}
+:global(.theme-ember) .avatarCard:hover,:global(.theme-ember) .workCard:hover{box-shadow:0 8px 20px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .editor{background:linear-gradient(120deg, #1b1a18, #161514 75%)}
+:global(.theme-ember) .editorMain,:global(.theme-ember) .editorAside{box-shadow:0 3px 12px rgb(0 0 0 / 0.056)}
+:global(.theme-ember) .editorHeader{background:rgb(15 14 13 / 0.937)}
+:global(.theme-ember) .projectName input{color:#cbc9c5}
+:global(.theme-ember) .studio .voiceSelector{color:#b9b5b0;border-color:#2c2a27;background:linear-gradient(110deg, #151413, #121110)}
+:global(.theme-ember) .voiceSelector b{color:#d8d6d3}
+:global(.theme-ember) .voiceSelector small,:global(.theme-ember) .voiceParams label > span,:global(.theme-ember) .voiceParams label b,:global(.theme-ember) .voiceParams select{color:#9f9992}
+:global(.theme-ember) .voiceParams input[type=range]{accent-color:#a19c95}
+:global(.theme-ember) .scriptToolbar > span{color:#98928b}
+:global(.theme-ember) .studio .scriptToolbar button{color:#a5a099}
+:global(.theme-ember) .scriptBox textarea{color:#e4e3e1}
+:global(.theme-ember) .wordCount{color:#a6a19b}
+:global(.theme-ember) .studio .copyActions button{color:#9e9992}
+:global(.theme-ember) .assistantWelcome h2{color:#c9c6c2}
+:global(.theme-ember) .assistantWelcome p,:global(.theme-ember) .studio .promptSuggestions button{color:#a6a19b}
+:global(.theme-ember) .assistantComposer textarea{color:#c8c5c1}
+:global(.theme-ember) .assistantComposer textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .assistantComposer > div span{color:#a6a19b}
+:global(.theme-ember) .studio .assistantComposer > div button{background:#e9e8e6}
+:global(.theme-ember) .studio .rightTabs .activeRightTab{color:#e4e2e0}
+:global(.theme-ember) .activeRightTab::after{background:#393632}
+:global(.theme-ember) .studio .dialog{box-shadow:0 32px 100px rgb(0 0 0 / 0.339)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.5)}
+:global(.theme-ember) .studio{--ink:#e9e8e6;--muted:#9e9992;background:#181716}
+:global(.theme-ember) .main{background:#141313}
+:global(.theme-ember) .pageHeading p,:global(.theme-ember) .welcomeRow p,:global(.theme-ember) .sectionHeading span{color:#9b958e}
+:global(.theme-ember) .studio .textButton{color:#afaba5}
+:global(.theme-ember) .studio .tabs > button{color:#a09b94}
+:global(.theme-ember) .studio .tabs > button.activeTab{color:#cecbc7}
+:global(.theme-ember) .sidebar a.activeNav{color:#cecbc7;background:#211f1d;box-shadow:inset 3px 0 #000000}
+:global(.theme-ember) .avatarCaption strong{color:#e9e8e6}
+:global(.theme-ember) .avatarCaption > span{color:#9e9992}
+:global(.theme-ember) .avatarTag{color:#c4c0bc}
+:global(.theme-ember) .copyList b{color:#e9e8e6}
+:global(.theme-ember) .copyList p{color:#aea9a4}
+:global(.theme-ember) .copyList time,:global(.theme-ember) .workCard time,:global(.theme-ember) .workCard p{color:#9b968e}
+:global(.theme-ember) .empty h3{color:#d5d3d0}
+:global(.theme-ember) .empty p{color:#958f88}
+:global(.theme-ember) .editorMain,:global(.theme-ember) .editorAside{box-shadow:0 2px 12px rgb(0 0 0 / 0.028)}
+:global(.theme-ember) .editorHeader .tabs{background:#1a1918}
+:global(.theme-ember) .studio .editorHeader .tabs button{color:#9f9992}
+:global(.theme-ember) .studio .editorHeader .tabs button.activeTab{background:#0f0e0d;color:#dedcda;box-shadow:0 1px 4px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .editorHeader > select{background:#151413}
+:global(.theme-ember) .projectName input{color:#e5e4e2;background:#151413}
+:global(.theme-ember) .projectName span{color:#9b958e}
+:global(.theme-ember) .autosave{color:#908a82}
+:global(.theme-ember) .portrait{background:#1d1c1b}
+:global(.theme-ember) .portraitBadge{color:#d7d4d1}
+:global(.theme-ember) .studio .selectAvatar{color:#c1beba;border-color:#3b3834;background:#181715}
+:global(.theme-ember) .portraitNote{color:#928b84}
+:global(.theme-ember) .studio .voiceSelector{background:#0f0e0d;border-color:#2f2d2a;color:#a19c95;box-shadow:0 3px 10px rgb(0 0 0 / 0.028)}
+:global(.theme-ember) .voiceSelector b{color:#e9e8e6}
+:global(.theme-ember) .voiceSelector small{color:#928c84}
+:global(.theme-ember) .studio .voiceParams label > span{color:#b8b4af}
+:global(.theme-ember) .voiceParams label b{color:#b5b1ac}
+:global(.theme-ember) .studio .voiceParams select{color:#c6c3bf;background:#151413}
+:global(.theme-ember) .voiceParams input[type=range]{accent-color:#8e8880}
+:global(.theme-ember) .scriptBox{border-color:#2f2d2a}
+:global(.theme-ember) .scriptToolbar{border-bottom:1px solid #1f1e1c}
+:global(.theme-ember) .studio .scriptToolbar > span{color:#d4d2cf}
+:global(.theme-ember) .studio .scriptToolbar button{color:#aaa59f}
+:global(.theme-ember) .scriptBox textarea{color:#e9e8e6}
+:global(.theme-ember) .studio .scriptBox textarea::placeholder{color:#7d776f}
+:global(.theme-ember) .wordCount{color:#837d74}
+:global(.theme-ember) .studio .copyActions button{color:#b0aba6;border-color:#2c2a27;background:#141312}
+:global(.theme-ember) .editorFooter{background:#0f0e0d;box-shadow:0 -4px 16px rgb(0 0 0 / 0.035)}
+:global(.theme-ember) .studio .editorFooter select{color:#a49e98}
+:global(.theme-ember) .editLater{color:#857f76}
+:global(.theme-ember) .studio .rightTabs button{color:#a09b94}
+:global(.theme-ember) .studio .rightTabs .activeRightTab{color:#0f0e0d;background:#e6e2db;box-shadow:0 3px 8px rgb(0 0 0 / 0.261)}
+:global(.theme-ember) .rightTabs button > span{background:#1f1e1c;color:#9a958e}
+:global(.theme-ember) .generationReview p,:global(.theme-ember) .helpContent p,:global(.theme-ember) .previewText{color:#b4b0aa}
+:global(.theme-ember) .portraitEmpty{color:#78726a;background:#1b1918}
+:global(.theme-ember) .portraitEmpty b{color:#b8b4af}
+:global(.theme-ember) .portraitEmpty span{color:#8b847c}
+@media (max-width: 600px){:global(.theme-ember) .editorFooter{border:1px solid #2c2a27;box-shadow:0 -5px 22px rgb(0 0 0 / 0.155)}}
+:global(.theme-ember) .workActions{border-top:1px solid #1d1c1a}
+:global(.theme-ember) .studio{--ink:#e9e8e6;--muted:#8e8880;--border:#252320}
+:global(.theme-ember) .studio .dialog{scrollbar-color:#393633 transparent}
+:global(.theme-ember) .dialogInner > header{background:#0f0e0d;border-bottom:1px solid #1e1c1a}
+:global(.theme-ember) .dialogInner > p{color:#908981}
+:global(.theme-ember) .dialogFooter{background:#0f0e0d}
+:global(.theme-ember) .dialogInner > p[role=alert]{border:1px solid #292724;color:#fa682a;background:#141312}
+:global(.theme-ember) .pageHeading p,:global(.theme-ember) .welcomeRow p{color:#8c857d}
+:global(.theme-ember) .copyList article > div > b{color:#d1cfcb}
+:global(.theme-ember) .copyList article > div > time{color:#807a72}
+:global(.theme-ember) .templateReview{background:#151413;border:1px solid #21201d}
+:global(.theme-ember) .templateReview > img{background:#21201d}
+:global(.theme-ember) .templateReview span{color:#837c74}
+:global(.theme-ember) .helpSteps > div{border:1px solid #23211f;background:#151413}
+:global(.theme-ember) .helpSteps > div > span{color:#928c84;background:#211f1d}
+:global(.theme-ember) .helpSteps b{color:#cecbc8}
+:global(.theme-ember) .helpSteps p{color:#807971}
+:global(.theme-ember) .helpNotes{color:#969189}
+:global(.theme-ember) .statusCard{background:#0f0e0d}
+:global(.theme-ember) .statusCard > svg{color:#817b73}
+:global(.theme-ember) .statusCard p{color:#868077}
+:global(.theme-ember) .connectionNotice{background:#181715;border-bottom:1px solid #262422;color:#98928b}
+:global(.theme-ember) .editingStudio .main>.editorHeader{border:1px solid #242220}
+:global(.theme-ember) .editingStudio{background:#0f0e0d;color:#e9e8e7}
+:global(.theme-ember) .editingStudio>.persistenceBody>.header{border-bottom:1px solid #22211f;background:#0f0e0d}
+:global(.theme-ember) .editingTitle button{background:#1c1b19!important;color:#a4a19c!important}
+:global(.theme-ember) .editingStudio .workspace{background:#0f0e0d}
+:global(.theme-ember) .editingProject{color:#7c7873}
+:global(.theme-ember) .editingStudio .accountAvatar{background:#1b1a19;color:#a4a19c}
+:global(.theme-ember) .editingStudio .returnSite{color:#7c7873}
+/* ember-dark:end */

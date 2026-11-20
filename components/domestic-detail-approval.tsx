@@ -25,8 +25,8 @@ export function NativeApprovalDocument({ document, label = "完整逐屏方案" 
       index -= 1;
       blocks.push(<div key={start} style={{ overflowX: "auto", marginBlock: 20 }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: Math.min(1200, headers.length * 150), fontSize: 13 }}>
-          <thead><tr>{headers.map((header, column) => <th key={column} style={{ textAlign: "left", padding: 10, border: "1px solid #ddd", verticalAlign: "top" }}>{header}</th>)}</tr></thead>
-          <tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, column) => <td key={column} style={{ padding: 10, border: "1px solid #ddd", verticalAlign: "top", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{value}</td>)}</tr>)}</tbody>
+          <thead><tr>{headers.map((header, column) => <th key={column} style={{ textAlign: "left", padding: 10, border: "1px solid #2b2928", verticalAlign: "top" }}>{header}</th>)}</tr></thead>
+          <tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, column) => <td key={column} style={{ padding: 10, border: "1px solid #2b2928", verticalAlign: "top", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{value}</td>)}</tr>)}</tbody>
         </table>
       </div>);
     } else {

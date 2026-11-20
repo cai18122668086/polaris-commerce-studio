@@ -9,7 +9,8 @@ import "./commerce-workspaces.css";
 import "./commerce-forms.css";
 import "./commerce-readability.css";
 import "./showcase-cases.css";
-import "./home-ember-dark.generated.css";
+import "./ember-dark.generated.css";
+import "./ember-dark.css";
 import "./home-ember-dark.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -54,7 +55,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className="theme-ember">
       <body>
         <Providers>{children}</Providers>
       </body>

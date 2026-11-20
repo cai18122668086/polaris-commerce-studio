@@ -68,3 +68,12 @@
   .choices[data-variant="cards"] .choice:has(.price) .price { flex-direction:row;align-self:flex-start;align-items:baseline;margin-top:3px; }
 }
 @media(prefers-reduced-motion:reduce){.choice{transition:none}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .choice{background:#0f0e0d}
+:global(.theme-ember) .choice[data-selected]{border-color:#383531;background:#151413}
+:global(.theme-ember) .check{color:#a5a099}
+:global(.theme-ember) .recommendation{background:#0f0e0d}
+:global(.theme-ember) .quantity{background:#0f0e0d}
+:global(.theme-ember) .quantity>button:disabled{color:#47443f;background:#141313}
+/* ember-dark:end */

@@ -488,43 +488,43 @@
   .purchase button { font-size: 13px; }
 }
 
-/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */
-:global(.app-shell--home) .preview{background:linear-gradient(110deg,#fa682a,#fa682a 55%,#fa682a);border-bottom:1px solid #482902}
-:global(.app-shell--home) .preview:before,:global(.app-shell--home) .modalTop:before{border-top:3px solid #482902;box-shadow:0 -5px 0 rgb(255 255 255 / 0.031),0 -11px 0 rgb(255 255 255 / 0.015)}
-:global(.app-shell--home) .preview:after,:global(.app-shell--home) .modalTop:after{border-top:3px solid #482902;box-shadow:0 -5px 0 rgb(255 255 255 / 0.031),0 -11px 0 rgb(255 255 255 / 0.015)}
-:global(.app-shell--home) .offer{color:#0f0e0d}
-:global(.app-shell--home) .copy h2 span{color:#482902}
-:global(.app-shell--home) .headline{border-left:1px solid rgb(72 41 2 / 0.459);color:#1a1917}
-:global(.app-shell--home) .action button,:global(.app-shell--home) .primary{border:1px solid #482902;background:linear-gradient(120deg,#482902,#482902);color:#fa682a;box-shadow:0 5px 12px rgb(0 0 0 / 0.148)}
-:global(.app-shell--home) .action button:hover,:global(.app-shell--home) .primary:hover{background:#482902}
-:global(.app-shell--home) .action button:focus-visible,:global(.app-shell--home) .dialog button:focus-visible,:global(.app-shell--home) .terms summary:focus-visible{outline:3px solid #dc7f06}
-:global(.app-shell--home) .compact{border:1px solid #482902;background:#171615;color:#fa682a}
-:global(.app-shell--home) .compact .copy h2 span{color:#fa682a}
-:global(.app-shell--home) .compact .headline{color:#fa682a}
-:global(.app-shell--home) .dialog{border:1px solid #591c02;background:#131211;color:#fa682a;box-shadow:0 24px 90px rgb(0 0 0 / 0.565)}
-:global(.app-shell--home) .dialog::backdrop{background:rgb(233 232 230 / 0.459)}
-:global(.app-shell--home) .modalTop{background:linear-gradient(115deg,#fa682a,#fa682a);border-bottom:3px solid #482902;color:#0f0e0d}
-:global(.app-shell--home) .modalTop p{color:#1a1917}
-:global(.app-shell--home) .close{color:#0f0e0d}
-:global(.app-shell--home) .secondary{color:#b4b0aa}
-:global(.app-shell--home) .terms{border-top:1px solid #2c2a27;color:#fa682a}
-:global(.app-shell--home) .terms details{color:#fa682a}
-:global(.app-shell--home) .support{border:1px solid #2d2b28;background:linear-gradient(115deg, #181715, #131211 70%);color:#c5c2be}
-:global(.app-shell--home) .supportIcon{background:#482902;color:#fa682a}
-:global(.app-shell--home) .supportHeader h2{color:#c5c2be}
-:global(.app-shell--home) .supportHeader strong{color:#fa682a}
-:global(.app-shell--home) .support .supportDescription{color:#a8a39d}
-:global(.app-shell--home) .support .supportContact{background:#fa682a;color:#0f0e0d}
-:global(.app-shell--home) .support .supportContact:hover{background:#fa682a}
-:global(.app-shell--home) .support .supportApply{border-color:#591c02;background:#11100f;color:#fa682a}
-:global(.app-shell--home) .support .supportApply:hover:not(:disabled){background:#1e1c1a}
-:global(.app-shell--home) .support .supportStatus{color:#dc7f06}
-:global(.app-shell--home) .support .supportStatus[data-state="claimed"]{color:#aba7a1}
-:global(.app-shell--home) .support .supportStatus[data-state="resolved"]{color:#a8a39d}
-:global(.app-shell--home) .support .supportError{color:#fa682a}
-:global(.app-shell--home) .support .supportRecords{color:#fa682a}
-:global(.app-shell--home) .support :is(a, button):focus-visible{outline:2px solid #fa682a}
-:global(.app-shell--home) .supportQr{border:1px solid #282623;background:#0f0e0d;color:#a8a39d}
-:global(.app-shell--home) .purchase{color:#181615;border:1px solid #482902;background:linear-gradient(110deg,#fa682a,#fa682a 55%,#fa682a)}
-:global(.app-shell--home) .purchase button{background:#482902;color:#fa682a}
-/* home-ember-dark:end */
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .preview{background:linear-gradient(110deg,#fa682a,#fa682a 55%,#fa682a);border-bottom:1px solid #482902}
+:global(.theme-ember) .preview:before,:global(.theme-ember) .modalTop:before{border-top:3px solid #482902;box-shadow:0 -5px 0 rgb(255 255 255 / 0.031),0 -11px 0 rgb(255 255 255 / 0.015)}
+:global(.theme-ember) .preview:after,:global(.theme-ember) .modalTop:after{border-top:3px solid #482902;box-shadow:0 -5px 0 rgb(255 255 255 / 0.031),0 -11px 0 rgb(255 255 255 / 0.015)}
+:global(.theme-ember) .offer{color:#0f0e0d}
+:global(.theme-ember) .copy h2 span{color:#482902}
+:global(.theme-ember) .headline{border-left:1px solid rgb(72 41 2 / 0.459);color:#1a1917}
+:global(.theme-ember) .action button,:global(.theme-ember) .primary{border:1px solid #482902;background:linear-gradient(120deg,#482902,#482902);color:#fa682a;box-shadow:0 5px 12px rgb(0 0 0 / 0.148)}
+:global(.theme-ember) .action button:hover,:global(.theme-ember) .primary:hover{background:#482902}
+:global(.theme-ember) .action button:focus-visible,:global(.theme-ember) .dialog button:focus-visible,:global(.theme-ember) .terms summary:focus-visible{outline:3px solid #dc7f06}
+:global(.theme-ember) .compact{border:1px solid #482902;background:#171615;color:#fa682a}
+:global(.theme-ember) .compact .copy h2 span{color:#fa682a}
+:global(.theme-ember) .compact .headline{color:#fa682a}
+:global(.theme-ember) .dialog{border:1px solid #591c02;background:#131211;color:#fa682a;box-shadow:0 24px 90px rgb(0 0 0 / 0.565)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.574)}
+:global(.theme-ember) .modalTop{background:linear-gradient(115deg,#fa682a,#fa682a);border-bottom:3px solid #482902;color:#0f0e0d}
+:global(.theme-ember) .modalTop p{color:#1a1917}
+:global(.theme-ember) .close{color:#0f0e0d}
+:global(.theme-ember) .secondary{color:#d0ceca}
+:global(.theme-ember) .terms{border-top:1px solid #2c2a27;color:#fa682a}
+:global(.theme-ember) .terms details{color:#fa682a}
+:global(.theme-ember) .support{border:1px solid #2d2b28;background:linear-gradient(115deg, #181715, #131211 70%);color:#e9e8e6}
+:global(.theme-ember) .supportIcon{background:#482902;color:#fa682a}
+:global(.theme-ember) .supportHeader h2{color:#e9e8e6}
+:global(.theme-ember) .supportHeader strong{color:#fa682a}
+:global(.theme-ember) .support .supportDescription{color:#bab6b1}
+:global(.theme-ember) .support .supportContact{background:#fa682a;color:#0f0e0d}
+:global(.theme-ember) .support .supportContact:hover{background:#fa682a}
+:global(.theme-ember) .support .supportApply{border-color:#591c02;background:#11100f;color:#fa682a}
+:global(.theme-ember) .support .supportApply:hover:not(:disabled){background:#1e1c1a}
+:global(.theme-ember) .support .supportStatus{color:#dc7f06}
+:global(.theme-ember) .support .supportStatus[data-state="claimed"]{color:#c1bdb9}
+:global(.theme-ember) .support .supportStatus[data-state="resolved"]{color:#bab6b1}
+:global(.theme-ember) .support .supportError{color:#fa682a}
+:global(.theme-ember) .support .supportRecords{color:#fa682a}
+:global(.theme-ember) .support :is(a, button):focus-visible{outline:2px solid #fa682a}
+:global(.theme-ember) .supportQr{border:1px solid #282623;background:#0f0e0d;color:#bab6b1}
+:global(.theme-ember) .purchase{color:#181615;border:1px solid #482902;background:linear-gradient(110deg,#fa682a,#fa682a 55%,#fa682a)}
+:global(.theme-ember) .purchase button{background:#482902;color:#fa682a}
+/* ember-dark:end */

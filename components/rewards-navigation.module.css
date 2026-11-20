@@ -3,21 +3,21 @@
 @media(max-width:640px){.root .trigger{min-height:44px}}
 @media(max-width:640px){.root .trigger{font-size:14px}.root .trigger:not([data-claimed])>svg{display:none}.trigger b{font-size:11px}}
 
-/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */
-:global(.app-shell--home) .root .trigger{border:1px solid #383632;background:#1e1d1b;color:#a9a49e;box-shadow:inset 0 1px 0 rgb(255 255 255 / 0.1),0 2px 8px rgb(0 0 0 / 0.071)}
-:global(.app-shell--home) .trigger b{background:#9d9891;color:#0f0e0d}
-:global(.app-shell--home) .root .trigger:hover{background:#292724}
-:global(.app-shell--home) .root .trigger[data-claimed]{background:#191817;color:#8c867d;border-color:#2b2926}
-:global(.app-shell--home) .panel{border:1px solid #292725;background:linear-gradient(145deg,#0f0e0d,#191716);box-shadow:0 16px 48px rgb(0 0 0 / 0.268);color:#c9c6c2}
-:global(.app-shell--home) .intro>span{background:#242320;color:#9b968e}
-:global(.app-shell--home) .intro small{color:#8a837b}
-:global(.app-shell--home) .amount{color:#a19b95}
-:global(.app-shell--home) .amount span{color:#8a837b}
-:global(.app-shell--home) .panel .claim{background:#a39e98;color:#0f0e0d}
-:global(.app-shell--home) .panel .claim:disabled{background:#262421;color:#878178}
-:global(.app-shell--home) .footer{color:#8a837b}
-:global(.app-shell--home) .footer a{color:#a09b94}
-:global(.app-shell--home) .error{color:#fa682a}
-:global(.app-shell--home) .panel .retry{color:#a09b94}
-:global(.app-shell--home) .trigger:focus-visible,:global(.app-shell--home) .claim:focus-visible{outline:3px solid #56524c}
-/* home-ember-dark:end */
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .root .trigger{border:1px solid #383632;background:#1e1d1b;color:#bcb8b3;box-shadow:inset 0 1px 0 rgb(255 255 255 / 0.1),0 2px 8px rgb(0 0 0 / 0.071)}
+:global(.theme-ember) .trigger b{background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .root .trigger:hover{background:#292724}
+:global(.theme-ember) .root .trigger[data-claimed]{background:#191817;color:#8c867d;border-color:#2b2926}
+:global(.theme-ember) .panel{border:1px solid #292725;background:linear-gradient(145deg,#0f0e0d,#191716);box-shadow:0 16px 48px rgb(0 0 0 / 0.268);color:#e9e8e6}
+:global(.theme-ember) .intro>span{background:#242320;color:#a39e98}
+:global(.theme-ember) .intro small{color:#8a837b}
+:global(.theme-ember) .amount{color:#aea9a3}
+:global(.theme-ember) .amount span{color:#8a837b}
+:global(.theme-ember) .panel .claim{background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .panel .claim:disabled{background:#262421;color:#878178}
+:global(.theme-ember) .footer{color:#8a837b}
+:global(.theme-ember) .footer a{color:#ada8a2}
+:global(.theme-ember) .error{color:#fa682a}
+:global(.theme-ember) .panel .retry{color:#ada8a2}
+:global(.theme-ember) .trigger:focus-visible,:global(.theme-ember) .claim:focus-visible{outline:3px solid #56524c}
+/* ember-dark:end */

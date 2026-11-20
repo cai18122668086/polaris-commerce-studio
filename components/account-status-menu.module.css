@@ -53,3 +53,15 @@
   .balance b { font-size: 11px; }
   .panel { position: fixed; top: 66px; right: 12px; max-height: calc(100dvh - 82px); overflow: auto; }
 }
+
+/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */
+:global(.app-shell--home) .trigger{background:#0f0e0d}
+:global(.app-shell--home) .panel{background:#0f0e0d;box-shadow:0 16px 50px rgb(0 0 0 / 0.141)}
+:global(.app-shell--home) .memberCard{border-bottom:1px solid #242320}
+:global(.app-shell--home) .memberIcon{background:rgb(15 14 13 / 0.702);border:1px solid rgb(15 14 13 / 0.851)}
+:global(.app-shell--home) .status{color:#a29d96;background:rgb(23 22 20 / 0.761)}
+:global(.app-shell--home) .wallet>div+div{border-left:1px solid #1f1e1c}
+:global(.app-shell--home) .primaryActions a{background:#0f0e0d}
+:global(.app-shell--home) .shortcuts{border-top:1px solid #1f1e1c}
+:global(.app-shell--home) .footer{border-top:1px solid #1f1e1c;background:#141313}
+/* home-ember-dark:end */

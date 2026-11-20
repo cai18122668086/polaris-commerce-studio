@@ -48,3 +48,22 @@
   .entry strong { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) { .entry, .entryArrow { transition: none; } }
+
+/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */
+:global(.app-shell--home) .section{color:var(--accent-text-on-light, #c8c5c1)}
+:global(.app-shell--home) .heading p{color:var(--accent-text-muted, #9a948d)}
+:global(.app-shell--home) .guide{color:var(--violet-700, #afaaa4)}
+:global(.app-shell--home) .group{border:1px solid #292725;background:#0f0e0d}
+:global(.app-shell--home) .group[data-market="international"]{border-color:#272522}
+:global(.app-shell--home) .marketHeading{background:#181715}
+:global(.app-shell--home) .group[data-market="international"] .marketHeading{background:#171614}
+:global(.app-shell--home) .marketHeading p{color:var(--accent-text-muted, #9a948d)}
+:global(.app-shell--home) .marketIcon{background:#252321;color:var(--violet-700, #afaaa4)}
+:global(.app-shell--home) .group[data-market="international"] .marketIcon{background:#201e1c;color:#a39d97}
+:global(.app-shell--home) .entry{border-top:1px solid #1f1e1c}
+:global(.app-shell--home) .entry small{color:var(--accent-text-muted, #9a948d)}
+:global(.app-shell--home) .entryArrow{border:1px solid #272523;color:#a09a93;background:#151413}
+:global(.app-shell--home) .entry:hover{background:#131211}
+:global(.app-shell--home) .entry:hover .entryArrow,:global(.app-shell--home) .entry:focus-visible .entryArrow{border-color:#33302d;background:#191816;color:#c8c5c1}
+:global(.app-shell--home) .entry:focus-visible,:global(.app-shell--home) .guide:focus-visible{outline:2px solid #a09a93}
+/* home-ember-dark:end */

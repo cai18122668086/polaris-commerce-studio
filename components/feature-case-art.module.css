@@ -30,3 +30,18 @@
 /* Portrait cards use original portrait deliveries; square product shots retain their whole canvas. */
 .art[data-case-art=amazon-visual-suite],.art[data-case-art=domestic-main-image]{background:#fff}
 .art[data-case-art=amazon-visual-suite] .sequence,.art[data-case-art=amazon-visual-suite] .sourceFrame,.art[data-case-art=amazon-visual-suite] .revealFrame{background:#fff}
+
+/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */
+:global(.app-shell--home) .art{background:#201f1d;color:#a9a49e}
+:global(.app-shell--home) .sequence,:global(.app-shell--home) .sourceFrame,:global(.app-shell--home) .referenceFrame,:global(.app-shell--home) .revealFrame{background:#201f1d}
+:global(.app-shell--home) .frameLabel,:global(.app-shell--home) .resultLabel,:global(.app-shell--home) .hoverHint{border:1px solid rgb(15 14 13 / 0.651);background:rgb(15 14 13 / 0.902);color:#a6a19a}
+:global(.app-shell--home) .hoverHint{background:rgb(15 14 13 / 0.902);color:#958f87}
+:global(.app-shell--home) .scanLine{background:rgb(15 14 13 / 0.6);box-shadow:0 0 12px rgb(255 255 255 / 0.1)}
+:global(.app-shell--home) .inputOnly{background:linear-gradient(145deg,#1b1a18,#22201e)}
+:global(.app-shell--home) .label{color:#928c84}
+:global(.app-shell--home) .goal{color:#918b83}
+:global(.app-shell--home) .landscape{background:#1d1c1a}
+:global(.app-shell--home) .portrait{background:#1b1a18}
+:global(.app-shell--home) .art[data-case-art=amazon-visual-suite],:global(.app-shell--home) .art[data-case-art=domestic-main-image]{background:#0f0e0d}
+:global(.app-shell--home) .art[data-case-art=amazon-visual-suite] .sequence,:global(.app-shell--home) .art[data-case-art=amazon-visual-suite] .sourceFrame,:global(.app-shell--home) .art[data-case-art=amazon-visual-suite] .revealFrame{background:#0f0e0d}
+/* home-ember-dark:end */

@@ -1,0 +1,26 @@
+.workbench{display:grid;grid-template-columns:minmax(0,200px) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"head head head" "preview segments inspector" "global global global";gap:16px;margin:12px 0;padding:16px;border:1px solid #e7e7e7;border-radius:8px;background:#fff;font-size:12px;color:#292c32}
+.workbench:not(:has(.preview)){grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"head head" "segments inspector" "global global"}
+.head{grid-area:head;display:flex;flex-wrap:wrap;align-items:baseline;gap:12px}
+.head b{font-size:14px}
+.head span{color:#6b6e74}
+.preview{grid-area:preview;width:100%;aspect-ratio:9/16;max-height:360px;background:#17131d;border-radius:6px}
+.segments{grid-area:segments;display:grid;gap:8px;align-content:start;min-width:0}
+.segments ol{display:grid;gap:2px;margin:0;padding:0;list-style:none;max-height:360px;overflow:auto;border-top:1px solid #f0f0f0}
+.segments li button{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:baseline;width:100%;padding:8px 6px;border:0;border-bottom:1px solid #f0f0f0;border-radius:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}
+.segments li button:hover{background:#fafafa}
+.segments li button[aria-pressed="true"]{background:#f6f6f7;box-shadow:inset 2px 0 0 var(--edit-accent,#b5121b)}
+.segments li button[data-attention="true"] .meta{color:#c2410c}
+.index{color:#8a8d93;font-variant-numeric:tabular-nums}
+.text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{color:#6b6e74;white-space:nowrap}
+.trim{justify-self:start;padding:6px 10px;font-size:12px}
+.inspector{grid-area:inspector;display:grid;gap:10px;align-content:start;min-width:0;padding-left:16px;border-left:1px solid #f0f0f0}
+.inspector h4{margin:0;font-size:13px}
+.quote{margin:0;color:#4a4d53;line-height:1.6}
+.check{display:flex;gap:8px;align-items:flex-start}
+.check small{display:block;color:#8a8d93}
+.field{display:grid;gap:4px;color:#4a4d53}
+.field select{width:100%}
+.global{grid-area:global;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;padding-top:12px;border-top:1px solid #f0f0f0}
+.global>details{flex-basis:100%}
+@media (max-width:900px){.workbench,.workbench:not(:has(.preview)){grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "preview" "segments" "inspector" "global"}.inspector{padding-left:0;border-left:0}}

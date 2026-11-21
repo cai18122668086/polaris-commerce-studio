@@ -12,7 +12,7 @@ import { WritingWorkflow } from "./writing-workflow";
 type ProjectSession = ReturnType<typeof useProjectSession>["session"];
 
 /** Benchmark search, extraction, rewriting and original copy for one project. */
-export function ScriptAssistantPanel({ workspaceId, projectId, session, content, writing, onShowAssistant, onRevealScript, notify, attempt, copyText, updateDraft }: {
+export function ScriptAssistantPanel({ workspaceId, projectId, session, content, writing, onShowAssistant, onRevealScript, notify, attempt, copyText, updateDraft, hideTools, onDraftReady }: {
   workspaceId: string;
   projectId: string;
   session: ProjectSession;
@@ -24,6 +24,9 @@ export function ScriptAssistantPanel({ workspaceId, projectId, session, content,
   attempt: (operation: () => Promise<unknown>) => void;
   copyText: (text: string) => void;
   updateDraft: (patch: Partial<VideoDraft>) => void;
+  hideTools?: boolean;
+  /** Called after a result has been put into the draft. */
+  onDraftReady?: () => void;
 }) {
   const { assistance, assistantJob, assistantMode, assistantResult, rewrittenText } = writing;
   return <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} workspaceId={workspaceId} jobs={assistance.benchmarkJobs} extractions={assistance.benchmarkExtractions}
@@ -55,6 +58,7 @@ export function ScriptAssistantPanel({ workspaceId, projectId, session, content,
       if (assistantMode === "create") writing.generateCopy();
       if (assistantMode === "extract" || assistantMode === "rewrite") writing.runReference(assistantMode);
     }}
-    onResume={() => assistantJob && attempt(() => assistance.resume(assistantJob.id))} onCopy={copyText} onUseOriginal={() => writing.adoptReference(true)}
-    onUseResult={() => { if (assistantMode === "rewrite") return writing.adoptReference(); if (assistantResult.length > 3000) return notify("文案超过3000字，请先明确选择要使用的片段；不会自动截断", "warning"); updateDraft({ text: assistantResult }); onRevealScript(); notify("已填入文案编辑区", "success"); }} />;
+    onResume={() => assistantJob && attempt(() => assistance.resume(assistantJob.id))} onCopy={copyText} onUseOriginal={() => { if (writing.adoptReference(true)) onDraftReady?.(); }}
+    onUseResult={() => { if (assistantMode === "rewrite") { if (writing.adoptReference()) onDraftReady?.(); return; } if (assistantResult.length > 3000) return notify("文案超过3000字，请先明确选择要使用的片段；不会自动截断", "warning"); updateDraft({ text: assistantResult }); onRevealScript(); notify("已填入文案编辑区", "success"); onDraftReady?.(); }}
+    hideTools={hideTools} />;
 }

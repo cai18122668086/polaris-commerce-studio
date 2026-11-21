@@ -1,6 +1,6 @@
 # 视频空间 → 剪辑端接口 v1
 
-更新：2026-11-07。交接接口已在主站上线，生产业务 API base 为 `https://www.tengliapi.xyz`。外部剪辑任务创建、最终成片回收和网站展示由本次剪辑接入继续完成。对接代码以 `backend/app/video_editing_routes.py` 与 `docs/openapi-v1.json` 为准；接手入口见 `video-editing-handoff-ai-2026-11-07.md`。
+更新：2026-11-07。交接接口已在主站上线，生产业务 API base 为 `https://www.jgshai.cn`。外部剪辑任务创建、最终成片回收和网站展示由本次剪辑接入继续完成。对接代码以 `backend/app/video_editing_routes.py` 与 `docs/openapi-v1.json` 为准；接手入口见 `video-editing-handoff-ai-2026-11-07.md`。
 
 ## 交付范围
 

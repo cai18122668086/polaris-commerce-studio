@@ -1,5 +1,7 @@
 "use client";
 
+import { editingTaskProgress } from "@/features/video-studio/editing-progress";
+import { EditingProgressSteps } from "./editing-progress";
 import { useInternalTools } from "@/features/video-studio/internal-tools";
 import { UserRound, PackageOpen } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -468,8 +470,9 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       const parent = task.options.preview_base;
       const planId = task.options.native_plan_id;
       const layoutFailed = task.status === "failed" && (task.error_code === "EDITING_EFFECT_LAYOUT_FAILED" || task.error_code === "EDITING_NATIVE_LAYOUT_FAILED");
-      return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{task.template_name && `${task.template_name} · `}{task.status === "failed" ? "未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{task.status === "failed" ? "剪辑未完成" : task.status === "cancelled" ? "已取消" : stageLabel[task.stage] || "正在剪辑"}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
-        {["queued", "running"].includes(task.status) && <p role="status" className={styles.note}>{stageLabel[task.stage] || "正在处理"}，完成后会自动更新。</p>}
+      const progress = editingTaskProgress({ status: task.status, stage: task.stage, mode: task.options.mode });
+      return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{task.template_name && `${task.template_name} · `}{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
+        {task.status !== "completed" && task.status !== "cancelled" && <EditingProgressSteps progress={progress} />}
         {task.planning_origin === "operator_candidate" && <p className={styles.note}>人工调整版</p>}
         {final ? <video id={`editing-film-${task.id}`} controls playsInline preload="metadata" src={final.url} poster={poster?.url} aria-label="剪辑成片预览" /> : task.status === "awaiting_review" && preview && <video key={preview.id} id={`editing-preview-${task.id}`} controls playsInline preload="metadata" src={preview.url} poster={poster?.url} aria-label="剪辑视频预览" onError={() => markPreviewFailure(preview.id)} />}
         {final && <a href={final.url} download>下载高清视频</a>}

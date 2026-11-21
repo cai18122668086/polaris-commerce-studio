@@ -6,6 +6,7 @@ import { useInternalTools } from "@/features/video-studio/internal-tools";
 import { Check, UserRound, PackageOpen } from "lucide-react";
 import { editingFlowSteps } from "@/features/video-studio/editing-flow-steps";
 import { workspaceActionLabel } from "@/features/video-studio/editing-primary";
+import { revisingTask } from "@/features/video-studio/editing-workbench";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
@@ -468,6 +469,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       }} />}
     {saved && nativeOpened && <details className={flow.native} ref={nativePanel}><summary>调整当前视频</summary><EditingNativePlans key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} plansVersion={plansVersion}
       revisionSelection={revisionSelection} onClearRevisionSelection={() => { setRevisionSelection(undefined); setNativeOpened(false); document.getElementById("editing-results")?.scrollIntoView({ block: "start" }); }}
+      subtitleTask={revisingTask(tasks, revisionSelection)}
       onCreated={async () => { applyTasks(await reload()); }} /></details>}
     <details hidden className={flow.library} onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>帮助与技术详情</summary><p>排查素材、字体或服务问题时使用。</p><button type="button" onClick={() => setNativeOpened(true)}>查看历史编排</button>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
     <section id="editing-results" className={`${flow.step} ${flow.history}`} aria-label="预览与下载"><h2>预览与下载 <small>{historyTasks.length} 个版本</small></h2><input type="search" className={flow.templateSearch} aria-label="搜索历史视频" placeholder="搜索历史视频" value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} />

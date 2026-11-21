@@ -60,3 +60,9 @@ export function changeSummary(beats: WorkbenchBeat[], selected: WorkbenchSelecti
     selected.musicTrackId && selected.music !== "off" ? "更换配乐曲目" : "",
   ].filter(Boolean).join(" · ");
 }
+
+/** 工作台「字幕」校对的对象：用户点「调整本版」时选中的那一版任务；没有选中就不显示入口。 */
+export function revisingTask<T extends { id: string; options: unknown }>(tasks: T[], selection?: { taskId: string } | null): { id: string; options: T["options"] } | undefined {
+  const task = selection ? tasks.find(item => item.id === selection.taskId) : undefined;
+  return task ? { id: task.id, options: task.options } : undefined;
+}

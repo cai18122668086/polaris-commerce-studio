@@ -1,5 +1,6 @@
 "use client";
 
+import { TranscriptEditor } from "./transcript-editor";
 import { useEffect, useRef, useState } from "react";
 import { minDistinctMotionGroups, repeatedEffectsForReduction } from "@/features/video-studio/editing-density";
 import { editingMessage, editingTemplateName, editingFieldName, editingEffectName, editingMusicName } from "@/features/video-studio/editing-presentation";
@@ -21,6 +22,8 @@ type EffectEdit = components["schemas"]["NativeEffectEdit"];
 type EffectTarget = components["schemas"]["EditingEffectTarget"];
 type MusicOptions = components["schemas"]["EditingMusicOptions"];
 type Controls = { music: "keep" | "lower" | "raise" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
+type TranscriptOptions = Parameters<typeof TranscriptEditor>[0]["options"];
+
 export type EditingRevisionSelection = {
   planId: string;
   taskId: string;
@@ -32,9 +35,12 @@ export type EditingRevisionSelection = {
 const defaultControls: Controls = { music: "keep", musicTrackId: "", segments: [], highlights: [], images: [], effects: [] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
-export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion, revisionSelection, onClearRevisionSelection }: {
+export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion, revisionSelection, onClearRevisionSelection, subtitleTask, onSubtitlesSaved }: {
   workspaceId: string; projectId: string; onCreated: () => Promise<void>; plansVersion: number;
   revisionSelection?: EditingRevisionSelection; onClearRevisionSelection: () => void;
+  /** 正在调整的那一版任务：工作台里的「字幕」直接校对它，复用字幕校对组件。 */
+  subtitleTask?: { id: string; options: TranscriptOptions };
+  onSubtitlesSaved?: () => Promise<void>;
 }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -316,6 +322,10 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
             <p className={styles.note}>更换后从新曲目的开头播放，沿用原编排的音乐入点、出点和淡入淡出。</p>
           </>}
         </details>}
+            {subtitleTask && revisionSelection?.planId === plan.id && <details><summary>字幕</summary>
+              <p className={styles.note}>对照原声改错字。保存后按新文字重新对齐，再生成新版预览。</p>
+              <TranscriptEditor key={subtitleTask.id} workspaceId={workspaceId} taskId={subtitleTask.id} options={subtitleTask.options} onCreated={onSubtitlesSaved ?? onCreated} />
+            </details>}
             {plan.image_edit_available && <details><summary>配图</summary><EditingImageEdits workspaceId={workspaceId} projectId={projectId} planId={plan.id}
               selected={selected.images} sourceOnly={selected.segments} disabled={!!busy} onChange={images => change({ images })} /></details>}
           </div>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { changeSummary, segmentRows } from "../features/video-studio/editing-workbench.ts";
+import { changeSummary, revisingTask, segmentRows } from "../features/video-studio/editing-workbench.ts";
 
 const beats = [
   { id: "b1", text: "先说结论", group_id: "T001", source_only_available: true },
@@ -34,4 +34,11 @@ test("summary counts changed segments and the music tier", () => {
   assert.equal(changeSummary(beats, { ...none, segments: ["b1"], music: "lower" }), "已调整 1 段 · 配乐 · 轻");
   assert.equal(changeSummary(beats, { ...none, music: "off", musicTrackId: "bgm-0123456789abcdef" }), "关闭配乐");
   assert.equal(changeSummary(beats, { ...none, music: "raise", musicTrackId: "bgm-0123456789abcdef" }), "配乐 · 明显 · 更换配乐曲目");
+});
+
+test("the subtitle entry targets exactly the version being revised", () => {
+  const tasks = [{ id: "a", options: { mode: "native_plan" } }, { id: "b", options: { mode: "suite_plan" } }];
+  assert.deepEqual(revisingTask(tasks, { taskId: "b" }), { id: "b", options: { mode: "suite_plan" } });
+  assert.equal(revisingTask(tasks, { taskId: "gone" }), undefined);
+  assert.equal(revisingTask(tasks, undefined), undefined);
 });

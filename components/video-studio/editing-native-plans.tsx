@@ -151,7 +151,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       }));
       intent.current = undefined;
       if (live.current) { await onCreated(); requestAnimationFrame(() => document.getElementById(`editing-task-${created.id}`)?.scrollIntoView({ block: "start" })); }
-    } catch (caught) { if (live.current) setError(caught instanceof Error ? caught.message : "出片请求暂未确认，再次点击会查询同一请求。"); }
+    } catch (caught) { if (live.current) setError(caught instanceof Error ? caught.message : "正在确认结果，不会重复扣费；再次点击只会查询原请求。"); }
     finally { if (live.current) setBusy(""); }
   };
   return <section id="editing-native-plans" aria-label="调整视频">

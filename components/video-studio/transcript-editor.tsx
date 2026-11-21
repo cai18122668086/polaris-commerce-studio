@@ -86,7 +86,7 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
       renderIntent.current = undefined;
       setMessage(transcriptionOnly ? "已提交口播重新对齐任务。" : "已提交字幕重新对齐与出片任务。");
       await onCreated();
-    } catch (caught) { setError(editingMessage(caught, "任务提交暂未确认，再次点击会查询同一请求。")); }
+    } catch (caught) { setError(editingMessage(caught, "正在确认结果，不会重复扣费；再次点击只会查询原请求。")); }
     finally { setBusy(false); }
   };
   const seek = (ms: number) => {

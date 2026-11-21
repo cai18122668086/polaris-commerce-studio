@@ -5,6 +5,7 @@ import { EditingProgressSteps } from "./editing-progress";
 import { useInternalTools } from "@/features/video-studio/internal-tools";
 import { Check, UserRound, PackageOpen } from "lucide-react";
 import { editingFlowSteps } from "@/features/video-studio/editing-flow-steps";
+import { workspaceActionLabel } from "@/features/video-studio/editing-primary";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
@@ -282,8 +283,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       setTasks(rows => [task, ...rows.filter(row => row.id !== task.id)]);
     } catch (caught) {
       setError(caught instanceof ApiError && !caught.retryable ? editingMessage(caught, "视频暂时无法处理，请检查文件后重试。") : uploadPending
-        ? "原片上传结果暂未确认，再次点击会继续同一次上传。"
-        : "剪辑提交暂未确认，再次点击会查询同一请求。");
+        ? "上传正在确认，再次点击会继续同一次上传，不会重复上传。"
+        : "正在确认结果，不会重复扣费；再次点击只会查询原请求。");
     }
     finally { setBusy(false); }
   };
@@ -412,7 +413,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     previewReady: renderTasks.some(task => task.status === "awaiting_review"),
     finalReady: renderTasks.some(task => task.status === "completed" && task.artifacts.some(artifact => artifact.role === "final")),
   });
-  const actionLabel = busy ? "正在提交…" : recognizing ? `${recognitionLabel}…` : primaryState?.phase === "waiting" ? primaryState.label : primaryState?.phase === "recover" ? "继续处理已保存结果" : primaryState?.phase === "rendering" ? "查看剪辑进度" : transcriptReady && primaryState?.phase === "preview" ? "查看剪辑结果" : "开始智能剪辑";
+  const actionLabel = workspaceActionLabel({ busy, recognizing, phase: primaryState?.phase, waitingLabel: primaryState?.label, transcriptReady });
   return <section className={`${styles.panel} ${flow.workbench} ${compact ? flow.compact : ""}`} aria-label="口播剪辑">
     <ol className={flow.flowSteps} aria-label="剪辑步骤">{flowSteps.map(step => <li key={step.key} data-state={step.state}>
       <button type="button" aria-current={step.state === "current" ? "step" : undefined} onClick={() => document.getElementById(step.anchor)?.scrollIntoView({ block: "start" })}>

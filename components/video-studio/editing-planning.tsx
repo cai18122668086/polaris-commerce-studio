@@ -1,5 +1,6 @@
 "use client";
 
+import { CONFIRMING_HINT, planningButtonLabel } from "@/features/video-studio/editing-primary";
 import { planningJobProgress } from "@/features/video-studio/editing-progress";
 import { EditingProgressSteps } from "./editing-progress";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
@@ -53,7 +54,7 @@ const errors: Record<string, string> = {
   EDITING_PARALLEL_ITEMS_INVALID: "并列动效的事项须各有独立实录词点，并分别绑定文字或素材。请核对编排。",
   EDITING_TEMPLATE_LABEL_CARD_INPUTS_REQUIRED: "原生文字卡需要三个实录短词及各自的入场间隔，请核对对应段落。",
   EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片，请选择符合画幅的转录。",
-  EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。",
+  EDITING_PLAN_ALREADY_SUBMITTED: "正在确认结果，不会重复扣费。",
   VIDEO_ASSISTANCE_OUTCOME_UNKNOWN: "模型请求已提交，但结果尚未确认。已保留原提交记录，请先核对，避免重复计费。",
   EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。",
   EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。",
@@ -62,7 +63,7 @@ const errors: Record<string, string> = {
   EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "没有适用的成套动效。请核对项目备忘、素材或模板后重新准备。",
   EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。",
   EDITING_PLAN_CONTRACT_INVALID: "模型编排未通过模板校验。响应已保存，重新校验不会再次调用计费模型。",
-  EDITING_PLAN_EMPTY_RESPONSE: "模型未返回编排正文，无法通过重新校验恢复。已保存调用回执，请先核对用量；重新生成会产生新的模型费用。",
+  EDITING_PLAN_EMPTY_RESPONSE: "这次编排没有返回内容。重新生成会产生新的费用，请确认后再试。",
   EDITING_TRANSCRIPT_REVIEW_REQUIRED: "自动字幕与已确认原稿差异较大，请先校对字幕并重新对齐，再继续编排。此检查不计模型费用。",
 };
 
@@ -173,8 +174,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const emptyResponse = submitted?.error_code === "EDITING_PLAN_EMPTY_RESPONSE";
   const nextAction = editingPlanningAction(prepared, submitted || undefined);
   const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || nextAction === "wait" || nextAction === "blocked";
-  const primaryLabel = busy ? "正在提交…" : waiting ? "正在检查素材…" : submissionPending ? "正在编排视频…" : emptyResponse ? "调用回执待核对" : submissionUncertain ? "提交结果待确认" : submitted?.status === "completed" ? "查看视频预览" : nextAction === "recover" ? "继续处理已保存结果" : submissionFailed ? "重新检查素材" : nextAction === "blocked" ? prepared && !prepared.execution_available ? "自动剪辑暂不可用" : "请先补齐素材" : prepared ? "生成预览（计费）" : "检查素材并继续";
-  const primaryHint = emptyResponse ? errors.EDITING_PLAN_EMPTY_RESPONSE : submissionUncertain ? "请等待结果确认，避免重复提交和计费" : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
+  const primaryLabel = planningButtonLabel({ busy, checking: waiting, arranging: submissionPending, uncertain: submissionUncertain, emptyResponse, render: submitted?.status === "completed" ? rendered?.status : undefined, arranged: submitted?.status === "completed", recover: nextAction === "recover", failed: submissionFailed, blocked: nextAction === "blocked", unavailable: Boolean(prepared && !prepared.execution_available), ready: Boolean(prepared) });
+  const primaryHint = emptyResponse ? errors.EDITING_PLAN_EMPTY_RESPONSE : submissionUncertain ? CONFIRMING_HINT : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
   const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : rendering ? "rendering" : nextAction === "recover" ? "recover" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase]);
 
@@ -300,7 +301,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       if (linked.size) linkPreviews(linked);
       setBatchCount(linked.size);
       setBatchErrors(failed);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "批量提交暂未确认，请刷新核对后重试。"); }
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "批量提交正在确认结果，不会重复扣费，请稍后刷新查看。"); }
     finally { setBusy(false); }
   };
   return <section id="editing-arrange" className={`${flow.step} ${flow.planning}`} aria-label="自动剪辑"><h2>{supportsMaterials ? "补充素材" : "文字编排"}</h2>

@@ -627,6 +627,8 @@
 .taskPanel footer a { color: #563c72; }
 @media (max-width: 700px) { .studio .taskCenterButton { height: 28px; padding: 0 8px; font-size: 12px; } .taskPanel { position: fixed; left: 12px; right: 12px; top: 72px; width: auto; } }
 
+@font-face { font-family: "Polaris Outfit"; src: url("/video-studio/fonts/outfit.woff2") format("woff2"); font-weight: 200 600; font-display: swap; }
+@font-face { font-family: "Polaris Accent Serif"; src: url("/video-studio/fonts/serif-accent.woff2") format("woff2"); font-weight: 500; font-display: swap; }
 /* ---------- 熔光手调层（对齐原型 studio.html）----------
    自动换色在文件末尾的 ember-dark 块里；这里补自动映射做不到的气氛：近黑底上的暖色虚光、
    玻璃页头和侧栏、接近白色的主按钮。用 html.theme-ember 前缀，优先级高于自动块，不受顺序影响。
@@ -659,6 +661,10 @@
 :global(html.theme-ember) .entryCard:hover { border-color: rgb(255 255 255 / 20%); background: rgb(24 23 22 / 70%); }
 :global(html.theme-ember) .entryPrimary { border-color: rgb(240 122 43 / 45%); }
 
+:global(html.theme-ember) .studio { font-family: "Polaris Outfit", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+:global(html.theme-ember) .studio h1, :global(html.theme-ember) .studio h2 { font-weight: 500; letter-spacing: -.01em; }
+:global(html.theme-ember) .studioIntro mark { font-family: "Polaris Accent Serif", "Songti SC", "STSong", "Noto Serif SC", serif; font-weight: 500; }
+:global(html.theme-ember) .brand small, :global(html.theme-ember) .introEyebrow { letter-spacing: .22em; color: rgb(237 234 228 / 42%); }
 /* 手机端不允许整页横向拖动：页面横向裁切，提示框不超出屏幕，横滑导航自己吃掉滑动手势。 */
 @media (max-width: 860px) {
   :global(html):has(.studio), :global(body):has(.studio) { overflow-x: clip; }

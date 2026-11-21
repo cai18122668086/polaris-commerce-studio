@@ -30,7 +30,7 @@ def test_manual_flow_blocks_other_paid_services_before_transmission(tmp_path):
     for url, body in [
         ("https://quanyu.sowa.chat/api/voice/clone", {}),
         (
-            "https://api.tengliapi.xyz/v1/chat/completions",
+            "https://api.jgshai.cn/v1/chat/completions",
             {"messages": [{}, {"content": json.dumps({"brief": "write a script"})}]},
         ),
     ]:
@@ -86,7 +86,7 @@ def test_template_plan_and_free_upload_use_the_same_guarded_transport(tmp_path):
     for url, payload in [
         ("https://quanyu.sowa.chat/api/oss/upload_policy", {}),
         ("https://sowa.oss-cn-beijing.aliyuncs.com/", {}),
-        ("https://api.tengliapi.xyz/v1/chat/completions", body),
+        ("https://api.jgshai.cn/v1/chat/completions", body),
     ]:
         transport.handle_request(httpx.Request("POST", url, json=payload))
     assert len(sent) == 3
@@ -142,7 +142,7 @@ def test_full_script_apple_plan_uses_real_transport_and_rejects_other_engines(tm
 
     transport.http = httpx.MockTransport(accepted)
     body, _ = build_request(transcript(), "fixture", cards())
-    url = "https://api.tengliapi.xyz/v1/chat/completions"
+    url = "https://api.jgshai.cn/v1/chat/completions"
     transport.handle_request(httpx.Request("POST", url, json=body))
     payload = json.loads(body["messages"][1]["content"])
     payload["template"]["engine"] = "unrelated"

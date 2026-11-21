@@ -53,7 +53,7 @@ HTTPClient = httpx.Client
 
 def mock_gateway(monkeypatch, payload):
     def handle(request):
-        assert str(request.url) == "https://pay.tengliapi.xyz/api.php"
+        assert str(request.url) == "https://pay.jgshai.cn/api.php"
         assert request.method == "POST"
         data = dict(parse_qsl(request.content.decode()))
         assert data["key"]

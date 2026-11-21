@@ -108,7 +108,7 @@ def main():
                                 {
                                     "id": str(uuid4()),
                                     "kind": "url",
-                                    "url": "https://www.tengliapi.xyz/",
+                                    "url": "https://www.jgshai.cn/",
                                     "note": "2026-11-11 实际首页功能核对",
                                 }
                             ],

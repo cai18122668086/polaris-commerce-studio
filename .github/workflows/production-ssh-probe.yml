@@ -17,9 +17,11 @@ jobs:
     steps:
       - name: Verify production SSH access
         env:
+          POLARIS_DEPLOY_HOST: ${{ vars.POLARIS_DEPLOY_HOST }}
           POLARIS_DEPLOY_SSH_KEY: ${{ secrets.POLARIS_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
+          test -n "${POLARIS_DEPLOY_HOST}"
           test -n "${POLARIS_DEPLOY_SSH_KEY}"
           key_path="${RUNNER_TEMP}/polaris_deploy"
           trap 'rm -f "$key_path"' EXIT
@@ -31,5 +33,5 @@ jobs:
             -o ConnectTimeout=15 \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=accept-new \
-            ubuntu@43.129.198.147 \
+            ubuntu@"${POLARIS_DEPLOY_HOST}" \
             "echo SSH_OK && hostname && docker version --format '{{.Server.Version}}'"

@@ -331,6 +331,34 @@ authorization.
 Record the rollback trigger, timestamps, image IDs, schema decision, restored
 manifest, verification results, and final listener/health state.
 
+## Deploying team changes to the Hong Kong production instance
+
+Use a reviewed Git commit to build the affected service image. The public site and
+login share `www.jgshai.cn` with authentication under `/api/auth`. The model API
+uses `api.jgshai.cn` and the payment gateway uses `pay.jgshai.cn`. The commerce
+payment notification receiver is `https://www.jgshai.cn/api/v1/payments/epay/notify`.
+
+The active installation uses separate releases for different services. On the
+target host, identify the working directory and ordered Compose files for the
+service being updated before selecting its release procedure. For example:
+
+```sh
+docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' polaris-production-api-1
+docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' polaris-production-api-1
+```
+
+Keep the server-local environment, volumes and integrated gateway routes. The
+authentication profile below covers the commerce site only. Use the active
+gateway config for changes involving the model API, video routes or payment.
+Render the service's Compose configuration, check its image and volume mounts,
+then roll out the affected service and check readiness. Retain its previous
+image and Compose configuration for rollback. Keep credentials and rendered
+Compose files on the server.
+
+The manual SSH probe reads the repository variable `POLARIS_DEPLOY_HOST` and
+requires the configured runner to reach that host. Pushing a branch does not
+deploy it.
+
 ## Public production authentication profile
 
 The public authentication profile is intentionally separate from the internal
@@ -342,8 +370,8 @@ It provides:
 - SuperTokens Core `v12.0.10`, private on the backend network;
 - standard SMTP transaction email from
   `Polaris Commerce Studio <no-reply@mail.tengliapi.xyz>`;
-- automatic HTTPS and same-origin routing for only
-  `https://www.tengliapi.xyz`;
+- automatic HTTPS on `www.jgshai.cn` and a permanent redirect from
+  `jgshai.cn` preserving the request path and query string;
 - public Caddy ports 80/443, with no other published service ports;
 - a server-local production env generator and fail-closed production preflight;
 - an explicitly packaged, single-workspace Owner assignment operator script.
@@ -410,7 +438,7 @@ behavior, or Amazon protocol behavior.
 ```text
 # 1. 生产管理员通过 POST /api/ecommerce/workers/enrollments 创建短期 enrollment_token
 # 2. 在大陆工作电脑上设置令牌和本机 profile 根目录：
-$env:POLARIS_WORKER_API_URL="https://www.tengliapi.xyz"
+$env:POLARIS_WORKER_API_URL="https://www.jgshai.cn"
 $env:POLARIS_WORKER_SESSION_TOKEN="一次性或短期 Worker 令牌"
 $env:POLARIS_WORKER_ID="wrk_..."
 $env:POLARIS_WORKER_PROFILE_ROOT="D:\Polaris\ecommerce-profiles"

@@ -13,7 +13,7 @@ SPEC.loader.exec_module(MODULE)
 REVISION = "a" * 40
 BACKEND, FRONTEND = "sha256:" + "b" * 64, "sha256:" + "c" * 64
 PRIMARY_PROVIDER = {
-    "POLARIS_ANALYSIS_BASE_URL": "https://api.tengliapi.xyz",
+    "POLARIS_ANALYSIS_BASE_URL": "https://api.jgshai.cn",
     "POLARIS_ANALYSIS_MODEL": "gpt-5.6-sol",
     "POLARIS_ANALYSIS_API_KEY": "synthetic-private-key",
 }

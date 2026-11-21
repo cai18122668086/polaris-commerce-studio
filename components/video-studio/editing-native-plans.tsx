@@ -17,7 +17,7 @@ type ImageEdit = components["schemas"]["NativeImageEdit"];
 type EffectEdit = components["schemas"]["NativeEffectEdit"];
 type EffectTarget = components["schemas"]["EditingEffectTarget"];
 type MusicOptions = components["schemas"]["EditingMusicOptions"];
-type Controls = { music: "keep" | "lower" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
+type Controls = { music: "keep" | "lower" | "raise" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
 export type EditingRevisionSelection = {
   planId: string;
   taskId: string;
@@ -208,7 +208,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
             music: event.target.value as Controls["music"],
             ...(event.target.value === "off" ? { musicTrackId: "" } : {}),
           })}>
-            <option value="keep">沿用编排</option><option value="lower">降低 6 dB</option><option value="off">关闭背景音乐</option>
+            <option value="lower">配乐 · 轻</option><option value="keep">配乐 · 标准（沿用编排）</option><option value="raise">配乐 · 明显</option><option value="off">关闭背景音乐</option>
           </select>
         </label>}
         {plan.music_edit_available && selected.music !== "off" && <details onToggle={event => {

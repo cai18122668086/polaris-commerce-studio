@@ -24,6 +24,17 @@ from .video_editing_question_branch import (
 
 SOURCE_GROUP = "Z-M00"
 MUSIC_REDUCTION_DB = 6
+# "明显" lifts the planned bed a little; speech ducking still runs on top.
+MUSIC_RAISE_DB = 3
+
+
+def music_gain_offset(choice: str | None) -> float:
+    """Background-music level tiers: 轻 (lower), 标准 (template), 明显 (raise)."""
+    if choice == "lower":
+        return -MUSIC_REDUCTION_DB
+    if choice == "raise":
+        return MUSIC_RAISE_DB
+    return 0
 HY_PORTRAIT_INSETS = frozenset(("HY-A5", PRICE_CARD_GROUP))
 NATIVE_PORTRAIT_INSETS = HY_PORTRAIT_INSETS | {QUESTION_GROUP}
 FULL_FRAME = [0, 0, 1, 1]

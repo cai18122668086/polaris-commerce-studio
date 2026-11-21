@@ -8,7 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
 import { isEditingSuite } from "@/features/video-studio/editing-suite";
-import { matchesReferenceScript, referenceScript, type EditingMusicPreference } from "@/features/video-studio/editing-options";
+import { matchesReferenceScript, referenceScript, type EditingMusicPreference, isEditingMusicPreference } from "@/features/video-studio/editing-options";
 import { projectApi, type VideoVersion } from "@/features/video-studio/projects";
 import { ApiError } from "@/lib/api/api-error";
 import { apiClient } from "@/lib/api/client";
@@ -87,7 +87,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       try {
         const prior: unknown = JSON.parse(localStorage.getItem(preferenceKey) || "null");
         if (prior && typeof prior === "object") {
-          if ("music" in prior && ["template", "lower", "off"].includes(String(prior.music))) setMusic(prior.music as EditingMusicPreference);
+          if ("music" in prior && isEditingMusicPreference(prior.music)) setMusic(prior.music as EditingMusicPreference);
           if ("creativeOptions" in prior && prior.creativeOptions && typeof prior.creativeOptions === "object" && "schema_version" in prior.creativeOptions && prior.creativeOptions.schema_version === "tengli.apple-creative/1") setCreativeOptions({ ...defaultAppleOptions, ...prior.creativeOptions } as AppleCreativeOptions);
         }
       } catch { /* Saved task snapshots remain authoritative. */ }
@@ -498,7 +498,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         {parent && <p className={styles.note}><a href={`#editing-task-${parent.task_id}`}>查看调整前的版本</a></p>}
         {task.carried_revision && <p className={styles.note}>已保留之前的调整 · <a href={`#editing-task-${task.carried_revision.preview_base.task_id}`}>查看原版本</a></p>}
         {task.options.native_edits && <p className={styles.note}>
-          本次设置 · {task.options.native_edits.music === "off" ? "关闭背景音乐。" : task.options.native_edits.music === "lower" ? "背景音乐降低 6 dB。" : ""}
+          本次设置 · {task.options.native_edits.music === "off" ? "关闭背景音乐。" : task.options.native_edits.music === "lower" ? "背景音乐调轻。" : task.options.native_edits.music === "raise" ? "背景音乐调明显。" : ""}
           {task.options.native_edits.music_track_id && "已更换原库背景音乐。"}
           {!!task.options.native_edits.highlight_edits?.length && ("已调整 " + task.options.native_edits.highlight_edits.length + " 处重点文字。")}
           {!!task.options.native_edits.image_edits?.length && ("已替换 " + task.options.native_edits.image_edits.length + " 张配图。")}

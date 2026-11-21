@@ -73,7 +73,7 @@ class EditingMusicOptions(StrictVideoModel):
 
 
 class NativeRenderEdits(StrictVideoModel):
-    music: Literal["lower", "off"] | None = None
+    music: Literal["lower", "raise", "off"] | None = None
     music_track_id: str | None = Field(
         default=None,
         pattern=r"^bgm-[0-9a-f]{16}$",
@@ -662,7 +662,7 @@ class EditingPlanningTaskCreate(StrictVideoModel):
         max_length=64,
         exclude_if=lambda value: value is None,
     )
-    music: Literal["template", "lower", "off"] | None = Field(
+    music: Literal["template", "lower", "raise", "off"] | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
         description=(

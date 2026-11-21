@@ -646,7 +646,7 @@ def compile_render_input(
     size: tuple[int, int] = (1080, 1920),
     recipe_compiler: Any = None,
 ) -> dict[str, Any]:
-    if music not in {"template", "off", "lower"}:
+    if music not in {"template", "off", "lower", "raise"}:
         raise ValueError("Unknown suite music preference")
     cards = [{**asset, "id": ident} for ident, asset in asset_files.items()]
     verified = AppleSuitePlan.model_validate(

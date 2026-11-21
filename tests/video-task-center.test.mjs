@@ -30,3 +30,13 @@ test("a running task that finished or now needs the user is reported once", () =
   assert.deepEqual(settledSince(before, after).map(i => i.id).sort(), ["editing:0f8fad5b-d9cb-469f-a165-70867728950e", "generation:j1"]);
   assert.deepEqual(settledSince(after, after), []);
 });
+
+test("missing or invalid times sort last instead of throwing", () => {
+  const items = taskCenterItems(
+    [edit({ task_id: "a", created_at: null }), edit({ task_id: "b" })],
+    [job({ id: "c", created_at: undefined }), job({ id: "d", created_at: "not-a-date" })],
+  );
+  assert.equal(items.length, 4);
+  assert.equal(items.at(-1).createdAt == null || Number.isNaN(Date.parse(items.at(-1).createdAt)), true);
+  assert.equal(items.findIndex(item => item.id === "editing:b") < items.findIndex(item => item.id === "editing:a"), true);
+});

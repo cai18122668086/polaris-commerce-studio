@@ -74,13 +74,15 @@ export function useScriptReference({ userId, workspaceId, projectId, session, no
     await assistance.submit({ project_id: target, expected_revision: session.state.revision, kind, brief: "依据已确认产品事实，生成自然口播文案", style: "产品介绍", reference_id: session.state.content.references[0].id });
     notify(kind === "extract" ? "语音提取任务已提交" : "改写任务已提交");
   });
-  const adoptReference = (original = false) => {
+  /** Puts the reference or rewrite into the draft; true only when the draft actually changed. */
+  const adoptReference = (original = false): boolean => {
     const text = original ? sourceText : rewrittenText || sourceText;
-    if (!text.trim()) return notify("请先提取或粘贴文案");
-    if (text.length > 3000) return notify("原文超过3000字，请先明确选择要使用的片段；不会自动截断");
-    if (!addReference()) return;
+    if (!text.trim()) { notify("请先提取或粘贴文案"); return false; }
+    if (text.length > 3000) { notify("原文超过3000字，请先明确选择要使用的片段；不会自动截断"); return false; }
+    if (!addReference()) return false;
     updateDraft({ text }); onAdopted();
     notify(original || !rewrittenText ? "原文已原样填入编辑器" : "改写稿已填入编辑器", "success");
+    return true;
   };
   useEffect(() => {
     const jobs = [rewriteJob, extractJob];

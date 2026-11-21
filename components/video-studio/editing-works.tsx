@@ -76,7 +76,7 @@ export function EditingWorks({ userId, workspaceId, keyword }: { userId: string;
         <div>
           <b>{work.project_title}</b>
           <time dateTime={work.created_at}>{new Date(work.created_at).toLocaleString("zh-CN")}</time>
-          <p>{work.mode === "native_plan" || work.mode === "suite_plan" ? "动效剪辑" : "字幕剪辑"}{work.final.duration_ms != null && ` · ${(work.final.duration_ms / 1000).toFixed(1)} 秒`}</p>
+          <p>智能剪辑{work.final.duration_ms != null && ` · ${(work.final.duration_ms / 1000).toFixed(1)} 秒`}</p>
           <div className={styles.workActions}>
             <a className={styles.textButton} href={work.final.url} download>下载成片</a>
             <Link className={styles.textButton} scroll={false} href={`/video-studio/editing?project=${encodeURIComponent(work.project_id)}#editing-task-${encodeURIComponent(work.task_id)}`}>查看本条剪辑</Link>

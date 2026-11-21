@@ -14,6 +14,9 @@ sys.argv = [GEN, ROOT]
 exec(compile(src[:src.index('\nORDER = ')], GEN, 'exec'), ns)
 
 ns['MODULE_MODE'][0] = True
+# 手调层（选择器里已经带 .theme-ember 的规则）本身就是暗色值，不能再换算一遍，否则生成块会排在后面把手调覆盖。
+_scope = ns['scope_selector']
+ns['scope_selector'] = lambda sel: None if ns['SCOPE'] in sel else _scope(sel)
 emitted, walk, strip = ns['emitted'], ns['walk'], ns['strip_comments']
 START, END, OLD = ns['START'], ns['END'], ns['OLD_MARKERS']
 mods = sorted(glob.glob(os.path.join(ROOT, 'components/video-studio/*.module.css')))

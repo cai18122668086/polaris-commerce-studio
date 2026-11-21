@@ -3,7 +3,8 @@
 import { editingTaskProgress } from "@/features/video-studio/editing-progress";
 import { EditingProgressSteps } from "./editing-progress";
 import { useInternalTools } from "@/features/video-studio/internal-tools";
-import { UserRound, PackageOpen } from "lucide-react";
+import { Check, UserRound, PackageOpen } from "lucide-react";
+import { editingFlowSteps } from "@/features/video-studio/editing-flow-steps";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
@@ -403,10 +404,23 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     begin();
   }, [saved, busy, begin]);
   const historyTasks = tasks.filter(task => (task.options.mode !== "transcript" || task.id === focusedTaskId) && (!historyQuery.trim() || `${task.template_name || ""} ${stageLabel[task.stage] || task.status} ${new Date(task.created_at).toLocaleDateString("zh-CN")}`.includes(historyQuery.trim())));
+  const renderTasks = tasks.filter(task => task.options.mode !== "transcript");
+  const flowSteps = editingFlowSteps({
+    hasSource: Boolean(selectedGeneration || restoredSource || (selected === "upload" ? file : selected)),
+    hasTemplate: Boolean(template),
+    working: recognizing || renderTasks.some(task => task.status === "queued" || task.status === "running") || primaryState?.phase === "rendering" || primaryState?.phase === "waiting",
+    previewReady: renderTasks.some(task => task.status === "awaiting_review"),
+    finalReady: renderTasks.some(task => task.status === "completed" && task.artifacts.some(artifact => artifact.role === "final")),
+  });
   const actionLabel = busy ? "正在提交…" : recognizing ? `${recognitionLabel}…` : primaryState?.phase === "waiting" ? primaryState.label : primaryState?.phase === "recover" ? "继续处理已保存结果" : primaryState?.phase === "rendering" ? "查看剪辑进度" : transcriptReady && primaryState?.phase === "preview" ? "查看剪辑结果" : "开始智能剪辑";
   return <section className={`${styles.panel} ${flow.workbench} ${compact ? flow.compact : ""}`} aria-label="口播剪辑">
+    <ol className={flow.flowSteps} aria-label="剪辑步骤">{flowSteps.map(step => <li key={step.key} data-state={step.state}>
+      <button type="button" aria-current={step.state === "current" ? "step" : undefined} onClick={() => document.getElementById(step.anchor)?.scrollIntoView({ block: "start" })}>
+        <span className={flow.flowIndex}>{step.state === "done" ? <Check size={12} /> : step.index}</span><span><b>{step.label}</b><small>{step.hint}</small></span>
+      </button>
+    </li>)}</ol>
     <EditingTemplateGallery key={`gallery:${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={saved ? projectId : ""} selected={template?.id || ""} onRestore={chooseTemplate} sampleRevision={tasks.flatMap(task => task.artifacts.filter(a => a.role === "final").map(a => a.sha256)).join(",")} onSelect={chooseTemplate} />
-    <section id="editing-source" className={`${flow.step} ${flow.source}`} aria-label="准备口播"><div className={flow.sourceHeading}><h2>剪辑</h2><label className={flow.uploadButton}>手动上传视频<input ref={sourceUpload} disabled={busy || recognizing} aria-label="上传口播视频" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => { cancelAutomatic(); setSelected("upload"); setFile(event.target.files?.[0]); setPlanningTask(""); setReferenceVersion(""); setReferenceText(""); setSubtitles("none"); }} /></label></div>
+    <section id="editing-source" className={`${flow.step} ${flow.source}`} aria-label="准备口播"><div className={flow.sourceHeading}><h2>选视频</h2><label className={flow.uploadButton}>手动上传视频<input ref={sourceUpload} disabled={busy || recognizing} aria-label="上传口播视频" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => { cancelAutomatic(); setSelected("upload"); setFile(event.target.files?.[0]); setPlanningTask(""); setReferenceVersion(""); setReferenceText(""); setSubtitles("none"); if (!saved && onSaveProject) void onSaveProject().catch(caught => setError(editingMessage(caught, "项目暂未保存，开始剪辑时会再试一次。"))); }} /></label></div>
     {!sourcePreview && !selectedGeneration && !restoredSource && <button type="button" className={flow.dropzone} onClick={() => setSourceDialog(true)}><UserRound size={36} strokeWidth={1.5} /><b>选择口播视频</b><small>我的视频</small></button>}
 
     {selected && <button type="button" className={flow.changeSource} onClick={() => setSourceDialog(true)}>更换口播视频</button>}
@@ -455,7 +469,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       revisionSelection={revisionSelection} onClearRevisionSelection={() => { setRevisionSelection(undefined); setNativeOpened(false); document.getElementById("editing-results")?.scrollIntoView({ block: "start" }); }}
       onCreated={async () => { applyTasks(await reload()); }} /></details>}
     <details hidden className={flow.library} onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>帮助与技术详情</summary><p>排查素材、字体或服务问题时使用。</p><button type="button" onClick={() => setNativeOpened(true)}>查看历史编排</button>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
-    <section id="editing-results" className={`${flow.step} ${flow.history}`} aria-label="预览与下载"><h2>历史记录 <small>{historyTasks.length} 个版本</small></h2><input type="search" className={flow.templateSearch} aria-label="搜索历史视频" placeholder="搜索历史视频" value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} />
+    <section id="editing-results" className={`${flow.step} ${flow.history}`} aria-label="预览与下载"><h2>预览与下载 <small>{historyTasks.length} 个版本</small></h2><input type="search" className={flow.templateSearch} aria-label="搜索历史视频" placeholder="搜索历史视频" value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} />
     {!historyTasks.length && <div className={flow.emptyHistory}><PackageOpen size={42} strokeWidth={1.2} /><span>视频会出现在这里</span><small>选择口播和模板，开始智能剪辑</small></div>}
     <div className={styles.tasks}>{historyTasks.filter((task, index) => showTaskHistory || index < 3 || task.id === focusedTaskId || ["queued", "running", "awaiting_review"].includes(task.status)).map(task => {
       const final = task.artifacts.find(a => a.role === "final");

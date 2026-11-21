@@ -6,7 +6,10 @@ import { editingMessage, editingTemplateName, editingFieldName, editingEffectNam
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
+import { changeSummary, segmentRows } from "@/features/video-studio/editing-workbench";
+import { useInternalTools } from "@/features/video-studio/internal-tools";
 import { EditingImageEdits } from "./editing-image-edits";
+import wb from "./editing-workbench.module.css";
 import styles from "./editing-workspace.module.css";
 
 type Plan = components["schemas"]["EditingNativePlanResponse"];
@@ -17,7 +20,7 @@ type ImageEdit = components["schemas"]["NativeImageEdit"];
 type EffectEdit = components["schemas"]["NativeEffectEdit"];
 type EffectTarget = components["schemas"]["EditingEffectTarget"];
 type MusicOptions = components["schemas"]["EditingMusicOptions"];
-type Controls = { music: "keep" | "lower" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
+type Controls = { music: "keep" | "lower" | "raise" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
 export type EditingRevisionSelection = {
   planId: string;
   taskId: string;
@@ -36,6 +39,8 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const internalTools = useInternalTools();
+  const [focus, setFocus] = useState<Record<string, string>>({});
   const revealedRevision = useRef("");
   useEffect(() => {
     if (!revisionSelection) { revealedRevision.current = ""; return; }
@@ -185,6 +190,19 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       const audition = selected.musicTrackId
         ? trackOptions?.choices.find(track => track.asset_id === selected.musicTrackId)
         : trackOptions?.original;
+      const showWorkbench = available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available || !!plan.overlay_template);
+      const rows = segmentRows(plan.beats, selected, failedBeats);
+      const current = focus[key] ?? (earlier?.kind === "layout_failure" ? rows.find(row => row.layoutFailed)?.id : undefined);
+      const row = rows.find(item => item.id === current);
+      const beat = plan.beats.find(item => item.id === current);
+      const select = (id: string) => {
+        setFocus(previous => ({ ...previous, [key]: id }));
+        if (plan.overlay_template) void loadEffects(plan);
+        void loadHighlights(plan);
+      };
+      const effectTarget = beat && effectTargets[plan.id]?.find(target => target.beat_id === beat.id);
+      const beatHighlights = beat ? (highlightTargets[plan.id] ?? []).filter(target => target.beat_id === beat.id) : [];
+      const summary = changeSummary(plan.beats, selected);
       return <article key={plan.id} id={`editing-native-plan-${plan.id}`}>
       <b>{editingTemplateName(plan.overlay_template?.id, plan.overlay_template?.name)}</b>
       {earlier && <p className={styles.note}>
@@ -192,25 +210,93 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         {" "}<button type="button" disabled={!!busy} onClick={onClearRevisionSelection}>返回预览</button>
       </p>}
       {plan.origin === "operator_candidate" && <p className={styles.note}>人工调整版</p>}
-      <details><summary>技术详情</summary><p>{plan.audience_question}</p><p>编排编号：{plan.id}</p><ul>{plan.beats.map(beat => <li key={beat.id}>
+      {plan.missing_materials.length > 0 && <p className={styles.note}>{plan.missing_materials.join("；")}</p>}
+      {internalTools && <details><summary>技术详情</summary><p>{plan.audience_question}</p><p>编排编号：{plan.id}</p><ul>{plan.beats.map(beat => <li key={beat.id}>
         {beat.group_id} · {beat.text}<br />{beat.reason}
         {beat.question_gloss && <p className={styles.note}>问号英文释义 · {beat.question_gloss} · 待核对</p>}
         {beat.dependency_blocker && !selected.segments.includes(beat.id) && !replacements.has(beat.id) &&
           <p className={styles.error}>{beat.dependency_blocker}</p>}
       </li>)}</ul>
       {(plan.warnings.length > 0 || plan.missing_materials.length > 0) && <p>{[...plan.warnings, ...plan.missing_materials].join("；")}</p>}
-      </details>
-      {available && (plan.music_edit_available || editable.length > 0 || plan.highlight_edit_available || plan.image_edit_available) && <details key={key} open={earlier ? true : undefined}>
-        <summary>调整本次出片</summary>
-        <p className={styles.note}>选择要调整的配乐、画面或文字，生成后预览新版。</p>
-        {plan.music_edit_available && <label>本次背景音乐
-          <select value={selected.music} disabled={!!busy} onChange={event => change({
-            music: event.target.value as Controls["music"],
-            ...(event.target.value === "off" ? { musicTrackId: "" } : {}),
-          })}>
-            <option value="keep">沿用编排</option><option value="lower">降低 6 dB</option><option value="off">关闭背景音乐</option>
-          </select>
-        </label>}
+      </details>}
+      {showWorkbench && <div className={wb.workbench} key={key}>
+          <header className={wb.head}><b>分段工作台</b><span>{summary || "选择一段口播调整，全部改好后统一生成新版。"}</span></header>
+          {earlier?.preview && <video className={wb.preview} controls playsInline preload="metadata" aria-label="当前版本预览"
+            src={`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-tasks/${encodeURIComponent(earlier.preview.task_id)}/artifacts/${encodeURIComponent(earlier.preview.preview_artifact_id)}`} />}
+          <div className={wb.segments}>
+            {repeated.length > 0 && <button type="button" className={wb.trim} disabled={!!busy}
+              onClick={() => change({ segments: [...selected.segments, ...repeated] })}>精简 {repeated.length} 段重复动效</button>}
+            <ol aria-label="口播分段">{rows.map(item => <li key={item.id}>
+              <button type="button" aria-pressed={current === item.id} data-attention={item.blocker || item.layoutFailed ? "true" : undefined} onClick={() => select(item.id)}>
+                <span className={wb.index}>{item.index}</span>
+                <span className={wb.text}>{item.text}</span>
+                <span className={wb.meta}>{item.blocker ? "需处理" : item.layoutFailed ? "排版待调整" : item.changes.join(" · ") || (item.kept ? "原画面" : "")}</span>
+              </button>
+            </li>)}</ol>
+          </div>
+          <div className={wb.inspector} aria-live="polite">{beat && row ? <>
+            <h4>第 {row.index} 段</h4>
+            <p className={wb.quote}>{beat.text}</p>
+            {row.blocker && <p className={styles.error}>{row.blocker}</p>}
+            {row.layoutFailed && <p className={styles.error}>这一段的文字排版需要调整，可换动效或保留原画面。</p>}
+            {beat.source_only_available && <label className={wb.check}>
+              <input type="checkbox" disabled={!!busy} checked={selected.segments.includes(beat.id)} onChange={event => change({
+                segments: event.target.checked ? [...selected.segments, beat.id] : selected.segments.filter(id => id !== beat.id),
+                highlights: event.target.checked ? selected.highlights.filter(edit => edit.beat_id !== beat.id) : selected.highlights,
+                images: event.target.checked ? selected.images.filter(edit => edit.beat_id !== beat.id) : selected.images,
+                effects: event.target.checked ? selected.effects.filter(edit => edit.beat_id !== beat.id) : selected.effects,
+              })} />
+              <span>本段保留原画面<small>关闭本段动效和音效，保留主字幕</small></span>
+            </label>}
+            {plan.overlay_template && <>
+              {loadingEffects.includes(plan.id) && <p role="status">正在核对本段可选动效…</p>}
+              {effectTarget ? <label className={wb.field}>换动效
+                <select aria-label={`更换动效 · ${beat.text}`} disabled={!!busy || selected.segments.includes(beat.id)}
+                  value={replacements.get(beat.id) ?? ""} onChange={event => {
+                    const next = selected.effects.filter(edit => edit.beat_id !== beat.id);
+                    if (event.target.value) next.push({ beat_id: beat.id, group_id: event.target.value });
+                    change({ effects: next });
+                  }}>
+                  <option value="">保留当前效果</option>
+                  {effectTarget.choices.map((choice, index) => <option key={choice.group_id} value={choice.group_id}>{editingEffectName(choice.name, index)}</option>)}
+                </select>
+              </label> : effectTargets[plan.id] && <p className={styles.note}>这一段暂无同词点、同字数的替换动效。</p>}
+            </>}
+            {loadingHighlights.includes(plan.id) && <p role="status">正在读取实录短语…</p>}
+            {beatHighlights.map((target, index) => {
+              const belongs = (edit: Highlight) => edit.beat_id === target.beat_id && edit.path === target.path;
+              const active = selected.highlights.find(belongs);
+              const chosen = target.options.findIndex(option => option.first_token_id === active?.first_token_id && option.last_token_id === active.last_token_id);
+              const fieldLabel = editingFieldName(target.path, `强调文字 ${index + 1}`);
+              return <label key={target.beat_id + target.path} className={wb.field}>{fieldLabel}
+                <select aria-label={`第 ${row.index} 段 · ${fieldLabel} · ${target.current_text}`}
+                  disabled={!!busy || selected.segments.includes(target.beat_id)} value={chosen < 0 ? "" : String(chosen)}
+                  onChange={event => {
+                    const option = event.target.value === "" ? undefined : target.options[Number(event.target.value)];
+                    const next = selected.highlights.filter(edit => !belongs(edit));
+                    if (option) next.push({
+                      beat_id: target.beat_id, path: target.path,
+                      first_token_id: option.first_token_id, last_token_id: option.last_token_id,
+                    });
+                    change({ highlights: next });
+                  }}>
+                  <option value="">沿用「{target.current_text}」</option>
+                  {target.options.map((option, optionIndex) => <option key={option.first_token_id + option.last_token_id} value={optionIndex}>{option.text}</option>)}
+                </select>
+              </label>;
+            })}
+            {plan.image_edit_available && <p className={styles.note}>本段配图在下方「配图」中替换。</p>}
+          </> : <p className={styles.note}>选择一段口播，查看这段可以调整的动效、强调词和画面。</p>}</div>
+          <div className={wb.global}>
+            <b>全片设置</b>
+            {plan.music_edit_available && <label className={wb.field}>背景音乐
+              <select value={selected.music} disabled={!!busy} onChange={event => change({
+                music: event.target.value as Controls["music"],
+                ...(event.target.value === "off" ? { musicTrackId: "" } : {}),
+              })}>
+                <option value="lower">配乐 · 轻</option><option value="keep">配乐 · 标准（沿用编排）</option><option value="raise">配乐 · 明显</option><option value="off">关闭背景音乐</option>
+              </select>
+            </label>}
         {plan.music_edit_available && selected.music !== "off" && <details onToggle={event => {
           if (event.currentTarget.open) void loadMusic(plan);
         }}>
@@ -230,80 +316,13 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
             <p className={styles.note}>更换后从新曲目的开头播放，沿用原编排的音乐入点、出点和淡入淡出。</p>
           </>}
         </details>}
-        {editable.length > 0 && <details open={earlier?.kind === "layout_failure" ? true : undefined}><summary>保留原画面或减少动效</summary><p className={styles.note}>勾选后该片段保留原画面与主字幕，并关闭对应动效和音效。</p>
-        {repeated.length > 0 && <button type="button" disabled={!!busy}
-          onClick={() => change({ segments: [...selected.segments, ...repeated] })}>精简 {repeated.length} 段重复动效</button>}
-        {repeated.length > 0 && <p className={styles.note}>预选部分重复入场为原景，保留每种动效的首次出现和已手动调整的段落。提交前可逐段取消勾选。</p>}
-        {editable.map(beat => <label key={beat.id}>
-          <input type="checkbox" disabled={!!busy} checked={selected.segments.includes(beat.id)} onChange={event => change({
-            segments: event.target.checked ? [...selected.segments, beat.id] : selected.segments.filter(id => id !== beat.id),
-            highlights: event.target.checked ? selected.highlights.filter(edit => edit.beat_id !== beat.id) : selected.highlights,
-            images: event.target.checked ? selected.images.filter(edit => edit.beat_id !== beat.id) : selected.images,
-            effects: event.target.checked ? selected.effects.filter(edit => edit.beat_id !== beat.id) : selected.effects,
-          })} />
-          保留原景 · {beat.text}{failedBeats.has(beat.id) && " · 排版待调整"}
-        </label>)}
-        </details>}
-        {plan.overlay_template && <details open={earlier?.kind === "layout_failure" ? true : undefined} onToggle={event => {
-          if (event.currentTarget.open) void loadEffects(plan);
-        }}>
-          <summary>单段更换动效</summary>
-          <p className={styles.note}>沿用这一段的实录词点，选择同一模板内可用的文字效果。</p>
-          {loadingEffects.includes(plan.id) && <p role="status">正在核对本段可选动效…</p>}
-          {effectTargets[plan.id]?.length === 0 && <p>本版暂无满足同一段词点和字数的替换动效。</p>}
-          {effectTargets[plan.id]?.map(target => {
-            const beat = plan.beats.find(item => item.id === target.beat_id);
-            if (!beat) return null;
-            return <label key={beat.id}>{beat.text}{failedBeats.has(beat.id) && " · 排版待调整"}
-              <select aria-label={`更换动效 · ${beat.text}`} disabled={!!busy || selected.segments.includes(beat.id)}
-                value={replacements.get(beat.id) ?? ""} onChange={event => {
-                  const next = selected.effects.filter(edit => edit.beat_id !== beat.id);
-                  if (event.target.value) next.push({ beat_id: beat.id, group_id: event.target.value });
-                  change({ effects: next });
-                }}>
-                <option value="">保留当前效果</option>
-                {target.choices.map((choice, index) => <option key={choice.group_id} value={choice.group_id}>{editingEffectName(choice.name, index)}</option>)}
-              </select>
-            </label>;
-          })}
-        </details>}
-        {plan.highlight_edit_available && <details onToggle={event => {
-          if (event.currentTarget.open) void loadHighlights(plan);
-        }}>
-          <summary>改动效强调词</summary>
-          <p className={styles.note}>从这一段的实录短语中选择，动效会在新短语的词点入场。保存随本次预览生效。</p>
-          {loadingHighlights.includes(plan.id) && <p role="status">正在读取实录短语…</p>}
-          {highlightTargets[plan.id]?.length === 0 && <p>本版暂时没有符合原动效字数和时长的替代短语。</p>}
-          {highlightTargets[plan.id]?.map((target, index) => {
-            const belongs = (edit: Highlight) => edit.beat_id === target.beat_id && edit.path === target.path;
-            const active = selected.highlights.find(belongs);
-            const chosen = target.options.findIndex(option => option.first_token_id === active?.first_token_id && option.last_token_id === active.last_token_id);
-            const segment = plan.beats.findIndex(beat => beat.id === target.beat_id) + 1;
-            const fieldLabel = `第 ${segment} 段 · ${editingFieldName(target.path, `强调文字 ${index + 1}`)}`;
-            return <label key={target.beat_id + target.path}>{fieldLabel} · {target.current_text}
-              <select aria-label={fieldLabel + " · " + target.current_text}
-                disabled={!!busy || selected.segments.includes(target.beat_id)} value={chosen < 0 ? "" : String(chosen)}
-                onChange={event => {
-                  const option = event.target.value === "" ? undefined : target.options[Number(event.target.value)];
-                  const next = selected.highlights.filter(edit => !belongs(edit));
-                  if (option) next.push({
-                    beat_id: target.beat_id, path: target.path,
-                    first_token_id: option.first_token_id, last_token_id: option.last_token_id,
-                  });
-                  change({ highlights: next });
-                }}>
-                <option value="">沿用「{target.current_text}」</option>
-                {target.options.map((option, index) => <option key={option.first_token_id + option.last_token_id} value={index}>{option.text}</option>)}
-              </select>
-            </label>;
-          })}
-        </details>}
-        {plan.image_edit_available && <EditingImageEdits workspaceId={workspaceId} projectId={projectId} planId={plan.id}
-          selected={selected.images} sourceOnly={selected.segments} disabled={!!busy} onChange={images => change({ images })} />}
-      </details>}
+            {plan.image_edit_available && <details><summary>配图</summary><EditingImageEdits workspaceId={workspaceId} projectId={projectId} planId={plan.id}
+              selected={selected.images} sourceOnly={selected.segments} disabled={!!busy} onChange={images => change({ images })} /></details>}
+          </div>
+        </div>}
       {available ? <>
         <p className={styles.note}>本次计划使用 {activeGroups.size} 种动效，共出现 {activeEffects.length} 次。{activeGroups.size < minDistinctMotionGroups && "请保留至少五种不同动效。"}</p>
-        {missingDependencies && <p className={styles.note}>请联系支持检查模板条件，或在「调整本次出片」中调整对应段落。</p>}
+        {missingDependencies && <p className={styles.note}>有段落标为「需处理」，请在分段工作台里换动效或保留原画面。</p>}
         <button type="button" onClick={() => void render(plan, selected, earlier)} disabled={!!busy || missingDependencies || activeGroups.size < minDistinctMotionGroups}>{busy === plan.id ? "正在提交…" : earlier ? "生成新版预览" : "生成视频预览"}</button>
       </> : <p className={styles.note}>{plan.render_available
         ? "历史验证候选 · 待适配连续人物底片与组合动效"

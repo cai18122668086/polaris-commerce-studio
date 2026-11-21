@@ -52,7 +52,7 @@ from .video_editing_question_card import (
     question_card_b_shot,
     question_card_entry_frame,
 )
-from .video_editing_render_edits import MUSIC_REDUCTION_DB
+from .video_editing_render_edits import music_gain_offset
 from .video_editing_story_panels import TRIPTYCH, TRIPTYCH_ENTRY
 from .video_editing_subtitle_sound_clock import (
     SUBTITLE_ENTRY_SYNC,
@@ -624,8 +624,9 @@ def compile_sound(
             "end_seconds": end,
             "envelope": envelope,
         }
-        if music_choice == "lower":
-            event["gain_db"] = track.gain_db - MUSIC_REDUCTION_DB
+        if music_choice in {"lower", "raise"}:
+            # Never above unity: the bed must not clip or bury the voice.
+            event["gain_db"] = min(0, track.gain_db + music_gain_offset(music_choice))
         music.append(event)
         music_evidence.append(
             {
@@ -639,7 +640,7 @@ def compile_sound(
                 "loop_allowed": track.loop,
                 **(
                     {"original_gain_db": track.gain_db}
-                    if music_choice == "lower"
+                    if music_choice in {"lower", "raise"}
                     else {}
                 ),
             }

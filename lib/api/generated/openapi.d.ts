@@ -6744,7 +6744,7 @@ export interface components {
              * Music
              * @description Background music preference frozen at preparation and used by preview rendering.
              */
-            music?: ("template" | "lower" | "off") | null;
+            music?: ("template" | "lower" | "raise" | "off") | null;
             /** Prepared Task Id */
             prepared_task_id?: string | null;
             /**
@@ -8081,7 +8081,7 @@ export interface components {
             /** Image Edits */
             image_edits?: components["schemas"]["NativeImageEdit"][];
             /** Music */
-            music?: ("lower" | "off") | null;
+            music?: ("lower" | "raise" | "off") | null;
             /** Music Track Id */
             music_track_id?: string | null;
             /** Source Only Beat Ids */

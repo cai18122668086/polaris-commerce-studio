@@ -70,7 +70,7 @@ def remap_edits(
         protected.add(current_id)
         return current_id
 
-    if edits.music == "lower" and not edits.music_track_id:
+    if edits.music in {"lower", "raise"} and not edits.music_track_id:
         old_music = (previous.recipes.get("sound") or {}).get("music", [])
         new_music = (candidate.recipes.get("sound") or {}).get("music", [])
         if old_music != new_music:

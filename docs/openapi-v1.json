@@ -6675,6 +6675,7 @@
                 "enum": [
                   "template",
                   "lower",
+                  "raise",
                   "off"
                 ],
                 "type": "string"
@@ -10410,6 +10411,7 @@
               {
                 "enum": [
                   "lower",
+                  "raise",
                   "off"
                 ],
                 "type": "string"

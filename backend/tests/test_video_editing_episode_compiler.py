@@ -535,7 +535,7 @@ def test_episode_uses_actual_word_bounds_and_original_selection_protocol(tmp_pat
     assert sha256(package / "effect.json") == source
 
 
-@pytest.mark.parametrize("music_edit", [None, "lower", "off"])
+@pytest.mark.parametrize("music_edit", [None, "lower", "raise", "off"])
 def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(
     tmp_path, music_edit
 ):
@@ -641,7 +641,9 @@ def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(
     }
     assert episode["music"][0]["start_seconds"] == 0.1
     assert episode["music"][0]["envelope"] == [{"seconds": 0.5, "gain_db": -4}]
-    assert episode["music"][0]["gain_db"] == (-36 if music_edit else -30)
+    assert episode["music"][0]["gain_db"] == {None: -30, "lower": -36, "raise": -27}[
+        music_edit
+    ]
     assert evidence["fx"][0]["asset_sha256"] == click["sha256"]
 
 

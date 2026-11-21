@@ -1,5 +1,7 @@
 "use client";
 
+import { planningJobProgress } from "@/features/video-studio/editing-progress";
+import { EditingProgressSteps } from "./editing-progress";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { minDistinctMotionGroups, preferredDistinctMotionGroups } from "@/features/video-studio/editing-density";
 import { editingMessage, editingTemplateName, editingPlanningAction } from "@/features/video-studio/editing-presentation";
@@ -41,7 +43,6 @@ const autoPreviewErrors: Record<string, string> = {
   EDITING_ORIGINAL_BROWSER_ASSETS_REQUIRED: "候选使用的原库底板或纹理无法核验，代理未提交。请打开候选查看对应段落。",
   EDITING_ORIGINAL_BROWSER_FONTS_REQUIRED: "候选使用的原库启动字体无法核验，代理未提交。请打开候选查看对应段落。",
 };
-const labels: Record<string, string> = { queued: "排队中", reading_inputs: "检查口播与素材", building_request: "检查模板是否适用", planning: "正在编排视频", storing: "保存编排", prepared: "素材检查完成", completed: "编排已完成", failed: "编排未完成", cancelled: "已取消" };
 const errors: Record<string, string> = {
   EDITING_TEMPLATE_IMAGE_MATERIALS_REQUIRED: "此模板的配图槽支持图片，请取消视频素材或改用图片。",
   EDITING_TASK_STORAGE_UNAVAILABLE: "规划服务暂时无法写入工作目录。请在存储恢复后重试此任务。",
@@ -337,7 +338,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       const insufficient = available != null && available < minDistinctMotionGroups;
       const belowMinimumForPreview = belowMinimum(job);
       return <article key={job.id} data-planning-job={job.id}>
-      <div className={styles.taskHeading}><b>{labels[job.status === "running" ? job.stage : job.status] || "正在处理规划"}</b><time>{new Date(job.created_at).toLocaleString("zh-CN")}</time></div>
+      <div className={styles.taskHeading}><b>{planningJobProgress(job).label}</b><time>{new Date(job.created_at).toLocaleString("zh-CN")}</time></div>
+      {job.status !== "completed" && <EditingProgressSteps progress={planningJobProgress(job)} />}
       <details><summary>模型与输入版本</summary>
       <p className={styles.note}>模型：{job.model} · 网关：{job.gateway_host || "尚未固定"} · 转录版本 {job.base_transcript_sha256.slice(0, 12)}{job.text_status && ` · ${job.text_status === "user_corrected" ? "用户已校对文字，词点待验" : "转录文字待核对"}`}</p>
       </details>

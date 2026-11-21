@@ -2,7 +2,7 @@
 
 import { Music2, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { editingMusicLabels, type EditingMusicPreference } from "@/features/video-studio/editing-options";
+import { editingMusicHints, editingMusicLabels, type EditingMusicPreference } from "@/features/video-studio/editing-options";
 import { Dialog } from "./studio-primitives";
 import flow from "./editing-flow.module.css";
 
@@ -21,7 +21,7 @@ export function EditingMusicPicker({ value, onChange, disabled, voiceOnly = fals
       <div className={flow.musicChoices} role="radiogroup" aria-label="配乐方式">
         {(Object.keys(editingMusicLabels) as EditingMusicPreference[]).map(choice => <label key={choice}>
           <input type="radio" name="editing-music" checked={draft === choice} onChange={() => setDraft(choice)} />
-          <span><b>{editingMusicLabels[choice]}</b><small>{choice === "template" ? "由所选模板搭配背景音乐" : choice === "lower" ? "在模板音量基础上降低，让人声更突出" : "保留口播人声和画面音效"}</small></span>
+          <span><b>{editingMusicLabels[choice]}</b><small>{editingMusicHints[choice]}</small></span>
         </label>)}
       </div>
       <footer className={flow.modalFooter}><button type="button" onClick={() => { onChange(draft); setOpened(false); }}>确定</button></footer>

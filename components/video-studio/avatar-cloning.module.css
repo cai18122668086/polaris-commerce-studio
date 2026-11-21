@@ -34,3 +34,30 @@
 .help { font-size:11px; line-height:1.8; }
 .drop > span { color:#887493; }
 @media(max-width:420px) { .flow { gap:6px; padding:12px 7px; } .flow li { font-size:10px; } .tabs button > small { font-size:10px; line-height:1.7; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .intro{color:#8e887f}
+:global(.theme-ember) .tabs button{border:1px solid #262421;background:#0f0e0d;color:#9b958e}
+:global(.theme-ember) .tabs button[aria-selected=true]{border-color:#6c6760;background:#181715;box-shadow:0 0 0 1px #000000;color:#ada9a3}
+:global(.theme-ember) .tabs button > small{color:#78726b}
+:global(.theme-ember) .name{color:#afaaa5}
+:global(.theme-ember) .name input{border:1px solid #262421;background:#0f0e0d;color:#e9e8e6}
+:global(.theme-ember) .name input:focus{outline:2px solid #35322f;border-color:#6f6a63}
+:global(.theme-ember) .drop{border:1.5px dashed #383632;background:#141413}
+:global(.theme-ember) .drop:focus-within{outline:2px solid #625e57}
+:global(.theme-ember) .drop > b{color:#ada8a3}
+:global(.theme-ember) .drop > span{color:#6f6962}
+:global(.theme-ember) .drop > img,:global(.theme-ember) .drop > video{background:#22201e}
+:global(.theme-ember) .drop .uploadIcon{background:#211f1d;color:#827c74}
+:global(.theme-ember) .help{color:#746e67}
+:global(.theme-ember) .flow{background:#151413;color:#918b83}
+:global(.theme-ember) .consent{color:#89837a}
+:global(.theme-ember) .consent input{accent-color:#867f77}
+:global(.theme-ember) .error{color:#fa682a}
+:global(.theme-ember) .uploadProgress > span{color:#99938c}
+:global(.theme-ember) .uploadProgress progress{accent-color:#7b756d}
+:global(.theme-ember) .flow{border:1px solid #211f1d;background:#151413}
+:global(.theme-ember) .flow li{color:#918b83}
+:global(.theme-ember) .flow li > span{background:#22201e;color:#969089}
+:global(.theme-ember) .drop > span{color:#8c867e}
+/* ember-dark:end */

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { CircleHelp, LoaderCircle, WifiOff } from "lucide-react";
 import { useVideoStudioGrantState } from "@/features/video-studio/access";
 import { InternalToolsContext } from "@/features/video-studio/internal-tools";
@@ -10,6 +11,13 @@ import styles from "./video-studio.module.css";
 import workflow from "./studio-workflow.module.css";
 
 export function VideoStudioGate({ screen }: { screen: StudioScreen }) {
+  // 熔光暗色：全站改版合入后 <html> 本就带 theme-ember；在那之前视频空间自己挂上，离开时只撤掉自己加的。
+  useEffect(() => {
+    const root = document.documentElement;
+    if (root.classList.contains("theme-ember")) return;
+    root.classList.add("theme-ember");
+    return () => root.classList.remove("theme-ember");
+  }, []);
   const grant = useVideoStudioGrantState();
   const workspaceQuery = useWorkspace();
   const workspace = workspaceQuery.workspace;

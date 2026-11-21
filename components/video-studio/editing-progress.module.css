@@ -8,3 +8,15 @@
 .steps[data-outcome="failed"] li[data-state="current"]::before{background:#c2410c}
 .steps[data-outcome="cancelled"] li[data-state="current"]::before{background:#b8b8b8}
 .status{margin:2px 0 0;font-size:12px;color:#6b6e74}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .steps{color:#79736b}
+:global(.theme-ember) .steps li::before{background:#232120}
+:global(.theme-ember) .steps li[data-state="done"]::before{background:#e9e8e6}
+:global(.theme-ember) .steps li[data-state="current"]::before{background:var(--edit-accent,#fa682a)}
+:global(.theme-ember) .steps li[data-state="current"]{color:#e9e8e6}
+:global(.theme-ember) .steps li[data-state="done"]{color:#c6c3bf}
+:global(.theme-ember) .steps[data-outcome="failed"] li[data-state="current"]::before{background:#fa682a}
+:global(.theme-ember) .steps[data-outcome="cancelled"] li[data-state="current"]::before{background:#4c4946}
+:global(.theme-ember) .status{color:#9c968f}
+/* ember-dark:end */

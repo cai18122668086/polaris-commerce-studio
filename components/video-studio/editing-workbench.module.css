@@ -24,3 +24,21 @@
 .global{grid-area:global;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;padding-top:12px;border-top:1px solid #f0f0f0}
 .global>details{flex-basis:100%}
 @media (max-width:900px){.workbench,.workbench:not(:has(.preview)){grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "preview" "segments" "inspector" "global"}.inspector{padding-left:0;border-left:0}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .workbench{border:1px solid #232120;background:#0f0e0d;color:#e9e8e6}
+:global(.theme-ember) .head span{color:#9c968f}
+:global(.theme-ember) .preview{background:#e9e8e6}
+:global(.theme-ember) .segments ol{border-top:1px solid #1c1b19}
+:global(.theme-ember) .segments li button{border-bottom:1px solid #1c1b19}
+:global(.theme-ember) .segments li button:hover{background:#141312}
+:global(.theme-ember) .segments li button[aria-pressed="true"]{background:#171615;box-shadow:inset 2px 0 0 var(--edit-accent,#000000)}
+:global(.theme-ember) .segments li button[data-attention="true"] .meta{color:#fa682a}
+:global(.theme-ember) .index{color:#79736b}
+:global(.theme-ember) .meta{color:#9c968f}
+:global(.theme-ember) .inspector{border-left:1px solid #1c1b19}
+:global(.theme-ember) .quote{color:#c6c3bf}
+:global(.theme-ember) .check small{color:#79736b}
+:global(.theme-ember) .field{color:#c6c3bf}
+:global(.theme-ember) .global{border-top:1px solid #1c1b19}
+/* ember-dark:end */

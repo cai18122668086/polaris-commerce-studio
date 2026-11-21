@@ -103,3 +103,9 @@ test("query actions disable during the request and real failures retain their wa
   assert.match(failed, /lucide-circle-alert/);
   assert.doesNotMatch(failed, /继续查询结果/);
 });
+
+test("a job without a stage shows as not started instead of crashing the works page", () => {
+  const job = generationProgress({ status: "running", kind: "lipsync" });
+  assert.equal(job.step, 0);
+  assert.equal(generationProgress({ status: "queued", kind: "h3_template", stage: null }).step, 0);
+});

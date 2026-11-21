@@ -30,3 +30,9 @@
   .steps { position: static; grid-auto-flow: column; grid-auto-columns: minmax(120px, 1fr); overflow-x: auto; }
   .steps small { display: none; }
 }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .steps button[aria-current="step"]{background:#0f0e0d}
+:global(.theme-ember) .steps button[aria-current="step"] .stepIndex{color:#0f0e0d}
+:global(.theme-ember) .stage{background:#0f0e0d}
+/* ember-dark:end */

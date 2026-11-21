@@ -2,7 +2,7 @@ import { activeWorkView, type ActiveWork } from "./active-works";
 
 type JobLike = { id: string; kind: string; status: string; created_at: string; snapshot?: { draft?: { name?: string } } | null };
 
-export type TaskItem = { id: string; title: string; label: string; href: string; needsUser: boolean; running: boolean; createdAt: string };
+export type TaskItem = { id: string; title: string; label: string; href: string; needsUser: boolean; running: boolean; createdAt: string | null };
 
 const TERMINAL = new Set(["completed", "failed", "cancelled", "rejected"]);
 
@@ -23,6 +23,12 @@ function jobItem(job: JobLike): TaskItem | undefined {
   };
 }
 
+/** Missing or unparsable times sort last instead of throwing during render. */
+function timeOf(value: string | null | undefined): number {
+  const time = typeof value === "string" ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(time) ? time : 0;
+}
+
 /** One list for the header task center: unfinished edits and generations, items needing the user first. */
 export function taskCenterItems(active: ActiveWork[], jobs: JobLike[]): TaskItem[] {
   const edits = active.map(work => {
@@ -30,7 +36,7 @@ export function taskCenterItems(active: ActiveWork[], jobs: JobLike[]): TaskItem
     return { id: `${work.kind}:${work.task_id}`, title: work.project_title, label: view.label, href: view.href, needsUser: view.needsUser, running: view.polling, createdAt: work.created_at };
   });
   const generations = jobs.map(jobItem).filter((item): item is TaskItem => Boolean(item));
-  return [...edits, ...generations].sort((a, b) => Number(b.needsUser) - Number(a.needsUser) || b.createdAt.localeCompare(a.createdAt));
+  return [...edits, ...generations].sort((a, b) => Number(b.needsUser) - Number(a.needsUser) || timeOf(b.createdAt) - timeOf(a.createdAt));
 }
 
 /** Items that were running on the last look and are no longer running: finished, failed or waiting for the user. */

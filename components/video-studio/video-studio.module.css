@@ -576,3 +576,17 @@
 @media(max-width:640px) { .editingStudio .projectName { flex:1 1 100%; min-width:0; } .editingStudio .editorHeader>select { flex:1; min-width:0; max-width:none; } }
 
 .editingStudio{background:#fff;color:#333}.editingStudio>.persistenceBody>.header{height:56px;min-height:56px;padding:10px 16px;border-bottom:1px solid #e8e8e8;box-shadow:none;background:white}.editingTitle{display:flex;gap:24px;align-items:center;font-size:14px}.editingTitle button{background:#f0f0f0!important;color:#666!important;border-radius:5px;padding:7px 14px}.editingStudio .previewBadge{display:none}.editingStudio .workspace{min-height:calc(100dvh - 56px);background:#fff}.editingStudio .main{padding:18px 20px 0}.editingProject{font-size:11px;color:#888;margin:0 310px 14px 0}.editingProject>summary{cursor:pointer}.editingProject[open]>.editorHeader{margin-top:12px;flex-wrap:wrap}.editingStudio .headerActions{gap:12px}.editingStudio .accountAvatar{background:#f1f1f1;color:#666}.editingStudio .returnSite{font-size:11px;color:#888}@media(max-width:850px){.editingProject{margin-right:0}}@media(max-width:540px){.editingStudio .main{padding:12px}.editingStudio .returnSite{display:none}}
+
+/* 首页三入口与导航分组：细线、留白、单一强调，不用渐变与图标色块 */
+.entryCards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 40px; }
+.studio .entryCard { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-height: 168px; padding: 22px 22px 20px; text-align: left; background: #fff; border: 1px solid var(--border); border-radius: 12px; transition: border-color .18s, box-shadow .18s; }
+.studio .entryCard:hover { border-color: #cfc6d9; box-shadow: 0 8px 24px #2a20330a; }
+.studio .entryCard:focus-visible { outline: 2px solid #563c72; outline-offset: 2px; }
+.studio .entryPrimary { border-color: #b9aac8; }
+.entryStep { font-size: 11px; color: #86768f; }
+.entryCard h2 { font-size: 18px; font-weight: 600; color: #241b2c; display: flex; align-items: baseline; gap: 8px; }
+.entryCard h2 small { font-size: 11px; font-weight: 500; color: #563c72; }
+.entryCard p { font-size: 12px; line-height: 1.7; color: #746b7d; max-width: 28ch; }
+.entryGo { margin-top: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #563c72; }
+.navSection + .navSection { margin-top: 26px; }
+@media (max-width: 900px) { .entryCards { grid-template-columns: minmax(0, 1fr); } .studio .entryCard { min-height: 0; } }

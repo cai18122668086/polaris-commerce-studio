@@ -82,6 +82,10 @@ class NativeRenderEdits(StrictVideoModel):
     source_only_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
         Field(default_factory=list, max_length=120)
     )
+    # 只关掉这些段的画面音效，动效、字幕、口播和配乐保留；为空时不序列化，旧记录的摘要不变。
+    sound_muted_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
+        Field(default_factory=list, max_length=120, exclude_if=lambda value: not value)
+    )
 
     highlight_edits: list[NativeHighlightEdit] = Field(
         default_factory=list, max_length=120, exclude_if=lambda value: not value
@@ -100,6 +104,7 @@ class NativeRenderEdits(StrictVideoModel):
             not self.music
             and not self.music_track_id
             and not self.source_only_beat_ids
+            and not self.sound_muted_beat_ids
             and not self.highlight_edits
             and not self.image_edits
             and not self.effect_edits
@@ -109,6 +114,10 @@ class NativeRenderEdits(StrictVideoModel):
             raise ValueError("A replacement track requires background music to be on")
         if len(set(self.source_only_beat_ids)) != len(self.source_only_beat_ids):
             raise ValueError("Select each segment at most once")
+        if len(set(self.sound_muted_beat_ids)) != len(
+            self.sound_muted_beat_ids
+        ) or set(self.sound_muted_beat_ids).intersection(self.source_only_beat_ids):
+            raise ValueError("Mute each segment once; source-only segments are already silent")
         keys = {(edit.beat_id, edit.path) for edit in self.highlight_edits}
         if len(keys) != len(self.highlight_edits) or any(
             beat_id in self.source_only_beat_ids for beat_id, _ in keys
@@ -127,6 +136,7 @@ class NativeRenderEdits(StrictVideoModel):
         ):
             raise ValueError("Choose one replacement effect on an active text segment")
         self.source_only_beat_ids = sorted(self.source_only_beat_ids)
+        self.sound_muted_beat_ids = sorted(self.sound_muted_beat_ids)
         self.highlight_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
         self.image_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
         self.effect_edits.sort(key=lambda edit: edit.beat_id)
@@ -588,6 +598,7 @@ class EditingNativeBeatResponse(StrictVideoModel):
     text: str
     reason: str
     source_only_available: bool
+    sound_mute_available: bool = False
     dependency_blocker: str | None = Field(
         default=None, exclude_if=lambda value: value is None
     )

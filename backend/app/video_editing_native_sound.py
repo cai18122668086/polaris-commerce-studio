@@ -307,7 +307,11 @@ def compile_sound(
 
     fx, music, cue_evidence, music_evidence = [], [], [], []
     used_events = set()
-    excluded_beats = set(edits.source_only_beat_ids) if edits else set()
+    excluded_beats = (
+        set(edits.source_only_beat_ids) | set(edits.sound_muted_beat_ids)
+        if edits
+        else set()
+    )
     removed_cues = []
     for cue in design.fx:
         if cue.beat_id in excluded_beats:

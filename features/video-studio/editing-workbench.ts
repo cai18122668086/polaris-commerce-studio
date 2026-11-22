@@ -4,6 +4,8 @@ export type WorkbenchBeat = {
   text: string;
   group_id: string;
   source_only_available: boolean;
+  /** 这一段带有画面音效，可以单独关掉 */
+  sound_mute_available?: boolean;
   dependency_blocker?: string | null;
 };
 export type WorkbenchSelection = {
@@ -13,6 +15,8 @@ export type WorkbenchSelection = {
   effects: { beat_id: string; group_id: string }[];
   highlights: { beat_id: string }[];
   images: { beat_id: string }[];
+  /** 只关掉画面音效的段 */
+  muted?: string[];
 };
 export type SegmentRow = {
   id: string;
@@ -29,12 +33,14 @@ export function segmentRows(beats: WorkbenchBeat[], selected: WorkbenchSelection
   const effects = new Set(selected.effects.map(edit => edit.beat_id));
   const highlights = new Set(selected.highlights.map(edit => edit.beat_id));
   const images = new Set(selected.images.map(edit => edit.beat_id));
+  const muted = new Set(selected.muted ?? []);
   return beats.map((beat, index) => {
     const kept = selected.segments.includes(beat.id);
     const changes = kept ? ["保留原画面"] : [
       ...(effects.has(beat.id) ? ["换动效"] : []),
       ...(highlights.has(beat.id) ? ["改强调词"] : []),
       ...(images.has(beat.id) ? ["换配图"] : []),
+      ...(muted.has(beat.id) ? ["关音效"] : []),
     ];
     const blocked = !!beat.dependency_blocker && !kept && !effects.has(beat.id);
     return {

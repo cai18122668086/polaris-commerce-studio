@@ -127,12 +127,22 @@ def available_render_edits(
     )
 
 
+def sound_cue_beats(recipes: dict) -> set[str]:
+    """Segments that carry at least one original FX cue: only these can be muted."""
+    return {
+        cue["beat_id"]
+        for cue in ((recipes.get("sound") or {}).get("fx") or [])
+        if isinstance(cue, dict) and cue.get("beat_id")
+    }
+
+
 def validate_render_edits(
     edits: NativeRenderEdits, semantic: dict, recipes: dict, choices: dict | None
 ) -> None:
     editable, has_music = available_render_edits(semantic, recipes, choices)
     if (
         not set(edits.source_only_beat_ids).issubset(editable)
+        or not set(edits.sound_muted_beat_ids).issubset(sound_cue_beats(recipes))
         or (edits.music is not None and not has_music)
         or (
             edits.music_track_id is not None

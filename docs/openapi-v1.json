@@ -6105,6 +6105,11 @@
             "title": "Relation",
             "type": "string"
           },
+          "sound_mute_available": {
+            "default": false,
+            "title": "Sound Mute Available",
+            "type": "boolean"
+          },
           "source_only_available": {
             "title": "Source Only Available",
             "type": "boolean"
@@ -10433,6 +10438,16 @@
               }
             ],
             "title": "Music Track Id"
+          },
+          "sound_muted_beat_ids": {
+            "items": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 120,
+            "title": "Sound Muted Beat Ids",
+            "type": "array"
           },
           "source_only_beat_ids": {
             "items": {

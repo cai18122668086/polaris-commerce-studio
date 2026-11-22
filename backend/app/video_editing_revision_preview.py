@@ -83,6 +83,10 @@ def remap_edits(
     payload["source_only_beat_ids"] = [
         match(beat_id, source_only=True) for beat_id in edits.source_only_beat_ids
     ]
+    if edits.sound_muted_beat_ids:
+        payload["sound_muted_beat_ids"] = [
+            match(beat_id, source_only=True) for beat_id in edits.sound_muted_beat_ids
+        ]
     for field in ("effect_edits", "highlight_edits", "image_edits"):
         for item in payload.get(field, []):
             item["beat_id"] = match(item["beat_id"])

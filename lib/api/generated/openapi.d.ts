@@ -6537,6 +6537,11 @@ export interface components {
             reason: string;
             /** Relation */
             relation: string;
+            /**
+             * Sound Mute Available
+             * @default false
+             */
+            sound_mute_available: boolean;
             /** Source Only Available */
             source_only_available: boolean;
             /** Text */
@@ -8084,6 +8089,8 @@ export interface components {
             music?: ("lower" | "raise" | "off") | null;
             /** Music Track Id */
             music_track_id?: string | null;
+            /** Sound Muted Beat Ids */
+            sound_muted_beat_ids?: string[];
             /** Source Only Beat Ids */
             source_only_beat_ids?: string[];
         };

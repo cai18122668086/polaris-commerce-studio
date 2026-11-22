@@ -119,3 +119,30 @@ def test_conflicting_replan_never_drops_a_manual_edit(change, code):
     with pytest.raises(ApiError) as error:
         remap_edits(choices(), old, next_plan)
     assert error.value.code == code and old.semantic == before
+
+
+def test_replan_maps_muted_sound_segments_by_measured_occurrence():
+    old, next_plan = plans()
+    edits = NativeRenderEdits.model_validate({"sound_muted_beat_ids": ["text"]})
+    mapped, _ = remap_edits(edits, old, next_plan)
+    assert mapped.sound_muted_beat_ids == ["new-text"]
+
+
+def test_sound_mute_is_optional_and_never_overlaps_source_only_segments():
+    assert "sound_muted_beat_ids" not in choices().model_dump(mode="json")
+    with pytest.raises(ValueError):
+        NativeRenderEdits.model_validate({"source_only_beat_ids": ["a"], "sound_muted_beat_ids": ["a"]})
+    with pytest.raises(ValueError):
+        NativeRenderEdits.model_validate({"sound_muted_beat_ids": ["a", "a"]})
+    ordered = NativeRenderEdits.model_validate({"sound_muted_beat_ids": ["b", "a"]})
+    assert ordered.sound_muted_beat_ids == ["a", "b"]
+
+
+
+def test_only_segments_with_fx_cues_can_be_muted():
+    from app.video_editing_render_edits import sound_cue_beats
+
+    recipes = {"sound": {"fx": [{"beat_id": "text", "asset_id": "click"}, {"asset_id": "x"}]}}
+    assert sound_cue_beats(recipes) == {"text"}
+    assert sound_cue_beats({}) == set()
+    assert sound_cue_beats({"sound": None}) == set()

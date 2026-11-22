@@ -21,7 +21,7 @@ type ImageEdit = components["schemas"]["NativeImageEdit"];
 type EffectEdit = components["schemas"]["NativeEffectEdit"];
 type EffectTarget = components["schemas"]["EditingEffectTarget"];
 type MusicOptions = components["schemas"]["EditingMusicOptions"];
-type Controls = { music: "keep" | "lower" | "raise" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[] };
+type Controls = { music: "keep" | "lower" | "raise" | "off"; musicTrackId: string; segments: string[]; highlights: Highlight[]; images: ImageEdit[]; effects: EffectEdit[]; muted: string[] };
 type TranscriptOptions = Parameters<typeof TranscriptEditor>[0]["options"];
 
 export type EditingRevisionSelection = {
@@ -32,7 +32,7 @@ export type EditingRevisionSelection = {
   edits?: NativeEdits | null;
   layoutFindings?: components["schemas"]["EditingLayoutFinding"][] | null;
 };
-const defaultControls: Controls = { music: "keep", musicTrackId: "", segments: [], highlights: [], images: [], effects: [] };
+const defaultControls: Controls = { music: "keep", musicTrackId: "", segments: [], highlights: [], images: [], effects: [], muted: [] };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
 export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVersion, revisionSelection, onClearRevisionSelection, subtitleTask, onSubtitlesSaved }: {
@@ -136,13 +136,15 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       const highlights = selected.highlights.slice().sort(bySlot);
       const images = selected.images.slice().sort(bySlot);
       const effects = selected.effects.slice().sort((a, b) => a.beat_id.localeCompare(b.beat_id));
-      const edits: NativeEdits | undefined = music || musicTrackId || segments.length || highlights.length || images.length || effects.length
+      const muted = selected.muted.filter(id => !segments.includes(id)).sort();
+      const edits: NativeEdits | undefined = music || musicTrackId || segments.length || highlights.length || images.length || effects.length || muted.length
         ? {
           music, source_only_beat_ids: segments,
           ...(musicTrackId ? { music_track_id: musicTrackId } : {}),
           ...(highlights.length ? { highlight_edits: highlights } : {}),
           ...(images.length ? { image_edits: images } : {}),
           ...(effects.length ? { effect_edits: effects } : {}),
+          ...(muted.length ? { sound_muted_beat_ids: muted } : {}),
         }
         : undefined;
       const key = JSON.stringify([plan.id, edits, earlier?.preview]);
@@ -175,6 +177,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
         highlights: earlier.edits.highlight_edits ?? [],
         images: earlier.edits.image_edits ?? [],
         effects: earlier.edits.effect_edits ?? [],
+        muted: earlier.edits.sound_muted_beat_ids ?? [],
       } satisfies Controls : defaultControls;
       const selected = controls[key] || initial;
       const change = (update: Partial<Controls>) => setControls(current => ({
@@ -251,8 +254,15 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
                 highlights: event.target.checked ? selected.highlights.filter(edit => edit.beat_id !== beat.id) : selected.highlights,
                 images: event.target.checked ? selected.images.filter(edit => edit.beat_id !== beat.id) : selected.images,
                 effects: event.target.checked ? selected.effects.filter(edit => edit.beat_id !== beat.id) : selected.effects,
+                muted: event.target.checked ? selected.muted.filter(id => id !== beat.id) : selected.muted,
               })} />
               <span>本段保留原画面<small>关闭本段动效和音效，保留主字幕</small></span>
+            </label>}
+            {beat.sound_mute_available && !selected.segments.includes(beat.id) && <label className={wb.check}>
+              <input type="checkbox" disabled={!!busy} checked={selected.muted.includes(beat.id)} onChange={event => change({
+                muted: event.target.checked ? [...selected.muted, beat.id] : selected.muted.filter(id => id !== beat.id),
+              })} />
+              <span>关闭本段音效<small>只关掉画面音效，动效、字幕、口播和配乐保留</small></span>
             </label>}
             {plan.overlay_template && <>
               {loadingEffects.includes(plan.id) && <p role="status">正在核对本段可选动效…</p>}

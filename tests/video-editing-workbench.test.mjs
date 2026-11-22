@@ -42,3 +42,14 @@ test("the subtitle entry targets exactly the version being revised", () => {
   assert.equal(revisingTask(tasks, { taskId: "gone" }), undefined);
   assert.equal(revisingTask(tasks, undefined), undefined);
 });
+
+test("a muted segment shows as changed but keeps its motion", () => {
+  const beats = [{ id: "a", text: "开场", group_id: "T001", source_only_available: true, sound_mute_available: true }];
+  const base = { music: "keep", musicTrackId: "", segments: [], effects: [], highlights: [], images: [] };
+  const [row] = segmentRows(beats, { ...base, muted: ["a"] });
+  assert.deepEqual(row.changes, ["关音效"]);
+  assert.equal(row.kept, false);
+  const [kept] = segmentRows(beats, { ...base, segments: ["a"], muted: ["a"] });
+  assert.deepEqual(kept.changes, ["保留原画面"]);
+  assert.deepEqual(segmentRows(beats, base)[0].changes, []);
+});

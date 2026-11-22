@@ -7,7 +7,7 @@
 @media (max-width: 900px) { .navigation { padding: 16px 18px 0; } .back { margin-left: 0; } }
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .link,:global(.theme-ember) .back{border:1px solid #23211f;color:#969089;background:#0f0e0d}
-:global(.theme-ember) .link:hover,:global(.theme-ember) .back:hover,:global(.theme-ember) .active{border-color:#44403c;color:#ada8a3;background:#171615}
+:global(.theme-ember) .link,:global(.theme-ember) .back{border:1px solid #23211f;color:#969089;background:rgb(255 250 244 / 0.04);border-radius:14px}
+:global(.theme-ember) .link:hover,:global(.theme-ember) .back:hover,:global(.theme-ember) .active{border-color:#44403c;color:#ada8a3;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .back{color:#ada8a3}
 /* ember-dark:end */

@@ -3,7 +3,7 @@
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .field{color:#8c857d}
 :global(.theme-ember) .field summary:after{color:#726d65}
-:global(.theme-ember) .field summary>span{background:#22201e;color:#958f88}
+:global(.theme-ember) .field summary>span{background:rgb(255 250 244 / 0.06);color:#958f88}
 :global(.theme-ember) .field label>span{color:#78726a}
-:global(.theme-ember) .field input{border:1px solid #2d2b28;background:#0f0e0d;color:#bab6b1}
+:global(.theme-ember) .field input{border:1px solid #2d2b28;background:rgb(255 250 244 / 0.04);color:#bab6b1;border-radius:9px}
 /* ember-dark:end */

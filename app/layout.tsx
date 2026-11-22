@@ -12,6 +12,7 @@ import "./showcase-cases.css";
 import "./ember-dark.generated.css";
 import "./ember-dark.css";
 import "./home-ember-dark.css";
+import "./ember-studio.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();

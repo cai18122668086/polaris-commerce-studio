@@ -7,7 +7,8 @@ import { ArrowRight, Check, Flame, Search, Sparkles, type LucideIcon } from "luc
 
 import { HomeAiToolbox } from "@/components/home-ai-toolbox";
 import { WelcomeCreditsBanner } from "@/components/welcome-credits";
-import { HomeHero, HomeHomeFooter, HomeHomeReveal, HomeProductShowcase, HomeCreativeVoices, HomeReplicaCardArt } from "@/components/home-showcase";
+import { HomeHomeReveal, HomeReplicaCardArt } from "@/components/home-showcase";
+import { EmberCases, EmberCompare, EmberFeatures, EmberFinal, EmberHero, EmberSeam, EmberStory } from "@/components/ember-landing";
 import {
   resolveRuntimeCapability,
   useRuntimeStatus,
@@ -289,9 +290,15 @@ export function ToolDirectory() {
   return (
     <section className="focus-home">
       <WelcomeCreditsBanner />
-      <HomeHero />
+      {/* 首屏与展示区：熔光落地页（2026-11-22）。功能入口、工具目录和 AI 工具箱保持原样 */}
+      <EmberHero />
       <CreationStartHub />
       <CommerceEntryGroups />
+      <EmberStory />
+      <EmberSeam />
+      <EmberCompare />
+      <EmberSeam />
+      <EmberFeatures />
 
       <div className="focus-home__content">
         <div className="home-command home-command--primary" id="tools">
@@ -530,9 +537,9 @@ export function ToolDirectory() {
 
         <HomeAiToolbox />
       </div>
-      <HomeProductShowcase />
-      <HomeCreativeVoices />
-      <HomeHomeFooter />
+      <EmberSeam />
+      <EmberCases />
+      <EmberFinal />
       <HomeHomeReveal />
     </section>
   );

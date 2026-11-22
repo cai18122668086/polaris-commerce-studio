@@ -21,56 +21,58 @@
 @media(prefers-reduced-motion:reduce){.card{transition:none}}
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .gallery{--edit-accent:#fa682a;border:1px solid #21201e;background:#0f0e0d;color:#e9e8e6}
+:global(.theme-ember) .gallery{--edit-accent:#fa682a;border:1px solid #21201e;background:rgb(255 250 244 / 0.04);color:#e9e8e6;border-radius:22px}
 :global(.theme-ember) .eyebrow{color:#6b665f}
-:global(.theme-ember) .gallery .moreTemplates{border:1px solid #242220;background:#0f0e0d;color:#aba6a0}
-:global(.theme-ember) .card{border:1px solid #22211f;background:#0f0e0d}
+:global(.theme-ember) .gallery .moreTemplates{border:1px solid #242220;background:rgb(255 250 244 / 0.04);color:#aba6a0;border-radius:11px}
+:global(.theme-ember) .card{border:1px solid #22211f;background:rgb(255 250 244 / 0.04);border-radius:16px}
 :global(.theme-ember) .card:hover{border-color:#47443f;box-shadow:0 5px 16px rgb(0 0 0 / 0.092)}
 :global(.theme-ember) .card.selected{border-color:#fa682a;box-shadow:0 0 0 2px rgb(0 0 0 / 0.169)}
-:global(.theme-ember) .cover{background:#1a1918}
+:global(.theme-ember) .cover{background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .posterSelect:focus-visible{outline:3px solid #fa682a}
-:global(.theme-ember) .coverText{color:#d9d7d4;background:#1a1918}
-:global(.theme-ember) .selectionBadge{background:#fa682a;color:#0f0e0d;box-shadow:0 2px 6px rgb(0 0 0 / 0.24)}
-:global(.theme-ember) .card .favorite{border:1px solid rgb(15 14 13 / 0.502);background:rgb(15 14 13 / 0.941)!important;color:#9a948d!important;box-shadow:0 1px 5px rgb(0 0 0 / 0.12)}
+:global(.theme-ember) .coverText{color:#d9d7d4;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .selectionBadge{background:#fa682a;color:#0f0e0d;box-shadow:0 2px 6px rgb(0 0 0 / 0.24);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .card .favorite{border:1px solid rgb(15 14 13 / 0.502);background:rgb(21 20 19 / 0.809)!important;color:#9a948d!important;box-shadow:0 1px 5px rgb(0 0 0 / 0.12);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
 :global(.theme-ember) .card .favorite[aria-pressed=true]{color:#fa682a!important}
-:global(.theme-ember) .card .play{border:1px solid rgb(15 14 13 / 0.439);background:rgb(15 14 13 / 0.941)!important;color:#e3e2e0!important;box-shadow:0 2px 8px rgb(0 0 0 / 0.24)}
-:global(.theme-ember) .card .chooseCard{background:#0f0e0d!important;color:#e9e8e6!important}
+:global(.theme-ember) .card .play{border:1px solid rgb(15 14 13 / 0.439);background:rgb(21 20 19 / 0.809)!important;color:#e3e2e0!important;box-shadow:0 2px 8px rgb(0 0 0 / 0.24);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .card .chooseCard{background:rgb(255 250 244 / 0.04)!important;color:#e9e8e6!important}
+:global(.theme-ember) .chooseCard b{font-weight:500}
 :global(.theme-ember) .chooseCard small{color:#756f68}
 :global(.theme-ember) .chooseCard small>span{color:#605b55}
 :global(.theme-ember) .cardDetail{color:#7a746d}
-:global(.theme-ember) .selected .chooseCard{background:#141311!important}
+:global(.theme-ember) .selected .chooseCard{background:rgb(255 250 244 / 0.025)!important}
 :global(.theme-ember) .selected .chooseCard small>span{color:#fa682a}
 :global(.theme-ember) .selectedSummary{border-top:1px solid #1c1b19}
+:global(.theme-ember) .selectedSummary strong{font-weight:500}
 :global(.theme-ember) .selectedSummary>span:last-child{color:#706a63}
 :global(.theme-ember) .selectionLabel{color:#fa682a}
 :global(.theme-ember) .templateLibraryDialog{--edit-accent:#fa682a;color:#e6e5e3}
-:global(.theme-ember) .libraryFilters{background:#0f0e0d;border-bottom:1px solid #1c1b1a}
-:global(.theme-ember) .templateLibraryDialog .libraryTabs button{background:#0f0e0d;color:#756f68}
-:global(.theme-ember) .templateLibraryDialog .libraryTabs button[aria-pressed=true]{color:#e9e8e6;border-bottom-color:#fa682a}
+:global(.theme-ember) .libraryFilters{background:rgb(21 20 19 / 0.86);border-bottom:1px solid #1c1b1a;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .templateLibraryDialog .libraryTabs button{background:rgb(255 250 244 / 0.04);color:#756f68}
+:global(.theme-ember) .templateLibraryDialog .libraryTabs button[aria-pressed=true]{color:#e9e8e6;border-bottom-color:#fa682a;font-weight:500}
 :global(.theme-ember) .templateLibraryDialog .libraryTabs span{color:#66615a}
 :global(.theme-ember) .searchBox{color:#6c665f}
-:global(.theme-ember) .templateLibraryDialog .templateSearch{border:1px solid #211f1d;background:#151514;color:#dfdddb}
-:global(.theme-ember) .templateLibraryDialog .filters button{background:#171615;color:#8f8981}
-:global(.theme-ember) .templateLibraryDialog .filters button[aria-pressed=true]{border-color:#2d2b28;background:#181615;color:#fa682a}
+:global(.theme-ember) .templateLibraryDialog .templateSearch{border:1px solid #211f1d;background:rgb(255 250 244 / 0.025);color:#dfdddb;border-radius:12px}
+:global(.theme-ember) .templateLibraryDialog .filters button{background:rgb(255 250 244 / 0.025);color:#8f8981;border-radius:999px}
+:global(.theme-ember) .templateLibraryDialog .filters button[aria-pressed=true]{border-color:#2d2b28;background:rgb(255 250 244 / 0.025);color:#fa682a}
 :global(.theme-ember) .resultCount{color:#6e6861}
-:global(.theme-ember) .modalFooter{background:rgb(15 14 13 / 0.961);border-top:1px solid #1d1c1b}
+:global(.theme-ember) .modalFooter{background:rgb(21 20 19 / 0.826);border-top:1px solid #1d1c1b;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
 :global(.theme-ember) .modalFooter>span{color:#908a82}
 :global(.theme-ember) .modalFooter button,:global(.theme-ember) .templatePreviewDialog .useTemplate{background:#fa682a;color:#0f0e0d}
-:global(.theme-ember) .secondaryAction{background:#0f0e0d!important;color:#9c9790!important;border:1px solid #252321!important}
+:global(.theme-ember) .secondaryAction{background:rgb(255 250 244 / 0.04)!important;color:#9c9790!important;border:1px solid #252321!important;border-radius:999px}
 :global(.theme-ember) .noTemplates{color:#736d66}
-:global(.theme-ember) .noTemplates button{border:1px solid #23211f;background:#0f0e0d;color:#aeaaa4}
+:global(.theme-ember) .noTemplates button{border:1px solid #23211f;background:rgb(255 250 244 / 0.04);color:#aeaaa4;border-radius:999px}
 :global(.theme-ember) .templatePreviewDialog{--edit-accent:#fa682a}
 :global(.theme-ember) .previewStage{background:#e9e8e6}
-:global(.theme-ember) .previewScreen{background:#e9e8e7}
+:global(.theme-ember) .previewScreen{background:#e9e8e7;border-radius:8px}
 :global(.theme-ember) .previewNavigation{color:#66615a}
-:global(.theme-ember) .templatePreviewDialog .previewNavigation button{border:1px solid rgb(15 14 13 / 0.094);background:rgb(15 14 13 / 0.031);color:#232220}
-:global(.theme-ember) .templateCategory{color:#fa682a;background:#181715}
+:global(.theme-ember) .templatePreviewDialog .previewNavigation button{border:1px solid rgb(15 14 13 / 0.094);background:rgb(255 250 244 / 0.001);color:#232220}
+:global(.theme-ember) .templateCategory{color:#fa682a;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .previewDetails h3{color:#e6e5e3}
 :global(.theme-ember) .previewDetails p{color:#746e67}
 :global(.theme-ember) .previewDetails .signature{color:#b8b5af}
-:global(.theme-ember) .previewDetails ul{background:#151514;color:#969089}
+:global(.theme-ember) .previewDetails ul{background:rgb(255 250 244 / 0.025);color:#969089;border-radius:12px}
 :global(.theme-ember) .previewDetails small{color:#645f59}
-:global(.theme-ember) .sampleTabs{background:#191817}
-:global(.theme-ember) .templatePreviewDialog .sampleTabs button{color:#746e67}
-:global(.theme-ember) .templatePreviewDialog .sampleTabs button[aria-pressed=true]{background:#0f0e0d;color:#dedcda;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
+:global(.theme-ember) .sampleTabs{background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .templatePreviewDialog .sampleTabs button{color:#746e67;border-radius:999px}
+:global(.theme-ember) .templatePreviewDialog .sampleTabs button[aria-pressed=true]{background:rgb(255 250 244 / 0.04);color:#dedcda;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
 /* ember-dark:end */

@@ -217,8 +217,11 @@
 }
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .simpleField input,:global(.theme-ember) .simpleField textarea{background:#0f0e0d}
-:global(.theme-ember) .advancedSection{background:#0f0e0d}
-:global(.theme-ember) .advancedSection[open]{background:linear-gradient(180deg, var(--ink-50), #0f0e0d 88px)}
-:global(.theme-ember) .advancedSection > summary::after{background:#0f0e0d}
+:global(.theme-ember) .simpleField > span{font-weight:500}
+:global(.theme-ember) .simpleField input,:global(.theme-ember) .simpleField textarea{background:rgb(255 250 244 / 0.04);border-radius:16px}
+:global(.theme-ember) .advancedSection{background:rgb(255 250 244 / 0.04);border-radius:16px}
+:global(.theme-ember) .advancedSection[open]{background:linear-gradient(180deg, var(--ink-50), rgb(255 250 244 / 0.04) 88px)}
+:global(.theme-ember) .advancedSection > summary > span{font-weight:500}
+:global(.theme-ember) .advancedSection > summary > small{font-weight:500}
+:global(.theme-ember) .advancedSection > summary::after{background:rgb(255 250 244 / 0.04);border-radius:11px;font-weight:500}
 /* ember-dark:end */

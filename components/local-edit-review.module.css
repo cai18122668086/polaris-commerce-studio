@@ -52,22 +52,22 @@
 .sourcePreview { display:block;max-width:100%;max-height:520px;object-fit:contain;margin:auto; }
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .preview{border:1px solid #232120;background:#151514}
+:global(.theme-ember) .preview{border:1px solid #232120;background:rgb(255 250 244 / 0.025);border-radius:16px}
 :global(.theme-ember) .previewBar{border-bottom:1px solid #232120;color:#979189}
-:global(.theme-ember) .versions select{border:1px solid #292826;background:#0f0e0d;color:#e9e8e7}
-:global(.theme-ember) .variantTabs{border:1px solid #23211f;background:#1c1b1a}
-:global(.theme-ember) .variantTabs button{color:#8a847b}
-:global(.theme-ember) .variantTabs button[aria-pressed=true]{background:#0f0e0d;color:#e9e8e7;box-shadow:0 1px 4px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .versions select{border:1px solid #292826;background:rgb(255 250 244 / 0.04);color:#e9e8e7;border-radius:9px}
+:global(.theme-ember) .variantTabs{border:1px solid #23211f;background:rgb(255 250 244 / 0.06);border-radius:12px}
+:global(.theme-ember) .variantTabs button{color:#8a847b;border-radius:999px}
+:global(.theme-ember) .variantTabs button[aria-pressed=true]{background:rgb(255 250 244 / 0.04);color:#e9e8e7;box-shadow:0 1px 4px rgb(0 0 0 / 0.127)}
 :global(.theme-ember) .preview input[type=range]{accent-color:#e9e8e7}
 :global(.theme-ember) .preview a[download]{color:#b4b0aa}
 :global(.theme-ember) .status{color:#908a82}
 :global(.theme-ember) .status i{background:#726d65}
 :global(.theme-ember) .waiting i{background:#484440;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1)}
-:global(.theme-ember) .heading h3{color:#e9e8e7}
+:global(.theme-ember) .heading h3{color:#e9e8e7;font-weight:500}
 :global(.theme-ember) .heading p{color:#78726a}
-:global(.theme-ember) .primary{background:#e9e8e7;color:#0f0e0d}
-:global(.theme-ember) .primary:hover:not(:disabled){background:#1d1b1a;color:#e9e8e7}
-:global(.theme-ember) .secondaryActions button{border:1px solid #272523;background:#0f0e0d;color:#a49f99}
+:global(.theme-ember) .primary{background:#e9e8e7;color:#0f0e0d;border-radius:999px}
+:global(.theme-ember) .primary:hover:not(:disabled){background:rgb(255 250 244 / 0.06);color:#e9e8e7}
+:global(.theme-ember) .secondaryActions button{border:1px solid #272523;background:rgb(255 250 244 / 0.04);color:#a49f99;border-radius:999px}
 :global(.theme-ember) .secondaryActions button:hover:not(:disabled){border-color:#534f49;color:#e9e8e7}
 :global(.theme-ember) .price{color:#6f6a63}
 :global(.theme-ember) .price strong{color:#b4b0aa}
@@ -77,9 +77,9 @@
 :global(.theme-ember) .disclosure small{color:#66615a}
 :global(.theme-ember) .error{color:#fa682a}
 :global(.theme-ember) .regeneration label{color:#a49f99}
-:global(.theme-ember) .regeneration textarea{border:1px solid #2a2825;background:#141312;color:#e9e8e7}
+:global(.theme-ember) .regeneration textarea{border:1px solid #2a2825;background:rgb(255 250 244 / 0.025);color:#e9e8e7;border-radius:12px}
 :global(.theme-ember) .regeneration textarea:focus{outline:2px solid #2d2b28}
-:global(.theme-ember) .regenerationActions > button:first-child{border:1px solid #272523;background:#0f0e0d;color:#a49f99}
+:global(.theme-ember) .regenerationActions > button:first-child{border:1px solid #272523;background:rgb(255 250 244 / 0.04);color:#a49f99;border-radius:999px}
 :global(.theme-ember) .loading{color:#78726a}
 :global(.theme-ember) .loadingText{color:#78726a}
 /* ember-dark:end */

@@ -49,5 +49,4 @@ html.theme-ember, html.theme-ember body { background: #0b0b0b; color: #edeae4; c
 .theme-ember .top-nav :is(.nav-tool-link__hot, .main-nav__flame) { color: var(--pc-ember); }
 
 /* 换用熔光版 logo，原品牌文件不动 */
-.theme-ember img[src="/polaris-mark.svg"] { content: url("/polaris-mark-ember.svg"); }
 

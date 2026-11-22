@@ -80,7 +80,7 @@ export function WelcomeCreditsBanner({ compact = false }: { compact?: boolean })
         </button></div>}
       </section>
     </div>
-    {open && eligible && <dialog ref={dialog} className={styles.dialog} aria-labelledby="welcome-credits-title" onCancel={event => { event.preventDefault(); setOpen(false); }}>
+    {open && eligible && <dialog ref={dialog} className={styles.dialog} data-welcome-dialog aria-labelledby="welcome-credits-title" onCancel={event => { event.preventDefault(); setOpen(false); }}>
       <header className={styles.modalTop}>
         <button type="button" className={styles.close} aria-label="关闭注册福利" onClick={() => setOpen(false)}><X size={23} /></button>
         <h2 id="welcome-credits-title">注册就送 50 积分</h2>

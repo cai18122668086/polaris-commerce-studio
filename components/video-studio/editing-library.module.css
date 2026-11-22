@@ -28,14 +28,14 @@
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .library{color:#e6e4e2}
 :global(.theme-ember) .library header p{color:#99948c}
-:global(.theme-ember) .summary{background:#1c1a19}
-:global(.theme-ember) .library .tabs button{color:#b8b4af;background:#1f1d1b}
+:global(.theme-ember) .summary{background:rgb(255 250 244 / 0.06);border-radius:14px}
+:global(.theme-ember) .library .tabs button{color:#b8b4af;background:rgb(255 250 244 / 0.06)}
 :global(.theme-ember) .library .tabs button[aria-pressed=true]{color:#0f0e0d;background:#e6e2db}
-:global(.theme-ember) .library .grid article{border:1px solid #262422;background:#0f0e0d}
+:global(.theme-ember) .library .grid article{border:1px solid #262422;background:rgb(255 250 244 / 0.04);border-radius:14px}
 :global(.theme-ember) .grid small{color:#8c867d}
-:global(.theme-ember) .status{background:#1b1918;color:#a39d97}
-:global(.theme-ember) .choiceBadge{background:#181615;color:#dc7f06!important}
-:global(.theme-ember) .detail,:global(.theme-ember) .noteEditor,:global(.theme-ember) .memo{background:#151413;border:1px solid #2b2926}
-:global(.theme-ember) .noteEditor textarea{background:#0f0e0d;border:1px solid #302e2b}
+:global(.theme-ember) .status{background:rgb(255 250 244 / 0.025);color:#a39d97}
+:global(.theme-ember) .choiceBadge{background:rgb(255 250 244 / 0.025);color:#dc7f06!important;border-radius:999px}
+:global(.theme-ember) .detail,:global(.theme-ember) .noteEditor,:global(.theme-ember) .memo{background:rgb(255 250 244 / 0.025);border:1px solid #2b2926;border-radius:14px}
+:global(.theme-ember) .noteEditor textarea{background:rgb(255 250 244 / 0.04);border:1px solid #302e2b;border-radius:12px}
 :global(.theme-ember) .error{color:#fa682a}
 /* ember-dark:end */

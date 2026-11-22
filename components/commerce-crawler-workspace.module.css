@@ -132,78 +132,80 @@
 :global(.theme-ember) .page{color:#e9e8e6}
 :global(.theme-ember) .eyebrow{color:#a39e97}
 :global(.theme-ember) .hero p{color:#969088}
-:global(.theme-ember) .heroNote{border:1px solid #262422;color:#a39e97;background:#161413}
+:global(.theme-ember) .heroNote{border:1px solid #262422;color:#a39e97;background:rgb(255 250 244 / 0.025);border-radius:18px}
 :global(.theme-ember) .heroNote small{color:#908a82}
-:global(.theme-ember) .card{border:1px solid #23211f;background:#0f0e0d;box-shadow:0 8px 28px rgb(0 0 0 / 0.09)}
-:global(.theme-ember) .step{color:#a39e97;background:#1c1b19}
+:global(.theme-ember) .card{border:1px solid #23211f;background:rgb(255 250 244 / 0.04);box-shadow:0 8px 28px rgb(0 0 0 / 0.09)}
+:global(.theme-ember) .step{color:#a39e97;background:rgb(255 250 244 / 0.06);border-radius:12px;font-weight:500}
 :global(.theme-ember) .cardHeading p{color:#807a72}
 :global(.theme-ember) .headingIcon{color:#6c6760}
-:global(.theme-ember) .liveBadge,:global(.theme-ember) .resultCount{color:#9e9891;background:#161514}
+:global(.theme-ember) .liveBadge,:global(.theme-ember) .resultCount{color:#9e9891;background:rgb(255 250 244 / 0.025);font-weight:500}
 :global(.theme-ember) .liveBadge span{background:#e6e2db;box-shadow:0 0 0 4px rgb(0 0 0 / 0.234)}
-:global(.theme-ember) .form label,:global(.theme-ember) .inlineForm label{color:#aca7a1}
-:global(.theme-ember) .form select,:global(.theme-ember) .form input,:global(.theme-ember) .inlineForm select,:global(.theme-ember) .inlineForm input{border:1px solid #292725;color:#e9e8e6;background:#0f0e0d}
+:global(.theme-ember) .form label,:global(.theme-ember) .inlineForm label{color:#aca7a1;font-weight:500}
+:global(.theme-ember) .form select,:global(.theme-ember) .form input,:global(.theme-ember) .inlineForm select,:global(.theme-ember) .inlineForm input{border:1px solid #292725;color:#e9e8e6;background:rgb(255 250 244 / 0.04);border-radius:14px}
 :global(.theme-ember) .form select:focus,:global(.theme-ember) .form input:focus,:global(.theme-ember) .inlineForm select:focus,:global(.theme-ember) .inlineForm input:focus{border-color:#66615b;box-shadow:0 0 0 3px rgb(0 0 0 / 0.18)}
 :global(.theme-ember) .urlInput span{color:#635e58}
-:global(.theme-ember) .outlineButton{color:#a39e97;border:1px solid #292724;background:#161413}
-:global(.theme-ember) .outlineButton:hover{border-color:#504c47;background:#1a1817}
-:global(.theme-ember) .iconButton{color:#969088;border:1px solid #292725;background:#0f0e0d}
-:global(.theme-ember) .iconButton:hover{color:#a39e97;background:#141312}
+:global(.theme-ember) .outlineButton{color:#a39e97;border:1px solid #292724;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .outlineButton:hover{border-color:#504c47;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .iconButton{color:#969088;border:1px solid #292725;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .iconButton:hover{color:#a39e97;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .primaryButton{color:#0f0e0d;background:#e6e2db;box-shadow:0 6px 15px rgb(0 0 0 / 0.324)}
 :global(.theme-ember) .primaryButton:hover{background:#e6e2db}
-:global(.theme-ember) .inlineForm{border:1px solid #23221f;background:#141312}
-:global(.theme-ember) .accountHint{color:#a8a39d;background:#161514}
+:global(.theme-ember) .inlineForm{border:1px solid #23221f;background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .accountHint{color:#a8a39d;background:rgb(255 250 244 / 0.025);border-radius:12px}
 :global(.theme-ember) .checkbox input{accent-color:#a39e97}
-:global(.theme-ember) .successMessage{color:#9e9891;background:#161514}
-:global(.theme-ember) .errorMessage{color:#fa682a;background:#181715}
-:global(.theme-ember) .taskRow{color:#e9e8e6;background:#141312}
-:global(.theme-ember) .taskRow:hover,:global(.theme-ember) .taskRowActive{border-color:#373431;background:#161514}
+:global(.theme-ember) .successMessage{color:#9e9891;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .errorMessage{color:#fa682a;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .taskRow{color:#e9e8e6;background:rgb(255 250 244 / 0.025);border-radius:15px}
+:global(.theme-ember) .taskRow:hover,:global(.theme-ember) .taskRowActive{border-color:#373431;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .taskRowMain strong{font-weight:500}
 :global(.theme-ember) .taskRowMain small{color:#777169}
-:global(.theme-ember) .tone-blue{color:#a39e97;background:#1c1b19}
-:global(.theme-ember) .tone-green{color:#9e9891;background:#181716}
-:global(.theme-ember) .tone-amber{color:#dc7f06;background:#181615}
-:global(.theme-ember) .tone-red{color:#fa682a;background:#191817}
-:global(.theme-ember) .tone-muted{color:#928c84;background:#1b1a18}
+:global(.theme-ember) .tone-blue{color:#a39e97;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .tone-green{color:#9e9891;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .tone-amber{color:#dc7f06;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .tone-red{color:#fa682a;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .tone-muted{color:#928c84;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .rowChevron{color:#605b55}
 :global(.theme-ember) .empty{color:#625d57}
 :global(.theme-ember) .empty strong{color:#a09b94}
-:global(.theme-ember) .statusHeader > span{color:#a39e97}
-:global(.theme-ember) .statusHeader strong{color:#8b857d}
-:global(.theme-ember) .progress{background:#1c1b19}
+:global(.theme-ember) .statusHeader > span{color:#a39e97;font-weight:500}
+:global(.theme-ember) .statusHeader strong{color:#8b857d;font-weight:500}
+:global(.theme-ember) .progress{background:rgb(255 250 244 / 0.06)}
 :global(.theme-ember) .progress span{background:linear-gradient(90deg,#e6e2db,#645f58)}
 :global(.theme-ember) .metaGrid{border-top:1px solid #1c1b19;border-bottom:1px solid #1c1b19}
 :global(.theme-ember) .metaGrid dt{color:#66615a}
-:global(.theme-ember) .metaGrid dd{color:#bbb8b3}
-:global(.theme-ember) .taskError{color:#fa682a;background:#171614}
+:global(.theme-ember) .metaGrid dd{color:#bbb8b3;font-weight:500}
+:global(.theme-ember) .taskError{color:#fa682a;background:rgb(255 250 244 / 0.025);border-radius:14px}
 :global(.theme-ember) .taskError span{color:#fa682a}
 :global(.theme-ember) .subsection h3{color:#aba6a0}
-:global(.theme-ember) .timeline li:not(:last-child)::before{background:#23211f}
-:global(.theme-ember) .timelineIcon{color:#817b73;background:#0f0e0d}
+:global(.theme-ember) .timeline li:not(:last-child)::before{background:rgb(21 20 19 / 0.9);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .timelineIcon{color:#817b73;background:rgb(255 250 244 / 0.04)}
 :global(.theme-ember) .timeline li strong{color:#aca7a1}
 :global(.theme-ember) .timeline li small{color:#605b55}
 :global(.theme-ember) .mutedText{color:#605b55}
-:global(.theme-ember) .productSummary{background:#141312}
+:global(.theme-ember) .productSummary{background:rgb(255 250 244 / 0.025);border-radius:16px}
 :global(.theme-ember) .resultPlatform{color:#a39e97}
 :global(.theme-ember) .productSummary p{color:#888279}
-:global(.theme-ember) .productSummary code{color:#948e86;background:#1b1a18}
-:global(.theme-ember) .warningList span{color:#dc7f06;background:#151413}
-:global(.theme-ember) .assetCard{border:1px solid #23211f;color:#b5b1ab;background:#0f0e0d}
+:global(.theme-ember) .productSummary code{color:#948e86;background:rgb(255 250 244 / 0.025);border-radius:8px}
+:global(.theme-ember) .warningList span{color:#dc7f06;background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .assetCard{border:1px solid #23211f;color:#b5b1ab;background:rgb(255 250 244 / 0.04);border-radius:15px}
 :global(.theme-ember) .assetCard:hover{border-color:#504c47;box-shadow:0 4px 14px rgb(0 0 0 / 0.144)}
-:global(.theme-ember) .assetMedia{color:#59554f;background:#191816}
+:global(.theme-ember) .assetMedia{color:#59554f;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .assetCard > span{font-weight:500}
 :global(.theme-ember) .assetCard > small{color:#605b55}
-:global(.theme-ember) .noAssets{color:#6e6962;background:#141312}
+:global(.theme-ember) .noAssets{color:#6e6962;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .resultLink{color:#a39e97}
 :global(.theme-ember) .imageGroup{border-top:1px solid #1c1b19}
 :global(.theme-ember) .imageGroup h3,:global(.theme-ember) .skuGroup h3{color:#d8d6d3}
 :global(.theme-ember) .imageGroup h3 span{color:#807a72}
-:global(.theme-ember) .skuGroup{background:#141312}
-:global(.theme-ember) .skuOptions span{border:1px solid #252320;background:#0f0e0d}
+:global(.theme-ember) .skuGroup{background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .skuOptions span{border:1px solid #252320;background:rgb(255 250 244 / 0.04);border-radius:9px}
 :global(.theme-ember) .skuGroup p{color:#969088}
-:global(.theme-ember) .accountList{border:1px solid #1c1b19;background:#121110}
+:global(.theme-ember) .accountList{border:1px solid #1c1b19;background:rgb(255 250 244 / 0.025);border-radius:15px}
 :global(.theme-ember) .accountItem strong{color:#aba6a0}
 :global(.theme-ember) .accountItem span,:global(.theme-ember) .accountItem small{color:#605b55}
-:global(.theme-ember) .accountAction{border:1px solid #292725;color:#948e87;background:#0f0e0d}
-:global(.theme-ember) .loginPreview{border:1px solid #242320;background:#151412}
-:global(.theme-ember) .loginPreview img{background:#0f0e0d}
+:global(.theme-ember) .accountAction{border:1px solid #292725;color:#948e87;background:rgb(255 250 244 / 0.04);border-radius:9px}
+:global(.theme-ember) .loginPreview{border:1px solid #242320;background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .loginPreview img{background:rgb(255 250 244 / 0.04)}
 :global(.theme-ember) .loginPreview span{color:#9e9992}
 :global(.theme-ember) .accountAction:hover{color:#a39e97;border-color:#3d3a36}
 /* ember-dark:end */

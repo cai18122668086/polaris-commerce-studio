@@ -2,19 +2,19 @@
 @media(max-width:640px){.audit{padding:15px 12px}.selector{align-items:stretch;flex-direction:column;gap:10px}.roles,.legacyGrid{grid-template-columns:1fr;gap:5px}.legacyGrid{gap:12px}.selected{padding-inline:12px}.roleExamples img{flex-basis:85px;width:85px;height:105px}.legacyImages img{height:125px}}
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .audit{border:1px solid #2e2c29;background:#181716;color:#c9c6c2}
+:global(.theme-ember) .audit{border:1px solid #2e2c29;background:rgb(255 250 244 / 0.025);color:#c9c6c2;border-radius:16px}
 :global(.theme-ember) .audit p{color:#8e877f}
-:global(.theme-ember) .selector select{border:1px solid #34322e;background:#0f0e0d;color:#c9c6c2}
-:global(.theme-ember) .selected{border:1px solid #282623;background:#0f0e0d}
+:global(.theme-ember) .selector select{border:1px solid #34322e;background:rgb(255 250 244 / 0.04);color:#c9c6c2;border-radius:9px}
+:global(.theme-ember) .selected{border:1px solid #282623;background:rgb(255 250 244 / 0.04);border-radius:12px}
 :global(.theme-ember) .selected>a{color:#ada8a2}
 :global(.theme-ember) .roles strong{color:#c9c6c2}
-:global(.theme-ember) .inputExamples{border:1px solid #282624;background:#151413}
+:global(.theme-ember) .inputExamples{border:1px solid #282624;background:rgb(255 250 244 / 0.025);border-radius:12px}
 :global(.theme-ember) .inputExamples>summary{color:#98938b}
 :global(.theme-ember) .inputExamples>p{color:#7e7870}
-:global(.theme-ember) .roleExamples img{background:#1e1d1b}
+:global(.theme-ember) .roleExamples img{background:rgb(255 250 244 / 0.06);border-radius:8px}
 :global(.theme-ember) .roleExamples figcaption{color:#868077}
 :global(.theme-ember) .roleExamples strong{color:#aea9a3}
-:global(.theme-ember) .legacyGrid>section{border:1px solid #292725;background:#0f0e0d}
-:global(.theme-ember) .legacyImages img{background:#1c1a19}
+:global(.theme-ember) .legacyGrid>section{border:1px solid #292725;background:rgb(255 250 244 / 0.04);border-radius:12px}
+:global(.theme-ember) .legacyImages img{background:rgb(255 250 244 / 0.06)}
 :global(.theme-ember) .legacyImages figcaption{color:#7e7870}
 /* ember-dark:end */

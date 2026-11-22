@@ -317,7 +317,7 @@ export function MobileNavigationMenu({
                                   <Flame
                                     size={13}
                                     fill="currentColor"
-                                    color="#786490"
+                                    color="#f07a2b"
                                     className="mobile-nav-tool-link__hot"
                                     style={{ position: "absolute", top: 7, right: 7, display: "block" }}
                                     aria-label="热门功能"

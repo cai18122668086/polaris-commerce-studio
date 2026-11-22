@@ -6,33 +6,34 @@
 .purchase{margin:24px 0;padding:20px;background:#faf8ff;border:1px solid #e9e1f5;border-radius:10px}.purchaseRow{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.purchaseRow>div{flex:1}.purchaseRow strong{font-size:19px;color:#5e588e}.purchase small{display:block;font-size:11px;color:#9c8eaa;line-height:1.8;margin-top:7px}.purchaseRow b{font-size:25px;color:#5e588e}.purchaseRow button{background:#5e588e;border:0;color:white;border-radius:8px;padding:10px 16px;cursor:pointer}.purchaseRow button:disabled{opacity:.6;cursor:default}.purchase p{font-size:12px;line-height:1.8}.purchase a{color:#6a5882}
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .panel{background:#0f0e0d;border:1px solid #252422;color:#c1bebc}
+:global(.theme-ember) .panel{background:rgb(255 250 244 / 0.04);border:1px solid #252422;color:#c1bebc;border-radius:19px}
 :global(.theme-ember) .heading p{color:#6a655e}
 :global(.theme-ember) .heading h2{color:#c2bfba}
-:global(.theme-ember) .heading button{border:1px solid #252421;background:#181715;color:#99948c}
-:global(.theme-ember) .summary{background:#1d1c1a;border:1px solid #282623}
+:global(.theme-ember) .heading button{border:1px solid #252421;background:rgb(255 250 244 / 0.025);color:#99948c;border-radius:999px}
+:global(.theme-ember) .summary{background:rgb(255 250 244 / 0.06);border:1px solid #282623;border-radius:15px}
 :global(.theme-ember) .summary span{color:#867f77}
-:global(.theme-ember) .summary strong{color:#afaba5}
+:global(.theme-ember) .summary strong{color:#afaba5;font-weight:400}
 :global(.theme-ember) .summary>div:first-child strong{color:#c2bfba}
 :global(.theme-ember) .help{color:#7f7970}
-:global(.theme-ember) .table th{color:#79736c;background:#141312}
+:global(.theme-ember) .panel h3{font-weight:500}
+:global(.theme-ember) .table th{color:#79736c;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .table td,:global(.theme-ember) .table th{border-bottom:1px solid #201e1c}
 :global(.theme-ember) .table td a{color:#a39e97}
 :global(.theme-ember) .table td small{color:#67625b}
 :global(.theme-ember) .empty{color:#6a655e}
-:global(.theme-ember) .notice{background:#1b1a18;border:1px solid #262422;color:#77716a}
+:global(.theme-ember) .notice{background:rgb(255 250 244 / 0.025);border:1px solid #262422;color:#77716a;border-radius:12px}
 :global(.theme-ember) .notice a{color:#ada9a3}
 :global(.theme-ember) .notice small{color:#68635c}
 :global(.theme-ember) .notice>svg{color:#716c64}
 :global(.theme-ember) .costHint{color:#a39e97}
 :global(.theme-ember) .costHint a{color:#fa682a}
-:global(.theme-ember) .accountHeader{background:#0f0e0d;border-bottom:1px solid #252422}
+:global(.theme-ember) .accountHeader{background:rgb(255 250 244 / 0.04);border-bottom:1px solid #252422}
 :global(.theme-ember) .accountHeader>a{color:#afaba5}
-:global(.theme-ember) .accountHeader>a:last-child{background:#1b1a18}
-:global(.theme-ember) .purchase{background:#151412;border:1px solid #252421}
+:global(.theme-ember) .accountHeader>a:last-child{background:rgb(255 250 244 / 0.025);border-radius:12px}
+:global(.theme-ember) .purchase{background:rgb(255 250 244 / 0.025);border:1px solid #252421;border-radius:14px}
 :global(.theme-ember) .purchaseRow strong{color:#afaba5}
 :global(.theme-ember) .purchase small{color:#726c65}
 :global(.theme-ember) .purchaseRow b{color:#afaba5}
-:global(.theme-ember) .purchaseRow button{background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .purchaseRow button{background:#e6e2db;color:#0f0e0d;border-radius:999px}
 :global(.theme-ember) .purchase a{color:#ada9a3}
 /* ember-dark:end */

@@ -3,41 +3,41 @@
 @media(max-width:600px){.hero h2 span{display:block}}
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .hero{border:1px solid #2e2b28;background:radial-gradient(ellipse at 95% 10%,rgb(55 52 49 / 0.467),transparent 55%),linear-gradient(115deg,#0f0e0d,#1c1b19)}
-:global(.theme-ember) .eyebrow{color:#969189}
+:global(.theme-ember) .hero{border:1px solid #2e2b28;background:radial-gradient(ellipse at 95% 10%,rgb(255 250 244 / 0.042),transparent 55%),linear-gradient(115deg,rgb(255 250 244 / 0.04),rgb(255 250 244 / 0.06))}
+:global(.theme-ember) .eyebrow{color:#969189;font-weight:500}
 :global(.theme-ember) .hero h2{color:#e9e8e6}
 :global(.theme-ember) .hero p{color:#888279}
-:global(.theme-ember) .root .code{border:1px dashed #47443f;background:rgb(15 14 13 / 0.612);color:#a9a49e}
+:global(.theme-ember) .root .code{border:1px dashed #47443f;background:rgb(255 250 244 / 0.024);color:#a9a49e;border-radius:11px}
 :global(.theme-ember) .code>span{color:#7a746c}
-:global(.theme-ember) .root .share{border:1px solid #dad8d5;background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .root .share{border:1px solid #dad8d5;background:#e6e2db;color:#0f0e0d;border-radius:11px;font-weight:500}
 :global(.theme-ember) .rate{color:#a6a19b}
 :global(.theme-ember) .rate p{color:#807a72}
-:global(.theme-ember) .stats>div{border:1px solid #262422;background:#0f0e0d}
+:global(.theme-ember) .stats>div{border:1px solid #262422;background:rgb(255 250 244 / 0.04);border-radius:16px}
 :global(.theme-ember) .stats>div>span{color:#837d74}
 :global(.theme-ember) .stats strong{color:#d8d6d3}
 :global(.theme-ember) .stats small{color:#7a746c}
-:global(.theme-ember) .friends h2{color:#dfdddb}
-:global(.theme-ember) .filters{background:#1f1e1c}
-:global(.theme-ember) .root .filters button{color:#867f77}
-:global(.theme-ember) .root .filters button[aria-pressed=true]{background:#0f0e0d;color:#bebab5;box-shadow:0 1px 5px rgb(0 0 0 / 0.071)}
-:global(.theme-ember) .tableHeading{background:#1d1c1a;color:#77716a}
+:global(.theme-ember) .friends h2{color:#dfdddb;font-weight:500}
+:global(.theme-ember) .filters{background:rgb(255 250 244 / 0.06);border-radius:11px}
+:global(.theme-ember) .root .filters button{color:#867f77;border-radius:999px}
+:global(.theme-ember) .root .filters button[aria-pressed=true]{background:rgb(255 250 244 / 0.04);color:#bebab5;box-shadow:0 1px 5px rgb(0 0 0 / 0.071)}
+:global(.theme-ember) .tableHeading{background:rgb(255 250 244 / 0.06);color:#77716a;border-radius:11px}
 :global(.theme-ember) .rows li{border-bottom:1px solid #242220}
 :global(.theme-ember) .rows strong{color:#b6b2ad}
 :global(.theme-ember) .rows time{color:#7b756d}
-:global(.theme-ember) .status{background:#1d1c1b;color:#767068}
-:global(.theme-ember) .status[data-status=paid]{background:#1c1a18;color:#908a82}
-:global(.theme-ember) .status[data-status=refunded]{background:#1c1b19;color:#fa682a}
-:global(.theme-ember) .rows li>b{color:#a09b94}
+:global(.theme-ember) .status{background:rgb(255 250 244 / 0.06);color:#767068}
+:global(.theme-ember) .status[data-status=paid]{background:rgb(255 250 244 / 0.06);color:#908a82}
+:global(.theme-ember) .status[data-status=refunded]{background:rgb(255 250 244 / 0.06);color:#fa682a}
+:global(.theme-ember) .rows li>b{color:#a09b94;font-weight:500}
 :global(.theme-ember) .rows small{color:#645f59}
-:global(.theme-ember) .empty{border:1px dashed #302e2a;background:#131211;color:#58544e}
+:global(.theme-ember) .empty{border:1px dashed #302e2a;background:rgb(255 250 244 / 0.025);color:#58544e;border-radius:16px}
 :global(.theme-ember) .empty strong{color:#8c857d}
 :global(.theme-ember) .empty p{color:#66615b}
 :global(.theme-ember) .pagination{color:#726c65}
-:global(.theme-ember) .root .pagination button{border:1px solid #2e2c29;background:#0f0e0d;color:#8d877e}
+:global(.theme-ember) .root .pagination button{border:1px solid #2e2c29;background:rgb(255 250 244 / 0.04);color:#8d877e;border-radius:999px}
 :global(.theme-ember) .rules{color:#726d65}
 :global(.theme-ember) .rules p{color:#827b73}
 :global(.theme-ember) .fallback{color:#8c857d}
-:global(.theme-ember) .fallback input{border:1px solid #33302d;background:#0f0e0d;color:#a9a49e}
-:global(.theme-ember) .skeleton{background:#1e1d1b}
+:global(.theme-ember) .fallback input{border:1px solid #33302d;background:rgb(255 250 244 / 0.04);color:#a9a49e;border-radius:9px}
+:global(.theme-ember) .skeleton{background:rgb(255 250 244 / 0.06)}
 :global(.theme-ember) .root button:focus-visible{outline:3px solid #504c47}
 /* ember-dark:end */

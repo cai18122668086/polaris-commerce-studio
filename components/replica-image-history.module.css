@@ -14,20 +14,21 @@
 @media(max-width:760px){.dialog{width:calc(100vw - 20px);max-height:calc(100dvh - 20px);border-radius:13px}.header{padding:16px}.body{grid-template-columns:minmax(0,1fr);padding:16px;gap:18px}.preview{min-height:180px}.preview>img{max-height:420px}.versions{max-height:250px}.header>button{min-width:44px;min-height:44px}.version{min-height:72px}}
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .dialog{border:1px solid #242321;background:#0f0e0d;color:#e9e8e7;box-shadow:0 24px 100px rgb(0 0 0 / 0.395)}
+:global(.theme-ember) .dialog{border:1px solid #242321;background:rgb(255 250 244 / 0.04);color:#e9e8e7;box-shadow:0 24px 100px rgb(0 0 0 / 0.395);border-radius:22px}
 :global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.51)}
 :global(.theme-ember) .header{border-bottom:1px solid #1e1d1c}
+:global(.theme-ember) .header h2{font-weight:500}
 :global(.theme-ember) .header p{color:#79736b}
-:global(.theme-ember) .header>button{background:#181816;color:#908a82}
-:global(.theme-ember) .preview{border:1px solid #232120;background:#151514;color:#78726a}
-:global(.theme-ember) .version{border:1px solid #22211f;background:#0f0e0d}
+:global(.theme-ember) .header>button{background:rgb(255 250 244 / 0.025);color:#908a82;border-radius:999px}
+:global(.theme-ember) .preview{border:1px solid #232120;background:rgb(255 250 244 / 0.025);color:#78726a;border-radius:16px}
+:global(.theme-ember) .version{border:1px solid #22211f;background:rgb(255 250 244 / 0.04);border-radius:14px}
 :global(.theme-ember) .version[aria-pressed=true]{border-color:#d0ceca;box-shadow:0 0 0 1px #000000}
-:global(.theme-ember) .version>img,:global(.theme-ember) .placeholder{background:#191817}
+:global(.theme-ember) .version>img,:global(.theme-ember) .placeholder{background:rgb(255 250 244 / 0.025);border-radius:8px}
 :global(.theme-ember) .version .status{color:#79736b}
 :global(.theme-ember) .version small{color:#79736b}
 :global(.theme-ember) .version time{color:#625d57}
 :global(.theme-ember) .primary{background:#e9e8e7;color:#0f0e0d}
-:global(.theme-ember) .primary:hover:not(:disabled){background:#1d1b1a;color:#e9e8e7}
+:global(.theme-ember) .primary:hover:not(:disabled){background:rgb(255 250 244 / 0.06);color:#e9e8e7}
 :global(.theme-ember) .detail{color:#868077}
 :global(.theme-ember) .error{color:#fa682a}
 :global(.theme-ember) .loading{color:#79736b}

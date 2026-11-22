@@ -1,4 +1,5 @@
 "use client";
+import { CostLine } from "./studio-content";
 import { useRef, useState } from "react";
 import { AudioLines, Mic, Upload } from "lucide-react";
 import type { useVoiceClones } from "@/features/video-studio/voice-clones";
@@ -10,7 +11,7 @@ import type { UploadProgress } from "@/lib/api/upload";
 type Clones = ReturnType<typeof useVoiceClones>;
 const statusLabel: Record<string, string> = { queued: "等待处理", submitting: "正在创建", processing: "审核处理中", ready: "可以使用", unknown: "结果待核对", failed: "未通过，请检查录音" };
 
-export function VoiceCloneDialog({ clones, onClose, onCreated }: { clones: Clones; onClose: () => void; onCreated: () => void }) {
+export function VoiceCloneDialog({ clones, onClose, onCreated, cost }: { clones: Clones; onClose: () => void; onCreated: () => void; cost?: { text: string; insufficient: boolean } }) {
   const [name, setName] = useState(""); const [file, setFile] = useState<File>();
   const [consent, setConsent] = useState(false); const [busy, setBusy] = useState(false);
   const [error, setError] = useState(""); const [submittedId, setSubmittedId] = useState("");
@@ -57,7 +58,8 @@ export function VoiceCloneDialog({ clones, onClose, onCreated }: { clones: Clone
         <button type="button" className={styles.primaryButton} onClick={onClose}>查看我的声音</button>
       </> : <>
         <button type="button" className={styles.outlineButton} disabled={busy} onClick={onClose}>取消</button>
-        <button type="button" className={styles.primaryButton} disabled={busy || !name.trim() || !file || !consent || !clones.config?.available} onClick={() => { void submit(); }}>{busy ? "处理中…" : attempted ? "核对原提交" : "创建声音"}</button>
+        <CostLine note={cost} />
+        <button type="button" className={styles.primaryButton} disabled={busy || !!cost?.insufficient || !name.trim() || !file || !consent || !clones.config?.available} onClick={() => { void submit(); }}>{busy ? "处理中…" : attempted ? "再次确认（不会重复扣费）" : "创建声音"}</button>
       </>}
     </footer>
   </Dialog>;

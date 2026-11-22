@@ -29,3 +29,9 @@ export function MetadataGrid({ items }: { items: { label: string; value: ReactNo
 export function Notice({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "warning" }) {
   return <div className={styles.notice} data-tone={tone}>{children}</div>;
 }
+
+/** Price shown beside a paid action; "价格待定" when no price is configured. */
+export function CostLine({ note }: { note?: { text: string; insufficient: boolean } }) {
+  if (!note) return null;
+  return <p className={styles.costLine} data-short={note.insufficient || undefined}>{note.text}</p>;
+}

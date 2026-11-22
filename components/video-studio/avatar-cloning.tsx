@@ -1,5 +1,6 @@
 "use client";
 
+import { CostLine } from "./studio-content";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, ImagePlus, LoaderCircle, Upload, Video } from "lucide-react";
 import type { GenerationJob, useVideoLibrary } from "@/features/video-studio/library";
@@ -9,7 +10,7 @@ import { Dialog } from "./studio-primitives";
 import styles from "./video-studio.module.css";
 import cloneStyles from "./avatar-cloning.module.css";
 
-export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCreated }: { library: ReturnType<typeof useVideoLibrary>; userId: string; workspaceId: string; onClose: () => void; onCreated: (job: GenerationJob) => void }) {
+export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCreated, costFor }: { library: ReturnType<typeof useVideoLibrary>; userId: string; workspaceId: string; onClose: () => void; onCreated: (job: GenerationJob) => void ; costFor?: (kind: "image" | "video") => { text: string; insufficient: boolean }}) {
   const [kind, setKind] = useState<"image" | "video">("image");
   const [name, setName] = useState("");
   const [file, setFile] = useState<File>();
@@ -39,7 +40,7 @@ export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCre
         requestId.current = ""; setAttempted(false); setUpload(undefined);
         try { sessionStorage.removeItem(pendingKey); } catch {}
         setError(reason.message);
-      } else setError("提交结果待确认。请核对原提交或在我的作品中查看进度。");
+      } else setError("网络中断，正在确认这次提交是否已到达，不会重复扣费；也可以在「我的作品」查看进度。");
     } finally { setBusy(false); }
   };
   const percent = upload?.total ? Math.min(100, Math.round(upload.loaded / upload.total * 100)) : undefined;
@@ -64,6 +65,7 @@ export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCre
     <p className={cloneStyles.help}>{kind === "image" ? "点击生成后会上传照片并调用动作生成服务，按实际用量计费；预览满意后再登记形象。" : "先上传预览，确认加入形象库时调用登记服务并计费。"}</p>
     {busy && <div className={cloneStyles.uploadProgress} role="status"><span><LoaderCircle size={15} />{upload?.complete ? "正在检查素材" : "正在上传素材"}<small>{percent === undefined ? "" : `${percent}%`}</small></span><progress aria-label="素材上传进度" max={100} value={upload?.complete ? undefined : percent} /></div>}
     {error && <p className={cloneStyles.error} role="alert">{error}</p>}
-    <footer className={styles.dialogFooter}><button className={styles.outlineButton} type="button" disabled={busy} onClick={onClose}>取消</button><button className={styles.primaryButton} type="button" disabled={busy || !file || !name.trim() || !consent} onClick={() => { void submit(); }}>{busy ? <><LoaderCircle className={cloneStyles.spinner} size={16} />正在处理</> : <>{attempted ? "核对原提交" : kind === "image" ? "生成形象动作（计费）" : "上传并预览"}<ArrowRight size={15} /></>}</button></footer>
+    <CostLine note={costFor?.(kind)} />
+    <footer className={styles.dialogFooter}><button className={styles.outlineButton} type="button" disabled={busy} onClick={onClose}>取消</button><button className={styles.primaryButton} type="button" disabled={busy || !file || !name.trim() || !consent} onClick={() => { void submit(); }}>{busy ? <><LoaderCircle className={cloneStyles.spinner} size={16} />正在处理</> : <>{attempted ? "再次确认（不会重复扣费）" : kind === "image" ? "生成形象动作（计费）" : "上传并预览"}<ArrowRight size={15} /></>}</button></footer>
   </Dialog>;
 }

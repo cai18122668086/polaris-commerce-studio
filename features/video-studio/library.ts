@@ -57,6 +57,8 @@ export function useVideoLibrary(workspaceId: string) {
     const result = await apiClient.POST(`${root}/audio-files`, { ...options(), body: { file } as never, bodySerializer: () => { const data = new FormData(); data.append("file", file); return data; } });
     return unwrapApiResponse(result) as { id: string; name: string; duration: number };
   };
+  /** Finds a submission by its idempotency key; never creates or re-sends anything. */
+  const lookupRequest = async (requestId: string) => unwrapApiResponse(await apiClient.GET(`${root}/generation-requests/{request_id}`, { ...options(), params: { path: { workspace_id: workspaceId, request_id: requestId } } })) as { received: boolean; job: GenerationJob | null };
   const rejectTemplate = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/reject-template`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
   const approveTemplate = async (id: string) => { unwrapApiResponse(await apiClient.POST(`${root}/generation-tasks/{job_id}/approve-template`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } })); await reload(); };
   const resume = async (id: string) => {
@@ -72,5 +74,5 @@ export function useVideoLibrary(workspaceId: string) {
       setResumingIds([...resumeRequests.current]);
     }
   };
-  return { avatars, voices, jobs, loading, error, resumingIds, reload, submit, createAvatar, uploadAudio, resume, approveTemplate, rejectTemplate };
+  return { avatars, voices, jobs, loading, error, resumingIds, reload, submit, lookupRequest, createAvatar, uploadAudio, resume, approveTemplate, rejectTemplate };
 }

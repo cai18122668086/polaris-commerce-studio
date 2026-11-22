@@ -629,6 +629,8 @@
 
 @font-face { font-family: "Polaris Outfit"; src: url("/video-studio/fonts/outfit.woff2") format("woff2"); font-weight: 200 600; font-display: swap; }
 @font-face { font-family: "Polaris Accent Serif"; src: url("/video-studio/fonts/serif-accent.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+.creditBalance { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: #6f6879; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 430px) { .creditBalance { display: none; } }
 /* ---------- 熔光手调层（对齐原型 studio.html）----------
    自动换色在文件末尾的 ember-dark 块里；这里补自动映射做不到的气氛：近黑底上的暖色虚光、
    玻璃页头和侧栏、接近白色的主按钮。用 html.theme-ember 前缀，优先级高于自动块，不受顺序影响。
@@ -1011,4 +1013,28 @@
 :global(.theme-ember) .taskEmpty,:global(.theme-ember) .taskPanel > p{color:#8c857d}
 :global(.theme-ember) .taskPanel footer{color:#9b958e}
 :global(.theme-ember) .taskPanel footer a{color:#cecbc7}
+:global(.theme-ember) .creditBalance{color:#9f9a93}
+:global(html.theme-ember) .studio{--ink:#211f1d;--muted:rgb(33 31 29 / 0.62);--border:rgb(15 14 13 / 0.09);--ember:#fa682a;background:#e9e8e7}
+:global(html.theme-ember) .studio::before{background:radial-gradient(40% 34% at 82% 6%, rgb(250 104 42 / 0.26), transparent 70%), radial-gradient(36% 32% at 8% 96%, rgb(72 41 2 / 0.1), transparent 72%)}
+:global(html.theme-ember) .header{background:rgb(0 0 0 / 0.9)}
+:global(html.theme-ember) .sidebar{background:rgb(0 0 0 / 0.688)}
+:global(html.theme-ember) .sideHome,:global(html.theme-ember) .sidebar nav a{color:rgb(33 31 29 / 0.62)}
+:global(html.theme-ember) .sidebar a:hover{background:rgb(15 14 13 / 0.04)}
+:global(html.theme-ember) .sidebar a.activeNav{background:rgb(15 14 13 / 0.07)}
+:global(html.theme-ember) .navGroup{color:rgb(33 31 29 / 0.42)}
+:global(html.theme-ember) .sidePromo{background:rgb(15 14 13 / 0.03)}
+:global(html.theme-ember) .studio .primaryButton,:global(html.theme-ember) .studio .generateButton{background:#211f1d;border-color:#211f1d;color:#e9e8e7}
+:global(html.theme-ember) .studio .primaryButton:hover:not(:disabled),:global(html.theme-ember) .studio .generateButton:hover:not(:disabled){background:#0f0e0d;border-color:#0f0e0d;color:#e9e8e7;box-shadow:0 10px 30px -12px rgb(0 0 0 / 0.99)}
+:global(html.theme-ember) .studio .outlineButton{border-color:rgb(15 14 13 / 0.14)}
+:global(html.theme-ember) .studio .outlineButton:hover:not(:disabled){background:rgb(15 14 13 / 0.05);border-color:rgb(15 14 13 / 0.24)}
+:global(html.theme-ember) .studio input,:global(html.theme-ember) .studio textarea,:global(html.theme-ember) .studio select{background:rgb(15 14 13 / 0.03)}
+:global(html.theme-ember) .studio input::placeholder,:global(html.theme-ember) .studio textarea::placeholder{color:rgb(33 31 29 / 0.38)}
+:global(html.theme-ember) .studio input:focus,:global(html.theme-ember) .studio textarea:focus,:global(html.theme-ember) .studio select:focus{border-color:rgb(250 104 42 / 0.7);box-shadow:0 0 0 3px rgb(0 0 0 / 0.252)}
+:global(html.theme-ember) .studio button:focus-visible,:global(html.theme-ember) .studio a:focus-visible{outline:2px solid rgb(250 104 42 / 0.85)}
+:global(html.theme-ember) .studioIntro{background:rgb(0 0 0 / 0.8);box-shadow:inset 0 1px 0 rgb(255 255 255 / 0.006), 0 30px 60px -30px #000000}
+:global(html.theme-ember) .studioIntro p,:global(html.theme-ember) .introEyebrow{color:rgb(33 31 29 / 0.62)}
+:global(html.theme-ember) .entryCard{background:rgb(0 0 0 / 0.688)}
+:global(html.theme-ember) .entryCard:hover{border-color:rgb(15 14 13 / 0.2);background:rgb(0 0 0 / 0.875)}
+:global(html.theme-ember) .entryPrimary{border-color:rgb(250 104 42 / 0.45)}
+:global(html.theme-ember) .brand small,:global(html.theme-ember) .introEyebrow{color:rgb(33 31 29 / 0.42)}
 /* ember-dark:end */

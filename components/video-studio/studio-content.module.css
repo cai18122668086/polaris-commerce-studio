@@ -31,6 +31,9 @@
 @media(max-width:480px) { .disclosure > summary { padding:13px 12px; gap:8px; } .disclosureBody { padding:12px; } .sectionHeading b { font-size:12px; } .sectionMeta { font-size:10px; max-width:85px; text-align:right; } .sectionIcon { width:28px; height:28px; } .metadata { gap:12px; } .documentText { font-size:12px; padding:12px; } }
 @media(prefers-reduced-motion:reduce) { .chevron,.disclosure > summary { transition:none; } }
 
+.costLine { margin: 10px 0 0; font-size: 12px; line-height: 1.6; color: #6f6879; font-variant-numeric: tabular-nums; text-align: right; }
+.costLine[data-short] { color: #b3541e; }
+
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .disclosure{border:1px solid var(--border,#242320);background:#0f0e0d}
 :global(.theme-ember) .disclosure > summary{color:var(--ink,#e9e8e6)}
@@ -51,4 +54,6 @@
 :global(.theme-ember) .metadata dd{color:#d7d5d2}
 :global(.theme-ember) .notice{border:1px solid #23211f;background:#171615;color:#969089}
 :global(.theme-ember) .notice[data-tone=warning]{background:#141312;border-color:#282624;color:#dc7f06}
+:global(.theme-ember) .costLine{color:#9f9a93}
+:global(.theme-ember) .costLine[data-short]{color:#fa682a}
 /* ember-dark:end */

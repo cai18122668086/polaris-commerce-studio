@@ -31,6 +31,9 @@ import { ScriptHistory } from "./script-history";
 import { ScriptLibrary } from "./script-library";
 import { StudioToast, type ToastMessage, type ToastTone } from "./studio-toast";
 import { useAutoReveal } from "@/features/video-studio/use-auto-reveal";
+import { useVideoCredits } from "@/features/video-studio/credits";
+import { CostLine } from "./studio-content";
+import { PENDING_COPY, decodePending, encodePending, pendingOutcome } from "@/features/video-studio/pending-submission";
 import workflowStyles from "./studio-workflow.module.css";
 import { MyVoices, VoiceCloneDialog } from "./voice-cloning";
 import { useVoiceClones } from "@/features/video-studio/voice-clones";
@@ -58,6 +61,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const router = useRouter();
   const library = useVideoLibrary(workspaceId);
   const clones = useVoiceClones(workspaceId);
+  const credits = useVideoCredits(workspaceId);
   const AVATARS = library.avatars;
   const VOICES = library.voices;
   const [templateAvatar, setTemplateAvatar] = useState<Avatar>();
@@ -68,21 +72,50 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const [generationError, setGenerationError] = useState("");
   const generationRequest = useRef<Parameters<typeof library.submit>[0] | undefined>(undefined);
   const pendingKey = `polaris-video-generation:${userId}:${workspaceId}`;
+  const pendingSavedAt = useRef(0);
+  const isSubmission = (value: unknown): value is Parameters<typeof library.submit>[0] => {
+    const body = value as Parameters<typeof library.submit>[0] | null;
+    return !!body && typeof body === "object" && ["lipsync", "h3_template"].includes(body.kind) && typeof body.request_id === "string" && typeof body.avatar_id === "string";
+  };
   const restorePending = () => {
     if (generationRequest.current) return;
     try {
-      const raw = sessionStorage.getItem(pendingKey);
-      if (raw) {
-        const body = JSON.parse(raw) as Parameters<typeof library.submit>[0];
-        if (["lipsync", "h3_template"].includes(body.kind) && typeof body.request_id === "string" && typeof body.avatar_id === "string") generationRequest.current = body;
-      }
+      const pending = decodePending(sessionStorage.getItem(pendingKey), isSubmission);
+      if (pending) { generationRequest.current = pending.body; pendingSavedAt.current = pending.savedAt; }
     } catch { /* In-memory retry still works if storage is unavailable. */ }
   };
-  const clearPending = () => { generationRequest.current = undefined; setGenerationError(""); try { sessionStorage.removeItem(pendingKey); } catch {} };
-  const persistPending = () => { try { sessionStorage.setItem(pendingKey, JSON.stringify(generationRequest.current)); } catch {} };
+  const clearPending = () => { generationRequest.current = undefined; pendingSavedAt.current = 0; setGenerationError(""); try { sessionStorage.removeItem(pendingKey); } catch {} };
+  const persistPending = () => {
+    if (!generationRequest.current) return;
+    pendingSavedAt.current ||= Date.now();
+    try { sessionStorage.setItem(pendingKey, encodePending(generationRequest.current, pendingSavedAt.current)); } catch {}
+  };
+  // 提交结果不确定时由页面自动按请求号核对：查到就显示原任务，确认没到达才允许重新提交；从不自动重发付费请求。
+  const reconcileTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const reconcilePending = async () => {
+    restorePending();
+    const pending = generationRequest.current;
+    if (!pending) return;
+    clearTimeout(reconcileTimer.current);
+    setGenerationError(PENDING_COPY.checking);
+    let lookup: { received: boolean; job: GenerationJob | null };
+    try { lookup = await library.lookupRequest(pending.request_id); }
+    catch { reconcileTimer.current = setTimeout(() => void reconcilePending(), 10000); return; }
+    if (generationRequest.current?.request_id !== pending.request_id) return;
+    const outcome = pendingOutcome(lookup, pendingSavedAt.current);
+    if (outcome === "found" && lookup.job) {
+      clearPending(); notify(PENDING_COPY.found, "success");
+      if (pending.kind === "lipsync") { setRealPreview(lookup.job); setModal("real-preview"); }
+      void library.reload();
+    } else if (outcome === "absent") {
+      clearPending(); notify(PENDING_COPY.absent);
+    } else {
+      reconcileTimer.current = setTimeout(() => void reconcilePending(), 10000);
+    }
+  };
   const submissionError = (error: unknown) => {
     if (error instanceof ApiError && error.status && error.status >= 400 && error.status < 500) { clearPending(); notify(error.message); }
-    else setGenerationError("提交结果尚未确认，请查询原提交，避免重复计费。");
+    else { setGenerationError(PENDING_COPY.checking); void reconcilePending(); }
   };
   const persisted = useProjectSession(userId, workspaceId);
   const { session, content, projectId, status } = persisted;
@@ -139,6 +172,9 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
 
   useEffect(() => () => { if (audioUrl.current) URL.revokeObjectURL(audioUrl.current); window.speechSynthesis?.cancel(); }, []);
   useEffect(() => () => { voicePlayer.current?.pause(); }, []);
+  // 页面打开时，若有上次没确认结果的提交，自动核对一次。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void reconcilePending(); return () => clearTimeout(reconcileTimer.current); }, []);
   useEffect(() => { voicePlayer.current?.pause(); void Promise.resolve().then(() => setPlayingVoice("")); }, [modal, screen]);
 
   const attempt = (operation: () => Promise<unknown>) => { void operation().catch(error => notify(error instanceof Error ? error.message : "操作未完成，请重试", "error")); };
@@ -160,7 +196,8 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const open =(next: Modal) => {
     restorePending();
     if (next === "generate" && generationRequest.current?.kind === "h3_template") { setTemplateAvatar(AVATARS.find(a => a.id === generationRequest.current?.avatar_id)); next = "h3-template"; }
-    setGenerationError(generationRequest.current ? "存在尚未确认的提交，本次只查询原提交。" : "");
+    setGenerationError(generationRequest.current ? PENDING_COPY.checking : "");
+    if (generationRequest.current) void reconcilePending();
     setSearch(""); setGender("全部"); if (next !== "voice-clone") setAssetTab("public");
     setSelectedAvatar(AVATARS.some(a => a.id === draft.avatarId) ? draft.avatarId : AVATARS[0]?.id || ""); setSelectedVoice(draft.voiceId);
     if (next === "generate" && !generationRequest.current) setGenerationError("");
@@ -312,12 +349,12 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     {persisted.backupUnavailable && status !== "saved" && <div className={styles.persistenceNotice}>本机备份不可用，请等待保存成功后离开页面。</div>}
     {library.error && screen !== "editing" && <div role="alert" className={styles.persistenceNotice}>{library.error}<button onClick={() => attempt(() => library.reload())}>重试读取数字人库</button></div>}
     {persisted.legacyAvailable && !blocked && <div className={styles.persistenceNotice}><span>发现此浏览器的旧演示记录</span><button onClick={() => attempt(() => session.importLegacy())}>导入本机旧记录</button></div>}
-    <fieldset disabled={blocked} className={styles.persistenceBody}>{screen === "create" ? editor : <><header className={styles.header}>{screen === "editing" ? <div className={styles.editingTitle}><button type="button" onClick={() => go("home")}>返回</button><b>智能剪辑</b></div> : <Link href="/video-studio" aria-label="视频空间首页"><Brand /></Link>}<div className={styles.headerActions}><TaskCenter userId={userId} workspaceId={workspaceId} jobs={library.jobs} notify={notify} /><span className={styles.previewBadge}><i />灰度测试</span><Link href="/" className={styles.returnSite}>返回极光商绘<ExternalLink size={14} /></Link><button type="button" className={styles.accountAvatar} onClick={() => open("help")} aria-label="灰度说明">极</button></div></header><div className={styles.workspace}><aside className={styles.sidebar}><Link href="/video-studio" className={`${styles.sideHome} ${screen === "home" ? styles.activeNav : ""}`}><FolderOpen size={18} />创作空间</Link>{navGroups.map(group => <div key={group.label} className={styles.navSection}><span className={styles.navGroup}>{group.label}</span><nav aria-label={group.label}>{group.items.map(item => <Link key={item.key} href={hrefOf(item.key) + (persisted.revision ? `?project=${projectId}` : "")} onClick={event => { event.preventDefault(); go(item.key); }} className={screen === item.key ? styles.activeNav : ""} aria-current={screen === item.key ? "page" : undefined}>{item.icon}<span>{item.label}</span></Link>)}</nav></div>)}<div className={styles.sidebarBottom}><div className={styles.sidePromo}><Sparkles size={20} /><b>每个好产品，都值得被看见</b><span>用数字人，讲述你的品牌故事。</span><button type="button" onClick={() => go("create")}>开始创作 <ArrowRight size={14} /></button></div><button type="button" className={styles.helpButton} onClick={() => open("help")}><CircleHelp size={17} />使用帮助<ExternalLink size={13} /></button></div></aside><main className={styles.main}>{screen === "writing" && stepBar("writing")}{screen === "editing" && stepBar("editing")}{screen === "writing" ? <WritingStudio workspaceId={workspaceId} projectId={projectId} session={session} content={content} writing={writing} savedTexts={copies.map(copy => copy.text)} notify={notify} attempt={attempt} copyText={copyText} updateDraft={updateDraft} onSaveToLibrary={saveCopy} onUseForVoice={() => go("create")} /> : screen === "home" ? homeContent : screen === "avatars" || screen === "voices" ? assetContent : screen === "library" ? <><div className={styles.pageHeading}><div><h1>文案库</h1><p>收藏好的表达，让下一次创作更轻松。</p></div><button className={styles.primaryButton} onClick={() => go("create")}><Plus size={16} />新建文案</button></div><div className={styles.listHeading}><b>全部文案 <small>{copies.length}</small></b><label className={styles.search}><Search size={15} /><input aria-label="搜索文案" placeholder="搜索文案" value={search} onChange={event => setSearch(event.target.value)} /></label></div>{copyList()}</> : screen === "works" ? worksContent : <StudioEditingScreen workspaceId={workspaceId} persisted={persisted} jobs={library.jobs} attempt={attempt} updateDraft={updateDraft} saveEditingProject={saveEditingProject} />}</main></div></>}
+    <fieldset disabled={blocked} className={styles.persistenceBody}>{screen === "create" ? editor : <><header className={styles.header}>{screen === "editing" ? <div className={styles.editingTitle}><button type="button" onClick={() => go("home")}>返回</button><b>智能剪辑</b></div> : <Link href="/video-studio" aria-label="视频空间首页"><Brand /></Link>}<div className={styles.headerActions}>{credits.balance && <span className={styles.creditBalance} title="工作区可用积分">积分 {credits.balance.available.toLocaleString("zh-CN")}</span>}<TaskCenter userId={userId} workspaceId={workspaceId} jobs={library.jobs} notify={notify} /><span className={styles.previewBadge}><i />灰度测试</span><Link href="/" className={styles.returnSite}>返回极光商绘<ExternalLink size={14} /></Link><button type="button" className={styles.accountAvatar} onClick={() => open("help")} aria-label="灰度说明">极</button></div></header><div className={styles.workspace}><aside className={styles.sidebar}><Link href="/video-studio" className={`${styles.sideHome} ${screen === "home" ? styles.activeNav : ""}`}><FolderOpen size={18} />创作空间</Link>{navGroups.map(group => <div key={group.label} className={styles.navSection}><span className={styles.navGroup}>{group.label}</span><nav aria-label={group.label}>{group.items.map(item => <Link key={item.key} href={hrefOf(item.key) + (persisted.revision ? `?project=${projectId}` : "")} onClick={event => { event.preventDefault(); go(item.key); }} className={screen === item.key ? styles.activeNav : ""} aria-current={screen === item.key ? "page" : undefined}>{item.icon}<span>{item.label}</span></Link>)}</nav></div>)}<div className={styles.sidebarBottom}><div className={styles.sidePromo}><Sparkles size={20} /><b>每个好产品，都值得被看见</b><span>用数字人，讲述你的品牌故事。</span><button type="button" onClick={() => go("create")}>开始创作 <ArrowRight size={14} /></button></div><button type="button" className={styles.helpButton} onClick={() => open("help")}><CircleHelp size={17} />使用帮助<ExternalLink size={13} /></button></div></aside><main className={styles.main}>{screen === "writing" && stepBar("writing")}{screen === "editing" && stepBar("editing")}{screen === "writing" ? <WritingStudio workspaceId={workspaceId} projectId={projectId} session={session} content={content} writing={writing} savedTexts={copies.map(copy => copy.text)} notify={notify} attempt={attempt} copyText={copyText} updateDraft={updateDraft} onSaveToLibrary={saveCopy} onUseForVoice={() => go("create")} /> : screen === "home" ? homeContent : screen === "avatars" || screen === "voices" ? assetContent : screen === "library" ? <><div className={styles.pageHeading}><div><h1>文案库</h1><p>收藏好的表达，让下一次创作更轻松。</p></div><button className={styles.primaryButton} onClick={() => go("create")}><Plus size={16} />新建文案</button></div><div className={styles.listHeading}><b>全部文案 <small>{copies.length}</small></b><label className={styles.search}><Search size={15} /><input aria-label="搜索文案" placeholder="搜索文案" value={search} onChange={event => setSearch(event.target.value)} /></label></div>{copyList()}</> : screen === "works" ? worksContent : <StudioEditingScreen workspaceId={workspaceId} persisted={persisted} jobs={library.jobs} attempt={attempt} updateDraft={updateDraft} saveEditingProject={saveEditingProject} />}</main></div></>}
 
     </fieldset>
     {modal === "avatar-preview" && avatarPreview && <Dialog title={avatarPreview.name} onClose={() => setModal(null)}>{avatarPreview.preview_url ? <video controls playsInline preload="metadata" src={avatarPreview.preview_url} style={{ width: "100%", maxHeight: "60vh" }} /> : <img src={imageOf(avatarPreview)} alt={avatarPreview.name} style={{ width: "100%", maxHeight: "60vh", objectFit: "contain" }} />}<p>{avatarPreview.source === "quanyu_public" ? "公共数字人，可直接用于口播生成" : avatarPreview.ready ? "极光原创数字人，动作模板已就绪" : "原创参考形象，生成动作模板后可用于口播"}</p><footer className={styles.dialogFooter}><button className={styles.primaryButton} onClick={() => { updateDraft({ avatarId: avatarPreview.id }); setModal(null); go("create"); }}>使用此形象</button></footer></Dialog>}
-    {modal === "h3-template" && templateAvatar && <Dialog title="生成形象动作" onClose={() => setModal(null)}><div className={styles.templateReview}><img src={imageOf(templateAvatar)} alt={templateAvatar.name} /><div><h3>{templateAvatar.name}</h3><span>10 秒 · 自然讲述动作</span></div></div><MetadataGrid items={[{label:"拍摄方式",value:"固定机位"},{label:"动作衔接",value:"正向首尾循环"}]} /><Notice>生成后先预览，确认人物与动作满意再加入形象库。</Notice>{generationError && <Notice tone="warning">{generationError}</Notice>}<footer className={styles.dialogFooter}><button type="button" className={styles.outlineButton} onClick={() => setModal(null)}>取消</button><button type="button" className={styles.primaryButton} disabled={submitting} onClick={createTemplate}>{submitting ? "正在提交" : generationError ? "查询原提交" : "确认生成"}</button></footer></Dialog>}
-    {modal === "real-preview" && realPreview && <GenerationPreview job={realPreview} resuming={library.resumingIds.includes(realPreview.id)} submitting={submitting} onClose={() => setModal(null)} onResume={() => attempt(() => library.resume(realPreview.id))} onCopy={copyText} onUseAvatar={() => continueWithAvatar(realPreview)} onEdit={() => editGeneratedVideo(realPreview)} onApprove={() => attempt(async () => { setSubmitting(true); try { await library.approveTemplate(realPreview.id); } catch (error) { submissionError(error); } finally { setSubmitting(false); } })} onReject={() => attempt(async () => { setSubmitting(true); try { await library.rejectTemplate(realPreview.id); setModal(null); } finally { setSubmitting(false); } })} />}
+    {modal === "h3-template" && templateAvatar && <Dialog title="生成形象动作" onClose={() => setModal(null)}><div className={styles.templateReview}><img src={imageOf(templateAvatar)} alt={templateAvatar.name} /><div><h3>{templateAvatar.name}</h3><span>10 秒 · 自然讲述动作</span></div></div><MetadataGrid items={[{label:"拍摄方式",value:"固定机位"},{label:"动作衔接",value:"正向首尾循环"}]} /><Notice>生成后先预览，确认人物与动作满意再加入形象库。</Notice><CostLine note={credits.note(["avatar_motion", "avatar_register"])} />{generationError && <Notice tone="warning">{generationError}</Notice>}<footer className={styles.dialogFooter}><button type="button" className={styles.outlineButton} onClick={() => setModal(null)}>取消</button><button type="button" className={styles.primaryButton} disabled={submitting} onClick={createTemplate}>{submitting ? "正在提交" : generationError ? "再次确认（不会重复扣费）" : "确认生成"}</button></footer></Dialog>}
+    {modal === "real-preview" && realPreview && <GenerationPreview approveCost={credits.note(["avatar_register"])} job={realPreview} resuming={library.resumingIds.includes(realPreview.id)} submitting={submitting} onClose={() => setModal(null)} onResume={() => attempt(() => library.resume(realPreview.id))} onCopy={copyText} onUseAvatar={() => continueWithAvatar(realPreview)} onEdit={() => editGeneratedVideo(realPreview)} onApprove={() => attempt(async () => { setSubmitting(true); try { await library.approveTemplate(realPreview.id); } catch (error) { submissionError(error); } finally { setSubmitting(false); } })} onReject={() => attempt(async () => { setSubmitting(true); try { await library.rejectTemplate(realPreview.id); setModal(null); } finally { setSubmitting(false); } })} />}
     {modal === "proofread" && <ScriptProofread original={rawReference?.original_text || ""} text={draft.text} onChange={text => updateDraft({ text })} onClose={() => setModal(null)} onSave={() => attempt(async () => { await session.save(); setModal(null); notify("校对稿已保存，原始参考文稿保留"); })} />}
     {modal === "history" && <ScriptHistory workspaceId={workspaceId} versions={persisted.history} currentText={draft.text} saving={status === "saving"} onRestore={restoreVersion} onCopy={copyText} onClose={() => setModal(null)} />}
     {screen === "create" && <div className={styles.editorBrand}><Brand small /><span>灰度测试 · 仅指定账号可用</span></div>}
@@ -325,9 +362,9 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     {modal === "avatar" && <AvatarPicker avatars={AVATARS} selectedId={selectedAvatar} loading={library.loading} error={library.error} onSelect={setSelectedAvatar} onApply={() => { if (AVATARS.some(item => item.id === selectedAvatar)) { updateDraft({ avatarId: selectedAvatar }); setModal(null); } }} onClose={() => setModal(null)} onReload={() => attempt(() => library.reload())} onClone={() => open("avatar-clone")} />}
     {modal === "voice" && <VoicePicker voices={VOICES} selectedId={selectedVoice} playingId={playingVoice} onSelect={item => setSelectedVoice(item.id)} onPreview={previewVoice} onApply={() => { applyVoice(selectedVoice); setModal(null); }} onClose={() => setModal(null)} onClone={() => open("voice-clone")} />}
 
-    {modal === "voice-clone" && <VoiceCloneDialog clones={clones} onClose={() => { setModal(null); setAssetTab("own"); }} onCreated={() => { void library.reload(); setAssetTab("own"); }} />}
-    {modal === "avatar-clone" && <AvatarCloneDialog library={library} userId={userId} workspaceId={workspaceId} onClose={() => setModal(null)} onCreated={job => { setAssetTab("own"); setRealPreview(job); setModal("real-preview"); setRightTab("works"); }} />}
-    {modal === "generate" && <GenerationConfirmation draft={draft} avatar={avatar} voiceName={voice?.name} audioName={audio?.name} language={voice?.languages?.[draft.language || "auto"]} error={generationError} busy={submitting} saving={status === "saving"} onClose={() => setModal(null)} onConfirm={createRealVideo} onCopy={copyText} />}
+    {modal === "voice-clone" && <VoiceCloneDialog cost={credits.note(["voice_clone"])} clones={clones} onClose={() => { setModal(null); setAssetTab("own"); }} onCreated={() => { void library.reload(); setAssetTab("own"); }} />}
+    {modal === "avatar-clone" && <AvatarCloneDialog costFor={kind => credits.note(kind === "image" ? ["avatar_motion", "avatar_register"] : ["avatar_register"])} library={library} userId={userId} workspaceId={workspaceId} onClose={() => setModal(null)} onCreated={job => { setAssetTab("own"); setRealPreview(job); setModal("real-preview"); setRightTab("works"); }} />}
+    {modal === "generate" && <GenerationConfirmation cost={credits.note(["lipsync"])} draft={draft} avatar={avatar} voiceName={voice?.name} audioName={audio?.name} language={voice?.languages?.[draft.language || "auto"]} error={generationError} busy={submitting} saving={status === "saving"} onClose={() => setModal(null)} onConfirm={createRealVideo} onCopy={copyText} />}
     {modal === "preview" && previewWork && <Dialog title={previewWork.draft.name || "演示预览"} onClose={() => { setModal(null); window.speechSynthesis?.cancel(); setSpeaking(false); }}><div className={styles.demoPreview}><img src={imageOf(AVATARS.find(item => item.id === previewWork.draft.avatarId) ?? AVATARS[0])} alt="演示形象" /><span>静态形象预览 · 非生成视频</span></div><TextDocument text={previewWork.draft.drive === "audio" ? "音频驱动演示任务；音频只保留在原始会话中。" : previewWork.draft.text} title="演示文案" onCopy={copyText} /><footer className={styles.dialogFooter}><button className={styles.outlineButton} onClick={() => attempt(async () => { await session.select(previewWork.projectId); session.edit(previewWork.content); setModal(null); go("create"); })}>继续编辑</button>{previewWork.draft.drive === "text" && <button className={styles.primaryButton} onClick={() => audition(previewWork.draft.text)}><Volume2 size={16} />{speaking ? "停止试听" : "试听文案"}</button>}</footer></Dialog>}
     {modal === "help" && <Dialog title="开始你的视频创作" onClose={() => setModal(null)}><div className={styles.helpContent}><div className={styles.helpSteps}>{[{title:"写好文案",hint:"在爆款文案里找对标、改写并定稿，或直接粘贴已有文案"},{title:"生成口播",hint:"选择形象与声音，生成数字人口播"},{title:"智能剪辑",hint:"选模板生成预览，确认后下载高清"},{title:"查看作品",hint:"在我的作品里找回进行中和已完成的视频"}].map((step,index) => <div key={step.title}><span>{index + 1}</span><div><b>{step.title}</b><p>{step.hint}</p></div></div>)}</div><Disclosure title="创作须知" description="保存、素材与使用范围"><ul className={styles.helpNotes}><li>草稿、文案版本和任务保存在账号中。</li><li>采用文案前请核对产品事实。</li><li>声音克隆请使用本人录音，生成按实际服务计费。</li><li>智能剪辑支持字幕与组合动效，当前可用选项以项目界面为准。</li></ul></Disclosure><button type="button" className={styles.primaryButton} onClick={() => { setModal(null); go("writing"); }}>从文案开始 <ArrowRight size={16} /></button></div></Dialog>}
   </div>;

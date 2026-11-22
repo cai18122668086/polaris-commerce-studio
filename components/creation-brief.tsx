@@ -6,9 +6,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, Sparkles } from "lucide-react";
 
-import styles from "./creation-brief.module.css";
+import { CREATION_BRIEF_KEY as STORAGE_KEY } from "@/lib/creation-brief";
 
-const STORAGE_KEY = "polaris.creationBrief";
+import styles from "./creation-brief.module.css";
 const MAX = 2000;
 
 export function CreationBrief({ initial }: { initial?: string | null }) {

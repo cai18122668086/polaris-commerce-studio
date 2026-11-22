@@ -2,6 +2,7 @@
 import { CreationSettings, SettingField, ChoiceControl, GenerationVersionField, QuantityControl } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
+import { useCreationBriefHandoff } from "@/lib/creation-brief";
 import { useDraftState } from "@/lib/hooks/use-creation-draft";
 import { ProductFactsGuidance } from "@/components/product-facts-guidance";
 
@@ -148,6 +149,8 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const [uploadError, setUploadError] = useState<string>();
   const [selectedJobId, setJobId] = useWorkspaceJobId(initialRegion === "domestic" ? "/workspace/detail-pack" : "/workspace/crossborder-detail");
   const jobId = selectedJobId ?? "";
+  // 从创作首页选套图进来时，把首页写的描述带进「真实卖点与商品资料」（已有内容不覆盖）
+  useCreationBriefHandoff(Boolean(workspace?.id) && !jobId, draftSellingPoints, setSellingPoints);
   const handoff = useAssetHandoff(workspace?.id, 8, jobId);
   const sources = useMemo(() => sourceOverrides ?? handoff.data?.sources ?? [], [sourceOverrides, handoff.data]);
   const setSources = (next: UploadedSource[] | ((current: UploadedSource[]) => UploadedSource[])) =>

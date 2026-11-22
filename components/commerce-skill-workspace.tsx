@@ -2,6 +2,7 @@
 import { CreationSettings, SettingField, ChoiceControl, GenerationVersionField, QuantityControl, RatioControl } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
+import { useCreationBriefHandoff } from "@/lib/creation-brief";
 import { useDraftState } from "@/lib/hooks/use-creation-draft";
 import { ProductFactsGuidance } from "@/components/product-facts-guidance";
 
@@ -411,6 +412,8 @@ export function CommerceSkillWorkspace({
   const listingDescription = "";
   const aPlusCopy = "";
   const [draftProductFacts, setProductFacts] = useDraftState(workspace?.id, featureId, "draftProductFacts", "");
+  // 亚马逊套图从创作首页进来时，把首页写的描述带进「商品卖点与参数」（已有内容不覆盖）
+  useCreationBriefHandoff(featureId === "amazon-visual-suite" && Boolean(workspace?.id) && !jobId, draftProductFacts, setProductFacts);
   const parameters = "";
   const certificationsOrEvidence = "";
   const forbiddenClaims = "";

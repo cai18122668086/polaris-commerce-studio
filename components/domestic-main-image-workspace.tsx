@@ -2,6 +2,7 @@
 import { GenerationVersionField } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
+import { useCreationBriefHandoff } from "@/lib/creation-brief";
 import { useDraftState } from "@/lib/hooks/use-creation-draft";
 import { ProductFactsGuidance } from "@/components/product-facts-guidance";
 
@@ -170,6 +171,8 @@ export function DomesticMainImageWorkspace() {
   const [shadowMode, setShadowMode] = useState<AuroraShadowMode>("off");
   const [createdJobId, setCreatedJobId] = useState<string>();
   const jobId = requestedJobId ?? createdJobId;
+  // 从创作首页选套图进来时，把首页写的描述带进「核心卖点」（已有内容不覆盖）
+  useCreationBriefHandoff(Boolean(workspace?.id) && !jobId, sellingPoints, setSellingPoints);
   const [localError, setLocalError] = useState<string>();
   const job = useJob(workspace?.id, jobId);
   const automaticPlan = !jobId || (job.data?.configuration.settings as Record<string, unknown> | undefined)?.auto_start_after_plan === true;

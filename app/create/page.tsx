@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Globe2, Grid2X2, ImagePlus, Layers3, Lightbulb, PackageCheck, ShoppingBag, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { CreationBrief } from "@/components/creation-brief";
+import { withBriefHandoff } from "@/lib/creation-brief";
 import { commerceEntriesFor, commerceEntryHref } from "@/lib/commerce-entrypoints";
 import { FEATURE_THUMBNAILS } from "@/lib/creation-entrypoints";
 import styles from "./create.module.css";
@@ -53,7 +54,7 @@ export default function CreatePage() {
     <section aria-labelledby="creation-options-title" id="creation-options">
       <header className={styles.selectionHeading}><div><h2 id="creation-options-title">{goal === "main" ? "选择主图创作方式" : goal === "detail" ? "选择详情创作方式" : "选择你需要的套图"}</h2><p>{market === "domestic" ? "淘宝 · 天猫 · 京东 · 拼多多等国内平台" : market === "international" ? "Amazon · Shopify · TikTok Shop · Shopee 等海外平台" : "按上架需求选择，主图、详情都能在这里开始。"}</p></div><span>{goal === "main" || goal === "detail" ? <><Check size={13} aria-hidden="true" /> 已按目标筛选</> : `${entries.length} 种创作方式`}</span></header>
       {hasAssets && <div className={styles.assetNotice}><ImagePlus size={18} aria-hidden="true" /><p>已带入 {search.getAll("assetId").length} 张素材，进入详情工作台后继续使用。<Link href="/create">不带素材，查看全部方式 <ArrowRight size={13} aria-hidden="true" /></Link></p></div>}
-      <div className={styles.grid} data-single={entries.length === 1 || undefined}>{entries.map(entry => <Link className={styles.card} href={commerceEntryHref(entry, search)} key={entry.id} data-entry={entry.id} data-tone={entry.goal === "detail" ? "lime" : "lilac"}>
+      <div className={styles.grid} data-single={entries.length === 1 || undefined}>{entries.map(entry => <Link className={styles.card} href={withBriefHandoff(commerceEntryHref(entry, search))} key={entry.id} data-entry={entry.id} data-tone={entry.goal === "detail" ? "lime" : "lilac"}>
         <div className={styles.cardVisual}><div className={styles.visualCopy}><strong>{visualCopy[entry.id].title}</strong><p>{visualCopy[entry.id].caption}</p></div><img src={FEATURE_THUMBNAILS[entry.id === "crossborder-detail" ? "detail-pack" : entry.id]} alt="" width={1374} height={1145} /><span>{entry.market === "domestic" ? "国内电商" : "跨境电商"}</span><small>示例效果</small></div>
         <div className={styles.cardBody}><h3>{entry.title}</h3><p>{entry.description}</p><div className={styles.output}><PackageCheck size={17} aria-hidden="true" /><span><small>你将得到</small><strong>{entry.output}</strong></span></div><div className={styles.cardAction}>进入工作台<span><ArrowUpRight size={18} aria-hidden="true" /></span></div></div>
       </Link>)}</div>

@@ -29,7 +29,7 @@ export function ScriptAssistantPanel({ workspaceId, projectId, session, content,
   onDraftReady?: () => void;
 }) {
   const { assistance, assistantJob, assistantMode, assistantResult, rewrittenText } = writing;
-  return <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} workspaceId={workspaceId} jobs={assistance.benchmarkJobs} extractions={assistance.benchmarkExtractions}
+  return <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} onSkip={() => onShowAssistant("extract", false)} workspaceId={workspaceId} jobs={assistance.benchmarkJobs} extractions={assistance.benchmarkExtractions}
     extractBusy={assistance.busy("extract")}
     onSearch={async criteria => {
       const target = session.state.projectId;

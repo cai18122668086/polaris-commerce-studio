@@ -135,9 +135,9 @@
 :global(html.theme-ember) .dropzone svg { background: none; color: rgb(237 234 228 / 70%); border: 1px solid rgb(255 255 255 / 14%); border-radius: 50%; }
 :global(html.theme-ember) .dropzone b { color: #edeae4; }
 :global(html.theme-ember) .dropzone small { color: rgb(237 234 228 / 50%); }
-:global(html.theme-ember) .actionBar button, :global(html.theme-ember) .useTemplate { background: #edeae4; color: #0b0b0b; border-color: #edeae4; border-radius: 999px; font-weight: 600; }
-:global(html.theme-ember) .actionBar button:hover:not(:disabled), :global(html.theme-ember) .useTemplate:hover { background: #ffffff; box-shadow: 0 10px 30px -12px rgb(240 122 43 / 55%); }
-:global(html.theme-ember) .actionBar button:disabled { background: rgb(255 255 255 / 10%); color: rgb(237 234 228 / 45%); border-color: transparent; }
+:global(html.theme-ember) .actionBar button, :global(html.theme-ember) .useTemplate { background: #edeae4 !important; color: #0b0b0b !important; border-color: #edeae4; border-radius: 999px; font-weight: 600; }
+:global(html.theme-ember) .actionBar button:hover:not(:disabled), :global(html.theme-ember) .useTemplate:hover { background: #ffffff !important; box-shadow: 0 10px 30px -12px rgb(240 122 43 / 55%); }
+:global(html.theme-ember) .actionBar button:disabled { background: rgb(255 255 255 / 10%) !important; color: rgb(237 234 228 / 45%) !important; border-color: transparent; }
 :global(html.theme-ember) .selectionBadge { background: #edeae4; color: #0b0b0b; box-shadow: none; }
 :global(html.theme-ember) .emptyHistory { color: rgb(237 234 228 / 45%); }
 

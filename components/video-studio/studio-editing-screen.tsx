@@ -9,13 +9,14 @@ import styles from "./video-studio.module.css";
 type ProjectSessionState = ReturnType<typeof useProjectSession>;
 
 /** The 智能剪辑 page: project picker plus the editing workspace for that project. */
-export function StudioEditingScreen({ workspaceId, persisted, jobs, attempt, updateDraft, saveEditingProject }: {
+export function StudioEditingScreen({ workspaceId, persisted, jobs, attempt, updateDraft, saveEditingProject, costText }: {
   workspaceId: string;
   persisted: ProjectSessionState;
   jobs: GenerationJob[];
   attempt: (operation: () => Promise<unknown>) => void;
   updateDraft: (patch: Partial<VideoDraft>) => void;
   saveEditingProject: () => Promise<void>;
+  costText?: string;
 }) {
   const { session, content, projectId, status } = persisted;
   const draft = content.draft;
@@ -24,5 +25,5 @@ export function StudioEditingScreen({ workspaceId, persisted, jobs, attempt, upd
       <select aria-label="切换剪辑项目" value={persisted.projects.some(p => p.id === projectId) ? projectId : ""} onChange={event => attempt(() => session.select(event.target.value))}><option value="" disabled>新项目</option>{persisted.projects.map(p => <option value={p.id} key={p.id}>{p.content.draft.name || "未命名视频"}</option>)}</select>
       <button type="button" onClick={() => attempt(async () => { await session.newProject(); await saveEditingProject(); })}>新建剪辑项目</button>
       <span role="status">{status === "saving" ? "保存中" : persisted.revision ? "已保存" : "选视频后自动保存"}</span>
-    </div></details><EditingWorkspace key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={Boolean(persisted.revision)} jobs={jobs} onSaveProject={saveEditingProject} /></>;
+    </div></details><EditingWorkspace key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={Boolean(persisted.revision)} jobs={jobs} costText={costText} onSaveProject={saveEditingProject} /></>;
 }

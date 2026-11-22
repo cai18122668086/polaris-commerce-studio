@@ -1,0 +1,59 @@
+/* 内页开场与空状态（熔光，对齐 studio.html）：玻璃面板、细线、倾斜叠放的作品卡与暗化陪衬卡。
+   颜色只写在 html.theme-ember 作用域下（换色脚本会跳过），基础规则只管布局。 */
+.hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(220px, .85fr); align-items: center; gap: 24px; min-height: 248px; padding: 30px 34px; margin-bottom: 26px; border-radius: 22px; overflow: hidden; isolation: isolate; }
+.copy { position: relative; z-index: 1; display: grid; gap: 12px; align-content: center; min-width: 0; }
+.eyebrow { font-size: 10.5px; letter-spacing: .24em; text-transform: uppercase; }
+.hero h1 { margin: 0; font-size: 28px; line-height: 1.3; font-weight: 500; letter-spacing: -.01em; }
+.hero h1 em { font-style: normal; font-family: "Polaris Accent Serif", "Songti SC", "STSong", "Noto Serif SC", serif; font-weight: 500; margin-left: .15em; }
+.hero p { margin: 0; font-size: 13px; line-height: 1.8; max-width: 46ch; }
+.facts { display: flex; flex-wrap: wrap; gap: 0; margin: 4px 0 0; }
+.facts div { padding: 2px 18px 2px 0; margin-right: 18px; }
+.facts div:last-child { margin-right: 0; border-right: 0 !important; }
+.facts dt { font-size: 10.5px; letter-spacing: .12em; }
+.facts dd { margin: 2px 0 0; font-size: 17px; font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+
+.stack { position: relative; height: 208px; perspective: 900px; }
+.stack img { position: absolute; top: 50%; width: 46%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 14px; }
+.front { right: 22%; transform: translateY(-50%) rotateY(-14deg) rotateZ(-2deg); z-index: 3; }
+.ghostMid { right: 2%; transform: translateY(-46%) rotateY(-18deg) rotateZ(3deg) scale(.88); z-index: 2; }
+.ghostBack { right: 40%; transform: translateY(-42%) rotateY(-10deg) rotateZ(-6deg) scale(.8); z-index: 1; }
+.stackCompact { height: 190px; width: 100%; max-width: 260px; }
+.stackCompact img { max-height: 170px; }
+
+.empty { display: grid; grid-template-columns: minmax(160px, 240px) minmax(0, 1fr); gap: 22px; align-items: center; padding: 22px 24px; border-radius: 18px; }
+.empty b { display: block; font-size: 16px; font-weight: 500; }
+.empty p { margin: 6px 0 12px; font-size: 12.5px; line-height: 1.8; }
+.empty ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.empty li { display: flex; gap: 10px; align-items: center; font-size: 12.5px; }
+.empty li span { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; flex: none; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 760px) {
+  .hero { grid-template-columns: 1fr; padding: 0 20px 22px; gap: 4px; min-height: 0; }
+  .hero .stack { order: -1; height: 196px; margin: 4px -20px 6px; }
+  .hero .stack img { width: 30%; max-height: 172px; }
+  .front { right: 35%; }
+  .ghostMid { right: 10%; }
+  .ghostBack { right: 60%; }
+  .hero h1 { font-size: 23px; }
+  .empty { grid-template-columns: 1fr; justify-items: start; }
+  .stackCompact { height: 176px; max-width: none; }
+  .stackCompact img { width: 28%; max-height: 150px; }
+}
+
+:global(html.theme-ember) .hero { background: rgb(17 16 15 / 64%); border: 1px solid rgb(255 255 255 / 8%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 30px 60px -30px rgb(0 0 0 / 70%); -webkit-backdrop-filter: blur(30px) saturate(1.2); backdrop-filter: blur(30px) saturate(1.2); color: #edeae4; }
+:global(html.theme-ember) .hero::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(60% 80% at 85% 50%, rgb(200 52 10 / 18%), transparent 70%); }
+:global(html.theme-ember) .eyebrow { color: rgb(237 234 228 / 42%); }
+:global(html.theme-ember) .hero h1 em { color: #f07a2b; }
+:global(html.theme-ember) .hero p, :global(html.theme-ember) .empty p { color: rgb(237 234 228 / 62%); }
+:global(html.theme-ember) .facts div { border-right: 1px solid rgb(255 255 255 / 10%); }
+:global(html.theme-ember) .facts dt { color: rgb(237 234 228 / 42%); }
+:global(html.theme-ember) .facts dd { color: #edeae4; }
+:global(html.theme-ember) .stack img { border: 1px solid rgb(255 255 255 / 12%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 10%), 0 24px 40px -18px rgb(0 0 0 / 80%); }
+:global(html.theme-ember) .ghostMid, :global(html.theme-ember) .ghostBack { filter: brightness(.38) saturate(.7); }
+:global(html.theme-ember) .front { filter: saturate(.92) contrast(1.04); }
+:global(html.theme-ember) .stackCompact img { filter: brightness(.45) saturate(.7); }
+:global(html.theme-ember) .stackCompact .front { filter: brightness(.7) saturate(.85); }
+:global(html.theme-ember) .empty { background: rgb(255 255 255 / 2.5%); border: 1px solid rgb(255 255 255 / 8%); color: #edeae4; }
+:global(html.theme-ember) .empty li { color: rgb(237 234 228 / 80%); }
+:global(html.theme-ember) .empty li span { border: 1px solid rgb(255 255 255 / 16%); color: rgb(237 234 228 / 70%); }

@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import { activeWorkView, matchesKeyword } from "@/features/video-studio/active-works";
 import styles from "./video-studio.module.css";
+import { GuidedEmpty } from "./page-hero";
 
 const route = "/api/v1/video-studio/workspaces/{workspace_id}/editing-works" as const;
 const activeRoute = "/api/v1/video-studio/workspaces/{workspace_id}/editing-works/active" as const;
@@ -70,7 +71,7 @@ export function EditingWorks({ userId, workspaceId, keyword }: { userId: string;
       {works.isError && <p role="alert">
         暂时无法读取剪辑成片。 <button type="button" className={styles.textButton} onClick={() => void (works.isFetchNextPageError ? works.fetchNextPage() : works.refetch())}>重试</button>
       </p>}
-      {works.isSuccess && !items.length && <p>{term ? "没有找到匹配的剪辑成片。" : "完成的剪辑成片会出现在这里。"}</p>}
+      {works.isSuccess && !items.length && (term ? <p>没有找到匹配的剪辑成片。</p> : <GuidedEmpty title="还没有剪辑成片" description="把口播送进智能剪辑，确认预览后，高清成片会出现在这里，可以直接播放和下载。" steps={["在「智能剪辑」选一条口播或上传视频", "挑一个模板，开始智能剪辑", "预览满意后确认，获取高清成片"]} action={<Link className={styles.primaryButton} href="/video-studio/editing">去智能剪辑</Link>} art={["cat-hero", "olay-main", "bag-tan"]} />)}
       {!!items.length && <div className={styles.worksGrid}>{items.map(work => <article key={work.task_id} className={styles.workCard}>
         <video controls playsInline preload="none" className={styles.editingWorkVideo} src={work.final.url} aria-label={`剪辑成片 · ${work.project_title}`} />
         <div>

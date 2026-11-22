@@ -1,9 +1,10 @@
 "use client";
 
+import { GuidedEmpty } from "./page-hero";
 import { editingTaskProgress } from "@/features/video-studio/editing-progress";
 import { EditingProgressSteps } from "./editing-progress";
 import { useInternalTools } from "@/features/video-studio/internal-tools";
-import { Check, UserRound, PackageOpen } from "lucide-react";
+import { Check, UserRound } from "lucide-react";
 import { editingFlowSteps } from "@/features/video-studio/editing-flow-steps";
 import { workspaceActionLabel } from "@/features/video-studio/editing-primary";
 import { revisingTask } from "@/features/video-studio/editing-workbench";
@@ -473,7 +474,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       onCreated={async () => { applyTasks(await reload()); }} /></details>}
     <details hidden className={flow.library} onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>帮助与技术详情</summary><p>排查素材、字体或服务问题时使用。</p><button type="button" onClick={() => setNativeOpened(true)}>查看历史编排</button>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
     <section id="editing-results" className={`${flow.step} ${flow.history}`} aria-label="预览与下载"><h2>预览与下载 <small>{historyTasks.length} 个版本</small></h2><input type="search" className={flow.templateSearch} aria-label="搜索历史视频" placeholder="搜索历史视频" value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} />
-    {!historyTasks.length && <div className={flow.emptyHistory}><PackageOpen size={42} strokeWidth={1.2} /><span>视频会出现在这里</span><small>选择口播和模板，开始智能剪辑</small></div>}
+    {!historyTasks.length && <GuidedEmpty title="成片会出现在这里" description="每次剪辑都会保留一个版本，可以对比、调整后再出新版。" steps={["选视频", "选模板", "开始智能剪辑，预览后确认"]} art={["olay-main", "cat-hero", "serum-arch"]} />}
     <div className={styles.tasks}>{historyTasks.filter((task, index) => showTaskHistory || index < 3 || task.id === focusedTaskId || ["queued", "running", "awaiting_review"].includes(task.status)).map(task => {
       const final = task.artifacts.find(a => a.role === "final");
       const poster = task.artifacts.find(a => a.role === "poster");

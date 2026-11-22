@@ -11,6 +11,7 @@ import { ScriptAssistantPanel } from "./script-assistant-panel";
 import type { ToastTone } from "./studio-toast";
 import styles from "./video-studio.module.css";
 import page from "./writing-studio.module.css";
+import { PageHero } from "./page-hero";
 
 type ProjectSession = ReturnType<typeof useProjectSession>["session"];
 
@@ -47,10 +48,10 @@ export function WritingStudio({ workspaceId, projectId, session, content, writin
   const draft = content.draft.text;
 
   return <div className={page.writing}>
-    <div className={styles.pageHeading}>
-      <div><h1>爆款文案</h1><p>先找已验证的爆款，拆出结构，再按你的产品事实改写。定稿后直接做口播。</p></div>
-      <button type="button" className={styles.primaryButton} disabled={!draft.trim()} onClick={onUseForVoice}>用这篇文案做口播 <ArrowRight size={16} /></button>
-    </div>
+    <PageHero eyebrow="VIRAL SCRIPT · 爆款文案" title="先看爆款，" accent="再写自己的" description="找已验证的爆款作品，拆出钩子和结构，再按你的产品事实改写。定稿后直接做口播。"
+      facts={[{ label: "当前步骤", value: `${current.index} / ${WRITING_STEPS.length}` }, { label: "参考素材", value: content.references.length }, { label: "已存文案", value: savedTexts.length }]}
+      actions={<button type="button" className={styles.primaryButton} disabled={!draft.trim()} onClick={onUseForVoice}>用这篇文案做口播 <ArrowRight size={16} /></button>}
+      art={["olay-model", "cat-hero", "model-cardigan"]} />
     <div className={page.layout}>
       <ol className={page.steps} aria-label="爆款文案步骤">
         {WRITING_STEPS.map(item => <li key={item.id}>

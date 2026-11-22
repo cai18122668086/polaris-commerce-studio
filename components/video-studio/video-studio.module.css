@@ -667,6 +667,18 @@
 :global(html.theme-ember) .studio h1, :global(html.theme-ember) .studio h2 { font-weight: 500; letter-spacing: -.01em; }
 :global(html.theme-ember) .studioIntro mark { font-family: "Polaris Accent Serif", "Songti SC", "STSong", "Noto Serif SC", serif; font-weight: 500; }
 :global(html.theme-ember) .brand small, :global(html.theme-ember) .introEyebrow { letter-spacing: .22em; color: rgb(237 234 228 / 42%); }
+/* 内页质感：创作页形象位的暗化配图、任务面板与积分标签的玻璃质感 */
+.portraitEmpty { position: relative; overflow: hidden; }
+.portraitEmpty > :not(.portraitGhost) { position: relative; z-index: 1; }
+.portraitGhost { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+:global(html.theme-ember) .portraitGhost { filter: brightness(.32) saturate(.7) blur(1px); }
+:global(html.theme-ember) .portraitEmpty b { color: #edeae4; }
+:global(html.theme-ember) .portraitEmpty span { color: rgb(237 234 228 / 60%); }
+:global(html.theme-ember) .taskPanel { background: rgb(17 16 15 / 86%); border: 1px solid rgb(255 255 255 / 10%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 30px 60px -24px rgb(0 0 0 / 80%); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); border-radius: 16px; }
+:global(html.theme-ember) .taskPanel li a:hover { background: rgb(255 255 255 / 5%); }
+:global(html.theme-ember) .taskAttention { color: #f07a2b; }
+:global(html.theme-ember) .creditBalance { border-color: rgb(255 255 255 / 12%); color: rgb(237 234 228 / 72%); background: rgb(255 255 255 / 3%); border-radius: 999px; }
+:global(html.theme-ember) .studio .taskCenterButton { border-radius: 999px; }
 /* 手机端不允许整页横向拖动：页面横向裁切，提示框不超出屏幕，横滑导航自己吃掉滑动手势。 */
 @media (max-width: 860px) {
   :global(html):has(.studio), :global(body):has(.studio) { overflow-x: clip; }

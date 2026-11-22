@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Globe2, Grid2X2, ImagePlus, Layers3, Lightbulb, PackageCheck, ShoppingBag, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { CreationBrief } from "@/components/creation-brief";
 import { commerceEntriesFor, commerceEntryHref } from "@/lib/commerce-entrypoints";
 import { FEATURE_THUMBNAILS } from "@/lib/creation-entrypoints";
 import styles from "./create.module.css";
@@ -34,12 +35,13 @@ export default function CreatePage() {
   return <AppShell sidebar={false}><div className={styles.page}>
     <div className={styles.breadcrumb}><Link href="/"><ArrowLeft size={14} aria-hidden="true" /> 创作首页</Link><span>/</span><span>电商套图</span></div>
     <header className={styles.hero}>
-      <div className={styles.heroCopy}><span className="commerce-eyebrow">MADE FOR YOUR NEXT LAUNCH</span><h1><span>为你的商品，</span><span>选一套好图。</span></h1><p>从第一眼的主图，到讲清卖点的详情。<br />找到适合销售平台的套图，开始下一次上新。</p></div>
+      <div className={styles.heroCopy}><span className="commerce-eyebrow">为下一次上新</span><h1><span>为你的商品，</span><span>选一套好图。</span></h1><p>从第一眼的主图，到讲清卖点的详情。<br />找到适合销售平台的套图，开始下一次上新。</p></div>
       <div className={styles.heroArt} aria-hidden="true">
         {["domestic-main-image", "detail-pack", "amazon-visual-suite"].map(id => <img key={id} src={FEATURE_THUMBNAILS[id]} alt="" width={1374} height={1145} />)}
         <span><Sparkles size={13} /> 让好商品，一眼出彩</span>
       </div>
     </header>
+    <CreationBrief initial={search.get("prompt")} />
     <div className={styles.marketBar}>
       <span className={styles.marketLabel}>销售市场</span>
       <nav className={styles.markets} aria-label="选择电商市场">
@@ -48,7 +50,7 @@ export default function CreatePage() {
         <Link href={marketHref("international")} aria-current={market === "international" ? "page" : undefined}><Globe2 size={16} aria-hidden="true" />跨境电商</Link>
       </nav>
     </div>
-    <section aria-labelledby="creation-options-title">
+    <section aria-labelledby="creation-options-title" id="creation-options">
       <header className={styles.selectionHeading}><div><h2 id="creation-options-title">{goal === "main" ? "选择主图创作方式" : goal === "detail" ? "选择详情创作方式" : "选择你需要的套图"}</h2><p>{market === "domestic" ? "淘宝 · 天猫 · 京东 · 拼多多等国内平台" : market === "international" ? "Amazon · Shopify · TikTok Shop · Shopee 等海外平台" : "按上架需求选择，主图、详情都能在这里开始。"}</p></div><span>{goal === "main" || goal === "detail" ? <><Check size={13} aria-hidden="true" /> 已按目标筛选</> : `${entries.length} 种创作方式`}</span></header>
       {hasAssets && <div className={styles.assetNotice}><ImagePlus size={18} aria-hidden="true" /><p>已带入 {search.getAll("assetId").length} 张素材，进入详情工作台后继续使用。<Link href="/create">不带素材，查看全部方式 <ArrowRight size={13} aria-hidden="true" /></Link></p></div>}
       <div className={styles.grid} data-single={entries.length === 1 || undefined}>{entries.map(entry => <Link className={styles.card} href={commerceEntryHref(entry, search)} key={entry.id} data-entry={entry.id} data-tone={entry.goal === "detail" ? "lime" : "lilac"}>

@@ -580,7 +580,7 @@ export default function AdminAccountsPage() {
   return <AdminShell>
     <main className={styles.page}>
       <header className={styles.header}>
-        <div><span className={styles.eyebrow}><ShieldCheck size={14} /> ADMIN / ACCOUNTS</span><h1>电商账号池</h1><p>账号、登录会话和独立浏览器 Profile 只在管理员后台维护；普通爬虫用户只能提交商品链接。</p></div>
+        <div><span className={styles.eyebrow}><ShieldCheck size={14} /> 管理后台 / 账号</span><h1>电商账号池</h1><p>账号、登录会话和独立浏览器 Profile 只在管理员后台维护；普通爬虫用户只能提交商品链接。</p></div>
         <button className={styles.secondary} type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15} />刷新</button>
       </header>
       {message ? <p className={styles.success} role="status">{message}</p> : null}

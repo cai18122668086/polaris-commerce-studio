@@ -69,7 +69,7 @@ export function HomeHero() {
           <div className="commerce-collage__shape" aria-hidden="true" />
           <span className="commerce-collage__spark" aria-hidden="true">✳</span>
           <Link href="/style-replica" className="commerce-photo commerce-photo--fashion">
-            <div className="commerce-photo__bar"><span /><span /><span /><small>LOOKBOOK / 01</small></div>
+            <div className="commerce-photo__bar"><span /><span /><span /><small>作品集 / 01</small></div>
             <DisplayImage src="/images/cases/olay-20261030/replica-07.png" alt="OLAY 身体乳复刻任务中的人物场景成图" width={1055} height={1491} fetchPriority="high" sizes="(max-width: 640px) 48vw, 320px" />
             <span className="commerce-photo__caption">从实拍，到品牌视觉 <ArrowUpRight size={18} /></span>
           </Link>
@@ -78,7 +78,7 @@ export function HomeHero() {
             <span className="commerce-photo__caption">给商品一个新场景 <MoveUpRight size={17} /></span>
           </Link>
           <Link href="/create?goal=main" className="commerce-photo commerce-photo--commerce">
-            <span className="commerce-photo__tag">PRODUCT VISUAL</span>
+            <span className="commerce-photo__tag">商品视觉</span>
             <DisplayImage src="/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png" sizes="(max-width: 640px) 48vw, 320px" alt="猫粮国内主图任务的成图" width={1254} height={1254} />
             <span className="commerce-photo__caption">商品主图，一眼心动 <ArrowUpRight size={16} /></span>
           </Link>
@@ -86,7 +86,7 @@ export function HomeHero() {
           <span className="commerce-collage__cursor" aria-hidden="true"><svg viewBox="0 0 32 36"><path d="M3 2v28l8-8 6 12 6-3-6-12h12Z" /></svg><b>极光商绘</b></span>
         </div>
       </div>
-      <div className="commerce-hero__bottom"><span>让商品的每一面，都值得被看见。</span><span>SCROLL TO CREATE <ArrowDown size={13} /></span><button type="button" onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? "播放动效" : "暂停动效"}</button></div>
+      <div className="commerce-hero__bottom"><span>让商品的每一面，都值得被看见。</span><span>向下滚动，开始创作 <ArrowDown size={13} /></span><button type="button" onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? "播放动效" : "暂停动效"}</button></div>
     </section>
   );
 }
@@ -166,7 +166,7 @@ export function HomeProductShowcase() {
   return (
     <div className="commerce-showcase">
       <section className="commerce-showcase__section" aria-labelledby="commerce-showcase-title">
-        <header className="commerce-showcase__head"><span className="commerce-eyebrow">A LITTLE AI. A LOT OF POSSIBILITIES.</span><h2 id="commerce-showcase-title">原图很普通？<br />下一张，可以很惊艳。</h2><p>从商品本身出发，让好想法变成看得见的好效果。</p></header>
+        <header className="commerce-showcase__head"><span className="commerce-eyebrow">一点 AI，更多可能。</span><h2 id="commerce-showcase-title">原图很普通？<br />下一张，可以很惊艳。</h2><p>从商品本身出发，让好想法变成看得见的好效果。</p></header>
         <div className="commerce-showcase__tabs" role="tablist" aria-label="创作效果">
           {SHOWCASE_TOOLS.map((item, index) => <button key={item.id} id={`showcase-tab-${item.id}`} type="button" role="tab" aria-selected={active === index} aria-controls="commerce-showcase-panel" tabIndex={active === index ? 0 : -1} onClick={() => { setActive(index); setSplit(50); }} onKeyDown={(event) => {
             const next = event.key === "ArrowRight" ? (active + 1) % SHOWCASE_TOOLS.length : event.key === "ArrowLeft" ? (active + SHOWCASE_TOOLS.length - 1) % SHOWCASE_TOOLS.length : event.key === "Home" ? 0 : event.key === "End" ? SHOWCASE_TOOLS.length - 1 : undefined;
@@ -188,13 +188,13 @@ export function HomeProductShowcase() {
         </div>
       </section>
       <section className={`commerce-gallery${galleryPaused ? " is-paused" : ""}`} aria-labelledby="commerce-gallery-title">
-        <div className="commerce-gallery__head"><div><span className="commerce-eyebrow">MORE THAN ONE GREAT SHOT</span><h2 id="commerce-gallery-title">每个品类，都有自己的高光。</h2></div><button type="button" onClick={() => setGalleryPaused(!galleryPaused)} aria-pressed={galleryPaused}>{galleryPaused ? "播放案例墙" : "暂停案例墙"}</button></div>
+        <div className="commerce-gallery__head"><div><span className="commerce-eyebrow">不止一张好图</span><h2 id="commerce-gallery-title">每个品类，都有自己的高光。</h2></div><button type="button" onClick={() => setGalleryPaused(!galleryPaused)} aria-pressed={galleryPaused}>{galleryPaused ? "播放案例墙" : "暂停案例墙"}</button></div>
         <div className="commerce-gallery__window"><div className="commerce-gallery__track">{[0, 1].map((copy) => <div className="commerce-gallery__set" key={copy} aria-hidden={copy === 1 || undefined}>{GALLERY_IMAGES.map(([src, label], index) => <Link href="/inspiration" tabIndex={copy === 1 ? -1 : undefined} className={`commerce-gallery__image commerce-gallery__image--${index % 3}`} key={src}><DisplayImage src={src} alt={copy ? "" : `${label}创作效果`} loading="lazy" width={380} height={430} /><span>{label}<ArrowUpRight size={16} /></span></Link>)}</div>)}</div></div>
         <Link className="commerce-text-link" href="/inspiration">去灵感专区看看 <ArrowRight size={16} /></Link>
       </section>
       <section className="commerce-value">
         <div className="commerce-value__art" aria-label="商品从单张主图到详情套图的创作效果"><div className="commerce-value__sheet"><span>01 / MAIN VISUAL</span><DisplayImage src="/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png" alt="猫粮搜索主图成图" width={1374} height={1145} loading="lazy" /></div><div className="commerce-value__sheet"><span>02 / PRODUCT DETAILS</span><DisplayImage src="/images/cases/history-20261030/asset_6f416209332b45b285e07c3f91a6124b.png" alt="猫粮详情页成图" width={1374} height={1145} loading="lazy" /></div><span className="commerce-value__seal"><Sparkles size={19} /> 从好图<br />到好生意</span></div>
-        <div className="commerce-value__copy"><span className="commerce-eyebrow">CREATE MORE. MAKE IT YOURS.</span><h2>少一点反复，<br />多一点生意的可能。</h2><p>把精力留给选品、运营和品牌。让极光商绘，陪你把每一次上新的视觉做好。</p><ul><li><Check size={16} /><span><strong>让上新更从容</strong>主图、详情与场景素材，在同一处开始创作。</span></li><li><Check size={16} /><span><strong>让灵感多走一步</strong>从参考构图到商品细节，快速尝试不同表达。</span></li><li><Check size={16} /><span><strong>让每一份素材更有价值</strong>同一件商品，探索适合不同展示场景的视觉。</span></li></ul><Link className="commerce-text-link" href="/create?goal=detail">开始制作商品详情图 <ArrowRight size={17} /></Link></div>
+        <div className="commerce-value__copy"><span className="commerce-eyebrow">多一点创作，做出自己的样子。</span><h2>少一点反复，<br />多一点生意的可能。</h2><p>把精力留给选品、运营和品牌。让极光商绘，陪你把每一次上新的视觉做好。</p><ul><li><Check size={16} /><span><strong>让上新更从容</strong>主图、详情与场景素材，在同一处开始创作。</span></li><li><Check size={16} /><span><strong>让灵感多走一步</strong>从参考构图到商品细节，快速尝试不同表达。</span></li><li><Check size={16} /><span><strong>让每一份素材更有价值</strong>同一件商品，探索适合不同展示场景的视觉。</span></li></ul><Link className="commerce-text-link" href="/create?goal=detail">开始制作商品详情图 <ArrowRight size={17} /></Link></div>
       </section>
     </div>
   );
@@ -213,7 +213,7 @@ export function HomeCreativeVoices() {
   const [paused, setPaused] = useState(false);
   return (
     <section className={`commerce-reviews${paused ? " is-paused" : ""}`} aria-labelledby="commerce-reviews-title">
-      <header><span className="commerce-eyebrow">MADE FOR EVERY CREATIVE SELLER</span><h2 id="commerce-reviews-title">不同的生意，<br />同样期待下一张好图。</h2><p>以下为创作场景示意，用于说明不同岗位的视觉需求，并非真实客户评价。</p></header>
+      <header><span className="commerce-eyebrow">为每一位用心的卖家</span><h2 id="commerce-reviews-title">不同的生意，<br />同样期待下一张好图。</h2><p>以下为创作场景示意，用于说明不同岗位的视觉需求，并非真实客户评价。</p></header>
       <div className="commerce-reviews__window"><div className="commerce-reviews__track">
         {[0, 1].map((copy) => <div className="commerce-reviews__set" key={copy} aria-hidden={copy === 1 || undefined}>
           {CREATIVE_ROLES.map((review) => <article key={review.role}>
@@ -236,7 +236,7 @@ export function HomeHomeFooter() {
   return (
     <footer className="home-showcase-footer">
       <section className="commerce-closing">
-        <span className="commerce-eyebrow">YOUR NEXT GREAT VISUAL</span>
+        <span className="commerce-eyebrow">你的下一张好图</span>
         <h2>下一张好图，<br />从你的商品开始。</h2>
         <Link className="commerce-button" href="/tools">找到你的创作工具 <ArrowRight size={19} /></Link>
         <span className="commerce-closing__flower" aria-hidden="true">✳</span>

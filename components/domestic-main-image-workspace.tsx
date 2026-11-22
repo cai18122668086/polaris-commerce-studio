@@ -421,7 +421,7 @@ export function DomesticMainImageWorkspace() {
               <div className={styles.heading}><span>03</span><div><h2>六图方案确认</h2><p>确认后锁定商品身份、事实边界和整套视觉世界。</p></div>{job.data && <StatusBadge status={job.data.status} />}</div>
               {!plan.length ? <div className={styles.empty}>创建任务后，会先分析商品并锁定身份，再编译 1 张搜索主图与 5 张轮播图的完整方案。</div> : <>
                 <div className={styles.identityLock}>
-                  <span>PRODUCT IDENTITY LOCK</span>
+                  <span>商品外观锁定</span>
                   <h3>{identityLock?.product_form ?? "当前商品身份已锁定"}</h3>
                   {<><p>{identityLock?.identity_summary}</p>
                   <div><strong>必须保持</strong><p>{identityLock?.must_preserve?.join("；")}</p></div>

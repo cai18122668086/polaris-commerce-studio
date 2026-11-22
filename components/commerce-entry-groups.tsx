@@ -13,7 +13,7 @@ export function CommerceEntryGroups() {
     <section className={styles.section} aria-label="按电商市场选择创作">
       <header className={styles.heading}>
         <div>
-          <span className="commerce-eyebrow">CREATE FOR YOUR MARKET</span>
+          <span className="commerce-eyebrow">按销售市场创作</span>
           <h2>为你的销售平台做图。</h2>
           <p>已确定销售平台？选择对应工作台，直接上传商品。</p>
         </div>

@@ -5,6 +5,7 @@
    不使用蓝色、紫色或蓝紫渐变；减少动效偏好下全部静止。 */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
 import styles from "./ember-landing.module.css";
@@ -178,6 +179,15 @@ export function EmberHero() {
   const fallback = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLDivElement>(null);
   const go = useRef<HTMLAnchorElement>(null);
+  const typed = useRef(false); // 用户自己输入过（不是打字演示）
+  const router = useRouter();
+  // 点「生成」：把用户写的描述带进创作首页（/create?prompt=…），预填到创作输入框
+  const onGenerate = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    const text = typed.current ? (field.current?.innerText ?? "").trim() : "";
+    if (!text) return;
+    event.preventDefault();
+    router.push(`/create?prompt=${encodeURIComponent(text.slice(0, 2000))}`);
+  };
   const dots = useRef<HTMLDivElement>(null);
   const paused = usePaused();
 
@@ -206,8 +216,10 @@ export function EmberHero() {
         pi++; await wait(400);
       }
     })();
-    const stopTyping = () => { if (!typing) return; typing = false; f.textContent = ""; f.contentEditable = "true"; f.focus(); };
-    f.addEventListener("pointerdown", stopTyping); f.addEventListener("focus", stopTyping);
+    const stopTyping = () => { if (!typing && f.isContentEditable) return; typing = false; typed.current = true; f.textContent = ""; f.contentEditable = "true"; f.focus(); };
+    // 回车直接生成；Shift+回车换行；输入法组字时不触发
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); g.click(); } };
+    f.addEventListener("pointerdown", stopTyping); f.addEventListener("focus", stopTyping); f.addEventListener("keydown", onKey);
 
     // 浮动卡：鼠标视差 + 滚动视差；整页网点跟随光标
     const cards = [...el.querySelectorAll<HTMLElement>(`.${styles.floatCard}`)];
@@ -230,7 +242,7 @@ export function EmberHero() {
 
     return () => {
       alive = false; typing = false; cancelAnimationFrame(raf); clearTimeout(accT); stopBand?.();
-      f.removeEventListener("pointerdown", stopTyping); f.removeEventListener("focus", stopTyping);
+      f.removeEventListener("pointerdown", stopTyping); f.removeEventListener("focus", stopTyping); f.removeEventListener("keydown", onKey);
       el.removeEventListener("pointermove", onHero); removeEventListener("pointermove", onMove); document.documentElement.removeEventListener("pointerleave", onLeaveDoc);
     };
   }, []);
@@ -257,7 +269,7 @@ export function EmberHero() {
               <span className={styles.chip}>天猫 · 主图</span>
               <span className={c("chip num")}>1:1</span>
               <span className={c("chip num")}>5 张</span>
-              <Link className={c("btn btnWhite go")} ref={go} href="/create"><span className={styles.sheen} /><Use id="spark" style={{ width: 15, height: 15 }} />生成</Link>
+              <Link className={c("btn btnWhite go")} ref={go} href="/create" onClick={onGenerate}><span className={styles.sheen} /><Use id="spark" style={{ width: 15, height: 15 }} />生成</Link>
             </div>
           </div>
         </div>
@@ -502,6 +514,67 @@ export function EmberCases() {
         <div className={styles.marquee} onClick={onClick}>
           <div className={styles.track} style={{ "--dur": "80s" } as Vars}><Tiles list={WALL1} /><Tiles list={WALL1} dup /></div>
           <div className={c("track rev")} style={{ "--dur": "95s" } as Vars}><Tiles list={WALL2} /><Tiles list={WALL2} dup /></div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ---------- 价格（按原型内容） ---------- */
+const PLANS = [
+  { name: "体验", price: "¥0", unit: " / 新用户", items: ["赠送创作积分", "主图与换背景", "标准清晰度下载"], cta: "免费开始", href: "/auth/register", pro: false },
+  { name: "专业", price: "¥99", unit: " / 月", items: ["每月 1,200 积分", "全部 17 项能力", "详情套图与一键复刻", "高清下载，优先排队"], cta: "开通专业版", href: "/account#membership", pro: true },
+  { name: "团队", price: "联系我们", unit: "", items: ["多人协作与权限", "品牌素材库", "批量出图与发票"], cta: "咨询方案", href: "/help", pro: false },
+];
+export function EmberPricing() {
+  const root = useRef<HTMLDivElement>(null);
+  useReveal(root);
+  return (
+    <div className={styles.root} ref={root}>
+      <section className={c("pricing wrap")} id="pricing" aria-labelledby="ember-pricing-title">
+        <p className={styles.eyebrow} data-reveal="">价格</p>
+        <h2 className={styles.h2} id="ember-pricing-title" data-reveal="" style={{ "--i": 1 } as Vars}>按用量付费，<br />让每一张图都算得清<span className={styles.acc}>生意</span>。</h2>
+        <div className={styles.plans}>
+          {PLANS.map((p, i) => (
+            <div key={p.name} className={c(`plan${p.pro ? " pro" : ""}`)} data-reveal="" style={{ "--i": i } as Vars}>
+              <h3>{p.name}</h3>
+              <div className={c(`price${p.unit ? " num" : ""}`)}>{p.price}{p.unit && <small>{p.unit}</small>}</div>
+              <ul>{p.items.map((t) => <li key={t}>{t}</li>)}</ul>
+              <Link className={c(`btn ${p.pro ? "btnEmber" : "btnGhost"}`)} href={p.href}>{p.cta}{p.pro && <Use id="arrow" />}</Link>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ---------- 常见问题（按原型内容） ---------- */
+const QA = [
+  ["需要准备什么样的商品图？", "手机拍摄即可。商品完整、边缘清楚就好，背景杂乱也没关系，不需要先抠图或做白底。"],
+  ["生成的图片能直接上架吗？", "可以。出图会按所选平台的尺寸和规格生成，下载后即可上传。商品的外形、文字和关键细节会尽量保持与原图一致。"],
+  ["积分怎么计算？", "按成功生成的张数扣积分，生成失败不扣。不同能力的单价在创建任务前就会显示。"],
+  ["我的商品图会被拿去做别的用途吗？", "不会。你上传的素材和生成结果只保存在你的工作区内，用于为你生成图片。"],
+];
+export function EmberFaq() {
+  const root = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState<number | null>(null);
+  useReveal(root);
+  return (
+    <div className={styles.root} ref={root}>
+      <section className={c("faq wrap")} id="faq" aria-labelledby="ember-faq-title">
+        <div>
+          <p className={styles.eyebrow} data-reveal="">常见问题</p>
+          <h2 className={styles.h2} id="ember-faq-title" data-reveal="" style={{ "--i": 1 } as Vars}>还有疑问？</h2>
+          <p className={styles.lead} data-reveal="" style={{ "--i": 2 } as Vars}>找不到答案，可以在<Link href="/help">帮助中心</Link>联系我们。</p>
+        </div>
+        <div>
+          {QA.map(([q, a], i) => (
+            <div key={q} className={c(`qa${open === i ? " open" : ""}`)} data-reveal="" style={{ "--i": i } as Vars}>
+              <button type="button" aria-expanded={open === i} aria-controls={`ember-qa-${i}`} onClick={() => setOpen(open === i ? null : i)}>{q}<span className={styles.pm} aria-hidden="true" /></button>
+              <div className={styles.answer} id={`ember-qa-${i}`} role="region"><div><p>{a}</p></div></div>
+            </div>
+          ))}
         </div>
       </section>
     </div>

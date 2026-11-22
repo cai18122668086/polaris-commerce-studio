@@ -85,7 +85,7 @@ export function AnnouncementBanner() {
           >
             <header className="announcement-center__header">
               <div>
-                <span className="announcement-center__eyebrow">Polaris Commerce Studio</span>
+                <span className="announcement-center__eyebrow">极光商绘</span>
                 <h1 id="announcement-center-title">公告中心</h1>
               </div>
               <button

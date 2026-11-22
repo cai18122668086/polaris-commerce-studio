@@ -87,7 +87,7 @@ html.theme-ember :is(.secondary-button, .auth-button--secondary, .icon-button) {
 html.theme-ember :is(.secondary-button, .auth-button--secondary, .icon-button):hover:not(:disabled) { border-color: rgb(255 255 255 / 24%); background: rgb(255 255 255 / 6%); }
 
 /* ---------- 输入框 ---------- */
-html.theme-ember :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea, select) {
+html.theme-ember :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea:not([data-bare]), select) {
   border-radius: 12px;
   border: 1px solid var(--es-hair-2);
   background-color: rgb(0 0 0 / 22%);
@@ -95,9 +95,9 @@ html.theme-ember :is(input:not([type="checkbox"]):not([type="radio"]):not([type=
   caret-color: var(--es-ember);
   transition: border-color .2s, box-shadow .2s, background-color .2s;
 }
-html.theme-ember :is(input, textarea, select)::placeholder { color: var(--es-dim); }
-html.theme-ember :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea, select):hover { border-color: rgb(255 255 255 / 20%); }
-html.theme-ember :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea, select):focus {
+html.theme-ember :is(input, textarea:not([data-bare]), select)::placeholder { color: var(--es-dim); }
+html.theme-ember :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea:not([data-bare]), select):hover { border-color: rgb(255 255 255 / 20%); }
+html.theme-ember :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea:not([data-bare]), select):focus {
   outline: none;
   border-color: rgb(240 122 43 / 70%);
   background-color: rgb(0 0 0 / 30%);

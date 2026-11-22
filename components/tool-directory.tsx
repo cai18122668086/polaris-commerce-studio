@@ -8,7 +8,7 @@ import { ArrowRight, Check, Flame, Search, Sparkles, type LucideIcon } from "luc
 import { HomeAiToolbox } from "@/components/home-ai-toolbox";
 import { WelcomeCreditsBanner } from "@/components/welcome-credits";
 import { HomeHomeReveal, HomeReplicaCardArt } from "@/components/home-showcase";
-import { EmberCases, EmberCompare, EmberFeatures, EmberFinal, EmberHero, EmberSeam, EmberStory } from "@/components/ember-landing";
+import { EmberCases, EmberCompare, EmberFaq, EmberFeatures, EmberFinal, EmberHero, EmberPricing, EmberSeam, EmberStory } from "@/components/ember-landing";
 import {
   resolveRuntimeCapability,
   useRuntimeStatus,
@@ -302,7 +302,7 @@ export function ToolDirectory() {
 
       <div className="focus-home__content">
         <div className="home-command home-command--primary" id="tools">
-          <span className="commerce-eyebrow">FIND YOUR CREATIVE TOOL</span>
+          <span className="commerce-eyebrow">找到合适的创作工具</span>
           <h2>更多创作能力，都在这里。</h2>
           <p>
             {FEATURE_REGISTRY.length} 项创作功能，搜索你的需求，或直接选下面的工具
@@ -539,6 +539,8 @@ export function ToolDirectory() {
       </div>
       <EmberSeam />
       <EmberCases />
+      <EmberPricing />
+      <EmberFaq />
       <EmberFinal />
       <HomeHomeReveal />
     </section>

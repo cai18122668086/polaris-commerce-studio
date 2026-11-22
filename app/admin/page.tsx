@@ -179,7 +179,7 @@ function LogDetailDialog({
   return <div className={styles.dialogBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="admin-log-detail-title">
       <div className={styles.dialogHeader}>
-        <div><span className={styles.sectionEyebrow}>READ-ONLY DETAIL</span><h2 id="admin-log-detail-title">任务详情</h2><p>仅显示脱敏状态、素材预览和事件时间线。</p></div>
+        <div><span className={styles.sectionEyebrow}>只读详情</span><h2 id="admin-log-detail-title">任务详情</h2><p>仅显示脱敏状态、素材预览和事件时间线。</p></div>
         <button className={styles.closeButton} type="button" onClick={onClose} aria-label="关闭任务详情">×</button>
       </div>
       {loading ? <div className={styles.dialogLoading}><Loader2 className={styles.spin} size={20} /> 正在加载任务详情…</div> : error ? <div className={styles.dialogError}>{error}</div> : detail ? <div className={styles.dialogBody}>
@@ -306,7 +306,7 @@ function AdministratorManagement() {
   if (hidden) return null;
   return <section className={styles.section} aria-label="管理员管理">
     <div className={styles.sectionHeading}>
-      <div><span className={styles.sectionEyebrow}><UserCog size={14} /> ADMIN ACCESS</span><h2>管理员管理</h2><p>只有超级管理员可以增加、停用或调整管理员权限；变更会写入审计记录。</p></div>
+      <div><span className={styles.sectionEyebrow}><UserCog size={14} /> 管理员权限</span><h2>管理员管理</h2><p>只有超级管理员可以增加、停用或调整管理员权限；变更会写入审计记录。</p></div>
       <span className={styles.sectionCount}>{formatCount(administrators.length)} 位管理员</span>
     </div>
     <form className={styles.adminCreateForm} onSubmit={addAdministrator}>
@@ -470,17 +470,17 @@ export default function AdminDashboardPage() {
 
       <section className={styles.detailGrid} aria-label="用户和工作区使用情况">
         <article className={styles.section}>
-          <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>USER USAGE</span><h2>网站用户</h2><p>展示必要的脱敏身份和使用量，不返回会话内容。</p></div><span className={styles.sectionCount}>共 {formatCount(userTotal)} 人</span></div>
+          <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>用户用量</span><h2>网站用户</h2><p>展示必要的脱敏身份和使用量，不返回会话内容。</p></div><span className={styles.sectionCount}>共 {formatCount(userTotal)} 人</span></div>
           <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>用户</th><th>工作区</th><th>任务使用</th><th>最近登录</th></tr></thead><tbody>{users.length === 0 ? <tr><td colSpan={4} className={styles.tableEmpty}>暂无用户数据</td></tr> : users.map((user) => <tr key={user.id}><td><strong>{user.display_name}</strong><small>{user.email ?? "未提供邮箱"}</small><StatusPill status={userStatusLabel(user.status)} warning={user.status !== "active"} /></td><td>{user.active_workspace_count}/{user.workspace_count}<small>活跃 / 全部工作区</small></td><td><strong>{formatCount(user.workspace_jobs_total + user.crawl_tasks_total)}</strong><small>生成 {user.workspace_jobs_running} 运行中 · 抓取 {user.crawl_tasks_failed} 失败</small></td><td>{formatTime(user.last_login_at)}<small>活动 {formatTime(user.last_activity_at)}</small></td></tr>)}</tbody></table></div>
         </article>
         <article className={styles.section}>
-          <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>WORKSPACE USAGE</span><h2>工作区</h2><p>从成员、生成任务、抓取任务和账号状态定位问题范围。</p></div><span className={styles.sectionCount}>共 {formatCount(workspaceTotal)} 个</span></div>
+          <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>工作区用量</span><h2>工作区</h2><p>从成员、生成任务、抓取任务和账号状态定位问题范围。</p></div><span className={styles.sectionCount}>共 {formatCount(workspaceTotal)} 个</span></div>
           <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>工作区</th><th>成员</th><th>任务</th><th>账号 / 活动</th></tr></thead><tbody>{workspaces.length === 0 ? <tr><td colSpan={4} className={styles.tableEmpty}>暂无工作区数据</td></tr> : workspaces.map((workspace) => <tr key={workspace.id}><td><strong>{workspace.name}</strong><small>{workspace.id}</small><StatusPill status={workspaceStatusLabel(workspace.status)} warning={workspace.status !== "active"} /></td><td>{workspace.active_member_count}/{workspace.member_count}<small>活跃 / 全部成员</small></td><td><strong>{formatCount(workspace.jobs_total + workspace.crawl_tasks_total)}</strong><small>生成 {workspace.jobs_running} 运行中 · 抓取 {workspace.crawl_tasks_failed} 失败</small></td><td>{workspace.account_count} 个账号{workspace.needs_relogin_count ? <small className={styles.warningText}>{workspace.needs_relogin_count} 个需重新登录</small> : <small>账号状态正常</small>}<small>活动 {formatTime(workspace.last_activity_at)}</small></td></tr>)}</tbody></table></div>
         </article>
       </section>
 
       <section className={styles.section}>
-        <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>SESSION CENTER</span><h2>电商平台登录状态</h2><p>仅展示账号状态和会话占用情况，不返回 Cookie、Profile 路径或任务请求内容。</p></div>{totalRelogin > 0 ? <span className={styles.warningBadge}><AlertTriangle size={15} /> {totalRelogin} 个账号需要重新登录</span> : <span className={styles.readyBadge}><CircleCheck size={15} /> 当前无待处理登录</span>}</div>
+        <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>会话中心</span><h2>电商平台登录状态</h2><p>仅展示账号状态和会话占用情况，不返回 Cookie、Profile 路径或任务请求内容。</p></div>{totalRelogin > 0 ? <span className={styles.warningBadge}><AlertTriangle size={15} /> {totalRelogin} 个账号需要重新登录</span> : <span className={styles.readyBadge}><CircleCheck size={15} /> 当前无待处理登录</span>}</div>
         <div className={styles.platformGrid}>
           {sessions.map(([platform, data]) => <article className={styles.platformCard} key={platform}>
             <div className={styles.platformHeading}><div><strong>{platformMeta[platform]?.label ?? platform}</strong><small>{data.account_count} 个账号 · {data.busy_count} 个 Profile 使用中</small></div><span className={data.needs_relogin_count ? styles.statusNeedsLogin : styles.statusReady}>{data.needs_relogin_count ? `${data.needs_relogin_count} 待处理` : "状态正常"}</span></div>
@@ -493,13 +493,13 @@ export default function AdminDashboardPage() {
       </section>
 
       <section className={styles.section}>
-        <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>ACCOUNT OPERATIONS</span><h2>电商账号运维（只读）</h2><p>展示最近任务、失败 / 风控次数和当前 Profile 租约；此处不提供浏览器控制或账号状态修改。</p></div><span className={styles.sectionCount}>共 {formatCount(accountTotal)} 个账号</span></div>
+        <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>账号操作</span><h2>电商账号运维（只读）</h2><p>展示最近任务、失败 / 风控次数和当前 Profile 租约；此处不提供浏览器控制或账号状态修改。</p></div><span className={styles.sectionCount}>共 {formatCount(accountTotal)} 个账号</span></div>
         <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>账号</th><th>状态</th><th>任务统计</th><th>当前租约</th><th>最近任务</th></tr></thead><tbody>{operationalAccounts.length === 0 ? <tr><td colSpan={5} className={styles.tableEmpty}>暂无国内电商账号</td></tr> : operationalAccounts.map((account) => { const recent = account.recent_tasks[0]; return <tr key={account.id}><td><strong>{account.label}</strong><small>{platformMeta[account.platform]?.shortLabel ?? account.platform} · {account.workspace_name ?? account.workspace_id}</small></td><td><span className={account.needs_relogin ? styles.logStatusFailed : styles.logStatus}>{account.needs_relogin ? "需重新登录" : account.login_state === "ready" ? "已登录" : account.status}</span><small>{account.status === "active" ? "账号活跃" : account.status === "paused" ? "账号已暂停" : "账号已停用"}</small></td><td><strong>{formatCount(account.task_count)} 个任务</strong><small>失败 {account.failed_task_count} · 风控 {account.risk_control_count}</small></td><td>{account.profile_busy ? <><strong className={styles.warningText}>使用中</strong><small>{account.active_lease?.task_id ?? "任务未知"} · 到期 {formatTime(account.active_lease?.expires_at ?? null)}</small></> : account.lease_state === "expired" ? <><strong className={styles.warningText}>租约已过期</strong><small>{account.last_lease?.task_id ?? "任务未知"} · 到期 {formatTime(account.last_lease?.expires_at ?? null)}</small></> : <><strong>空闲</strong><small>当前没有活跃租约</small></>}</td><td>{recent ? <><strong>{recent.status} · {recent.stage ?? "未分阶段"}</strong><small>{recent.error_code ?? "无错误"} · {formatTime(recent.finished_at ?? recent.created_at)}</small></> : <span className={styles.empty}>暂无任务</span>}</td></tr>; })}</tbody></table></div>
       </section>
 
       <section className={styles.section}>
         <div className={styles.sectionHeading}>
-          <div><span className={styles.sectionEyebrow}>TASK LOGS</span><h2>生成 / 抓取日志</h2><p>只展示任务状态、阶段、进度、稳定错误码和脱敏信息，不返回商品地址、请求参数或底层堆栈。</p></div>
+          <div><span className={styles.sectionEyebrow}>任务日志</span><h2>生成 / 抓取日志</h2><p>只展示任务状态、阶段、进度、稳定错误码和脱敏信息，不返回商品地址、请求参数或底层堆栈。</p></div>
           <span className={styles.sectionCount}>共 {formatCount(logTotal)} 条</span>
         </div>
         <div className={styles.logFilters}>
@@ -522,7 +522,7 @@ export default function AdminDashboardPage() {
       </section>
 
       <section className={styles.section}>
-        <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>NEXT MODULES</span><h2>后续管理员模块规划</h2><p>本阶段先保持只读和边界清晰，后续按模块逐步增加能力。</p></div></div>
+        <div className={styles.sectionHeading}><div><span className={styles.sectionEyebrow}>后续模块</span><h2>后续管理员模块规划</h2><p>本阶段先保持只读和边界清晰，后续按模块逐步增加能力。</p></div></div>
         <div className={styles.plannedGrid}><div><strong>第三阶段：生成 / 抓取日志</strong><p>已提供脱敏事件时间线、错误码和筛选查询，不直接暴露原始 payload。</p></div><div><strong>第四阶段：账号运维操作</strong><p>当前已提供账号任务、失败 / 风控统计和租约只读信息；重新登录、暂停和恢复仍需安全授权与操作审计。</p></div><div><strong>部署与可靠性</strong><p>独立 Worker、PostgreSQL、Redis、对象存储和 Profile 持久卷仍需按部署计划验收。</p></div></div>
       </section>
       <p className={styles.generatedAt}>数据生成于 {formatTime(overview.generated_at)} · 最近 7 天新增用户：{formatCount(overview.users.recent_signups)}</p>

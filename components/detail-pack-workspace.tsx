@@ -2,6 +2,7 @@
 import { CreationSettings, SettingField, ChoiceControl, GenerationVersionField, QuantityControl } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
+import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
 import { useCreationBriefHandoff } from "@/lib/creation-brief";
 import { useDraftState } from "@/lib/hooks/use-creation-draft";
 import { ProductFactsGuidance } from "@/components/product-facts-guidance";
@@ -368,7 +369,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
               <label><span>商品类目</span><input disabled={Boolean(jobId)} value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：护肤 / 家居 / 3C" /></label>
               <label><span>目标买家</span><input disabled={Boolean(jobId)} value={targetBuyer} onChange={(event) => setTargetBuyer(event.target.value)} placeholder="例如：关注成分与肤感的通勤人群" /></label>
               <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {isRefinedDetail ? "3:4 · 实际尺寸见结果" : imageSize}</strong></div></label>
-              <label className="full"><span>真实卖点与商品资料</span><ProductFactsGuidance /><textarea disabled={Boolean(jobId)} value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="可直接粘贴完整商品介绍，或逐行填写真实卖点和规格" /></label>
+              <label className="full"><span>真实卖点与商品资料</span><ProductFactsGuidance /><AutoGrowTextarea disabled={Boolean(jobId)} value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="可直接粘贴完整商品介绍，或逐行填写真实卖点和规格" /></label>
             </div>
           <CreationSettings balanced={isRefinedDetail} summary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "简体中文" : "English"} · ${pageCount} 页`}>
             {isRefinedDetail && <GenerationVersionField name="detail-speed" span="half" value={detailSpeed} onChange={setDetailSpeed} disabled={Boolean(jobId) || createJob.isPending} />}

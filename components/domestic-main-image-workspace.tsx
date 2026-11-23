@@ -2,6 +2,7 @@
 import { GenerationVersionField } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
+import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
 import { useCreationBriefHandoff } from "@/lib/creation-brief";
 import { useDraftState } from "@/lib/hooks/use-creation-draft";
 import { ProductFactsGuidance } from "@/components/product-facts-guidance";
@@ -401,7 +402,7 @@ export function DomesticMainImageWorkspace() {
               <ProductFactsGuidance /><div className={styles.form}>
                 <label><span>商品名称 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("product_name") : productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：轻量保温随行杯" /></label>
                 <label><span>商品类目 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("category") : category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：杯壶 / 保温杯" /></label>
-                <label className={styles.full}><span>核心卖点 * <small>换行分隔</small></span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("selling_points") : sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder={'轻量便携\n杯盖防误开\n食品接触级内胆'} /></label>
+                <label className={styles.full}><span>核心卖点 * <small>换行分隔</small></span><AutoGrowTextarea disabled={Boolean(jobId)} value={jobId ? restoredLines("selling_points") : sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder={'轻量便携\n杯盖防误开\n食品接触级内胆'} /></label>
               </div>
               <FormDisclosure title="补充商品细节" summary={[displayFacts, scenes, offers, trustFacts].filter(value => value.trim()).length ? `已补充 ${[displayFacts, scenes, offers, trustFacts].filter(value => value.trim()).length} 项信息` : "选填 · 规格、使用场景、优惠与服务"} defaultOpen={Boolean(jobId)}>
               <div className={styles.form}>

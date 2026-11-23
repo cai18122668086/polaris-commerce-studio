@@ -11,12 +11,12 @@ assert spec and spec.loader
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
-CADDY = "www.tengliapi.xyz {\n\trequest_body {\n\t\tmax_size 25MB\n\t}\n\thandle @api {\n\t\thandle { reverse_proxy api:8000 }\n\t}\n}\napi.tengliapi.xyz { reverse_proxy upstream:3000 }\npay.tengliapi.xyz { reverse_proxy payments:80 }\n"
+CADDY = "www.jgshai.cn {\n\trequest_body {\n\t\tmax_size 25MB\n\t}\n\thandle @api {\n\t\thandle { reverse_proxy api:8000 }\n\t}\n}\napi.jgshai.cn { reverse_proxy upstream:3000 }\npay.jgshai.cn { reverse_proxy payments:80 }\n"
 
 class VideoReleaseTests(unittest.TestCase):
     def test_video_route_preserves_existing_sites_and_body_limits(self):
         result = module.caddy_with_video(CADDY)
-        self.assertEqual(result.split("api.tengliapi.xyz", 1)[1], CADDY.split("api.tengliapi.xyz", 1)[1])
+        self.assertEqual(result.split("api.jgshai.cn", 1)[1], CADDY.split("api.jgshai.cn", 1)[1])
         self.assertIn("path /api/v1/video-studio/*", result)
         self.assertIn("not path /api/v1/video-studio/*", result)
         self.assertIn("max_size 55MB", result)

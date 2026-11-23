@@ -62,7 +62,7 @@ class BatchTransport(httpx.BaseTransport):
                         "Only the already registered, same-presenter motion "
                         "model is authorized"
                     )
-            elif host == "api.tengliapi.xyz" and path == "/v1/chat/completions":
+            elif host == "api.jgshai.cn" and path == "/v1/chat/completions":
                 data = json.loads(request.content)
                 payload = json.loads(data["messages"][1]["content"])
                 tid = payload["overlay_template"]["id"]

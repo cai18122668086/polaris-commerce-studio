@@ -14,7 +14,7 @@ SPEC.loader.exec_module(RELEASE)
 def fixture(primary="synthetic-primary", backups="synthetic-one,synthetic-two,synthetic-three"):
     env = {
         "POLARIS_ANALYSIS_API_KEY": primary,
-        "POLARIS_ANALYSIS_BASE_URL": "https://api.tengliapi.xyz",
+        "POLARIS_ANALYSIS_BASE_URL": "https://api.jgshai.cn",
         "POLARIS_ANALYSIS_MODEL": "configured-planner",
         "POLARIS_PROVIDER_FAILOVER_API_KEY": backups,
         "POLARIS_PROVIDER_FAILOVER_BASE_URL": "https://api.ooapi.cc",

@@ -3,7 +3,11 @@
 	email {$POLARIS_ACME_EMAIL}
 }
 
-www.tengliapi.xyz {
+jgshai.cn {
+	redir https://www.jgshai.cn{uri} permanent
+}
+
+www.jgshai.cn {
 	encode zstd gzip
 
 	request_body {

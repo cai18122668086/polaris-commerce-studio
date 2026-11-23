@@ -17,7 +17,7 @@
 支付审计依据
 只读检查香港服务器的 MPAY 源码、支付服务运行信息、最少量业务统计和中转站支付配置是否存在。
 MPAY 源码提交：c096dfbd416baf248c04daed41b1aa166ec9977d。
-网关 pay.tengliapi.xyz 提供 /submit.php、/mapi.php、/api.php 的 Epay V1 接口。
+网关 pay.jgshai.cn 提供 /submit.php、/mapi.php、/api.php 的 Epay V1 接口。
 已有 1 个启用应用、2 个启用支付通道和 10 笔历史支付成功订单。
 中转站配置了该网关，并提供支付宝、微信支付选项；当前通道是否真实可收款仍需新付款验收。
 未复制中转站 PID/KEY，不修改其应用或额度倍率；极光应创建独立的支付应用和密钥。
@@ -63,9 +63,9 @@ API 需要：POLARIS_CREDIT_PAYMENTS_ENABLED、POLARIS_CREDIT_EPAY_PID、
 POLARIS_CREDIT_EPAY_ACTIVE_KEY_ID、POLARIS_CREDIT_EPAY_KEYS。
 KEYS 是以密钥版本为键的 JSON 映射，仅配置在服务端，不进入 NEXT_PUBLIC、前端构建或 Git。
 默认为 payments disabled、PID 空、KEYS 空；无有效配置时不展示充值套餐，创建订单关闭。
-默认收银台：https://pay.tengliapi.xyz/submit.php
-默认回调：https://www.tengliapi.xyz/api/v1/payments/epay/notify
-默认返回：https://www.tengliapi.xyz/account
+默认收银台：https://pay.jgshai.cn/submit.php
+默认回调：https://www.jgshai.cn/api/v1/payments/epay/notify
+默认返回：https://www.jgshai.cn/account
 网关新应用应允许极光回调和返回域名，并配置实际支持的支付通道。
 当前实现限制以上 HTTPS 主机，不允许前端传入收款地址或回调地址。
 

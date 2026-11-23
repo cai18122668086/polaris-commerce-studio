@@ -1,6 +1,6 @@
 ﻿# Production authentication deployment runbook (2026-08-08)
 
-本手册只覆盖 Polaris Commerce Studio 的生产认证基础设施：SuperTokens Core `v12.0.10`、标准 SMTP 事务邮件、`no-reply@mail.tengliapi.xyz`、`https://www.tengliapi.xyz` HTTPS 同源路由、完整认证冒烟，以及显式历史 Workspace Owner 分配。
+本手册只覆盖 Polaris Commerce Studio 的生产认证基础设施：SuperTokens Core `v12.0.10`、标准 SMTP 事务邮件、`no-reply@mail.tengliapi.xyz`、`https://www.jgshai.cn` HTTPS 同源路由、完整认证冒烟，以及显式历史 Workspace Owner 分配。
 
 不包含支付接入；不得修改 `backend/skill_sources/**`、Provider、生图或 Amazon 协议能力。
 
@@ -9,7 +9,7 @@
 | 文件 | 用途 |
 | --- | --- |
 | `deploy/compose.production.yml` | Production 栈；只有 Caddy 发布 80/443，SuperTokens 仅在私网。 |
-| `deploy/Caddyfile.production` | `www.tengliapi.xyz` 自动 HTTPS、API/前端同源反代和安全响应头。 |
+| `deploy/Caddyfile.production` | `www.jgshai.cn` 自动 HTTPS、API/前端同源反代和安全响应头。 |
 | `deploy/.env.production.example` | 仅展示变量名，禁止填入真实值后提交。 |
 | `deploy/generate_production_env.py` | 在服务器生成 0600 env，不打印 Secret。 |
 | `deploy/production_preflight.py` | 校验 env、不可变镜像、Provider 漂移、Compose/Caddy 拓扑及 Owner 脚本打包。 |
@@ -229,7 +229,7 @@ docker system prune --volumes
 
 基础设施：
 
-- `https://www.tengliapi.xyz` 证书有效，HTTP 跳转 HTTPS。
+- `https://www.jgshai.cn` 证书有效，HTTP 跳转 HTTPS。
 - `/health/live`、`/health/ready` 经 Caddy 正常。
 - PostgreSQL、Redis、MinIO、API、frontend、SuperTokens 均无公网监听。
 - 3567 只在 Docker 私网可达。
@@ -238,7 +238,7 @@ docker system prune --volumes
 
 1. 打开 `/auth/register`，使用未复用的新密码注册。
 2. UI 必须要求邮箱验证。
-3. 验证邮件 From 为 `no-reply@mail.tengliapi.xyz`，链接必须是 `https://www.tengliapi.xyz`。
+3. 验证邮件 From 为 `no-reply@mail.tengliapi.xyz`，链接必须是 `https://www.jgshai.cn`。
 4. 完成验证并进入 `/account`，确认显示真实邮箱。
 5. 首次触发需要 Workspace 的页面/API，确认创建个人 Workspace、用户为 Owner、初始积分为 `0`。
 6. 检查 Cookie 为 `Secure`、`HttpOnly`，预期 `SameSite=Lax`；localStorage/sessionStorage 无 token。

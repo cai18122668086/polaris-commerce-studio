@@ -24,7 +24,7 @@ from app.supertokens_auth import (
     ExternalIdentity,
 )
 
-AUTH_ORIGIN = "https://www.tengliapi.xyz"
+AUTH_ORIGIN = "https://www.jgshai.cn"
 LOCAL_ORIGIN = "http://localhost:3003"
 AUTH_PATHS = {
     "signin",

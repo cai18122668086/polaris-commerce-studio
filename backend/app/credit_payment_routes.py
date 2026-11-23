@@ -99,9 +99,9 @@ def _creation_key(settings: Settings) -> str:
     ):
         raise ApiError(503, "PAYMENTS_UNAVAILABLE", "充值暂未开放。")
     for address, host in (
-        (settings.credit_epay_base_url, "pay.tengliapi.xyz"),
-        (settings.credit_epay_notify_url, "www.tengliapi.xyz"),
-        (settings.credit_epay_return_url, "www.tengliapi.xyz"),
+        (settings.credit_epay_base_url, "pay.jgshai.cn"),
+        (settings.credit_epay_notify_url, "www.jgshai.cn"),
+        (settings.credit_epay_return_url, "www.jgshai.cn"),
     ):
         parsed = urlsplit(address)
         if (
@@ -436,7 +436,7 @@ def _query_gateway_order(settings: Settings, merchant_pid: str, order_id: str) -
     try:
         with httpx.Client(timeout=8, follow_redirects=False, trust_env=False) as client:
             response = client.post(
-                "https://pay.tengliapi.xyz/api.php",
+                "https://pay.jgshai.cn/api.php",
                 data={
                     "act": "order",
                     "pid": merchant_pid,

@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     video_recovery_workers: int = Field(default=2, ge=1, le=4)
     video_script_planning_enabled: bool = False
     video_script_api_key: SecretStr = SecretStr("")
-    video_script_base_url: str = "https://api.tengliapi.xyz"
+    video_script_base_url: str = "https://api.jgshai.cn"
     video_script_model: str = "gpt-5.6-sol"
     video_script_fallback_base_url: str = ""
     video_script_fallback_api_key: SecretStr = SecretStr("")
@@ -169,8 +169,8 @@ class Settings(BaseSettings):
     auth_mode: Literal["development", "external"] = "development"
     supertokens_connection_uri: str = "http://localhost:3567"
     supertokens_api_key: SecretStr = SecretStr("")
-    supertokens_api_domain: str = "https://www.tengliapi.xyz"
-    supertokens_website_domain: str = "https://www.tengliapi.xyz"
+    supertokens_api_domain: str = "https://www.jgshai.cn"
+    supertokens_website_domain: str = "https://www.jgshai.cn"
     supertokens_api_base_path: str = "/api/auth"
     supertokens_website_base_path: str = "/auth"
     supertokens_cookie_secure: bool = True
@@ -238,7 +238,7 @@ class Settings(BaseSettings):
     crossborder_detail_provider_enabled: bool = Field(default=False)
     mock_job_delay_seconds: float = Field(default=0.35, ge=0, le=10)
     tengli_api_key: SecretStr = SecretStr("")
-    tengli_base_url: str = "https://api.tengliapi.xyz:8443"
+    tengli_base_url: str = "https://api.jgshai.cn"
     tengli_image_model: str = "gpt-image-2"
     tengli_vision_model: str = "gpt-5.6-terra"
     analysis_api_key: SecretStr = SecretStr("")
@@ -264,7 +264,7 @@ class Settings(BaseSettings):
     # enabled and can be placed first through provider_rotation_order.
     provider_failover_enabled: bool = False
     provider_failover_api_key: SecretStr = SecretStr("")
-    provider_failover_base_url: str = "https://api.tengliapi.xyz"
+    provider_failover_base_url: str = "https://api.jgshai.cn"
     provider_failover_model: str = "gpt-5.6-sol"
     provider_failover_image_model: str = "gpt-image-2"
     provider_rotation_order: str = "primary,failover"
@@ -283,11 +283,11 @@ class Settings(BaseSettings):
     credit_epay_pid: str = ""
     credit_epay_active_key_id: str = ""
     credit_epay_keys: dict[str, SecretStr] = Field(default_factory=dict)
-    credit_epay_base_url: str = "https://pay.tengliapi.xyz"
+    credit_epay_base_url: str = "https://pay.jgshai.cn"
     credit_epay_notify_url: str = (
-        "https://www.tengliapi.xyz/api/v1/payments/epay/notify"
+        "https://www.jgshai.cn/api/v1/payments/epay/notify"
     )
-    credit_epay_return_url: str = "https://www.tengliapi.xyz/account"
+    credit_epay_return_url: str = "https://www.jgshai.cn/account"
 
     @field_validator("workspace_credit_pilot_ids")
     @classmethod

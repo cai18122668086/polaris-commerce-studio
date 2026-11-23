@@ -13,7 +13,6 @@ from .domain import JobStatus, OutboxStatus
 from .models import JobRecord, OutboxEventRecord, utc_now
 from .task_runner import MockTaskRunner
 
-
 _DEFAULT_QUEUE = "default"
 _DETAIL_QUEUE = "domestic_detail_v431"
 _REPLICA_QUEUE = "one_click_replica"

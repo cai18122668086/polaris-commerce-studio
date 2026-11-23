@@ -23,6 +23,8 @@ MEDIA_HOSTS = {
     "res.chanjing.cc",
     "cdn.jihuo.pro",
     "sowa.oss-cn-beijing.aliyuncs.com",
+    # 全域数字人的语音合成结果现存放在腾讯云 COS（2026-11 起）
+    "rh-images-1252422369.cos.ap-beijing.myqcloud.com",
     "openpt1.oss-cn-shanghai.aliyuncs.com",
 }
 
@@ -40,20 +42,26 @@ def _yiyuan_model_unavailable(data: dict[str, Any]) -> bool:
 
 
 _OSS_REGIONAL = re.compile(r"^(?P<bucket>[a-z0-9-]+)\.oss-cn-[a-z0-9-]+\.aliyuncs\.com$")
+_COS_REGIONAL = re.compile(r"^(?P<bucket>[a-z0-9-]+)\.cos\.ap-[a-z0-9-]+\.myqcloud\.com$")
 
 
 def routed_media_url(url: str, routes: dict[str, str]) -> str:
     """Send an already-validated OSS URL through the same bucket's acceleration endpoint.
 
-    Only `<bucket>.oss-cn-<region>.aliyuncs.com -> <bucket>.oss-accelerate.aliyuncs.com`
-    is honoured; any other configured target is ignored, so the setting can never
+    Only `<bucket>.oss-cn-<region>.aliyuncs.com -> <bucket>.oss-accelerate.aliyuncs.com` and
+    `<bucket>.cos.ap-<region>.myqcloud.com -> <bucket>.cos.accelerate.myqcloud.com` are honoured; any other configured target is ignored, so the setting can never
     point downloads at an arbitrary host. Path, query and signature stay unchanged.
     """
     parts = urlsplit(url)
     host = parts.hostname or ""
     target = routes.get(host)
-    match = _OSS_REGIONAL.match(host)
-    if not target or not match or target != match["bucket"] + ".oss-accelerate.aliyuncs.com":
+    oss, cos = _OSS_REGIONAL.match(host), _COS_REGIONAL.match(host)
+    allowed = (
+        oss["bucket"] + ".oss-accelerate.aliyuncs.com" if oss
+        else cos["bucket"] + ".cos.accelerate.myqcloud.com" if cos
+        else None
+    )
+    if not target or target != allowed:
         return url
     return urlunsplit((parts.scheme, target, parts.path, parts.query, parts.fragment))
 

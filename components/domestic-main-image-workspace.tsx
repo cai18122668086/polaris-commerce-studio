@@ -171,7 +171,7 @@ export function DomesticMainImageWorkspace() {
   const [shadowMode, setShadowMode] = useState<AuroraShadowMode>("off");
   const [createdJobId, setCreatedJobId] = useState<string>();
   const jobId = requestedJobId ?? createdJobId;
-  // 从创作首页选套图进来时，把首页写的描述带进「核心卖点」（已有内容不覆盖）
+  // 从创作首页选套图进来时，把首页写的描述带进「核心卖点」（拆成多行，已有内容则接在后面）
   useCreationBriefHandoff(Boolean(workspace?.id) && !jobId, sellingPoints, setSellingPoints);
   const [localError, setLocalError] = useState<string>();
   const job = useJob(workspace?.id, jobId);

@@ -412,7 +412,7 @@ export function CommerceSkillWorkspace({
   const listingDescription = "";
   const aPlusCopy = "";
   const [draftProductFacts, setProductFacts] = useDraftState(workspace?.id, featureId, "draftProductFacts", "");
-  // 亚马逊套图从创作首页进来时，把首页写的描述带进「商品卖点与参数」（已有内容不覆盖）
+  // 亚马逊套图从创作首页进来时，把首页写的描述带进「商品卖点与参数」（拆成多行，已有内容则接在后面）
   useCreationBriefHandoff(featureId === "amazon-visual-suite" && Boolean(workspace?.id) && !jobId, draftProductFacts, setProductFacts);
   const parameters = "";
   const certificationsOrEvidence = "";

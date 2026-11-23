@@ -149,7 +149,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const [uploadError, setUploadError] = useState<string>();
   const [selectedJobId, setJobId] = useWorkspaceJobId(initialRegion === "domestic" ? "/workspace/detail-pack" : "/workspace/crossborder-detail");
   const jobId = selectedJobId ?? "";
-  // 从创作首页选套图进来时，把首页写的描述带进「真实卖点与商品资料」（已有内容不覆盖）
+  // 从创作首页选套图进来时，把首页写的描述带进「真实卖点与商品资料」（拆成多行，已有内容则接在后面）
   useCreationBriefHandoff(Boolean(workspace?.id) && !jobId, draftSellingPoints, setSellingPoints);
   const handoff = useAssetHandoff(workspace?.id, 8, jobId);
   const sources = useMemo(() => sourceOverrides ?? handoff.data?.sources ?? [], [sourceOverrides, handoff.data]);

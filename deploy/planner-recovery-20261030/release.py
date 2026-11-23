@@ -37,7 +37,7 @@ def policy(live):
     current = environment(live["worker"])
     keys = [value for value in re.split(r"[\s,]+", current["POLARIS_PROVIDER_FAILOVER_API_KEY"]) if value]
     assert len(keys) == 3 and len(set(keys)) == 3
-    assert current["POLARIS_ANALYSIS_BASE_URL"].rstrip("/") == "https://api.tengliapi.xyz"
+    assert current["POLARIS_ANALYSIS_BASE_URL"].rstrip("/") == "https://api.jgshai.cn"
     assert current["POLARIS_PROVIDER_FAILOVER_BASE_URL"].rstrip("/") == "https://api.ooapi.cc"
     assert current["POLARIS_ANALYSIS_API_KEY"] and current["POLARIS_ANALYSIS_API_KEY"] not in keys
     assert len(re.split(r"[\s,]+", current["POLARIS_ANALYSIS_API_KEY"].strip())) == 1

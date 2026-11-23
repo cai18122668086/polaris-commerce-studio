@@ -384,7 +384,7 @@ def validate_compose(compose: str) -> list[str]:
         )
     if 'POLARIS_SUPERTOKENS_COOKIE_SECURE: "true"' not in compose:
         errors.append("production Compose must force Secure authentication cookies")
-    if "POLARIS_CORS_ORIGINS: '[\"https://www.tengliapi.xyz\"]'" not in compose:
+    if "POLARIS_CORS_ORIGINS: '[\"https://www.jgshai.cn\"]'" not in compose:
         errors.append(
             "production Compose must use the exact same-origin CORS allowlist"
         )
@@ -534,7 +534,8 @@ def validate_crawl_worker_dockerfile(dockerfile: str) -> list[str]:
 def validate_caddy(caddy: str) -> list[str]:
     errors: list[str] = []
     for required in (
-        "www.tengliapi.xyz {",
+        "www.jgshai.cn {",
+        "redir https://www.jgshai.cn{uri} permanent",
         "reverse_proxy api:8000",
         "reverse_proxy frontend:3000",
         "Strict-Transport-Security",
@@ -545,7 +546,7 @@ def validate_caddy(caddy: str) -> list[str]:
         errors.append("production Caddyfile must not disable automatic HTTPS")
     if "\ntengliapi.xyz {" in caddy:
         errors.append(
-            "production Caddyfile must not claim the apex domain before its DNS is approved"
+            "production Caddyfile must not serve the former apex domain"
         )
     if ":8080" in caddy:
         errors.append("production Caddyfile must not use the internal-only :8080 site")

@@ -42,7 +42,7 @@ class ManualFlowTransport(httpx.BaseTransport):
         ("quanyu.sowa.chat", "/api/digital_human/models"): "avatar_registration",
         ("newapi.qwqtao.one", "/v1/audio/speech"): "narration",
         ("quanyu.sowa.chat", "/api/digital_human/submit"): "digital_human",
-        ("api.tengliapi.xyz", "/v1/chat/completions"): "editing_plan",
+        ("api.jgshai.cn", "/v1/chat/completions"): "editing_plan",
     }
 
     def __init__(self, root: Path, *, user_submissions: bool = False):

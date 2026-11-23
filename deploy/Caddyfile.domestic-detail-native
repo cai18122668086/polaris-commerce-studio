@@ -3,7 +3,7 @@
 	email {$POLARIS_ACME_EMAIL}
 }
 
-www.tengliapi.xyz {
+www.jgshai.cn {
 	encode zstd gzip
 
 	request_body {

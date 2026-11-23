@@ -26,7 +26,7 @@ def test_auth_relay_is_same_origin_bounded_and_keeps_cookie_security():
 
     def upstream(request):
         requests.append(request)
-        assert request.url.host == "www.tengliapi.xyz"
+        assert request.url.host == "www.jgshai.cn"
         assert "x-user-id" not in request.headers
         assert request.headers["origin"] == AUTH_ORIGIN
         return httpx.Response(
@@ -34,7 +34,7 @@ def test_auth_relay_is_same_origin_bounded_and_keeps_cookie_security():
             json={"status": "OK"},
             headers={
                 "set-cookie": (
-                    "sAccessToken=fixture; Domain=.tengliapi.xyz; Secure; "
+                    "sAccessToken=fixture; Domain=.jgshai.cn; Secure; "
                     "HttpOnly; SameSite=Lax; Path=/"
                 ),
             },

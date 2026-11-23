@@ -1,0 +1,6 @@
+services:
+  detail-api:
+    environment:
+      POLARIS_DATABASE_POOL_SIZE: "8"
+      POLARIS_DATABASE_MAX_OVERFLOW: "8"
+      POLARIS_DATABASE_POOL_TIMEOUT_SECONDS: "20"

@@ -69,7 +69,7 @@ def external_settings(tmp_path: Path) -> Settings:
         task_runner="mock",
         mock_job_delay_seconds=0,
         workspace_credit_enforcement_enabled=True,
-        cors_origins=["https://www.tengliapi.xyz"],
+        cors_origins=["https://www.jgshai.cn"],
     )
 
 
@@ -97,7 +97,7 @@ def test_external_mode_ignores_x_user_id_and_reports_ready(tmp_path: Path) -> No
         preflight = client.options(
             "/api/v1/me",
             headers={
-                "Origin": "https://www.tengliapi.xyz",
+                "Origin": "https://www.jgshai.cn",
                 "Access-Control-Request-Method": "GET",
                 "Access-Control-Request-Headers": "anti-csrf",
             },
@@ -121,7 +121,7 @@ def test_development_mode_allows_credentialed_browser_requests(tmp_path: Path) -
         preflight = client.options(
             "/api/v1/workspaces",
             headers={
-                "Origin": "https://www.tengliapi.xyz",
+                "Origin": "https://www.jgshai.cn",
                 "Access-Control-Request-Method": "GET",
                 "Access-Control-Request-Headers": "X-Request-Id",
             },

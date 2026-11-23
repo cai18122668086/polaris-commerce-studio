@@ -95,7 +95,7 @@ def prepare(
     assert existing["POLARIS_ENVIRONMENT"] == "production"
     assert existing["POLARIS_AUTH_MODE"] == "external"
     assert existing.get("POLARIS_PROVIDER_QUOTA_ENABLED", "true") == "true"
-    assert existing["POLARIS_ANALYSIS_BASE_URL"] == "https://api.tengliapi.xyz"
+    assert existing["POLARIS_ANALYSIS_BASE_URL"] == "https://api.jgshai.cn"
     private = dict(
         v.split("=", 1)
         for v in Path("/etc/polaris/replica-bench-20261022.env")
@@ -124,7 +124,7 @@ def prepare(
         "POLARIS_IMAGE_API_KEY": existing["POLARIS_IMAGE_API_KEY"],
         "POLARIS_IMAGE_MODEL": existing["POLARIS_IMAGE_MODEL"],
         "POLARIS_TENGLI_IMAGE_MODEL": existing.get("POLARIS_TENGLI_IMAGE_MODEL", "gpt-image-2"),
-        "POLARIS_TENGLI_BASE_URL": "https://api.tengliapi.xyz",
+        "POLARIS_TENGLI_BASE_URL": "https://api.jgshai.cn",
         "POLARIS_TENGLI_API_KEY": existing["POLARIS_TENGLI_API_KEY"],
         "POLARIS_TENGLI_VISION_MODEL": existing["POLARIS_ANALYSIS_MODEL"],
         "POLARIS_DATABASE_POOL_SIZE": "2",

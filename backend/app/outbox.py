@@ -1,4 +1,5 @@
 import asyncio
+import json
 import socket
 from datetime import timedelta
 from typing import Any
@@ -11,6 +12,28 @@ from .config import Settings
 from .domain import JobStatus, OutboxStatus
 from .models import JobRecord, OutboxEventRecord, utc_now
 from .task_runner import MockTaskRunner
+
+
+_DEFAULT_QUEUE = "default"
+_DETAIL_QUEUE = "domestic_detail_v431"
+_REPLICA_QUEUE = "one_click_replica"
+_JOB_TASKS = {"polaris.process_job", "polaris.cancel_job"}
+
+# Read ready and unacknowledged deliveries at the same instant. Limit the
+# work on Redis's event loop; an oversized snapshot defers only recovery.
+_REDIS_DELIVERIES = """
+local n = redis.call('HLEN', KEYS[#KEYS])
+for i = 1, #KEYS - 1 do
+    n = n + redis.call('LLEN', KEYS[i])
+end
+if n > tonumber(ARGV[1]) then return false end
+local rows = {}
+for i = 1, #KEYS - 1 do
+    rows[i] = redis.call('LRANGE', KEYS[i], 0, -1)
+end
+rows[#KEYS] = redis.call('HVALS', KEYS[#KEYS])
+return rows
+"""
 
 
 def publish_pending_events(
@@ -120,20 +143,58 @@ def publish_pending_events(
     return published
 
 
+def _broker_job_ids(app: Any) -> set[str] | None:
+    from redis import Redis
+
+    with app.connection_for_read(connect_timeout=2) as connection:
+        if connection.transport.driver_type != "redis":
+            # Keep the existing worker-based check on non-Redis transports.
+            return set()
+        connection.ensure_connection(max_retries=0)
+        channel = connection.default_channel
+        prefix = channel.global_keyprefix or ""
+        keys = [
+            prefix + channel._q_for_pri(queue, priority)
+            for queue in (_DEFAULT_QUEUE, _DETAIL_QUEUE, _REPLICA_QUEUE)
+            for priority in channel.priority_steps
+        ]
+        keys.append(prefix + channel.unacked_key)
+        with Redis(connection_pool=channel.client.connection_pool) as client:
+            rows = client.eval(_REDIS_DELIVERIES, len(keys), *keys, 4096)
+    if rows is None:
+        return None
+    job_ids = set()
+    for index, deliveries in enumerate(rows):
+        for raw in deliveries:
+            entry = json.loads(raw)
+            # Kombu stores unacked entries as [message, exchange, routing_key].
+            message = entry[0] if index == len(rows) - 1 else entry
+            headers = message["headers"]
+            if headers["task"] in _JOB_TASKS:
+                # add_outbox_event prefixes every dedupe key with the job ID.
+                job_id, sep, _ = headers["outbox_dedupe_key"].partition(":")
+                if not job_id or not sep:
+                    return None
+                job_ids.add(job_id)
+    return job_ids
+
+
 def _live_celery_job_ids() -> set[str] | None:
-    """Protect active/reserved deliveries; an unknown snapshot is not proof of loss."""
+    """Protect broker and worker deliveries. Only a complete view permits recovery."""
     from .celery_app import celery_app
 
     try:
-        inspector = celery_app.control.inspect(timeout=1)
-        active, reserved = inspector.active(), inspector.reserved()
-        if not active or reserved is None:
+        job_ids = _broker_job_ids(celery_app)
+        if job_ids is None:
             return None
-        job_ids: set[str] = set()
+        inspector = celery_app.control.inspect(timeout=1)
+        reserved, active = inspector.reserved(), inspector.active()
+        if not active or not reserved or active.keys() != reserved.keys():
+            return None
         for snapshot in (active, reserved):
             for tasks in snapshot.values():
                 for task in tasks:
-                    if task.get("name") != "polaris.process_job":
+                    if task.get("name") not in _JOB_TASKS:
                         continue
                     args = task.get("args")
                     if (
@@ -226,10 +287,10 @@ def _dispatch(
         ):
             # Keep historical tasks and other products on their frozen workers.
             # A dedicated current-runtime consumer owns only this new queue.
-            options["queue"] = "domestic_detail_v431"
+            options["queue"] = _DETAIL_QUEUE
         elif (job is not None and job.type == "reference_remix"
               and job.configuration.get("replica_session_id")):
-            options["queue"] = "one_click_replica"
+            options["queue"] = _REPLICA_QUEUE
     task.apply_async(
         args=[job_id], headers={"outbox_dedupe_key": dedupe_key}, **options
     )

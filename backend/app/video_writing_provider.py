@@ -313,6 +313,9 @@ def plan_writing(
             draft_mode=mode,
             rules=[*RULES, *DRAFT_RULES[mode]],
         )
+        if mode == "structure":
+            # 明确给出必须遵守的段落顺序，避免模型自行调换（校验要求按顺序覆盖每个段落）。
+            payload["section_order"] = [section.id for section in analysis.sections]
         payload.update(
             target_duration_seconds=inputs.get("target_duration_seconds"),
             presentation=inputs.get("presentation", "unspecified"),

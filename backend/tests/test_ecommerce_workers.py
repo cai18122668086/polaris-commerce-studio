@@ -1,8 +1,15 @@
+import pytest
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
 from app.models import CrawlTaskRecord, EcommerceWorkerRecord, utc_now
+
+
+@pytest.fixture(autouse=True)
+def _crawler_admin(settings) -> None:
+    """真实商品爬虫接口仅限管理员；这里的用例以开发环境管理员身份调用。"""
+    settings.announcement_admin_emails = ["admin@example.com"]
 
 
 def _enroll(client, device_id="device-test"):

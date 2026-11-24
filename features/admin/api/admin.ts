@@ -1,5 +1,7 @@
+import { apiFetch } from "@/lib/api/base-url";
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
 import { mapApiError } from "@/lib/api/error-mapper";
+import { arrayOf, canManage, normalizeAdminOverview, normalizeList, normalizeLogDetail } from "./normalize";
 
 export type AdminAccess = { can_manage: boolean };
 
@@ -268,59 +270,59 @@ function listQuery(params: { limit?: number; offset?: number; status?: string; s
 }
 
 export async function getAdminAccess(signal?: AbortSignal): Promise<AdminAccess> {
-  const response = await fetch("/api/v1/admin/overview/access", {
+  const response = await apiFetch("/api/v1/admin/overview/access", {
     credentials: "include",
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminAccess>(response);
+  return { can_manage: canManage(await parseResponse<unknown>(response)) };
 }
 
 export async function getAdminOverview(signal?: AbortSignal): Promise<AdminOverview> {
-  const response = await fetch("/api/v1/admin/overview", {
+  const response = await apiFetch("/api/v1/admin/overview", {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminOverview>(response);
+  return normalizeAdminOverview<AdminOverview>(await parseResponse<unknown>(response));
 }
 
 export async function getAdminUsers(
   params: { limit?: number; offset?: number; status?: string; search?: string } = {},
   signal?: AbortSignal,
 ): Promise<AdminListResponse<AdminUser>> {
-  const response = await fetch(`/api/v1/admin/users${listQuery(params)}`, {
+  const response = await apiFetch(`/api/v1/admin/users${listQuery(params)}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminListResponse<AdminUser>>(response);
+  return normalizeList<AdminUser>(await parseResponse<unknown>(response));
 }
 
 export async function getAdminWorkspaces(
   params: { limit?: number; offset?: number; status?: string; search?: string } = {},
   signal?: AbortSignal,
 ): Promise<AdminListResponse<AdminWorkspace>> {
-  const response = await fetch(`/api/v1/admin/workspaces${listQuery(params)}`, {
+  const response = await apiFetch(`/api/v1/admin/workspaces${listQuery(params)}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminListResponse<AdminWorkspace>>(response);
+  return normalizeList<AdminWorkspace>(await parseResponse<unknown>(response));
 }
 
 /** Workspaces visible to the signed-in user (already membership-filtered). */
 export async function getUserWorkspaces(signal?: AbortSignal): Promise<UserWorkspace[]> {
-  const response = await fetch("/api/v1/workspaces", {
+  const response = await apiFetch("/api/v1/workspaces", {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<UserWorkspace[]>(response);
+  return arrayOf<UserWorkspace>(await parseResponse<unknown>(response));
 }
 export async function getAdminLogs(
   params: {
@@ -345,13 +347,13 @@ export async function getAdminLogs(
     if (value !== undefined && value !== "") query.set(key, String(value));
   }
   const encoded = query.toString();
-  const response = await fetch(`/api/v1/admin/logs${encoded ? `?${encoded}` : ""}`, {
+  const response = await apiFetch(`/api/v1/admin/logs${encoded ? `?${encoded}` : ""}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminListResponse<AdminLog>>(response);
+  return normalizeList<AdminLog>(await parseResponse<unknown>(response));
 }
 
 
@@ -360,13 +362,13 @@ export async function getAdminLogDetail(
   id: string,
   signal?: AbortSignal,
 ): Promise<AdminLogDetail> {
-  const response = await fetch(`/api/v1/admin/logs/${kind}/${encodeURIComponent(id)}`, {
+  const response = await apiFetch(`/api/v1/admin/logs/${kind}/${encodeURIComponent(id)}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminLogDetail>(response);
+  return normalizeLogDetail<AdminLogDetail>(await parseResponse<unknown>(response));
 }
 
 export async function getAdminAccounts(
@@ -386,13 +388,13 @@ export async function getAdminAccounts(
     if (value !== undefined && value !== "") query.set(key, String(value));
   }
   const encoded = query.toString();
-  const response = await fetch(`/api/v1/admin/accounts${encoded ? `?${encoded}` : ""}`, {
+  const response = await apiFetch(`/api/v1/admin/accounts${encoded ? `?${encoded}` : ""}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminListResponse<AdminOperationalAccount>>(response);
+  return normalizeList<AdminOperationalAccount>(await parseResponse<unknown>(response));
 }
 
 
@@ -400,20 +402,20 @@ export async function getAdminAdministrators(
   params: { role?: string; status?: string; search?: string; limit?: number; offset?: number } = {},
   signal?: AbortSignal,
 ): Promise<AdminListResponse<AdminAdministrator> & { can_manage: boolean }> {
-  const response = await fetch(`/api/v1/admin/administrators${listQuery(params)}`, {
+  const response = await apiFetch(`/api/v1/admin/administrators${listQuery(params)}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
     signal,
   });
-  const payload = await parseResponse<AdminListResponse<AdminAdministrator> & { can_manage: boolean }>(response);
-  return payload;
+  const payload = await parseResponse<unknown>(response);
+  return { ...normalizeList<AdminAdministrator>(payload), can_manage: canManage(payload) };
 }
 
 export async function createAdminAdministrator(
   email: string,
 ): Promise<AdminAdministrator> {
-  const response = await fetch("/api/v1/admin/administrators", {
+  const response = await apiFetch("/api/v1/admin/administrators", {
     method: "POST",
     credentials: "include",
     headers: { ...Object.fromEntries(requestHeaders()), "Content-Type": "application/json" },
@@ -431,7 +433,7 @@ export async function updateAdminAdministrator(
     permissions?: string[];
   },
 ): Promise<AdminAdministrator> {
-  const response = await fetch(`/api/v1/admin/administrators/${encodeURIComponent(userId)}`, {
+  const response = await apiFetch(`/api/v1/admin/administrators/${encodeURIComponent(userId)}`, {
     method: "PATCH",
     credentials: "include",
     headers: { ...Object.fromEntries(requestHeaders()), "Content-Type": "application/json" },

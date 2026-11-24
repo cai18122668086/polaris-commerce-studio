@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { BrandMark } from "./brand-mark";
 import { HOME_FEATURE_VISUALS } from "@/lib/home-feature-visuals";
 import { FeatureCaseArt } from "./feature-case-art";
+import { SiteFilingLine } from "@/components/site-filing";
 
 export function HomeHero() {
   const [paused, setPaused] = useState(false);
@@ -241,7 +242,8 @@ export function HomeHomeFooter() {
         <Link className="commerce-button" href="/tools">找到你的创作工具 <ArrowRight size={19} /></Link>
         <span className="commerce-closing__flower" aria-hidden="true">✳</span>
       </section>
-      <div className="home-showcase-footer__row"><Link href="/" aria-label="极光商绘首页"><BrandMark /></Link><p>让好商品，一眼出彩。</p><nav aria-label="页脚导航"><Link href="/help">帮助中心</Link><Link href="/legal/privacy">隐私政策</Link><Link href="/legal/terms">服务条款</Link></nav></div>
+      <div className="home-showcase-footer__row"><Link href="/" aria-label="极光商绘首页"><BrandMark /></Link><p>让好商品，一眼出彩。</p><nav aria-label="页脚导航"><Link href="/help">帮助中心</Link><Link href="/legal/privacy">隐私政策</Link><Link href="/legal/terms">用户协议</Link></nav></div>
+      <SiteFilingLine className="home-showcase-footer__filing" />
     </footer>
   );
 }

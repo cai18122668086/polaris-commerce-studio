@@ -33,8 +33,15 @@ test("auth and legal routes are public and account does not require a workspace"
   assert.equal(routes.isPublicRoute("/auth/register"), true);
   assert.equal(routes.isPublicRoute("/legal/terms"), true);
   assert.equal(routes.isPublicRoute("/legal/privacy"), true);
-  assert.equal(routes.isPublicRoute("/"), false);
+  // 商用站点：首页（含价格）、帮助中心、灵感专区对未登录访客公开
+  assert.equal(routes.isPublicRoute("/"), true);
+  assert.equal(routes.isPublicRoute("/help"), true);
+  assert.equal(routes.isPublicRoute("/inspiration"), true);
+  assert.equal(routes.routeRequiresWorkspace("/"), false);
   assert.equal(routes.isPublicRoute("/assets"), false);
+  assert.equal(routes.isPublicRoute("/helpdesk"), false);
+  assert.equal(routes.isPublicRoute("/admin"), false);
+  assert.equal(routes.isPublicRoute("/commerce-crawler"), false);
   assert.equal(routes.routeRequiresWorkspace("/account"), false);
   assert.equal(routes.routeRequiresWorkspace("/legal/privacy"), false);
   assert.equal(routes.routeRequiresWorkspace("/assets"), true);

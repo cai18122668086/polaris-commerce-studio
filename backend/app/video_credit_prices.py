@@ -1,9 +1,11 @@
 """Video studio credit prices shown next to every paid action.
 
-Prices are a business decision and come only from configuration. An action
-without a configured price is reported as unpriced; the page then says the
-price is still to be set instead of showing a made-up number. This module only
-reports prices; charging still follows the existing billing flow.
+Prices are a business decision and come only from configuration
+(``POLARIS_VIDEO_CREDIT_PRICES``, a JSON object keyed by the actions below). An
+action without a configured price is reported as unpriced; the page then marks
+the button as billable and says it is charged by actual usage instead of
+showing a made-up number. This module only reports prices; charging still
+follows the existing billing flow.
 """
 
 from typing import Literal

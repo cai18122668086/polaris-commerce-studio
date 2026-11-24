@@ -5,7 +5,7 @@ import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import { costNote, type CreditAccount, type PricedAction, type PriceTable } from "./credit-notes";
 
-export { costNote, type PricedAction } from "./credit-notes";
+export { billableLabel, costNote, type CostNote, type PricedAction } from "./credit-notes";
 
 /** Configured video prices plus the workspace balance; either may be missing and the page still works. */
 export function useVideoCredits(workspaceId: string) {

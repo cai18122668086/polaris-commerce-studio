@@ -1,9 +1,10 @@
 "use client";
 
+import { billableLabel } from "@/features/video-studio/credit-notes";
 import { CONFIRMING_HINT, planningButtonLabel } from "@/features/video-studio/editing-primary";
 import { planningJobProgress } from "@/features/video-studio/editing-progress";
 import { EditingProgressSteps } from "./editing-progress";
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { minDistinctMotionGroups, preferredDistinctMotionGroups } from "@/features/video-studio/editing-density";
 import { editingMessage, editingTemplateName, editingPlanningAction } from "@/features/video-studio/editing-presentation";
 import type { EditingMusicPreference } from "@/features/video-studio/editing-options";
@@ -67,8 +68,12 @@ const errors: Record<string, string> = {
   EDITING_TRANSCRIPT_REVIEW_REQUIRED: "自动字幕与已确认原稿差异较大，请先校对字幕并重新对齐，再继续编排。此检查不计模型费用。",
 };
 
-export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, referenceConfirmed = false, creativeOptions, onCreativeChange, onInputsChanged }: {
+export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, referenceConfirmed = false, creativeOptions, onCreativeChange, onInputsChanged, credits, renderCredits }: {
   onInputsChanged?: () => void;
+  /** 编排 + 出片的积分（null = 未定价） */
+  credits?: number | null;
+  /** 单独出片的积分（null = 未定价） */
+  renderCredits?: number | null;
   creativeOptions?: AppleCreativeOptions;
   onCreativeChange?: (options: AppleCreativeOptions) => void;
   music?: EditingMusicPreference;
@@ -174,7 +179,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const emptyResponse = submitted?.error_code === "EDITING_PLAN_EMPTY_RESPONSE";
   const nextAction = editingPlanningAction(prepared, submitted || undefined);
   const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || nextAction === "wait" || nextAction === "blocked";
-  const primaryLabel = planningButtonLabel({ busy, checking: waiting, arranging: submissionPending, uncertain: submissionUncertain, emptyResponse, render: submitted?.status === "completed" ? rendered?.status : undefined, arranged: submitted?.status === "completed", recover: nextAction === "recover", failed: submissionFailed, blocked: nextAction === "blocked", unavailable: Boolean(prepared && !prepared.execution_available), ready: Boolean(prepared) });
+  const primaryLabel = planningButtonLabel({ credits, busy, checking: waiting, arranging: submissionPending, uncertain: submissionUncertain, emptyResponse, render: submitted?.status === "completed" ? rendered?.status : undefined, arranged: submitted?.status === "completed", recover: nextAction === "recover", failed: submissionFailed, blocked: nextAction === "blocked", unavailable: Boolean(prepared && !prepared.execution_available), ready: Boolean(prepared) });
   const primaryHint = emptyResponse ? errors.EDITING_PLAN_EMPTY_RESPONSE : submissionUncertain ? CONFIRMING_HINT : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
   const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : rendering ? "rendering" : nextAction === "recover" ? "recover" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase]);
@@ -202,6 +207,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     } catch (caught) { automatic.current.cancel(); setError(editingMessage(caught, "提交结果尚未确认，请稍后重试同一次操作。")); }
     finally { setBusy(false); }
   };
+  // Reads the latest submit without re-running the effect on every render.
+  const generateAutomatically = useEffectEvent((job: Job) => { void submit("generate", job); });
   useEffect(() => {
     const active = automatic.current.active;
     if (!active || active.signature !== formSignature || busy) return;
@@ -212,8 +219,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     if (!prepared || active.preparationId !== prepared.id || nextAction !== "generate") return;
     // Consume the explicit click before sending. Reloads and later form changes
     // never recreate this in-memory authorization or retry a billed request.
-    if (automatic.current.take(formSignature, prepared.id)) void submit("generate", prepared);
-  }, [prepared, preparation, nextAction, busy, formSignature, submit]);
+    if (automatic.current.take(formSignature, prepared.id)) generateAutomatically(prepared);
+  }, [prepared, preparation, nextAction, busy, formSignature]);
   const action = async (job: Job, kind: "cancel" | "retry") => {
     setBusy(true); setError("");
     try {
@@ -423,7 +430,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
             }} />
             编排通过后自动生成预览
           </label>}
-          <button type="button" disabled={busy || insufficient || !!job.template_style_blockers?.length || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>生成预览（计费）</button>
+          <button type="button" disabled={busy || insufficient || !!job.template_style_blockers?.length || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>{billableLabel("生成预览", renderCredits)}</button>
           {insufficient && <p className={styles.note}>没有适用的成套动效，请核对项目备忘、素材或更换模板后重新准备。</p>}
           {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
         </>}

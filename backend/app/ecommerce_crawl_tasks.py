@@ -60,7 +60,8 @@ from .models import (
 )
 from .storage import ALLOWED_IMAGE_FORMATS, ImageStorage, StoredImage, ValidatedImage
 
-# 真实商品爬虫是内部运维工具：会动用平台登录账号和代理，只对管理员开放（与 /api/v1/admin 相同的权限判断）。
+# 真实商品爬虫是内部运维工具：会动用平台登录账号和代理，只对管理员开放
+# （与 /api/v1/admin 相同的权限判断）。
 router = APIRouter(
     prefix="/api/ecommerce",
     tags=["ecommerce-crawl-tasks"],

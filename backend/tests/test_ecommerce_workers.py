@@ -1,6 +1,6 @@
-import pytest
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app.models import CrawlTaskRecord, EcommerceWorkerRecord, utc_now

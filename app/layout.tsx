@@ -34,7 +34,15 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s｜极光商绘",
     },
     description,
-    icons: { icon: "/polaris-mark.svg", shortcut: "/polaris-mark.svg" },
+    icons: {
+      icon: [
+        { url: "/polaris-mark-ember.svg", type: "image/svg+xml" },
+        { url: "/favicon.ico", sizes: "any" },
+      ],
+      shortcut: "/favicon.ico",
+      apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    },
+    manifest: "/manifest.webmanifest",
     openGraph: {
       title,
       description,

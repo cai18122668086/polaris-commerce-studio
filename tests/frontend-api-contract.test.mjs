@@ -88,8 +88,12 @@ test("runtime sources allow only loopback URLs and the approved customer service
       const url = new URL(match[0]);
       const isCustomerSupportLink = file === path.join(root, "lib", "customer-support.ts") &&
         url.href === "https://work.weixin.qq.com/kfid/kfcafc67d7093bbfeba";
+      // 页脚备案查询（工信部、公安部）和站点地图里的正式域名是公开固定地址
+      const isFilingOrSiteLink =
+        (file === path.join(root, "lib", "site-filing.ts") && ["beian.miit.gov.cn", "beian.mps.gov.cn"].includes(url.hostname)) ||
+        (file === path.join(root, "lib", "site-seo.ts") && url.href === "https://www.jgshai.cn/");
       assert.ok(
-        isCustomerSupportLink || ["localhost", "127.0.0.1", "app.local"].includes(url.hostname),
+        isCustomerSupportLink || isFilingOrSiteLink || ["localhost", "127.0.0.1", "app.local"].includes(url.hostname),
         `${path.relative(root, file)} contains an unapproved URL ${url.origin}`,
       );
     }

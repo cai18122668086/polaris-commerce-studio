@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import video_credit_billing as video_credits
 from .auth import WorkspaceContext
 from .bihuo_suite.registry import ENGINE as BIHUO_ENGINE
 from .bihuo_suite.registry import definition as bihuo_definition
@@ -258,6 +259,33 @@ def planning_response(
             for a in row.result.get("artifacts", [])
         ],
     }
+
+
+def hold_planning(
+    session: Session, settings: Settings, row: EditingPlanningTaskRecord
+) -> None:
+    """Hold the paid model call and, for auto preview, the preview render."""
+    if row.mode != "generate":
+        return
+    video_credits.hold(
+        session,
+        settings,
+        row.workspace_id,
+        "editing_planning",
+        "video_planning",
+        row.id,
+    )
+    # Column defaults are applied on insert; a new row still has None here.
+    checkpoint, result = row.checkpoint or {}, row.result or {}
+    if checkpoint.get("auto_preview") and not result.get("preview_task_id"):
+        video_credits.hold(
+            session,
+            settings,
+            row.workspace_id,
+            "editing_render",
+            "video_planning",
+            row.id,
+        )
 
 
 def create_planning_task(
@@ -512,6 +540,7 @@ def create_planning_task(
     )
     session.add(row)
     try:
+        hold_planning(session, settings, row)
         session.commit()
     except IntegrityError:
         session.rollback()

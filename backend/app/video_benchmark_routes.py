@@ -12,6 +12,7 @@ from pydantic import Field, StringConstraints
 from sqlalchemy import Select, select
 from sqlalchemy.exc import IntegrityError
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .video_assistance import AssistanceResponse, process, provider, response
@@ -97,6 +98,14 @@ def save_page(
     )
     session.add(row)
     try:
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            workspace.workspace_id,
+            "benchmark_search",
+            "video_assistance",
+            row.id,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -110,6 +119,12 @@ def save_page(
         return replay(existing, fingerprint)
     background.add_task(
         process, request.app.state.session_factory, row.id, provider(request)
+    )
+    background.add_task(
+        video_credits.settle_after,
+        request.app.state.session_factory,
+        "video_assistance",
+        row.id,
     )
     return response(row)
 

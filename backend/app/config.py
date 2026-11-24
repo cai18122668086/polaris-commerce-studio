@@ -105,7 +105,8 @@ class Settings(BaseSettings):
     # {"sowa.oss-cn-beijing.aliyuncs.com": "sowa.oss-accelerate.aliyuncs.com"}。
     video_media_host_routes: dict[str, str] = Field(default_factory=dict)
     # 视频各操作的积分单价（POLARIS_VIDEO_CREDIT_PRICES，JSON；键见
-    # video_credit_prices.ACTIONS）。未配置的操作不显示数字，只说明按实际用量计费。
+    # video_credit_prices.ACTIONS）。未配置的操作不显示数字，也不扣积分；
+    # 已定价的操作按 video_credit_billing 冻结、结算或退回。
     video_credit_prices: dict[str, int] = Field(default_factory=dict)
     video_lipsync_long_wait_seconds: float = Field(default=600, ge=30, le=1800)
     video_lipsync_poll_window_seconds: float = Field(default=900, ge=30, le=3600)

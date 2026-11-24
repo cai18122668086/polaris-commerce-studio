@@ -14,6 +14,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -487,6 +488,14 @@ def create_task(
     )
     session.add(row)
     try:
+        video_credits.hold(
+            session,
+            settings,
+            workspace.workspace_id,
+            "writing_generate",
+            "video_assistance",
+            row.id,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -496,6 +505,12 @@ def create_task(
         raise ApiError(409, "VIDEO_REQUEST_REUSED", "文稿请求发生冲突。") from None
     background.add_task(
         process, request.app.state.session_factory, row.id, provider(request)
+    )
+    background.add_task(
+        video_credits.settle_after,
+        request.app.state.session_factory,
+        "video_assistance",
+        row.id,
     )
     return task_response(row)
 

@@ -10,6 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -35,6 +36,7 @@ from .video_editing_planning_preview import gateway_candidate, persist_planning_
 from .video_editing_planning_store import (
     create_planning_task,
     execution_available,
+    hold_planning,
     own_planning_task,
     planning_response,
     planning_root,
@@ -354,6 +356,8 @@ def cancel_task(
             409, "EDITING_PLANNING_CHANGED", "规划状态已变化，请刷新后重试。"
         )
     session.commit()
+    video_credits.reconcile_owner(session, "video_planning", row.id)
+    session.commit()
     session.refresh(row)
     return planning_response(row, settings)
 
@@ -413,6 +417,8 @@ def retry_task(
         raise ApiError(
             409, "EDITING_PLANNING_CHANGED", "规划状态已变化，请刷新后重试。"
         )
+    session.refresh(row)
+    hold_planning(session, settings, row)
     session.commit()
     session.refresh(row)
     dispatch(request, row.id)

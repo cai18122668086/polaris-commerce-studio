@@ -20,6 +20,7 @@ import styles from "./editing-workspace.module.css";
 import flow from "./editing-flow.module.css";
 import type { TemplateCard } from "./editing-template-gallery";
 import { mediaUrl } from "@/lib/api/base-url";
+import { ShortOfCredits } from "./studio-content";
 
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
@@ -70,12 +71,14 @@ const errors: Record<string, string> = {
   EDITING_TRANSCRIPT_REVIEW_REQUIRED: "自动字幕与已确认原稿差异较大，请先校对字幕并重新对齐，再继续编排。此检查不计模型费用。",
 };
 
-export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, referenceConfirmed = false, creativeOptions, onCreativeChange, onInputsChanged, credits, renderCredits }: {
+export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, referenceConfirmed = false, creativeOptions, onCreativeChange, onInputsChanged, credits, renderCredits, renderShort }: {
   onInputsChanged?: () => void;
   /** 编排 + 出片的积分（null = 未定价） */
   credits?: number | null;
   /** 单独出片的积分（null = 未定价） */
   renderCredits?: number | null;
+  /** 余额不足：生成预览停用 */
+  renderShort?: boolean;
   creativeOptions?: AppleCreativeOptions;
   onCreativeChange?: (options: AppleCreativeOptions) => void;
   music?: EditingMusicPreference;
@@ -446,7 +449,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
             }} />
             编排通过后自动生成预览
           </label>}
-          <button type="button" disabled={busy || insufficient || !!job.template_style_blockers?.length || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>{billableLabel("生成预览", renderCredits)}</button>
+          {renderShort && <ShortOfCredits credits={renderCredits} />}<button type="button" disabled={busy || !!renderShort || insufficient || !!job.template_style_blockers?.length || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>{billableLabel("生成预览", renderCredits)}</button>
           {insufficient && <p className={styles.note}>没有适用的成套动效，请核对项目备忘、素材或更换模板后重新准备。</p>}
           {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
         </>}

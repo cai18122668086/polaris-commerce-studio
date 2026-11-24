@@ -6,6 +6,7 @@ import { unwrapApiResponse } from "@/lib/api/request";
 import { ApiError } from "@/lib/api/api-error";
 import { billableLabel } from "@/features/video-studio/credit-notes";
 import styles from "./writing-workflow.module.css";
+import { ShortOfCredits } from "./studio-content";
 
 type Fact = { id: string; category: "identity" | "product" | "story"; label: string; value: string | null; status: "user_declared" | "unknown"; source_note: string };
 type Facts = { facts: Fact[]; forbidden_terms: string[]; restricted_claims: ("price" | "net_quantity" | "health_effect")[] };
@@ -32,10 +33,11 @@ function mergeDocuments(previous: Document[], added: Document[]) {
     || b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
 }
 
-export function WritingWorkflow({ workspaceId, projectId, revision, saved, references, productFacts, onApplied, writingCredits }: {
+export function WritingWorkflow({ workspaceId, projectId, revision, saved, references, productFacts, onApplied, writingCredits, writingShort }: {
   workspaceId: string; projectId: string; revision: number; saved: boolean;
   /** Credits per model call (拆解 or 写稿); null/undefined = unpriced. */
   writingCredits?: number | null;
+  writingShort?: boolean;
   references: { id: string; original_text: string }[]; productFacts: string; onApplied: () => Promise<void>;
 }) {
   const [config, setConfig] = useState<{ enabled: boolean; can_generate: boolean }>();
@@ -206,7 +208,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
     </fieldset>
     <fieldset disabled={busy || !saved || running}><legend>3. 拆解原文，再按事实写稿</legend>
       <small>会调用现有文稿模型。没有画面、互动或跨号样本时，只做文字拆解。</small>
-      <button type="button" disabled={!config.can_generate || !selectedReference} onClick={() => void generate("ref_analysis")}>{billableLabel("调用模型拆解原文", writingCredits)}</button>
+      {writingShort && <ShortOfCredits credits={writingCredits} />}<button type="button" disabled={!config.can_generate || !selectedReference || !!writingShort} onClick={() => void generate("ref_analysis")}>{billableLabel("调用模型拆解原文", writingCredits)}</button>
       {selectedAnalysis && <><label>使用拆解<select aria-label="使用拆解版本" value={selectedAnalysis.id} onChange={e => setAnalysisId(e.target.value)}>{analysisDocs.map(d => <option key={d.id} value={d.id}>{stamp(d.created_at)} · {d.body.topic}</option>)}</select></label><ol>{selectedAnalysis.body.sections.map(section => <li key={section.id}><b>{section.function}</b><p>{section.explanation}</p></li>)}</ol>{selectedAnalysis.body.source_claims.map((claim, i) => <p key={i}>“{claim.quote}” · {claim.reason}</p>)}{selectedAnalysis.body.limitations.map((text, i) => <small key={i}>{text}</small>)}</>}
       <label>写稿方式<select aria-label="写稿方式" value={draftMode} onChange={e => setDraftMode(e.target.value as DraftMode)}>
         <option value="structure">借鉴结构创作</option>
@@ -215,7 +217,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
       <small>{draftMode === "structure" ? "沿用段落功能，用自己的事实重新表达，可以拆句或合句。" : "适用于自有或明确获准使用的原文。保留逐句对应，并运行原结构检查。"}</small>
       <label>口播形式<select aria-label="写稿口播形式" value={presentation} onChange={e => setPresentation(e.target.value as typeof presentation)}><option value="unspecified">暂不设置字数预算</option><option value="on_camera">出镜口播</option><option value="hands_only">手部快切 / 画外音</option></select></label>
       <label>目标秒数（选填）<input aria-label="写稿目标秒数" type="number" min={5} max={300} value={duration} onChange={e => setDuration(e.target.value)} /></label>
-      <button type="button" disabled={!config.can_generate || !selectedReference || !selectedAnalysis || factsDirty || !selectedFacts?.body.facts.some(f => f.status === "user_declared") || (!!duration && presentation === "unspecified")} onClick={() => void generate("fact_draft")}>{billableLabel("按事实卡生成草稿", writingCredits)}</button>
+      <button type="button" disabled={!!writingShort || !config.can_generate || !selectedReference || !selectedAnalysis || factsDirty || !selectedFacts?.body.facts.some(f => f.status === "user_declared") || (!!duration && presentation === "unspecified")} onClick={() => void generate("fact_draft")}>{billableLabel("按事实卡生成草稿", writingCredits)}</button>
       {config.can_generate && draftBlocker && <small role="status">{draftBlocker}</small>}
       {!config.can_generate && <small>文稿模型暂未配置，可以先保存原文与事实卡。</small>}
     </fieldset>

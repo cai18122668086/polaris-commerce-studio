@@ -29,7 +29,7 @@ export function GenerationPreview({ job, resuming, submitting, onClose, onResume
       {job.handoff_url && <a className={base.outlineButton} href={job.handoff_url} download title="文案、配音与原片；字幕待音文对齐"><PackageOpen size={14} />剪辑材料</a>}
       {job.can_resume && <GenerationResumeButton job={job} className={base.primaryButton} resuming={resuming} onResume={onResume} />}
       {job.status === "awaiting_review" && <CostLine note={approveCost} />}
-      {job.status === "awaiting_review" && <><button type="button" className={base.outlineButton} disabled={submitting} onClick={onReject}>不加入形象库</button><button type="button" className={base.primaryButton} disabled={submitting} onClick={onApprove}><Check size={14} />{billableLabel("确认加入", approveCost?.credits)}</button></>}
+      {job.status === "awaiting_review" && <><button type="button" className={base.outlineButton} disabled={submitting} onClick={onReject}>不加入形象库</button><button type="button" className={base.primaryButton} disabled={submitting || !!approveCost?.insufficient} onClick={onApprove}><Check size={14} />{billableLabel("确认加入", approveCost?.credits)}</button></>}
       {job.video_url && <a className={base.outlineButton} href={job.video_url} download><ArrowDownToLine size={14} />下载视频</a>}
       {job.status === "completed" && job.kind === "h3_template" && onUseAvatar && <button type="button" className={base.primaryButton} onClick={onUseAvatar}>使用此形象写口播<ArrowRight size={14} /></button>}
       {job.status === "completed" && job.kind === "lipsync" && onEdit && <button type="button" className={base.primaryButton} onClick={onEdit}>选择模板剪辑<ArrowRight size={14} /></button>}

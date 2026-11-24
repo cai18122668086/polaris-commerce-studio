@@ -57,3 +57,8 @@
 :global(.theme-ember) .costLine{color:#9f9a93}
 :global(.theme-ember) .costLine[data-short]{color:#fa682a}
 /* ember-dark:end */
+
+/* 余额不足：原因 + 充值入口（熔光暗色下仍用暖色强调） */
+.topUpLink { color: inherit; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+:global(html.theme-ember) .costLine[data-short] { color: #f08a4b; }
+:global(html.theme-ember) .topUpLink { color: #f4f1eb; }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -14,6 +15,12 @@ from fastapi import FastAPI, Request
 from .config import Settings
 
 SUPPORTED_SUPERTOKENS_PYTHON_VERSION = "0.31.3"
+# verify_session checks the JWT locally, but get_user is a SuperTokens Core
+# round trip. Reuse a verified user's record briefly instead of calling Core
+# on every API request; email verification is still enforced per request by
+# the session claim, and account status lives in our database.
+USER_CACHE_SECONDS = 30.0
+USER_CACHE_MAX_ENTRIES = 10_000
 
 
 @dataclass(frozen=True)
@@ -243,6 +250,8 @@ class SuperTokensAuthAdapter:
         self._get_user: Any = None
         self._middleware: Any = None
         self._cors_headers: list[str] = []
+        self._user_cache: dict[str, tuple[float, Any]] = {}
+        self._clock = time.monotonic
 
     def _fingerprint(self) -> tuple[object, ...]:
         return (
@@ -408,6 +417,28 @@ class SuperTokensAuthAdapter:
     def is_ready(self) -> bool:
         return self._initialized
 
+    async def _cached_user(self, primary_user_id: str) -> Any:
+        now = self._clock()
+        hit = self._user_cache.get(primary_user_id)
+        if hit is not None and hit[0] > now:
+            return hit[1]
+        user = await self._get_user(primary_user_id)
+        if user is not None and all(
+            method.verified for method in getattr(user, "login_methods", [])
+        ):
+            if len(self._user_cache) >= USER_CACHE_MAX_ENTRIES:
+                self._user_cache = {
+                    key: value
+                    for key, value in self._user_cache.items()
+                    if value[0] > now
+                }
+                if len(self._user_cache) >= USER_CACHE_MAX_ENTRIES:
+                    self._user_cache.clear()
+            self._user_cache[primary_user_id] = (now + USER_CACHE_SECONDS, user)
+        else:
+            self._user_cache.pop(primary_user_id, None)
+        return user
+
     async def authenticate(self, request: Request) -> ExternalIdentity:
         if (
             not self._initialized
@@ -430,7 +461,7 @@ class SuperTokensAuthAdapter:
                 raise ExternalAuthenticationError("session is required")
             primary_user_id = session_container.get_user_id()
             recipe_user_id = session_container.get_recipe_user_id().get_as_string()
-            supertokens_user = await self._get_user(primary_user_id)
+            supertokens_user = await self._cached_user(primary_user_id)
         except InvalidClaimsError as exc:
             if any(error.id_ == "st-ev" for error in exc.payload):
                 raise ExternalEmailNotVerifiedError(

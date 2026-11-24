@@ -24,7 +24,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .admin_auth import is_admin
+from .admin_auth import is_admin, require_admin
 from .auth import Principal, get_principal
 from .database import get_session
 from .domain import (
@@ -60,7 +60,12 @@ from .models import (
 )
 from .storage import ALLOWED_IMAGE_FORMATS, ImageStorage, StoredImage, ValidatedImage
 
-router = APIRouter(prefix="/api/ecommerce", tags=["ecommerce-crawl-tasks"])
+# 真实商品爬虫是内部运维工具：会动用平台登录账号和代理，只对管理员开放（与 /api/v1/admin 相同的权限判断）。
+router = APIRouter(
+    prefix="/api/ecommerce",
+    tags=["ecommerce-crawl-tasks"],
+    dependencies=[Depends(require_admin)],
+)
 logger = logging.getLogger(__name__)
 
 

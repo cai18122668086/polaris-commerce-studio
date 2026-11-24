@@ -22,6 +22,8 @@ from tests.test_video_generation import request_body, video_gen  # noqa: F401
 @pytest.fixture
 def billing(video_gen):  # noqa: F811
     client = video_gen[0]
+    # Each test opts into the prices it exercises; defaults are pinned elsewhere.
+    client.app.state.settings.video_credit_prices = {}
     workspace = client.get("/api/v1/workspaces").json()[0]["id"]
     services.set_quota_enabled(True)
     services.set_credit_enforcement_enabled(True)

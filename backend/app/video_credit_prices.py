@@ -1,8 +1,10 @@
 """Video studio credit prices shown next to every paid action.
 
 Prices are a business decision and come only from configuration
-(``POLARIS_VIDEO_CREDIT_PRICES``, a JSON object keyed by the actions below). An
-action without a configured price is reported as unpriced; the page then marks
+(``POLARIS_VIDEO_CREDIT_PRICES``, a JSON object keyed by the actions below).
+When the variable is not set, ``DEFAULT_PRICES`` applies (derivation in
+``docs/video-pricing-20261125.md``); ``{}`` turns every action back to unpriced.
+An action without a configured price is reported as unpriced; the page then marks
 the button as billable and says it is charged by actual usage instead of
 showing a made-up number, and the action is not charged. Priced actions are
 held, settled and released by ``video_credit_billing``.
@@ -24,6 +26,20 @@ VideoPricedAction = Literal[
 ]
 ACTIONS: tuple[str, ...] = VideoPricedAction.__args__  # type: ignore[attr-defined]
 PRICING_VERSION = "video-credits-config-v1"
+
+# Flat credits per successful action: vendor cost (conservative) x 3 / 0.06 CNY
+# per credit (cheapest plan rate), rounded up to a friendly number. See
+# docs/video-pricing-20261125.md before changing any value.
+DEFAULT_PRICES: dict[str, int] = {
+    "lipsync": 50,
+    "avatar_motion": 60,
+    "avatar_register": 5,
+    "voice_clone": 30,
+    "editing_planning": 10,
+    "editing_render": 10,
+    "benchmark_search": 5,
+    "writing_generate": 10,
+}
 
 
 class VideoCreditPrice(BaseModel):

@@ -6,7 +6,7 @@ import signal
 import threading
 
 from .config import Settings
-from .database import build_database
+from .database import build_database_for
 from .video_editing_planning_worker import recover as recover_planning
 from .video_editing_worker import recover
 
@@ -23,7 +23,7 @@ def main() -> None:
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
-    engine, factory = build_database(settings.database_url)
+    engine, factory = build_database_for(settings)
     try:
         while not stop.is_set():
             try:

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
@@ -18,7 +19,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from .celery_app import celery_app
 from .config import Settings
-from .database import build_database
+from .database import build_database_for
 from .errors import ApiError
 from .motion_library import (
     MOTION_SHA256,
@@ -1199,6 +1200,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             )
             else "EDITING_INTERNAL_ERROR"
         )
+        if isinstance(error, SoftTimeLimitExceeded):
+            code = "EDITING_TIME_LIMIT_EXCEEDED"
         status = "cancelled" if code == "EDITING_CANCELLED" else "failed"
         with factory() as session:
             failure_values: dict[str, Any] = {}
@@ -1266,7 +1269,7 @@ def failure_location(error: BaseException) -> str | None:
 )
 def process_editing_task(task_id: str) -> None:
     settings = Settings()
-    engine, factory = build_database(settings.database_url)
+    engine, factory = build_database_for(settings)
     try:
         process(task_id, settings, factory)
     finally:

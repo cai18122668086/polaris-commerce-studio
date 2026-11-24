@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
@@ -15,7 +16,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from . import video_editing_planner as planner
 from .celery_app import celery_app
 from .config import Settings
-from .database import build_database
+from .database import build_database_for
 from .errors import ApiError
 from .motion_browser_originals import require_drawn_browser_assets
 from .motion_library import (
@@ -916,6 +917,8 @@ def process(
             if isinstance(error, (ValueError, KeyError, TypeError))
             else "EDITING_PLANNING_INTERNAL_ERROR"
         )
+        if isinstance(error, SoftTimeLimitExceeded):
+            code = "EDITING_PLAN_TIME_LIMIT_EXCEEDED"
         status = "cancelled" if code == "EDITING_PLAN_CANCELLED" else "failed"
         result["artifacts"] = []
         if attempt is not None:
@@ -1034,7 +1037,7 @@ def enqueue(task_id: str, factory: sessionmaker[Session]) -> bool:
 )
 def process_editing_planning_task(task_id: str) -> None:
     settings = Settings()
-    engine, factory = build_database(settings.database_url)
+    engine, factory = build_database_for(settings)
     try:
         process(task_id, settings, factory)
     finally:

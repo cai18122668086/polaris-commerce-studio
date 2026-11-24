@@ -9,6 +9,7 @@ import { minDistinctMotionGroups, preferredDistinctMotionGroups } from "@/featur
 import { editingMessage, editingTemplateName, editingPlanningAction } from "@/features/video-studio/editing-presentation";
 import type { EditingMusicPreference } from "@/features/video-studio/editing-options";
 import { EditingAutomaticRun } from "@/features/video-studio/editing-run";
+import { resumablePreparation } from "@/features/video-studio/editing-resume";
 import { isEditingSuite } from "@/features/video-studio/editing-suite";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
@@ -91,6 +92,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   onClearCarry: () => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobsLoaded, setJobsLoaded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [activePreparation, setActivePreparation] = useState<{id: string; signature: string}>();
   const preparationKey = `tengli-editing-preparation:${workspaceId}:${projectId}`;
@@ -149,7 +151,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   })), [workspaceId, projectId]);
   useEffect(() => {
     let live = true;
-    const reload = () => { void refresh().then(rows => { if (live) { setJobs(rows); setLoadError(""); } }).catch(() => { if (live) setLoadError("暂时无法读取规划任务，请稍后重试。"); }); };
+    const reload = () => { void refresh().then(rows => { if (live) { setJobs(rows); setJobsLoaded(true); setLoadError(""); } }).catch(() => { if (live) setLoadError("暂时无法读取规划任务，请稍后重试。"); }); };
     reload(); const timer = setInterval(reload, 5000);
     return () => { live = false; clearInterval(timer); };
   }, [refresh]);
@@ -167,6 +169,19 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     setMaterialIds(ids);
   };
   const preparation = activePreparation?.signature === formSignature ? jobs.find(job => job.id === activePreparation.id) : undefined;
+  // After a refresh or on another device the local pointer may be missing. Point
+  // back at a submitted plan that is still running or can be revalidated for
+  // free, so the primary action stays 「继续生成」 instead of a new billed run.
+  const resumeChecked = useRef("");
+  useEffect(() => {
+    const key = `${selectedCandidate}:${templateId}`;
+    if (!jobsLoaded || !preparationLoaded || !materialPreferenceLoaded || !selectedCandidate || !templateId || resumeChecked.current === key) return;
+    resumeChecked.current = key;
+    if (preparation) return;
+    const id = resumablePreparation(jobs, selectedCandidate, templateId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restores a server-side pointer once per source/template
+    if (id) setActivePreparation({ id, signature: formSignature });
+  }, [formSignature, jobs, jobsLoaded, materialPreferenceLoaded, preparation, preparationLoaded, selectedCandidate, templateId]);
   const prepared = preparation?.status === "prepared" ? preparation : undefined;
   const submitted = prepared && jobs.find(job => job.prepared_task_id === prepared.id);
   const rendered = tasks.find(task => task.id === submitted?.preview_task_id);

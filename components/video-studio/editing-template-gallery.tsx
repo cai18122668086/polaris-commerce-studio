@@ -22,8 +22,10 @@ function Poster({ card }: { card: TemplateCard }) {
     : <div className={styles.coverText}><small>{card.category}</small><strong>{card.name}</strong><span>预览完整效果</span></div>;
 }
 
-export function EditingTemplateGallery({ workspaceId, projectId, selected, onSelect, onRestore, sampleRevision }: {
+export function EditingTemplateGallery({ workspaceId, projectId, selected, onSelect, onRestore, sampleRevision, fallbackId }: {
   workspaceId: string; projectId: string; selected: string; onSelect: (card: TemplateCard) => void; onRestore: (card: TemplateCard) => void; sampleRevision: string;
+  /** 本机没有记住模板时，沿用该项目上次编排的模板 */
+  fallbackId?: string;
 }) {
   const [cards, setCards] = useState<TemplateCard[]>([]);
   const [samples, setSamples] = useState<Sample[]>([]);
@@ -56,10 +58,14 @@ export function EditingTemplateGallery({ workspaceId, projectId, selected, onSel
   useEffect(() => {
     if (selected || !cards.length) return;
     try {
-      const card = cards.find(card => card.id === localStorage.getItem(selectionKey));
+      const remembered = cards.find(card => card.id === localStorage.getItem(selectionKey));
+      const card = remembered ?? cards.find(card => card.id === fallbackId);
       if (card) onRestore(card);
-    } catch { /* Optional preference. */ }
-  }, [cards, onRestore, selected, selectionKey]);
+    } catch {
+      const card = cards.find(card => card.id === fallbackId);
+      if (card) onRestore(card);
+    }
+  }, [cards, fallbackId, onRestore, selected, selectionKey]);
   useEffect(() => {
     const controller = new AbortController();
     void apiClient.GET(`${root}/editing-template-catalog`, {

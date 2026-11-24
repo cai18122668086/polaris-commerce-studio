@@ -8,6 +8,7 @@ import { Check, UserRound } from "lucide-react";
 import { editingFlowSteps } from "@/features/video-studio/editing-flow-steps";
 import { workspaceActionLabel } from "@/features/video-studio/editing-primary";
 import { revisingTask } from "@/features/video-studio/editing-workbench";
+import { resumableEditing } from "@/features/video-studio/editing-resume";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import type { CostNote } from "@/features/video-studio/credit-notes";
@@ -160,21 +161,42 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   }, [selectedGeneration]);
   const restoredSource = selected.startsWith("source:") ? selected.slice(7) : "";
   const restoredProject = useRef("");
+  const [tasksLoaded, setTasksLoaded] = useState(false);
+  const [resumeJobs, setResumeJobs] = useState<Parameters<typeof resumableEditing>[1]>();
+  const [restoreTemplate, setRestoreTemplate] = useState<string>();
   useEffect(() => {
-    if (restoredProject.current === projectId || selected || file || !tasks.length) return;
-    const previous = tasks.find(task => task.status === "completed" && task.source_origin?.kind === "upload_asset" && task.artifacts.some(a => a.role === "transcript"));
+    if (!saved || !projectId) return;
+    let live = true;
+    // One read on open: the last planning tells which speech and template to bring back.
+    void apiClient.GET(`${root}/projects/{project_id}/editing-planning-tasks`, {
+      params: { path: { workspace_id: workspaceId, project_id: projectId } }, signal: AbortSignal.timeout(12000),
+    }).then(result => unwrapApiResponse(result)).catch(() => []).then(rows => { if (live) setResumeJobs(rows); });
+    return () => { live = false; };
+  }, [projectId, saved, workspaceId]);
+  useEffect(() => {
+    if (restoredProject.current === projectId || !tasksLoaded || !resumeJobs) return;
+    restoredProject.current = projectId;
+    if (selected || file) return;
+    const resume = resumableEditing(tasks, resumeJobs);
+    const previous = resume && tasks.find(task => task.id === resume.taskId);
     if (!previous) return;
+    const generation = previous.source_origin?.kind === "generation_task" ? previous.source_origin.generation_task_id : undefined;
+    if (previous.source_origin?.kind !== "upload_asset" && !generation) return;
     let live = true;
     void Promise.resolve().then(() => {
       if (!live) return;
-      restoredProject.current = projectId;
-      setSelected(`source:${previous.source_id}`);
+      if (generation) {
+        // Keep the transcript's own reference; the generation draft must not replace it.
+        initializedReference.current = generation;
+        setSelected(generation);
+      } else setSelected(`source:${previous.source_id}`);
       setPlanningTask(previous.id);
       setSubtitles(previous.options.source_subtitles);
       setReferenceText(previous.options.reference_script || "");
+      if (resume.templateId) setRestoreTemplate(resume.templateId);
     });
     return () => { live = false; };
-  }, [file, projectId, selected, tasks]);
+  }, [file, projectId, resumeJobs, selected, tasks, tasksLoaded]);
   useEffect(() => {
     const url = file ? URL.createObjectURL(file) : "";
     let live = true;
@@ -225,6 +247,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   }, [workspaceId, projectId, options, linkedPreviews, focusedTaskId]);
   const applyTasks = useCallback(({ rows, linkError }: Awaited<ReturnType<typeof reload>>) => {
     setTasks(rows);
+    setTasksLoaded(true);
     setTaskLinkError(linkError);
     setLoadError("");
   }, []);
@@ -373,6 +396,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     return () => { live = false; };
   }, [continueAfterRecognition, transcriptReady, primaryState]);
   const begin = () => {
+    // A restored page may still be recognizing: the click only arms the continuation.
+    if (recognizing && template) { setContinueAfterRecognition(true); return; }
     if (!saved) {
       if (onSaveProject) {
         resumeAfterSave.current = true;
@@ -419,14 +444,14 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     previewReady: renderTasks.some(task => task.status === "awaiting_review"),
     finalReady: renderTasks.some(task => task.status === "completed" && task.artifacts.some(artifact => artifact.role === "final")),
   });
-  const actionLabel = workspaceActionLabel({ busy, recognizing, phase: primaryState?.phase, waitingLabel: primaryState?.label, transcriptReady, credits: cost ? cost.credits : undefined });
+  const actionLabel = workspaceActionLabel({ busy, recognizing: recognizing && continueAfterRecognition, phase: primaryState?.phase, waitingLabel: primaryState?.label, transcriptReady, credits: cost ? cost.credits : undefined });
   return <section className={`${styles.panel} ${flow.workbench} ${compact ? flow.compact : ""}`} aria-label="口播剪辑">
     <ol className={flow.flowSteps} aria-label="剪辑步骤">{flowSteps.map(step => <li key={step.key} data-state={step.state}>
       <button type="button" aria-current={step.state === "current" ? "step" : undefined} onClick={() => document.getElementById(step.anchor)?.scrollIntoView({ block: "start" })}>
         <span className={flow.flowIndex}>{step.state === "done" ? <Check size={12} /> : step.index}</span><span><b>{step.label}</b><small>{step.hint}</small></span>
       </button>
     </li>)}</ol>
-    <EditingTemplateGallery key={`gallery:${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={saved ? projectId : ""} selected={template?.id || ""} onRestore={chooseTemplate} sampleRevision={tasks.flatMap(task => task.artifacts.filter(a => a.role === "final").map(a => a.sha256)).join(",")} onSelect={chooseTemplate} />
+    <EditingTemplateGallery key={`gallery:${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={saved ? projectId : ""} selected={template?.id || ""} fallbackId={restoreTemplate} onRestore={chooseTemplate} sampleRevision={tasks.flatMap(task => task.artifacts.filter(a => a.role === "final").map(a => a.sha256)).join(",")} onSelect={chooseTemplate} />
     <section id="editing-source" className={`${flow.step} ${flow.source}`} aria-label="准备口播"><div className={flow.sourceHeading}><h2>选视频</h2><label className={flow.uploadButton}>手动上传视频<input ref={sourceUpload} disabled={busy || recognizing} aria-label="上传口播视频" type="file" accept="video/mp4,video/quicktime,video/webm" onChange={event => { cancelAutomatic(); setSelected("upload"); setFile(event.target.files?.[0]); setPlanningTask(""); setReferenceVersion(""); setReferenceText(""); setSubtitles("none"); if (!saved && onSaveProject) void onSaveProject().catch(caught => setError(editingMessage(caught, "项目暂未保存，开始剪辑时会再试一次。"))); }} /></label></div>
     {!sourcePreview && !selectedGeneration && !restoredSource && <button type="button" className={flow.dropzone} onClick={() => setSourceDialog(true)}><UserRound size={36} strokeWidth={1.5} /><b>选择口播视频</b><small>我的视频</small></button>}
 
@@ -452,7 +477,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       <p className={styles.note}>{confirmedVersions === "unavailable" ? "暂时无法读取确认稿。重新选择上传原片可重试。" : confirmedVersions === undefined && saved ? "正在读取本项目确认稿。" : "参考稿用于回查写稿来源，字幕和词级时间轴以原片实际口播为准。"}</p>
       </details>
     </>}
-    {recognizing && <p role="status">{sourceTask?.stage === "queued" ? stageLabel.queued : recognitionLabel}，完成后自动检查素材。</p>}
+    {recognizing && <p role="status">{sourceTask?.stage === "queued" ? stageLabel.queued : recognitionLabel}{continueAfterRecognition ? "，完成后自动检查素材并继续编排。" : "，完成后点击「开始智能剪辑」即可继续，不会重新识别。"}</p>}
     {sourceTask?.status === "failed" && <p role="alert" className={styles.error}>{editingMessage(errorLabel[sourceTask.error_code || ""], referenceConfirmed ? "原稿对齐未完成，请检查原稿和原片声音后重试。" : "口播识别未完成，请检查原片声音后重新开始。")}</p>}
     <details id="editing-source-options" hidden={!selected}><summary>更多选项</summary><label className={flow.sourceSubtitleChoice}><input id="editing-subtitles" type="checkbox" disabled={busy || recognizing} checked={subtitles === "present"} onChange={event => { cancelAutomatic(); setSubtitles(event.target.checked ? "present" : "none"); setPlanningTask(""); setError(""); }} />原片已有字幕</label><div className={styles.correctionActions}>
       <button type="button" onClick={() => transcriptReady ? openPlanning() : void submit("transcript")} disabled={busy || !canSubmit || recognizing}>{referenceConfirmed ? (transcriptReady ? "使用已对齐字幕" : "对齐原稿，准备动效剪辑") : "识别口播，准备动效剪辑"}</button>
@@ -565,6 +590,6 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         {["failed", "cancelled"].includes(task.status) && !layoutFailed && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
       </article></details>;
     })}</div>{historyTasks.length > 3 && <button type="button" onClick={() => setShowTaskHistory(value => !value)}>{showTaskHistory ? "收起历史版本" : `查看全部 ${historyTasks.length} 个版本`}</button>}</section>
-    <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || (!saved && !onSaveProject) || recognizing || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))} onClick={begin}>{actionLabel}</button><small className={flow.feeHint} role="status">{recognizing ? "识别完成后自动继续编排与渲染，请保持当前页面。" : transcriptReady && primaryState ? primaryState.hint : "识别 → 编排 → 渲染 → 全片预览，确认后下载高清"}{cost && <> · {cost.text}</>}</small></>}</div>
+    <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || (!saved && !onSaveProject) || (recognizing && continueAfterRecognition) || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))} onClick={begin}>{actionLabel}</button><small className={flow.feeHint} role="status">{recognizing ? continueAfterRecognition ? "识别完成后自动继续编排，请保持页面打开；若中途离开，回来后点一次即可接着做，不会重新识别。" : "口播仍在识别，点击后识别完成会自动继续编排。" : transcriptReady && primaryState ? primaryState.hint : "识别 → 编排 → 渲染 → 全片预览，确认后下载高清"}{cost && <> · {cost.text}</>}</small></>}</div>
   </section>;
 }

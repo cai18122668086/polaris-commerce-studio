@@ -118,7 +118,58 @@ def normalize_suite_output(
         changed["chapters"] = kept
     repairs.extend(repair_suite_captions(changed, transcript))
     repairs.extend(_fit_suite_display_spans(changed, transcript, positions))
+    repairs.extend(_release_overlapping_closing(changed, positions))
     return changed, repairs
+
+
+def _release_overlapping_closing(
+    raw: dict[str, Any], positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Omit an optional closing that the planned body itself runs through.
+
+    On a short script the model may mark the last body clauses again as the
+    two-part conclusion, so a point or feature card starts at or after the
+    quote. The closing is optional; keeping it would reject the whole saved
+    response on every retry. Body rows that merely repeat a conclusion phrase
+    are left to the existing duplicate handling.
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    if plan.conclusion is None or plan.quote_start_token_id is None:
+        return []
+    quote = positions.get(plan.quote_start_token_id)
+    closing = [
+        (positions.get(row.first_token_id), positions.get(row.last_token_id))
+        for row in (plan.conclusion.first, plan.conclusion.second)
+    ]
+    if quote is None or any(a is None or b is None for a, b in closing):
+        return []
+    rows: list[tuple[str, str]] = [
+        *((row.first_token_id, row.last_token_id) for row in plan.points),
+        *((row.first_token_id, row.last_token_id) for row in plan.features),
+        *((row.show_at_token_id, row.show_at_token_id) for row in plan.materials),
+    ]
+    for first_id, last_id in rows:
+        first, last = positions.get(first_id), positions.get(last_id)
+        if first is None or last is None or last < quote:
+            continue
+        if any(
+            a is not None and b is not None and a <= first <= last <= b
+            for a, b in closing
+        ):
+            continue
+        raw["conclusion"] = None
+        raw["quote_start_token_id"] = None
+        return [
+            {
+                "kind": "optional_closing_omitted",
+                "quote_start_token_id": plan.quote_start_token_id,
+                "reason": "body_phrase_overlaps_closing",
+            }
+        ]
+    return []
 
 
 def _fit_suite_display_spans(

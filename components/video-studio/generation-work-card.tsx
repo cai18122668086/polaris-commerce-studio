@@ -16,7 +16,7 @@ export function GenerationWorkCard({ job, avatar, onPreview, onResume, resuming 
       <GenerationImageStatus job={job} />
       {state.done && <i><Play size={21} /></i>}
     </button>
-    <div><b>{job.snapshot?.draft.name || avatar.name}</b><time>{new Date(job.created_at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time>
+    <div><b>{job.snapshot?.draft.name || avatar.name}</b>{validDate(job.created_at) && <time>{new Date(job.created_at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time>}
       <GenerationProgress job={job} compact />
       <div className={styles.workActions}>
         {job.can_resume ? <GenerationResumeButton job={job} onResume={onResume} resuming={resuming} className={styles.textButton} /> : <button className={styles.textButton} type="button" onClick={onPreview}>{state.review ? "预览并确认" : state.done ? "查看视频" : "查看进度"}</button>}
@@ -24,4 +24,9 @@ export function GenerationWorkCard({ job, avatar, onPreview, onResume, resuming 
       </div>
     </div>
   </article>;
+}
+
+/** 缺少或无法解析的时间不显示（避免「Invalid Date」） */
+function validDate(value?: string | null): boolean {
+  return !!value && !Number.isNaN(new Date(value).getTime());
 }

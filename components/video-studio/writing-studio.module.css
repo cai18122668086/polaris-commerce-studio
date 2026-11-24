@@ -32,9 +32,7 @@
 }
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .steps button[aria-current="step"]{background:rgb(255 250 244 / 0.04)}
-:global(.theme-ember) .steps b{font-weight:500}
+:global(.theme-ember) .steps button[aria-current="step"]{background:#0f0e0d}
 :global(.theme-ember) .steps button[aria-current="step"] .stepIndex{color:#0f0e0d}
-:global(.theme-ember) .stage{background:rgb(255 250 244 / 0.04);border-radius:999px}
-:global(.theme-ember) .facts label,:global(.theme-ember) .final label{font-weight:500}
+:global(.theme-ember) .stage{background:#0f0e0d}
 /* ember-dark:end */

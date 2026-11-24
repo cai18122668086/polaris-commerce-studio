@@ -11,44 +11,43 @@
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .materialBrowser{--edit-accent:#fa682a;color:#dad7d5}
-:global(.theme-ember) .materialToolbar b{font-weight:500}
 :global(.theme-ember) .materialToolbar span{color:#69635d}
-:global(.theme-ember) .materialBrowser .addMaterial{border:1px solid #2c2a27!important;background:rgb(255 250 244 / 0.025)!important;color:#fa682a!important}
+:global(.theme-ember) .materialBrowser .addMaterial{border:1px solid #2c2a27!important;background:#151413!important;color:#fa682a!important}
 :global(.theme-ember) .materials>label{color:#a19b94}
-:global(.theme-ember) .materials input:not([type=checkbox]),:global(.theme-ember) .materials textarea,:global(.theme-ember) .materials select{border:1px solid #252321;background:rgb(255 250 244 / 0.04);color:#dad7d5;border-radius:12px}
+:global(.theme-ember) .materials input:not([type=checkbox]),:global(.theme-ember) .materials textarea,:global(.theme-ember) .materials select{border:1px solid #252321;background:#0f0e0d;color:#dad7d5}
 :global(.theme-ember) .note{color:#6d6760}
 :global(.theme-ember) .error{color:#fa682a}
-:global(.theme-ember) .materialFilters>div{background:rgb(255 250 244 / 0.025);border-radius:9px}
+:global(.theme-ember) .materialFilters>div{background:#181716}
 :global(.theme-ember) .materialBrowser .materialFilters button{color:#726d65!important}
-:global(.theme-ember) .materialBrowser .materialFilters button[aria-pressed=true]{background:rgb(255 250 244 / 0.04)!important;color:#dad7d5!important;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
+:global(.theme-ember) .materialBrowser .materialFilters button[aria-pressed=true]{background:#0f0e0d!important;color:#dad7d5!important;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
 :global(.theme-ember) .materialSearch{color:#625e57}
-:global(.theme-ember) .materialBrowser .materialSearch input{border-color:#201f1c!important;background:rgb(255 250 244 / 0.04)!important}
+:global(.theme-ember) .materialBrowser .materialSearch input{border-color:#201f1c!important;background:#0f0e0d!important}
 :global(.theme-ember) .materialCount{color:#635f58}
-:global(.theme-ember) .materialTiles li{border:1px solid #23211f;background:rgb(255 250 244 / 0.04);border-radius:15px}
-:global(.theme-ember) .materialTiles li[data-selected=true]{border-color:#fa682a;background:rgb(255 250 244 / 0.025)}
-:global(.theme-ember) .materialBrowser .materialThumb{background:rgb(255 250 244 / 0.025)!important;color:#89837a!important}
-:global(.theme-ember) .videoPlaceholder{background:rgb(255 250 244 / 0.06);color:#757068}
-:global(.theme-ember) .mediaType{background:rgb(21 20 19 / 0.799);color:#969088;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
-:global(.theme-ember) .materialSelected{background:#fa682a;color:#0f0e0d;border:2px solid #0f0e0d;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .materialTiles li{border:1px solid #23211f;background:#0f0e0d}
+:global(.theme-ember) .materialTiles li[data-selected=true]{border-color:#fa682a;background:#131211}
+:global(.theme-ember) .materialBrowser .materialThumb{background:#1b1918!important;color:#89837a!important}
+:global(.theme-ember) .videoPlaceholder{background:#1d1b19;color:#757068}
+:global(.theme-ember) .mediaType{background:rgb(15 14 13 / 0.929);color:#969088}
+:global(.theme-ember) .materialSelected{background:#fa682a;color:#0f0e0d;border:2px solid #0f0e0d}
 :global(.theme-ember) .materialBrowser .materialSelect input{accent-color:#fa682a}
 :global(.theme-ember) .materialDescription{color:#5e5a54}
-:global(.theme-ember) .materialBrowser .emptyMaterials{border:1px dashed #2b2926!important;background:rgb(255 250 244 / 0.025)!important;color:#68635c!important}
+:global(.theme-ember) .materialBrowser .emptyMaterials{border:1px dashed #2b2926!important;background:#131211!important;color:#68635c!important}
 :global(.theme-ember) .emptyMaterials b{color:#948e87}
 :global(.theme-ember) .emptyMaterials span{color:#625d56}
 :global(.theme-ember) .noMaterials{color:#68635c}
-:global(.theme-ember) .materialBrowser .noMaterials button{background:rgb(255 250 244 / 0.025)!important;color:#938d85!important}
-:global(.theme-ember) .sourceTabs{background:rgb(255 250 244 / 0.025);border-radius:12px}
-:global(.theme-ember) .materialUploadDialog .sourceTabs button{color:#6d6861;border-radius:999px}
-:global(.theme-ember) .materialUploadDialog .sourceTabs button[aria-pressed=true]{background:rgb(255 250 244 / 0.04);color:#dedcda;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
-:global(.theme-ember) .materials .uploadDropzone{border:1px dashed #2e2c29;background:rgb(255 250 244 / 0.025);color:#6d6861;border-radius:16px}
+:global(.theme-ember) .materialBrowser .noMaterials button{background:#181716!important;color:#938d85!important}
+:global(.theme-ember) .sourceTabs{background:#181716}
+:global(.theme-ember) .materialUploadDialog .sourceTabs button{color:#6d6861}
+:global(.theme-ember) .materialUploadDialog .sourceTabs button[aria-pressed=true]{background:#0f0e0d;color:#dedcda;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
+:global(.theme-ember) .materials .uploadDropzone{border:1px dashed #2e2c29;background:#131211;color:#6d6861}
 :global(.theme-ember) .uploadDropzone:focus-within{outline:2px solid #fa682a}
 :global(.theme-ember) .uploadDropzone b{color:#938d85}
 :global(.theme-ember) .uploadDropzone small{color:#5b5751}
-:global(.theme-ember) .materials .dragging{border-color:#fa682a;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .materials .dragging{border-color:#fa682a;background:#151413}
 :global(.theme-ember) .uploadFooter{border-top:1px solid #1c1b19}
-:global(.theme-ember) .uploadFooter button{background:#fa682a;color:#0f0e0d;border-radius:999px}
-:global(.theme-ember) .secondaryAction{border:1px solid #242320!important;background:rgb(255 250 244 / 0.04)!important;color:#857e76!important}
-:global(.theme-ember) .materialFullPreview{background:#e9e8e6;border-radius:14px}
+:global(.theme-ember) .uploadFooter button{background:#fa682a;color:#0f0e0d}
+:global(.theme-ember) .secondaryAction{border:1px solid #242320!important;background:#0f0e0d!important;color:#857e76!important}
+:global(.theme-ember) .materialFullPreview{background:#e9e8e6}
 :global(.theme-ember) .previewInfo{color:#928c84}
 :global(.theme-ember) .previewInfo small{color:#5c5852}
 :global(.theme-ember) .previewInfo a{color:#fa682a}

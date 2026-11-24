@@ -3,7 +3,8 @@ import sys
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
-    "check_keys", Path(__file__).resolve().parents[1] / "scripts/check_video_dev_keys.py"
+    "check_keys",
+    Path(__file__).resolve().parents[1] / "scripts/check_video_dev_keys.py",
 )
 check = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = check
@@ -19,21 +20,25 @@ def run(text):
 
 
 def test_empty_template_fails_on_required_items_only():
-    lines, ok = run("POLARIS_VIDEO_SCRIPT_MODEL=deepseek-v4.1\nPOLARIS_VIDEO_EDITING_PLAN_MODEL=m1\n")
+    lines, ok = run(
+        "POLARIS_VIDEO_SCRIPT_MODEL=deepseek-v4.1\nPOLARIS_VIDEO_EDITING_PLAN_MODEL=m1\n"
+    )
     assert not ok
     assert any("文案大模型密钥" in line and "❌" in line for line in lines)
     assert any("声音克隆" in line and line.startswith("·") for line in lines)
 
 
 def test_filled_required_items_pass_and_values_are_never_printed():
-    text = "\n".join([
-        "POLARIS_VIDEO_SCRIPT_BASE_URL=https://api.tengliapi.xyz",
-        f"POLARIS_VIDEO_SCRIPT_API_KEY={GOOD}a",
-        "POLARIS_VIDEO_SCRIPT_MODEL=deepseek-v4.1-flash-1017",
-        "POLARIS_VIDEO_EDITING_PLAN_MODEL=deepseek-v4.1-flash-1017",
-        f"POLARIS_VIDEO_EXTRACT_API_KEY={GOOD}b",
-        f"POLARIS_QUANYU_API_KEY={GOOD}c",
-    ])
+    text = "\n".join(
+        [
+            "POLARIS_VIDEO_SCRIPT_BASE_URL=https://api.tengliapi.xyz",
+            f"POLARIS_VIDEO_SCRIPT_API_KEY={GOOD}a",
+            "POLARIS_VIDEO_SCRIPT_MODEL=deepseek-v4.1-flash-1017",
+            "POLARIS_VIDEO_EDITING_PLAN_MODEL=deepseek-v4.1-flash-1017",
+            f"POLARIS_VIDEO_EXTRACT_API_KEY={GOOD}b",
+            f"POLARIS_QUANYU_API_KEY={GOOD}c",
+        ]
+    )
     lines, ok = run(text)
     assert ok
     assert not any(GOOD in line for line in lines)

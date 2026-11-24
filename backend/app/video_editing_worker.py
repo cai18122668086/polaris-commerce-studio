@@ -1246,15 +1246,24 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             if root.is_dir():
                 atomic_json(
                     root / "failure.json",
-                    {"code": code, "exception_type": type(error).__name__, "location": failure_location(error)},
+                    {
+                        "code": code,
+                        "exception_type": type(error).__name__,
+                        "location": failure_location(error),
+                    },
                 )
 
 
 def failure_location(error: BaseException) -> str | None:
-    """Innermost backend frame of an unexpected failure: file:line function, no message or data."""
+    """Innermost backend frame of an unexpected failure.
+
+    Returns ``file:line function`` only, never the message or any data.
+    """
     import traceback
 
-    frames = [f for f in traceback.extract_tb(error.__traceback__) if "/app/" in f.filename]
+    frames = [
+        f for f in traceback.extract_tb(error.__traceback__) if "/app/" in f.filename
+    ]
     if not frames:
         return None
     frame = frames[-1]

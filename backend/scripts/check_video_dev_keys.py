@@ -24,25 +24,100 @@ class Item:
 
 
 ITEMS: tuple[Item, ...] = (
-    Item("POLARIS_VIDEO_SCRIPT_BASE_URL", "文案大模型地址", "写稿、拆解、改写、剪辑编排", "url", required=True),
-    Item("POLARIS_VIDEO_SCRIPT_API_KEY", "文案大模型密钥（腾立模型网关）", "写稿、拆解、改写、剪辑编排", "secret", required=True),
-    Item("POLARIS_VIDEO_SCRIPT_MODEL", "文案模型名", "写稿、拆解、改写", "model", required=True),
-    Item("POLARIS_VIDEO_EDITING_PLAN_MODEL", "剪辑编排模型名", "智能剪辑的编排画面", "model", required=True),
-    Item("POLARIS_VIDEO_EXTRACT_API_KEY", "视频提取 / 找对标密钥（EveryInfra）", "提取抖音原文、搜对标", "secret", required=True),
-    Item("POLARIS_QUANYU_API_KEY", "数字人口播密钥（全域数字人）", "公共形象、生成口播", "secret", required=True),
-    Item("POLARIS_VIDEO_SCRIPT_FALLBACK_BASE_URL", "备用文案大模型地址", "主通道出错时备用", "url"),
-    Item("POLARIS_VIDEO_SCRIPT_FALLBACK_API_KEY", "备用文案大模型密钥", "主通道出错时备用", "secret"),
-    Item("POLARIS_SKYHUMAN_API_KEY", "备用口播通道密钥（SkyHuman）", "口播主通道失败时", "secret", needs_flag="POLARIS_VIDEO_LIPSYNC_FAILOVER_ENABLED"),
-    Item("POLARIS_VIDEO_HASHSIGHT_API_KEY", "Hashsight 配音密钥", "选用 Hashsight 音色时", "secret", needs_flag="POLARIS_VIDEO_HASHSIGHT_TTS_ENABLED"),
-    Item("POLARIS_TAO_API_KEY", "陶配音密钥", "选用陶配音音色时", "secret", needs_flag="POLARIS_VIDEO_TAO_TTS_ENABLED"),
-    Item("POLARIS_VIDEO_COSYVOICE_API_KEY", "声音克隆密钥（通义 CosyVoice）", "克隆专属声音", "secret", needs_flag="POLARIS_VIDEO_COSYVOICE_ENABLED"),
+    Item(
+        "POLARIS_VIDEO_SCRIPT_BASE_URL",
+        "文案大模型地址",
+        "写稿、拆解、改写、剪辑编排",
+        "url",
+        required=True,
+    ),
+    Item(
+        "POLARIS_VIDEO_SCRIPT_API_KEY",
+        "文案大模型密钥（腾立模型网关）",
+        "写稿、拆解、改写、剪辑编排",
+        "secret",
+        required=True,
+    ),
+    Item(
+        "POLARIS_VIDEO_SCRIPT_MODEL",
+        "文案模型名",
+        "写稿、拆解、改写",
+        "model",
+        required=True,
+    ),
+    Item(
+        "POLARIS_VIDEO_EDITING_PLAN_MODEL",
+        "剪辑编排模型名",
+        "智能剪辑的编排画面",
+        "model",
+        required=True,
+    ),
+    Item(
+        "POLARIS_VIDEO_EXTRACT_API_KEY",
+        "视频提取 / 找对标密钥（EveryInfra）",
+        "提取抖音原文、搜对标",
+        "secret",
+        required=True,
+    ),
+    Item(
+        "POLARIS_QUANYU_API_KEY",
+        "数字人口播密钥（全域数字人）",
+        "公共形象、生成口播",
+        "secret",
+        required=True,
+    ),
+    Item(
+        "POLARIS_VIDEO_SCRIPT_FALLBACK_BASE_URL",
+        "备用文案大模型地址",
+        "主通道出错时备用",
+        "url",
+    ),
+    Item(
+        "POLARIS_VIDEO_SCRIPT_FALLBACK_API_KEY",
+        "备用文案大模型密钥",
+        "主通道出错时备用",
+        "secret",
+    ),
+    Item(
+        "POLARIS_SKYHUMAN_API_KEY",
+        "备用口播通道密钥（SkyHuman）",
+        "口播主通道失败时",
+        "secret",
+        needs_flag="POLARIS_VIDEO_LIPSYNC_FAILOVER_ENABLED",
+    ),
+    Item(
+        "POLARIS_VIDEO_HASHSIGHT_API_KEY",
+        "Hashsight 配音密钥",
+        "选用 Hashsight 音色时",
+        "secret",
+        needs_flag="POLARIS_VIDEO_HASHSIGHT_TTS_ENABLED",
+    ),
+    Item(
+        "POLARIS_TAO_API_KEY",
+        "陶配音密钥",
+        "选用陶配音音色时",
+        "secret",
+        needs_flag="POLARIS_VIDEO_TAO_TTS_ENABLED",
+    ),
+    Item(
+        "POLARIS_VIDEO_COSYVOICE_API_KEY",
+        "声音克隆密钥（通义 CosyVoice）",
+        "克隆专属声音",
+        "secret",
+        needs_flag="POLARIS_VIDEO_COSYVOICE_ENABLED",
+    ),
     Item("POLARIS_YIYUAN_API_KEY", "易元形象动作密钥", "新建定制形象", "secret"),
     Item("POLARIS_WUYE_API_KEY", "无界形象动作密钥", "新建定制形象", "secret"),
 )
 FLAGS = (
-    "POLARIS_VIDEO_SCRIPT_PLANNING_ENABLED", "POLARIS_VIDEO_EXTRACT_ENABLED", "POLARIS_VIDEO_BENCHMARK_SEARCH_ENABLED",
-    "POLARIS_VIDEO_PROVIDERS_ENABLED", "POLARIS_VIDEO_LIPSYNC_FAILOVER_ENABLED", "POLARIS_VIDEO_HASHSIGHT_TTS_ENABLED",
-    "POLARIS_VIDEO_TAO_TTS_ENABLED", "POLARIS_VIDEO_COSYVOICE_ENABLED",
+    "POLARIS_VIDEO_SCRIPT_PLANNING_ENABLED",
+    "POLARIS_VIDEO_EXTRACT_ENABLED",
+    "POLARIS_VIDEO_BENCHMARK_SEARCH_ENABLED",
+    "POLARIS_VIDEO_PROVIDERS_ENABLED",
+    "POLARIS_VIDEO_LIPSYNC_FAILOVER_ENABLED",
+    "POLARIS_VIDEO_HASHSIGHT_TTS_ENABLED",
+    "POLARIS_VIDEO_TAO_TTS_ENABLED",
+    "POLARIS_VIDEO_COSYVOICE_ENABLED",
 )
 MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{1,119}$")
 
@@ -73,7 +148,9 @@ def check_value(item: Item, value: str) -> str | None:
             return f"太短（{len(value)} 位），可能没有复制完整"
         if len(value) > 512 or not value.isascii() or not value.isprintable():
             return "包含不该有的字符，请重新复制"
-    if item.kind == "url" and not re.match(r"^https://[A-Za-z0-9.-]+(:\d+)?(/\S*)?$", value):
+    if item.kind == "url" and not re.match(
+        r"^https://[A-Za-z0-9.-]+(:\d+)?(/\S*)?$", value
+    ):
         return "应以 https:// 开头，例如 https://api.tengliapi.xyz"
     if item.kind == "model" and not MODEL.match(value):
         return "模型名格式不对（只能是字母、数字和 . - _ : /）"
@@ -90,11 +167,18 @@ def report(values: dict[str, str]) -> tuple[list[str], bool]:
             ok = False
     for item in ITEMS:
         value = values.get(item.key, "")
-        flag_on = item.needs_flag is not None and values.get(item.needs_flag, "").lower() == "true"
+        flag_on = (
+            item.needs_flag is not None
+            and values.get(item.needs_flag, "").lower() == "true"
+        )
         needed = item.required or flag_on
         if not value:
             if needed:
-                why = "必填" if item.required else f"已打开开关 {item.needs_flag}，需要填写"
+                why = (
+                    "必填"
+                    if item.required
+                    else f"已打开开关 {item.needs_flag}，需要填写"
+                )
                 lines.append(f"❌ {item.name}：未填写（{why}；用于{item.used_for}）")
                 ok = False
             else:
@@ -122,7 +206,14 @@ def main(argv: list[str]) -> int:
     print("视频开发环境 · 密钥检查（只检查格式，不联网、不花钱）\n")
     for line in problems + lines:
         print(line)
-    print("\n结论：" + ("必填项都已填好，格式正确。可以切到真实后端：videodev.sh real" if ok and not problems else "还有问题，请按上面的 ❌ 修改后再运行一次。"))
+    print(
+        "\n结论："
+        + (
+            "必填项都已填好，格式正确。可以切到真实后端：videodev.sh real"
+            if ok and not problems
+            else "还有问题，请按上面的 ❌ 修改后再运行一次。"
+        )
+    )
     return 0 if ok and not problems else 1
 
 

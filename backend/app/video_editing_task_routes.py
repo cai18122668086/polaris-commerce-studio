@@ -41,11 +41,11 @@ from .video_editing_catalog import (
     template_dependencies,
 )
 from .video_editing_contracts import (
+    EditingActiveWorksResponse,
     EditingCarriedRevision,
     EditingExportConfirmation,
     EditingFilmReviewWrite,
     EditingSourceUploadResponse,
-    EditingActiveWorksResponse,
     EditingTaskCreate,
     EditingTaskResponse,
     EditingTemplateSample,
@@ -1026,6 +1026,21 @@ ACTIVE_PLANNING_STATUSES = frozenset({"queued", "running", "prepared", "failed"}
 ACTIVE_SCAN_LIMIT = 200
 
 
+def recent_owned_tasks[T: (EditingPlanningTaskRecord, EditingTaskRecord)](
+    session: Session, workspace: WorkspaceContext, model: type[T]
+) -> Sequence[T]:
+    """The owner's newest planning or editing tasks, newest first, bounded."""
+    return session.scalars(
+        select(model)
+        .where(
+            model.workspace_id == workspace.workspace_id,
+            model.owner_user_id == workspace.principal.user_id,
+        )
+        .order_by(model.created_at.desc(), model.id.desc())
+        .limit(ACTIVE_SCAN_LIMIT)
+    ).all()
+
+
 def aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
@@ -1049,16 +1064,14 @@ def list_active_editing_works(
     failure, so a refreshed page can lead back to the original task.
     """
     newest: dict[str, tuple[tuple[datetime, int], str, Any]] = {}
-    for rank, model in ((0, EditingPlanningTaskRecord), (1, EditingTaskRecord)):
-        rows = session.scalars(
-            select(model)
-            .where(
-                model.workspace_id == workspace.workspace_id,
-                model.owner_user_id == workspace.principal.user_id,
-            )
-            .order_by(model.created_at.desc(), model.id.desc())
-            .limit(ACTIVE_SCAN_LIMIT)
-        )
+    scans: tuple[
+        tuple[int, Sequence[EditingPlanningTaskRecord] | Sequence[EditingTaskRecord]],
+        ...,
+    ] = (
+        (0, recent_owned_tasks(session, workspace, EditingPlanningTaskRecord)),
+        (1, recent_owned_tasks(session, workspace, EditingTaskRecord)),
+    )
+    for rank, rows in scans:
         for row in rows:
             key = (aware(row.created_at), rank)
             current = newest.get(row.project_id)
@@ -1108,7 +1121,8 @@ def list_active_editing_works(
         if project is None:
             continue
         preview = previews.get(row.id)
-        visible = preview is not None and artifact_visible(row, preview)
+        if preview is not None and not artifact_visible(row, preview):
+            preview = None
         items.append(
             {
                 "kind": kind,
@@ -1117,7 +1131,7 @@ def list_active_editing_works(
                 "project_title": project_title(project),
                 "status": row.status,
                 "created_at": created_at,
-                "preview": artifact_response(row, preview) if visible else None,
+                "preview": artifact_response(row, preview) if preview else None,
             }
         )
     return {"items": items}

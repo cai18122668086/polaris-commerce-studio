@@ -802,10 +802,21 @@ def test_credit_prices_report_only_configured_values(video_gen):
     client, _, _, root, _, _ = video_gen
     unpriced = client.get(root + "/credit-prices").json()
     assert unpriced["configured"] is False
-    assert {item["action"] for item in unpriced["prices"]} >= {"lipsync", "avatar_motion", "avatar_register", "voice_clone", "editing_render"}
+    assert {item["action"] for item in unpriced["prices"]} >= {
+        "lipsync",
+        "avatar_motion",
+        "avatar_register",
+        "voice_clone",
+        "editing_render",
+    }
     assert all(item["credits"] is None for item in unpriced["prices"])
-    client.app.state.settings.video_credit_prices = {"lipsync": 30, "voice_clone": -1, "unknown": 5}
-    priced = {item["action"]: item["credits"] for item in client.get(root + "/credit-prices").json()["prices"]}
+    client.app.state.settings.video_credit_prices = {
+        "lipsync": 30,
+        "voice_clone": -1,
+        "unknown": 5,
+    }
+    listed = client.get(root + "/credit-prices").json()["prices"]
+    priced = {item["action"]: item["credits"] for item in listed}
     assert priced["lipsync"] == 30
     assert priced["voice_clone"] is None
     assert "unknown" not in priced

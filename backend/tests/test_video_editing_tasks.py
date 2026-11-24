@@ -939,7 +939,8 @@ def test_active_works_lead_back_to_unfinished_tasks(video, tmp_path):
     waiting, = client.get(active_url).json()["items"]
     assert waiting["status"] == "awaiting_review"
     assert waiting["preview"]["id"] == preview_id
-    assert waiting["preview"]["url"].endswith(f"/editing-tasks/{first}/artifacts/{preview_id}")
+    preview_path = f"/editing-tasks/{first}/artifacts/{preview_id}"
+    assert waiting["preview"]["url"].endswith(preview_path)
     assert client.get(works_url).json()["items"] == []
 
     second = submit(datetime(2026, 11, 20, 9, tzinfo=UTC))

@@ -12,6 +12,6 @@ for p in ${PHASES:-p10 p25 p50}; do
     WAIT_MAX=$(( DEADLINE - now - 420 > 900 ? 900 : DEADLINE - now - 420 )) ./run.sh "$LABEL" "$p" | grep -E 'preflight|k6 exit|GUARD|^run |^total|status0'
     R=$(ls -d "$HOME"/work/loadtest/runs/*-"$LABEL"-"$p" 2>/dev/null | tail -1)
     if [ -n "$R" ] && ! grep -q 'GUARD TRIPPED' "$R/meta.txt" && grep -qE 'k6 exit=(0|99) ' "$R/meta.txt"; then break; fi
-    sleep 60
+    sleep 30
   done
 done

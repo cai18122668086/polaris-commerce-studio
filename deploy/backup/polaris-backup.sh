@@ -65,17 +65,25 @@ DUMP="$TARGET/pg/$DB-$TS.dump"
 log "pg_dump start container=$PG_CONTAINER db=$DB -> $DUMP"
 t0=$(date +%s)
 if [ "$DRY" = 0 ]; then
-  $DOCKER exec "$PG_CONTAINER" pg_dump -U "$DB_USER" -d "$DB" -Fc -Z "$COMPRESS" --no-owner >"$DUMP.part"
+  # 行数与 dump 用同一个快照：开一个 REPEATABLE READ 事务导出快照，pg_dump --snapshot 共用它，
+  # 再在同一事务里数行数。这样在线库边写边备份，演练比对也应当逐表完全一致。
+  coproc PSQL { $DOCKER exec -i "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB" -AtqX -v ON_ERROR_STOP=1; }
+  echo "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SELECT pg_export_snapshot();" >&"${PSQL[1]}"
+  read -r -t 30 SNAP <&"${PSQL[0]}" || { log "could not export snapshot"; exit 1; }
+  $DOCKER exec "$PG_CONTAINER" pg_dump -U "$DB_USER" -d "$DB" -Fc -Z "$COMPRESS" --no-owner --snapshot="$SNAP" >"$DUMP.part"
   # 校验 dump 可读（列出目录）后才转正
   $DOCKER exec -i "$PG_CONTAINER" pg_restore -l >/dev/null <"$DUMP.part"
   mv "$DUMP.part" "$DUMP"
   sha256sum "$DUMP" | awk '{print $1}' >"$DUMP.sha256"
-  # 逐表精确行数，与 dump 同一时刻附近采集（在线库，演练比对时允许备份后新增）
-  $DOCKER exec "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB" -AtF $'\t' -c "
-    select format('%I.%I', schemaname, relname) from pg_stat_user_tables order by 1" |
-  while read -r t; do
-    printf '%s\t%s\n' "$t" "$($DOCKER exec "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB" -Atc "select count(*) from $t")"
-  done >"$DUMP.counts"
+  cat >&"${PSQL[1]}" <<'SQL'
+\pset fieldsep '\t'
+SELECT t, (xpath('/row/c/text()', query_to_xml('SELECT count(*) AS c FROM ' || t, false, true, '')))[1]::text
+  FROM (SELECT format('%I.%I', schemaname, relname) AS t FROM pg_stat_user_tables) s ORDER BY 1;
+SELECT '__END__';
+SQL
+  : >"$DUMP.counts"
+  while IFS= read -r line <&"${PSQL[0]}"; do [ "$line" = __END__ ] && break; printf '%s\n' "$line" >>"$DUMP.counts"; done
+  echo "COMMIT;" >&"${PSQL[1]}"; exec {PSQL[1]}>&-; wait "$PSQL_PID" 2>/dev/null || true
 fi
 log "pg_dump ok size=$( [ "$DRY" = 0 ] && du -h "$DUMP" | cut -f1 || echo -) tables=$( [ "$DRY" = 0 ] && wc -l <"$DUMP.counts" || echo -) secs=$(( $(date +%s) - t0 ))"
 

@@ -5,8 +5,15 @@ set -u
 LABEL=${1:?label}; STAGES=${2:-full}
 LT=${LT:-$HOME/work/loadtest}; REPO=$(cd "$(dirname "$0")" && pwd)
 STG=${STG:-$HOME/work/loadstg}
+# 与其他线程共用主机：~/work/heavy.sh 在 $LT/RUNNING 存在时不启动新的重任务。
+# 两次压测之间至少空出 GAP 秒让别人排队的任务跑；每个阶段开始前 touch、结束后 rm（不超过约 20 分钟）。
+MARK=$LT/RUNNING; GAP=${GAP:-300}
+rm -f "$MARK"   # 上一阶段的标记（若异常退出遗留）
+last=$(cat "$LT/last-run-end" 2>/dev/null || echo 0)
+while [ $(( $(date +%s) - last )) -lt "$GAP" ]; do sleep 10; done
+touch "$MARK"; trap 'rm -f "$MARK"; date +%s >"$LT/last-run-end"' EXIT
 # 预检：最多等 WAIT_MAX 秒，直到 1 分钟负载 < PRE_LOAD 且可用内存 > PRE_AVAIL_MB（连续 3 次，间隔 10 秒）
-PRE_LOAD=${PRE_LOAD:-4}; PRE_AVAIL_MB=${PRE_AVAIL_MB:-4500}; WAIT_MAX=${WAIT_MAX:-900}
+PRE_LOAD=${PRE_LOAD:-4}; PRE_AVAIL_MB=${PRE_AVAIL_MB:-4500}; WAIT_MAX=$(( ${WAIT_MAX:-600} < 600 ? ${WAIT_MAX:-600} : 600 ))
 ok=0; waited=0
 while [ $ok -lt 3 ]; do
   l=$(cut -d' ' -f1 /proc/loadavg); a=$(( $(awk '/^MemAvailable:/{print $2}' /proc/meminfo) / 1024 ))
@@ -49,6 +56,7 @@ echo "k6 pid/pgid=$K6 guard=$GUARD out=$OUT"
 wait "$K6"; RC=$?
 kill "$GUARD" "$SAMPLER" "$QSAMPLER" 2>/dev/null
 echo "k6 exit=$RC end=$(date -Is)" | tee -a "$OUT/meta.txt"
+rm -f "$MARK"; date +%s >"$LT/last-run-end"   # 压测一结束就放行别人，后面的日志收集很轻
 tail -n +"$((GLINE + 1))" "$LT/guard.log" >"$OUT/guard.log"
 grep -q TRIP "$OUT/guard.log" && echo "GUARD TRIPPED" | tee -a "$OUT/meta.txt"
 

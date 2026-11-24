@@ -34,6 +34,12 @@ VIDEO_SECONDS = float(os.environ.get("STG_VIDEO_SECONDS", "60"))
 def patch() -> None:
     from app import xinghe_agent as xa
 
+    # Idempotent: sitecustomize (every interpreter, incl. uvicorn --workers spawn children)
+    # and `python -m stg_boot` may both call this in one process.
+    if getattr(xa, "_stg_patched", False):
+        return
+    xa._stg_patched = True
+
     orig_plan, orig_edit = xa.FakeXingheGateway.plan, xa.FakeXingheGateway.edit
 
     async def plan(self, request):
@@ -41,12 +47,36 @@ def patch() -> None:
         return await orig_plan(self, request)
 
     async def edit(self, request):
-        if not getattr(request, "reconcile_only", False):
-            await asyncio.sleep(random.uniform(*IMAGE))
-        return await orig_edit(self, request)
+        if getattr(request, "reconcile_only", False):
+            return await orig_edit(self, request)
+        await asyncio.sleep(random.uniform(*IMAGE))
+        result = await orig_edit(self, request)
+        # The stock fake derives provider_request_id from group_key + page + a per-process counter,
+        # so concurrent jobs (all group_key "primary") collide on job_attempts.provider_request_id.
+        # Make it unique per attempt, as backend/scripts/measure_capacity.py does.
+        if getattr(result, "provider_request_id", None):
+            from dataclasses import replace
+
+            result = replace(result, provider_request_id="stg_" + str(getattr(request, "attempt_id", "")) + "_" + os.urandom(4).hex())
+        return result
 
     xa.FakeXingheGateway.plan = plan
     xa.FakeXingheGateway.edit = edit
+
+    # The stock fake always returns JPEG; the domestic detail delivery contract requires PNG
+    # (new_detail_skill_provider -> DETAIL_OUTPUT_FORMAT_INVALID). Real providers return PNG here.
+    if os.environ.get("STG_FAKE_IMAGE_FORMAT", "PNG") == "PNG":
+        from io import BytesIO
+
+        from PIL import Image
+
+        def fake_png(page_number, size):
+            w, h = xa._parse_image_size(size)
+            buf = BytesIO()
+            Image.new("RGB", (w, h), color=((page_number * 53) % 256, (page_number * 97) % 256, (page_number * 149) % 256)).save(buf, format="PNG")
+            return buf.getvalue()
+
+        xa._fake_jpeg = fake_png
 
     # Single-image job types (product_image, replica's remix route, ...) use the generic FakeProvider.
     from app import provider as prov

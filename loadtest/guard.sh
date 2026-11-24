@@ -17,7 +17,8 @@ MIN_AVAIL_KB=${GUARD_MIN_AVAIL_KB:-2621440}   # 2.5 GiB
 MAX_LOAD=${GUARD_MAX_LOAD:-6}
 CPU_FRAC=${GUARD_CPU_FRAC:-0.85}
 CPU_STREAK=${GUARD_CPU_STREAK:-3}
-EXCLUDE='^(polaris-videodev|polaris-loadstg)'
+# polaris-ci-*：其他线程跑 CI 的临时容器（如 polaris-ci-pg-tmp），频繁创建/删除、自身 CPU 打满，不属于正式站
+EXCLUDE=${GUARD_EXCLUDE:-'^(polaris-videodev|polaris-loadstg|polaris-ci-)'}
 DOCKER="sudo -n docker"
 declare -A BASE STREAK
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }

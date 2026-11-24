@@ -1,5 +1,5 @@
 # 压测用 staging：与正式站拓扑一致（postgres/redis/minio/supertokens/api/worker/detail-worker/replica-worker/dispatcher，
-# 另把视频接口单独起一个 video-api，对应正式站 video-api），资源按比例缩小并硬性封顶（合计 ≤2.9 CPU / ≤3.9 GiB）。
+# 另把视频接口单独起一个 video-api，对应正式站 video-api），资源按比例缩小并硬性封顶（合计 ≤3.0 CPU / ≤4.5 GiB）。
 # 独立项目名、网络、数据卷；不挂任何正式站卷；端口只绑 127.0.0.1；上游全部是进程内假实现（stg_boot.py），staging 里没有任何供应商密钥。
 # 代码：只读挂载 ${STG_CODE} 的 backend/（基线 = perf/concurrency-50 的起点 3a40dcd；对比 = origin/perf/concurrency-50）。
 name: polaris-loadstg
@@ -8,7 +8,7 @@ x-app: &app
   image: polaris-jgshai:426f4e624c4df90b
   pull_policy: never
   user: "10001:10001"
-  env_file: [stg.env, stg-app.env]
+  env_file: [stg.env, stg-app.env, stg-app-extra.env]   # extra：基线为空，对比轮 = stg-app-after.env
   environment: &appenv
     PYTHONPATH: /stg-shim
     POLARIS_DATABASE_URL: postgresql+psycopg://polaris:${STG_PG_PASSWORD}@postgres:5432/polaris
@@ -81,7 +81,7 @@ services:
     networks: [stg]
     healthcheck: { test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3567/hello"], interval: 5s, retries: 40 }
     mem_limit: 384m
-    cpus: 0.25
+    cpus: 0.50   # 与正式站相同（第一轮用 0.25，登录爆发时成为瓶颈）
     restart: unless-stopped
 
   migrate:
@@ -112,7 +112,7 @@ services:
       migrate: { condition: service_completed_successfully }
       supertokens: { condition: service_healthy }
     mem_limit: 384m
-    cpus: 0.40
+    cpus: 0.25
 
   worker:
     <<: *app

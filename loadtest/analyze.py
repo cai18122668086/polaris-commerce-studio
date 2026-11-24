@@ -23,7 +23,7 @@ def pct(v, q):
 
 
 dur = defaultdict(list)            # (phase, name) -> [ms]
-stat = defaultdict(lambda: [0, 0, 0, 0])  # (phase, name) -> [n, unexpected, 5xx, status0]
+stat = defaultdict(lambda: [0, 0, 0, 0, 0])  # (phase, name) -> [n, unexpected, 5xx, status0]
 jobs = defaultdict(list)
 outcomes = defaultdict(int)
 checks = defaultdict(lambda: [0, 0])
@@ -49,6 +49,7 @@ for r in rows:
             s[1] += r["expected_response"] != "true"
             s[2] += code >= 500
             s[3] += code == 0
+            s[4] += code == 429
     elif m == "job_e2e_seconds":
         jobs[extra.get("kind", "?")].append(val)
     elif m == "job_outcome":
@@ -59,9 +60,9 @@ for r in rows:
 
 out = {"endpoints": [], "jobs": {}, "outcomes": {}, "checks": {}, "containers": {}, "queues": {}, "logs": {}}
 for (p, name, gen), v in sorted(dur.items()):
-    n, bad, s5, s0 = stat[(p, name, gen)]
+    n, bad, s5, s0, s429 = stat[(p, name, gen)]
     out["endpoints"].append({"phase": p, "name": name, "gen": gen, "n": n, "p50": round(pct(v, .5)), "p95": round(pct(v, .95)),
-                             "p99": round(pct(v, .99)), "max": round(max(v)), "err%": round(100 * bad / n, 2), "5xx": s5, "neterr": s0})
+                             "p99": round(pct(v, .99)), "max": round(max(v)), "err%": round(100 * bad / n, 2), "5xx": s5, "neterr": s0, "429": s429})
 for k, v in jobs.items():
     out["jobs"][k] = {"n": len(v), "p50": round(pct(v, .5), 1), "p95": round(pct(v, .95), 1), "max": round(max(v), 1)}
 out["outcomes"] = {f"{k}:{s}": n for (k, s), n in sorted(outcomes.items())}
@@ -118,9 +119,9 @@ for ph in ["all"] + [p for p, *_ in PHASES]:
     if not eps:
         continue
     print(f"\n== {ph}  (gen=yes 为生成类提交接口)")
-    print(f"{'endpoint':42} {'gen':3} {'n':>6} {'p50':>6} {'p95':>6} {'p99':>6} {'max':>6} {'err%':>6} {'5xx':>4} {'net0':>4}")
+    print(f"{'endpoint':42} {'gen':3} {'n':>6} {'p50':>6} {'p95':>6} {'p99':>6} {'max':>6} {'err%':>6} {'5xx':>4} {'net0':>4} {'429':>4}")
     for e in eps:
-        print(f"{e['name'][:42]:42} {e['gen']:3} {e['n']:6} {e['p50']:6} {e['p95']:6} {e['p99']:6} {e['max']:6} {e['err%']:6} {e['5xx']:4} {e['neterr']:4}")
+        print(f"{e['name'][:42]:42} {e['gen']:3} {e['n']:6} {e['p50']:6} {e['p95']:6} {e['p99']:6} {e['max']:6} {e['err%']:6} {e['5xx']:4} {e['neterr']:4} {e['429']:4}")
     tot = sum(e["n"] for e in eps); s5 = sum(e["5xx"] for e in eps); bad = sum(round(e["err%"] * e["n"] / 100) for e in eps)
     s0 = sum(e["neterr"] for e in eps)
     print(f"status0 (k6 timeout/abort) {s0}; total {tot} req, unexpected {bad} ({100*bad/max(tot,1):.2f}%), 5xx {s5} ({100*s5/max(tot,1):.2f}%)")

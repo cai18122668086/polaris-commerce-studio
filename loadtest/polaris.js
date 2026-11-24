@@ -37,6 +37,8 @@ export const options = {
 
 let st = null; // 每个 VU 自己的登录状态（cookie 由 k6 per-VU jar 保存）
 const OK = http.expectedStatuses({ min: 200, max: 299 });
+// 生成类提交：429 是“每账号运行中任务上限/限流”的设计行为（perf/concurrency-50 引入），单独统计，不算失败
+const GEN_OK = http.expectedStatuses({ min: 200, max: 299 }, 429);
 
 function hdr(extra) { return Object.assign({ 'Content-Type': 'application/json', 'anti-csrf': st ? st.csrf : '' }, extra || {}); }
 function uuid() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); }); }
@@ -44,7 +46,7 @@ function idem() { return hdr({ 'Idempotency-Key': uuid() }); }
 function get(base, path, name, gen) { return dbg(http.get(base + path, { headers: hdr(), tags: { name, gen: gen ? 'yes' : 'no' } })); }
 function send(method, base, path, body, name, headers, gen, expected) {
   return dbg(http.request(method, base + path, body === null ? null : JSON.stringify(body),
-    { headers: headers || hdr(), tags: { name, gen: gen ? 'yes' : 'no' }, responseCallback: expected || OK }));
+    { headers: headers || hdr(), tags: { name, gen: gen ? 'yes' : 'no' }, responseCallback: expected || (gen ? GEN_OK : OK) }));
 }
 function json(r) { try { return r.json(); } catch (e) { return null; } }
 function dbg(r) { if (__ENV.DEBUG === "2" || (__ENV.DEBUG && (r.status < 200 || r.status >= 300))) console.warn(`VU${__VU} it${__ITER} ${r.status} ${r.request.method} ${r.url} ${String(r.body).slice(0, 160)}`); return r; }

@@ -1,0 +1,21 @@
+# 示例，不要直接装到正式机；装之前按实际容器名/目录改，并先在 staging 跑通 polaris-restore-drill.sh。
+# 安装：cp 到 /etc/systemd/system/polaris-backup.service（去掉 .example），再装 timer。
+[Unit]
+Description=Polaris PostgreSQL + MinIO backup
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# 备份目录建议放在另一块盘或挂载点；minio.env 只含 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD，chmod 600
+ExecStart=/opt/polaris/ops/polaris-backup.sh \
+  --pg-container polaris-production-postgres-1 \
+  --minio-container polaris-production-minio-1 \
+  --minio-env /etc/polaris/backup-minio.env \
+  --target /srv/backup/polaris \
+  --keep-days 14 --compress 6
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=50%
+MemoryMax=1G
+TimeoutStartSec=2h

@@ -162,10 +162,25 @@ class ProductionPreflightTests(unittest.TestCase):
             with self.subTest(compose_file=compose_file.name):
                 compose = compose_file.read_text(encoding="utf-8")
                 self.assertIn("POLARIS_XINGHE_CONCURRENCY:-6", compose)
-                self.assertIn("POLARIS_IMAGE_GLOBAL_CONCURRENCY:-3000", compose)
+                self.assertIn("POLARIS_IMAGE_GLOBAL_CONCURRENCY:-40", compose)
                 self.assertIn("--concurrency=${POLARIS_WORKER_CONCURRENCY:-6}", compose)
                 self.assertNotIn("POLARIS_XINGHE_CONCURRENCY:-2", compose)
                 self.assertNotIn("--concurrency=2", compose)
+
+    def test_api_runs_multiple_workers_with_single_process_ecommerce_api(self) -> None:
+        compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")
+        caddy = (DEPLOY / "Caddyfile.production").read_text(encoding="utf-8")
+        services = re.split(r"(?m)^  (?=[a-z-]+:$)", compose.split("\nservices:\n", 1)[1])
+        blocks = {block.split(":", 1)[0]: block for block in services if block.strip()}
+        self.assertIn('"--workers", "${POLARIS_API_WORKERS:-3}"', blocks["api"])
+        self.assertIn('POLARIS_ECOMMERCE_STARTUP_RECOVERY_ENABLED: "false"', blocks["api"])
+        self.assertIn("POLARIS_API_DATABASE_POOL_SIZE:-8", blocks["api"])
+        self.assertIn("POLARIS_API_DATABASE_MAX_OVERFLOW:-8", blocks["api"])
+        self.assertNotIn("--workers", blocks["ecommerce-api"])
+        self.assertIn("max_connections=${POLARIS_POSTGRES_MAX_CONNECTIONS:-200}", blocks["postgres"])
+        self.assertIn("reverse_proxy ecommerce-api:8000", caddy)
+        self.assertLess(caddy.index("handle @ecommerce"), caddy.index("handle @api {"))
+        self.assertEqual(validate_caddy(caddy), [])
 
     def test_env_generator_tracks_every_compose_provider_flag(self) -> None:
         compose = (DEPLOY / "compose.production.yml").read_text(encoding="utf-8")

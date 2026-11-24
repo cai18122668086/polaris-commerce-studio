@@ -45,6 +45,12 @@ www.jgshai.cn {
 		reverse_proxy api:8000
 	}
 
+	# Ecommerce login state is per-process; keep it on the single-process API.
+	@ecommerce path /api/ecommerce /api/ecommerce/*
+	handle @ecommerce {
+		reverse_proxy ecommerce-api:8000
+	}
+
 	handle @api {
 		reverse_proxy api:8000
 	}

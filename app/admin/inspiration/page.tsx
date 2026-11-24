@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api/base-url";
 import { useEffect, useState, type ChangeEvent } from "react";
 import { Archive, ImagePlus, Loader2, Plus, Save, Send, Sparkles, Trash2, X } from "lucide-react";
 import { AdminShell } from "@/components/admin/admin-shell";
@@ -51,12 +52,12 @@ export default function AdminInspirationPage() {
   const [preview, setPreview] = useState<{ url: string; label: string } | null>(null);
 
   const load = async () => {
-    const response = await fetch(`/api/v1/admin/inspiration/cases?status=${filter}`);
+    const response = await apiFetch(`/api/v1/admin/inspiration/cases?status=${filter}`);
     if (!response.ok) throw new Error("案例列表加载失败");
     const data = await response.json() as { items: Item[] };
     setItems(data.items ?? []);
   };
-  useEffect(() => { fetch("/api/v1/admin/inspiration/cases/access").then((r) => setAllowed(r.ok)).catch(() => setAllowed(false)); }, []);
+  useEffect(() => { apiFetch("/api/v1/admin/inspiration/cases/access").then((r) => setAllowed(r.ok)).catch(() => setAllowed(false)); }, []);
   useEffect(() => {
     if (allowed) {
       // Refresh the admin case list after the permission check/filter changes.
@@ -78,7 +79,7 @@ export default function AdminInspirationPage() {
   const save = async (publish = false) => {
     setSaving(true); setMessage("");
     try {
-      const response = await fetch(selected ? `/api/v1/admin/inspiration/cases/${selected.id}` : "/api/v1/admin/inspiration/cases", { method: selected ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const response = await apiFetch(selected ? `/api/v1/admin/inspiration/cases/${selected.id}` : "/api/v1/admin/inspiration/cases", { method: selected ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { detail?: { message?: string } | string } | null;
         const detail = typeof body?.detail === "string" ? body.detail : body?.detail?.message;
@@ -86,7 +87,7 @@ export default function AdminInspirationPage() {
       }
       const item = await response.json() as Item;
       if (publish) {
-        const published = await fetch(`/api/v1/admin/inspiration/cases/${item.id}/publish`, { method: "POST" });
+        const published = await apiFetch(`/api/v1/admin/inspiration/cases/${item.id}/publish`, { method: "POST" });
         if (!published.ok) {
           const body = await published.json().catch(() => null) as { detail?: { message?: string } | string } | null;
           const detail = typeof body?.detail === "string" ? body.detail : body?.detail?.message;
@@ -96,7 +97,7 @@ export default function AdminInspirationPage() {
       setMessage(publish ? "案例已发布，前台会立即更新" : "草稿已保存"); await load(); setSelected(item);
     } catch (error) { setMessage(error instanceof Error ? error.message : "操作失败"); } finally { setSaving(false); }
   };
-  const archive = async () => { if (!selected) return; setSaving(true); try { await fetch(`/api/v1/admin/inspiration/cases/${selected.id}/archive`, { method: "POST" }); setMessage("案例已归档，前台已隐藏"); await load(); } finally { setSaving(false); } };
+  const archive = async () => { if (!selected) return; setSaving(true); try { await apiFetch(`/api/v1/admin/inspiration/cases/${selected.id}/archive`, { method: "POST" }); setMessage("案例已归档，前台已隐藏"); await load(); } finally { setSaving(false); } };
 
   useEffect(() => { const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setPreview(null); }; window.addEventListener("keydown", closeOnEscape); return () => window.removeEventListener("keydown", closeOnEscape); }, []);
   useEffect(() => { const openImage = (event: MouseEvent) => { const target = event.target; if (!(target instanceof Element) || target.closest("button")) return; const card = target.closest('[class*="assetPreview"]'); const image = card?.querySelector("img"); if (!image?.src) return; setPreview({ url: image.src, label: image.alt || "图片" }); }; document.addEventListener("click", openImage); return () => document.removeEventListener("click", openImage); }, []);

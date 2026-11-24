@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api/base-url";
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
 import { mapApiError } from "@/lib/api/error-mapper";
 import { arrayOf, canManage, normalizeAdminOverview, normalizeList, normalizeLogDetail } from "./normalize";
@@ -269,7 +270,7 @@ function listQuery(params: { limit?: number; offset?: number; status?: string; s
 }
 
 export async function getAdminAccess(signal?: AbortSignal): Promise<AdminAccess> {
-  const response = await fetch("/api/v1/admin/overview/access", {
+  const response = await apiFetch("/api/v1/admin/overview/access", {
     credentials: "include",
     headers: requestHeaders(),
     signal,
@@ -278,7 +279,7 @@ export async function getAdminAccess(signal?: AbortSignal): Promise<AdminAccess>
 }
 
 export async function getAdminOverview(signal?: AbortSignal): Promise<AdminOverview> {
-  const response = await fetch("/api/v1/admin/overview", {
+  const response = await apiFetch("/api/v1/admin/overview", {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
@@ -291,7 +292,7 @@ export async function getAdminUsers(
   params: { limit?: number; offset?: number; status?: string; search?: string } = {},
   signal?: AbortSignal,
 ): Promise<AdminListResponse<AdminUser>> {
-  const response = await fetch(`/api/v1/admin/users${listQuery(params)}`, {
+  const response = await apiFetch(`/api/v1/admin/users${listQuery(params)}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
@@ -304,7 +305,7 @@ export async function getAdminWorkspaces(
   params: { limit?: number; offset?: number; status?: string; search?: string } = {},
   signal?: AbortSignal,
 ): Promise<AdminListResponse<AdminWorkspace>> {
-  const response = await fetch(`/api/v1/admin/workspaces${listQuery(params)}`, {
+  const response = await apiFetch(`/api/v1/admin/workspaces${listQuery(params)}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
@@ -315,7 +316,7 @@ export async function getAdminWorkspaces(
 
 /** Workspaces visible to the signed-in user (already membership-filtered). */
 export async function getUserWorkspaces(signal?: AbortSignal): Promise<UserWorkspace[]> {
-  const response = await fetch("/api/v1/workspaces", {
+  const response = await apiFetch("/api/v1/workspaces", {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
@@ -346,7 +347,7 @@ export async function getAdminLogs(
     if (value !== undefined && value !== "") query.set(key, String(value));
   }
   const encoded = query.toString();
-  const response = await fetch(`/api/v1/admin/logs${encoded ? `?${encoded}` : ""}`, {
+  const response = await apiFetch(`/api/v1/admin/logs${encoded ? `?${encoded}` : ""}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
@@ -361,7 +362,7 @@ export async function getAdminLogDetail(
   id: string,
   signal?: AbortSignal,
 ): Promise<AdminLogDetail> {
-  const response = await fetch(`/api/v1/admin/logs/${kind}/${encodeURIComponent(id)}`, {
+  const response = await apiFetch(`/api/v1/admin/logs/${kind}/${encodeURIComponent(id)}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
@@ -387,7 +388,7 @@ export async function getAdminAccounts(
     if (value !== undefined && value !== "") query.set(key, String(value));
   }
   const encoded = query.toString();
-  const response = await fetch(`/api/v1/admin/accounts${encoded ? `?${encoded}` : ""}`, {
+  const response = await apiFetch(`/api/v1/admin/accounts${encoded ? `?${encoded}` : ""}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
@@ -401,7 +402,7 @@ export async function getAdminAdministrators(
   params: { role?: string; status?: string; search?: string; limit?: number; offset?: number } = {},
   signal?: AbortSignal,
 ): Promise<AdminListResponse<AdminAdministrator> & { can_manage: boolean }> {
-  const response = await fetch(`/api/v1/admin/administrators${listQuery(params)}`, {
+  const response = await apiFetch(`/api/v1/admin/administrators${listQuery(params)}`, {
     credentials: "include",
     cache: "no-store",
     headers: requestHeaders(),
@@ -414,7 +415,7 @@ export async function getAdminAdministrators(
 export async function createAdminAdministrator(
   email: string,
 ): Promise<AdminAdministrator> {
-  const response = await fetch("/api/v1/admin/administrators", {
+  const response = await apiFetch("/api/v1/admin/administrators", {
     method: "POST",
     credentials: "include",
     headers: { ...Object.fromEntries(requestHeaders()), "Content-Type": "application/json" },
@@ -432,7 +433,7 @@ export async function updateAdminAdministrator(
     permissions?: string[];
   },
 ): Promise<AdminAdministrator> {
-  const response = await fetch(`/api/v1/admin/administrators/${encodeURIComponent(userId)}`, {
+  const response = await apiFetch(`/api/v1/admin/administrators/${encodeURIComponent(userId)}`, {
     method: "PATCH",
     credentials: "include",
     headers: { ...Object.fromEntries(requestHeaders()), "Content-Type": "application/json" },

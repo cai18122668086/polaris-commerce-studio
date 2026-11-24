@@ -62,11 +62,14 @@ test("business UI is API-backed and runtime capability is fail-closed", async ()
 });
 
 test("browser API client defaults to the same-origin edge proxy", async () => {
+  // 接口前缀统一在 lib/api/base-url.ts 解析，openapi 客户端和直接 fetch 共用
   const client = await utf8("lib/api/client.ts");
-  assert.ok(client.includes(
+  const base = await utf8("lib/api/base-url.ts");
+  assert.ok(base.includes(
     'process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ""',
   ));
-  assert.equal(client.includes("localhost:8000"), false);
+  assert.match(client, /const baseUrl = API_BASE_URL;/);
+  assert.equal(client.includes("localhost:8000") || base.includes("localhost:8000"), false);
 });
 
 test("development auth bypass is explicit and skips SuperTokens initialization", async () => {

@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api/base-url";
 import { parseResponse, requestHeaders, type AdminPagination } from "./admin";
 import { normalizeList } from "./normalize";
 
@@ -18,7 +19,7 @@ export async function commerceRequest<T>(path: string, options: { method?: strin
   const headers = requestHeaders();
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   if (options.requestKey) headers.set("Idempotency-Key", options.requestKey);
-  return parseResponse<T>(await fetch(`/api/v1/admin/commerce${path}`, {
+  return parseResponse<T>(await apiFetch(`/api/v1/admin/commerce${path}`, {
     credentials: "include", cache: "no-store", method: options.method ?? "GET", headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined, signal: options.signal,
   }));

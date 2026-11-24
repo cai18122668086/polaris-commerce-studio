@@ -111,6 +111,48 @@ def checkpoint(
     session.commit()
 
 
+POLL_ATTEMPTS = 120
+POLL_INTERVAL_SECONDS = 3
+
+
+def _heartbeat(factory: sessionmaker[Session], task_id: str) -> None:
+    with factory() as session:
+        session.execute(
+            update(VideoAssistanceRecord)
+            .where(
+                VideoAssistanceRecord.id == task_id,
+                VideoAssistanceRecord.status == "running",
+            )
+            .values(updated_at=utc_now())
+        )
+        session.commit()
+
+
+def poll_extract(
+    factory: sessionmaker[Session],
+    task_id: str,
+    provider_task_id: str,
+    service: VideoAssistanceProvider,
+) -> dict[str, Any] | None:
+    """Poll a submitted extraction without holding a DB connection while waiting.
+
+    Returns the terminal provider payload, or None when polling is exhausted.
+    submit_unknown with a known ID is poll-only, never POST.
+    """
+
+    for _ in range(POLL_ATTEMPTS):
+        _heartbeat(factory, task_id)
+        try:
+            data = service.extract_status(provider_task_id)
+        except ApiError:
+            time.sleep(POLL_INTERVAL_SECONDS)
+            continue
+        if data.get("status") in {"succeeded", "failed"}:
+            return data
+        time.sleep(POLL_INTERVAL_SECONDS)
+    return None
+
+
 def process(
     factory: sessionmaker[Session], task_id: str, service: VideoAssistanceProvider
 ) -> None:
@@ -183,14 +225,13 @@ def process(
                             "provider_id": data.get("id"),
                         },
                     )
-                for _ in range(120):
-                    row.updated_at = utc_now()
-                    session.commit()
-                    try:
-                        data = service.extract_status(row.provider_task_id or "")
-                    except ApiError:
-                        time.sleep(3)
-                        continue
+                # Release this session's connection for the whole poll; each
+                # heartbeat uses its own short session.
+                session.commit()
+                data = poll_extract(
+                    factory, task_id, row.provider_task_id or "", service
+                )
+                if data is not None:
                     status = data.get("status")
                     if status == "succeeded":
                         checkpoint(
@@ -204,15 +245,12 @@ def process(
                                 or row.receipt.get("billing"),
                             },
                         )
-                        break
-                    if status == "failed":
+                    else:
                         raise ApiError(
                             502,
                             "VIDEO_EXTRACT_FAILED",
                             "视频语音提取失败，请核对链接或粘贴原文。",
                         )
-                    # submit_unknown with a known ID is poll-only, never POST.
-                    time.sleep(3)
                 else:
                     row.status = "awaiting_resume"
                     row.receipt = {

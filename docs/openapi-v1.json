@@ -7471,6 +7471,18 @@
             "title": "Project Id",
             "type": "string"
           },
+          "queue_position": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
           "review": {
             "additionalProperties": {
               "type": "string"

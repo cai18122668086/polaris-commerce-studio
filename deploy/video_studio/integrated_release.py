@@ -22,6 +22,16 @@ ROLES = ("video-api", "frontend", "caddy")
 NEW_ROLES = ("editing-worker", "editing-maintenance")
 
 
+
+def editing_worker_concurrency() -> int:
+    """Editing renders per worker container (POLARIS_EDITING_WORKER_CONCURRENCY, 1..4)."""
+
+    raw = os.environ.get("POLARIS_EDITING_WORKER_CONCURRENCY", "2")
+    value = int(raw) if raw.isdigit() else 0
+    if not 1 <= value <= 4:
+        raise SystemExit("POLARIS_EDITING_WORKER_CONCURRENCY must be 1..4")
+    return value
+
 def run(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
@@ -258,11 +268,12 @@ def prepare(root, revision, assets, backend, frontend):
         "app.celery_app:celery_app",
         "worker",
         "--queues=editing,editing-planning",
-        "--concurrency=1",
+        f"--concurrency={editing_worker_concurrency()}",
         "--hostname=editing@%h",
         "--loglevel=INFO",
     ]
-    worker.update(mem_limit="3221225472", memswap_limit="4294967296", cpus=1.5)
+    # Two concurrent renders (POLARIS_EDITING_WORKER_CONCURRENCY) share these limits.
+    worker.update(mem_limit="3221225472", memswap_limit="4294967296", cpus=2.0)
     worker["healthcheck"] = {
         "test": [
             "CMD-SHELL",

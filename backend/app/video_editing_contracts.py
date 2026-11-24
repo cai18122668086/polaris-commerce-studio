@@ -498,6 +498,10 @@ class EditingTaskResponse(StrictVideoModel):
     carried_revision: EditingCarriedRevision | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # 1-based place among queued editing tasks (all users), only while queued.
+    queue_position: int | None = Field(
+        default=None, ge=1, exclude_if=lambda value: value is None
+    )
 
 
 class EditingTranscriptRevisionCreate(StrictVideoModel):

@@ -7034,6 +7034,8 @@ export interface components {
             planning_origin?: ("tengli_gateway" | "operator_candidate") | null;
             /** Project Id */
             project_id: string;
+            /** Queue Position */
+            queue_position?: number | null;
             /** Review */
             review: {
                 [key: string]: string;

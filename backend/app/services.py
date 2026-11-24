@@ -838,6 +838,20 @@ def enforce_active_job_limit(session: Session, workspace_id: str) -> None:
             "ACTIVE_JOB_LIMIT_REACHED",
             "当前工作区活动任务数量已达到上限。",
         )
+    _enforce_running_job_limit(session, workspace_id)
+
+
+def enforce_running_image_job_limit(session: Session, workspace_id: str) -> None:
+    """Running-job cap alone, for transitions that start an existing job
+    (plan confirmation). Takes the same workspace lock as submission."""
+
+    if not _user_active_image_job_limit:
+        return
+    lock_workspace_limits(session, workspace_id)
+    _enforce_running_job_limit(session, workspace_id)
+
+
+def _enforce_running_job_limit(session: Session, workspace_id: str) -> None:
     limit = _user_active_image_job_limit
     if limit:
         running = session.scalar(

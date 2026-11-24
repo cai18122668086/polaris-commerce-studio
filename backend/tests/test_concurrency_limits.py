@@ -21,7 +21,14 @@ from app.models import (
     WorkspaceCreditAccountRecord,
     utc_now,
 )
-from app.rate_limit import RATE_LIMITED_MESSAGE, RateLimitMiddleware, user_key
+from app.rate_limit import (
+    DEFAULT_TRUSTED_PROXIES,
+    RATE_LIMITED_MESSAGE,
+    RateLimitMiddleware,
+    client_ip,
+    parse_networks,
+    user_key,
+)
 from app.tasks import execute_job, soft_time_limit
 from app.video_generation import enforce_active_video_limit
 from tests.test_customer_credit_billing import WORKSPACE, seed_job
@@ -329,3 +336,106 @@ def test_app_with_unreachable_redis_still_serves(settings):
     with TestClient(create_app(unreachable)) as client:
         assert client.get("/health/live").status_code in {200, 404}
         assert client.get("/api/v1/workspaces").status_code == 200
+
+
+TRUSTED = parse_networks(DEFAULT_TRUSTED_PROXIES)
+
+
+def scope_from(peer, **headers):
+    return {
+        "type": "http",
+        "client": (peer, 5000),
+        "headers": [
+            (k.replace("_", "-").encode(), v.encode()) for k, v in headers.items()
+        ],
+    }
+
+
+def test_spoofed_forwarding_headers_from_untrusted_peer_are_ignored():
+    scope = scope_from("203.0.113.9", x_forwarded_for="1.1.1.1", x_real_ip="2.2.2.2")
+    assert client_ip(scope, TRUSTED) == "203.0.113.9"
+
+
+def test_trusted_proxy_forwarded_for_is_used():
+    assert (
+        client_ip(scope_from("172.18.0.4", x_forwarded_for="198.51.100.7"), TRUSTED)
+        == "198.51.100.7"
+    )
+    # Rightmost untrusted hop wins: a client-injected left value is skipped.
+    chained = scope_from(
+        "172.18.0.4", x_forwarded_for="1.1.1.1, 198.51.100.7, 10.0.0.3"
+    )
+    assert client_ip(chained, TRUSTED) == "198.51.100.7"
+    assert (
+        client_ip(scope_from("172.18.0.4", x_real_ip="198.51.100.8"), TRUSTED)
+        == "198.51.100.8"
+    )
+    assert (
+        client_ip(scope_from("172.18.0.4", x_forwarded_for="not-an-ip"), TRUSTED)
+        == "172.18.0.4"
+    )
+    assert client_ip(scope_from("172.18.0.4"), TRUSTED) == "172.18.0.4"
+
+
+def test_per_ip_limit_is_per_real_client_behind_the_proxy():
+    redis = FakeRedis()
+
+    async def ok(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    middleware = RateLimitMiddleware(
+        ok,
+        redis_url="redis://unused",
+        window_seconds=60,
+        per_ip=1,
+        per_user=0,
+        client_factory=lambda: redis,
+        clock=lambda: 1000.0,
+    )
+
+    def status(scope):
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        async def receive():
+            return {"type": "http.request"}
+
+        asyncio.run(
+            middleware(
+                {**scope, "method": "GET", "path": "/api/v1/ping"}, receive, send
+            )
+        )
+        return sent[0]["status"]
+
+    caddy = "172.18.0.4"
+    assert status(scope_from(caddy, x_forwarded_for="198.51.100.1")) == 200
+    assert status(scope_from(caddy, x_forwarded_for="198.51.100.2")) == 200
+    assert status(scope_from(caddy, x_forwarded_for="198.51.100.1")) == 429
+    # An untrusted peer cannot rotate its identity through the header.
+    assert status(scope_from("203.0.113.9", x_forwarded_for="198.51.100.3")) == 200
+    assert status(scope_from("203.0.113.9", x_forwarded_for="198.51.100.4")) == 429
+
+
+def test_plan_confirmation_respects_running_cap(client):
+    services.set_user_active_image_job_limit(1)
+    try:
+        with client.app.state.session_factory() as session:
+            waiting, _ = seed_job(session, count=1, deliverables=False)
+            waiting.status = "awaiting_confirmation"
+            session.commit()
+            # The waiting job itself is not counted.
+            services.enforce_running_image_job_limit(session, WORKSPACE)
+            session.rollback()
+            running, _ = seed_job(session, count=1, deliverables=False)
+            running.status = "processing"
+            session.commit()
+            with pytest.raises(ApiError) as caught:
+                services.enforce_running_image_job_limit(session, WORKSPACE)
+            assert caught.value.code == "USER_ACTIVE_JOB_LIMIT_REACHED"
+    finally:
+        services.set_user_active_image_job_limit(0)
+    with client.app.state.session_factory() as session:
+        services.enforce_running_image_job_limit(session, WORKSPACE)  # disabled

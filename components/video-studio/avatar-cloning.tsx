@@ -1,6 +1,7 @@
 "use client";
 
 import { CostLine } from "./studio-content";
+import { billableLabel } from "@/features/video-studio/credit-notes";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, ImagePlus, LoaderCircle, Upload, Video } from "lucide-react";
 import type { GenerationJob, useVideoLibrary } from "@/features/video-studio/library";
@@ -10,7 +11,7 @@ import { Dialog } from "./studio-primitives";
 import styles from "./video-studio.module.css";
 import cloneStyles from "./avatar-cloning.module.css";
 
-export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCreated, costFor }: { library: ReturnType<typeof useVideoLibrary>; userId: string; workspaceId: string; onClose: () => void; onCreated: (job: GenerationJob) => void ; costFor?: (kind: "image" | "video") => { text: string; insufficient: boolean }}) {
+export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCreated, costFor, motionCredits }: { library: ReturnType<typeof useVideoLibrary>; userId: string; workspaceId: string; onClose: () => void; onCreated: (job: GenerationJob) => void ; costFor?: (kind: "image" | "video") => { text: string; insufficient: boolean }; /** 本步（生成形象动作）的积分；null = 未定价 */ motionCredits?: number | null }) {
   const [kind, setKind] = useState<"image" | "video">("image");
   const [name, setName] = useState("");
   const [file, setFile] = useState<File>();
@@ -66,6 +67,6 @@ export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCre
     {busy && <div className={cloneStyles.uploadProgress} role="status"><span><LoaderCircle size={15} />{upload?.complete ? "正在检查素材" : "正在上传素材"}<small>{percent === undefined ? "" : `${percent}%`}</small></span><progress aria-label="素材上传进度" max={100} value={upload?.complete ? undefined : percent} /></div>}
     {error && <p className={cloneStyles.error} role="alert">{error}</p>}
     <CostLine note={costFor?.(kind)} />
-    <footer className={styles.dialogFooter}><button className={styles.outlineButton} type="button" disabled={busy} onClick={onClose}>取消</button><button className={styles.primaryButton} type="button" disabled={busy || !file || !name.trim() || !consent} onClick={() => { void submit(); }}>{busy ? <><LoaderCircle className={cloneStyles.spinner} size={16} />正在处理</> : <>{attempted ? "再次确认（不会重复扣费）" : kind === "image" ? "生成形象动作（计费）" : "上传并预览"}<ArrowRight size={15} /></>}</button></footer>
+    <footer className={styles.dialogFooter}><button className={styles.outlineButton} type="button" disabled={busy} onClick={onClose}>取消</button><button className={styles.primaryButton} type="button" disabled={busy || !file || !name.trim() || !consent} onClick={() => { void submit(); }}>{busy ? <><LoaderCircle className={cloneStyles.spinner} size={16} />正在处理</> : <>{attempted ? "再次确认（不会重复扣费）" : kind === "image" ? billableLabel("生成形象动作", motionCredits) : "上传并预览"}<ArrowRight size={15} /></>}</button></footer>
   </Dialog>;
 }

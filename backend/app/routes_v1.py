@@ -31,10 +31,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from . import detail_fast, detail_fast_runtime, refined_detail
+from .admin_auth import is_admin
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
 from .archive_response import ArchiveResponse, close_archive, open_archive
 from .aurora_execution_modes import is_parallel_aurora_mode, is_v20_aurora_mode
-from .admin_auth import is_admin
 from .auth import (
     Principal,
     WorkspaceDependency,

@@ -30,3 +30,18 @@
 /* Portrait cards use original portrait deliveries; square product shots retain their whole canvas. */
 .art[data-case-art=amazon-visual-suite],.art[data-case-art=domestic-main-image]{background:#fff}
 .art[data-case-art=amazon-visual-suite] .sequence,.art[data-case-art=amazon-visual-suite] .sourceFrame,.art[data-case-art=amazon-visual-suite] .revealFrame{background:#fff}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .art{background:rgb(255 250 244 / 0.06);color:#bcb9b4}
+:global(.theme-ember) .sequence,:global(.theme-ember) .sourceFrame,:global(.theme-ember) .referenceFrame,:global(.theme-ember) .revealFrame{background:rgb(21 20 19 / 0.9);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .frameLabel,:global(.theme-ember) .resultLabel,:global(.theme-ember) .hoverHint{border:1px solid rgb(15 14 13 / 0.651);background:rgb(21 20 19 / 0.776);color:#b6b2ad;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .hoverHint{background:rgb(255 250 244 / 0.036);color:#98928b}
+:global(.theme-ember) .scanLine{background:rgb(21 20 19 / 0.516);box-shadow:0 0 12px rgb(255 255 255 / 0.1);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .inputOnly{background:linear-gradient(145deg,rgb(255 250 244 / 0.025),rgb(255 250 244 / 0.06))}
+:global(.theme-ember) .label{color:#928c85}
+:global(.theme-ember) .goal{color:#928c84}
+:global(.theme-ember) .landscape{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .portrait{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .art[data-case-art=amazon-visual-suite],:global(.theme-ember) .art[data-case-art=domestic-main-image]{background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .art[data-case-art=amazon-visual-suite] .sequence,:global(.theme-ember) .art[data-case-art=amazon-visual-suite] .sourceFrame,:global(.theme-ember) .art[data-case-art=amazon-visual-suite] .revealFrame{background:rgb(255 250 244 / 0.04)}
+/* ember-dark:end */

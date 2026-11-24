@@ -1399,7 +1399,9 @@ def test_published_outbox_delivery_is_recovered_from_postgres(
     assert _counts(client, job_id) == (1, 1)
 
 
-@pytest.mark.parametrize("state", ["active", "reserved", "unknown", "lost"])
+@pytest.mark.parametrize(
+    "state", ["active", "reserved", "queued", "unknown", "broker_unknown", "lost"]
+)
 def test_celery_delivery_recovery_does_not_redispatch_live_provider_calls(
     client, monkeypatch, state,
 ):
@@ -1413,6 +1415,11 @@ def test_celery_delivery_recovery_does_not_redispatch_live_provider_calls(
         event.status = OutboxStatus.PUBLISHED.value
         event.published_at = utc_now() - timedelta(minutes=10)
         session.commit()
+    broker_jobs = {job_id} if state == "queued" else set()
+    monkeypatch.setattr(
+        "app.outbox._broker_job_ids",
+        lambda app: None if state == "broker_unknown" else broker_jobs,
+    )
     task = {"name": "polaris.process_job", "args": [job_id]}
     inspector = SimpleNamespace(
         active=lambda: None if state == "unknown" else {

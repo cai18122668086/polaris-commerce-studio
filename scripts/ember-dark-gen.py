@@ -4,6 +4,9 @@
   * 中性色、以及所有蓝/紫/青柠色      -> 暖中性色，明度反转（浅底变深底，深字变浅字）
   * 暖色（红/橙/琥珀）                -> ember 色系，明度按黑底调整
   * 阴影保持深色；浅色阴影变成极淡的白色细线
+  * 玻璃质感（2026-11-22，按已通过的 studio 原型）：浅色底（白、浅灰、浅紫蓝底）不再变成实心深灰，
+    而是半透明暖白，让 body 上的暖色光透出来；带 position:fixed/absolute/sticky 的底色变成近不透明玻璃 + 背景模糊；
+    按钮类选择器圆角改成胶囊，卡片类圆角略放大；字重统一收轻（600 以上 → 500，大标题 → 400），与原型一致
 输出：
   * app/ember-dark.generated.css     —— 全局样式（app/*.css）的暗色映射
   * 每个 *.module.css 末尾的 ember-dark:start/end 块 —— 该模块的暗色映射（:global(.theme-ember) 作用域）
@@ -13,7 +16,7 @@ import colorsys, glob, os, re, sys
 
 ROOT = sys.argv[1]
 OUT = os.path.join(ROOT, 'app/ember-dark.generated.css')
-OWN = {'app/ember-dark.generated.css', 'app/ember-dark.css', 'app/home-ember-dark.css'}
+OWN = {'app/ember-dark.generated.css', 'app/ember-dark.css', 'app/home-ember-dark.css', 'app/ember-studio.css'}
 SCOPE = '.theme-ember'
 START, END = '/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */', '/* ember-dark:end */'
 OLD_MARKERS = [('/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */', '/* home-ember-dark:end */')]
@@ -78,12 +81,23 @@ def conv(r, g, b, a, role):
         hue, L = h * 360, lstar(r, g, b)
         if max(r, g, b) - min(r, g, b) > 40 and 50 <= hue <= 335 and 25 <= L <= 65 and (a is None or a > 0.6):
             return fmt(0xe6, 0xe2, 0xdb, a)
+        warm_ = max(r, g, b) - min(r, g, b) > 40 and (hue < 50 or hue > 340)
+        if not warm_ and L >= 80:
+            return glass(L, a)
     nr, ng, nb, na = map_rgb(r, g, b, role)
     if na is not None:
         a = (a if a is not None else 1) * (na / 1)
     elif role == 'shadow' and a is not None:
         a = min(1, a * 1.8)
     return fmt(nr, ng, nb, a)
+
+OVERLAY = [False]  # 当前规则是浮层（fixed/absolute/sticky）
+def glass(L, a):
+    if OVERLAY[0]:
+        base = 0.86 if L >= 95 else 0.9
+        return fmt(21, 20, 19, base if a is None else min(1, base * max(a, 0.6)))
+    k = 0.04 if L >= 99.5 else 0.025 if L >= 95 else 0.06 if L >= 88 else 0.09
+    return fmt(255, 250, 244, k * (1 if a is None else a))
 
 def map_value(v, role):
     def hx(m):
@@ -161,7 +175,36 @@ def scope_selector(sel):
         return 'html' + SCOPE + sel[4:]
     return SCOPE + ' ' + sel
 
-def decls(body):
+BUTTONISH = re.compile(r'(button|btn|cta|submit|primary|secondary|chip|pill|toggle|segment|badge|tag)', re.I)
+NOT_BUTTON = re.compile(r'(card|panel|grid|image|img|thumb|preview|upload|drop|modal|dialog|sheet|menu|input|field|textarea|select|list|table|frame|canvas|editor|wrap|container|section|group)', re.I)
+POSITIONED = re.compile(r'(?:^|;)\s*position\s*:\s*(fixed|absolute|sticky)', re.I)
+def shape(prelude, body):
+    extra = []
+    bg = re.search(r'(?:^|;)\s*background(-color)?\s*:', ';' + body)
+    m = re.search(r'(?:^|;)\s*border-radius\s*:\s*([\d.]+)px\s*(?:;|$)', ';' + body)
+    last = [x.strip().split(' ')[-1] for x in prelude.split(',')]
+    if m:
+        r = float(m.group(1))
+        if 0 < r <= 14 and all(BUTTONISH.search(x) and not NOT_BUTTON.search(x) for x in last):
+            extra.append('border-radius:999px')
+        elif bg and 6 <= r <= 16 and not any(BUTTONISH.search(x) for x in last):
+            extra.append('border-radius:%dpx' % min(22, round(r * 1.35)))
+    if bg and POSITIONED.search(';' + body):
+        extra.append('-webkit-backdrop-filter:blur(24px) saturate(1.3)')
+        extra.append('backdrop-filter:blur(24px) saturate(1.3)')
+    return extra
+
+WEIGHT = re.compile(r'(?:^|;)\s*font-weight\s*:\s*(bold|bolder|[6-9]00)\s*(?:!important)?\s*(?:;|$)', re.I)
+SIZE_PX = re.compile(r'(?:^|;)\s*font-size\s*:\s*(?:clamp\([^,]+,[^,]+,\s*)?([\d.]+)(px|rem)', re.I)
+def weight(body):
+    if not WEIGHT.search(';' + body):
+        return []
+    m = SIZE_PX.search(';' + body)
+    size = (float(m.group(1)) * (16 if m.group(2).lower() == 'rem' else 1)) if m else 0
+    return ['font-weight:%d' % (400 if size >= 28 else 500)]
+
+def decls(body, prelude=''):
+    OVERLAY[0] = bool(POSITIONED.search(';' + body))
     out = []
     for d in split_top(body, ';'):
         if ':' not in d:
@@ -184,6 +227,10 @@ def decls(body):
                 p = p.strip().lower()
                 if re.match(r'^(-webkit-)?background-(clip|origin|size|position(-x|-y)?|repeat|attachment|blend-mode)$', p):
                     out.append(f'{p}:{v.strip()}')
+    if out and prelude:
+        out += shape(prelude, body)
+    if prelude:
+        out += weight(body)
     return out
 
 emitted = []
@@ -202,7 +249,7 @@ def walk(css, wrap=None):
         sels = [s for s in (scope_selector(x) for x in split_top(prelude, ',')) if s]
         if not sels:
             continue
-        ds = decls(body)
+        ds = decls(body, prelude)
         if ds:
             rule = ','.join(sels) + '{' + ';'.join(ds) + '}'
             emitted.append(f'{wrap}{{{rule}}}' if wrap else rule)
@@ -217,7 +264,7 @@ def walk(css, wrap=None):
         sels = [s for s in (scope_selector(x) for x in split_top(prelude, ',')) if s]
         if not sels:
             continue
-        ds = decls(body)
+        ds = decls(body, prelude)
         if ds:
             rule = ','.join(sels) + '{' + ';'.join(ds) + '}'
             emitted.append(f'{wrap}{{{rule}}}' if wrap else rule)
@@ -239,6 +286,11 @@ mods = [p for p in glob.glob(os.path.join(ROOT, '**', '*.module.css'), recursive
 for mp in sorted(mods):
     src = open(mp, encoding='utf-8').read()
     base = src
+    if 'ember-dark:skip' in src:
+        stripped = re.sub(r'\n?' + re.escape(START) + r'.*?' + re.escape(END) + r'\n?', '\n', src, flags=re.S)
+        if stripped != src:
+            open(mp, 'w', encoding='utf-8').write(stripped)
+        continue
     for a, b in OLD_MARKERS + [(START, END)]:
         base = re.sub(r'\n?' + re.escape(a) + r'.*?' + re.escape(b) + r'\n?', '\n', base, flags=re.S)
     base = base.rstrip('\n') + '\n'

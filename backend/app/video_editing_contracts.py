@@ -82,7 +82,8 @@ class NativeRenderEdits(StrictVideoModel):
     source_only_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
         Field(default_factory=list, max_length=120)
     )
-    # 只关掉这些段的画面音效，动效、字幕、口播和配乐保留；为空时不序列化，旧记录的摘要不变。
+    # 只关掉这些段的画面音效，动效、字幕、口播和配乐保留；
+    # 为空时不序列化，旧记录的摘要不变。
     sound_muted_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
         Field(default_factory=list, max_length=120, exclude_if=lambda value: not value)
     )
@@ -117,7 +118,9 @@ class NativeRenderEdits(StrictVideoModel):
         if len(set(self.sound_muted_beat_ids)) != len(
             self.sound_muted_beat_ids
         ) or set(self.sound_muted_beat_ids).intersection(self.source_only_beat_ids):
-            raise ValueError("Mute each segment once; source-only segments are already silent")
+            raise ValueError(
+                "Mute each segment once; source-only segments are already silent"
+            )
         keys = {(edit.beat_id, edit.path) for edit in self.highlight_edits}
         if len(keys) != len(self.highlight_edits) or any(
             beat_id in self.source_only_beat_ids for beat_id, _ in keys

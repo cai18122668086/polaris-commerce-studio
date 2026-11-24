@@ -32,3 +32,24 @@
 .divider { position:absolute; z-index:2; top:0; bottom:0; width:2px; background:#fff; box-shadow:0 0 0 1px rgb(0 0 0 / 20%); }
 .comparisonControls label { display:flex; flex:1; align-items:center; gap:12px; }
 .comparisonControls input { flex:1; accent-color:#2f5bea; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) :global(.raster-canvas-stack){background:rgb(255 250 244 / 0.06);box-shadow:0 9px 32px rgb(0 0 0 / 0.396)}
+:global(.theme-ember) .stack{background:rgb(255 250 244 / 0.06);box-shadow:0 9px 32px rgb(0 0 0 / 0.396)}
+:global(.theme-ember) .resultState{color:#8a837b}
+:global(.theme-ember) .resultStateError{color:#fa682a}
+:global(.theme-ember) .resultStateError button{border:1px solid #fa682a;color:#fa682a;background:rgb(255 250 244 / 0.04);border-radius:999px}
+:global(.theme-ember) .resultCard{border:1px solid #1f1e1c;background:rgb(255 250 244 / 0.04);border-radius:16px}
+:global(.theme-ember) .resultCard > a{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .resultCard > a svg{color:#0f0e0d;background:rgb(0 0 0 / 0.812);border-radius:9px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .resultCard > div a,:global(.theme-ember) .resultCard > div button,:global(.theme-ember) .comparisonControls > a{color:#bbb7b2}
+:global(.theme-ember) .resultCard > div button:disabled{color:#6e6861}
+:global(.theme-ember) .downloadError{color:#fa682a}
+:global(.theme-ember) .resultDimensions{color:#8a837b}
+:global(.theme-ember) .archiveAction button{border:1px solid #bbb7b2;color:#0f0e0d;background:#e6e2db;border-radius:999px;font-weight:500}
+:global(.theme-ember) .archiveAction p{color:#fa682a}
+:global(.theme-ember) .comparisonStage{background:rgb(255 250 244 / 0.025);border-radius:999px}
+:global(.theme-ember) .comparisonLabel{color:#0f0e0d;background:rgb(0 0 0 / 0.85);border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .divider{background:rgb(21 20 19 / 0.86);box-shadow:0 0 0 1px rgb(0 0 0 / 0.36);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .comparisonControls input{accent-color:#a29d96}
+/* ember-dark:end */

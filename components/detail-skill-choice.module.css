@@ -11,3 +11,15 @@
 .option small { display: block; font-size: 13px; line-height: 1.65; color: #6c6c80; }
 .fieldset:disabled .option { cursor: default; }
 @media (max-width: 640px) { .options { grid-template-columns: 1fr; } .option { padding: 15px; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .fieldset legend{color:#e9e8e6}
+:global(.theme-ember) .hint{color:#918b83}
+:global(.theme-ember) .option{border:1px solid #252321;background:rgb(255 250 244 / 0.04);border-radius:19px}
+:global(.theme-ember) .option[data-selected="true"]{border-color:#969189;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .option:focus-within{outline:2px solid #969189}
+:global(.theme-ember) .option input{accent-color:#969189}
+:global(.theme-ember) .icon{color:#969189}
+:global(.theme-ember) .option strong{color:#e9e8e6}
+:global(.theme-ember) .option small{color:#9c968f}
+/* ember-dark:end */

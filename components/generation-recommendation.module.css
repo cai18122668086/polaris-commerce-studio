@@ -18,3 +18,7 @@
 .badge svg {
   flex: none;
 }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .badge.badge{border:1px solid #482902;color:#dc7f06;background:rgb(255 250 244 / 0.025);border-radius:999px;font-weight:500}
+/* ember-dark:end */

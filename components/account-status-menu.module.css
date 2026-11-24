@@ -53,3 +53,15 @@
   .balance b { font-size: 11px; }
   .panel { position: fixed; top: 66px; right: 12px; max-height: calc(100dvh - 82px); overflow: auto; }
 }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .trigger{background:rgb(255 250 244 / 0.04);border-radius:11px}
+:global(.theme-ember) .panel{background:rgb(21 20 19 / 0.86);box-shadow:0 16px 50px rgb(0 0 0 / 0.141);border-radius:22px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .memberCard{border-bottom:1px solid #242320}
+:global(.theme-ember) .memberIcon{background:rgb(255 250 244 / 0.028);border:1px solid rgb(15 14 13 / 0.851);border-radius:16px}
+:global(.theme-ember) .status{color:#b0aca6;background:rgb(255 250 244 / 0.019)}
+:global(.theme-ember) .wallet>div+div{border-left:1px solid #1f1e1c}
+:global(.theme-ember) .primaryActions a{background:rgb(255 250 244 / 0.04);border-radius:9px;font-weight:500}
+:global(.theme-ember) .shortcuts{border-top:1px solid #1f1e1c}
+:global(.theme-ember) .footer{border-top:1px solid #1f1e1c;background:rgb(255 250 244 / 0.025)}
+/* ember-dark:end */

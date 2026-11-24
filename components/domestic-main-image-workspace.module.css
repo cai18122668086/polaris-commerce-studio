@@ -88,3 +88,108 @@
 .heading .libraryButton:focus-visible { outline:2px solid var(--violet-400);outline-offset:3px; }
 @media(max-width:640px){.heading .libraryButton{padding:7px 8px;font-size:10px}}
 .primary:hover:not(:disabled) { color:var(--ink-950); background:var(--accent-lime); }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{--ink:#e9e8e6;--coral:#89837a;--cream:#1c1a19;background:radial-gradient(circle at 82% 4%,rgb(255 250 244 / 0.02),transparent 28%),linear-gradient(180deg,rgb(255 250 244 / 0.025),rgb(255 250 244 / 0.06))}
+:global(.theme-ember) .secure{border:1px solid #363430;background:rgb(255 250 244 / 0.024);font-weight:500}
+:global(.theme-ember) .rail{border-top:1px solid #3e3b37}
+:global(.theme-ember) .rail span{color:#938d85;font-weight:500}
+:global(.theme-ember) .rail i{border:1px solid #55504b}
+:global(.theme-ember) .rail span[data-active] i{color:#0f0e0d}
+:global(.theme-ember) .card,:global(.theme-ember) .side>div{border:1px solid #32302d;background:rgb(255 250 244 / 0.025);box-shadow:0 10px 35px rgb(0 0 0 / 0.071)}
+:global(.theme-ember) .heading h2{font-weight:500}
+:global(.theme-ember) .heading p{color:#98928b}
+:global(.theme-ember) .dropZone{border:1.5px dashed #423f3a;background:linear-gradient(135deg,rgb(255 250 244 / 0.025),rgb(255 250 244 / 0.025));border-radius:20px}
+:global(.theme-ember) .dropZone[data-dragging]{background:rgb(255 250 244 / 0.06);box-shadow:0 0 0 4px rgb(0 0 0 / 0.141),0 14px 30px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .dropIcon{background:rgb(255 250 244 / 0.06);border-radius:18px}
+:global(.theme-ember) .dropAction small{color:#8d877f}
+:global(.theme-ember) .dropAction em{color:#fa682a;background:rgb(255 250 244 / 0.06);font-weight:500}
+:global(.theme-ember) .uploads figure{border:1px solid #32302d;background:rgb(255 250 244 / 0.025);border-radius:18px}
+:global(.theme-ember) .uploads figcaption{font-weight:500}
+:global(.theme-ember) .uploads figure button{color:#0f0e0d;background:#000000;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .form label>span{font-weight:500}
+:global(.theme-ember) .form label small{color:#736d66}
+:global(.theme-ember) .form input,:global(.theme-ember) .form textarea{border:1px solid #363330;background:rgb(255 250 244 / 0.025);border-radius:15px}
+:global(.theme-ember) .form input:focus,:global(.theme-ember) .form textarea:focus{outline:2px solid rgb(137 131 122 / 0.2)}
+:global(.theme-ember) .shadowToggle{border:1px solid #591c02;background:rgb(255 250 244 / 0.025);color:#fa682a;border-radius:999px}
+:global(.theme-ember) .shadowToggle small{color:#fa682a}
+:global(.theme-ember) .empty{border:1px dashed #373430;color:#837c74;background:rgb(255 250 244 / 0.025);border-radius:18px}
+:global(.theme-ember) .identityLock{border:1px solid #35322f;background:rgb(255 250 244 / 0.025);border-radius:18px}
+:global(.theme-ember) .identityLock>span{color:#fa682a}
+:global(.theme-ember) .identityLock>p{color:#a39e97}
+:global(.theme-ember) .identityLock>div{border-top:1px dashed #33302d}
+:global(.theme-ember) .identityLock strong{color:#fa682a}
+:global(.theme-ember) .identityLock div p{color:#b1ada7}
+:global(.theme-ember) .campaignWorld{border:1px solid #e6e4e3;color:#1d1c1a;background:linear-gradient(135deg,#e9e8e6,#e4e2e0);border-radius:19px}
+:global(.theme-ember) .worldTitle span{color:#89837a}
+:global(.theme-ember) .campaignWorld dl div{border:1px solid rgb(15 14 13 / 0.086);background:rgb(255 250 244 / 0.001);border-radius:12px}
+:global(.theme-ember) .campaignWorld dt{color:#591c02;font-weight:500}
+:global(.theme-ember) .campaignWorld dd{color:#33302d}
+:global(.theme-ember) .contractLegend span{color:#969089;background:rgb(255 250 244 / 0.06);font-weight:500}
+:global(.theme-ember) .plan article{border:1px solid #2d2b28;background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .plan article span{color:#867f77;font-weight:500}
+:global(.theme-ember) .plan article p{color:#9c968f}
+:global(.theme-ember) .plan article em{background:rgb(255 250 244 / 0.06);color:#9d9891;font-weight:500}
+:global(.theme-ember) .plan dl{border-top:1px dashed #33302d}
+:global(.theme-ember) .plan dt{color:#fa682a;font-weight:500}
+:global(.theme-ember) .plan dd{color:#b1ada7}
+:global(.theme-ember) .side>div{color:#1b1918}
+:global(.theme-ember) .side>div>span{color:#89837a}
+:global(.theme-ember) .side li{color:#312e2b}
+:global(.theme-ember) .side li svg{color:#89837a}
+:global(.theme-ember) .primary{color:#0f0e0d;border-radius:999px;font-weight:500}
+:global(.theme-ember) .note{color:#8d877f}
+:global(.theme-ember) .error{border:1px solid #591c02;color:#fa682a;background:rgb(255 250 244 / 0.025);border-radius:14px}
+:global(.theme-ember) .generationProgress>strong{color:#e9e8e7}
+:global(.theme-ember) .generationProgress span{border:1px solid #2f2c29;background:rgb(255 250 244 / 0.04);border-radius:16px}
+:global(.theme-ember) .generationProgress span>i{font-weight:500}
+:global(.theme-ember) .generationProgress span>em{color:#8a847b}
+:global(.theme-ember) .generationProgress span[data-status="running"]{border-color:#591c02;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .generationProgress span[data-status="succeeded"]{border-color:#35332f;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .mockWarning{border:1px solid #591c02;background:rgb(255 250 244 / 0.025);color:#fa682a;border-radius:18px}
+:global(.theme-ember) .generationFailure{border:1px solid #fa682a;color:#fa682a;background:linear-gradient(135deg,rgb(255 250 244 / 0.06),rgb(255 250 244 / 0.025));border-radius:18px}
+:global(.theme-ember) .generationFailure>svg{color:#aca7a1}
+:global(.theme-ember) .generationFailure small{color:#fa682a}
+:global(.theme-ember) .generationProgress span[data-status="failed"]{border-color:#fa682a;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .generationProgress span[data-status="skipped"]{background:rgb(255 250 244 / 0.025);color:#7e7870}
+:global(.theme-ember) .generationProgress span[data-status="set-audit-failed"]{border-color:#482902;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .auditNote{color:#fa682a}
+:global(.theme-ember) .page{--ink:#e9e8e7;--coral:#e9e8e7;--cream:#161514}
+:global(.theme-ember) .card,:global(.theme-ember) .side>div{border-color:#262522;background:rgb(255 250 244 / 0.04);box-shadow:0 4px 18px rgb(0 0 0 / 0.056);border-radius:18px}
+:global(.theme-ember) .heading h2,:global(.theme-ember) .side h3,:global(.theme-ember) .worldTitle strong{color:#e9e8e7}
+:global(.theme-ember) .heading p{color:#807a72}
+:global(.theme-ember) .secure{border-color:#282623;background:rgb(255 250 244 / 0.025);color:#a5a09a;border-radius:9px}
+:global(.theme-ember) .rail{border-color:#252421}
+:global(.theme-ember) .rail span{color:#7e776f}
+:global(.theme-ember) .rail span[data-active]{color:#e9e8e7;border-color:#34312e}
+:global(.theme-ember) .rail span[data-active] i{color:#e9e8e7;background:rgb(255 250 244 / 0.06);border-color:#2e2c29}
+:global(.theme-ember) .dropZone{border-color:#33302d;background:rgb(255 250 244 / 0.025);border-radius:14px}
+:global(.theme-ember) .dropZone[data-dragging]{border-color:#8e8880;background:rgb(255 250 244 / 0.025);box-shadow:0 0 0 4px rgb(255 255 255 / 0.04)}
+:global(.theme-ember) .dropIcon{color:#a7a29b;background:rgb(255 250 244 / 0.06);border-radius:12px}
+:global(.theme-ember) .dropAction em{color:#a7a29b;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .dropAction small,:global(.theme-ember) .form label small{color:#78726a}
+:global(.theme-ember) .form input,:global(.theme-ember) .form textarea{border-color:#252421;background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .form input:focus,:global(.theme-ember) .form textarea:focus{border-color:#7f7971;outline-color:#272523}
+:global(.theme-ember) .shadowToggle{border-color:#282623;color:#aea9a3;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .shadowToggle small{color:#847e75}
+:global(.theme-ember) .side>div{color:#e6e5e4;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .side>div>span{color:#807a72}
+:global(.theme-ember) .side li{color:#7b756d}
+:global(.theme-ember) .side li svg{color:#888279}
+:global(.theme-ember) .primary{color:#0f0e0d;border-radius:999px;font-weight:500}
+:global(.theme-ember) .primary:hover:not(:disabled){color:#e9e8e7;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .empty{color:#6e6962;border-color:#292724;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .identityLock{border-color:#272522;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .identityLock>span,:global(.theme-ember) .identityLock strong,:global(.theme-ember) .plan dt{color:#958f87}
+:global(.theme-ember) .campaignWorld{background:linear-gradient(130deg,#e9e8e6,#d4d1ce);border-color:#cfccc8}
+:global(.theme-ember) .campaignWorld .worldTitle strong{color:#0f0e0d}
+:global(.theme-ember) .worldTitle span,:global(.theme-ember) .campaignWorld dt{color:#322f2c}
+:global(.theme-ember) .plan article{border-color:#262422;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .plan article em,:global(.theme-ember) .contractLegend span{color:#928c84;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .note{color:#746f67}
+:global(.theme-ember) .generationProgress span[data-status="running"]{border-color:#47443f;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .side{border:1px solid #282623;background:rgb(21 20 19 / 0.816);box-shadow:0 8px 30px rgb(0 0 0 / 0.127);border-radius:16px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .side .note{color:#afaaa4}
+:global(.theme-ember) .dropAction small{color:var(--accent-text-muted,#a19c95)}
+:global(.theme-ember) .speedNote{color:#98928b}
+/* ember-dark:end */

@@ -13,3 +13,10 @@
 .assetTile { display: flex; flex-direction: column; min-height: 280px; border-radius: 12px; }
 .assetTile > button { width: 100%; height: 100%; flex: 1; }
 .assetTile .error { padding: 8px; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .zone[data-dragging="true"]{outline:2px solid var(--studio-orange, #aca7a1)}
+:global(.theme-ember) .hint{color:var(--accent-text-muted,var(--ink-500,#948e86))}
+:global(.theme-ember) .error{color:#fa682a}
+:global(.theme-ember) .overlay{background:rgb(21 20 19 / 0.826);color:#fa682a;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3);font-weight:500}
+/* ember-dark:end */

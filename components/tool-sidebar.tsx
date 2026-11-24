@@ -81,7 +81,7 @@ export function ToolSidebar({
             </nav>
             <section className="commerce-sidebar-primary"><p>优先体验</p>{PRIMARY_CREATION_ENTRIES.slice(0, 3).map(entry => <Link key={entry.id} href={entry.href} onClick={onClose}><span>{entry.label}</span><ArrowUpRight size={14} /></Link>)}</section>
             <div className="sidebar-tip">
-              <span>POLARIS</span>
+              <span>极光商绘</span>
               <strong>让创作流程更顺畅</strong>
               <p>从商品原图，到心动视觉</p>
             </div>

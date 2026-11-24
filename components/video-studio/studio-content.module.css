@@ -35,25 +35,26 @@
 .costLine[data-short] { color: #b3541e; }
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .disclosure{border:1px solid var(--border,#242320);background:#0f0e0d}
+:global(.theme-ember) .disclosure{border:1px solid var(--border,#242320);background:rgb(255 250 244 / 0.04);border-radius:16px}
 :global(.theme-ember) .disclosure > summary{color:var(--ink,#e9e8e6)}
-:global(.theme-ember) .disclosure > summary:hover{background:#141313}
+:global(.theme-ember) .disclosure > summary:hover{background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .disclosure > summary:focus-visible{outline:2px solid #69645d}
-:global(.theme-ember) .sectionIcon{background:#1b1918;color:#97918a}
+:global(.theme-ember) .sectionIcon{background:rgb(255 250 244 / 0.025);color:#97918a;border-radius:12px}
+:global(.theme-ember) .sectionHeading b{font-weight:500}
 :global(.theme-ember) .sectionHeading small{color:#8e8880}
 :global(.theme-ember) .sectionMeta{color:#8e877f}
 :global(.theme-ember) .chevron{color:#79736b}
 :global(.theme-ember) .disclosure[open] > summary{border-bottom:1px solid #1f1d1b}
-:global(.theme-ember) .document{border:1px solid #22201e;background:#141313}
+:global(.theme-ember) .document{border:1px solid #22201e;background:rgb(255 250 244 / 0.025);border-radius:14px}
 :global(.theme-ember) .document > header{border-bottom:1px solid #22201e;color:#a29c96}
 :global(.theme-ember) .document header > small{color:#837c74}
 :global(.theme-ember) .document header > button,:global(.theme-ember) .expandText{color:#aca7a1}
 :global(.theme-ember) .documentText{color:#c9c6c3}
-:global(.theme-ember) .document .expandText{border-top:1px solid #201e1c;background:#0f0e0d}
+:global(.theme-ember) .document .expandText{border-top:1px solid #201e1c;background:rgb(255 250 244 / 0.04)}
 :global(.theme-ember) .metadata dt{color:#847e75}
 :global(.theme-ember) .metadata dd{color:#d7d5d2}
-:global(.theme-ember) .notice{border:1px solid #23211f;background:#171615;color:#969089}
-:global(.theme-ember) .notice[data-tone=warning]{background:#141312;border-color:#282624;color:#dc7f06}
+:global(.theme-ember) .notice{border:1px solid #23211f;background:rgb(255 250 244 / 0.025);color:#969089;border-radius:14px}
+:global(.theme-ember) .notice[data-tone=warning]{background:rgb(255 250 244 / 0.025);border-color:#282624;color:#dc7f06}
 :global(.theme-ember) .costLine{color:#9f9a93}
 :global(.theme-ember) .costLine[data-short]{color:#fa682a}
 /* ember-dark:end */

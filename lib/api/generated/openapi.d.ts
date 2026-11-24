@@ -1824,7 +1824,7 @@ export interface paths {
         };
         /**
          * Credit Prices
-         * @description Configured credit price for each paid video action; unpriced actions return null.
+         * @description Configured credit price for each paid video action; unpriced ones are null.
          */
         get: operations["credit_prices_api_v1_video_studio_workspaces__workspace_id__credit_prices_get"];
         put?: never;

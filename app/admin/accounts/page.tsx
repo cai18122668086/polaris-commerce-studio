@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch, apiWebSocketUrl } from "@/lib/api/base-url";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type WheelEvent } from "react";
 import { Loader2, LogIn, Pause, Play, Plus, RefreshCw, ShieldCheck, Square } from "lucide-react";
 
@@ -68,7 +69,7 @@ export default function AdminAccountsPage() {
       stream.send(JSON.stringify({ type: "input", seq: ++streamSeq.current, action: { session_id: loginSessionIds[accountId], ...action } }));
       return;
     }
-    void fetch("/api/ecommerce/session/input", {
+    void apiFetch("/api/ecommerce/session/input", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -158,7 +159,7 @@ export default function AdminAccountsPage() {
   useEffect(() => {
     if (!workspaceId) return;
     let cancelled = false;
-    void fetch(`/api/ecommerce/workers?workspace_id=${encodeURIComponent(workspaceId)}`, { credentials: "include" })
+    void apiFetch(`/api/ecommerce/workers?workspace_id=${encodeURIComponent(workspaceId)}`, { credentials: "include" })
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
         if (cancelled) return;
@@ -235,7 +236,7 @@ export default function AdminAccountsPage() {
     if (!window.confirm(`确认移除 ${account.label}？历史记录会保留。`)) return;
     setBusyId(account.id); setError("");
     try {
-      const response = await fetch(`/api/ecommerce/accounts/${encodeURIComponent(account.id)}`, { method: "DELETE", credentials: "include" });
+      const response = await apiFetch(`/api/ecommerce/accounts/${encodeURIComponent(account.id)}`, { method: "DELETE", credentials: "include" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setMessage(`${account.label} 已移除`); await load();
     } catch (cause) { setError(errorDiagnostic(cause)); } finally { setBusyId(null); }
@@ -255,7 +256,7 @@ export default function AdminAccountsPage() {
     }
     setBusyId("worker-enroll"); setError(""); setMessage(""); setEnrollmentToken("");
     try {
-      const response = await fetch("/api/ecommerce/workers/enrollments", {
+      const response = await apiFetch("/api/ecommerce/workers/enrollments", {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace_id: workspaceId, device_id: workerDeviceId.trim() }),
       });
@@ -372,7 +373,7 @@ export default function AdminAccountsPage() {
         const sessionId = loginSessionIds[accountId];
         if (!sessionId) return;
         try {
-          const response = await fetch(`/api/ecommerce/session/preview?session_id=${encodeURIComponent(sessionId)}`, {
+          const response = await apiFetch(`/api/ecommerce/session/preview?session_id=${encodeURIComponent(sessionId)}`, {
             credentials: "include",
             cache: "no-store",
             signal: controller.signal,
@@ -439,10 +440,9 @@ export default function AdminAccountsPage() {
         continue;
       }
       if (sockets[accountId]) continue;
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const sessionId = loginSessionIds[accountId];
       if (!sessionId) continue;
-      const socket = new WebSocket(`${protocol}//${window.location.host}/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}&session_id=${encodeURIComponent(sessionId)}`);
+      const socket = new WebSocket(apiWebSocketUrl(`/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}&session_id=${encodeURIComponent(sessionId)}`));
       sockets[accountId] = socket;
       socket.onopen = () => setStreamStates((current) => ({ ...current, [accountId]: "connected" }));
       socket.onmessage = (event) => {
@@ -580,7 +580,7 @@ export default function AdminAccountsPage() {
   return <AdminShell>
     <main className={styles.page}>
       <header className={styles.header}>
-        <div><span className={styles.eyebrow}><ShieldCheck size={14} /> ADMIN / ACCOUNTS</span><h1>电商账号池</h1><p>账号、登录会话和独立浏览器 Profile 只在管理员后台维护；普通爬虫用户只能提交商品链接。</p></div>
+        <div><span className={styles.eyebrow}><ShieldCheck size={14} /> 管理后台 / 账号</span><h1>电商账号池</h1><p>账号、登录会话和独立浏览器 Profile 只在管理员后台维护；普通爬虫用户只能提交商品链接。</p></div>
         <button className={styles.secondary} type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15} />刷新</button>
       </header>
       {message ? <p className={styles.success} role="status">{message}</p> : null}
@@ -597,7 +597,7 @@ export default function AdminAccountsPage() {
         </div> : null}
         <div className={styles.form}><label>本机设备名称<input value={workerDeviceId} onChange={(event) => setWorkerDeviceId(event.target.value)} placeholder="例如：polaris-local-pc" /></label><button className={styles.secondary} type="button" onClick={() => void createWorkerEnrollment()} disabled={busyId === "worker-enroll"}>{busyId === "worker-enroll" ? "生成中…" : "注册本机 Worker"}</button>{enrollmentToken ? <label>一次性注册令牌<input readOnly value={enrollmentToken} onFocus={(event) => event.currentTarget.select()} /></label> : null}</div>
         <div className={styles.form}><label>选择账号<select value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)}><option value="">请选择账号</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label><label>本机 Worker<select value={workerId} onChange={(event) => setWorkerId(event.target.value)}><option value="">请选择在线 Worker</option>{workers.map((worker) => <option key={worker.id} value={worker.id}>{worker.device_id} · {worker.status}</option>)}</select></label><button className={styles.secondary} type="button" onClick={() => void rebindAccount()}>绑定本机 Worker</button>{selectedAccountId ? <button className={styles.secondary} type="button" onClick={() => void removeAccount(accounts.find((item) => item.id === selectedAccountId) as AdminOperationalAccount)}>删除账号</button> : null}</div>
-        <div className={styles.tableWrap}><table><thead><tr><th>账号</th><th>状态</th><th>任务与租约</th><th>登录运维</th></tr></thead><tbody>{accounts.length === 0 ? <tr><td colSpan={4} className={styles.empty}>暂无账号，请先添加一个平台账号。</td></tr> : accounts.map((account) => <tr key={account.id}><td><strong>{account.label}</strong><small>{platformLabel(account.platform)} · {account.workspace_name || account.workspace_id}</small></td><td><strong>{accountStatusLabels[account.status] || account.status}</strong><small>{loginStateLabels[account.login_state] || account.login_state}</small></td><td><strong>{account.profile_busy ? "使用中" : "空闲"}</strong><small>{account.active_lease_task_id || `${account.task_count} 个任务`}</small></td><td>{previewUrls[account.id] ? <div style={{ marginBottom: 8 }}><div tabIndex={0} role="application" aria-label={`${account.label}可操作登录浏览器`} onKeyDown={(event) => onPreviewKeyDown(account.id, event)} onWheel={(event) => onPreviewWheel(account.id, event)} style={{ width: "min(960px, 70vw)", maxHeight: "720px", overflow: "auto", border: "1px solid #d9d9e8", borderRadius: 8, background: "#fff", cursor: "crosshair", outline: "none" }}><img src={previewUrls[account.id]} alt={`${account.label}登录浏览器`} draggable={false} onPointerDown={(event) => onPreviewPointerDown(account.id, event)} onPointerUp={(event) => onPreviewPointerUp(account.id, event)} style={{ display: "block", width: "100%", height: "auto", userSelect: "none" }} /></div><small>可点击、拖动、滚动或先点击界面后输入；操作会发送到该账号的隔离登录浏览器</small></div> : null}<div className={styles.actions}><button type="button" className={styles.action} onClick={() => void refreshLogin(account)} disabled={busyId === account.id}><RefreshCw size={14} />状态</button>{activeLoginIds.has(account.id) ? null : <button type="button" className={styles.action} onClick={() => void startLogin(account)} disabled={busyId === account.id}><LogIn size={14} />{account.login_state === "ready" ? "重新登录" : "登录"}</button>}<button type="button" className={styles.action} onClick={() => void updateStatus(account)} disabled={busyId === account.id || account.status === "disabled"}>{account.status === "active" ? <Pause size={14} /> : <Play size={14} />}{account.status === "active" ? "暂停" : "恢复"}</button>{activeLoginIds.has(account.id) ? <button type="button" className={styles.action} onClick={() => void cancelLogin(account)} disabled={busyId === account.id}><Square size={14} />取消登录</button> : null}</div></td></tr>)}</tbody></table></div>
+        <div className={styles.tableWrap}><table><thead><tr><th>账号</th><th>状态</th><th>任务与租约</th><th>登录运维</th></tr></thead><tbody>{accounts.length === 0 ? <tr><td colSpan={4} className={styles.empty}>暂无账号，请先添加一个平台账号。</td></tr> : accounts.map((account) => <tr key={account.id}><td><strong>{account.label}</strong><small>{platformLabel(account.platform)} · {account.workspace_name || account.workspace_id}</small></td><td><strong>{accountStatusLabels[account.status] || account.status}</strong><small>{loginStateLabels[account.login_state] || account.login_state}</small></td><td><strong>{account.profile_busy ? "使用中" : "空闲"}</strong><small>{account.active_lease_task_id || `${account.task_count} 个任务`}</small></td><td>{previewUrls[account.id] ? <div style={{ marginBottom: 8 }}><div tabIndex={0} role="application" aria-label={`${account.label}可操作登录浏览器`} onKeyDown={(event) => onPreviewKeyDown(account.id, event)} onWheel={(event) => onPreviewWheel(account.id, event)} style={{ width: "min(960px, 70vw)", maxHeight: "720px", overflow: "auto", border: "1px solid #2e2c29", borderRadius: 8, background: "#0f0e0d", cursor: "crosshair", outline: "none" }}><img src={previewUrls[account.id]} alt={`${account.label}登录浏览器`} draggable={false} onPointerDown={(event) => onPreviewPointerDown(account.id, event)} onPointerUp={(event) => onPreviewPointerUp(account.id, event)} style={{ display: "block", width: "100%", height: "auto", userSelect: "none" }} /></div><small>可点击、拖动、滚动或先点击界面后输入；操作会发送到该账号的隔离登录浏览器</small></div> : null}<div className={styles.actions}><button type="button" className={styles.action} onClick={() => void refreshLogin(account)} disabled={busyId === account.id}><RefreshCw size={14} />状态</button>{activeLoginIds.has(account.id) ? null : <button type="button" className={styles.action} onClick={() => void startLogin(account)} disabled={busyId === account.id}><LogIn size={14} />{account.login_state === "ready" ? "重新登录" : "登录"}</button>}<button type="button" className={styles.action} onClick={() => void updateStatus(account)} disabled={busyId === account.id || account.status === "disabled"}>{account.status === "active" ? <Pause size={14} /> : <Play size={14} />}{account.status === "active" ? "暂停" : "恢复"}</button>{activeLoginIds.has(account.id) ? <button type="button" className={styles.action} onClick={() => void cancelLogin(account)} disabled={busyId === account.id}><Square size={14} />取消登录</button> : null}</div></td></tr>)}</tbody></table></div>
       </section>
     </main>
   </AdminShell>;

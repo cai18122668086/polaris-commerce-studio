@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { AdminShell } from "@/components/admin/admin-shell";
 import { commerceRequest, listCommerce, parseYuan, type Audit, type CommerceAccess, type CommerceData, type CommerceOverview, type CommerceTab, type Customer, type GenerationJob, type Order, type Refund, type SupportCase } from "@/features/admin/api/commerce";
 import type { AdminPagination } from "@/features/admin/api/admin";
+import { normalizeCommerceAccess, normalizeCommerceOverview } from "@/features/admin/api/normalize";
 import styles from "./page.module.css";
 
 const emptyData: CommerceData = { customers: [], orders: [], ledger: [], jobs: [], cases: [], refunds: [], audit: [] };
@@ -63,7 +64,7 @@ export default function CommercePage() {
     const version = ++requestVersion.current;
     try {
       const [allowed, metrics, result] = await Promise.all([
-        commerceRequest<CommerceAccess>("/access", { signal }), commerceRequest<CommerceOverview>("/overview", { signal }),
+        commerceRequest<unknown>("/access", { signal }).then(normalizeCommerceAccess<CommerceAccess>), commerceRequest<unknown>("/overview", { signal }).then(normalizeCommerceOverview<CommerceOverview>),
         listCommerce(tab, { limit: 20, offset, workspace_id: tab === "customers" ? undefined : scope?.id, search: ["cases", "audit"].includes(tab) ? undefined : search, status: ["orders", "jobs", "refunds"].includes(tab) ? status : undefined, entry_type: tab === "ledger" ? status : undefined }, signal),
       ]);
       if (signal?.aborted || version !== requestVersion.current) return;
@@ -118,7 +119,7 @@ export default function CommercePage() {
   const detailButton = (value: Drawer, label = "查看详情") => <button type="button" className={styles.button} onClick={() => open(value)}>{label}</button>;
 
   return <AdminShell><div className={styles.page}>
-    <header className={styles.header}><div><span className={styles.eyebrow}>CUSTOMER OPERATIONS</span><h1>客户与支付管理</h1><p>从客户、订单到积分与任务，完整记录每一次售后处理。</p></div><div className={styles.actions}><span className={`${styles.badge} ${styles.good}`}><ShieldCheck size={12} /> {access?.global_enforcement_enabled ? "全平台积分计费已开启" : "按工作区开放"}</span><button className={styles.button} disabled={loading} onClick={() => { setLoading(true); void load(); }}><RefreshCw size={14} className={loading ? styles.spin : ""} />刷新数据</button></div></header>
+    <header className={styles.header}><div><span className={styles.eyebrow}>客户运营</span><h1>客户与支付管理</h1><p>从客户、订单到积分与任务，完整记录每一次售后处理。</p></div><div className={styles.actions}><span className={`${styles.badge} ${styles.good}`}><ShieldCheck size={12} /> {access?.global_enforcement_enabled ? "全平台积分计费已开启" : "按工作区开放"}</span><button className={styles.button} disabled={loading} onClick={() => { setLoading(true); void load(); }}><RefreshCw size={14} className={loading ? styles.spin : ""} />刷新数据</button></div></header>
     {error && <div className={styles.error} role="alert">{error}</div>}
     {message && <div className={styles.message} role="status">{message}</div>}
     {overview && <section className={styles.metrics} aria-label="客户运营概览"><div className={styles.metric}><small>客户工作区</small><strong>{overview.customers}</strong><em>积分按工作区独立记账</em></div><div className={styles.metric}><small>累计确认到账</small><strong>{money(overview.paid_fen)}</strong><em>已退款 {money(overview.refunded_fen)}</em></div><div className={styles.metric}><small>待核验退款</small><strong>{overview.pending_refunds}</strong><em>人工退款后核验原交易凭证</em></div><div className={styles.metric}><small>待处理售后</small><strong>{overview.open_cases}</strong><em>关联原任务并记录处理结果</em></div></section>}

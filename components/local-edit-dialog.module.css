@@ -37,3 +37,28 @@
 @media(pointer:coarse){.close,.examples button,.footer button{min-height:44px;min-width:44px}.form textarea{font-size:16px}}
 
 .reviewCanvas { grid-column:1 / -1;border:0;background:transparent;overflow:visible; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .dialog{border:1px solid #282623;background:rgb(255 250 244 / 0.04);color:#e9e8e6;box-shadow:0 24px 100px rgb(0 0 0 / 0.395)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.51)}
+:global(.theme-ember) .header{border-bottom:1px solid #1f1e1c}
+:global(.theme-ember) .header h2{font-weight:500}
+:global(.theme-ember) .header p{color:#8c867d}
+:global(.theme-ember) .close{background:rgb(255 250 244 / 0.025);color:#9e9992;border-radius:12px}
+:global(.theme-ember) .canvas{border:1px solid #252421;background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .controls h3{font-weight:500}
+:global(.theme-ember) .hint{color:#8c867e}
+:global(.theme-ember) .form label{color:#bfbbb6}
+:global(.theme-ember) .form textarea{border:1px solid #2a2825;background:rgb(255 250 244 / 0.025);color:#e4e2e0;border-radius:12px}
+:global(.theme-ember) .form textarea:disabled{color:#8e877f}
+:global(.theme-ember) .examples button,:global(.theme-ember) .footer button,:global(.theme-ember) .loadState button{border:1px solid #282623;background:rgb(255 250 244 / 0.04);color:#b3afa9;border-radius:999px}
+:global(.theme-ember) .count{color:#726c65}
+:global(.theme-ember) .cost{border-top:1px solid #211f1d;color:#aba6a0}
+:global(.theme-ember) .primary{background:#e9e8e7;color:#0f0e0d;border-radius:999px}
+:global(.theme-ember) .primary:hover:not(:disabled){background:rgb(255 250 244 / 0.06);color:#e9e8e7}
+:global(.theme-ember) .primary:disabled{background:rgb(255 250 244 / 0.06);color:#605c55}
+:global(.theme-ember) .error{background:rgb(255 250 244 / 0.025);color:#fa682a;border-radius:11px}
+:global(.theme-ember) .taskLink{color:#b0aba6}
+:global(.theme-ember) .footer{border-top:1px solid #1f1e1c;color:#827c74}
+:global(.theme-ember) .loadState{color:#7e7870}
+/* ember-dark:end */

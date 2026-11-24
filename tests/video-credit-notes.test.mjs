@@ -3,11 +3,20 @@ import test from "node:test";
 import { build } from "esbuild";
 
 const compiled = await build({ entryPoints: ["features/video-studio/credit-notes.ts"], bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent" });
-const { costNote } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
+const { billableLabel, costNote } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
 
 test("unconfigured prices say so instead of inventing a number", () => {
-  assert.deepEqual(costNote(["lipsync"], {}), { text: "价格待定", credits: null, insufficient: false });
-  assert.equal(costNote(["lipsync"], { lipsync: null }, { available: 120, enforced: true }).text, "价格待定 · 可用 120 积分");
+  assert.deepEqual(costNote(["lipsync"], {}), { text: "按实际用量计费", credits: null, insufficient: false });
+  assert.equal(costNote(["lipsync"], { lipsync: null }, { available: 120, enforced: true }).text, "按实际用量计费 · 可用 120 积分");
+  assert.doesNotMatch(costNote(["lipsync"], {}).text, /价格待定/);
+});
+
+test("billable buttons follow one rule: action, then its credit cost", () => {
+  assert.equal(billableLabel("生成预览", 20), "生成预览 · 20 积分");
+  assert.equal(billableLabel("确认加入", 1200), "确认加入 · 1,200 积分");
+  assert.equal(billableLabel("生成预览", 0), "生成预览 · 0 积分");
+  assert.equal(billableLabel("生成预览", null), "生成预览（计费）");
+  assert.equal(billableLabel("生成预览", undefined), "生成预览（计费）");
 });
 
 test("a priced action shows the estimate and the balance", () => {

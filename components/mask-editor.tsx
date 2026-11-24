@@ -185,8 +185,8 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
       context.save();
       context.globalCompositeOperation =
         tool === "eraser" ? "destination-out" : "source-over";
-      context.strokeStyle = "rgba(124, 58, 237, 0.56)";
-      context.fillStyle = "rgba(124, 58, 237, 0.56)";
+      context.strokeStyle = "rgba(255, 106, 43, 0.56)";
+      context.fillStyle = "rgba(255, 106, 43, 0.56)";
       context.lineWidth = brushSize;
       context.lineCap = "round";
       context.lineJoin = "round";
@@ -214,7 +214,7 @@ export const MaskEditor = forwardRef<MaskEditorHandle, MaskEditorProps>(
       const height = Math.max(1, Math.ceil(Math.abs(point.y - start.y)));
       context.save();
       context.globalCompositeOperation = "source-over";
-      context.fillStyle = "rgba(124, 58, 237, 0.56)";
+      context.fillStyle = "rgba(255, 106, 43, 0.56)";
       context.fillRect(left, top, width, height);
       context.restore();
     };

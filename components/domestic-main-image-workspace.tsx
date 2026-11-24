@@ -2,6 +2,8 @@
 import { GenerationVersionField } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
+import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
+import { useCreationBriefHandoff } from "@/lib/creation-brief";
 import { useDraftState } from "@/lib/hooks/use-creation-draft";
 import { ProductFactsGuidance } from "@/components/product-facts-guidance";
 
@@ -170,6 +172,8 @@ export function DomesticMainImageWorkspace() {
   const [shadowMode, setShadowMode] = useState<AuroraShadowMode>("off");
   const [createdJobId, setCreatedJobId] = useState<string>();
   const jobId = requestedJobId ?? createdJobId;
+  // 从创作首页选套图进来时，把首页写的描述带进「核心卖点」（拆成多行，已有内容则接在后面）
+  useCreationBriefHandoff(Boolean(workspace?.id) && !jobId, sellingPoints, setSellingPoints);
   const [localError, setLocalError] = useState<string>();
   const job = useJob(workspace?.id, jobId);
   const automaticPlan = !jobId || (job.data?.configuration.settings as Record<string, unknown> | undefined)?.auto_start_after_plan === true;
@@ -398,7 +402,7 @@ export function DomesticMainImageWorkspace() {
               <ProductFactsGuidance /><div className={styles.form}>
                 <label><span>商品名称 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("product_name") : productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：轻量保温随行杯" /></label>
                 <label><span>商品类目 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("category") : category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：杯壶 / 保温杯" /></label>
-                <label className={styles.full}><span>核心卖点 * <small>换行分隔</small></span><textarea disabled={Boolean(jobId)} value={jobId ? restoredLines("selling_points") : sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder={'轻量便携\n杯盖防误开\n食品接触级内胆'} /></label>
+                <label className={styles.full}><span>核心卖点 * <small>换行分隔</small></span><AutoGrowTextarea disabled={Boolean(jobId)} value={jobId ? restoredLines("selling_points") : sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder={'轻量便携\n杯盖防误开\n食品接触级内胆'} /></label>
               </div>
               <FormDisclosure title="补充商品细节" summary={[displayFacts, scenes, offers, trustFacts].filter(value => value.trim()).length ? `已补充 ${[displayFacts, scenes, offers, trustFacts].filter(value => value.trim()).length} 项信息` : "选填 · 规格、使用场景、优惠与服务"} defaultOpen={Boolean(jobId)}>
               <div className={styles.form}>
@@ -421,7 +425,7 @@ export function DomesticMainImageWorkspace() {
               <div className={styles.heading}><span>03</span><div><h2>六图方案确认</h2><p>确认后锁定商品身份、事实边界和整套视觉世界。</p></div>{job.data && <StatusBadge status={job.data.status} />}</div>
               {!plan.length ? <div className={styles.empty}>创建任务后，会先分析商品并锁定身份，再编译 1 张搜索主图与 5 张轮播图的完整方案。</div> : <>
                 <div className={styles.identityLock}>
-                  <span>PRODUCT IDENTITY LOCK</span>
+                  <span>商品外观锁定</span>
                   <h3>{identityLock?.product_form ?? "当前商品身份已锁定"}</h3>
                   {<><p>{identityLock?.identity_summary}</p>
                   <div><strong>必须保持</strong><p>{identityLock?.must_preserve?.join("；")}</p></div>

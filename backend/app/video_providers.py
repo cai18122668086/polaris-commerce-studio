@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 import json
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -41,16 +41,24 @@ def _yiyuan_model_unavailable(data: dict[str, Any]) -> bool:
     return isinstance(error, dict) and error.get("code") == "model_not_found"
 
 
-_OSS_REGIONAL = re.compile(r"^(?P<bucket>[a-z0-9-]+)\.oss-cn-[a-z0-9-]+\.aliyuncs\.com$")
-_COS_REGIONAL = re.compile(r"^(?P<bucket>[a-z0-9-]+)\.cos\.ap-[a-z0-9-]+\.myqcloud\.com$")
+_OSS_REGIONAL = re.compile(
+    r"^(?P<bucket>[a-z0-9-]+)\.oss-cn-[a-z0-9-]+\.aliyuncs\.com$"
+)
+_COS_REGIONAL = re.compile(
+    r"^(?P<bucket>[a-z0-9-]+)\.cos\.ap-[a-z0-9-]+\.myqcloud\.com$"
+)
 
 
 def routed_media_url(url: str, routes: dict[str, str]) -> str:
-    """Send an already-validated OSS URL through the same bucket's acceleration endpoint.
+    """Send a validated OSS/COS URL through the same bucket's acceleration endpoint.
 
-    Only `<bucket>.oss-cn-<region>.aliyuncs.com -> <bucket>.oss-accelerate.aliyuncs.com` and
-    `<bucket>.cos.ap-<region>.myqcloud.com -> <bucket>.cos.accelerate.myqcloud.com` are honoured; any other configured target is ignored, so the setting can never
-    point downloads at an arbitrary host. Path, query and signature stay unchanged.
+    Only these rewrites are honoured:
+
+    - `<bucket>.oss-cn-<region>.aliyuncs.com -> <bucket>.oss-accelerate.aliyuncs.com`
+    - `<bucket>.cos.ap-<region>.myqcloud.com -> <bucket>.cos.accelerate.myqcloud.com`
+
+    Any other configured target is ignored, so the setting can never point
+    downloads at an arbitrary host. Path, query and signature stay unchanged.
     """
     parts = urlsplit(url)
     host = parts.hostname or ""

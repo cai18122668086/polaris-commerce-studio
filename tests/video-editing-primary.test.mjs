@@ -19,6 +19,7 @@ test("labels follow the four progress steps", () => {
 
 test("the paid step says so before it runs", () => {
   assert.equal(planningButtonLabel({ ...idle, ready: true }), "开始智能剪辑（计费）");
+  assert.equal(planningButtonLabel({ ...idle, ready: true, credits: 40 }), "开始智能剪辑 · 40 积分");
 });
 
 test("unconfirmed submissions never show internal wording", () => {
@@ -37,6 +38,8 @@ test("busy wins over every other state so a second click is not invited", () => 
 test("the outer action bar uses the same words", () => {
   const base = { busy: false, recognizing: false, transcriptReady: false };
   assert.equal(workspaceActionLabel(base), "开始智能剪辑");
+  assert.equal(workspaceActionLabel({ ...base, credits: 40 }), "开始智能剪辑 · 40 积分");
+  assert.equal(workspaceActionLabel({ ...base, credits: null }), "开始智能剪辑（计费）");
   assert.equal(workspaceActionLabel({ ...base, recognizing: true }), "正在分析口播");
   assert.equal(workspaceActionLabel({ ...base, phase: "rendering" }), "正在生成视频");
   assert.equal(workspaceActionLabel({ ...base, transcriptReady: true, phase: "preview" }), "查看并确认");

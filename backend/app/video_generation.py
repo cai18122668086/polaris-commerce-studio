@@ -27,6 +27,7 @@ from .models import utc_now
 from .video_avatar_access import avatar_scope
 from .video_avatar_catalog import public_avatar_gender
 from .video_cosyvoice import CosyVoice
+from .video_credit_prices import VideoCreditPricesResponse, price_list
 from .video_generation_media import (
     MODEL_REGISTRATION_STAGES,
     prepare_lipsync_media,
@@ -50,7 +51,6 @@ from .video_lipsync import run_lipsync
 from .video_providers import YIYUAN_HOST, VideoProviders, safe_media_url
 from .video_stage_timing import transition
 from .video_studio_models import VideoProjectRecord
-from .video_credit_prices import VideoCreditPricesResponse, price_list
 from .video_studio_routes import VideoWorkspace, append_version, scope
 from .video_studio_schemas import StrictVideoModel
 from .video_template_media import prepare_forward, video_info
@@ -1375,8 +1375,10 @@ def editing_handoff(
 
 
 @router.get("/credit-prices", response_model=VideoCreditPricesResponse)
-def credit_prices(request: Request, workspace: VideoWorkspace) -> VideoCreditPricesResponse:
-    """Configured credit price for each paid video action; unpriced actions return null."""
+def credit_prices(
+    request: Request, workspace: VideoWorkspace
+) -> VideoCreditPricesResponse:
+    """Configured credit price for each paid video action; unpriced ones are null."""
     return price_list(request.app.state.settings.video_credit_prices)
 
 

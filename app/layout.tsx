@@ -9,6 +9,10 @@ import "./commerce-workspaces.css";
 import "./commerce-forms.css";
 import "./commerce-readability.css";
 import "./showcase-cases.css";
+import "./ember-dark.generated.css";
+import "./ember-dark.css";
+import "./home-ember-dark.css";
+import "./ember-studio.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -30,7 +34,15 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s｜极光商绘",
     },
     description,
-    icons: { icon: "/polaris-mark.svg", shortcut: "/polaris-mark.svg" },
+    icons: {
+      icon: [
+        { url: "/polaris-mark-ember.svg", type: "image/svg+xml" },
+        { url: "/favicon.ico", sizes: "any" },
+      ],
+      shortcut: "/favicon.ico",
+      apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    },
+    manifest: "/manifest.webmanifest",
     openGraph: {
       title,
       description,
@@ -52,7 +64,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className="theme-ember">
       <body>
         <Providers>{children}</Providers>
       </body>

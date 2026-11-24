@@ -134,3 +134,49 @@
   .card:hover { transform: none; }
   .card:hover .cardVisual img { transform: translateY(-50%) rotate(6deg); }
 }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{color:var(--accent-text-on-light, #e9e8e6)}
+:global(.theme-ember) .breadcrumb a:hover{color:#c7c4c0}
+:global(.theme-ember) .breadcrumb > span:nth-child(2){color:#484440}
+:global(.theme-ember) .hero{border:1px solid #262422;background:linear-gradient(115deg, rgb(255 250 244 / 0.06), rgb(255 250 244 / 0.025) 60%, rgb(255 250 244 / 0.025));border-radius:22px}
+:global(.theme-ember) .heroCopy h1{font-weight:400}
+:global(.theme-ember) .heroArt img{border:5px solid #0f0e0d;box-shadow:0 5px 18px rgb(0 0 0 / 0.226)}
+:global(.theme-ember) .heroArt > span{border:1px solid #33312e;background:rgb(21 20 19 / 0.86);color:#dcdad8;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .markets{border:1px solid #22211f;background:rgb(255 250 244 / 0.025);border-radius:14px}
+:global(.theme-ember) .markets a{font-weight:500}
+:global(.theme-ember) .markets a:hover{color:#c7c4c0;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .markets a[aria-current="page"]{color:#e9e8e6;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .card{border:1px solid #272523;background:rgb(255 250 244 / 0.04);border-radius:18px}
+:global(.theme-ember) .card:hover{border-color:#4a4641;box-shadow:0 9px 24px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .cardVisual{background:linear-gradient(115deg, rgb(255 250 244 / 0.06), rgb(255 250 244 / 0.06))}
+:global(.theme-ember) .card[data-tone="lime"] .cardVisual{background:linear-gradient(115deg, rgb(255 250 244 / 0.025), rgb(255 250 244 / 0.06))}
+:global(.theme-ember) .visualCopy strong{color:#ccc9c6}
+:global(.theme-ember) .visualCopy p{color:#9d9790}
+:global(.theme-ember) .card[data-tone="lime"] .visualCopy strong{color:#bab6b1}
+:global(.theme-ember) .card[data-tone="lime"] .visualCopy p{color:#99948c}
+:global(.theme-ember) .cardVisual img{border:5px solid #0f0e0d;box-shadow:0 5px 14px rgb(0 0 0 / 0.169)}
+:global(.theme-ember) .cardVisual > span{border:1px solid rgb(15 14 13 / 0.69);background:rgb(21 20 19 / 0.806);color:#c7c4c0;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3);font-weight:500}
+:global(.theme-ember) .card[data-tone="lime"] .cardVisual > span{background:rgb(255 250 244 / 0.023);color:#b5b1ac}
+:global(.theme-ember) .cardVisual > small{color:#9d9790}
+:global(.theme-ember) .cardBody h3{color:#e9e8e6}
+:global(.theme-ember) .output{color:#868077}
+:global(.theme-ember) .output strong{color:#c4c1bd;font-weight:500}
+:global(.theme-ember) .cardAction{border-top:1px solid #201e1c;color:#c7c4c0}
+:global(.theme-ember) .cardAction > span{color:#dbd9d7;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .card:hover .cardAction > span,:global(.theme-ember) .card:focus-visible .cardAction > span{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .notes p > svg{color:#857e76}
+:global(.theme-ember) .notes a{color:#aca7a1}
+:global(.theme-ember) .assetNotice{border:1px solid #262422;background:rgb(255 250 244 / 0.025);color:#ada9a3;border-radius:12px}
+:global(.theme-ember) .assetNotice a{color:#ada9a3}
+:global(.theme-ember) .empty{border:1px dashed #2f2d2a;background:rgb(255 250 244 / 0.025);color:#938d85;border-radius:16px}
+:global(.theme-ember) .empty h3{color:#c7c4c0}
+:global(.theme-ember) .empty a{color:#e9e8e6;background:rgb(255 250 244 / 0.025);border-radius:9px}
+:global(.theme-ember) .alternatives{border-top:1px solid #201e1c}
+:global(.theme-ember) .alternatives a{border:1px solid #23221f;background:rgb(255 250 244 / 0.025);border-radius:14px}
+:global(.theme-ember) .alternatives a:hover{border-color:#403d39;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .alternativeIcon{background:rgb(255 250 244 / 0.06);color:#938d85;border-radius:12px}
+:global(.theme-ember) .alternatives a:nth-child(2) .alternativeIcon{color:#948e87;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .alternatives a > svg{color:#6c6760}
+:global(.theme-ember) .page a:focus-visible{outline:2px solid #aca7a1}
+/* ember-dark:end */

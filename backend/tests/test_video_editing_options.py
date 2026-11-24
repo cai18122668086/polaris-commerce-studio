@@ -172,7 +172,8 @@ def test_automatic_and_manual_preview_apply_saved_music_or_noop(
 def test_music_tiers_never_lift_the_bed_above_unity():
     from app.video_editing_render_edits import music_gain_offset
 
-    assert [music_gain_offset(c) for c in (None, "template", "lower", "raise", "off")] == [
+    tiers = (None, "template", "lower", "raise", "off")
+    assert [music_gain_offset(c) for c in tiers] == [
         0,
         0,
         -6,

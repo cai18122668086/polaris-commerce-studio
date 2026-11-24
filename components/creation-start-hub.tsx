@@ -9,7 +9,7 @@ import { getFeatureCaseArt } from "@/lib/feature-case-art";
 export function CreationStartHub() {
   return (
     <section className="creation-start-hub" id="start" aria-labelledby="commerce-start-title">
-      <header><div><span className="commerce-eyebrow">START WITH WHAT YOU NEED</span><h2 id="commerce-start-title">先选一件你想做的事。</h2><p>有参考就复刻，要上新就做套图。还没想法，先逛灵感。</p></div><Link href="#tools" className="commerce-hub-all"><Grid2X2 size={16} /> 查看全部 {FEATURE_REGISTRY.length} 项功能 <ArrowUpRight size={15} /></Link></header>
+      <header><div><span className="commerce-eyebrow">从你需要的开始</span><h2 id="commerce-start-title">先选一件你想做的事。</h2><p>有参考就复刻，要上新就做套图。还没想法，先逛灵感。</p></div><Link href="#tools" className="commerce-hub-all"><Grid2X2 size={16} /> 查看全部 {FEATURE_REGISTRY.length} 项功能 <ArrowUpRight size={15} /></Link></header>
       <div className="creation-start-hub__grid">
         {PRIMARY_CREATION_ENTRIES.map((entry, index) => <Link href={entry.href} className={`commerce-start-card commerce-start-card--${entry.id}`} key={entry.id} data-creation-entry={entry.id}>
           <div className="commerce-start-card__visual">{getFeatureCaseArt(entry.id) ? <div className="case-art-cover"><FeatureCaseArt featureId={entry.id} /></div> : <DisplayImage src={entry.image} alt={`${entry.label}商品视觉`} width={1374} height={1145} loading="lazy" />}<span>{entry.tag}</span><b>0{index + 1}</b></div>

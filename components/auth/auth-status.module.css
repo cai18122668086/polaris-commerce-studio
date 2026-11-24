@@ -6,3 +6,8 @@
 .diagnostic summary { cursor: pointer; }
 .diagnostic p { margin: 10px 0; overflow-wrap: anywhere; }
 .diagnostic button { border: 1px solid #ddd9e4; border-radius: 8px; background: #fff; padding: 7px 12px; cursor: pointer; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .diagnostic{color:#948e86}
+:global(.theme-ember) .diagnostic button{border:1px solid #2d2b28;background:rgb(255 250 244 / 0.04);border-radius:999px}
+/* ember-dark:end */

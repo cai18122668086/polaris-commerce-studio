@@ -10,3 +10,8 @@
 .tooltip::before { content: ""; position: absolute; bottom: 100%; left: calc(50% - 5px); border: 5px solid transparent; border-bottom-color: #302c32; }
 .link:hover .tooltip, .link:focus-visible .tooltip { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { .tooltip { transition: none; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .tooltip{color:#0f0e0d;background:#e9e8e7;box-shadow:0 8px 24px rgb(0 0 0 / 0.27);border-radius:14px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .tooltip::before{border-bottom-color:#e9e8e7}
+/* ember-dark:end */

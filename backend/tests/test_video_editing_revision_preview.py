@@ -131,7 +131,9 @@ def test_replan_maps_muted_sound_segments_by_measured_occurrence():
 def test_sound_mute_is_optional_and_never_overlaps_source_only_segments():
     assert "sound_muted_beat_ids" not in choices().model_dump(mode="json")
     with pytest.raises(ValueError):
-        NativeRenderEdits.model_validate({"source_only_beat_ids": ["a"], "sound_muted_beat_ids": ["a"]})
+        NativeRenderEdits.model_validate(
+            {"source_only_beat_ids": ["a"], "sound_muted_beat_ids": ["a"]}
+        )
     with pytest.raises(ValueError):
         NativeRenderEdits.model_validate({"sound_muted_beat_ids": ["a", "a"]})
     ordered = NativeRenderEdits.model_validate({"sound_muted_beat_ids": ["b", "a"]})
@@ -142,7 +144,8 @@ def test_sound_mute_is_optional_and_never_overlaps_source_only_segments():
 def test_only_segments_with_fx_cues_can_be_muted():
     from app.video_editing_render_edits import sound_cue_beats
 
-    recipes = {"sound": {"fx": [{"beat_id": "text", "asset_id": "click"}, {"asset_id": "x"}]}}
+    cues = [{"beat_id": "text", "asset_id": "click"}, {"asset_id": "x"}]
+    recipes = {"sound": {"fx": cues}}
     assert sound_cue_beats(recipes) == {"text"}
     assert sound_cue_beats({}) == set()
     assert sound_cue_beats({"sound": None}) == set()

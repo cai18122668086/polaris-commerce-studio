@@ -1,0 +1,53 @@
+/* 全站暗色（熔光）手调层：色板变量、焦点、选区、顶栏、logo。
+   自动映射在 ember-dark.generated.css，本文件在其后加载；首页专属细节在 home-ember-dark.css。
+   规则：不用蓝、紫及蓝紫渐变；ember 只用于焦点、运行态和一条强调线。 */
+html.theme-ember, html.theme-ember body { background: #0b0b0b; color: #edeae4; color-scheme: dark; }
+.theme-ember {
+  --pc-bg: #0b0b0b; --pc-field: #121212; --pc-sel: #161616; --pc-hair: #1c1b1a; --pc-border: #2a2928;
+  --pc-text: #edeae4; --pc-muted: #8f8b84; --pc-dim: #76736d; --pc-ember: #ff6a2b;
+  --pc-ember-grad: linear-gradient(120deg, #7a1206 0%, #c8340a 34%, #f07a2b 68%, #e9b44c 100%);
+  --accent-lime: #2a2928; --accent-lilac: #161616;
+  --ink-950: #edeae4; --ink-900: #e2dfd9; --ink-700: #a9a59e; --ink-500: #8f8b84; --ink-50: #121212;
+  --studio-black: #edeae4; --studio-paper: #0b0b0b; --studio-line: #2a2928;
+  /* 旧变量全站改指暗色值；紫色系全部改成中性色 */
+  --ink-800: #d6d2cb; --ink-600: #a9a59e; --ink-400: #76736d; --ink-300: #3a3835; --ink-200: #2a2928;
+  --ink-150: #1c1b1a; --ink-100: #161616;
+  --violet-700: #edeae4; --violet-600: #edeae4; --violet-500: #a9a59e; --violet-400: #8f8b84;
+  --violet-300: #3a3835; --violet-200: #2a2928; --violet-100: #161616; --violet-50: #121212;
+  --blue-600: #edeae4; --cyan-500: #a9a59e;
+  --studio-orange: #edeae4; --studio-orange-dark: #ffffff; --studio-orange-soft: #161616;
+  --green-600: #93b573; --green-100: rgb(147 181 115 / 12%); --amber-600: #e0a84a; --amber-100: rgb(224 168 74 / 12%);
+  --red-600: #e8553b; --red-100: rgb(232 85 59 / 12%);
+  --accent-text-on-light: #edeae4; --accent-text-muted: #8f8b84; --accent-surface: #121212; --accent-surface-soft: #161616;
+  --accent-line: #2a2928; --accent-muted: #8f8b84; --accent-paper: #121212; --accent-gradient: linear-gradient(115deg, #161616 0%, #121212 100%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%); --shadow-md: 0 10px 28px rgb(0 0 0 / 45%); --shadow-lg: 0 24px 60px rgb(0 0 0 / 55%);
+  color: var(--pc-text); background: var(--pc-bg);
+}
+.theme-ember ::selection { color: #0b0b0b; background: var(--pc-ember); }
+.theme-ember :is(a, button, input, textarea, select, [tabindex]):focus-visible { outline: 2px solid var(--pc-ember); outline-offset: 2px; }
+.theme-ember .main-content--wide, .theme-ember .focus-home { background: var(--pc-bg); }
+
+/* 顶栏 */
+.theme-ember .top-nav { color: var(--pc-text); background: rgb(11 11 11 / 78%); border-bottom: 1px solid var(--pc-hair); backdrop-filter: blur(18px) saturate(1.2); }
+.app-shell--home .top-nav[data-transparent="true"] { background: transparent; border-color: transparent; }
+.theme-ember .brand-lockup .brand-copy strong { color: var(--pc-text); }
+.theme-ember .brand-lockup .brand-copy small { color: var(--pc-dim); }
+.theme-ember .top-nav :is(.main-nav > a, .nav-menu__trigger) { color: var(--pc-muted); }
+.theme-ember .top-nav :is(.main-nav > a, .nav-menu__trigger):is(:hover, .active) { color: var(--pc-text); background: transparent; }
+.app-shell--home .top-nav[data-transparent="true"] :is(.main-nav > a.active, .nav-menu__trigger.active) { background: transparent; }
+.theme-ember .top-nav :is(.main-nav > a, .nav-menu__trigger)::after { background: var(--pc-ember); height: 1.5px; }
+.theme-ember .top-nav :is(.usage-pill, .icon-button, .user-menu, .mobile-tool-entry, .announcement-center__trigger),
+.app-shell--home .top-nav[data-transparent="true"] :is(.announcement-center__trigger, .usage-pill, .user-menu) { color: var(--pc-muted); background: transparent; border-color: transparent; }
+.theme-ember .top-nav :is(.usage-pill, .icon-button, .user-menu, .mobile-tool-entry, .announcement-center__trigger):hover { color: var(--pc-text); background: var(--pc-sel); border-color: var(--pc-border); }
+.theme-ember .top-nav .announcement-center__trigger svg, .theme-ember .top-nav .usage-pill svg { color: currentColor; }
+.theme-ember .top-nav .task-trigger { color: var(--pc-text); background: transparent; border: 1px solid var(--pc-border); border-radius: 999px; }
+.theme-ember .top-nav .task-trigger:hover { color: #0b0b0b; background: var(--pc-text); border-color: var(--pc-text); }
+.theme-ember .top-nav .task-trigger i { color: #0b0b0b; background: var(--pc-ember); }
+.theme-ember .top-nav .avatar { color: var(--pc-text); background: var(--pc-sel); }
+.theme-ember .top-nav .nav-mega { color: var(--pc-text); background: #121212; border-color: var(--pc-border); box-shadow: 0 30px 80px rgb(0 0 0 / 60%); }
+.theme-ember .top-nav :is(.nav-tool-link:hover, .nav-tool-link.is-active) { background: var(--pc-sel); }
+.theme-ember .top-nav :is(.nav-tool-link__hot, .main-nav__flame) { color: var(--pc-ember); }
+
+/* 换用熔光版 logo，原品牌文件不动 */
+
+.theme-ember .home-showcase-footer__filing { color: #726c65; }

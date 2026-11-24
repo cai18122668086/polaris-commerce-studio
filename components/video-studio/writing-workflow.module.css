@@ -20,14 +20,14 @@
 .versionSources section>details{margin:6px 0}
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .workflow{border:1px solid #252321;color:#d4d1ce;background:#131211}
+:global(.theme-ember) .workflow{border:1px solid #252321;color:#d4d1ce;background:rgb(255 250 244 / 0.025);border-radius:16px}
 :global(.theme-ember) .workflow>summary{color:#b5b1ac}
 :global(.theme-ember) .workflow fieldset{border-top:1px solid #262422}
-:global(.theme-ember) .workflow input:not([type=checkbox]),:global(.theme-ember) .workflow select,:global(.theme-ember) .workflow textarea{border:1px solid #2f2d2a;background:#0f0e0d}
-:global(.theme-ember) .workflow button{border:1px solid #32302d;background:#0f0e0d;color:#bab6b1}
+:global(.theme-ember) .workflow input:not([type=checkbox]),:global(.theme-ember) .workflow select,:global(.theme-ember) .workflow textarea{border:1px solid #2f2d2a;background:rgb(255 250 244 / 0.04);border-radius:9px}
+:global(.theme-ember) .workflow button{border:1px solid #32302d;background:rgb(255 250 244 / 0.04);color:#bab6b1;border-radius:999px}
 :global(.theme-ember) .workflow small{color:#8e877f}
 :global(.theme-ember) .workflow li{border-bottom:1px solid #211f1d}
 :global(.theme-ember) .fact{border:1px solid #252321}
-:global(.theme-ember) .result{border:1px solid #292725;background:#0f0e0d}
+:global(.theme-ember) .result{border:1px solid #292725;background:rgb(255 250 244 / 0.04);border-radius:12px}
 :global(.theme-ember) .error{color:#fa682a}
 /* ember-dark:end */

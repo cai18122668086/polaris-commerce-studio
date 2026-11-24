@@ -141,36 +141,36 @@
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .dialogDescription{color:#a49f98}
-:global(.theme-ember) .historyFilters > div{background:#1c1b1a}
-:global(.theme-ember) .historyFilters button{color:#a49f98}
-:global(.theme-ember) .historyFilters button[aria-pressed=true]{background:#0f0e0d;color:#e9e8e6;box-shadow:0 1px 4px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .historyFilters > div{background:rgb(255 250 244 / 0.06);border-radius:11px}
+:global(.theme-ember) .historyFilters button{color:#a49f98;border-radius:999px}
+:global(.theme-ember) .historyFilters button[aria-pressed=true]{background:rgb(255 250 244 / 0.04);color:#e9e8e6;box-shadow:0 1px 4px rgb(0 0 0 / 0.127);font-weight:500}
 :global(.theme-ember) .historyFilters > label{color:#a49f98}
 :global(.theme-ember) .historyFilters input{accent-color:#b3afa9}
 :global(.theme-ember) .historyLayout{border:1px solid #252321}
-:global(.theme-ember) .versionList{background:#161514;border-right:1px solid #252321}
-:global(.theme-ember) .versionList > button{color:#e9e8e6}
-:global(.theme-ember) .versionList > button:hover{background:#1f1d1b}
-:global(.theme-ember) .versionList > button[aria-current=true]{background:#0f0e0d;border-color:#605c56;box-shadow:0 2px 8px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .versionList{background:rgb(255 250 244 / 0.025);border-right:1px solid #252321}
+:global(.theme-ember) .versionList > button{color:#e9e8e6;border-radius:999px}
+:global(.theme-ember) .versionList > button:hover{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .versionList > button[aria-current=true]{background:rgb(255 250 244 / 0.04);border-color:#605c56;box-shadow:0 2px 8px rgb(0 0 0 / 0.113)}
 :global(.theme-ember) .versionHeading > small{color:#837d74}
-:global(.theme-ember) .confirmedTag,:global(.theme-ember) .draftTag{background:#211f1d;color:#bbb7b3}
-:global(.theme-ember) .confirmedTag{background:#1b1a18;color:#aeaaa4}
+:global(.theme-ember) .confirmedTag,:global(.theme-ember) .draftTag{background:rgb(255 250 244 / 0.06);color:#bbb7b3;border-radius:999px;font-weight:500}
+:global(.theme-ember) .confirmedTag{background:rgb(255 250 244 / 0.025);color:#aeaaa4}
 :global(.theme-ember) .versionList time{color:#a29c96}
 :global(.theme-ember) .versionList p{color:#b4b0aa}
 :global(.theme-ember) .versionLength{color:#8c867e}
-:global(.theme-ember) .versionDetail{background:#0f0e0d}
+:global(.theme-ember) .versionDetail{background:rgb(255 250 244 / 0.04)}
 :global(.theme-ember) .versionDetail > header{border-bottom:1px solid #1e1d1b}
 :global(.theme-ember) .versionDetail h3{color:#e9e8e6}
 :global(.theme-ember) .versionDetail header span{color:#98928b}
 :global(.theme-ember) .quietButton{color:#b4b0aa}
 :global(.theme-ember) .versionFullText{color:#e9e8e6}
-:global(.theme-ember) .sameText{color:#a19c95;background:#161514}
+:global(.theme-ember) .sameText{color:#a19c95;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .historyEmpty{color:#908a82}
 :global(.theme-ember) .historyFooter > span{color:#969088}
-:global(.theme-ember) .actionButton,:global(.theme-ember) .secondaryButton{border:1px solid #e9e8e6;background:#e9e8e6;color:#0f0e0d}
+:global(.theme-ember) .actionButton,:global(.theme-ember) .secondaryButton{border:1px solid #e9e8e6;background:#e9e8e6;color:#0f0e0d;border-radius:999px}
 :global(.theme-ember) .actionButton:hover:not(:disabled){background:#dddcd9;border-color:#dddcd9}
-:global(.theme-ember) .secondaryButton{background:#0f0e0d;border-color:#2d2b28;color:#b5b1ab}
-:global(.theme-ember) .secondaryButton:hover:not(:disabled){background:#1b1918}
-:global(.theme-ember) .noticeToast{background:#e9e8e6;color:#0f0e0d;border:1px solid #d0cdca;border-left:4px solid #46433e;box-shadow:0 10px 36px rgb(0 0 0 / 0.452)}
+:global(.theme-ember) .secondaryButton{background:rgb(255 250 244 / 0.04);border-color:#2d2b28;color:#b5b1ab}
+:global(.theme-ember) .secondaryButton:hover:not(:disabled){background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .noticeToast{background:#e9e8e6;color:#0f0e0d;border:1px solid #d0cdca;border-left:4px solid #46433e;box-shadow:0 10px 36px rgb(0 0 0 / 0.452);border-radius:15px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
 :global(.theme-ember) .toastIcon{color:#3a3733}
 :global(.theme-ember) .noticeToast[data-tone=success]{border-left-color:#35332f}
 :global(.theme-ember) .noticeToast[data-tone=success] .toastIcon{color:#2c2a27}
@@ -178,43 +178,44 @@
 :global(.theme-ember) .noticeToast[data-tone=error] .toastIcon{color:#591c02}
 :global(.theme-ember) .noticeToast[data-tone=warning]{border-left-color:#482902}
 :global(.theme-ember) .noticeToast[data-tone=warning] .toastIcon{color:#482902}
+:global(.theme-ember) .noticeToast b{font-weight:500}
 :global(.theme-ember) .noticeToast p{color:#272523}
-:global(.theme-ember) .noticeToast > button{background:rgb(15 14 13 / 0.063);color:#2f2d2a}
-:global(.theme-ember) .assistantTools{border:1px solid #262522;background:#181716}
-:global(.theme-ember) .assistantTools button{color:#a49f98}
+:global(.theme-ember) .noticeToast > button{background:rgb(255 250 244 / 0.003);color:#2f2d2a;border-radius:999px}
+:global(.theme-ember) .assistantTools{border:1px solid #262522;background:rgb(255 250 244 / 0.025);border-radius:14px}
+:global(.theme-ember) .assistantTools button{color:#a49f98;border-radius:999px}
 :global(.theme-ember) .assistantTools button[aria-pressed=true]{color:#0f0e0d;background:#e6e2db;border-color:#aca8a2;box-shadow:0 2px 6px rgb(0 0 0 / 0.282)}
-:global(.theme-ember) .assistantTools button:hover:not([aria-pressed=true]){background:#242220;color:#e6e5e3}
-:global(.theme-ember) .toolIntro > span{background:#201e1c;border:1px solid #292724;color:#a39e97}
+:global(.theme-ember) .assistantTools button:hover:not([aria-pressed=true]){background:rgb(255 250 244 / 0.06);color:#e6e5e3}
+:global(.theme-ember) .toolIntro > span{background:rgb(255 250 244 / 0.06);border:1px solid #292724;color:#a39e97;border-radius:22px}
 :global(.theme-ember) .toolIntro h2{color:#e9e8e6}
 :global(.theme-ember) .toolIntro p{color:#9b958e}
-:global(.theme-ember) .assistantSuggestions button{background:#0f0e0d;border:1px solid #252421;color:#b3afa9}
-:global(.theme-ember) .assistantSuggestions button:hover{border-color:#5a554f;background:#151413}
+:global(.theme-ember) .assistantSuggestions button{background:rgb(255 250 244 / 0.04);border:1px solid #252421;color:#b3afa9;border-radius:999px}
+:global(.theme-ember) .assistantSuggestions button:hover{border-color:#5a554f;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .assistantField{color:#dbd9d6}
 :global(.theme-ember) .assistantField > span > button{color:#ada8a2}
-:global(.theme-ember) .assistantField input,:global(.theme-ember) .assistantField textarea{color:#e0dfdc;border:1px solid #2c2a27;background:#0f0e0d}
+:global(.theme-ember) .assistantField input,:global(.theme-ember) .assistantField textarea{color:#e0dfdc;border:1px solid #2c2a27;background:rgb(255 250 244 / 0.04);border-radius:11px}
 :global(.theme-ember) .assistantField small{color:#969088}
-:global(.theme-ember) .productFacts{background:#141313;border:1px solid #252321}
+:global(.theme-ember) .productFacts{background:rgb(255 250 244 / 0.025);border:1px solid #252321;border-radius:11px}
 :global(.theme-ember) .productFacts summary{color:#ccc9c6}
 :global(.theme-ember) .productFacts summary small{color:#8f8880}
-:global(.theme-ember) .assistantInputArea{border:1px solid #312e2b;box-shadow:0 3px 12px rgb(0 0 0 / 0.049);background:#0f0e0d}
+:global(.theme-ember) .assistantInputArea{border:1px solid #312e2b;box-shadow:0 3px 12px rgb(0 0 0 / 0.049);background:rgb(255 250 244 / 0.04);border-radius:15px}
 :global(.theme-ember) .assistantStyle{color:#a6a19a}
-:global(.theme-ember) .assistantStyle select{background:#181716;color:#c2bfbb;border:1px solid #2a2825}
+:global(.theme-ember) .assistantStyle select{background:rgb(255 250 244 / 0.025);color:#c2bfbb;border:1px solid #2a2825}
 :global(.theme-ember) .assistantInputArea > textarea{color:#e9e8e6}
 :global(.theme-ember) .assistantSubmit small{color:#9a958d}
-:global(.theme-ember) .assistantSubmit button{border:1px solid #e9e8e6;background:#e9e8e6;color:#0f0e0d}
+:global(.theme-ember) .assistantSubmit button{border:1px solid #e9e8e6;background:#e9e8e6;color:#0f0e0d;border-radius:999px}
 :global(.theme-ember) .assistantSubmit button:hover:not(:disabled){background:#d6d3d0}
-:global(.theme-ember) .assistantStatus{border:1px solid #292724;background:#181615;color:#aea9a3}
-:global(.theme-ember) .assistantStatus[data-error]{background:#171614;border-color:#591c02;color:#fa682a}
-:global(.theme-ember) .assistantResult{border:1px solid #32302c;background:#0f0e0d}
-:global(.theme-ember) .assistantResult > header{border-bottom:1px solid #252321;background:#181716}
+:global(.theme-ember) .assistantStatus{border:1px solid #292724;background:rgb(255 250 244 / 0.025);color:#aea9a3;border-radius:11px}
+:global(.theme-ember) .assistantStatus[data-error]{background:rgb(255 250 244 / 0.025);border-color:#591c02;color:#fa682a}
+:global(.theme-ember) .assistantResult{border:1px solid #32302c;background:rgb(255 250 244 / 0.04);border-radius:14px}
+:global(.theme-ember) .assistantResult > header{border-bottom:1px solid #252321;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .assistantResult header b{color:#c7c4c0}
 :global(.theme-ember) .assistantResult header span{color:#958f88}
 :global(.theme-ember) .assistantResult header button{color:#aba7a1}
 :global(.theme-ember) .assistantResultText,:global(.theme-ember) .assistantResult > textarea{color:#e3e1df}
-:global(.theme-ember) .assistantResult > small{color:#dc7f06;background:#151312}
+:global(.theme-ember) .assistantResult > small{color:#dc7f06;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .assistantResultActions{border-top:1px solid #21201d}
 :global(.theme-ember) .galleryProgress{color:#958f88}
 @media (max-width: 700px){:global(.theme-ember) .versionList{border-bottom:1px solid #252321}}
-:global(.theme-ember) .resultWarnings{border-top:1px solid #252321;background:#131311;color:#dc7f06}
-:global(.theme-ember) .resultWarnings li::before{background:#dc7f06}
+:global(.theme-ember) .resultWarnings{border-top:1px solid #252321;background:rgb(255 250 244 / 0.025);color:#dc7f06}
+:global(.theme-ember) .resultWarnings li::before{background:#dc7f06;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
 /* ember-dark:end */

@@ -54,6 +54,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const [presentation, setPresentation] = useState<"on_camera" | "hands_only" | "unspecified">("unspecified");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dismissedJobs, setDismissedJobs] = useState<string[]>([]);
   const freeIntents = useRef(new Map<string, string>());
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000), cache: "no-store" as const }), [workspaceId]);
   useEffect(() => { let live = true; void apiClient.GET(`${root}/writing-config`, options()).then(result => { if (live) setConfig(unwrapApiResponse(result) as { enabled: boolean; can_generate: boolean }); }).catch(() => undefined); return () => { live = false; }; }, [options]);
@@ -99,7 +100,20 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   const draftContext = (line: DraftLine) => "reference_sentence_id" in line
     ? selectedReference?.body.sentences.find(s => s.id === line.reference_sentence_id)?.text
     : draftAnalysis?.body.sections.find(s => s.id === line.analysis_section_id)?.function;
-  const running = jobs.some(j => ["queued", "running", "unknown"].includes(j.status));
+  // Only work in progress locks the model buttons. An unconfirmed earlier call
+  // (status "unknown") must not silently disable every later request; it is
+  // shown below with its possible charge, and the user decides.
+  const running = jobs.some(j => ["queued", "running"].includes(j.status));
+  const latestNotes = (["ref_analysis", "fact_draft"] as const).flatMap(kind => {
+    const latest = jobs.find(j => j.kind === kind);
+    return latest && !dismissedJobs.includes(latest.id) && ["queued", "running", "unknown", "failed"].includes(latest.status) ? [latest] : [];
+  });
+  const draftBlocker = !selectedReference ? "请先保存参考原文。"
+    : !selectedAnalysis ? "请先完成拆解并保存拆解结果。"
+    : factsDirty ? ""
+    : !selectedFacts?.body.facts.some(f => f.status === "user_declared") ? "事实卡至少需要一项「我已提供」的内容。"
+    : duration && presentation === "unspecified" ? "设置目标秒数时，请同时选择口播形式。"
+    : "";
   const unsavedResults = jobs.filter(j => j.status === "completed" && !j.writing_document_saved && !documents.some(d => d.assistance_task_id === j.id));
   const saveReference = () => attempt(async () => {
     const reference = references.find(r => r.id === source);
@@ -115,6 +129,8 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
   });
   const generate = (kind: "ref_analysis" | "fact_draft") => attempt(async () => {
     if (!selectedReference) throw new Error("请先保存参考原文。");
+    // A new explicit request replaces the previous outcome note for this step.
+    setDismissedJobs(ids => [...ids, ...jobs.filter(j => j.kind === kind).map(j => j.id)]);
     const payload = { project_id: projectId, expected_revision: revision, kind, reference_document_id: selectedReference.id, presentation: kind === "fact_draft" ? presentation : "unspecified" as const,
       ...(kind === "fact_draft" ? { analysis_document_id: selectedAnalysis?.id, facts_document_id: selectedFacts?.id, presentation, target_duration_seconds: duration ? Number(duration) : null, draft_mode: draftMode } : {}) };
     const key = `tengli-writing-intent:${workspaceId}:${projectId}:${kind}`;
@@ -197,9 +213,10 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
       <label>口播形式<select aria-label="写稿口播形式" value={presentation} onChange={e => setPresentation(e.target.value as typeof presentation)}><option value="unspecified">暂不设置字数预算</option><option value="on_camera">出镜口播</option><option value="hands_only">手部快切 / 画外音</option></select></label>
       <label>目标秒数（选填）<input aria-label="写稿目标秒数" type="number" min={5} max={300} value={duration} onChange={e => setDuration(e.target.value)} /></label>
       <button type="button" disabled={!config.can_generate || !selectedReference || !selectedAnalysis || factsDirty || !selectedFacts?.body.facts.some(f => f.status === "user_declared") || (!!duration && presentation === "unspecified")} onClick={() => void generate("fact_draft")}>按事实卡生成草稿</button>
+      {config.can_generate && draftBlocker && <small role="status">{draftBlocker}</small>}
       {!config.can_generate && <small>文稿模型暂未配置，可以先保存原文与事实卡。</small>}
     </fieldset>
-    {jobs.filter(j => ["queued", "running", "unknown", "failed"].includes(j.status)).slice(0, 3).map(j => <p key={j.id} role="status">{j.status === "unknown" ? "原提交结果待核对，请勿再次调用。" : j.status === "failed" ? "本次结果未通过检查，请查看原任务并核对事实。" : "文稿模型正在处理…"}</p>)}
+    {latestNotes.map(j => { const step = j.kind === "ref_analysis" ? "拆解" : "写稿"; return <p key={j.id} role="status">{j.status === "unknown" ? `上次${step}的提交结果未能确认，可能已计费。确需重新${step}时可再次调用，会按新请求计费。` : j.status === "failed" ? `上次${step}未通过检查，请核对原文和事实后重试。` : `文稿模型正在${step}…`}</p>; })}
     {unsavedResults.map(job => <div key={job.id} className={styles.result}><b>{job.kind === "ref_analysis" ? "拆解结果待保存" : "新稿结果待保存"}</b><p className={styles.document}>{job.result.analysis?.topic || job.result.text}</p><button type="button" disabled={busy || !!editingDraftId} onClick={() => void keepResult(job)}>保存这份{job.kind === "ref_analysis" ? "拆解" : "草稿"}</button></div>)}
     {selectedDraft && <section className={styles.result}>
       <b>核对新稿及事实映射</b>

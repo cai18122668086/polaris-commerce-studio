@@ -1,0 +1,628 @@
+{
+  "source": "real planning response f64e2537 (bihuo-02-v1), provider metadata removed",
+  "plan": {
+    "schema_version": "tengli.apple-suite-plan/2",
+    "opening": {
+      "title": {
+        "first_token_id": "f16038b57700f-t000000",
+        "last_token_id": "f16038b57700f-t000003"
+      },
+      "subtitle": {
+        "first_token_id": "f16038b57700f-t000004",
+        "last_token_id": "f16038b57700f-t000013"
+      },
+      "intro_last_token_id": "f16038b57700f-t000013"
+    },
+    "body_variant": "points",
+    "materials": [],
+    "points": [
+      {
+        "first_token_id": "f16038b57700f-t000016",
+        "last_token_id": "f16038b57700f-t000026"
+      },
+      {
+        "first_token_id": "f16038b57700f-t000027",
+        "last_token_id": "f16038b57700f-t000035"
+      },
+      {
+        "first_token_id": "f16038b57700f-t000036",
+        "last_token_id": "f16038b57700f-t000040"
+      }
+    ],
+    "features": [
+      {
+        "first_token_id": "f16038b57700f-t000041",
+        "last_token_id": "f16038b57700f-t000052"
+      }
+    ],
+    "conclusion": {
+      "first": {
+        "first_token_id": "f16038b57700f-t000036",
+        "last_token_id": "f16038b57700f-t000040"
+      },
+      "second": {
+        "first_token_id": "f16038b57700f-t000050",
+        "last_token_id": "f16038b57700f-t000052"
+      }
+    },
+    "quote_start_token_id": "f16038b57700f-t000036",
+    "chapters": [],
+    "comparisons": [],
+    "emphasis": [],
+    "captions": [
+      {
+        "first_token_id": "f16038b57700f-t000000",
+        "last_token_id": "f16038b57700f-t000003",
+        "emphasis": [
+          {
+            "first_token_id": "f16038b57700f-t000002",
+            "last_token_id": "f16038b57700f-t000002"
+          }
+        ]
+      },
+      {
+        "first_token_id": "f16038b57700f-t000004",
+        "last_token_id": "f16038b57700f-t000013",
+        "emphasis": [
+          {
+            "first_token_id": "f16038b57700f-t000008",
+            "last_token_id": "f16038b57700f-t000010"
+          }
+        ]
+      },
+      {
+        "first_token_id": "f16038b57700f-t000014",
+        "last_token_id": "f16038b57700f-t000020",
+        "emphasis": [
+          {
+            "first_token_id": "f16038b57700f-t000016",
+            "last_token_id": "f16038b57700f-t000017"
+          }
+        ]
+      },
+      {
+        "first_token_id": "f16038b57700f-t000021",
+        "last_token_id": "f16038b57700f-t000026",
+        "emphasis": [
+          {
+            "first_token_id": "f16038b57700f-t000025",
+            "last_token_id": "f16038b57700f-t000026"
+          }
+        ]
+      },
+      {
+        "first_token_id": "f16038b57700f-t000027",
+        "last_token_id": "f16038b57700f-t000035",
+        "emphasis": [
+          {
+            "first_token_id": "f16038b57700f-t000033",
+            "last_token_id": "f16038b57700f-t000035"
+          }
+        ]
+      },
+      {
+        "first_token_id": "f16038b57700f-t000036",
+        "last_token_id": "f16038b57700f-t000040",
+        "emphasis": [
+          {
+            "first_token_id": "f16038b57700f-t000036",
+            "last_token_id": "f16038b57700f-t000037"
+          }
+        ]
+      },
+      {
+        "first_token_id": "f16038b57700f-t000041",
+        "last_token_id": "f16038b57700f-t000052",
+        "emphasis": [
+          {
+            "first_token_id": "f16038b57700f-t000046",
+            "last_token_id": "f16038b57700f-t000047"
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "本期无静态配图，materials留空，正文以points组织文字要点。"
+    ]
+  },
+  "transcript": {
+    "schema_version": "tengli.transcript/1",
+    "audio_sha256": "352e0c87f939c5e98bfbd0f1a84985aa37a6ebac311d536c7314f0950aa6592e",
+    "source_sha256": "6cadf2b60a241607fe7472dc50a05b7346fd0f8dc498b76b27c78c15f21e3d90",
+    "duration_ms": 11854,
+    "provider": "funasr-fa-zh",
+    "model": "/asr-alignment",
+    "model_sha256": "81cc50732c3e942d4b20e17ec20325cf3c441b9b12faf8c6f951319d11addb6a",
+    "recognizer_version": "1.4.24",
+    "processing_version": "confirmed-script-force-align/1",
+    "raw_result_sha256": "9c37935e9336f9dc1db0d397890feb39f6065d82b2baedb72fa94272b6e0509c",
+    "warnings": [
+      "字幕正文来自该口播任务绑定的确认稿，词点由成片实际音轨强制对齐。",
+      "强制对齐不独立证明每个字均被说出，词点仍可试听核对。"
+    ],
+    "timing_adjustments": [],
+    "language": "zh",
+    "tokens": [
+      {
+        "id": "f16038b57700f-t000000",
+        "text": "冬",
+        "start_ms": 110,
+        "end_ms": 270,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000001",
+        "text": "天",
+        "start_ms": 270,
+        "end_ms": 450,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000002",
+        "text": "手",
+        "start_ms": 450,
+        "end_ms": 650,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000003",
+        "text": "干？",
+        "start_ms": 650,
+        "end_ms": 890,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000004",
+        "text": "试",
+        "start_ms": 1190,
+        "end_ms": 1270,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000005",
+        "text": "试",
+        "start_ms": 1270,
+        "end_ms": 1430,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000006",
+        "text": "这",
+        "start_ms": 1430,
+        "end_ms": 1550,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000007",
+        "text": "支",
+        "start_ms": 1550,
+        "end_ms": 1770,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000008",
+        "text": "樱",
+        "start_ms": 1770,
+        "end_ms": 1930,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000009",
+        "text": "花",
+        "start_ms": 1930,
+        "end_ms": 2090,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000010",
+        "text": "香",
+        "start_ms": 2090,
+        "end_ms": 2270,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000011",
+        "text": "护",
+        "start_ms": 2270,
+        "end_ms": 2330,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000012",
+        "text": "手",
+        "start_ms": 2330,
+        "end_ms": 2510,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000013",
+        "text": "霜。",
+        "start_ms": 2510,
+        "end_ms": 2710,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000014",
+        "text": "质",
+        "start_ms": 3210,
+        "end_ms": 3370,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000015",
+        "text": "地",
+        "start_ms": 3370,
+        "end_ms": 3530,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000016",
+        "text": "清",
+        "start_ms": 3530,
+        "end_ms": 3730,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000017",
+        "text": "爽",
+        "start_ms": 3730,
+        "end_ms": 3810,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000018",
+        "text": "不",
+        "start_ms": 3810,
+        "end_ms": 4050,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000019",
+        "text": "黏",
+        "start_ms": 4070,
+        "end_ms": 4230,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000020",
+        "text": "腻，",
+        "start_ms": 4230,
+        "end_ms": 4430,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000021",
+        "text": "抹",
+        "start_ms": 4870,
+        "end_ms": 5030,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000022",
+        "text": "开",
+        "start_ms": 5030,
+        "end_ms": 5150,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000023",
+        "text": "很",
+        "start_ms": 5150,
+        "end_ms": 5210,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000024",
+        "text": "快",
+        "start_ms": 5210,
+        "end_ms": 5390,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000025",
+        "text": "吸",
+        "start_ms": 5390,
+        "end_ms": 5550,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000026",
+        "text": "收，",
+        "start_ms": 5550,
+        "end_ms": 5750,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000027",
+        "text": "淡",
+        "start_ms": 6190,
+        "end_ms": 6350,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000028",
+        "text": "淡",
+        "start_ms": 6350,
+        "end_ms": 6470,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000029",
+        "text": "樱",
+        "start_ms": 6470,
+        "end_ms": 6530,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000030",
+        "text": "花",
+        "start_ms": 6530,
+        "end_ms": 6710,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000031",
+        "text": "香",
+        "start_ms": 6710,
+        "end_ms": 6910,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000032",
+        "text": "能",
+        "start_ms": 6910,
+        "end_ms": 7150,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000033",
+        "text": "留",
+        "start_ms": 7210,
+        "end_ms": 7390,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000034",
+        "text": "很",
+        "start_ms": 7390,
+        "end_ms": 7490,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000035",
+        "text": "久。",
+        "start_ms": 7490,
+        "end_ms": 7730,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000036",
+        "text": "随",
+        "start_ms": 7790,
+        "end_ms": 8029,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000037",
+        "text": "身",
+        "start_ms": 8189,
+        "end_ms": 8370,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000038",
+        "text": "带",
+        "start_ms": 8370,
+        "end_ms": 8530,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000039",
+        "text": "一",
+        "start_ms": 8530,
+        "end_ms": 8650,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000040",
+        "text": "支，",
+        "start_ms": 8650,
+        "end_ms": 8850,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000041",
+        "text": "出",
+        "start_ms": 9270,
+        "end_ms": 9350,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000042",
+        "text": "门",
+        "start_ms": 9350,
+        "end_ms": 9510,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000043",
+        "text": "前、",
+        "start_ms": 9510,
+        "end_ms": 9730,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000044",
+        "text": "敲",
+        "start_ms": 10030,
+        "end_ms": 10190,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000045",
+        "text": "完",
+        "start_ms": 10190,
+        "end_ms": 10310,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000046",
+        "text": "键",
+        "start_ms": 10310,
+        "end_ms": 10510,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000047",
+        "text": "盘",
+        "start_ms": 10510,
+        "end_ms": 10590,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000048",
+        "text": "都",
+        "start_ms": 10590,
+        "end_ms": 10770,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000049",
+        "text": "能",
+        "start_ms": 10770,
+        "end_ms": 10950,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000050",
+        "text": "补",
+        "start_ms": 10950,
+        "end_ms": 11090,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000051",
+        "text": "一",
+        "start_ms": 11090,
+        "end_ms": 11230,
+        "confidence": null
+      },
+      {
+        "id": "f16038b57700f-t000052",
+        "text": "补。",
+        "start_ms": 11230,
+        "end_ms": 11390,
+        "confidence": null
+      }
+    ],
+    "utterances": [
+      {
+        "id": "f16038b57700f-u00000",
+        "text": "冬天手干？",
+        "token_ids": [
+          "f16038b57700f-t000000",
+          "f16038b57700f-t000001",
+          "f16038b57700f-t000002",
+          "f16038b57700f-t000003"
+        ],
+        "start_ms": 110,
+        "end_ms": 890
+      },
+      {
+        "id": "f16038b57700f-u00001",
+        "text": "试试这支樱花香护手霜。",
+        "token_ids": [
+          "f16038b57700f-t000004",
+          "f16038b57700f-t000005",
+          "f16038b57700f-t000006",
+          "f16038b57700f-t000007",
+          "f16038b57700f-t000008",
+          "f16038b57700f-t000009",
+          "f16038b57700f-t000010",
+          "f16038b57700f-t000011",
+          "f16038b57700f-t000012",
+          "f16038b57700f-t000013"
+        ],
+        "start_ms": 1190,
+        "end_ms": 2710
+      },
+      {
+        "id": "f16038b57700f-u00002",
+        "text": "质地清爽不黏腻，抹开很快吸收，淡淡樱花香能留很久。",
+        "token_ids": [
+          "f16038b57700f-t000014",
+          "f16038b57700f-t000015",
+          "f16038b57700f-t000016",
+          "f16038b57700f-t000017",
+          "f16038b57700f-t000018",
+          "f16038b57700f-t000019",
+          "f16038b57700f-t000020",
+          "f16038b57700f-t000021",
+          "f16038b57700f-t000022",
+          "f16038b57700f-t000023",
+          "f16038b57700f-t000024",
+          "f16038b57700f-t000025",
+          "f16038b57700f-t000026",
+          "f16038b57700f-t000027",
+          "f16038b57700f-t000028",
+          "f16038b57700f-t000029",
+          "f16038b57700f-t000030",
+          "f16038b57700f-t000031",
+          "f16038b57700f-t000032",
+          "f16038b57700f-t000033",
+          "f16038b57700f-t000034",
+          "f16038b57700f-t000035"
+        ],
+        "start_ms": 3210,
+        "end_ms": 7730
+      },
+      {
+        "id": "f16038b57700f-u00003",
+        "text": "随身带一支，出门前、敲完键盘都能补一补。",
+        "token_ids": [
+          "f16038b57700f-t000036",
+          "f16038b57700f-t000037",
+          "f16038b57700f-t000038",
+          "f16038b57700f-t000039",
+          "f16038b57700f-t000040",
+          "f16038b57700f-t000041",
+          "f16038b57700f-t000042",
+          "f16038b57700f-t000043",
+          "f16038b57700f-t000044",
+          "f16038b57700f-t000045",
+          "f16038b57700f-t000046",
+          "f16038b57700f-t000047",
+          "f16038b57700f-t000048",
+          "f16038b57700f-t000049",
+          "f16038b57700f-t000050",
+          "f16038b57700f-t000051",
+          "f16038b57700f-t000052"
+        ],
+        "start_ms": 7790,
+        "end_ms": 11390
+      }
+    ],
+    "reference_text": "冬天手干？试试这支樱花香护手霜。质地清爽不黏腻，抹开很快吸收，淡淡樱花香能留很久。随身带一支，出门前、敲完键盘都能补一补。",
+    "reference_matches": true,
+    "confirmed_alignment": {
+      "status": "aligned",
+      "policy": "confirmed-script-force-align/1",
+      "script_sha256": "22c513748fec7dce71bc8cb958b5ba2e6e17e2f151696f05e44ea580b26c5ba7",
+      "source_origin": {
+        "kind": "generation_task",
+        "confirmed_version_id": "2d971e71-dc1f-4994-a77c-e0aa07ac0beb",
+        "generation_task_id": "a84beb70-58a1-499f-aeeb-8a4a0790db5f",
+        "media_sha256": "6cadf2b60a241607fe7472dc50a05b7346fd0f8dc498b76b27c78c15f21e3d90",
+        "script_sha256": "22c513748fec7dce71bc8cb958b5ba2e6e17e2f151696f05e44ea580b26c5ba7"
+      },
+      "audio_sha256": "352e0c87f939c5e98bfbd0f1a84985aa37a6ebac311d536c7314f0950aa6592e",
+      "audio_source": "original_video_audio",
+      "timing_source": "native_forced_alignment_intervals"
+    },
+    "differences": [],
+    "timing_review": "unreviewed",
+    "parent_transcript_sha256": null,
+    "text_revision_id": null,
+    "text_status": "automatic"
+  }
+}

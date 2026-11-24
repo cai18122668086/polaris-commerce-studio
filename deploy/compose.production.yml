@@ -156,7 +156,7 @@ services:
       POSTGRES_DB: polaris
       POSTGRES_USER: polaris
       POSTGRES_PASSWORD: ${POLARIS_POSTGRES_PASSWORD:?set PostgreSQL password}
-    # max_connections covers the budget in docs/capacity-20261125.md (163 at
+    # max_connections covers the budget in docs/capacity-20261125.md (176 at
     # peak) plus superuser/ops headroom. shared_buffers ~25% of mem_limit.
     command:
       - postgres

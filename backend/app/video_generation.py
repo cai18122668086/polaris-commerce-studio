@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import Field
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -969,6 +969,31 @@ async def upload_audio(
     return {"id": id, "name": file.filename, "duration": metadata.info.length}
 
 
+ACTIVE_VIDEO_STATUSES = ("queued", "running")
+
+
+def enforce_active_video_limit(session: Session, user_id: str, limit: int) -> None:
+    """Cap concurrently generating videos per user (0 disables)."""
+
+    if not limit:
+        return
+    running = session.scalar(
+        select(func.count())
+        .select_from(VideoGenerationRecord)
+        .where(
+            VideoGenerationRecord.owner_user_id == user_id,
+            VideoGenerationRecord.status.in_(ACTIVE_VIDEO_STATUSES),
+        )
+    )
+    if (running or 0) >= limit:
+        raise ApiError(
+            429,
+            "USER_ACTIVE_VIDEO_LIMIT_REACHED",
+            f"你已有 {limit} 个视频正在生成，请等待完成后再提交新的视频。",
+            {"limit": limit, "running": int(running or 0)},
+        )
+
+
 @router.post("/generation-tasks")
 def submit_generation(
     body: GenerationRequest,
@@ -999,6 +1024,11 @@ def submit_generation(
         return job_response(old)
     if not request.app.state.settings.video_providers_enabled:
         raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
+    enforce_active_video_limit(
+        session,
+        workspace.principal.user_id,
+        request.app.state.settings.user_active_video_job_limit,
+    )
     avatar = session.scalar(
         select(VideoAvatarRecord).where(
             VideoAvatarRecord.id == body.avatar_id, avatar_scope(workspace)

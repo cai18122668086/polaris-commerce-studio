@@ -66,6 +66,23 @@ def new_id(prefix: str) -> str:
 _quota_enabled: bool = True
 _credit_enforcement_enabled: bool = True
 _credit_pilot_workspace_ids: frozenset[str] = frozenset()
+_user_active_image_job_limit: int = 0
+# Statuses that occupy a worker or upstream capacity. Drafts and jobs waiting
+# for the customer (plan confirmation, final review) do not count.
+RUNNING_JOB_STATUSES = (
+    JobStatus.QUEUED.value,
+    JobStatus.PLANNING.value,
+    JobStatus.PROCESSING.value,
+    JobStatus.CANCELLING.value,
+)
+USER_ACTIVE_JOB_LIMIT_MESSAGE = (
+    "你已有 {limit} 个生成任务正在进行，请等待其中一个完成后再提交。"
+)
+
+
+def set_user_active_image_job_limit(limit: int) -> None:
+    global _user_active_image_job_limit
+    _user_active_image_job_limit = max(0, int(limit))
 
 
 def set_quota_enabled(enabled: bool) -> None:
@@ -821,6 +838,23 @@ def enforce_active_job_limit(session: Session, workspace_id: str) -> None:
             "ACTIVE_JOB_LIMIT_REACHED",
             "当前工作区活动任务数量已达到上限。",
         )
+    limit = _user_active_image_job_limit
+    if limit:
+        running = session.scalar(
+            select(func.count())
+            .select_from(JobRecord)
+            .where(
+                JobRecord.workspace_id == workspace_id,
+                JobRecord.status.in_(RUNNING_JOB_STATUSES),
+            )
+        )
+        if (running or 0) >= limit:
+            raise ApiError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "USER_ACTIVE_JOB_LIMIT_REACHED",
+                USER_ACTIVE_JOB_LIMIT_MESSAGE.format(limit=limit),
+                {"limit": limit, "running": int(running or 0)},
+            )
 
 
 def _credit_reservation_is_enforced(

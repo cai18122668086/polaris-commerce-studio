@@ -779,3 +779,34 @@ def test_post_transport_failure_is_unknown_and_not_retried(tmp_path):
         provider.request("quanyu", "POST", "/api/digital_human/submit", json={})
     assert error.value.code == "VIDEO_PROVIDER_OUTCOME_UNKNOWN"
     assert len(calls) == 1
+
+
+def test_request_lookup_finds_a_submission_without_creating_one(video_gen):
+    client, _, provider, root, pid, _ = video_gen
+    body = request_body(pid)
+    missing = client.get(root + "/generation-requests/" + body["request_id"])
+    assert missing.status_code == 200
+    assert missing.json() == {"received": False, "job": None}
+    assert client.get(root + "/generation-tasks").json() == []
+    assert provider.posts == []
+    created = client.post(root + "/generation-tasks", json=body).json()
+    found = client.get(root + "/generation-requests/" + body["request_id"]).json()
+    assert found["received"] is True and found["job"]["id"] == created["id"]
+    calls = len(provider.posts)
+    client.get(root + "/generation-requests/" + body["request_id"])
+    assert len(provider.posts) == calls
+    assert len(client.get(root + "/generation-tasks").json()) == 1
+
+
+def test_credit_prices_report_only_configured_values(video_gen):
+    client, _, _, root, _, _ = video_gen
+    unpriced = client.get(root + "/credit-prices").json()
+    assert unpriced["configured"] is False
+    assert {item["action"] for item in unpriced["prices"]} >= {"lipsync", "avatar_motion", "avatar_register", "voice_clone", "editing_render"}
+    assert all(item["credits"] is None for item in unpriced["prices"])
+    client.app.state.settings.video_credit_prices = {"lipsync": 30, "voice_clone": -1, "unknown": 5}
+    priced = {item["action"]: item["credits"] for item in client.get(root + "/credit-prices").json()["prices"]}
+    assert priced["lipsync"] == 30
+    assert priced["voice_clone"] is None
+    assert "unknown" not in priced
+

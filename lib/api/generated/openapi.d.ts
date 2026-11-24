@@ -1815,6 +1815,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/credit-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Credit Prices
+         * @description Configured credit price for each paid video action; unpriced actions return null.
+         */
+        get: operations["credit_prices_api_v1_video_studio_workspaces__workspace_id__credit_prices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-library": {
         parameters: {
             query?: never;
@@ -2310,6 +2330,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-works/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Active Editing Works
+         * @description Each project's newest planning or editing task while it still needs attention.
+         *
+         *     Finished works stay in ``/editing-works``; this list covers what is still
+         *     running, waiting for the user to confirm a preview, or stopped with a
+         *     failure, so a refreshed page can lead back to the original task.
+         */
+        get: operations["list_active_editing_works_api_v1_video_studio_workspaces__workspace_id__editing_works_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/generation-prices": {
         parameters: {
             query?: never;
@@ -2319,6 +2363,31 @@ export interface paths {
         };
         /** Prices */
         get: operations["prices_api_v1_video_studio_workspaces__workspace_id__generation_prices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Generation Request
+         * @description Look up a submission by its idempotency key without creating anything.
+         *
+         *     The page calls this when a confirmed submission's response was lost. It
+         *     replaces asking the user to "query the original submission": a found job is
+         *     shown as-is, and an absent one means the request never reached the server,
+         *     so nothing was charged. It never re-sends a paid request.
+         */
+        get: operations["generation_request_api_v1_video_studio_workspaces__workspace_id__generation_requests__request_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6064,6 +6133,36 @@ export interface components {
          * @enum {string}
          */
         EcommerceLoginState: "unknown" | "ready" | "needs_login";
+        /** EditingActiveWorkResponse */
+        EditingActiveWorkResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "planning" | "editing";
+            preview: components["schemas"]["EditingArtifactResponse"] | null;
+            /** Project Id */
+            project_id: string;
+            /** Project Title */
+            project_title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "prepared" | "awaiting_review" | "failed";
+            /** Task Id */
+            task_id: string;
+        };
+        /** EditingActiveWorksResponse */
+        EditingActiveWorksResponse: {
+            /** Items */
+            items: components["schemas"]["EditingActiveWorkResponse"][];
+        };
         /** EditingAppleCreativeOptions */
         EditingAppleCreativeOptions: {
             /**
@@ -6483,6 +6582,11 @@ export interface components {
             reason: string;
             /** Relation */
             relation: string;
+            /**
+             * Sound Mute Available
+             * @default false
+             */
+            sound_mute_available: boolean;
             /** Source Only Available */
             source_only_available: boolean;
             /** Text */
@@ -6690,7 +6794,7 @@ export interface components {
              * Music
              * @description Background music preference frozen at preparation and used by preview rendering.
              */
-            music?: ("template" | "lower" | "off") | null;
+            music?: ("template" | "lower" | "raise" | "off") | null;
             /** Prepared Task Id */
             prepared_task_id?: string | null;
             /**
@@ -8027,9 +8131,11 @@ export interface components {
             /** Image Edits */
             image_edits?: components["schemas"]["NativeImageEdit"][];
             /** Music */
-            music?: ("lower" | "off") | null;
+            music?: ("lower" | "raise" | "off") | null;
             /** Music Track Id */
             music_track_id?: string | null;
+            /** Sound Muted Beat Ids */
+            sound_muted_beat_ids?: string[];
             /** Source Only Beat Ids */
             source_only_beat_ids?: string[];
         };
@@ -8991,6 +9097,25 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** VideoCreditPrice */
+        VideoCreditPrice: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate";
+            /** Credits */
+            credits: number | null;
+        };
+        /** VideoCreditPricesResponse */
+        VideoCreditPricesResponse: {
+            /** Configured */
+            configured: boolean;
+            /** Prices */
+            prices: components["schemas"]["VideoCreditPrice"][];
+            /** Pricing Version */
+            pricing_version: string;
+        };
         /** VideoDraft */
         VideoDraft: {
             /** Audioassetid */
@@ -9190,6 +9315,11 @@ export interface components {
              * @constant
              */
             allowed: true;
+            /**
+             * Internal Tools
+             * @default false
+             */
+            internal_tools: boolean;
             /** User Id */
             user_id: string;
         };
@@ -13523,6 +13653,37 @@ export interface operations {
             };
         };
     };
+    credit_prices_api_v1_video_studio_workspaces__workspace_id__credit_prices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoCreditPricesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     library_api_v1_video_studio_workspaces__workspace_id__editing_library_get: {
         parameters: {
             query?: {
@@ -14570,6 +14731,39 @@ export interface operations {
             };
         };
     };
+    list_active_editing_works_api_v1_video_studio_workspaces__workspace_id__editing_works_active_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingActiveWorksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     prices_api_v1_video_studio_workspaces__workspace_id__generation_prices_get: {
         parameters: {
             query?: never;
@@ -14589,6 +14783,40 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generation_request_api_v1_video_studio_workspaces__workspace_id__generation_requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
                     };
                 };
             };

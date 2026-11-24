@@ -86,7 +86,7 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
       renderIntent.current = undefined;
       setMessage(transcriptionOnly ? "已提交口播重新对齐任务。" : "已提交字幕重新对齐与出片任务。");
       await onCreated();
-    } catch (caught) { setError(editingMessage(caught, "任务提交暂未确认，再次点击会查询同一请求。")); }
+    } catch (caught) { setError(editingMessage(caught, "正在确认结果，不会重复扣费；再次点击只会查询原请求。")); }
     finally { setBusy(false); }
   };
   const seek = (ms: number) => {
@@ -111,10 +111,10 @@ export function TranscriptEditor({ workspaceId, taskId, options, onCreated }: {
       <label>校对文字<textarea aria-label="校对文字" rows={9} maxLength={20000} value={text} onChange={event => { setText(event.target.value); setReviewed(false); setMessage(""); }} /></label>
       <label className={styles.reviewCheck}><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} />我已对照原声核对这份文字；这不代表成片和时间点已验收</label>
       <div className={styles.correctionActions}><button type="button" disabled={busy || !text.trim() || (selected?.corrected_text === text && selected.text_status === (reviewed ? "user_corrected" : "operator_candidate"))} onClick={() => void save()}>{reviewed ? "保存已校对文字" : "保存待核对版本"}</button>
-        <button type="button" disabled={busy || !view.alignment_available || !selected || selected.corrected_text !== text || (!transcriptionOnly && options.source_subtitles !== "none") || frozenPlan} onClick={() => void render()}>{transcriptionOnly ? "按此版本重新对齐口播" : "按此版本重新生成字幕"}</button></div>
+        {view.alignment_available && <button type="button" disabled={busy || !selected || selected.corrected_text !== text || (!transcriptionOnly && options.source_subtitles !== "none") || frozenPlan} onClick={() => void render()}>{transcriptionOnly ? "按此版本重新对齐口播" : "按此版本重新生成字幕"}</button>}</div>
       {frozenPlan && <p className={styles.note}>可保存校对后的文字版本，重新剪辑时按新口播重新安排画面。</p>}
       {selected && <p className={styles.note}>已选择：{statusLabel(selected.text_status)}。{selected.corrected_text !== text ? "有未保存的修改，请先保存。" : "重新生成会使用这份已保存文字。"}</p>}
-      {!view.alignment_available && <p className={styles.note}>校对文字可以保存；重新对齐服务尚未启用。</p>}
+      {!view.alignment_available && <p className={styles.note}>校对后的文字会保存，下次剪辑时使用。</p>}
       {!transcriptionOnly && options.source_subtitles !== "none" && <p className={styles.note}>原画面已有字幕，修改文字不能擦除画面中的字。重新生成字幕需要无硬字幕的原片。</p>}
     </>}
     {message && <p role="status">{message}</p>}

@@ -45,6 +45,7 @@ from .video_editing_contracts import (
     EditingExportConfirmation,
     EditingFilmReviewWrite,
     EditingSourceUploadResponse,
+    EditingActiveWorksResponse,
     EditingTaskCreate,
     EditingTaskResponse,
     EditingTemplateSample,
@@ -1018,6 +1019,108 @@ def list_editing_works(
                 }
             )
     return {"items": items, "next_before": None}
+
+
+ACTIVE_EDITING_STATUSES = frozenset({"queued", "running", "awaiting_review", "failed"})
+ACTIVE_PLANNING_STATUSES = frozenset({"queued", "running", "prepared", "failed"})
+ACTIVE_SCAN_LIMIT = 200
+
+
+def aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def project_title(project: VideoProjectRecord) -> str:
+    draft = (project.content or {}).get("draft") or {}
+    name = draft.get("name") if isinstance(draft, dict) else None
+    return name.strip() if isinstance(name, str) and name.strip() else "未命名项目"
+
+
+@router.get("/editing-works/active", response_model=EditingActiveWorksResponse)
+def list_active_editing_works(
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> dict[str, Any]:
+    """Each project's newest planning or editing task while it still needs attention.
+
+    Finished works stay in ``/editing-works``; this list covers what is still
+    running, waiting for the user to confirm a preview, or stopped with a
+    failure, so a refreshed page can lead back to the original task.
+    """
+    newest: dict[str, tuple[tuple[datetime, int], str, Any]] = {}
+    for rank, model in ((0, EditingPlanningTaskRecord), (1, EditingTaskRecord)):
+        rows = session.scalars(
+            select(model)
+            .where(
+                model.workspace_id == workspace.workspace_id,
+                model.owner_user_id == workspace.principal.user_id,
+            )
+            .order_by(model.created_at.desc(), model.id.desc())
+            .limit(ACTIVE_SCAN_LIMIT)
+        )
+        for row in rows:
+            key = (aware(row.created_at), rank)
+            current = newest.get(row.project_id)
+            if current is None or key > current[0]:
+                kind = "planning" if rank == 0 else "editing"
+                newest[row.project_id] = (key, kind, row)
+    active = [
+        (key, kind, row)
+        for key, kind, row in newest.values()
+        if not row.cancel_requested
+        and row.status
+        in (ACTIVE_PLANNING_STATUSES if kind == "planning" else ACTIVE_EDITING_STATUSES)
+    ]
+    active.sort(key=lambda item: (item[0], item[2].id), reverse=True)
+    active = active[:limit]
+    if not active:
+        return {"items": []}
+    projects = {
+        project.id: project
+        for project in session.scalars(
+            select(VideoProjectRecord).where(
+                VideoProjectRecord.id.in_([row.project_id for _, _, row in active]),
+                VideoProjectRecord.workspace_id == workspace.workspace_id,
+                VideoProjectRecord.owner_user_id == workspace.principal.user_id,
+            )
+        )
+    }
+    reviewing = [
+        row.id
+        for _, kind, row in active
+        if kind == "editing" and row.status == "awaiting_review"
+    ]
+    previews: dict[str, EditingArtifactRecord] = {}
+    if reviewing:
+        for record in session.scalars(
+            select(EditingArtifactRecord)
+            .where(
+                EditingArtifactRecord.task_id.in_(reviewing),
+                EditingArtifactRecord.role == "preview",
+            )
+            .order_by(EditingArtifactRecord.created_at, EditingArtifactRecord.id)
+        ):
+            previews[record.task_id] = record
+    items: list[dict[str, Any]] = []
+    for (created_at, _), kind, row in active:
+        project = projects.get(row.project_id)
+        if project is None:
+            continue
+        preview = previews.get(row.id)
+        visible = preview is not None and artifact_visible(row, preview)
+        items.append(
+            {
+                "kind": kind,
+                "task_id": row.id,
+                "project_id": row.project_id,
+                "project_title": project_title(project),
+                "status": row.status,
+                "created_at": created_at,
+                "preview": artifact_response(row, preview) if visible else None,
+            }
+        )
+    return {"items": items}
 
 
 @router.get(

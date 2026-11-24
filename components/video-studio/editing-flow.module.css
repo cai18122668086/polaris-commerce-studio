@@ -1,5 +1,5 @@
 /* The editing workspace follows the benchmark's three-column task flow. */
-.workbench{--edit-accent:#b80000;display:grid;grid-template-columns:240px minmax(0,1fr) 288px;grid-template-areas:"source gallery history" "source planning history" "native native history" "library library history" "action action history";gap:20px;align-items:start;width:100%;max-width:none!important;padding:0!important;border:0!important;background:transparent!important;color:#333}
+.workbench{--edit-accent:#b80000;display:grid;grid-template-columns:240px minmax(0,1fr) 288px;grid-template-areas:"steps steps steps" "source gallery history" "source planning history" "native native history" "library library history" "action action history";gap:20px;align-items:start;width:100%;max-width:none!important;padding:0!important;border:0!important;background:transparent!important;color:#333}
 .workbench [hidden]{display:none!important}
 .workbench button,.workbench a{border-radius:8px;font-size:12px}
 .workbench button{background:var(--edit-accent);color:white}
@@ -38,9 +38,9 @@
 .workbench>p[role="alert"]{grid-column:1/3}.filters{display:flex;gap:8px;flex-wrap:wrap}.filters button{background:#f4f4f4;color:#777;padding:7px 12px}.filters button[aria-pressed="true"]{background:#fff0f0;color:var(--edit-accent)}.templateSearch{width:100%;padding:10px 12px;background:#f7f7f8;border:1px solid #eee;border-radius:8px;font-size:12px}.libraryFilters{--edit-accent:#b80000;display:grid;gap:12px;margin-bottom:18px}.modalFooter{--edit-accent:#b80000;display:flex;justify-content:flex-end;padding:18px 0;position:sticky;bottom:0;background:white}.modalFooter button{padding:9px 24px;background:var(--edit-accent);color:white}
 @media(min-width:1500px){.workbench{grid-template-columns:280px minmax(0,1fr) 320px}.templateScroll{height:440px}.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:1120px){.workbench{grid-template-columns:220px minmax(0,1fr) 260px;gap:16px}.grid{gap:9px}.source .dropzone{min-height:330px}}
-@media(max-width:850px){.workbench{grid-template-columns:180px minmax(0,1fr);grid-template-areas:"source gallery" "source planning" "history history" "native native" "library library" "action action"}.history{position:static;max-height:none;min-height:260px;border:1px solid #eee}.source .dropzone{min-height:260px}.templateScroll{height:330px}}
-@media(max-width:540px){.workbench{grid-template-columns:minmax(0,1fr);grid-template-areas:"source" "gallery" "planning" "history" "native" "library" "action";gap:12px}.source .dropzone{min-height:180px;aspect-ratio:auto}.source video{max-height:290px!important}.step,.gallery{padding:14px}.templateScroll{height:350px}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.workbench>p[role="alert"]{grid-column:1}}
-.compact{grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"source" "gallery" "planning" "history" "native" "library" "action"!important}.compact .source .dropzone{min-height:160px;aspect-ratio:auto}.compact .history{position:static;max-height:none;min-height:260px}.compact .templateScroll{height:350px}
+@media(max-width:850px){.workbench{grid-template-columns:180px minmax(0,1fr);grid-template-areas:"steps steps" "source gallery" "source planning" "history history" "native native" "library library" "action action"}.history{position:static;max-height:none;min-height:260px;border:1px solid #eee}.source .dropzone{min-height:260px}.templateScroll{height:330px}}
+@media(max-width:540px){.workbench{grid-template-columns:minmax(0,1fr);grid-template-areas:"steps" "source" "gallery" "planning" "history" "native" "library" "action";gap:12px}.source .dropzone{min-height:180px;aspect-ratio:auto}.source video{max-height:290px!important}.step,.gallery{padding:14px}.templateScroll{height:350px}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.workbench>p[role="alert"]{grid-column:1}}
+.compact{grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"steps" "source" "gallery" "planning" "history" "native" "library" "action"!important}.compact .source .dropzone{min-height:160px;aspect-ratio:auto}.compact .history{position:static;max-height:none;min-height:260px}.compact .templateScroll{height:350px}
 
 .sourceChoices{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:12px}.sourceChoices button{background:#f8f8f8;color:#555;border:1px solid #eee;text-align:left;padding:0;overflow:hidden}.sourceChoices video{width:100%;aspect-ratio:9/16;object-fit:cover}.sourceChoices span{display:grid;gap:6px;padding:10px}.sourceChoices small{font-size:10px;color:#aaa}.sourceChoices b{font-size:12px}.source .changeSource{padding:8px;color:#888;background:#f7f7f7;border:1px solid #eee}.materialModes{display:flex;gap:18px;flex-wrap:wrap}.materialModes label{display:flex!important;align-items:center;gap:6px!important;font-size:12px!important;color:#555}.materialModes input{accent-color:#b80000;width:14px!important;height:14px!important}
 .sourceOption{display:grid;gap:10px;border-top:1px solid #eee;padding-top:16px}.sourceOption h3{margin:0;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}.sourceOption .optionPicker{background:#fafafa;color:#666;border:1px solid #eee;padding:12px;display:flex;justify-content:space-between;align-items:center;text-align:left}.musicChoices{display:grid;gap:12px;padding:12px 0}.musicChoices label{display:flex;align-items:center;gap:12px;padding:16px;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer}.musicChoices input{accent-color:#b80000;width:16px;height:16px;flex-shrink:0}.musicChoices span{display:grid;gap:4px}.musicChoices b{font-size:14px;font-weight:500}.musicChoices small{font-size:12px;color:#8a8a8a}.referenceScript{border-top:1px solid #eee;padding-top:16px}.referenceScript summary{font-size:13px;color:#444;font-weight:600}.referenceScript small{font-size:11px;color:#aaa;font-weight:400;margin-left:6px}.referenceScript label{display:none}.referenceScript textarea{display:block;width:100%;margin-top:14px;border:1px solid #e7e7e7;border-radius:8px;background:#fafafa;resize:vertical;font-size:12px;line-height:1.8;padding:12px;color:#444}.referenceScript p{font-size:11px;color:#aaa;line-height:1.7;margin:8px 0 0}
@@ -100,6 +100,46 @@
 @media(max-width:620px){.templateLibraryDialog .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.templatePreview{grid-template-columns:minmax(0,1fr);gap:18px}.previewScreen{width:min(260px,100%);justify-self:center}.previewDetails{gap:10px}.previewDetails ul{display:none}.modalFooter>span{max-width:38%;line-height:1.6}.templateLibraryDialog .chooseCard{padding:8px!important}.templateLibraryDialog{width:calc(100vw - 20px)!important}}
 @media(max-width:540px){.workbench{grid-template-columns:minmax(0,1fr)}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.templateScroll{height:390px}.chooseCard{padding:9px 7px!important}.chooseCard b{font-size:11px}.selectedSummary>span:last-child{display:none}}
 @media(prefers-reduced-motion:reduce){.card{transition:none}}
+
+/* 三步进度：① 选视频 → ② 选模板 → ③ 预览确认。细线分隔，当前步用实心序号，不用色块。 */
+.flowSteps{grid-area:steps;list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid #eee;border-radius:10px;background:white;overflow:hidden}
+.flowSteps li+li{border-left:1px solid #eee}
+.workbench .flowSteps button{width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;color:#222;text-align:left;border-radius:0;font-size:13px}
+.workbench .flowSteps button:hover{background:#fafafa}
+.flowSteps b{display:block;font-size:13px;font-weight:600}
+.flowSteps small{display:block;margin-top:1px;font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.flowSteps span:last-child{min-width:0}
+.flowIndex{flex:none;width:22px;height:22px;border-radius:50%;border:1px solid #ddd;display:grid;place-items:center;font-size:11px;color:#888;font-variant-numeric:tabular-nums}
+.flowSteps li[data-state=done] .flowIndex{border-color:#222;color:#222}
+.flowSteps li[data-state=current] .flowIndex{border-color:#222;background:#222;color:white}
+.flowSteps li[data-state=todo] b{color:#888}
+:global(html.theme-ember) .flowSteps{background:rgb(17 16 15 / 64%);border-color:rgb(255 255 255 / 9%);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}
+:global(html.theme-ember) .flowSteps li+li{border-left-color:rgb(255 255 255 / 9%)}
+:global(html.theme-ember) .workbench .flowSteps button{color:#edeae4}
+:global(html.theme-ember) .workbench .flowSteps button:hover{background:rgb(255 255 255 / 4%)}
+:global(html.theme-ember) .flowSteps small{color:rgb(237 234 228 / 52%)}
+:global(html.theme-ember) .flowIndex{border-color:rgb(255 255 255 / 18%);color:rgb(237 234 228 / 62%)}
+:global(html.theme-ember) .flowSteps li[data-state=done] .flowIndex{border-color:#f07a2b;color:#f07a2b}
+:global(html.theme-ember) .flowSteps li[data-state=current] .flowIndex{border-color:#edeae4;background:#edeae4;color:#0b0b0b}
+:global(html.theme-ember) .flowSteps li[data-state=todo] b{color:rgb(237 234 228 / 52%)}
+@media(max-width:540px){.flowSteps small{display:none}.workbench .flowSteps button{padding:10px 8px;gap:6px}.flowSteps b{font-size:12px}}
+
+/* ---------- 熔光手调（对齐 studio.html）：普通按钮透明加细线，主操作为接近白色的胶囊，
+   ember 只用于选中、进行中和少量强调；不用整块橙色按钮和彩色图标方块。 ---------- */
+:global(html.theme-ember) .workbench, :global(html.theme-ember) .templateLibraryDialog, :global(html.theme-ember) .templatePreviewDialog { --edit-accent: #f07a2b; color: #edeae4; }
+:global(html.theme-ember) .workbench button { background: rgb(255 255 255 / 4%); color: #edeae4; border: 1px solid rgb(255 255 255 / 12%); border-radius: 999px; }
+:global(html.theme-ember) .workbench button:hover:not(:disabled) { background: rgb(255 255 255 / 8%); border-color: rgb(255 255 255 / 22%); }
+:global(html.theme-ember) .workbench .uploadButton { background: transparent; color: #edeae4; border: 1px solid rgb(255 255 255 / 14%); border-radius: 999px; }
+:global(html.theme-ember) .source .dropzone { background: rgb(255 255 255 / 2%); border: 1px dashed rgb(255 255 255 / 16%); color: rgb(237 234 228 / 72%); border-radius: 16px; }
+:global(html.theme-ember) .source .dropzone:hover { border-color: rgb(240 122 43 / 55%); background: rgb(240 122 43 / 4%); }
+:global(html.theme-ember) .dropzone svg { background: none; color: rgb(237 234 228 / 70%); border: 1px solid rgb(255 255 255 / 14%); border-radius: 50%; }
+:global(html.theme-ember) .dropzone b { color: #edeae4; }
+:global(html.theme-ember) .dropzone small { color: rgb(237 234 228 / 50%); }
+:global(html.theme-ember) .actionBar button, :global(html.theme-ember) .useTemplate { background: #edeae4 !important; color: #0b0b0b !important; border-color: #edeae4; border-radius: 999px; font-weight: 600; }
+:global(html.theme-ember) .actionBar button:hover:not(:disabled), :global(html.theme-ember) .useTemplate:hover { background: #ffffff !important; box-shadow: 0 10px 30px -12px rgb(240 122 43 / 55%); }
+:global(html.theme-ember) .actionBar button:disabled { background: rgb(255 255 255 / 10%) !important; color: rgb(237 234 228 / 45%) !important; border-color: transparent; }
+:global(html.theme-ember) .selectionBadge { background: #edeae4; color: #0b0b0b; box-shadow: none; }
+:global(html.theme-ember) .emptyHistory { color: rgb(237 234 228 / 45%); }
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .workbench{--edit-accent:#fa682a;color:#e9e8e7}
@@ -210,4 +250,37 @@
 :global(.theme-ember) .previewDetails ul{color:#a19c95}
 :global(.theme-ember) .previewDetails small{color:#6a655e}
 :global(.theme-ember) .useTemplate{background:var(--edit-accent,#fa682a);color:#0f0e0d;border-radius:12px}
+:global(.theme-ember) .flowSteps{border:1px solid #1d1c1b;background:rgb(255 250 244 / 0.04);border-radius:14px}
+:global(.theme-ember) .flowSteps li+li{border-left:1px solid #1d1c1b}
+:global(.theme-ember) .workbench .flowSteps button{color:#e9e8e7}
+:global(.theme-ember) .workbench .flowSteps button:hover{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .flowSteps b{font-weight:500}
+:global(.theme-ember) .flowSteps small{color:#7c7873}
+:global(.theme-ember) .flowIndex{border:1px solid #2b2928;color:#7c7873}
+:global(.theme-ember) .flowSteps li[data-state=done] .flowIndex{border-color:#e9e8e7;color:#e9e8e7}
+:global(.theme-ember) .flowSteps li[data-state=current] .flowIndex{border-color:#e9e8e7;background:#e9e8e7;color:#0f0e0d}
+:global(.theme-ember) .flowSteps li[data-state=todo] b{color:#7c7873}
+:global(html.theme-ember) .flowSteps{background:rgb(0 0 0 / 0.8);border-color:rgb(15 14 13 / 0.09)}
+:global(html.theme-ember) .flowSteps li+li{border-left-color:rgb(15 14 13 / 0.09)}
+:global(html.theme-ember) .workbench .flowSteps button{color:#211f1d}
+:global(html.theme-ember) .workbench .flowSteps button:hover{background:rgb(255 250 244 / 0.002)}
+:global(html.theme-ember) .flowSteps small{color:rgb(33 31 29 / 0.52)}
+:global(html.theme-ember) .flowIndex{border-color:rgb(15 14 13 / 0.18);color:rgb(33 31 29 / 0.62)}
+:global(html.theme-ember) .flowSteps li[data-state=done] .flowIndex{border-color:#fa682a;color:#fa682a}
+:global(html.theme-ember) .flowSteps li[data-state=current] .flowIndex{border-color:#211f1d;background:rgb(255 250 244 / 0.06);color:#e9e8e7}
+:global(html.theme-ember) .flowSteps li[data-state=todo] b{color:rgb(33 31 29 / 0.52)}
+:global(html.theme-ember) .workbench,:global(html.theme-ember) .templateLibraryDialog,:global(html.theme-ember) .templatePreviewDialog{--edit-accent:#fa682a;color:#211f1d}
+:global(html.theme-ember) .workbench button{background:rgb(255 250 244 / 0.002);color:#211f1d;border:1px solid rgb(15 14 13 / 0.12)}
+:global(html.theme-ember) .workbench button:hover:not(:disabled){background:rgb(255 250 244 / 0.003);border-color:rgb(15 14 13 / 0.22)}
+:global(html.theme-ember) .workbench .uploadButton{color:#211f1d;border:1px solid rgb(15 14 13 / 0.14)}
+:global(html.theme-ember) .source .dropzone{background:rgb(255 250 244 / 0.001);border:1px dashed rgb(15 14 13 / 0.16);color:rgb(33 31 29 / 0.72);border-radius:22px}
+:global(html.theme-ember) .source .dropzone:hover{border-color:rgb(250 104 42 / 0.55);background:rgb(250 104 42 / 0.04)}
+:global(html.theme-ember) .dropzone svg{color:rgb(33 31 29 / 0.7);border:1px solid rgb(15 14 13 / 0.14)}
+:global(html.theme-ember) .dropzone b{color:#211f1d}
+:global(html.theme-ember) .dropzone small{color:rgb(33 31 29 / 0.5)}
+:global(html.theme-ember) .actionBar button,:global(html.theme-ember) .useTemplate{background:rgb(255 250 244 / 0.06) !important;color:#e9e8e7 !important;border-color:#211f1d;font-weight:500}
+:global(html.theme-ember) .actionBar button:hover:not(:disabled),:global(html.theme-ember) .useTemplate:hover{background:rgb(255 250 244 / 0.04) !important;box-shadow:0 10px 30px -12px rgb(0 0 0 / 0.99)}
+:global(html.theme-ember) .actionBar button:disabled{background:rgb(255 250 244 / 0.004) !important;color:rgb(33 31 29 / 0.45) !important}
+:global(html.theme-ember) .selectionBadge{background:rgb(255 250 244 / 0.06);color:#e9e8e7}
+:global(html.theme-ember) .emptyHistory{color:rgb(33 31 29 / 0.45)}
 /* ember-dark:end */

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 import json
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 import httpx
@@ -22,6 +23,8 @@ MEDIA_HOSTS = {
     "res.chanjing.cc",
     "cdn.jihuo.pro",
     "sowa.oss-cn-beijing.aliyuncs.com",
+    # 全域数字人的语音合成结果现存放在腾讯云 COS（2026-11 起）
+    "rh-images-1252422369.cos.ap-beijing.myqcloud.com",
     "openpt1.oss-cn-shanghai.aliyuncs.com",
 }
 
@@ -36,6 +39,31 @@ def _yiyuan_model_unavailable(data: dict[str, Any]) -> bool:
         return False
     error = error_body.get("error") if isinstance(error_body, dict) else None
     return isinstance(error, dict) and error.get("code") == "model_not_found"
+
+
+_OSS_REGIONAL = re.compile(r"^(?P<bucket>[a-z0-9-]+)\.oss-cn-[a-z0-9-]+\.aliyuncs\.com$")
+_COS_REGIONAL = re.compile(r"^(?P<bucket>[a-z0-9-]+)\.cos\.ap-[a-z0-9-]+\.myqcloud\.com$")
+
+
+def routed_media_url(url: str, routes: dict[str, str]) -> str:
+    """Send an already-validated OSS URL through the same bucket's acceleration endpoint.
+
+    Only `<bucket>.oss-cn-<region>.aliyuncs.com -> <bucket>.oss-accelerate.aliyuncs.com` and
+    `<bucket>.cos.ap-<region>.myqcloud.com -> <bucket>.cos.accelerate.myqcloud.com` are honoured; any other configured target is ignored, so the setting can never
+    point downloads at an arbitrary host. Path, query and signature stay unchanged.
+    """
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    target = routes.get(host)
+    oss, cos = _OSS_REGIONAL.match(host), _COS_REGIONAL.match(host)
+    allowed = (
+        oss["bucket"] + ".oss-accelerate.aliyuncs.com" if oss
+        else cos["bucket"] + ".cos.accelerate.myqcloud.com" if cos
+        else None
+    )
+    if not target or target != allowed:
+        return url
+    return urlunsplit((parts.scheme, target, parts.path, parts.query, parts.fragment))
 
 
 def safe_media_url(url: str, *, vendor: str | None = None) -> str:
@@ -236,6 +264,7 @@ class VideoProviders:
         vendor: str | None = None,
     ) -> None:
         safe_media_url(url, vendor=vendor)
+        url = routed_media_url(url, self.settings.video_media_host_routes)
         headers = (
             {"Authorization": "Bearer " + self.settings.wuye_api_key.get_secret_value()}
             if vendor == "wuye"
@@ -256,8 +285,11 @@ class VideoProviders:
             for _ in range(4):
                 with client.stream("GET", url, headers=headers) as response:
                     if response.is_redirect:
-                        url = safe_media_url(
-                            str(response.headers.get("location", "")), vendor=vendor
+                        url = routed_media_url(
+                            safe_media_url(
+                                str(response.headers.get("location", "")), vendor=vendor
+                            ),
+                            self.settings.video_media_host_routes,
                         )
                         headers = {}  # Never forward credentials to a media host.
                         continue

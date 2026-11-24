@@ -34,6 +34,7 @@ from . import detail_fast, detail_fast_runtime, refined_detail
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
 from .archive_response import ArchiveResponse, close_archive, open_archive
 from .aurora_execution_modes import is_parallel_aurora_mode, is_v20_aurora_mode
+from .admin_auth import is_admin
 from .auth import (
     Principal,
     WorkspaceDependency,
@@ -493,11 +494,17 @@ def current_user(principal: PrincipalDependency) -> CurrentUserResponse:
     "/video-studio/access", response_model=VideoStudioAccessResponse, tags=["identity"]
 )
 def video_studio_access(
-    principal: VideoStudioDependency, response: Response
+    principal: VideoStudioDependency,
+    request: Request,
+    response: Response,
+    session: SessionDependency,
 ) -> VideoStudioAccessResponse:
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["Vary"] = "Cookie"
-    return VideoStudioAccessResponse(user_id=principal.user_id)
+    # Review receipts, attempt counts and diagnostics are operator tools; the
+    # page shows them only to platform administrators.
+    internal = is_admin(principal, session, request.app.state.settings)
+    return VideoStudioAccessResponse(user_id=principal.user_id, internal_tools=internal)
 
 
 def runtime_status_response(

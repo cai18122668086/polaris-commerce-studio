@@ -42,7 +42,7 @@ function Candidate({ item, onSelect, blocked, singleBusy, checked, onCheck, batc
   </li>;
 }
 
-export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, onSearch, onNext, onResume, onUse, onExtract }: {
+export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, onSearch, onNext, onResume, onUse, onExtract, onSkip }: {
   workspaceId: string;
   jobs: BenchmarkJob[];
   extractions: BenchmarkExtractionJob[];
@@ -52,6 +52,7 @@ export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, o
   onResume: (id: string) => Promise<void>;
   onUse: (item: BenchmarkItem, page: BenchmarkJob) => void;
   onExtract: (items: BenchmarkExtractionPick[]) => Promise<void>;
+  onSkip?: () => void;
 }) {
   const [config, setConfig] = useState<{ enabled: boolean; can_extract: boolean; can_save_reference: boolean }>();
   const [keyword, setKeyword] = useState("");
@@ -147,10 +148,10 @@ export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, o
         <option value="unlimited">不限</option><option value="one_day">最近 24 小时</option>
         <option value="one_week">最近 7 天</option><option value="half_year">最近半年</option>
       </select></label>
-      <small>每页单独提交一次供应商付费请求。</small>
+      <small>每搜一页单独计费。</small>
       <button type="submit" disabled={pending || running || sameSearchUnknown || !keyword.trim()}>搜索对标（付费）</button>
-      {sameSearchUnknown && <p role="alert">同条件的搜索回执待核对，请保留原任务。</p>}
-    </form> : <p>对标搜索服务暂未启用，仍可使用公开抖音链接提取原文。</p>}
+      {sameSearchUnknown && <p role="status">正在确认上次相同条件的搜索，不会重复扣费。</p>}
+    </form> : <div><p>按关键词找对标暂时用不了。手上已有对标作品的链接，可以直接提取原文。</p>{onSkip && <button type="button" onClick={onSkip}>改用链接提取</button>}</div>}
     {roots.length > 0 && <label>已提交的搜索<select aria-label="已提交的搜索" value={root?.id || ""} onChange={event => setSelected(event.target.value)}>
       {roots.map(job => <option key={job.id} value={job.id}>{job.result.keyword} · {job.result.captured_at ? timestamp.format(new Date(job.result.captured_at)) : "待完成"}</option>)}
     </select></label>}
@@ -165,7 +166,7 @@ export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, o
     {pages.map(page => <section className={styles.result} key={page.id} aria-label={"搜索结果第 " + page.result.page + " 页"}>
       <strong>第 {page.result.page} 页</strong>
       {["queued", "running"].includes(page.status) && <p role="status">正在查询公开作品…</p>}
-      {page.status === "unknown" && <p role="alert">搜索回执待核对，请保留原任务。</p>}
+      {page.status === "unknown" && <p role="status">正在确认这页搜索的结果，不会重复扣费。</p>}
       {page.status === "failed" && <p role="alert">搜索未完成，请核对服务状态。</p>}
       {page.can_resume && <button type="button" disabled={!enabled || pending} onClick={() => void run(() => onResume(page.id))}>继续原搜索任务</button>}
       {page.status === "completed" && <>

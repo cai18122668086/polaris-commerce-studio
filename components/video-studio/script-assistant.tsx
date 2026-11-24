@@ -25,6 +25,8 @@ export function ScriptAssistant(props: {
   onUseResult: () => void; onUseOriginal: () => void; onCopy: (text: string) => void;
   workflow?: ReactNode;
   benchmark?: ReactNode;
+  /** Hide the tool switcher when a page drives the mode itself (爆款文案 steps). */
+  hideTools?: boolean;
 }) {
   const tool = tools.find(item => item.id === props.mode)!;
   const Icon = tool.icon;
@@ -34,7 +36,7 @@ export function ScriptAssistant(props: {
   const canSubmit = props.mode === "create" ? !!props.prompt.trim() : props.mode === "extract" ? !!props.sourceLink.trim() : !!props.sourceText.trim();
   const result = props.mode === "extract" ? props.sourceText : props.result;
 
-  const navigation = <div className={styles.assistantTools} role="group" aria-label="文案助手工具">{tools.map(item => <button key={item.id} type="button" aria-pressed={props.mode === item.id} onClick={() => props.onModeChange(item.id)}><item.icon size={16} />{item.label}</button>)}</div>;
+  const navigation = props.hideTools ? null : <div className={styles.assistantTools} role="group" aria-label="文案助手工具">{tools.map(item => <button key={item.id} type="button" aria-pressed={props.mode === item.id} onClick={() => props.onModeChange(item.id)}><item.icon size={16} />{item.label}</button>)}</div>;
   if (props.mode === "benchmark") return <div className={styles.assistantPanel}>
     {navigation}
     <div className={styles.assistantScroll}>{props.benchmark}</div>

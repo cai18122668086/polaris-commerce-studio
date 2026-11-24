@@ -31,7 +31,8 @@ const requestMetadata: Middleware = {
       headers.set("X-User-Id", LOCAL_DEV_AUTH_USER_ID);
     }
     return new Request(request, {
-      credentials: isLocalDevelopmentAuthEnabled() ? "omit" : "include",
+      // 开发登录模式：同源请求带上浏览器已有的凭据（公网预览网关的登录），跨域请求仍不带。
+      credentials: isLocalDevelopmentAuthEnabled() ? "same-origin" : "include",
       headers,
     });
   },

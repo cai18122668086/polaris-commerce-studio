@@ -535,7 +535,7 @@ def test_episode_uses_actual_word_bounds_and_original_selection_protocol(tmp_pat
     assert sha256(package / "effect.json") == source
 
 
-@pytest.mark.parametrize("music_edit", [None, "lower", "off"])
+@pytest.mark.parametrize("music_edit", [None, "lower", "raise", "off", "mute"])
 def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(
     tmp_path, music_edit
 ):
@@ -600,7 +600,9 @@ def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(
             },
         }
     )
-    if music_edit:
+    if music_edit == "mute":
+        options["native_edits"] = {"sound_muted_beat_ids": ["effect"]}
+    elif music_edit:
         options["native_edits"] = {
             "music": music_edit,
             "source_only_beat_ids": ["effect"] if music_edit == "off" else [],
@@ -614,6 +616,19 @@ def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(
     assert read_json(root / "episode-recipes.json") == frozen_mix
     assert read_json(root / "semantic-plan.json") == frozen_semantic
     evidence = read_json(root / "audio-plan.json")
+    if music_edit == "mute":
+        # 只关这一段的画面音效：动效画面、字幕和配乐都保留。
+        assert not episode["fx"]
+        assert episode["music"][0]["gain_db"] == -30
+        assert evidence["removed_segment_cues"] == [
+            {
+                "beat_id": "effect",
+                "asset_id": "original-click",
+                "event_path": "/events/enter_start",
+            }
+        ]
+        assert episode["shots"][0]["group_id"] != "Z-M00"
+        return
     if music_edit == "off":
         assert not episode["music"] and not episode["fx"]
         assert evidence["removed_segment_cues"] == [
@@ -641,7 +656,9 @@ def test_native_mix_uses_measured_action_and_preserves_legacy_recipe_bytes(
     }
     assert episode["music"][0]["start_seconds"] == 0.1
     assert episode["music"][0]["envelope"] == [{"seconds": 0.5, "gain_db": -4}]
-    assert episode["music"][0]["gain_db"] == (-36 if music_edit else -30)
+    assert episode["music"][0]["gain_db"] == {None: -30, "lower": -36, "raise": -27}[
+        music_edit
+    ]
     assert evidence["fx"][0]["asset_sha256"] == click["sha256"]
 
 

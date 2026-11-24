@@ -100,6 +100,11 @@ class Settings(BaseSettings):
     video_skyhuman_auto_register: bool = False
     # Exact prepared-model IDs only: never substitute an unrelated avatar.
     video_skyhuman_avatar_map: dict[str, str] = Field(default_factory=dict)
+    # 媒体下载的主机改道（默认不改）。只允许同一 OSS 存储桶从地域入口改到全球加速入口，
+    # 用于部署机器连不上某个地域 OSS 时，例如 {"sowa.oss-cn-beijing.aliyuncs.com": "sowa.oss-accelerate.aliyuncs.com"}。
+    video_media_host_routes: dict[str, str] = Field(default_factory=dict)
+    # 视频各操作的积分单价（POLARIS_VIDEO_CREDIT_PRICES，JSON）。未配置的操作在页面上显示「价格待定」，不编造数字。
+    video_credit_prices: dict[str, int] = Field(default_factory=dict)
     video_lipsync_long_wait_seconds: float = Field(default=600, ge=30, le=1800)
     video_lipsync_poll_window_seconds: float = Field(default=900, ge=30, le=3600)
     video_lipsync_breaker_seconds: float = Field(default=1800, ge=0, le=86400)

@@ -49,6 +49,12 @@
 .materialTiles details p { font-size:11px; overflow-wrap:anywhere; }
 .panel .materialTiles a { color:#704795; background:transparent; padding:0; font-size:11px; }
 
+/* 熔光手调：剪辑记录里的链接是文字链接，不是按钮；面板按钮为细线胶囊。 */
+:global(html.theme-ember) .panel button { background: rgb(255 255 255 / 4%); color: #edeae4; border: 1px solid rgb(255 255 255 / 12%); border-radius: 999px; }
+:global(html.theme-ember) .panel button:hover:not(:disabled) { background: rgb(255 255 255 / 8%); border-color: rgb(255 255 255 / 22%); }
+:global(html.theme-ember) .panel a { background: none; border: 0; padding: 0; color: #edeae4; text-decoration: underline; text-decoration-color: rgb(237 234 228 / 30%); text-underline-offset: 3px; }
+:global(html.theme-ember) .panel a:hover { text-decoration-color: #f07a2b; }
+
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .panel{background:rgb(255 250 244 / 0.04);border:1px solid #22201e;color:#e9e8e6}
 :global(.theme-ember) .intro p,:global(.theme-ember) .note{color:#99938c}
@@ -78,4 +84,8 @@
 :global(.theme-ember) .materialTiles li:has(input:checked){border-color:#777169;background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .materialTiles details{color:#79736b}
 :global(.theme-ember) .panel .materialTiles a{color:#b5b1ac}
+:global(html.theme-ember) .panel button{background:rgb(255 250 244 / 0.002);color:#211f1d;border:1px solid rgb(15 14 13 / 0.12)}
+:global(html.theme-ember) .panel button:hover:not(:disabled){background:rgb(255 250 244 / 0.003);border-color:rgb(15 14 13 / 0.22)}
+:global(html.theme-ember) .panel a{color:#211f1d;text-decoration-color:rgb(33 31 29 / 0.3)}
+:global(html.theme-ember) .panel a:hover{text-decoration-color:#fa682a}
 /* ember-dark:end */

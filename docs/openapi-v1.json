@@ -4950,6 +4950,85 @@
         "title": "EcommerceLoginState",
         "type": "string"
       },
+      "EditingActiveWorkResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "planning",
+              "editing"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingArtifactResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_title": {
+            "title": "Project Title",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "prepared",
+              "awaiting_review",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "task_id",
+          "project_id",
+          "project_title",
+          "status",
+          "created_at",
+          "preview"
+        ],
+        "title": "EditingActiveWorkResponse",
+        "type": "object"
+      },
+      "EditingActiveWorksResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EditingActiveWorkResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EditingActiveWorksResponse",
+        "type": "object"
+      },
       "EditingAppleCreativeOptions": {
         "additionalProperties": false,
         "properties": {
@@ -6026,6 +6105,11 @@
             "title": "Relation",
             "type": "string"
           },
+          "sound_mute_available": {
+            "default": false,
+            "title": "Sound Mute Available",
+            "type": "boolean"
+          },
           "source_only_available": {
             "title": "Source Only Available",
             "type": "boolean"
@@ -6596,6 +6680,7 @@
                 "enum": [
                   "template",
                   "lower",
+                  "raise",
                   "off"
                 ],
                 "type": "string"
@@ -10331,6 +10416,7 @@
               {
                 "enum": [
                   "lower",
+                  "raise",
                   "off"
                 ],
                 "type": "string"
@@ -10352,6 +10438,16 @@
               }
             ],
             "title": "Music Track Id"
+          },
+          "sound_muted_beat_ids": {
+            "items": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 120,
+            "title": "Sound Muted Beat Ids",
+            "type": "array"
           },
           "source_only_beat_ids": {
             "items": {
@@ -13031,6 +13127,67 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VideoCreditPrice": {
+        "properties": {
+          "action": {
+            "enum": [
+              "lipsync",
+              "avatar_motion",
+              "avatar_register",
+              "voice_clone",
+              "editing_planning",
+              "editing_render",
+              "benchmark_search",
+              "writing_generate"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "credits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits"
+          }
+        },
+        "required": [
+          "action",
+          "credits"
+        ],
+        "title": "VideoCreditPrice",
+        "type": "object"
+      },
+      "VideoCreditPricesResponse": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/VideoCreditPrice"
+            },
+            "title": "Prices",
+            "type": "array"
+          },
+          "pricing_version": {
+            "title": "Pricing Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pricing_version",
+          "configured",
+          "prices"
+        ],
+        "title": "VideoCreditPricesResponse",
+        "type": "object"
+      },
       "VideoDraft": {
         "additionalProperties": false,
         "properties": {
@@ -13443,6 +13600,11 @@
             "const": true,
             "default": true,
             "title": "Allowed",
+            "type": "boolean"
+          },
+          "internal_tools": {
+            "default": false,
+            "title": "Internal Tools",
             "type": "boolean"
           },
           "user_id": {
@@ -22077,6 +22239,54 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/credit-prices": {
+      "get": {
+        "description": "Configured credit price for each paid video action; unpriced actions return null.",
+        "operationId": "credit_prices_api_v1_video_studio_workspaces__workspace_id__credit_prices_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoCreditPricesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Credit Prices",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-library": {
       "get": {
         "operationId": "library_api_v1_video_studio_workspaces__workspace_id__editing_library_get",
@@ -24053,6 +24263,66 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-works/active": {
+      "get": {
+        "description": "Each project's newest planning or editing task while it still needs attention.\n\nFinished works stay in ``/editing-works``; this list covers what is still\nrunning, waiting for the user to confirm a preview, or stopped with a\nfailure, so a refreshed page can lead back to the original task.",
+        "operationId": "list_active_editing_works_api_v1_video_studio_workspaces__workspace_id__editing_works_active_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingActiveWorksResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Active Editing Works",
+        "tags": [
+          "video-editing-tasks"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/generation-prices": {
       "get": {
         "operationId": "prices_api_v1_video_studio_workspaces__workspace_id__generation_prices_get",
@@ -24099,6 +24369,66 @@
           }
         ],
         "summary": "Prices",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-requests/{request_id}": {
+      "get": {
+        "description": "Look up a submission by its idempotency key without creating anything.\n\nThe page calls this when a confirmed submission's response was lost. It\nreplaces asking the user to \"query the original submission\": a found job is\nshown as-is, and an absent one means the request never reached the server,\nso nothing was charged. It never re-sends a paid request.",
+        "operationId": "generation_request_api_v1_video_studio_workspaces__workspace_id__generation_requests__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Generation Request Api V1 Video Studio Workspaces  Workspace Id  Generation Requests  Request Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Generation Request",
         "tags": [
           "video-generation"
         ]

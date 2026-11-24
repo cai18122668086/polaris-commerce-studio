@@ -890,3 +890,76 @@ def test_editing_works_search_cursor_and_owner_scope(video, tmp_path):
     unscoped = client.get(works_url)
     assert unscoped.status_code in {403, 404} or unscoped.json()["items"] == []
     assert client.get(works_url, params={"before": high}).status_code in {403, 404}
+
+
+def test_active_works_lead_back_to_unfinished_tasks(video, tmp_path):
+    client, _, ws, _, _, project, source = setup_source(video, tmp_path)
+    factory = client.app.state.session_factory
+    tasks_url = base(ws) + "/editing-tasks"
+    active_url = base(ws) + "/editing-works/active"
+    works_url = base(ws) + "/editing-works"
+    assert client.get(active_url).json() == {"items": []}
+
+    def submit(created_at):
+        tid = client.post(
+            tasks_url, json={"request_id": str(uuid4()), "source_id": source}
+        ).json()["id"]
+        with factory() as session:
+            session.get(EditingTaskRecord, tid).created_at = created_at
+            session.commit()
+        return tid
+
+    first = submit(datetime(2026, 11, 20, 8, tzinfo=UTC))
+    queued, = client.get(active_url).json()["items"]
+    assert (queued["kind"], queued["task_id"], queued["project_id"]) == (
+        "editing", first, project,
+    )
+    assert (queued["status"], queued["preview"]) == ("queued", None)
+    assert "演示" in queued["project_title"]
+
+    preview = tmp_path / "preview.mp4"
+    preview.write_bytes(b"preview-bytes")
+    preview_id = str(uuid4())
+    with factory() as session:
+        task = session.get(EditingTaskRecord, first)
+        task.status, task.stage = "awaiting_review", "preview_ready"
+        session.add(
+            EditingArtifactRecord(
+                id=preview_id,
+                task_id=first,
+                role="preview",
+                path=str(preview),
+                mime="video/mp4",
+                bytes=preview.stat().st_size,
+                sha256=sha256(preview),
+                duration_ms=2000,
+            )
+        )
+        session.commit()
+    waiting, = client.get(active_url).json()["items"]
+    assert waiting["status"] == "awaiting_review"
+    assert waiting["preview"]["id"] == preview_id
+    assert waiting["preview"]["url"].endswith(f"/editing-tasks/{first}/artifacts/{preview_id}")
+    assert client.get(works_url).json()["items"] == []
+
+    second = submit(datetime(2026, 11, 20, 9, tzinfo=UTC))
+    with factory() as session:
+        session.get(EditingTaskRecord, second).status = "failed"
+        session.commit()
+    failed, = client.get(active_url).json()["items"]
+    assert (failed["task_id"], failed["status"]) == (second, "failed")
+
+    third = submit(datetime(2026, 11, 20, 10, tzinfo=UTC))
+    with factory() as session:
+        row = session.get(EditingTaskRecord, third)
+        row.status = row.stage = "completed"
+        session.commit()
+    assert client.get(active_url).json() == {"items": []}
+
+    fourth = submit(datetime(2026, 11, 20, 11, tzinfo=UTC))
+    with factory() as session:
+        row = session.get(EditingTaskRecord, fourth)
+        row.status, row.cancel_requested = "running", True
+        session.commit()
+    assert client.get(active_url).json() == {"items": []}
+

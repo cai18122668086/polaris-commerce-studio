@@ -1,5 +1,6 @@
 "use client";
 
+import { CostLine } from "./studio-content";
 import { ArrowDownToLine, ArrowRight, AudioLines, Check, Clock3, PackageOpen } from "lucide-react";
 import type { GenerationJob } from "@/features/video-studio/library";
 import { Dialog } from "./studio-primitives";
@@ -9,8 +10,8 @@ import { Notice } from "./studio-content";
 import base from "./video-studio.module.css";
 import styles from "./generation-details.module.css";
 
-export function GenerationPreview({ job, resuming, submitting, onClose, onResume, onApprove, onReject, onCopy, onUseAvatar, onEdit }: {
-  job:GenerationJob; resuming:boolean; submitting:boolean; onClose:()=>void; onResume:()=>void; onApprove:()=>void; onReject:()=>void; onCopy:(text:string)=>void; onUseAvatar?:()=>void; onEdit?:()=>void;
+export function GenerationPreview({ job, resuming, submitting, onClose, onResume, onApprove, onReject, onCopy, onUseAvatar, onEdit, approveCost }: {
+  job:GenerationJob; resuming:boolean; submitting:boolean; onClose:()=>void; onResume:()=>void; onApprove:()=>void; onReject:()=>void; onCopy:(text:string)=>void; onUseAvatar?:()=>void; onEdit?:()=>void; approveCost?: { text: string; insufficient: boolean };
 }) {
   return <Dialog title={job.kind === "h3_template" ? "形象预览" : "口播视频"} onClose={onClose}>
     {job.video_url ? <video controls playsInline preload="metadata" src={job.video_url} className={styles.media} /> : <GenerationProgress job={job} />}
@@ -25,6 +26,7 @@ export function GenerationPreview({ job, resuming, submitting, onClose, onResume
       {job.audio_url && <a className={base.outlineButton} href={job.audio_url} download><AudioLines size={14} />下载配音</a>}
       {job.handoff_url && <a className={base.outlineButton} href={job.handoff_url} download title="文案、配音与原片；字幕待音文对齐"><PackageOpen size={14} />剪辑材料</a>}
       {job.can_resume && <GenerationResumeButton job={job} className={base.primaryButton} resuming={resuming} onResume={onResume} />}
+      {job.status === "awaiting_review" && <CostLine note={approveCost} />}
       {job.status === "awaiting_review" && <><button type="button" className={base.outlineButton} disabled={submitting} onClick={onReject}>不加入形象库</button><button type="button" className={base.primaryButton} disabled={submitting} onClick={onApprove}><Check size={14} />确认加入（计费）</button></>}
       {job.video_url && <a className={base.outlineButton} href={job.video_url} download><ArrowDownToLine size={14} />下载视频</a>}
       {job.status === "completed" && job.kind === "h3_template" && onUseAvatar && <button type="button" className={base.primaryButton} onClick={onUseAvatar}>使用此形象写口播<ArrowRight size={14} /></button>}

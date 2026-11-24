@@ -46,6 +46,7 @@ from .video_editing_planner import validate_plan
 from .video_editing_render_edits import (
     available_render_edits,
     continuous_overlay_groups,
+    sound_cue_beats,
     validate_render_edits,
 )
 from .video_editing_task_models import (
@@ -147,6 +148,7 @@ def plan_response(
             settings.video_editing_native_bindings_file,
         )
     entries = row.recipes["entries"]
+    sound_beats = sound_cue_beats(row.recipes)
     return {
         "id": row.id,
         "project_id": row.project_id,
@@ -162,6 +164,7 @@ def plan_response(
                 **detail,
                 "id": beat["id"],
                 "source_only_available": beat["id"] in editable,
+                "sound_mute_available": beat["id"] in sound_beats,
                 "dependency_blocker": blocked[1]
                 if (
                     blocked := dependency_preflight.blocker(

@@ -7,7 +7,7 @@ export const metadata = {
   description: "极光商绘视频创作空间：文案、声音与数字人口播。",
 };
 
-const screens = new Set(["create", "avatars", "voices", "library", "works", "editing"]);
+const screens = new Set(["writing", "create", "avatars", "voices", "library", "works", "editing"]);
 
 export default async function VideoStudioPage({ params }: { params: Promise<{ screen?: string[] }> }) {
   const { screen = [] } = await params;

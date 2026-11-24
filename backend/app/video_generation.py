@@ -50,6 +50,7 @@ from .video_lipsync import run_lipsync
 from .video_providers import YIYUAN_HOST, VideoProviders, safe_media_url
 from .video_stage_timing import transition
 from .video_studio_models import VideoProjectRecord
+from .video_credit_prices import VideoCreditPricesResponse, price_list
 from .video_studio_routes import VideoWorkspace, append_version, scope
 from .video_studio_schemas import StrictVideoModel
 from .video_template_media import prepare_forward, video_info
@@ -1341,6 +1342,33 @@ def editing_handoff(
     return export_bundle(
         own_job(session, workspace, job_id), request.app.state.settings
     )
+
+
+@router.get("/credit-prices", response_model=VideoCreditPricesResponse)
+def credit_prices(request: Request, workspace: VideoWorkspace) -> VideoCreditPricesResponse:
+    """Configured credit price for each paid video action; unpriced actions return null."""
+    return price_list(request.app.state.settings.video_credit_prices)
+
+
+@router.get("/generation-requests/{request_id}")
+def generation_request(
+    request_id: UUID, workspace: VideoWorkspace, session: SessionDependency
+) -> dict[str, Any]:
+    """Look up a submission by its idempotency key without creating anything.
+
+    The page calls this when a confirmed submission's response was lost. It
+    replaces asking the user to "query the original submission": a found job is
+    shown as-is, and an absent one means the request never reached the server,
+    so nothing was charged. It never re-sends a paid request.
+    """
+    row = session.scalar(
+        select(VideoGenerationRecord).where(
+            VideoGenerationRecord.workspace_id == workspace.workspace_id,
+            VideoGenerationRecord.owner_user_id == workspace.principal.user_id,
+            VideoGenerationRecord.request_id == str(request_id),
+        )
+    )
+    return {"received": row is not None, "job": job_response(row) if row else None}
 
 
 @router.get("/generation-tasks/{job_id}/{kind}")

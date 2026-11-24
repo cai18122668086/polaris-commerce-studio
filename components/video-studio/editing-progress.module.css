@@ -1,0 +1,22 @@
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:8px 0 4px;padding:0;list-style:none;font-size:12px;color:#8a8d93}
+.steps li{display:grid;gap:6px;min-width:0}
+.steps li::before{content:"";display:block;height:2px;border-radius:1px;background:#e7e7e7}
+.steps li[data-state="done"]::before{background:#292c32}
+.steps li[data-state="current"]::before{background:var(--edit-accent,#b5121b)}
+.steps li[data-state="current"]{color:#292c32;font-weight:600}
+.steps li[data-state="done"]{color:#4a4d53}
+.steps[data-outcome="failed"] li[data-state="current"]::before{background:#c2410c}
+.steps[data-outcome="cancelled"] li[data-state="current"]::before{background:#b8b8b8}
+.status{margin:2px 0 0;font-size:12px;color:#6b6e74}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .steps{color:#79736b}
+:global(.theme-ember) .steps li::before{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .steps li[data-state="done"]::before{background:#e9e8e6}
+:global(.theme-ember) .steps li[data-state="current"]::before{background:var(--edit-accent,#fa682a)}
+:global(.theme-ember) .steps li[data-state="current"]{color:#e9e8e6;font-weight:500}
+:global(.theme-ember) .steps li[data-state="done"]{color:#c6c3bf}
+:global(.theme-ember) .steps[data-outcome="failed"] li[data-state="current"]::before{background:#fa682a}
+:global(.theme-ember) .steps[data-outcome="cancelled"] li[data-state="current"]::before{background:#4c4946}
+:global(.theme-ember) .status{color:#9c968f}
+/* ember-dark:end */

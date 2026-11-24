@@ -60,7 +60,9 @@ def _process_runner() -> MockTaskRunner:
 def soft_time_limit(task: Any) -> float | None:
     """Per-message soft limit (set by the dispatcher) or the task default."""
 
-    limits = getattr(getattr(task, "request", None), "timelimit", None) or ()
+    limits: tuple[Any, ...] = tuple(
+        getattr(getattr(task, "request", None), "timelimit", None) or ()
+    )
     soft = limits[1] if len(limits) > 1 else None
     return soft or getattr(task, "soft_time_limit", None)
 

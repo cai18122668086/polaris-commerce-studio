@@ -228,10 +228,11 @@ def process(
                 # Release this session's connection for the whole poll; each
                 # heartbeat uses its own short session.
                 session.commit()
-                data = poll_extract(
+                polled = poll_extract(
                     factory, task_id, row.provider_task_id or "", service
                 )
-                if data is not None:
+                if polled is not None:
+                    data = polled
                     status = data.get("status")
                     if status == "succeeded":
                         checkpoint(

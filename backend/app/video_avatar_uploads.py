@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .models import utc_now
@@ -226,6 +227,15 @@ async def create_avatar(
         session.flush()
         session.add(job)
         try:
+            if kind == "image":
+                video_credits.hold(
+                    session,
+                    settings,
+                    workspace.workspace_id,
+                    "avatar_motion",
+                    "video_generation",
+                    job.id,
+                )
             session.commit()
         except IntegrityError:
             session.rollback()

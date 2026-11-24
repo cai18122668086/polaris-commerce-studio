@@ -1277,15 +1277,35 @@ class CreditReservationRecord(TimestampMixin, Base):
             name="fk_credit_reservations_workspace_job",
             ondelete="CASCADE",
         ),
+        # Image holds belong to a job; video holds name their task instead.
+        CheckConstraint(
+            "job_id IS NOT NULL OR (owner_type IS NOT NULL AND owner_id IS NOT NULL"
+            " AND charge_action IS NOT NULL)",
+            name="ck_credit_reservations_owner",
+        ),
+        # At most one live hold per video task and billed action.
+        Index(
+            "uq_credit_reservations_active_owner",
+            "owner_type",
+            "owner_id",
+            "charge_action",
+            unique=True,
+            postgresql_where=text("status = 'active' AND owner_type IS NOT NULL"),
+            sqlite_where=text("status = 'active' AND owner_type IS NOT NULL"),
+        ),
+        Index("ix_credit_reservations_owner", "owner_type", "owner_id"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
     )
-    job_id: Mapped[str] = mapped_column(
-        ForeignKey("jobs.id", ondelete="CASCADE"), unique=True, nullable=False
+    job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), unique=True, nullable=True
     )
+    owner_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    charge_action: Mapped[str | None] = mapped_column(String(32), nullable=True)
     credit_allocations: Mapped[dict[str, int] | None] = mapped_column(
         json_type(), nullable=True
     )

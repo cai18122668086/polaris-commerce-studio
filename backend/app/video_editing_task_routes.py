@@ -16,6 +16,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -894,6 +895,26 @@ def persist_editing_task(
     session.add(row)
     link_preview(row)
     try:
+        # A planning preview is billed on its planning row (one preview each);
+        # a revision preview is billed on its own task.
+        if planning is not None:
+            video_credits.hold(
+                session,
+                settings,
+                workspace.workspace_id,
+                "editing_render",
+                "video_planning",
+                planning.id,
+            )
+        elif carried_revision is not None:
+            video_credits.hold(
+                session,
+                settings,
+                workspace.workspace_id,
+                "editing_render",
+                "video_editing",
+                row.id,
+            )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -1258,6 +1279,8 @@ def cancel_task(
         )
     )
     session.commit()
+    video_credits.reconcile_editing(session, row.id)
+    session.commit()
     session.refresh(row)
     return response(row, session)
 
@@ -1294,6 +1317,20 @@ def retry_task(
     if not cast(CursorResult, result).rowcount:
         session.rollback()
         raise ApiError(409, "EDITING_RETRY_STATE", "只有失败或已取消的任务可以重试。")
+    planning_id = session.scalar(
+        select(EditingPlanningTaskRecord.id).where(
+            EditingPlanningTaskRecord.result["preview_task_id"].as_string() == row.id
+        )
+    )
+    if planning_id or "carried_revision" in row.checkpoint:
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            row.workspace_id,
+            "editing_render",
+            "video_planning" if planning_id else "video_editing",
+            planning_id or row.id,
+        )
     session.commit()
     session.refresh(row)
     dispatch(request, row.id)

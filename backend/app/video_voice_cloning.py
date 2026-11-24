@@ -28,6 +28,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -427,7 +428,15 @@ def create_clone(
     )
     session.add(row)
     try:
+        video_credits.hold(
+            session, settings, workspace.workspace_id, "voice_clone", "video_voice", id
+        )
         session.commit()
+    except ApiError:
+        session.rollback()
+        source.unlink(missing_ok=True)
+        target.unlink(missing_ok=True)
+        raise
     except IntegrityError:
         session.rollback()
         source.unlink(missing_ok=True)
@@ -446,6 +455,12 @@ def create_clone(
         return response(old)
     background.add_task(
         enroll, request.app.state.session_factory, settings, row.id, adapter(request)
+    )
+    background.add_task(
+        video_credits.settle_after,
+        request.app.state.session_factory,
+        "video_voice",
+        row.id,
     )
     return response(row)
 
@@ -476,6 +491,8 @@ def refresh_clone(
         )
     if row.status in {"processing", "submitting", "unknown", "ready"}:
         reconcile(row, adapter(request))  # Query only, including after process restart.
+        session.commit()
+        video_credits.reconcile_owner(session, "video_voice", row.id)
         session.commit()
     return response(row)
 

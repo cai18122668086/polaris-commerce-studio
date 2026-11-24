@@ -15,6 +15,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .models import utc_now
@@ -381,6 +382,15 @@ def submit(
     )
     session.add(row)
     try:
+        if body.kind in {"create", "rewrite"}:
+            video_credits.hold(
+                session,
+                settings,
+                workspace.workspace_id,
+                "writing_generate",
+                "video_assistance",
+                row.id,
+            )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -396,6 +406,12 @@ def submit(
         return response(existing)
     background.add_task(
         process, request.app.state.session_factory, row.id, provider(request)
+    )
+    background.add_task(
+        video_credits.settle_after,
+        request.app.state.session_factory,
+        "video_assistance",
+        row.id,
     )
     return response(row)
 
@@ -484,5 +500,11 @@ def resume(
     if cast(CursorResult[Any], changed).rowcount == 1:
         background.add_task(
             process, request.app.state.session_factory, row.id, provider(request)
+        )
+        background.add_task(
+            video_credits.settle_after,
+            request.app.state.session_factory,
+            "video_assistance",
+            row.id,
         )
     return response(row)

@@ -4,8 +4,8 @@ Prices are a business decision and come only from configuration
 (``POLARIS_VIDEO_CREDIT_PRICES``, a JSON object keyed by the actions below). An
 action without a configured price is reported as unpriced; the page then marks
 the button as billable and says it is charged by actual usage instead of
-showing a made-up number. This module only reports prices; charging still
-follows the existing billing flow.
+showing a made-up number, and the action is not charged. Priced actions are
+held, settled and released by ``video_credit_billing``.
 """
 
 from typing import Literal

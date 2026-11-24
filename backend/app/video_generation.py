@@ -20,6 +20,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -267,6 +268,9 @@ def process_generation(
             _process_generation(factory, settings, job_id, provider, lease)
         except VideoRunLost:
             return
+    # Every run path (request, resume, startup recovery) settles or releases
+    # the task's credit hold from the status it just recorded.
+    video_credits.settle_after(factory, "video_generation", str(job_id))
 
 
 def _process_generation(
@@ -1217,6 +1221,14 @@ def submit_generation(
     )
     session.add(row)
     try:
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            workspace.workspace_id,
+            "lipsync" if body.kind == "lipsync" else "avatar_motion",
+            "video_generation",
+            row.id,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -1320,9 +1332,19 @@ def approve_template(
         )
         .values(details={**row.details, "review_approved": True}, status="queued")
     )
+    approved = cast(CursorResult[Any], changed).rowcount == 1
+    if approved:
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            row.workspace_id,
+            "avatar_register",
+            "video_generation",
+            row.id,
+        )
     session.commit()
     session.refresh(row)
-    if cast(CursorResult[Any], changed).rowcount != 1:
+    if not approved:
         return job_response(row)
     background.add_task(
         process_generation,
@@ -1351,6 +1373,8 @@ def reject_template(
         .values(status="rejected", stage="review_rejected")
     )
     session.commit()
+    video_credits.reconcile_owner(session, "video_generation", row.id)
+    session.commit()
     session.refresh(row)
     return job_response(row)
 
@@ -1377,9 +1401,25 @@ def resume_job(
         )
         .values(status="queued")
     )
+    resumed = cast(CursorResult[Any], changed).rowcount == 1
+    if resumed:
+        # A failed run released its hold; resuming it holds again. Pending
+        # (unknown/awaiting_resume) runs keep their original hold.
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            row.workspace_id,
+            "lipsync"
+            if row.kind == "lipsync"
+            else "avatar_register"
+            if row.details.get("review_approved")
+            else "avatar_motion",
+            "video_generation",
+            row.id,
+        )
     session.commit()
     session.refresh(row)
-    if cast(CursorResult[Any], changed).rowcount != 1:
+    if not resumed:
         return job_response(row)
     background.add_task(
         process_generation,

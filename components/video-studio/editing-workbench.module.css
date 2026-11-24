@@ -26,13 +26,13 @@
 @media (max-width:900px){.workbench,.workbench:not(:has(.preview)){grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "preview" "segments" "inspector" "global"}.inspector{padding-left:0;border-left:0}}
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .workbench{border:1px solid #232120;background:rgb(255 250 244 / 0.04);color:#e9e8e6;border-radius:11px}
+:global(.theme-ember) .workbench{border:1px solid #232120;background:#0f0e0d;color:#e9e8e6}
 :global(.theme-ember) .head span{color:#9c968f}
-:global(.theme-ember) .preview{background:#e9e8e6;border-radius:8px}
+:global(.theme-ember) .preview{background:#e9e8e6}
 :global(.theme-ember) .segments ol{border-top:1px solid #1c1b19}
 :global(.theme-ember) .segments li button{border-bottom:1px solid #1c1b19}
-:global(.theme-ember) .segments li button:hover{background:rgb(255 250 244 / 0.025)}
-:global(.theme-ember) .segments li button[aria-pressed="true"]{background:rgb(255 250 244 / 0.025);box-shadow:inset 2px 0 0 var(--edit-accent,#000000)}
+:global(.theme-ember) .segments li button:hover{background:#141312}
+:global(.theme-ember) .segments li button[aria-pressed="true"]{background:#171615;box-shadow:inset 2px 0 0 var(--edit-accent,#000000)}
 :global(.theme-ember) .segments li button[data-attention="true"] .meta{color:#fa682a}
 :global(.theme-ember) .index{color:#79736b}
 :global(.theme-ember) .meta{color:#9c968f}

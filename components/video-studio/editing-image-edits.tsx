@@ -6,6 +6,7 @@ import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
 import { editingMessage } from "@/features/video-studio/editing-presentation";
 import styles from "./editing-workspace.module.css";
+import { mediaUrl } from "@/lib/api/base-url";
 
 type ImageTarget = components["schemas"]["EditingImageTarget"];
 type ImageEdit = components["schemas"]["NativeImageEdit"];
@@ -97,7 +98,7 @@ export function EditingImageEdits({ workspaceId, projectId, planId, selected, so
             </select>
           </label>
           {target.requires_transparency && <p className={styles.note}>此图槽需要含透明像素的图片。</p>}
-          {current && <a href={current.url} target="_blank" rel="noreferrer">查看「{current.label}」原件</a>}
+          {current && <a href={mediaUrl(current.url)} target="_blank" rel="noreferrer">查看「{current.label}」原件</a>}
         </div>;
       })}
       {offset !== null && <button type="button" disabled={busy || disabled} onClick={() => void more()}>加载更多素材</button>}

@@ -9,6 +9,7 @@ import { BrandMark } from "./brand-mark";
 import { HOME_FEATURE_VISUALS } from "@/lib/home-feature-visuals";
 import { FeatureCaseArt } from "./feature-case-art";
 import { SiteFilingLine } from "@/components/site-filing";
+import { withBasePath } from "@/lib/base-path";
 
 export function HomeHero() {
   const [paused, setPaused] = useState(false);
@@ -71,16 +72,16 @@ export function HomeHero() {
           <span className="commerce-collage__spark" aria-hidden="true">✳</span>
           <Link href="/style-replica" className="commerce-photo commerce-photo--fashion">
             <div className="commerce-photo__bar"><span /><span /><span /><small>作品集 / 01</small></div>
-            <DisplayImage src="/images/cases/olay-20261030/replica-07.png" alt="OLAY 身体乳复刻任务中的人物场景成图" width={1055} height={1491} fetchPriority="high" sizes="(max-width: 640px) 48vw, 320px" />
+            <DisplayImage src={withBasePath("/images/cases/olay-20261030/replica-07.png")} alt="OLAY 身体乳复刻任务中的人物场景成图" width={1055} height={1491} fetchPriority="high" sizes="(max-width: 640px) 48vw, 320px" />
             <span className="commerce-photo__caption">从实拍，到品牌视觉 <ArrowUpRight size={18} /></span>
           </Link>
           <Link href="/workspace/product-image/change-background" className="commerce-photo commerce-photo--product">
-            <DisplayImage src="/images/cases/platform-v3/background-result.png" sizes="(max-width: 640px) 42vw, 300px" alt="耳机更换背景任务的真实成图" width={768} height={1024} />
+            <DisplayImage src={withBasePath("/images/cases/platform-v3/background-result.png")} sizes="(max-width: 640px) 42vw, 300px" alt="耳机更换背景任务的真实成图" width={768} height={1024} />
             <span className="commerce-photo__caption">给商品一个新场景 <MoveUpRight size={17} /></span>
           </Link>
           <Link href="/create?goal=main" className="commerce-photo commerce-photo--commerce">
             <span className="commerce-photo__tag">商品视觉</span>
-            <DisplayImage src="/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png" sizes="(max-width: 640px) 48vw, 320px" alt="猫粮国内主图任务的成图" width={1254} height={1254} />
+            <DisplayImage src={withBasePath("/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png")} sizes="(max-width: 640px) 48vw, 320px" alt="猫粮国内主图任务的成图" width={1254} height={1254} />
             <span className="commerce-photo__caption">商品主图，一眼心动 <ArrowUpRight size={16} /></span>
           </Link>
           <span className="commerce-collage__sticker"><Sparkles size={15} /> 好创意，即刻成图</span>
@@ -127,33 +128,33 @@ const SHOWCASE_TOOLS = [
 // The latest homepage promotes replica instead of background editing. Keep this
 // demonstration independent of the featured-card selection.
 const BACKGROUND_VISUAL = {
-  primary: { desktop: { src: "/images/cases/platform-v3/background-result.png" } },
-  input: { desktop: { src: "/images/cases/platform-v3/02-headphones-messy.png" } },
+  primary: { desktop: { src: withBasePath("/images/cases/platform-v3/background-result.png") } },
+  input: { desktop: { src: withBasePath("/images/cases/platform-v3/02-headphones-messy.png") } },
 };
 
 const GALLERY_IMAGES = [
   [
-    "/images/cases/olay-20261030/replica-07.png",
+    withBasePath("/images/cases/olay-20261030/replica-07.png"),
     "OLAY 身体乳场景复刻"
   ],
   [
-    "/images/cases/history-20261030/asset_6f416209332b45b285e07c3f91a6124b.png",
+    withBasePath("/images/cases/history-20261030/asset_6f416209332b45b285e07c3f91a6124b.png"),
     "猫粮详情图"
   ],
   [
-    "/images/cases/platform-v3/background-result.png",
+    withBasePath("/images/cases/platform-v3/background-result.png"),
     "耳机场景"
   ],
   [
-    "/images/cases/platform-v2/try-on-result.png",
+    withBasePath("/images/cases/platform-v2/try-on-result.png"),
     "针织开衫试穿"
   ],
   [
-    "/images/cases/platform-v3/color-result.png",
+    withBasePath("/images/cases/platform-v3/color-result.png"),
     "皮革手提包换色"
   ],
   [
-    "/images/cases/olay-20261030/replica-06.png",
+    withBasePath("/images/cases/olay-20261030/replica-06.png"),
     "身体乳横向视觉"
   ]
 ] as const;
@@ -194,7 +195,7 @@ export function HomeProductShowcase() {
         <Link className="commerce-text-link" href="/inspiration">去灵感专区看看 <ArrowRight size={16} /></Link>
       </section>
       <section className="commerce-value">
-        <div className="commerce-value__art" aria-label="商品从单张主图到详情套图的创作效果"><div className="commerce-value__sheet"><span>01 / MAIN VISUAL</span><DisplayImage src="/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png" alt="猫粮搜索主图成图" width={1374} height={1145} loading="lazy" /></div><div className="commerce-value__sheet"><span>02 / PRODUCT DETAILS</span><DisplayImage src="/images/cases/history-20261030/asset_6f416209332b45b285e07c3f91a6124b.png" alt="猫粮详情页成图" width={1374} height={1145} loading="lazy" /></div><span className="commerce-value__seal"><Sparkles size={19} /> 从好图<br />到好生意</span></div>
+        <div className="commerce-value__art" aria-label="商品从单张主图到详情套图的创作效果"><div className="commerce-value__sheet"><span>01 / MAIN VISUAL</span><DisplayImage src={withBasePath("/images/cases/history-20261030/asset_a47a47f308464d7ea2e928e8cc9f5c0c.png")} alt="猫粮搜索主图成图" width={1374} height={1145} loading="lazy" /></div><div className="commerce-value__sheet"><span>02 / PRODUCT DETAILS</span><DisplayImage src={withBasePath("/images/cases/history-20261030/asset_6f416209332b45b285e07c3f91a6124b.png")} alt="猫粮详情页成图" width={1374} height={1145} loading="lazy" /></div><span className="commerce-value__seal"><Sparkles size={19} /> 从好图<br />到好生意</span></div>
         <div className="commerce-value__copy"><span className="commerce-eyebrow">多一点创作，做出自己的样子。</span><h2>少一点反复，<br />多一点生意的可能。</h2><p>把精力留给选品、运营和品牌。让极光商绘，陪你把每一次上新的视觉做好。</p><ul><li><Check size={16} /><span><strong>让上新更从容</strong>主图、详情与场景素材，在同一处开始创作。</span></li><li><Check size={16} /><span><strong>让灵感多走一步</strong>从参考构图到商品细节，快速尝试不同表达。</span></li><li><Check size={16} /><span><strong>让每一份素材更有价值</strong>同一件商品，探索适合不同展示场景的视觉。</span></li></ul><Link className="commerce-text-link" href="/create?goal=detail">开始制作商品详情图 <ArrowRight size={17} /></Link></div>
       </section>
     </div>
@@ -220,7 +221,7 @@ export function HomeCreativeVoices() {
           {CREATIVE_ROLES.map((review) => <article key={review.role}>
             <div className="commerce-reviews__stars"><Sparkles size={14} /> 创作场景示意</div>
             <h3>{review.title}</h3><p className="commerce-reviews__text">{review.text}</p>
-            <div className="commerce-reviews__person"><DisplayImage src={`/images/use-case-avatars/${review.avatar}.webp`} alt="" width={42} height={42} loading="lazy" /><div><strong>{review.role}</strong><small>{review.tag}</small></div></div>
+            <div className="commerce-reviews__person"><DisplayImage src={withBasePath(`/images/use-case-avatars/${review.avatar}.webp`)} alt="" width={42} height={42} loading="lazy" /><div><strong>{review.role}</strong><small>{review.tag}</small></div></div>
           </article>)}
         </div>)}
       </div></div>

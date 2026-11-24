@@ -30,3 +30,9 @@ export function apiWebSocketUrl(path: string, location: Pick<Location, "href" | 
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }
+
+/** 后端返回的媒体地址（如 "/api/v1/…/cover"）补上接口前缀；完整地址、blob/data 地址原样返回 */
+export function mediaUrl(url: string | null | undefined, base = API_BASE_URL): string | undefined {
+  if (!url) return undefined;
+  return url.startsWith("/api/") ? apiUrl(url, base) : url;
+}

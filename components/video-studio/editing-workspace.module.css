@@ -56,36 +56,31 @@
 :global(html.theme-ember) .panel a:hover { text-decoration-color: #f07a2b; }
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
-:global(.theme-ember) .panel{background:rgb(255 250 244 / 0.04);border:1px solid #22201e;color:#e9e8e6}
+:global(.theme-ember) .panel{background:#0f0e0d;border:1px solid #22201e;color:#e9e8e6}
 :global(.theme-ember) .intro p,:global(.theme-ember) .note{color:#99938c}
-:global(.theme-ember) .panel select,:global(.theme-ember) .panel input{border:1px solid #302e2b;background:rgb(255 250 244 / 0.04);border-radius:12px}
+:global(.theme-ember) .panel select,:global(.theme-ember) .panel input{border:1px solid #302e2b;background:#0f0e0d}
 :global(.theme-ember) .panel button,:global(.theme-ember) .panel a{background:#e6e2db;color:#0f0e0d}
 :global(.theme-ember) .error{color:#fa682a}
 :global(.theme-ember) .tasks article{border-top:1px solid #22201e}
 :global(.theme-ember) .tasks article:focus{outline:2px solid #aea9a4}
 :global(.theme-ember) .taskHeading time{color:#8a847c}
-:global(.theme-ember) .tasks video{background:#e9e8e6;border-radius:14px}
-:global(.theme-ember) .correction{background:rgb(255 250 244 / 0.025);border:1px solid #262422;border-radius:16px}
-:global(.theme-ember) .correction textarea,:global(.theme-ember) .materials textarea{border:1px solid #302e2b;background:rgb(255 250 244 / 0.04);border-radius:12px}
+:global(.theme-ember) .tasks video{background:#e9e8e6}
+:global(.theme-ember) .correction{background:#151413;border:1px solid #262422}
+:global(.theme-ember) .correction textarea,:global(.theme-ember) .materials textarea{border:1px solid #302e2b;background:#0f0e0d}
 :global(.theme-ember) .materialList li{border:1px solid #22201e}
-:global(.theme-ember) .materialPreview{background:rgb(255 250 244 / 0.025);border-radius:9px}
+:global(.theme-ember) .materialPreview{background:#181716}
 :global(.theme-ember) .panel .materialList a{color:#c3c0bb}
 :global(.theme-ember) .panel .reviewCheck input{accent-color:#aea9a4}
 :global(.theme-ember) .templatePicker{border:1px solid #262422}
-:global(.theme-ember) .templatePicker legend{font-weight:500}
-:global(.theme-ember) .panel .templateOption{border:1px solid #262422;background:rgb(255 250 244 / 0.025);border-radius:14px}
-:global(.theme-ember) .templateOption:has(input:checked){border-color:#aea9a4;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .panel .templateOption{border:1px solid #262422;background:#151413}
+:global(.theme-ember) .templateOption:has(input:checked){border-color:#aea9a4;background:#1d1b1a}
 :global(.theme-ember) .panel .templateOption input{accent-color:#aea9a4}
 :global(.theme-ember) .templateOption small{color:#a9a49e}
-:global(.theme-ember) .templateSample video{background:#e9e8e6;border-radius:11px}
-:global(.theme-ember) .panel .utterances button{background:rgb(255 250 244 / 0.06);color:#dddbd8}
+:global(.theme-ember) .templateSample video{background:#e9e8e6}
+:global(.theme-ember) .panel .utterances button{background:#1f1d1b;color:#dddbd8}
 :global(.theme-ember) .utterances time{color:#a09b94}
-:global(.theme-ember) .materialTiles li{border:1px solid #262422;background:rgb(255 250 244 / 0.025);border-radius:11px}
-:global(.theme-ember) .materialTiles li:has(input:checked){border-color:#777169;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .materialTiles li{border:1px solid #262422;background:#121111}
+:global(.theme-ember) .materialTiles li:has(input:checked){border-color:#777169;background:#161514}
 :global(.theme-ember) .materialTiles details{color:#79736b}
 :global(.theme-ember) .panel .materialTiles a{color:#b5b1ac}
-:global(html.theme-ember) .panel button{background:rgb(255 250 244 / 0.002);color:#211f1d;border:1px solid rgb(15 14 13 / 0.12)}
-:global(html.theme-ember) .panel button:hover:not(:disabled){background:rgb(255 250 244 / 0.003);border-color:rgb(15 14 13 / 0.22)}
-:global(html.theme-ember) .panel a{color:#211f1d;text-decoration-color:rgb(33 31 29 / 0.3)}
-:global(html.theme-ember) .panel a:hover{text-decoration-color:#fa682a}
 /* ember-dark:end */

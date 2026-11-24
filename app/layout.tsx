@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Providers } from "./providers";
+import { withBasePath } from "@/lib/base-path";
 import "./globals.css";
 import "./focus-inspired.css";
 import "./commerce-theme.css";
@@ -23,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol =
     requestHeaders.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
-  const previewImage = new URL("/og.png", `${protocol}://${host}`).toString();
+  const previewImage = new URL(withBasePath("/og.png"), `${protocol}://${host}`).toString();
   const title = "极光商绘｜电商图片工作台";
   const description =
     "从单张局部精修到整套商品详情，面向电商品牌团队的图片创作工作台。";
@@ -36,13 +37,13 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     icons: {
       icon: [
-        { url: "/polaris-mark-ember.svg", type: "image/svg+xml" },
-        { url: "/favicon.ico", sizes: "any" },
+        { url: withBasePath("/polaris-mark-ember.svg"), type: "image/svg+xml" },
+        { url: withBasePath("/favicon.ico"), sizes: "any" },
       ],
-      shortcut: "/favicon.ico",
-      apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+      shortcut: withBasePath("/favicon.ico"),
+      apple: [{ url: withBasePath("/apple-touch-icon.png"), sizes: "180x180" }],
     },
-    manifest: "/manifest.webmanifest",
+    manifest: withBasePath("/manifest.webmanifest"),
     openGraph: {
       title,
       description,

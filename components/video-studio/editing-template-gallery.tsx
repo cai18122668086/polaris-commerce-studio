@@ -8,6 +8,7 @@ import type { components } from "@/lib/api/generated/openapi";
 import { Dialog } from "./studio-primitives";
 import { templateAppearance } from "@/features/video-studio/template-appearance";
 import styles from "./editing-template-gallery.module.css";
+import { mediaUrl } from "@/lib/api/base-url";
 
 export type TemplateCard = components["schemas"]["TemplateCatalogCard"];
 type Sample = components["schemas"]["EditingTemplateSample"];
@@ -17,7 +18,7 @@ const recommended = ["apple-minimal-v1", "bihuo-02-v1", "bihuo-03-v1", "bihuo-04
 function Poster({ card }: { card: TemplateCard }) {
   const [failed, setFailed] = useState(false);
   const url = card.example?.poster_url || card.style_preview?.poster_url;
-  return url && !failed ? <img src={url} alt={`${card.name} · 模板封面`} loading="lazy" decoding="async" width={270} height={480} onError={() => setFailed(true)} />
+  return url && !failed ? <img src={mediaUrl(url)} alt={`${card.name} · 模板封面`} loading="lazy" decoding="async" width={270} height={480} onError={() => setFailed(true)} />
     : <div className={styles.coverText}><small>{card.category}</small><strong>{card.name}</strong><span>预览完整效果</span></div>;
 }
 
@@ -135,7 +136,7 @@ export function EditingTemplateGallery({ workspaceId, projectId, selected, onSel
       <footer className={styles.modalFooter}><span>{cards.find(card => card.id === draft)?.name || "请选择喜欢的风格"}</span><button type="button" className={styles.secondaryAction} onClick={() => setLibraryOpen(false)}>取消</button><button type="button" disabled={!draft} onClick={() => { const card = cards.find(card => card.id === draft); if (card) { choose(card); setLibraryOpen(false); } }}>使用此模板</button></footer>
     </Dialog>}
     {previewCard && <Dialog title={previewCard.name} className={styles.templatePreviewDialog} onClose={() => setPreview(undefined)}><div className={styles.templatePreview}>
-      <div className={styles.previewStage}><div className={styles.previewScreen}>{previewUrl && <video key={previewUrl} src={previewUrl} poster={preview?.project ? undefined : previewCard.example?.poster_url || previewCard.style_preview?.poster_url || undefined} controls autoPlay muted playsInline preload="metadata" aria-label={`${previewCard.name}${preview?.project ? "本项目成片" : "模板示例"}`} onError={() => setPlaybackError(true)} />}</div><div className={styles.previewNavigation}><button type="button" aria-label="上一个模板" disabled={previewList.length < 2} onClick={() => movePreview(-1)}><ChevronLeft size={18} /></button><span>{previewIndex + 1} / {previewList.length}</span><button type="button" aria-label="下一个模板" disabled={previewList.length < 2} onClick={() => movePreview(1)}><ChevronRight size={18} /></button></div></div>
+      <div className={styles.previewStage}><div className={styles.previewScreen}>{previewUrl && <video key={previewUrl} src={mediaUrl(previewUrl)} poster={mediaUrl(preview?.project ? undefined : previewCard.example?.poster_url || previewCard.style_preview?.poster_url || undefined)} controls autoPlay muted playsInline preload="metadata" aria-label={`${previewCard.name}${preview?.project ? "本项目成片" : "模板示例"}`} onError={() => setPlaybackError(true)} />}</div><div className={styles.previewNavigation}><button type="button" aria-label="上一个模板" disabled={previewList.length < 2} onClick={() => movePreview(-1)}><ChevronLeft size={18} /></button><span>{previewIndex + 1} / {previewList.length}</span><button type="button" aria-label="下一个模板" disabled={previewList.length < 2} onClick={() => movePreview(1)}><ChevronRight size={18} /></button></div></div>
       <div className={styles.previewDetails}><span className={styles.templateCategory}>{templateAppearance(previewCard).collection}</span><h3>{previewCard.name}</h3><p className={styles.signature}>{templateAppearance(previewCard).detail}</p><ul>{previewCard.visual_features.slice(0, 3).map(feature => <li key={feature}>{feature}</li>)}</ul><p>{previewCard.material_requirements.slice(0, 2).join(" · ")}</p>
         {!previewCard.example && !preview?.project && <small>历史题材片段，仅供版式参考</small>}
         {playbackError && <p role="alert">示例暂时无法播放，请关闭后重试。</p>}

@@ -71,35 +71,35 @@
 :global(.theme-ember) .cloneDialog.cloneDialog.cloneDialog{border-color:#242220}
 :global(.theme-ember) .form .intro{color:#7f7971}
 :global(.theme-ember) .field{color:#d5d3d0}
-:global(.theme-ember) .field input{background:rgb(255 250 244 / 0.04);border-radius:12px}
+:global(.theme-ember) .field input{background:#0f0e0d}
 :global(.theme-ember) .fieldHeading{color:#d5d3d0}
 :global(.theme-ember) .fieldHeading small{color:#6e6962}
-:global(.theme-ember) .uploadArea{border:1px dashed #302e2b;background:rgb(255 250 244 / 0.025);border-radius:16px}
-:global(.theme-ember) .uploadArea:hover{border-color:#69645d;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .uploadArea{border:1px dashed #302e2b;background:#151413}
+:global(.theme-ember) .uploadArea:hover{border-color:#69645d;background:#181716}
 :global(.theme-ember) .uploadArea:focus-within{outline:3px solid #282624}
-:global(.theme-ember) .uploadIcon{color:#89837a;background:rgb(255 250 244 / 0.06);border-radius:16px}
+:global(.theme-ember) .uploadIcon{color:#89837a;background:#201e1c}
 :global(.theme-ember) .uploadArea b{color:#d3d0cd}
 :global(.theme-ember) .uploadArea .uploadHint{color:#69645d}
-:global(.theme-ember) .fileSelected{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .fileSelected{background:#151413}
 :global(.theme-ember) .recording .fileHelp{color:#68635c}
 :global(.theme-ember) .consent{color:#807a72}
 :global(.theme-ember) .consent input{accent-color:#97928a}
-:global(.theme-ember) .footer{border-top:1px solid #1f1e1c;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .footer{border-top:1px solid #1f1e1c;background:#0f0e0d}
 :global(.theme-ember) .error{color:#fa682a}
 :global(.theme-ember) .toolbar p,:global(.theme-ember) .voice p{color:#8f8981}
-:global(.theme-ember) .voice{border:1px solid #21201d;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .voice{border:1px solid #21201d;background:#0f0e0d}
 :global(.theme-ember) .heading{color:#89837a}
 :global(.theme-ember) .heading b{color:#e9e8e6}
-:global(.theme-ember) .progressMark{background:rgb(255 250 244 / 0.06);color:#857e76}
-:global(.theme-ember) .progressPanel[data-state="done"] .progressMark{background:rgb(255 250 244 / 0.025);color:#8a847b}
-:global(.theme-ember) .progressPanel[data-state="stopped"] .progressMark{background:rgb(255 250 244 / 0.025);color:#fa682a}
+:global(.theme-ember) .progressMark{background:#1c1a18;color:#857e76}
+:global(.theme-ember) .progressPanel[data-state="done"] .progressMark{background:#1b1918;color:#8a847b}
+:global(.theme-ember) .progressPanel[data-state="stopped"] .progressMark{background:#1a1917;color:#fa682a}
 :global(.theme-ember) .progressHeading{color:#d5d3d0}
 :global(.theme-ember) .progressHeading > span{color:#736e66}
-:global(.theme-ember) .progressBar{background:rgb(255 250 244 / 0.06);accent-color:#726c65}
-:global(.theme-ember) .progressBar::-webkit-progress-bar{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .progressBar{background:#201e1c;accent-color:#726c65}
+:global(.theme-ember) .progressBar::-webkit-progress-bar{background:#201e1c}
 :global(.theme-ember) .progressBar::-webkit-progress-value{background:#e6e2db}
 :global(.theme-ember) .progressBar::-moz-progress-bar{background:#e6e2db}
-:global(.theme-ember) .progressBar:indeterminate{background:linear-gradient(90deg, rgb(255 250 244 / 0.06) 20%, #e6e2db 45%, rgb(255 250 244 / 0.06) 70%);background-size:220% 100%}
+:global(.theme-ember) .progressBar:indeterminate{background:linear-gradient(90deg, #201e1c 20%, #e6e2db 45%, #201e1c 70%);background-size:220% 100%}
 :global(.theme-ember) .progressPanel > p{color:#68635c}
 :global(.theme-ember) .form .fileHelp,:global(.theme-ember) .uploadArea .uploadHint{color:#857e76}
 :global(.theme-ember) .consent{color:#8c867e}

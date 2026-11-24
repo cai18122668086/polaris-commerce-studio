@@ -5,12 +5,13 @@ import type { GenerationJob, VideoAvatar } from "@/features/video-studio/library
 import { GenerationImageStatus, GenerationProgress, GenerationResumeButton } from "./generation-progress";
 import { generationProgress } from "@/features/video-studio/generation-progress";
 import styles from "./video-studio.module.css";
+import { mediaUrl } from "@/lib/api/base-url";
 
 export function GenerationWorkCard({ job, avatar, onPreview, onResume, resuming = false }: { job: GenerationJob; avatar: VideoAvatar; onPreview: () => void; onResume: () => void; resuming?: boolean }) {
   const state = generationProgress(job);
   return <article className={styles.workCard}>
     <button type="button" className={styles.workImage} onClick={onPreview} aria-label={`${state.done ? "预览" : "查看进度"}：${job.snapshot?.draft.name || avatar.name}`}>
-      {avatar.cover_url && <img src={avatar.cover_url} alt={avatar.name} />}
+      {avatar.cover_url && <img src={mediaUrl(avatar.cover_url)} alt={avatar.name} />}
       <span>{job.kind === "h3_template" ? "我的形象" : "口播视频"}</span>
       <GenerationImageStatus job={job} />
       {state.done && <i><Play size={21} /></i>}

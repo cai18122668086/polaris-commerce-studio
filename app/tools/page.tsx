@@ -11,6 +11,7 @@ import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus } from "@/f
 import styles from "./tools.module.css";
 import { FeatureCaseArt } from "@/components/feature-case-art";
 import { getFeatureCaseArt } from "@/lib/feature-case-art";
+import { withBasePath } from "@/lib/base-path";
 
 const categories: FeatureCategory[] = ["commerce_pack", "quick_edit", "product_image"];
 const spotlightEntries = [PRIMARY_CREATION_ENTRIES[0], PRIMARY_CREATION_ENTRIES[2]];
@@ -31,7 +32,7 @@ export default function ToolsPage() {
       <Link href="/inspiration" className={styles.inspirationBanner}>
         <span><Sparkles size={17} /> 好创意，从一张喜欢的图开始</span>
         <strong>去灵感专区看看 <ArrowRight size={16} /></strong>
-        <div aria-hidden="true"><img src="/images/homepage-showcase/fashion.webp" alt="" /><img src={PRIMARY_CREATION_ENTRIES[2].image} alt="" /><img src={PRIMARY_CREATION_ENTRIES[0].image} alt="" /></div>
+        <div aria-hidden="true"><img src={withBasePath("/images/homepage-showcase/fashion.webp")} alt="" /><img src={PRIMARY_CREATION_ENTRIES[2].image} alt="" /><img src={PRIMARY_CREATION_ENTRIES[0].image} alt="" /></div>
       </Link>
       <header className={styles.welcome}><div><p>你的电商视觉创作空间</p><h1>今天，想创作什么？</h1></div><span>{FEATURE_REGISTRY.length} 项工具，陪你的好商品出彩</span></header>
       <section className={styles.spotlights} aria-label="推荐创作功能">

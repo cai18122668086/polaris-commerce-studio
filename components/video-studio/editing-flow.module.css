@@ -144,29 +144,29 @@
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .workbench{--edit-accent:#fa682a;color:#e9e8e7}
 :global(.theme-ember) .workbench button{color:#0f0e0d}
-:global(.theme-ember) .step,:global(.theme-ember) .gallery{background:rgb(255 250 244 / 0.04);border:1px solid #1d1c1b;box-shadow:0 2px 12px rgb(0 0 0 / 0.042);border-radius:14px}
+:global(.theme-ember) .step,:global(.theme-ember) .gallery{background:#0f0e0d;border:1px solid #1d1c1b;box-shadow:0 2px 12px rgb(0 0 0 / 0.042)}
 :global(.theme-ember) .sectionHeading{border-bottom:1px solid #1c1b19}
 :global(.theme-ember) .templateScroll{scrollbar-color:#32302e transparent}
-:global(.theme-ember) .card{border:1px solid #232120;background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .card{border:1px solid #232120;background:#151514}
 :global(.theme-ember) .selected{box-shadow:0 0 0 2px rgb(0 0 0 / 0.155)}
-:global(.theme-ember) .cover{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .cover{background:#181817}
 :global(.theme-ember) .cover video{background:#e9e8e7}
-:global(.theme-ember) .coverText{color:#d2cfcc;background:linear-gradient(145deg,rgb(255 250 244 / 0.04),rgb(255 250 244 / 0.06))}
+:global(.theme-ember) .coverText{color:#d2cfcc;background:linear-gradient(145deg,#0f0e0d,#1f1e1c)}
 :global(.theme-ember) .coverText small{color:#7d776f}
-:global(.theme-ember) .gallery .play{background:rgb(21 20 19 / 0.793);color:#8f8b85;border:1px solid #2b2928;box-shadow:0 1px 4px rgb(0 0 0 / 0.12);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
-:global(.theme-ember) .chooseCard{background:rgb(255 250 244 / 0.025)!important;color:#bab8b5!important}
-:global(.theme-ember) .previewCaption{background:rgb(0 0 0 / 0.75);color:#0f0e0d;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .gallery .play{background:rgb(15 14 13 / 0.922);color:#8f8b85;border:1px solid #2b2928;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
+:global(.theme-ember) .chooseCard{background:#151514!important;color:#bab8b5!important}
+:global(.theme-ember) .previewCaption{background:rgb(0 0 0 / 0.75);color:#0f0e0d}
 :global(.theme-ember) .sourceHeading{border-bottom:1px solid #1d1c1b}
 :global(.theme-ember) .uploadButton{color:#0f0e0d}
-:global(.theme-ember) .source .dropzone{background:rgb(255 250 244 / 0.025);border-radius:12px}
-:global(.theme-ember) .dropzone svg{color:#0f0e0d;border-radius:14px}
-:global(.theme-ember) .source select{background:rgb(255 250 244 / 0.04)!important;color:#bab8b5!important;border:1px solid #232120!important}
-:global(.theme-ember) .source video{background:#e9e8e7;border-radius:11px}
+:global(.theme-ember) .source .dropzone{background:#121110}
+:global(.theme-ember) .dropzone svg{color:#0f0e0d}
+:global(.theme-ember) .source select{background:#0f0e0d!important;color:#bab8b5!important;border:1px solid #232120!important}
+:global(.theme-ember) .source video{background:#e9e8e7}
 :global(.theme-ember) .source p,:global(.theme-ember) .source details{color:#7c7873}
 :global(.theme-ember) .planning>p{color:#7c7873}
 :global(.theme-ember) .planning details{color:#8f8b85}
 :global(.theme-ember) .planning h2{border-bottom:1px solid #1d1c1b}
-:global(.theme-ember) .preparationStatus{color:#8f8b85;background:rgb(255 250 244 / 0.025);border-radius:8px}
+:global(.theme-ember) .preparationStatus{color:#8f8b85;background:#161514}
 :global(.theme-ember) .chosen{color:#7c7873}
 :global(.theme-ember) .history{border-left:1px solid #1d1c1b}
 :global(.theme-ember) .history h2{border-bottom:1px solid #1d1c1b}
@@ -175,39 +175,37 @@
 :global(.theme-ember) .taskCard{border-bottom:1px solid #1d1c1b}
 :global(.theme-ember) .taskCard>summary{color:#bab8b5}
 :global(.theme-ember) .taskCard time{color:#595652}
-:global(.theme-ember) .native,:global(.theme-ember) .library{background:rgb(255 250 244 / 0.04);border:1px solid #1d1c1b;border-radius:11px}
+:global(.theme-ember) .native,:global(.theme-ember) .library{background:#0f0e0d;border:1px solid #1d1c1b}
 :global(.theme-ember) .technicalDetails{color:#6a6762}
-:global(.theme-ember) .actionBar{background:rgb(21 20 19 / 0.826);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .actionBar{background:rgb(15 14 13 / 0.961)}
 :global(.theme-ember) .actionBar button{background:linear-gradient(100deg,#fa682a,#fa682a)!important;color:#0f0e0d!important}
-:global(.theme-ember) .filters button{background:rgb(255 250 244 / 0.025);color:#8f8b85}
-:global(.theme-ember) .filters button[aria-pressed="true"]{background:rgb(255 250 244 / 0.025)}
-:global(.theme-ember) .templateSearch{background:rgb(255 250 244 / 0.025);border:1px solid #1d1c1b;border-radius:11px}
+:global(.theme-ember) .filters button{background:#181817;color:#8f8b85}
+:global(.theme-ember) .filters button[aria-pressed="true"]{background:#191817}
+:global(.theme-ember) .templateSearch{background:#161514;border:1px solid #1d1c1b}
 :global(.theme-ember) .libraryFilters{--edit-accent:#fa682a}
-:global(.theme-ember) .modalFooter{--edit-accent:#fa682a;background:rgb(21 20 19 / 0.86);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .modalFooter{--edit-accent:#fa682a;background:#0f0e0d}
 :global(.theme-ember) .modalFooter button{color:#0f0e0d}
 @media(max-width:850px){:global(.theme-ember) .history{border:1px solid #1d1c1b}}
-:global(.theme-ember) .sourceChoices button{background:rgb(255 250 244 / 0.025);color:#bab8b5;border:1px solid #1d1c1b}
+:global(.theme-ember) .sourceChoices button{background:#151514;color:#bab8b5;border:1px solid #1d1c1b}
 :global(.theme-ember) .sourceChoices small{color:#595652}
-:global(.theme-ember) .source .changeSource{color:#7c7873;background:rgb(255 250 244 / 0.025);border:1px solid #1d1c1b}
+:global(.theme-ember) .source .changeSource{color:#7c7873;background:#161514;border:1px solid #1d1c1b}
 :global(.theme-ember) .materialModes label{color:#bab8b5}
 :global(.theme-ember) .materialModes input{accent-color:#fa682a}
 :global(.theme-ember) .sourceOption{border-top:1px solid #1d1c1b}
-:global(.theme-ember) .sourceOption h3{font-weight:500}
-:global(.theme-ember) .sourceOption .optionPicker{background:rgb(255 250 244 / 0.025);color:#a4a19c;border:1px solid #1d1c1b}
+:global(.theme-ember) .sourceOption .optionPicker{background:#141312;color:#a4a19c;border:1px solid #1d1c1b}
 :global(.theme-ember) .musicChoices label{border:1px solid #232220}
 :global(.theme-ember) .musicChoices input{accent-color:#fa682a}
 :global(.theme-ember) .musicChoices small{color:#7a7671}
 :global(.theme-ember) .referenceScript{border-top:1px solid #1d1c1b}
-:global(.theme-ember) .referenceScript summary{color:#d2d0ce;font-weight:500}
+:global(.theme-ember) .referenceScript summary{color:#d2d0ce}
 :global(.theme-ember) .referenceScript small{color:#595652}
-:global(.theme-ember) .referenceScript textarea{border:1px solid #232120;background:rgb(255 250 244 / 0.025);color:#d2d0ce;border-radius:11px}
+:global(.theme-ember) .referenceScript textarea{border:1px solid #232120;background:#141312;color:#d2d0ce}
 :global(.theme-ember) .referenceScript p{color:#595652}
 :global(.theme-ember) .creativeOptions{border-top:1px solid #1d1c1b}
 :global(.theme-ember) .creativeOptions label{color:#a4a19c}
-:global(.theme-ember) .creativeOptions input[type=text],:global(.theme-ember) .creativeOptions label>input:not([type]){border:1px solid #232120;background:rgb(255 250 244 / 0.025);color:#d2d0ce;border-radius:9px}
-:global(.theme-ember) .nameCardHeading h3{font-weight:500}
+:global(.theme-ember) .creativeOptions input[type=text],:global(.theme-ember) .creativeOptions label>input:not([type]){border:1px solid #232120;background:#141312;color:#d2d0ce}
 :global(.theme-ember) .nameCardSwitch input{accent-color:#fa682a}
-:global(.theme-ember) .sourceOption .voiceOnly{border:1px solid #1d1c1b;background:rgb(255 250 244 / 0.025);color:#a4a19c;border-radius:11px}
+:global(.theme-ember) .sourceOption .voiceOnly{border:1px solid #1d1c1b;background:#141312;color:#a4a19c}
 :global(.theme-ember) .voiceOnly input{accent-color:#fa682a}
 :global(.theme-ember) .actionBar .feeHint{color:#6a6762}
 :global(.theme-ember) .source .sourceSubtitleChoice{color:#a4a19c}
@@ -215,72 +213,46 @@
 :global(.theme-ember) .workbench{--edit-accent:#fa682a;color:#e9e8e6}
 :global(.theme-ember) .step,:global(.theme-ember) .gallery{border-color:#201f1e;box-shadow:0 3px 16px rgb(0 0 0 / 0.035)}
 :global(.theme-ember) .sectionHint{color:#79736b}
-:global(.theme-ember) .gallery .moreTemplates{background:rgb(255 250 244 / 0.04)!important;color:#99938c!important;border:1px solid #232221}
-:global(.theme-ember) .card{border:1px solid #22211f;background:rgb(255 250 244 / 0.04);border-radius:15px}
+:global(.theme-ember) .gallery .moreTemplates{background:#0f0e0d!important;color:#99938c!important;border:1px solid #232221}
+:global(.theme-ember) .card{border:1px solid #22211f;background:#0f0e0d}
 :global(.theme-ember) .card:hover{border-color:#413d39;box-shadow:0 4px 12px rgb(0 0 0 / 0.113)}
 :global(.theme-ember) .card.selected{border-color:var(--edit-accent,#fa682a);box-shadow:0 0 0 2px rgb(0 0 0 / 0.148)}
-:global(.theme-ember) .cover{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .cover{background:#1c1b19}
 :global(.theme-ember) .posterSelect:focus-visible{outline:3px solid #fa682a}
-:global(.theme-ember) .selectionBadge{background:var(--edit-accent,#fa682a);color:#0f0e0d;box-shadow:0 1px 5px rgb(0 0 0 / 0.24);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
-:global(.theme-ember) .gallery .play,:global(.theme-ember) .templateLibraryDialog .play{border:1px solid rgb(15 14 13 / 0.439);background:rgb(21 20 19 / 0.799)!important;color:#e4e3e1!important;box-shadow:0 2px 8px rgb(0 0 0 / 0.12);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
-:global(.theme-ember) .chooseCard{background:rgb(255 250 244 / 0.04)!important;color:#e4e3e1!important}
-:global(.theme-ember) .chooseCard b{font-weight:500}
+:global(.theme-ember) .selectionBadge{background:var(--edit-accent,#fa682a);color:#0f0e0d;box-shadow:0 1px 5px rgb(0 0 0 / 0.24)}
+:global(.theme-ember) .gallery .play,:global(.theme-ember) .templateLibraryDialog .play{border:1px solid rgb(15 14 13 / 0.439);background:rgb(15 14 13 / 0.929)!important;color:#e4e3e1!important;box-shadow:0 2px 8px rgb(0 0 0 / 0.12)}
+:global(.theme-ember) .chooseCard{background:#0f0e0d!important;color:#e4e3e1!important}
 :global(.theme-ember) .chooseCard small{color:#78726a}
-:global(.theme-ember) .selected .chooseCard{background:rgb(255 250 244 / 0.025)!important}
+:global(.theme-ember) .selected .chooseCard{background:#141312!important}
 :global(.theme-ember) .selected .chooseCard small{color:var(--edit-accent,#fa682a)}
 :global(.theme-ember) .selectedSummary{border-top:1px solid #1b1b19}
-:global(.theme-ember) .selectedSummary strong{font-weight:500}
 :global(.theme-ember) .selectedSummary>span:last-child{color:#6c6760}
 :global(.theme-ember) .selectionLabel{color:var(--edit-accent,#fa682a)}
 :global(.theme-ember) .templateLibraryDialog{--edit-accent:#fa682a}
 :global(.theme-ember) .searchBox{color:#78726a}
-:global(.theme-ember) .templateSearch{background:rgb(255 250 244 / 0.025);border-color:#1d1c1b}
-:global(.theme-ember) .filters button[aria-pressed=true]{border-color:#2c2a27;background:rgb(255 250 244 / 0.025);color:var(--edit-accent,#fa682a)}
+:global(.theme-ember) .templateSearch{background:#161514;border-color:#1d1c1b}
+:global(.theme-ember) .filters button[aria-pressed=true]{border-color:#2c2a27;background:#181615;color:var(--edit-accent,#fa682a)}
 :global(.theme-ember) .resultCount{color:#706b64}
 :global(.theme-ember) .modalFooter{border-top:1px solid #1c1b1a}
 :global(.theme-ember) .modalFooter>span{color:#888279}
-:global(.theme-ember) .secondaryAction{background:rgb(255 250 244 / 0.04)!important;border:1px solid #262522!important;color:#a29d96!important;border-radius:999px}
+:global(.theme-ember) .secondaryAction{background:#0f0e0d!important;border:1px solid #262522!important;color:#a29d96!important}
 :global(.theme-ember) .noTemplates{color:#777169}
-:global(.theme-ember) .noTemplates button{background:rgb(255 250 244 / 0.025);color:#b3aea9;border-radius:999px}
+:global(.theme-ember) .noTemplates button{background:#161514;color:#b3aea9}
 :global(.theme-ember) .templatePreviewDialog{--edit-accent:#fa682a}
-:global(.theme-ember) .previewScreen{background:#e9e8e7;border-radius:16px}
-:global(.theme-ember) .templateCategory{background:rgb(255 250 244 / 0.025);color:#8b847c}
+:global(.theme-ember) .previewScreen{background:#e9e8e7}
+:global(.theme-ember) .templateCategory{background:#181716;color:#8b847c}
 :global(.theme-ember) .previewDetails h3{color:#e9e8e6}
 :global(.theme-ember) .previewDetails p{color:#7c766e}
 :global(.theme-ember) .previewDetails ul{color:#a19c95}
 :global(.theme-ember) .previewDetails small{color:#6a655e}
-:global(.theme-ember) .useTemplate{background:var(--edit-accent,#fa682a);color:#0f0e0d;border-radius:12px}
-:global(.theme-ember) .flowSteps{border:1px solid #1d1c1b;background:rgb(255 250 244 / 0.04);border-radius:14px}
+:global(.theme-ember) .useTemplate{background:var(--edit-accent,#fa682a);color:#0f0e0d}
+:global(.theme-ember) .flowSteps{border:1px solid #1d1c1b;background:#0f0e0d}
 :global(.theme-ember) .flowSteps li+li{border-left:1px solid #1d1c1b}
 :global(.theme-ember) .workbench .flowSteps button{color:#e9e8e7}
-:global(.theme-ember) .workbench .flowSteps button:hover{background:rgb(255 250 244 / 0.025)}
-:global(.theme-ember) .flowSteps b{font-weight:500}
+:global(.theme-ember) .workbench .flowSteps button:hover{background:#141312}
 :global(.theme-ember) .flowSteps small{color:#7c7873}
 :global(.theme-ember) .flowIndex{border:1px solid #2b2928;color:#7c7873}
 :global(.theme-ember) .flowSteps li[data-state=done] .flowIndex{border-color:#e9e8e7;color:#e9e8e7}
 :global(.theme-ember) .flowSteps li[data-state=current] .flowIndex{border-color:#e9e8e7;background:#e9e8e7;color:#0f0e0d}
 :global(.theme-ember) .flowSteps li[data-state=todo] b{color:#7c7873}
-:global(html.theme-ember) .flowSteps{background:rgb(0 0 0 / 0.8);border-color:rgb(15 14 13 / 0.09)}
-:global(html.theme-ember) .flowSteps li+li{border-left-color:rgb(15 14 13 / 0.09)}
-:global(html.theme-ember) .workbench .flowSteps button{color:#211f1d}
-:global(html.theme-ember) .workbench .flowSteps button:hover{background:rgb(255 250 244 / 0.002)}
-:global(html.theme-ember) .flowSteps small{color:rgb(33 31 29 / 0.52)}
-:global(html.theme-ember) .flowIndex{border-color:rgb(15 14 13 / 0.18);color:rgb(33 31 29 / 0.62)}
-:global(html.theme-ember) .flowSteps li[data-state=done] .flowIndex{border-color:#fa682a;color:#fa682a}
-:global(html.theme-ember) .flowSteps li[data-state=current] .flowIndex{border-color:#211f1d;background:rgb(255 250 244 / 0.06);color:#e9e8e7}
-:global(html.theme-ember) .flowSteps li[data-state=todo] b{color:rgb(33 31 29 / 0.52)}
-:global(html.theme-ember) .workbench,:global(html.theme-ember) .templateLibraryDialog,:global(html.theme-ember) .templatePreviewDialog{--edit-accent:#fa682a;color:#211f1d}
-:global(html.theme-ember) .workbench button{background:rgb(255 250 244 / 0.002);color:#211f1d;border:1px solid rgb(15 14 13 / 0.12)}
-:global(html.theme-ember) .workbench button:hover:not(:disabled){background:rgb(255 250 244 / 0.003);border-color:rgb(15 14 13 / 0.22)}
-:global(html.theme-ember) .workbench .uploadButton{color:#211f1d;border:1px solid rgb(15 14 13 / 0.14)}
-:global(html.theme-ember) .source .dropzone{background:rgb(255 250 244 / 0.001);border:1px dashed rgb(15 14 13 / 0.16);color:rgb(33 31 29 / 0.72);border-radius:22px}
-:global(html.theme-ember) .source .dropzone:hover{border-color:rgb(250 104 42 / 0.55);background:rgb(250 104 42 / 0.04)}
-:global(html.theme-ember) .dropzone svg{color:rgb(33 31 29 / 0.7);border:1px solid rgb(15 14 13 / 0.14)}
-:global(html.theme-ember) .dropzone b{color:#211f1d}
-:global(html.theme-ember) .dropzone small{color:rgb(33 31 29 / 0.5)}
-:global(html.theme-ember) .actionBar button,:global(html.theme-ember) .useTemplate{background:rgb(255 250 244 / 0.06) !important;color:#e9e8e7 !important;border-color:#211f1d;font-weight:500}
-:global(html.theme-ember) .actionBar button:hover:not(:disabled),:global(html.theme-ember) .useTemplate:hover{background:rgb(255 250 244 / 0.04) !important;box-shadow:0 10px 30px -12px rgb(0 0 0 / 0.99)}
-:global(html.theme-ember) .actionBar button:disabled{background:rgb(255 250 244 / 0.004) !important;color:rgb(33 31 29 / 0.45) !important}
-:global(html.theme-ember) .selectionBadge{background:rgb(255 250 244 / 0.06);color:#e9e8e7}
-:global(html.theme-ember) .emptyHistory{color:rgb(33 31 29 / 0.45)}
 /* ember-dark:end */

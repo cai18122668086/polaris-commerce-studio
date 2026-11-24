@@ -24,6 +24,7 @@ import { CreationStartHub } from "@/components/creation-start-hub";
 import { CommerceEntryGroups } from "@/components/commerce-entry-groups";
 import { FeatureCaseArt } from "./feature-case-art";
 import { getFeatureCaseArt } from "@/lib/feature-case-art";
+import { withBasePath } from "@/lib/base-path";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
@@ -126,10 +127,10 @@ function FeatureVisualImage({
 }) {
   return (
     <picture className={className}>
-      <source media="(max-width: 720px)" srcSet={image.mobile.src} />
-      <source media="(max-width: 1199px)" srcSet={image.tablet.src} />
+      <source media="(max-width: 720px)" srcSet={withBasePath(image.mobile.src)} />
+      <source media="(max-width: 1199px)" srcSet={withBasePath(image.tablet.src)} />
       <img
-        src={image.desktop.src}
+        src={withBasePath(image.desktop.src)}
         width={image.desktop.width}
         height={image.desktop.height}
         className="home-feature-card__picture-image"

@@ -10,6 +10,7 @@
 输出：
   * app/ember-dark.generated.css     —— 全局样式（app/*.css）的暗色映射
   * 每个 *.module.css 末尾的 ember-dark:start/end 块 —— 该模块的暗色映射（:global(.theme-ember) 作用域）
+    （components/video-studio/ 除外：那里的样式自带暗色，见 OWN_DARK_DIRS）
 浅色样式改动后重新运行即可：python3 -I scripts/ember-dark-gen.py .
 """
 import colorsys, glob, os, re, sys
@@ -18,6 +19,7 @@ ROOT = sys.argv[1]
 OUT = os.path.join(ROOT, 'app/ember-dark.generated.css')
 OWN = {'app/ember-dark.generated.css', 'app/ember-dark.css', 'app/home-ember-dark.css', 'app/ember-studio.css'}
 SCOPE = '.theme-ember'
+GLOBAL_EXCLUDE = ':where(:not([data-video-studio]))'
 START, END = '/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */', '/* ember-dark:end */'
 OLD_MARKERS = [('/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */', '/* home-ember-dark:end */')]
 
@@ -281,8 +283,12 @@ for f in files:
     print('global', f)
 
 MODULE_MODE[0] = True
+# 视频空间（components/video-studio）的样式本身已按熔光暗色手调，文件里的 ember-dark 块来自视频分支，
+# 不能再按“浅色 → 暗色”映射一遍（2026-11-25 集成时重跑导致深底深字）。整个目录跳过，块原样保留。
+OWN_DARK_DIRS = ('/components/video-studio/',)
 mods = [p for p in glob.glob(os.path.join(ROOT, '**', '*.module.css'), recursive=True)
-        if '/node_modules/' not in p and '/dist/' not in p and '/.next/' not in p]
+        if '/node_modules/' not in p and '/dist/' not in p and '/.next/' not in p
+        and not any(d in p.replace(os.sep, '/') for d in OWN_DARK_DIRS)]
 for mp in sorted(mods):
     src = open(mp, encoding='utf-8').read()
     base = src
@@ -307,5 +313,6 @@ print('modules:', len(mods))
 with open(OUT, 'w', encoding='utf-8') as fh:
     fh.write('/* 全站暗色（熔光）——由 scripts/ember-dark-gen.py 从现有浅色样式自动映射生成，请勿手改。\n'
              '   手调覆盖写在 app/ember-dark.css（全站）和 app/home-ember-dark.css（首页）。 */\n')
-    fh.write('\n'.join(emitted) + '\n')
+    # 全局映射不作用于视频空间：它挂 html[data-video-studio]，样式自带暗色（:where 不增加优先级）。
+    fh.write(re.sub(r'\.theme-ember(?![\w-])', '.theme-ember' + GLOBAL_EXCLUDE, '\n'.join(emitted)) + '\n')
 print('rules:', len(emitted), 'bytes:', os.path.getsize(OUT))

@@ -11,10 +11,10 @@
 
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .steps{color:#79736b}
-:global(.theme-ember) .steps li::before{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .steps li::before{background:#232120}
 :global(.theme-ember) .steps li[data-state="done"]::before{background:#e9e8e6}
 :global(.theme-ember) .steps li[data-state="current"]::before{background:var(--edit-accent,#fa682a)}
-:global(.theme-ember) .steps li[data-state="current"]{color:#e9e8e6;font-weight:500}
+:global(.theme-ember) .steps li[data-state="current"]{color:#e9e8e6}
 :global(.theme-ember) .steps li[data-state="done"]{color:#c6c3bf}
 :global(.theme-ember) .steps[data-outcome="failed"] li[data-state="current"]::before{background:#fa682a}
 :global(.theme-ember) .steps[data-outcome="cancelled"] li[data-state="current"]::before{background:#4c4946}

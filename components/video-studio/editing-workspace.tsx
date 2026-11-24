@@ -34,6 +34,7 @@ import { WritingVersionSources } from "./writing-version-sources";
 import styles from "./editing-workspace.module.css";
 import flow from "./editing-flow.module.css";
 import { EditingTemplateGallery, type TemplateCard } from "./editing-template-gallery";
+import { mediaUrl } from "@/lib/api/base-url";
 
 type EditingTask = components["schemas"]["EditingTaskResponse"];
 type TaskLinkError = { id: string; message: string };
@@ -457,16 +458,16 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     {selected && <button type="button" className={flow.changeSource} onClick={() => setSourceDialog(true)}>更换口播视频</button>}
     {sourceDialog && <Dialog title="我的视频" onClose={() => setSourceDialog(false)}>
       <div className={flow.sourceChoices}>{candidates.map(job => <button type="button" key={job.id} onClick={() => { cancelAutomatic(); setSelected(job.id); setFile(undefined); setReferenceVersion(""); setReferenceText(job.snapshot?.draft.text || ""); setPlanningTask(""); setSubtitles("none"); setSourceDialog(false); }}>
-        {job.video_url && <video src={job.video_url} preload="metadata" muted playsInline />}<span><b>{job.snapshot?.draft.name || "口播视频"}</b><small>{new Date(job.created_at).toLocaleDateString("zh-CN")}</small></span>
+        {job.video_url && <video src={mediaUrl(job.video_url)} preload="metadata" muted playsInline />}<span><b>{job.snapshot?.draft.name || "口播视频"}</b><small>{new Date(job.created_at).toLocaleDateString("zh-CN")}</small></span>
       </button>)}</div>
       {!candidates.length && <p className={flow.chosen}>还没有已生成的口播视频，可直接上传已有视频。</p>}
       <footer className={flow.modalFooter}><button type="button" onClick={() => { setSourceDialog(false); sourceUpload.current?.click(); }}>手动上传视频</button></footer>
     </Dialog>}
-    {selectedGeneration?.video_url && <video src={selectedGeneration.video_url} controls playsInline preload="metadata" aria-label="已生成口播原片预览" style={{ width: "100%", maxWidth: 280, maxHeight: 400 }} />}
-    {restoredSource && <video src={`/api/v1/video-studio/workspaces/${workspaceId}/editing-sources/${restoredSource}/video`} controls playsInline preload="metadata" aria-label="已保存口播原片预览" />}
+    {selectedGeneration?.video_url && <video src={mediaUrl(selectedGeneration.video_url)} controls playsInline preload="metadata" aria-label="已生成口播原片预览" style={{ width: "100%", maxWidth: 280, maxHeight: 400 }} />}
+    {restoredSource && <video src={mediaUrl(`/api/v1/video-studio/workspaces/${workspaceId}/editing-sources/${restoredSource}/video`)} controls playsInline preload="metadata" aria-label="已保存口播原片预览" />}
     {selected === "upload" && <>
 
-      {sourcePreview && <video src={sourcePreview} controls playsInline preload="metadata" aria-label="上传口播原片预览" style={{ width: "100%", maxWidth: 280, maxHeight: 400 }} />}
+      {sourcePreview && <video src={mediaUrl(sourcePreview)} controls playsInline preload="metadata" aria-label="上传口播原片预览" style={{ width: "100%", maxWidth: 280, maxHeight: 400 }} />}
       <details><summary>绑定参考稿（可选）</summary><label>参考确认稿（可选）<select value={referenceVersion} onChange={event => { cancelAutomatic(); setReferenceVersion(event.target.value); setPlanningTask(""); }} disabled={busy || !Array.isArray(confirmedVersions) || !confirmedVersions.length}>
         <option value="">不绑定确认稿</option>
         {Array.isArray(confirmedVersions) && confirmedVersions.map(version => <option key={version.id} value={version.id}>
@@ -520,8 +521,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{task.template_name && `${task.template_name} · `}{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.status !== "completed" && task.status !== "cancelled" && <EditingProgressSteps progress={progress} />}
         {task.planning_origin === "operator_candidate" && <p className={styles.note}>人工调整版</p>}
-        {final ? <video id={`editing-film-${task.id}`} controls playsInline preload="metadata" src={final.url} poster={poster?.url} aria-label="剪辑成片预览" /> : task.status === "awaiting_review" && preview && <video key={preview.id} id={`editing-preview-${task.id}`} controls playsInline preload="metadata" src={preview.url} poster={poster?.url} aria-label="剪辑视频预览" onError={() => markPreviewFailure(preview.id)} />}
-        {final && <a href={final.url} download>下载高清视频</a>}
+        {final ? <video id={`editing-film-${task.id}`} controls playsInline preload="metadata" src={mediaUrl(final.url)} poster={mediaUrl(poster?.url)} aria-label="剪辑成片预览" /> : task.status === "awaiting_review" && preview && <video key={preview.id} id={`editing-preview-${task.id}`} controls playsInline preload="metadata" src={mediaUrl(preview.url)} poster={mediaUrl(poster?.url)} aria-label="剪辑视频预览" onError={() => markPreviewFailure(preview.id)} />}
+        {final && <a href={mediaUrl(final.url)} download>下载高清视频</a>}
         {task.status === "awaiting_review" && preview && <><p className={styles.note}>先看预览，不满意可调整，确认后下载高清。</p><button type="button" disabled={busy} onClick={() => void previewAction(task, preview, "confirm")}>确认效果，获取高清</button></>}
         {preview && (task.status === "awaiting_review" || task.status === "completed") && planId && <button type="button" disabled={busy} onClick={() => revise({
           planId, taskId: task.id, kind: "preview", preview: { task_id: task.id, preview_artifact_id: preview.id, preview_sha256: preview.sha256 }, edits: task.options.native_edits,
@@ -538,9 +539,9 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         {task.source_origin?.kind === "upload_asset" && task.source_origin.confirmed_version_id && <p className={styles.note}>
           参考确认稿 <code title={task.source_origin.confirmed_version_id}>{task.source_origin.confirmed_version_id.slice(0, 8)}</code>
         </p>}
-        {sourceReceipt && <a href={sourceReceipt.url} download>{task.source_origin?.kind === "upload_asset" ? "下载原片与参考稿核对记录" : "下载原片与配音核对记录"}</a>}
-        {editReceipt && <a href={editReceipt.url} download>下载本次调整记录</a>}
-        {layoutReceipt && <a href={layoutReceipt.url} download>下载版式检查记录</a>}</details>}
+        {sourceReceipt && <a href={mediaUrl(sourceReceipt.url)} download>{task.source_origin?.kind === "upload_asset" ? "下载原片与参考稿核对记录" : "下载原片与配音核对记录"}</a>}
+        {editReceipt && <a href={mediaUrl(editReceipt.url)} download>下载本次调整记录</a>}
+        {layoutReceipt && <a href={mediaUrl(layoutReceipt.url)} download>下载版式检查记录</a>}</details>}
         {parent && <p className={styles.note}><a href={`#editing-task-${parent.task_id}`}>查看调整前的版本</a></p>}
         {task.carried_revision && <p className={styles.note}>已保留之前的调整 · <a href={`#editing-task-${task.carried_revision.preview_base.task_id}`}>查看原版本</a></p>}
         {task.options.native_edits && <p className={styles.note}>
@@ -575,8 +576,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
           {internalTools && <EditingFilmReview key={final.id} workspaceId={workspaceId} task={task} final={final} />}
         </>}
         {task.status === "completed" && task.options.mode === "transcript" && transcript && <>
-          {transcriptAudio && <audio id={`editing-transcript-audio-${task.id}`} controls preload="none" src={transcriptAudio.url} aria-label="口播原声试听" />}
-          <a href={transcript.url} download>下载逐词转录</a>
+          {transcriptAudio && <audio id={`editing-transcript-audio-${task.id}`} controls preload="none" src={mediaUrl(transcriptAudio.url)} aria-label="口播原声试听" />}
+          <a href={mediaUrl(transcript.url)} download>下载逐词转录</a>
           {task.source_frame?.supports_native_portrait === false
             ? <p className={styles.note} role="status">原片画幅 {task.source_frame.width}×{task.source_frame.height}。转录可试听和校对，方形像素原片也可生成保留画幅的基础字幕片。{errorLabel.EDITING_ORIENTATION_REVIEW_REQUIRED}</p>
             : <button type="button" disabled={busy} onClick={() => planFromTranscript(task.id)}>使用这段口播继续剪辑</button>}

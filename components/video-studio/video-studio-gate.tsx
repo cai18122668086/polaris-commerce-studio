@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { CircleHelp, LoaderCircle, WifiOff } from "lucide-react";
 import { useVideoStudioGrantState } from "@/features/video-studio/access";
 import { InternalToolsContext } from "@/features/video-studio/internal-tools";
@@ -12,11 +12,16 @@ import workflow from "./studio-workflow.module.css";
 
 export function VideoStudioGate({ screen }: { screen: StudioScreen }) {
   // 熔光暗色：全站改版合入后 <html> 本就带 theme-ember；在那之前视频空间自己挂上，离开时只撤掉自己加的。
-  useEffect(() => {
+  // data-video-studio：视频空间的样式自带暗色，全站的熔光映射层（app/ember-*.css）据此跳过本页面。
+  useLayoutEffect(() => {
     const root = document.documentElement;
-    if (root.classList.contains("theme-ember")) return;
-    root.classList.add("theme-ember");
-    return () => root.classList.remove("theme-ember");
+    root.setAttribute("data-video-studio", "");
+    const added = !root.classList.contains("theme-ember");
+    if (added) root.classList.add("theme-ember");
+    return () => {
+      root.removeAttribute("data-video-studio");
+      if (added) root.classList.remove("theme-ember");
+    };
   }, []);
   const grant = useVideoStudioGrantState();
   const workspaceQuery = useWorkspace();

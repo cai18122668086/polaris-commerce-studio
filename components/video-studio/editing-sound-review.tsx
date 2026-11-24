@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { components } from "@/lib/api/generated/openapi";
 import styles from "./editing-workspace.module.css";
+import { mediaUrl } from "@/lib/api/base-url";
 
 type Artifact = components["schemas"]["EditingArtifactResponse"];
 type Cue = { assetId: string; start: number; end?: number; label: string };
@@ -58,7 +59,7 @@ export function EditingSoundReview({ workspaceId, receipt, media, playerId }: {
     loading.current = true;
     setLoadError(false);
     try {
-      const response = await fetch(receipt.url, { mode: "same-origin", signal: AbortSignal.timeout(12000) });
+      const response = await fetch(mediaUrl(receipt.url) ?? receipt.url, { mode: "same-origin", signal: AbortSignal.timeout(12000) });
       if (!response.ok) throw new Error("Audio receipt unavailable");
       setCues(readCues(await response.json(), media.duration_ms));
     } catch {
@@ -105,11 +106,11 @@ export function EditingSoundReview({ workspaceId, receipt, media, playerId }: {
             }}>{original === i ? "收起音频" : "单独试听音效"}</button>
           </div>
           {original === i && <audio ref={audio} controls preload="none" aria-label={`${cue.label}原包音频`}
-            src={`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-library/assets/${cue.assetId}/audio`}
+            src={mediaUrl(`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-library/assets/${cue.assetId}/audio`)}
             onPlay={() => player()?.pause()} onError={() => setPlayError("音频暂不可用，请稍后重试。")} />}
         </li>)}
       </ol>}
-      <a href={receipt.url} download>下载声音校验记录</a>
+      <a href={mediaUrl(receipt.url)} download>下载声音校验记录</a>
     </fieldset>
   </details>;
 }

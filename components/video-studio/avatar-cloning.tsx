@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api/api-error";
 import { Dialog } from "./studio-primitives";
 import styles from "./video-studio.module.css";
 import cloneStyles from "./avatar-cloning.module.css";
+import { mediaUrl } from "@/lib/api/base-url";
 
 export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCreated, costFor, motionCredits }: { library: ReturnType<typeof useVideoLibrary>; userId: string; workspaceId: string; onClose: () => void; onCreated: (job: GenerationJob) => void ; costFor?: (kind: "image" | "video") => { text: string; insufficient: boolean }; /** 本步（生成形象动作）的积分；null = 未定价 */ motionCredits?: number | null }) {
   const [kind, setKind] = useState<"image" | "video">("image");
@@ -50,7 +51,7 @@ export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCre
     <div className={cloneStyles.tabs} role="tablist" aria-label="形象素材类型">{(["image", "video"] as const).map(value => <button key={value} type="button" role="tab" aria-selected={kind === value} disabled={busy || attempted} onClick={() => { if (kind === value) return; setKind(value); setFile(undefined); setPreview(""); setError(""); }}>{value === "image" ? <ImagePlus size={18} /> : <Video size={18} />}<span>{value === "image" ? "上传图片" : "上传视频"}</span><small>{value === "image" ? "从照片生成自然动作" : "保留你本人的出镜动作"}</small>{kind === value && <Check size={14} />}</button>)}</div>
     <label className={cloneStyles.name}>形象名称<input aria-label="形象名称" value={name} disabled={busy || attempted} maxLength={30} placeholder="给你的数字分身起个名字" onChange={event => setName(event.target.value)} /></label>
     <label className={`${cloneStyles.drop} ${file ? cloneStyles.selected : ""}`}>
-      {file && preview ? kind === "image" ? <img src={preview} alt="所选形象图片" /> : <video src={preview} muted playsInline preload="metadata" /> : <span className={cloneStyles.uploadIcon}><Upload size={25} /></span>}
+      {file && preview ? kind === "image" ? <img src={mediaUrl(preview)} alt="所选形象图片" /> : <video src={mediaUrl(preview)} muted playsInline preload="metadata" /> : <span className={cloneStyles.uploadIcon}><Upload size={25} /></span>}
       <b>{file?.name || (kind === "image" ? "选择一张清晰照片" : "选择一段出镜视频")}</b>
       <span>{file ? "已选择素材 · 点击可更换" : kind === "image" ? "正面或微侧脸，面部无遮挡，光线均匀" : "单人出镜、机位稳定，保持自然动作"}</span>
       <input aria-label={kind === "image" ? "选择形象图片" : "选择形象视频"} type="file" disabled={busy || attempted} accept={kind === "image" ? ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" : ".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"} onChange={event => {

@@ -8,18 +8,19 @@ import {
   useRef,
   useState,
 } from "react";
+import { withBasePath } from "@/lib/base-path";
 
 const SLIDES = [
   {
     desktopSrc:
-      "/homepage-banners/polaris-home-banner-01-v12-fresh-1920x240.png",
-    mobileSrc: "/homepage-banners/polaris-mobile-banner-01-v1-750x300.png",
+      withBasePath("/homepage-banners/polaris-home-banner-01-v12-fresh-1920x240.png"),
+    mobileSrc: withBasePath("/homepage-banners/polaris-mobile-banner-01-v1-750x300.png"),
     alt: "极光商绘，懂电商的全品类出图工作台",
   },
   {
     desktopSrc:
-      "/homepage-banners/polaris-home-banner-02-v12-fresh-1920x240.png",
-    mobileSrc: "/homepage-banners/polaris-mobile-banner-02-v1-750x300.png",
+      withBasePath("/homepage-banners/polaris-home-banner-02-v12-fresh-1920x240.png"),
+    mobileSrc: withBasePath("/homepage-banners/polaris-mobile-banner-02-v1-750x300.png"),
     alt: "姿态任选，场景随心换，有效降低出图与换景成本",
   },
 ] as const;

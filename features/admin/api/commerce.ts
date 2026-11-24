@@ -1,4 +1,5 @@
 import { parseResponse, requestHeaders, type AdminPagination } from "./admin";
+import { normalizeList } from "./normalize";
 
 export type Customer = { workspace_id: string; workspace_name: string; user_id: string; email: string | null; display_name: string | null; status: string; balance_credits: number; reserved_credits: number; available_credits: number; consumed_credits: number; paid_fen: number; last_used_at: string | null; last_login_at: string | null; note: string; enforcement_enabled: boolean };
 export type Refund = { id: string; purchase_id: string; workspace_id: string; email?: string | null; amount_fen: number; credits: number; status: "processing" | "completed" | "rejected"; reason: string; receipt_reference: string | null; result_note: string | null; actor_user_id: string; confirmed_by_user_id: string | null; hold_ledger_entry_id: number; result_ledger_entry_id: number | null; created_at: string; confirmed_at: string | null; gateway_result: string };
@@ -26,7 +27,7 @@ export async function commerceRequest<T>(path: string, options: { method?: strin
 export function listCommerce<K extends CommerceTab>(tab: K, params: Record<string, string | number | undefined>, signal?: AbortSignal) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "") query.set(key, String(value));
-  return commerceRequest<CommerceList<CommerceData[K][number]>>(`/${tab}?${query}`, { signal });
+  return commerceRequest<unknown>(`/${tab}?${query}`, { signal }).then((payload) => normalizeList<CommerceData[K][number]>(payload) as CommerceList<CommerceData[K][number]>);
 }
 
 export function parseYuan(value: string): number | null {

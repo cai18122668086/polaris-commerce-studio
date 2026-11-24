@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { AdminShell } from "@/components/admin/admin-shell";
 import { commerceRequest, listCommerce, parseYuan, type Audit, type CommerceAccess, type CommerceData, type CommerceOverview, type CommerceTab, type Customer, type GenerationJob, type Order, type Refund, type SupportCase } from "@/features/admin/api/commerce";
 import type { AdminPagination } from "@/features/admin/api/admin";
+import { normalizeCommerceAccess, normalizeCommerceOverview } from "@/features/admin/api/normalize";
 import styles from "./page.module.css";
 
 const emptyData: CommerceData = { customers: [], orders: [], ledger: [], jobs: [], cases: [], refunds: [], audit: [] };
@@ -63,7 +64,7 @@ export default function CommercePage() {
     const version = ++requestVersion.current;
     try {
       const [allowed, metrics, result] = await Promise.all([
-        commerceRequest<CommerceAccess>("/access", { signal }), commerceRequest<CommerceOverview>("/overview", { signal }),
+        commerceRequest<unknown>("/access", { signal }).then(normalizeCommerceAccess<CommerceAccess>), commerceRequest<unknown>("/overview", { signal }).then(normalizeCommerceOverview<CommerceOverview>),
         listCommerce(tab, { limit: 20, offset, workspace_id: tab === "customers" ? undefined : scope?.id, search: ["cases", "audit"].includes(tab) ? undefined : search, status: ["orders", "jobs", "refunds"].includes(tab) ? status : undefined, entry_type: tab === "ledger" ? status : undefined }, signal),
       ]);
       if (signal?.aborted || version !== requestVersion.current) return;

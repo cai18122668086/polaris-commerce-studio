@@ -1,5 +1,6 @@
 import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/auth/local-dev";
 import { mapApiError } from "@/lib/api/error-mapper";
+import { arrayOf, canManage, normalizeAdminOverview, normalizeList, normalizeLogDetail } from "./normalize";
 
 export type AdminAccess = { can_manage: boolean };
 
@@ -273,7 +274,7 @@ export async function getAdminAccess(signal?: AbortSignal): Promise<AdminAccess>
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminAccess>(response);
+  return { can_manage: canManage(await parseResponse<unknown>(response)) };
 }
 
 export async function getAdminOverview(signal?: AbortSignal): Promise<AdminOverview> {
@@ -283,7 +284,7 @@ export async function getAdminOverview(signal?: AbortSignal): Promise<AdminOverv
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminOverview>(response);
+  return normalizeAdminOverview<AdminOverview>(await parseResponse<unknown>(response));
 }
 
 export async function getAdminUsers(
@@ -296,7 +297,7 @@ export async function getAdminUsers(
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminListResponse<AdminUser>>(response);
+  return normalizeList<AdminUser>(await parseResponse<unknown>(response));
 }
 
 export async function getAdminWorkspaces(
@@ -309,7 +310,7 @@ export async function getAdminWorkspaces(
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminListResponse<AdminWorkspace>>(response);
+  return normalizeList<AdminWorkspace>(await parseResponse<unknown>(response));
 }
 
 /** Workspaces visible to the signed-in user (already membership-filtered). */
@@ -320,7 +321,7 @@ export async function getUserWorkspaces(signal?: AbortSignal): Promise<UserWorks
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<UserWorkspace[]>(response);
+  return arrayOf<UserWorkspace>(await parseResponse<unknown>(response));
 }
 export async function getAdminLogs(
   params: {
@@ -351,7 +352,7 @@ export async function getAdminLogs(
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminListResponse<AdminLog>>(response);
+  return normalizeList<AdminLog>(await parseResponse<unknown>(response));
 }
 
 
@@ -366,7 +367,7 @@ export async function getAdminLogDetail(
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminLogDetail>(response);
+  return normalizeLogDetail<AdminLogDetail>(await parseResponse<unknown>(response));
 }
 
 export async function getAdminAccounts(
@@ -392,7 +393,7 @@ export async function getAdminAccounts(
     headers: requestHeaders(),
     signal,
   });
-  return parseResponse<AdminListResponse<AdminOperationalAccount>>(response);
+  return normalizeList<AdminOperationalAccount>(await parseResponse<unknown>(response));
 }
 
 
@@ -406,8 +407,8 @@ export async function getAdminAdministrators(
     headers: requestHeaders(),
     signal,
   });
-  const payload = await parseResponse<AdminListResponse<AdminAdministrator> & { can_manage: boolean }>(response);
-  return payload;
+  const payload = await parseResponse<unknown>(response);
+  return { ...normalizeList<AdminAdministrator>(payload), can_manage: canManage(payload) };
 }
 
 export async function createAdminAdministrator(

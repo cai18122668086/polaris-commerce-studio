@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import time
@@ -31,6 +32,64 @@ return out
 """
 EXEMPT_PREFIXES = ("/health",)
 RATE_LIMITED_MESSAGE = "请求过于频繁，请稍后再试。"
+# Proxies whose X-Forwarded-For / X-Real-IP are believed: loopback and the
+# private ranges Docker networks use. Anything else is the client itself.
+DEFAULT_TRUSTED_PROXIES = (
+    "127.0.0.0/8",
+    "::1/128",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "fc00::/7",
+)
+Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+
+
+def parse_networks(values: Sequence[str]) -> tuple[Network, ...]:
+    return tuple(ipaddress.ip_network(value.strip(), strict=False) for value in values)
+
+
+def _trusted(address: str, networks: Sequence[Network]) -> bool:
+    try:
+        ip = ipaddress.ip_address(address.strip())
+    except ValueError:
+        return False
+    return any(ip in network for network in networks)
+
+
+def client_ip(scope: Scope, trusted: Sequence[Network]) -> str | None:
+    """Real client address; forwarding headers count only from trusted peers.
+
+    Walks X-Forwarded-For from the right, skipping trusted proxies, so a value
+    the client injected on the left is never used while a real hop exists.
+    """
+
+    peer = scope.get("client")
+    address = peer[0] if peer else None
+    if address is None or not _trusted(address, trusted):
+        return address
+    forwarded = _header(scope, b"x-forwarded-for")
+    if forwarded:
+        hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+        for hop in reversed(hops):
+            if not _trusted(hop, trusted):
+                return hop if _valid(hop) else address
+        if hops and _valid(hops[0]):
+            return hops[0]
+    real_ip = _header(scope, b"x-real-ip")
+    if real_ip and _valid(real_ip):
+        return real_ip.strip()
+    return address
+
+
+def _valid(address: str) -> bool:
+    try:
+        ipaddress.ip_address(address.strip())
+    except ValueError:
+        return False
+    return True
+
+
 # Session credentials that identify one signed-in user without verifying them.
 SESSION_COOKIES = ("sAccessToken", "sRefreshToken")
 
@@ -80,6 +139,7 @@ class RateLimitMiddleware:
         exempt_prefixes: Sequence[str] = EXEMPT_PREFIXES,
         client_factory: Callable[[], Any] | None = None,
         clock: Callable[[], float] = time.time,
+        trusted_proxies: Sequence[str] = DEFAULT_TRUSTED_PROXIES,
         cooldown_seconds: float = 15,
     ) -> None:
         self.app = app
@@ -91,6 +151,7 @@ class RateLimitMiddleware:
         self.client_factory = client_factory
         self.clock = clock
         self.cooldown = cooldown_seconds
+        self.trusted = parse_networks(trusted_proxies)
         self._clients: dict[int, Any] = {}
         self._paused_until = 0.0
 
@@ -128,11 +189,9 @@ class RateLimitMiddleware:
             return
         window_id = int(now // self.window)
         checks: list[tuple[str, int]] = []
-        client_address = scope.get("client")
-        if self.per_ip and client_address:
-            checks.append(
-                (f"polaris:rl:v1:ip:{client_address[0]}:{window_id}", self.per_ip)
-            )
+        address = client_ip(scope, self.trusted)
+        if self.per_ip and address:
+            checks.append((f"polaris:rl:v1:ip:{address}:{window_id}", self.per_ip))
         session = user_key(scope)
         if self.per_user and session:
             checks.append((f"polaris:rl:v1:user:{session}:{window_id}", self.per_user))

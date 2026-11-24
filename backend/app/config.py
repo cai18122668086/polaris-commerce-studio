@@ -354,6 +354,17 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
     rate_limit_per_ip: int = Field(default=1800, ge=0, le=1_000_000)
     rate_limit_per_user: int = Field(default=600, ge=0, le=1_000_000)
+    # Peers whose X-Forwarded-For is trusted (Caddy on the Docker network).
+    rate_limit_trusted_proxies: list[str] = Field(
+        default_factory=lambda: [
+            "127.0.0.0/8",
+            "::1/128",
+            "10.0.0.0/8",
+            "172.16.0.0/12",
+            "192.168.0.0/16",
+            "fc00::/7",
+        ]
+    )
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=40_000_000, ge=1)
     justone_api_token: SecretStr = SecretStr("")

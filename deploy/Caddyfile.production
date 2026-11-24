@@ -42,17 +42,26 @@ www.jgshai.cn {
 	# keep the API no-store rule from defeating ETag reuse for image reloads.
 	@private_asset path /api/v1/workspaces/*/assets/*/content
 	handle @private_asset {
-		reverse_proxy api:8000
+		# Overwrite, never append: the client cannot inject a hop the API trusts.
+		reverse_proxy api:8000 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	# Ecommerce login state is per-process; keep it on the single-process API.
 	@ecommerce path /api/ecommerce /api/ecommerce/*
 	handle @ecommerce {
-		reverse_proxy ecommerce-api:8000
+		# Overwrite, never append: the client cannot inject a hop the API trusts.
+		reverse_proxy ecommerce-api:8000 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	handle @api {
-		reverse_proxy api:8000
+		# Overwrite, never append: the client cannot inject a hop the API trusts.
+		reverse_proxy api:8000 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	handle {

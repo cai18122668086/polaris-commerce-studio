@@ -375,6 +375,7 @@ def create_app(
             window_seconds=app_settings.rate_limit_window_seconds,
             per_ip=app_settings.rate_limit_per_ip,
             per_user=app_settings.rate_limit_per_user,
+            trusted_proxies=app_settings.rate_limit_trusted_proxies,
         )
 
     @application.middleware("http")

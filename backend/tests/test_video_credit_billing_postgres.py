@@ -234,3 +234,61 @@ def test_postgres_migration_matches_the_reservation_model():
                 MigrationContext.configure(connection), Base.metadata
             )
         assert [diff for diff in diffs if "credit_reservations" in repr(diff)] == []
+
+
+def test_postgres_0053_downgrades_cleanly_without_video_holds():
+    from sqlalchemy import inspect
+
+    from tests.test_schema_hardening_postgres import (
+        _downgrade,
+        _migrate,
+        _new_schema,
+        _postgres_url,
+    )
+
+    with _new_schema(_postgres_url(), "video_credit_down") as schema:
+        _migrate(schema.url, "20261125_0053")
+        _downgrade(schema.url, "20261116_0052")
+        with schema.engine.connect() as connection:
+            table = inspect(connection)
+            columns = {c["name"]: c for c in table.get_columns("credit_reservations")}
+            assert columns["job_id"]["nullable"] is False
+            assert not {"owner_type", "owner_id", "charge_action"} & set(columns)
+            assert "uq_credit_reservations_active_owner" not in {
+                i["name"] for i in table.get_indexes("credit_reservations")
+            }
+        _migrate(schema.url, "20261125_0053")
+
+
+def test_postgres_0053_downgrade_refuses_to_drop_video_holds():
+    from tests.test_schema_hardening_postgres import (
+        _downgrade,
+        _migrate,
+        _new_schema,
+        _postgres_url,
+    )
+
+    with _new_schema(_postgres_url(), "video_credit_keep") as schema:
+        _migrate(schema.url, "20261125_0053")
+        with sessionmaker(schema.engine)() as session:
+            session.add(UserRecord(id="usr_k", auth_provider="test", auth_subject="k"))
+            session.flush()
+            session.add(
+                WorkspaceRecord(id="ws_k", name="k", created_by_user_id="usr_k")
+            )
+            session.flush()
+            session.add(
+                CreditReservationRecord(
+                    id="hold_k",
+                    workspace_id="ws_k",
+                    owner_type="video_voice",
+                    owner_id="cv-voice-k",
+                    charge_action="voice_clone",
+                    reserved_credits=5,
+                    settled_credits=5,
+                    status="settled",
+                )
+            )
+            session.commit()
+        with pytest.raises(RuntimeError, match="video credit holds exist"):
+            _downgrade(schema.url, "20261116_0052")

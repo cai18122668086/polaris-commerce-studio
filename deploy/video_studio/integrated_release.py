@@ -307,7 +307,8 @@ def prepare(root, revision, assets, backend, frontend):
         "30",
     ]
     services["editing-maintenance"].update(
-        mem_limit="402653184", cpus=0.25, healthcheck={"disable": True}
+        # Idle poller (~90 MiB observed); its memory funds the api's 1.5 GiB.
+        mem_limit="268435456", cpus=0.25, healthcheck={"disable": True}
     )
     caddy = services["caddy"]
     target = next(

@@ -256,7 +256,8 @@ services:
     cap_drop: [ALL]
     init: true
     mem_limit: 384m
-    cpus: "0.50"
+    # Password hashing for sign-in runs in Core; 0.5 CPU serialized bursts.
+    cpus: "1.00"
     pids_limit: 256
     stop_grace_period: 30s
     restart: unless-stopped
@@ -324,7 +325,8 @@ services:
     tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
     cap_drop: [ALL]
     init: true
-    mem_limit: 1g
+    # Load test: 3 workers sat at 759 MiB at 50 VUs; leave headroom.
+    mem_limit: 1536m
     cpus: "1.50"
     pids_limit: 512
     stop_grace_period: 30s

@@ -964,3 +964,26 @@ def test_active_works_lead_back_to_unfinished_tasks(video, tmp_path):
         session.commit()
     assert client.get(active_url).json() == {"items": []}
 
+
+
+def test_queued_task_reports_queue_position(video, tmp_path):
+    client, _, ws, _, _, _, source = setup_source(video, tmp_path)
+    url = base(ws) + "/editing-tasks"
+    first = client.post(url, json={"request_id": str(uuid4()), "source_id": source})
+    second = client.post(
+        url,
+        json={
+            "request_id": str(uuid4()),
+            "source_id": source,
+            "options": {"language": "en"},
+        },
+    )
+    assert first.status_code == second.status_code == 200, second.text
+    assert first.json()["queue_position"] == 1
+    assert client.get(url + f"/{second.json()['id']}").json()["queue_position"] == 2
+    with client.app.state.session_factory() as session:
+        row = session.get(EditingTaskRecord, first.json()["id"])
+        row.status = "running"
+        session.commit()
+    assert "queue_position" not in client.get(url + f"/{first.json()['id']}").json()
+    assert client.get(url + f"/{second.json()['id']}").json()["queue_position"] == 1

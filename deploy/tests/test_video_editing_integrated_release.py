@@ -166,11 +166,26 @@ class IntegratedVideoReleaseTests(unittest.TestCase):
                 worker["environment"]["POLARIS_VIDEO_EDITING_ENABLED"], "true"
             )
             self.assertIn("--queues=editing,editing-planning", worker["command"])
+            self.assertIn("--concurrency=2", worker["command"])
             self.assertIn("max_size 55MB", caddy.read_text())
             self.assertIn("max_size 210MB", (root / "Caddyfile").read_text())
             rollback = json.loads((root / "rollback.compose.private.json").read_text())
             self.assertEqual(set(rollback["services"]), set(release.ROLES))
 
+
+    def test_editing_worker_concurrency_is_env_driven_and_bounded(self):
+        release = module()
+        with patch.dict("os.environ", {"POLARIS_EDITING_WORKER_CONCURRENCY": "3"}):
+            self.assertEqual(release.editing_worker_concurrency(), 3)
+        with patch.dict("os.environ", {}, clear=False):
+            import os
+
+            os.environ.pop("POLARIS_EDITING_WORKER_CONCURRENCY", None)
+            self.assertEqual(release.editing_worker_concurrency(), 2)
+        for bad in ("0", "5", "x"):
+            with patch.dict("os.environ", {"POLARIS_EDITING_WORKER_CONCURRENCY": bad}):
+                with self.assertRaises(SystemExit):
+                    release.editing_worker_concurrency()
 
 if __name__ == "__main__":
     unittest.main()

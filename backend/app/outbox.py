@@ -290,6 +290,10 @@ def _dispatch(
         elif (job is not None and job.type == "reference_remix"
               and job.configuration.get("replica_session_id")):
             options["queue"] = _REPLICA_QUEUE
+    if task is process_job:
+        from .celery_limits import queue_limits
+
+        options.update(queue_limits(settings, options.get("queue")))
     task.apply_async(
         args=[job_id], headers={"outbox_dedupe_key": dedupe_key}, **options
     )

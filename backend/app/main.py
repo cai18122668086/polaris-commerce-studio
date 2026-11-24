@@ -59,6 +59,7 @@ from .services import (
     set_credit_enforcement_enabled,
     set_credit_pilot_workspaces,
     set_quota_enabled,
+    set_user_active_image_job_limit,
 )
 from .storage import (
     ImageStorage,
@@ -212,6 +213,7 @@ def create_app(
     validate_task_runner_settings(app_settings)
     set_quota_enabled(app_settings.provider_quota_enabled)
     set_credit_enforcement_enabled(app_settings.workspace_credit_enforcement_enabled)
+    set_user_active_image_job_limit(app_settings.user_active_image_job_limit)
     set_credit_pilot_workspaces(app_settings.workspace_credit_pilot_ids)
     auth_backend = external_auth_backend
     if app_settings.auth_mode == "external":
@@ -363,6 +365,18 @@ def create_app(
         allow_headers=allowed_headers,
         expose_headers=auth_cors_headers,
     )
+    if app_settings.rate_limit_enabled:
+        from .rate_limit import RateLimitMiddleware
+
+        application.add_middleware(
+            RateLimitMiddleware,
+            redis_url=app_settings.rate_limit_redis_url
+            or app_settings.celery_broker_url,
+            window_seconds=app_settings.rate_limit_window_seconds,
+            per_ip=app_settings.rate_limit_per_ip,
+            per_user=app_settings.rate_limit_per_user,
+            trusted_proxies=app_settings.rate_limit_trusted_proxies,
+        )
 
     @application.middleware("http")
     async def request_context(

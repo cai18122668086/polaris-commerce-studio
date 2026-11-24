@@ -158,6 +158,7 @@ from .services import (
     decode_cursor,
     encode_cursor,
     enforce_active_job_limit,
+    enforce_running_image_job_limit,
     estimate_job,
     get_ready_assets,
     get_workspace_asset,
@@ -3271,6 +3272,8 @@ def confirm_plan(
             "任务当前状态不允许确认计划。",
         )
     _ensure_detail_skill_provider_enabled(request, job)
+    # Confirming starts generation: apply the running-job cap here as well.
+    enforce_running_image_job_limit(session, workspace.workspace_id)
     automatic_delivery_authorization = None
     auto_fields_supplied = any(
         value is not None

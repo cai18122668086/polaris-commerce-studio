@@ -326,7 +326,11 @@ class Settings(BaseSettings):
         le=2_000_000,
     )
     xinghe_concurrency: int = Field(default=6, ge=1, le=3000)
-    image_global_concurrency: int = Field(default=3000, ge=1, le=3000)
+    # Fleet-wide cap on in-flight upstream image requests, shared through Redis
+    # by every API and Celery process. 3000 meant "unlimited"; 40 is two full
+    # detail batches (xinghe_concurrency=20) and stays below the supplier's
+    # observed burst tolerance. Raise only together with the supplier quota.
+    image_global_concurrency: int = Field(default=40, ge=1, le=3000)
     replica_analysis_concurrency: int = Field(default=4, ge=1, le=16)
     # Kept for compatibility with existing deployment environments. Exact
     # sessions now use the current protocol in every workspace.
@@ -336,6 +340,38 @@ class Settings(BaseSettings):
     xinghe_skill_root: Path = Field(default_factory=default_xinghe_skill_root)
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
+    # Per-queue Celery soft limits (seconds). The hard limit is soft + grace.
+    # Derived from upstream timeouts: one image call may take 600 s and is
+    # retried up to twice with backoff (~1.9 ks); planning adds analysis
+    # (600 s). Editing renders are bounded by video_editing_subprocess_timeout.
+    celery_soft_time_limit_image_seconds: int = Field(default=2400, ge=60, le=86400)
+    celery_soft_time_limit_detail_seconds: int = Field(default=3600, ge=60, le=86400)
+    celery_soft_time_limit_replica_seconds: int = Field(default=3000, ge=60, le=86400)
+    celery_soft_time_limit_editing_seconds: int = Field(default=4200, ge=60, le=86400)
+    celery_soft_time_limit_planning_seconds: int = Field(default=1800, ge=60, le=86400)
+    celery_soft_time_limit_cancel_seconds: int = Field(default=300, ge=30, le=3600)
+    celery_time_limit_grace_seconds: int = Field(default=120, ge=10, le=3600)
+    # Per-account running-job caps (image jobs per workspace, video
+    # generations per user). 0 disables; production compose sets 3 and 1.
+    user_active_image_job_limit: int = Field(default=0, ge=0, le=1000)
+    user_active_video_job_limit: int = Field(default=0, ge=0, le=1000)
+    # Fixed-window request rate limiting in Redis; fails open without Redis.
+    rate_limit_enabled: bool = False
+    rate_limit_redis_url: str | None = None
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    rate_limit_per_ip: int = Field(default=1800, ge=0, le=1_000_000)
+    rate_limit_per_user: int = Field(default=600, ge=0, le=1_000_000)
+    # Peers whose X-Forwarded-For is trusted (Caddy on the Docker network).
+    rate_limit_trusted_proxies: list[str] = Field(
+        default_factory=lambda: [
+            "127.0.0.0/8",
+            "::1/128",
+            "10.0.0.0/8",
+            "172.16.0.0/12",
+            "192.168.0.0/16",
+            "fc00::/7",
+        ]
+    )
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=40_000_000, ge=1)
     justone_api_token: SecretStr = SecretStr("")

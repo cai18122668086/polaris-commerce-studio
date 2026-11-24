@@ -152,6 +152,22 @@ def artifact_response(
     }
 
 
+def queue_position(session: Session, row: EditingTaskRecord) -> int | None:
+    """Cheap FIFO estimate: queued tasks created earlier, plus this one."""
+
+    if row.status != "queued":
+        return None
+    ahead = session.scalar(
+        select(func.count())
+        .select_from(EditingTaskRecord)
+        .where(
+            EditingTaskRecord.status == "queued",
+            EditingTaskRecord.created_at < row.created_at,
+        )
+    )
+    return int(ahead or 0) + 1
+
+
 def response(
     row: EditingTaskRecord,
     session: Session,
@@ -239,6 +255,7 @@ def response(
         if row.created_at.tzinfo is None
         else row.created_at,
         "library_release": row.library_release,
+        "queue_position": queue_position(session, row),
         "options": row.options,
         "carried_revision": row.checkpoint.get("carried_revision"),
         "motion_counts": counts,

@@ -6,11 +6,13 @@ x-backend-common-environment: &backend-common-environment
   POLARIS_METRICS_TOKEN: ${POLARIS_METRICS_TOKEN:-}
   POLARIS_ACCESS_URL_SECRET: ${POLARIS_ACCESS_URL_SECRET:?set the existing server-local signing secret}
   POLARIS_DATABASE_URL: postgresql+psycopg://polaris:${POLARIS_POSTGRES_PASSWORD:?set PostgreSQL password}@postgres:5432/polaris
-  # Each Celery child owns its own SQLAlchemy engine. Keep the aggregate
-  # connection budget below PostgreSQL's small-instance limit.
+  # Each Celery child and each uvicorn worker owns its own SQLAlchemy engine.
+  # These defaults serve auxiliary processes; api and worker override them.
+  # The aggregate budget is in docs/capacity-20261125.md and must stay below
+  # the postgres max_connections set further down.
   POLARIS_DATABASE_POOL_SIZE: ${POLARIS_DATABASE_POOL_SIZE:-3}
   POLARIS_DATABASE_MAX_OVERFLOW: ${POLARIS_DATABASE_MAX_OVERFLOW:-2}
-  POLARIS_DATABASE_POOL_TIMEOUT_SECONDS: ${POLARIS_DATABASE_POOL_TIMEOUT_SECONDS:-5}
+  POLARIS_DATABASE_POOL_TIMEOUT_SECONDS: ${POLARIS_DATABASE_POOL_TIMEOUT_SECONDS:-10}
   POLARIS_DATABASE_POOL_RECYCLE_SECONDS: ${POLARIS_DATABASE_POOL_RECYCLE_SECONDS:-1800}
   POLARIS_AUTO_CREATE_SCHEMA: "false"
   POLARIS_STORAGE_BACKEND: s3
@@ -81,6 +83,20 @@ x-backend-common-environment: &backend-common-environment
   POLARIS_RETENTION_INTERVAL_SECONDS: "3600"
   POLARIS_RETENTION_BATCH_SIZE: "100"
   POLARIS_CORS_ORIGINS: '["https://www.jgshai.cn"]'
+  # Fixed-window request limits (Redis, fail-open) and running-job caps.
+  POLARIS_RATE_LIMIT_ENABLED: ${POLARIS_RATE_LIMIT_ENABLED:-true}
+  POLARIS_RATE_LIMIT_WINDOW_SECONDS: ${POLARIS_RATE_LIMIT_WINDOW_SECONDS:-60}
+  POLARIS_RATE_LIMIT_PER_IP: ${POLARIS_RATE_LIMIT_PER_IP:-1800}
+  POLARIS_RATE_LIMIT_PER_USER: ${POLARIS_RATE_LIMIT_PER_USER:-600}
+  POLARIS_USER_ACTIVE_IMAGE_JOB_LIMIT: ${POLARIS_USER_ACTIVE_IMAGE_JOB_LIMIT:-3}
+  POLARIS_USER_ACTIVE_VIDEO_JOB_LIMIT: ${POLARIS_USER_ACTIVE_VIDEO_JOB_LIMIT:-1}
+  # Celery soft limits per queue; hard limit = soft + grace.
+  POLARIS_CELERY_SOFT_TIME_LIMIT_IMAGE_SECONDS: ${POLARIS_CELERY_SOFT_TIME_LIMIT_IMAGE_SECONDS:-2400}
+  POLARIS_CELERY_SOFT_TIME_LIMIT_DETAIL_SECONDS: ${POLARIS_CELERY_SOFT_TIME_LIMIT_DETAIL_SECONDS:-3600}
+  POLARIS_CELERY_SOFT_TIME_LIMIT_REPLICA_SECONDS: ${POLARIS_CELERY_SOFT_TIME_LIMIT_REPLICA_SECONDS:-3000}
+  POLARIS_CELERY_SOFT_TIME_LIMIT_EDITING_SECONDS: ${POLARIS_CELERY_SOFT_TIME_LIMIT_EDITING_SECONDS:-4200}
+  POLARIS_CELERY_SOFT_TIME_LIMIT_PLANNING_SECONDS: ${POLARIS_CELERY_SOFT_TIME_LIMIT_PLANNING_SECONDS:-1800}
+  POLARIS_CELERY_TIME_LIMIT_GRACE_SECONDS: ${POLARIS_CELERY_TIME_LIMIT_GRACE_SECONDS:-120}
 
 x-provider-environment: &provider-environment
   POLARIS_TASK_RUNNER: ${POLARIS_TASK_RUNNER:-mock}
@@ -104,7 +120,8 @@ x-provider-environment: &provider-environment
   POLARIS_TENGLI_DAILY_REQUEST_LIMIT: ${POLARIS_TENGLI_DAILY_REQUEST_LIMIT:-0}
   POLARIS_TENGLI_PLANNER_RESERVE_MICROS: ${POLARIS_TENGLI_PLANNER_RESERVE_MICROS:-250000}
   POLARIS_XINGHE_CONCURRENCY: ${POLARIS_XINGHE_CONCURRENCY:-6}
-  POLARIS_IMAGE_GLOBAL_CONCURRENCY: ${POLARIS_IMAGE_GLOBAL_CONCURRENCY:-3000}
+  # Fleet-wide in-flight upstream image requests (Redis admission).
+  POLARIS_IMAGE_GLOBAL_CONCURRENCY: ${POLARIS_IMAGE_GLOBAL_CONCURRENCY:-40}
   POLARIS_XINGHE_SKILL_ROOT: ${POLARIS_XINGHE_SKILL_ROOT:-/app/skill_sources/xinghe-ecommerce-detail}
 
 x-backend-build: &backend-build
@@ -139,6 +156,20 @@ services:
       POSTGRES_DB: polaris
       POSTGRES_USER: polaris
       POSTGRES_PASSWORD: ${POLARIS_POSTGRES_PASSWORD:?set PostgreSQL password}
+    # max_connections covers the budget in docs/capacity-20261125.md (176 at
+    # peak) plus superuser/ops headroom. shared_buffers ~25% of mem_limit.
+    command:
+      - postgres
+      - -c
+      - max_connections=${POLARIS_POSTGRES_MAX_CONNECTIONS:-200}
+      - -c
+      - shared_buffers=${POLARIS_POSTGRES_SHARED_BUFFERS:-384MB}
+      - -c
+      - effective_cache_size=${POLARIS_POSTGRES_EFFECTIVE_CACHE_SIZE:-1GB}
+      - -c
+      - work_mem=${POLARIS_POSTGRES_WORK_MEM:-4MB}
+      - -c
+      - maintenance_work_mem=64MB
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
@@ -147,9 +178,9 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
-    mem_limit: 512m
-    cpus: "0.50"
-    pids_limit: 256
+    mem_limit: 1536m
+    cpus: "1.50"
+    pids_limit: 512
     stop_grace_period: 60s
     restart: unless-stopped
     networks: [backend]
@@ -225,7 +256,8 @@ services:
     cap_drop: [ALL]
     init: true
     mem_limit: 384m
-    cpus: "0.50"
+    # Password hashing for sign-in runs in Core; 0.5 CPU serialized bursts.
+    cpus: "1.00"
     pids_limit: 256
     stop_grace_period: 30s
     restart: unless-stopped
@@ -260,10 +292,17 @@ services:
     build: *crawl-worker-build
     environment:
       <<: [*backend-common-environment, *provider-environment]
+      # Per uvicorn worker: (8 + 8) x POLARIS_API_WORKERS connections at most.
+      POLARIS_DATABASE_POOL_SIZE: ${POLARIS_API_DATABASE_POOL_SIZE:-8}
+      POLARIS_DATABASE_MAX_OVERFLOW: ${POLARIS_API_DATABASE_MAX_OVERFLOW:-8}
+      POLARIS_DATABASE_POOL_TIMEOUT_SECONDS: ${POLARIS_API_DATABASE_POOL_TIMEOUT_SECONDS:-10}
+      # Ecommerce login sessions live in process memory; ecommerce-api (one
+      # process) owns them and their startup recovery.
+      POLARIS_ECOMMERCE_STARTUP_RECOVERY_ENABLED: "false"
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image
       - polaris_ecommerce_profiles:/app/.data/ecommerce-session
-    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=${POLARIS_TRUSTED_PROXY_CIDRS:-127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}", "--workers", "${POLARIS_API_WORKERS:-3}"]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -286,12 +325,56 @@ services:
     tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
     cap_drop: [ALL]
     init: true
-    mem_limit: 384m
-    cpus: "0.50"
-    pids_limit: 256
+    # Load test: 3 workers sat at 759 MiB at 50 VUs; leave headroom.
+    mem_limit: 1536m
+    cpus: "1.50"
+    pids_limit: 512
     stop_grace_period: 30s
     restart: unless-stopped
     networks: [edge, backend, mail-egress, provider-egress]
+
+  # Single-process API for /api/ecommerce/*: QR login sessions, remote-login
+  # frames and crawl recovery are per-process state and must not be split
+  # across uvicorn workers. Caddy routes that prefix here.
+  ecommerce-api:
+    <<: *service-security
+    image: ${POLARIS_CRAWL_WORKER_IMAGE:?set immutable browser/crawl release image}
+    pull_policy: never
+    build: *crawl-worker-build
+    environment:
+      <<: [*backend-common-environment, *provider-environment]
+    volumes:
+      - polaris_aurora_work_data:/app/.data/aurora-main-image
+      - polaris_ecommerce_profiles:/app/.data/ecommerce-session
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=${POLARIS_TRUSTED_PROXY_CIDRS:-127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      supertokens:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    user: "10001:10001"
+    read_only: true
+    tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
+    cap_drop: [ALL]
+    init: true
+    mem_limit: 768m
+    cpus: "0.75"
+    pids_limit: 512
+    stop_grace_period: 30s
+    restart: unless-stopped
+    networks: [edge, backend, provider-egress]
 
   crawl-worker:
     <<: *service-security
@@ -374,6 +457,9 @@ services:
     build: *backend-build
     environment:
       <<: [*backend-common-environment, *provider-environment]
+      # A prefork child runs one task at a time: 2 + 1 per child is enough.
+      POLARIS_DATABASE_POOL_SIZE: ${POLARIS_WORKER_DATABASE_POOL_SIZE:-2}
+      POLARIS_DATABASE_MAX_OVERFLOW: ${POLARIS_WORKER_DATABASE_MAX_OVERFLOW:-1}
     volumes:
       - polaris_aurora_work_data:/app/.data/aurora-main-image
     command: ["python", "-m", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${POLARIS_WORKER_CONCURRENCY:-6}", "--prefetch-multiplier=1", "--queues=default"]
@@ -397,8 +483,8 @@ services:
     tmpfs: ["/tmp:uid=10001,gid=10001,mode=0700"]
     cap_drop: [ALL]
     init: true
-    mem_limit: 768m
-    cpus: "0.75"
+    mem_limit: 1536m
+    cpus: "1.00"
     pids_limit: 512
     stop_grace_period: 90s
     restart: unless-stopped
@@ -490,6 +576,8 @@ services:
       - caddy_config:/config
     depends_on:
       api:
+        condition: service_healthy
+      ecommerce-api:
         condition: service_healthy
       frontend:
         condition: service_healthy

@@ -33,6 +33,7 @@ from .config import (
     default_xinghe_skill_root,
 )
 from .domain import (
+    JOB_TRANSITIONS,
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
     AssetMediaKind,
@@ -87,6 +88,8 @@ class AmazonSuiteReviewer(Protocol):
     async def review(self, job_id: str) -> Any: ...
 
 
+JOB_TIME_LIMIT_EXCEEDED = "JOB_TIME_LIMIT_EXCEEDED"
+JOB_TIME_LIMIT_MESSAGE = "任务处理超时，已自动停止；未完成的部分不会扣除积分。"
 ACTIVE_ATTEMPT_STATUSES = {
     AttemptStatus.CLAIMED.value,
     AttemptStatus.RUNNING.value,
@@ -3320,6 +3323,89 @@ class ExecutionCoordinator:
                 item.state_version += 1
             session.commit()
         return self.finalize_job(job_id)
+
+    def fail_timed_out(
+        self,
+        job_id: str,
+        *,
+        code: str = JOB_TIME_LIMIT_EXCEEDED,
+        message: str = JOB_TIME_LIMIT_MESSAGE,
+    ) -> JobStatus | None:
+        """Stop a job whose worker exceeded its time limit.
+
+        Fences active attempts the way cancellation does, fails every
+        unfinished item, then finalizes through the normal settlement path so
+        delivered items stay billable and the unused reservation is released.
+        """
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None:
+                return None
+            if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
+                return JobStatus(job.status)
+            now = utc_now()
+            attempts = session.scalars(
+                select(JobAttemptRecord)
+                .where(
+                    JobAttemptRecord.job_id == job.id,
+                    JobAttemptRecord.status.in_(ACTIVE_ATTEMPT_STATUSES),
+                )
+                .with_for_update()
+            ).all()
+            for attempt in attempts:
+                attempt.status = (
+                    AttemptStatus.CANCELLED.value
+                    if attempt.status == AttemptStatus.CLAIMED.value
+                    else AttemptStatus.OUTCOME_UNKNOWN.value
+                )
+                attempt.error_code = code
+                attempt.finished_at = now
+            items = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job.id,
+                    JobItemRecord.status.not_in(TERMINAL_ITEM_STATUSES),
+                )
+                .with_for_update()
+            ).all()
+            for item in items:
+                item.status = JobItemStatus.FAILED.value
+                item.error_code = code
+                item.error_message = message
+                item.next_attempt_at = None
+                item.finished_at = now
+                item.state_version += 1
+            job.error_code = code
+            job.error_message = message
+            if JobStatus(job.status) == JobStatus.QUEUED or (
+                JobStatus(job.status) == JobStatus.AWAITING_CONFIRMATION
+            ):
+                # No processing state was reached; fail directly.
+                transition_job(job, JobStatus.FAILED, stage="timed_out", progress=100)
+                settle_credits(session, job, 0)
+                session.commit()
+                return JobStatus.FAILED
+            session.commit()
+        result = self.finalize_job(job_id)
+        if result is not None and result not in TERMINAL_JOB_STATUSES:
+            # Planning or review states finalize_job leaves alone.
+            with self.session_factory() as session:
+                job = session.get(JobRecord, job_id, with_for_update=True)
+                if job is None:
+                    return None
+                current = JobStatus(job.status)
+                if current in TERMINAL_JOB_STATUSES:
+                    return current
+                if JobStatus.FAILED in JOB_TRANSITIONS.get(current, set()):
+                    transition_job(
+                        job, JobStatus.FAILED, stage="timed_out", progress=100
+                    )
+                    settle_credits(session, job, job.actual_credits or 0)
+                    session.commit()
+                    return JobStatus.FAILED
+                return current
+        return result
 
 
 def _output_asset_role(job_type: str) -> str:

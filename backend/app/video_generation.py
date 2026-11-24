@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import Field
-from sqlalchemy import select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -973,6 +973,55 @@ async def upload_audio(
     return {"id": id, "name": file.filename, "duration": metadata.info.length}
 
 
+ACTIVE_VIDEO_STATUSES = ("queued", "running")
+
+
+def lock_user_video_submissions(session: Session, user_id: str) -> None:
+    """Serialize one user's video submissions until this transaction ends.
+
+    PostgreSQL only: a transaction-scoped advisory lock keyed by the user, so
+    two concurrent submits cannot both pass the active-video cap.
+    """
+
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"polaris:video-active:{user_id}"},
+    )
+
+
+def reserve_video_slot(session: Session, user_id: str, limit: int) -> None:
+    """Lock, then check; the caller's insert + commit releases the lock."""
+
+    if not limit:
+        return
+    lock_user_video_submissions(session, user_id)
+    enforce_active_video_limit(session, user_id, limit)
+
+
+def enforce_active_video_limit(session: Session, user_id: str, limit: int) -> None:
+    """Cap concurrently generating videos per user (0 disables)."""
+
+    if not limit:
+        return
+    running = session.scalar(
+        select(func.count())
+        .select_from(VideoGenerationRecord)
+        .where(
+            VideoGenerationRecord.owner_user_id == user_id,
+            VideoGenerationRecord.status.in_(ACTIVE_VIDEO_STATUSES),
+        )
+    )
+    if (running or 0) >= limit:
+        raise ApiError(
+            429,
+            "USER_ACTIVE_VIDEO_LIMIT_REACHED",
+            f"你已有 {limit} 个视频正在生成，请等待完成后再提交新的视频。",
+            {"limit": limit, "running": int(running or 0)},
+        )
+
+
 @router.post("/generation-tasks")
 def submit_generation(
     body: GenerationRequest,
@@ -1003,6 +1052,11 @@ def submit_generation(
         return job_response(old)
     if not request.app.state.settings.video_providers_enabled:
         raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
+    enforce_active_video_limit(
+        session,
+        workspace.principal.user_id,
+        request.app.state.settings.user_active_video_job_limit,
+    )
     avatar = session.scalar(
         select(VideoAvatarRecord).where(
             VideoAvatarRecord.id == body.avatar_id, avatar_scope(workspace)
@@ -1145,6 +1199,13 @@ def submit_generation(
             "confirmed",
             writing_origin=writing_origin,
         )
+    # Re-check under a per-user lock held until the insert commits; the early
+    # check above only avoids wasted work.
+    reserve_video_slot(
+        session,
+        workspace.principal.user_id,
+        request.app.state.settings.user_active_video_job_limit,
+    )
     row = VideoGenerationRecord(
         id=str(uuid4()),
         workspace_id=workspace.workspace_id,

@@ -31,6 +31,7 @@ EXPECTED_SERVICES = {
     "supertokens",
     "migrate",
     "api",
+    "ecommerce-api",
     "crawl-worker",
     "crawl-maintenance",
     "worker",
@@ -58,6 +59,7 @@ EXPECTED_SERVICE_NETWORKS = {
     "supertokens": {"backend"},
     "migrate": {"backend"},
     "api": {"edge", "backend", "mail-egress", "provider-egress"},
+    "ecommerce-api": {"edge", "backend", "provider-egress"},
     "crawl-worker": {"backend", "provider-egress"},
     "crawl-maintenance": {"backend"},
     "worker": {"backend", "provider-egress"},
@@ -420,7 +422,7 @@ def validate_compose(compose: str) -> list[str]:
         errors.append("production Compose must use the approved ecommerce profile volume")
     if not re.search(r"^    external: true$", ecommerce_profiles, re.MULTILINE):
         errors.append("ecommerce profile volume must be provisioned externally")
-    for service in ("api", "crawl-worker", "crawl-maintenance"):
+    for service in ("api", "ecommerce-api", "crawl-worker", "crawl-maintenance"):
         block = services.get(service, "")
         if not re.search(r"^      - polaris_ecommerce_profiles:/app/.data/ecommerce-session$", block, re.MULTILINE):
             errors.append(f"{service} must mount the shared ecommerce profile volume")
@@ -537,6 +539,7 @@ def validate_caddy(caddy: str) -> list[str]:
         "www.jgshai.cn {",
         "redir https://www.jgshai.cn{uri} permanent",
         "reverse_proxy api:8000",
+        "reverse_proxy ecommerce-api:8000",
         "reverse_proxy frontend:3000",
         "Strict-Transport-Security",
     ):

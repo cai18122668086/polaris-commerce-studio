@@ -48,7 +48,7 @@ export function WritingStudio({ workspaceId, projectId, session, content, writin
   const draft = content.draft.text;
 
   return <div className={page.writing}>
-    <PageHero eyebrow="VIRAL SCRIPT · 爆款文案" title="先看爆款，" accent="再写自己的" description="找已验证的爆款作品，拆出钩子和结构，再按你的产品事实改写。定稿后直接做口播。"
+    <PageHero eyebrow="爆款文案" title="先看爆款，" accent="再写自己的" description="找已验证的爆款作品，拆出钩子和结构，再按你的产品事实改写。定稿后直接做口播。"
       facts={[{ label: "当前步骤", value: `${current.index} / ${WRITING_STEPS.length}` }, { label: "参考素材", value: content.references.length }, { label: "已存文案", value: savedTexts.length }]}
       actions={<button type="button" className={styles.primaryButton} disabled={!draft.trim()} onClick={onUseForVoice}>用这篇文案做口播 <ArrowRight size={16} /></button>}
       motif="script" />

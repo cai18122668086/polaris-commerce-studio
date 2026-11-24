@@ -481,8 +481,9 @@
   .editorHeader > select { order: 4; flex: 1 0 140px; min-width: 140px; max-width: none; }
   .editorHeader > .textButton { order: 5; }
   .editorHeader > .autosave { order: 6; }
-  .studio .editor { padding-bottom: 94px; }
-  .editorFooter { position: fixed; bottom: 0; left: 12px; right: 12px; z-index: 30; border: 1px solid #e1d9e8; border-radius: 11px 11px 0 0; box-shadow: 0 -5px 22px #38254916; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  /* 底栏贴在编辑卡底部（sticky），滚到文案框末尾时停在框下方，不再盖住字数计数（F-16） */
+  .studio .editor { padding-bottom: 12px; }
+  .editorFooter { position: sticky; bottom: 0; z-index: 30; border: 1px solid #e1d9e8; border-radius: 11px 11px 0 0; box-shadow: 0 -5px 22px #38254916; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
 
 .workActions { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; padding-top:10px; border-top:1px solid #f1edf5; }

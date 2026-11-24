@@ -22,11 +22,16 @@ TASK_LIMITS = {
 }
 
 
+def _setting(settings: Any, name: str) -> int:
+    # Callers may pass a partial settings object; fall back to the defaults.
+    return int(getattr(settings, name, Settings.model_fields[name].default))
+
+
 def limits(settings: Settings, family: str) -> dict[str, int]:
-    soft = int(getattr(settings, f"celery_soft_time_limit_{family}_seconds"))
+    soft = _setting(settings, f"celery_soft_time_limit_{family}_seconds")
     return {
         "soft_time_limit": soft,
-        "time_limit": soft + settings.celery_time_limit_grace_seconds,
+        "time_limit": soft + _setting(settings, "celery_time_limit_grace_seconds"),
     }
 
 

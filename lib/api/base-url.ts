@@ -31,8 +31,13 @@ export function apiWebSocketUrl(path: string, location: Pick<Location, "href" | 
   return url.toString();
 }
 
-/** 后端返回的媒体地址（如 "/api/v1/…/cover"）补上接口前缀；完整地址、blob/data 地址原样返回 */
+/** 后端返回的媒体地址补上前缀：/api/… 加接口前缀；其他站内根路径（如 /images/cases/…）加站点子路径；
+ *  完整地址、blob/data 地址原样返回 */
 export function mediaUrl(url: string | null | undefined, base = API_BASE_URL): string | undefined {
   if (!url) return undefined;
-  return url.startsWith("/api/") ? apiUrl(url, base) : url;
+  if (url.startsWith("/api/")) return apiUrl(url, base);
+  // 与 lib/base-path.ts 的 withBasePath 相同；这里不 import，以便 node 测试直接加载本文件
+  const site = (process.env.__NEXT_ROUTER_BASEPATH || "").replace(/\/+$/, "");
+  if (!site || !url.startsWith("/") || url.startsWith("//") || url === site || url.startsWith(`${site}/`)) return url;
+  return `${site}${url}`;
 }

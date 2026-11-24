@@ -7,6 +7,16 @@ from app.config import Settings
 from app.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def _unpriced_video_actions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests start with video actions unpriced and opt in to the prices they test.
+
+    Production defaults (video_credit_prices.DEFAULT_PRICES) are pinned in
+    test_video_credit_prices_defaults.py, which clears this override itself.
+    """
+    monkeypatch.setenv("POLARIS_VIDEO_CREDIT_PRICES", "{}")
+
+
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return Settings(

@@ -1,0 +1,4 @@
+services:
+  dispatcher:
+    environment:
+      POLARIS_RETENTION_ENABLED: "false"

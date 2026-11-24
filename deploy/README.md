@@ -355,6 +355,30 @@ then roll out the affected service and check readiness. Retain its previous
 image and Compose configuration for rollback. Keep credentials and rendered
 Compose files on the server.
 
+### HK-02 settings verified on 2026-11-23
+
+When rebuilding a service, append its matching override to that service's
+existing Compose file list. The production releases for these two services
+have different base files.
+
+- `hk-02/detail-api.override.yaml` configures the API that handles image job
+  submissions. It allows 8 pooled PostgreSQL connections and 8 overflow
+  connections, with a 20-second checkout timeout.
+- `hk-02/dispatcher.override.yaml` disables automatic history and asset
+  expiry during migration. Re-enabling retention requires reviewing the
+  records and assets that have become eligible for deletion.
+
+The HK-02 migration runs the generation, replica, detail and editing
+workers, the dispatcher and editing maintenance. The retired crawl worker
+and crawl maintenance services are stopped. The acceptance workspace has a
+database limit of 60 active jobs, which accommodated 10 existing jobs and
+50 concurrent submissions. This was a workspace-specific setting.
+
+The verified burst produced 50 downloaded images from 50 outbox publications,
+50 worker deliveries and 50 provider calls. Each job settled once. The Redis
+ready and unacknowledged counts both reached zero. This test used one account
+and one workspace.
+
 The manual SSH probe reads the repository variable `POLARIS_DEPLOY_HOST` and
 requires the configured runner to reach that host. Pushing a branch does not
 deploy it.

@@ -78,6 +78,7 @@ import {
   jobTypeLabel,
 } from "@/lib/jobs/presentation";
 import styles from "./account-center.module.css";
+import { withBasePath } from "@/lib/base-path";
 
 type Page =
   | "overview"
@@ -357,7 +358,7 @@ function AccountCenter({ workspaceId }: { workspaceId: string }) {
       <header className="topbar">
         <div className="topbar-inner">
           <Link className="brand" href="/" aria-label="极光商绘首页">
-            <img src="/polaris-mark.svg" alt="" />
+            <img src={withBasePath("/polaris-mark.svg")} alt="" />
             <span>
               极光商绘<small>POLARIS STUDIO</small>
             </span>

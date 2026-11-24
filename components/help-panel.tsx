@@ -15,6 +15,7 @@ import {
   presentWorkflow,
   useRuntimeStatus,
 } from "@/features/runtime/api/runtime";
+import { withBasePath } from "@/lib/base-path";
 
 export function HelpPanel({
   mode,
@@ -62,7 +63,7 @@ export function HelpPanel({
 
   return (
     <aside className="help-panel">
-      {!local && <figure className="workspace-example"><img src="/images/homepage-features/native-v2-webp/04-detail-primary-desktop.webp" alt="商品详情图的视觉与排版参考" width={1374} height={1145} /><figcaption>从商品卖点，到完整的详情视觉</figcaption></figure>}
+      {!local && <figure className="workspace-example"><img src={withBasePath("/images/homepage-features/native-v2-webp/04-detail-primary-desktop.webp")} alt="商品详情图的视觉与排版参考" width={1374} height={1145} /><figcaption>从商品卖点，到完整的详情视觉</figcaption></figure>}
       <div className="help-panel__title">
         <span>
           <BookOpen size={17} />

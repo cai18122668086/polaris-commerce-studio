@@ -12,6 +12,7 @@ import { useInternalTools } from "@/features/video-studio/internal-tools";
 import { EditingImageEdits } from "./editing-image-edits";
 import wb from "./editing-workbench.module.css";
 import styles from "./editing-workspace.module.css";
+import { mediaUrl } from "@/lib/api/base-url";
 
 type Plan = components["schemas"]["EditingNativePlanResponse"];
 type NativeEdits = components["schemas"]["NativeRenderEdits"];
@@ -231,7 +232,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
       {showWorkbench && <div className={wb.workbench} key={key}>
           <header className={wb.head}><b>分段工作台</b><span>{summary || "选择一段口播调整，全部改好后统一生成新版。"}</span></header>
           {earlier?.preview && <video className={wb.preview} controls playsInline preload="metadata" aria-label="当前版本预览"
-            src={`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-tasks/${encodeURIComponent(earlier.preview.task_id)}/artifacts/${encodeURIComponent(earlier.preview.preview_artifact_id)}`} />}
+            src={mediaUrl(`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-tasks/${encodeURIComponent(earlier.preview.task_id)}/artifacts/${encodeURIComponent(earlier.preview.preview_artifact_id)}`)} />}
           <div className={wb.segments}>
             {repeated.length > 0 && <button type="button" className={wb.trim} disabled={!!busy}
               onClick={() => change({ segments: [...selected.segments, ...repeated] })}>精简 {repeated.length} 段重复动效</button>}
@@ -328,7 +329,7 @@ export function EditingNativePlans({ workspaceId, projectId, onCreated, plansVer
               </select>
             </label>
             {audition && <audio key={audition.asset_id} controls preload="none" aria-label={`${editingMusicName(audition.name)}试听`}
-              src={`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-library/assets/${encodeURIComponent(audition.asset_id)}/audio`} />}
+              src={mediaUrl(`/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/editing-library/assets/${encodeURIComponent(audition.asset_id)}/audio`)} />}
             <p className={styles.note}>更换后从新曲目的开头播放，沿用原编排的音乐入点、出点和淡入淡出。</p>
           </>}
         </details>}

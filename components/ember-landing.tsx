@@ -12,9 +12,10 @@ import { SiteFilingLine } from "@/components/site-filing";
 import { CREDIT_PACKS, MEMBERSHIP_PLANS, WELCOME_CREDITS, WELCOME_CREDITS_VALIDITY_DAYS, formatCredits, yuan } from "@/lib/pricing-catalog";
 
 import styles from "./ember-landing.module.css";
+import { withBasePath } from "@/lib/base-path";
 
 const c = (names: string) => names.split(" ").filter(Boolean).map((n) => styles[n] ?? n).join(" ");
-const IMG = (k: string) => `/images/landing/${k}.webp`;
+const IMG = (k: string) => withBasePath(`/images/landing/${k}.webp`);
 type Vars = CSSProperties & Record<`--${string}`, string | number>;
 
 const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));

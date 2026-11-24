@@ -10,12 +10,13 @@ import { GenerationProgress, GenerationResumeButton } from "./generation-progres
 import { Notice } from "./studio-content";
 import base from "./video-studio.module.css";
 import styles from "./generation-details.module.css";
+import { mediaUrl } from "@/lib/api/base-url";
 
 export function GenerationPreview({ job, resuming, submitting, onClose, onResume, onApprove, onReject, onCopy, onUseAvatar, onEdit, approveCost }: {
   job:GenerationJob; resuming:boolean; submitting:boolean; onClose:()=>void; onResume:()=>void; onApprove:()=>void; onReject:()=>void; onCopy:(text:string)=>void; onUseAvatar?:()=>void; onEdit?:()=>void; approveCost?: { text: string; insufficient: boolean; credits: number | null };
 }) {
   return <Dialog title={job.kind === "h3_template" ? "形象预览" : "口播视频"} onClose={onClose}>
-    {job.video_url ? <video controls playsInline preload="metadata" src={job.video_url} className={styles.media} /> : <GenerationProgress job={job} />}
+    {job.video_url ? <video controls playsInline preload="metadata" src={mediaUrl(job.video_url)} className={styles.media} /> : <GenerationProgress job={job} />}
     {job.video_url && !["completed", "awaiting_review"].includes(job.status) && <GenerationProgress job={job} />}
     <p className={styles.timestamp}><Clock3 size={12} />{new Date(job.created_at).toLocaleString("zh-CN", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false})} 创建</p>
     <GenerationDetails job={job} onCopy={onCopy} />

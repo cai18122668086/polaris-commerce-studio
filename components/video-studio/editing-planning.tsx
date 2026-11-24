@@ -18,6 +18,7 @@ import { EditingCreativeOptions, type AppleCreativeOptions } from "./editing-cre
 import styles from "./editing-workspace.module.css";
 import flow from "./editing-flow.module.css";
 import type { TemplateCard } from "./editing-template-gallery";
+import { mediaUrl } from "@/lib/api/base-url";
 
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
@@ -421,7 +422,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       </details>
       {job.status === "prepared" && <>
         <p className={styles.note}>此步骤尚未计模型费用。生成预览时会调用模型，费用按实际用量计算。</p>
-        {job.artifacts.filter(a => a.role === "request").map(a => <a key={a.id} href={a.url} download>下载已准备请求</a>)}
+        {job.artifacts.filter(a => a.role === "request").map(a => <a key={a.id} href={mediaUrl(a.url)} download>下载已准备请求</a>)}
         {!retiredTemplate(job) && <>
           {job.auto_preview_available && <label>
             <input type="checkbox" checked={!manualPreviewIds.includes(job.id)} disabled={busy || jobs.some(j => j.prepared_task_id === job.id)} onChange={event => {

@@ -4,10 +4,11 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import baseStyles from "./video-studio.module.css";
 import pickerStyles from "./selection-controls.module.css";
+import { withBasePath } from "@/lib/base-path";
 const styles = { ...baseStyles, ...pickerStyles };
 
 export function Brand({ small = false }: { small?: boolean }) {
-  return <span className={`${styles.brand} ${small ? styles.brandSmall : ""}`}><img src="/polaris-mark-ember.svg" alt="" /><span><b>极光商绘<span className={styles.brandDivider}> / </span><em>视频空间</em></b><small>POLARIS VIDEO STUDIO</small></span></span>;
+  return <span className={`${styles.brand} ${small ? styles.brandSmall : ""}`}><img src={withBasePath("/polaris-mark-ember.svg")} alt="" /><span><b>极光商绘<span className={styles.brandDivider}> / </span><em>视频空间</em></b><small>POLARIS VIDEO STUDIO</small></span></span>;
 }
 
 export function Dialog({ title, children, onClose, wide = false, className = "", closeDisabled = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; className?: string; closeDisabled?: boolean }) {

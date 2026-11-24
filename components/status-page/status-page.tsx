@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import styles from "./status-page.module.css";
+import { withBasePath } from "@/lib/base-path";
 
 export const statusPageStyles = styles;
 
@@ -9,7 +10,7 @@ export function StatusPage({ code, title, text, reference, children }: { code: s
   return (
     <main className={styles.page} data-status-page={code}>
       <div className={styles.box}>
-        <img className={styles.mark} src="/polaris-mark-ember.svg" alt="" width={44} height={44} />
+        <img className={styles.mark} src={withBasePath("/polaris-mark-ember.svg")} alt="" width={44} height={44} />
         <p className={styles.code}>{code}</p>
         <h1 className={styles.title}>{title}</h1>
         <p className={styles.text}>{text}</p>

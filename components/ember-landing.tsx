@@ -8,6 +8,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
+import { SiteFilingLine } from "@/components/site-filing";
+import { CREDIT_PACKS, MEMBERSHIP_PLANS, WELCOME_CREDITS, WELCOME_CREDITS_VALIDITY_DAYS, formatCredits, yuan } from "@/lib/pricing-catalog";
+
 import styles from "./ember-landing.module.css";
 
 const c = (names: string) => names.split(" ").filter(Boolean).map((n) => styles[n] ?? n).join(" ");
@@ -520,11 +523,20 @@ export function EmberCases() {
   );
 }
 
-/* ---------- 价格（按原型内容） ---------- */
-const PLANS = [
-  { name: "体验", price: "¥0", unit: " / 新用户", items: ["赠送创作积分", "主图与换背景", "标准清晰度下载"], cta: "免费开始", href: "/auth/register", pro: false },
-  { name: "专业", price: "¥99", unit: " / 月", items: ["每月 1,200 积分", "全部 17 项能力", "详情套图与一键复刻", "高清下载，优先排队"], cta: "开通专业版", href: "/account#membership", pro: true },
-  { name: "团队", price: "联系我们", unit: "", items: ["多人协作与权限", "品牌素材库", "批量出图与发票"], cta: "咨询方案", href: "/help", pro: false },
+/* ---------- 价格（价目来自 lib/pricing-catalog.ts，与后端价目逐项对照） ---------- */
+type PlanCard = { name: string; price: string; unit: string; note?: string; items: string[]; cta: string; href: string; pro: boolean };
+const PLANS: PlanCard[] = [
+  { name: "体验", price: "¥0", unit: " / 新用户", items: [`注册赠送 ${WELCOME_CREDITS} 创作积分`, `${WELCOME_CREDITS_VALIDITY_DAYS} 天内有效`, "全部单图与套图工具可用", "生成失败不扣积分"], cta: "免费开始", href: "/auth/register", pro: false },
+  ...MEMBERSHIP_PLANS.map((plan) => ({
+    name: plan.name,
+    price: `¥${yuan(plan.monthlyFen)}`,
+    unit: " / 月",
+    note: `年付 ¥${yuan(plan.annualFen)}，折合 ¥${yuan(Math.round(plan.annualFen / 12))} / 月`,
+    items: [`每月 ${formatCredits(plan.monthlyCredits)} 创作积分`, "全部单图与套图工具", "年付积分逐月发放", "一次购买，不自动续费"],
+    cta: `开通${plan.name}`,
+    href: "/account#membership",
+    pro: plan.id === "pro",
+  })),
 ];
 export function EmberPricing() {
   const root = useRef<HTMLDivElement>(null);
@@ -538,11 +550,17 @@ export function EmberPricing() {
           {PLANS.map((p, i) => (
             <div key={p.name} className={c(`plan${p.pro ? " pro" : ""}`)} data-reveal="" style={{ "--i": i } as Vars}>
               <h3>{p.name}</h3>
-              <div className={c(`price${p.unit ? " num" : ""}`)}>{p.price}{p.unit && <small>{p.unit}</small>}</div>
+              <div className={c("price num")}>{p.price}<small>{p.unit}</small></div>
+              <p className={styles.planNote}>{p.note ?? "无需绑卡，注册即可开始"}</p>
               <ul>{p.items.map((t) => <li key={t}>{t}</li>)}</ul>
               <Link className={c(`btn ${p.pro ? "btnEmber" : "btnGhost"}`)} href={p.href}>{p.cta}{p.pro && <Use id="arrow" />}</Link>
             </div>
           ))}
+        </div>
+        <div className={styles.packs} data-reveal="">
+          <div className={styles.packsHead}><h3>只想按需补充？</h3><p>单独购买积分包，到账后 {CREDIT_PACKS[0].validityMonths} 个月内有效。</p></div>
+          <ul>{CREDIT_PACKS.map((pack) => <li key={pack.id}><span>{pack.name}</span><b className={styles.num}>¥{yuan(pack.amountFen)}</b><small>{formatCredits(pack.credits)} 积分</small></li>)}</ul>
+          <Link className={c("btn btnGhost")} href="/account#membership">购买积分包</Link>
         </div>
       </section>
     </div>
@@ -554,7 +572,7 @@ const QA = [
   ["需要准备什么样的商品图？", "手机拍摄即可。商品完整、边缘清楚就好，背景杂乱也没关系，不需要先抠图或做白底。"],
   ["生成的图片能直接上架吗？", "可以。出图会按所选平台的尺寸和规格生成，下载后即可上传。商品的外形、文字和关键细节会尽量保持与原图一致。"],
   ["积分怎么计算？", "按成功生成的张数扣积分，生成失败不扣。不同能力的单价在创建任务前就会显示。"],
-  ["我的商品图会被拿去做别的用途吗？", "不会。你上传的素材和生成结果只保存在你的工作区内，用于为你生成图片。"],
+  ["我上传的商品图会怎么处理？", "素材和生成结果保存在你的工作区内。具体的处理方式、保存期限和用途以页面底部的《隐私政策》为准。"],
 ];
 export function EmberFaq() {
   const root = useRef<HTMLDivElement>(null);
@@ -609,8 +627,9 @@ export function EmberFinal() {
         <footer className={styles.footer}>
           <div className={c("wrap footerInner")}>
             <span>© 2026 极光商绘</span><span>让好商品，一眼出彩。</span>
-            <nav aria-label="页脚"><Link href="/help">帮助中心</Link><Link href="/legal/privacy">隐私政策</Link><Link href="/legal/terms">服务条款</Link></nav>
+            <nav aria-label="页脚"><Link href="/help">帮助中心</Link><Link href="/legal/privacy">隐私政策</Link><Link href="/legal/terms">用户协议</Link></nav>
           </div>
+          <div className={styles.wrap}><SiteFilingLine className={styles.filing} /></div>
         </footer>
       </section>
     </div>

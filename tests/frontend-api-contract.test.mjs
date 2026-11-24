@@ -62,11 +62,14 @@ test("business UI is API-backed and runtime capability is fail-closed", async ()
 });
 
 test("browser API client defaults to the same-origin edge proxy", async () => {
+  // 接口前缀统一在 lib/api/base-url.ts 解析，openapi 客户端和直接 fetch 共用
   const client = await utf8("lib/api/client.ts");
-  assert.ok(client.includes(
+  const base = await utf8("lib/api/base-url.ts");
+  assert.ok(base.includes(
     'process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ""',
   ));
-  assert.equal(client.includes("localhost:8000"), false);
+  assert.match(client, /const baseUrl = API_BASE_URL;/);
+  assert.equal(client.includes("localhost:8000") || base.includes("localhost:8000"), false);
 });
 
 test("development auth bypass is explicit and skips SuperTokens initialization", async () => {
@@ -88,8 +91,12 @@ test("runtime sources allow only loopback URLs and the approved customer service
       const url = new URL(match[0]);
       const isCustomerSupportLink = file === path.join(root, "lib", "customer-support.ts") &&
         url.href === "https://work.weixin.qq.com/kfid/kfcafc67d7093bbfeba";
+      // 页脚备案查询（工信部、公安部）和站点地图里的正式域名是公开固定地址
+      const isFilingOrSiteLink =
+        (file === path.join(root, "lib", "site-filing.ts") && ["beian.miit.gov.cn", "beian.mps.gov.cn"].includes(url.hostname)) ||
+        (file === path.join(root, "lib", "site-seo.ts") && url.href === "https://www.jgshai.cn/");
       assert.ok(
-        isCustomerSupportLink || ["localhost", "127.0.0.1", "app.local"].includes(url.hostname),
+        isCustomerSupportLink || isFilingOrSiteLink || ["localhost", "127.0.0.1", "app.local"].includes(url.hostname),
         `${path.relative(root, file)} contains an unapproved URL ${url.origin}`,
       );
     }

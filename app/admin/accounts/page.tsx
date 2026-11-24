@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch, apiWebSocketUrl } from "@/lib/api/base-url";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type WheelEvent } from "react";
 import { Loader2, LogIn, Pause, Play, Plus, RefreshCw, ShieldCheck, Square } from "lucide-react";
 
@@ -68,7 +69,7 @@ export default function AdminAccountsPage() {
       stream.send(JSON.stringify({ type: "input", seq: ++streamSeq.current, action: { session_id: loginSessionIds[accountId], ...action } }));
       return;
     }
-    void fetch("/api/ecommerce/session/input", {
+    void apiFetch("/api/ecommerce/session/input", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -158,7 +159,7 @@ export default function AdminAccountsPage() {
   useEffect(() => {
     if (!workspaceId) return;
     let cancelled = false;
-    void fetch(`/api/ecommerce/workers?workspace_id=${encodeURIComponent(workspaceId)}`, { credentials: "include" })
+    void apiFetch(`/api/ecommerce/workers?workspace_id=${encodeURIComponent(workspaceId)}`, { credentials: "include" })
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
         if (cancelled) return;
@@ -235,7 +236,7 @@ export default function AdminAccountsPage() {
     if (!window.confirm(`确认移除 ${account.label}？历史记录会保留。`)) return;
     setBusyId(account.id); setError("");
     try {
-      const response = await fetch(`/api/ecommerce/accounts/${encodeURIComponent(account.id)}`, { method: "DELETE", credentials: "include" });
+      const response = await apiFetch(`/api/ecommerce/accounts/${encodeURIComponent(account.id)}`, { method: "DELETE", credentials: "include" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setMessage(`${account.label} 已移除`); await load();
     } catch (cause) { setError(errorDiagnostic(cause)); } finally { setBusyId(null); }
@@ -255,7 +256,7 @@ export default function AdminAccountsPage() {
     }
     setBusyId("worker-enroll"); setError(""); setMessage(""); setEnrollmentToken("");
     try {
-      const response = await fetch("/api/ecommerce/workers/enrollments", {
+      const response = await apiFetch("/api/ecommerce/workers/enrollments", {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace_id: workspaceId, device_id: workerDeviceId.trim() }),
       });
@@ -372,7 +373,7 @@ export default function AdminAccountsPage() {
         const sessionId = loginSessionIds[accountId];
         if (!sessionId) return;
         try {
-          const response = await fetch(`/api/ecommerce/session/preview?session_id=${encodeURIComponent(sessionId)}`, {
+          const response = await apiFetch(`/api/ecommerce/session/preview?session_id=${encodeURIComponent(sessionId)}`, {
             credentials: "include",
             cache: "no-store",
             signal: controller.signal,
@@ -439,10 +440,9 @@ export default function AdminAccountsPage() {
         continue;
       }
       if (sockets[accountId]) continue;
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const sessionId = loginSessionIds[accountId];
       if (!sessionId) continue;
-      const socket = new WebSocket(`${protocol}//${window.location.host}/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}&session_id=${encodeURIComponent(sessionId)}`);
+      const socket = new WebSocket(apiWebSocketUrl(`/api/ecommerce/session/stream?account_id=${encodeURIComponent(accountId)}&session_id=${encodeURIComponent(sessionId)}`));
       sockets[accountId] = socket;
       socket.onopen = () => setStreamStates((current) => ({ ...current, [accountId]: "connected" }));
       socket.onmessage = (event) => {

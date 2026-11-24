@@ -4,7 +4,8 @@
    - 描述存在 sessionStorage（只在当前标签页内有效，关掉标签页即清空）。
    - 只有从创作首页的套图卡片进入（链接带 ?from=create）时才交接；交接后立刻去掉该参数，刷新或从别处打开都不会再填。
    - 描述按逗号、分号、句号、换行拆成一行一个卖点；顿号（、）是一个卖点内部的并列，不拆。
-   - 工作台对应栏里已有内容时，接在原内容后面，已经有的行不重复添加；带入后用户的修改照常存为该工作台的草稿。 */
+   - 工作台对应栏里已有内容时，接在原内容后面，已经有的行不重复添加；带入后用户的修改照常存为该工作台的草稿。
+   - 交接一次后就从 sessionStorage 删掉，之后再从创作首页进入其他套图也不会把同一段描述重复带入。 */
 
 import { useEffect, useRef } from "react";
 
@@ -34,6 +35,20 @@ export function mergeBrief(current: string, brief: string) {
   return base ? `${base}\n${added.join("\n")}` : added.join("\n");
 }
 
+type BriefStorage = Pick<Storage, "getItem" | "removeItem">;
+
+/** 取出待交接的描述并立刻删除，保证只被带入一次 */
+export function takeCreationBrief(storage: BriefStorage) {
+  let brief: string | undefined;
+  try {
+    brief = storage.getItem(CREATION_BRIEF_KEY)?.trim();
+    storage.removeItem(CREATION_BRIEF_KEY);
+  } catch {
+    return undefined; // 存储被禁用时当作没有描述
+  }
+  return brief || undefined;
+}
+
 /** 工作台里调用：ready 表示工作区已就绪且不是在查看已有任务；current 为目标栏当前内容 */
 export function useCreationBriefHandoff(ready: boolean, current: string, apply: (value: string) => void) {
   const handled = useRef(false);
@@ -44,7 +59,7 @@ export function useCreationBriefHandoff(ready: boolean, current: string, apply: 
     handled.current = true;
     url.searchParams.delete(HANDOFF_PARAM);
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
-    const brief = window.sessionStorage.getItem(CREATION_BRIEF_KEY)?.trim();
+    const brief = takeCreationBrief(window.sessionStorage);
     if (!brief) return;
     const merged = mergeBrief(current, brief);
     if (merged !== current) apply(merged);

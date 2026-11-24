@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api/base-url";
 import { QuantityControl } from "./creation-settings";
 import { ReplicaSelect } from "./replica-select";
 import { ProductFactsGuidance } from "./product-facts-guidance";
@@ -122,7 +123,7 @@ export function InspirationGalleryDb() {
       const abort = () => controller.abort();
       signal.addEventListener("abort", abort, { once: true });
       try {
-        const response = await fetch("/api/v1/inspiration/cases", { signal: controller.signal });
+        const response = await apiFetch("/api/v1/inspiration/cases", { signal: controller.signal });
         if (!response.ok) throw new Error("灵感服务暂时不可用，请重新连接后再试。");
         const value = await response.json();
         if (!Array.isArray(value.items)) throw new Error("灵感数据暂时无法读取，请重新连接后再试。");

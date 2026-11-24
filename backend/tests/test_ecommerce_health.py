@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+import pytest
+
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+
+
+@pytest.fixture(autouse=True)
+def _crawler_admin(settings) -> None:
+    """真实商品爬虫接口仅限管理员；这里的用例以开发环境管理员身份调用。"""
+    settings.announcement_admin_emails = ["admin@example.com"]
 
 
 def test_object_storage_readiness_rechecks_cached_s3_bucket(monkeypatch) -> None:

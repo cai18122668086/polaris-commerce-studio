@@ -3,6 +3,7 @@
 import { AlertCircle, ArrowDownToLine, ArrowRight, Copy, FilePenLine, LoaderCircle, Search, Send, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { assistanceMessage, type AssistanceJob, type AssistantMode } from "@/features/video-studio/assistance";
+import { billableLabel } from "@/features/video-studio/credit-notes";
 import { Disclosure, TextDocument } from "./studio-content";
 import styles from "./studio-workflow.module.css";
 
@@ -27,6 +28,8 @@ export function ScriptAssistant(props: {
   benchmark?: ReactNode;
   /** Hide the tool switcher when a page drives the mode itself (爆款文案 steps). */
   hideTools?: boolean;
+  /** Credits for 生成文案 / 生成改写 (提取 is free); null/undefined = unpriced. */
+  writingCredits?: number | null;
 }) {
   const tool = tools.find(item => item.id === props.mode)!;
   const Icon = tool.icon;
@@ -60,7 +63,7 @@ export function ScriptAssistant(props: {
     </div>
     <div className={styles.assistantInputArea}>
       {props.mode === "create" && <><label className={styles.assistantStyle}>文案风格<select aria-label="文案类型" value={props.style} onChange={event => props.onStyleChange(event.target.value)}>{["产品介绍", "好物种草", "知识分享", "品牌故事"].map(value => <option key={value}>{value}</option>)}</select></label><textarea aria-label="告诉文案助手你的需求" value={props.prompt} onChange={event => props.onPromptChange(event.target.value)} maxLength={1500} rows={3} placeholder="产品是什么？讲给谁听？希望突出什么？" /></>}
-      <div className={styles.assistantSubmit}><small>{props.mode === "create" ? `${props.prompt.length} / 1500` : props.mode === "extract" ? "提取结果不会自动覆盖当前文案" : "生成后请核对产品事实"}</small><button type="button" disabled={props.busy || !canSubmit} onClick={props.onSubmit}>{running ? <LoaderCircle size={15} className={styles.spin} /> : props.mode === "extract" ? <ArrowDownToLine size={15} /> : <Send size={15} />}{running ? "处理中…" : props.mode === "extract" ? "提取文案" : props.mode === "rewrite" ? "生成改写" : "生成文案"}</button></div>
+      <div className={styles.assistantSubmit}><small>{props.mode === "create" ? `${props.prompt.length} / 1500` : props.mode === "extract" ? "提取结果不会自动覆盖当前文案" : "生成后请核对产品事实"}</small><button type="button" disabled={props.busy || !canSubmit} onClick={props.onSubmit}>{running ? <LoaderCircle size={15} className={styles.spin} /> : props.mode === "extract" ? <ArrowDownToLine size={15} /> : <Send size={15} />}{running ? "处理中…" : props.mode === "extract" ? "提取文案" : billableLabel(props.mode === "rewrite" ? "生成改写" : "生成文案", props.writingCredits)}</button></div>
     </div>
   </div>;
 }

@@ -800,6 +800,7 @@ def test_request_lookup_finds_a_submission_without_creating_one(video_gen):
 
 def test_credit_prices_report_only_configured_values(video_gen):
     client, _, _, root, _, _ = video_gen
+    client.app.state.settings.video_credit_prices = {}
     unpriced = client.get(root + "/credit-prices").json()
     assert unpriced["configured"] is False
     assert {item["action"] for item in unpriced["prices"]} >= {

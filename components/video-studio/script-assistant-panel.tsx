@@ -1,6 +1,7 @@
 "use client";
 
 import type { AssistantMode } from "@/features/video-studio/assistance";
+import { useVideoCredits } from "@/features/video-studio/credits";
 import type { VideoContent, VideoDraft } from "@/features/video-studio/projects";
 import type { useProjectSession } from "@/features/video-studio/use-project-session";
 import type { ScriptReference } from "@/features/video-studio/use-script-reference";
@@ -29,7 +30,9 @@ export function ScriptAssistantPanel({ workspaceId, projectId, session, content,
   onDraftReady?: () => void;
 }) {
   const { assistance, assistantJob, assistantMode, assistantResult, rewrittenText } = writing;
-  return <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} onSkip={() => onShowAssistant("extract", false)} workspaceId={workspaceId} jobs={assistance.benchmarkJobs} extractions={assistance.benchmarkExtractions}
+  const credits = useVideoCredits(workspaceId);
+  const writingCredits = credits.note(["writing_generate"]).credits;
+  return <ScriptAssistant benchmark={<BenchmarkSearch key={"benchmark-" + projectId} searchCredits={credits.note(["benchmark_search"]).credits} onSkip={() => onShowAssistant("extract", false)} workspaceId={workspaceId} jobs={assistance.benchmarkJobs} extractions={assistance.benchmarkExtractions}
     extractBusy={assistance.busy("extract")}
     onSearch={async criteria => {
       const target = session.state.projectId;
@@ -49,10 +52,11 @@ export function ScriptAssistantPanel({ workspaceId, projectId, session, content,
       writing.setReferenceDraft({ projectId, link: item.source_url, text: "", note });
       onShowAssistant("extract", false);
       notify("已填入参考链接，可提取语音原文");
-    }} />} workflow={<WritingWorkflow key={projectId} workspaceId={workspaceId} projectId={projectId} revision={session.state.revision} saved={session.state.status === "saved" && session.state.revision > 0} references={content.references} productFacts={content.product_facts} onApplied={async () => { await session.select(projectId); onRevealScript(); notify("已采用为新草稿，确认稿仍由原流程管理", "success"); }} />} mode={assistantMode} onModeChange={mode => onShowAssistant(mode, false)} prompt={writing.assistantPrompt} onPromptChange={writing.setAssistantPrompt} style={writing.assistantType} onStyleChange={writing.setAssistantType}
+    }} />} workflow={<WritingWorkflow key={projectId} writingCredits={writingCredits} workspaceId={workspaceId} projectId={projectId} revision={session.state.revision} saved={session.state.status === "saved" && session.state.revision > 0} references={content.references} productFacts={content.product_facts} onApplied={async () => { await session.select(projectId); onRevealScript(); notify("已采用为新草稿，确认稿仍由原流程管理", "success"); }} />} mode={assistantMode} onModeChange={mode => onShowAssistant(mode, false)} prompt={writing.assistantPrompt} onPromptChange={writing.setAssistantPrompt} style={writing.assistantType} onStyleChange={writing.setAssistantType}
     facts={content.product_facts} onFactsChange={facts => session.edit({ ...session.state.content, product_facts: facts })}
     sourceLink={writing.sourceLink} onSourceLinkChange={writing.setSourceLink} sourceText={writing.sourceText} onSourceTextChange={writing.setSourceText}
     result={assistantMode === "create" ? assistantResult : rewrittenText} onResultChange={writing.setRewrittenText}
+    writingCredits={writingCredits}
     job={assistantJob} busy={assistantMode !== "benchmark" && assistance.busy(assistantMode)}
     onSubmit={() => {
       if (assistantMode === "create") writing.generateCopy();

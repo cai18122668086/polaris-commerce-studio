@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .video_credit_prices import DEFAULT_PRICES as DEFAULT_VIDEO_CREDIT_PRICES
+
 MAX_PROVIDER_ALLOWANCE = 20_000_000
 
 
@@ -106,8 +108,12 @@ class Settings(BaseSettings):
     video_media_host_routes: dict[str, str] = Field(default_factory=dict)
     # 视频各操作的积分单价（POLARIS_VIDEO_CREDIT_PRICES，JSON；键见
     # video_credit_prices.ACTIONS）。未配置的操作不显示数字，也不扣积分；
-    # 已定价的操作按 video_credit_billing 冻结、结算或退回。
-    video_credit_prices: dict[str, int] = Field(default_factory=dict)
+    # 已定价的操作按 video_credit_billing 冻结、结算或退回。未设置该变量时用
+    # video_credit_prices.DEFAULT_PRICES（推导见 docs/video-pricing-20261125.md）；
+    # 设为 {} 则全部恢复为未定价、不扣积分。
+    video_credit_prices: dict[str, int] = Field(
+        default_factory=lambda: dict(DEFAULT_VIDEO_CREDIT_PRICES)
+    )
     video_lipsync_long_wait_seconds: float = Field(default=600, ge=30, le=1800)
     video_lipsync_poll_window_seconds: float = Field(default=900, ge=30, le=3600)
     video_lipsync_breaker_seconds: float = Field(default=1800, ge=0, le=86400)

@@ -6,6 +6,7 @@ import type {
   BenchmarkCriteria, BenchmarkExtractionJob, BenchmarkExtractionPick, BenchmarkItem, BenchmarkJob, BenchmarkSort, BenchmarkWindow,
 } from "@/features/video-studio/assistance";
 import { assistanceMessage } from "@/features/video-studio/assistance";
+import { billableLabel } from "@/features/video-studio/credit-notes";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import styles from "./writing-workflow.module.css";
@@ -42,8 +43,10 @@ function Candidate({ item, onSelect, blocked, singleBusy, checked, onCheck, batc
   </li>;
 }
 
-export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, onSearch, onNext, onResume, onUse, onExtract, onSkip }: {
+export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, onSearch, onNext, onResume, onUse, onExtract, onSkip, searchCredits }: {
   workspaceId: string;
+  /** Credits per searched page (null/undefined = unpriced). */
+  searchCredits?: number | null;
   jobs: BenchmarkJob[];
   extractions: BenchmarkExtractionJob[];
   extractBusy: boolean;
@@ -149,7 +152,7 @@ export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, o
         <option value="one_week">最近 7 天</option><option value="half_year">最近半年</option>
       </select></label>
       <small>每搜一页单独计费。</small>
-      <button type="submit" disabled={pending || running || sameSearchUnknown || !keyword.trim()}>搜索对标（付费）</button>
+      <button type="submit" disabled={pending || running || sameSearchUnknown || !keyword.trim()}>{billableLabel("搜索对标", searchCredits)}</button>
       {sameSearchUnknown && <p role="status">正在确认上次相同条件的搜索，不会重复扣费。</p>}
     </form> : <div><p>按关键词找对标暂时用不了。手上已有对标作品的链接，可以直接提取原文。</p>{onSkip && <button type="button" onClick={onSkip}>改用链接提取</button>}</div>}
     {roots.length > 0 && <label>已提交的搜索<select aria-label="已提交的搜索" value={root?.id || ""} onChange={event => setSelected(event.target.value)}>
@@ -182,7 +185,7 @@ export function BenchmarkSearch({ workspaceId, jobs, extractions, extractBusy, o
         )}</ol> : <p>这页没有符合条件的候选。</p>}
       </>}
     </section>)}
-    {enabled && last?.result.has_more && <button type="button" disabled={pending || running} onClick={() => void run(() => onNext(last.id))}>加载下一页（付费）</button>}
+    {enabled && last?.result.has_more && <button type="button" disabled={pending || running} onClick={() => void run(() => onNext(last.id))}>{billableLabel("加载下一页", searchCredits)}</button>}
     {last?.result.has_more && expire && <small>下一页有效至 {timestamp.format(new Date(expire))}</small>}
     {error && <p role="alert" className={styles.error}>{error}</p>}
   </section>;

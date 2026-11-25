@@ -1,6 +1,7 @@
 """Measured narration for original unified statement and comparison scenes."""
 
 import math
+import re
 from itertools import pairwise
 from pathlib import Path
 
@@ -981,3 +982,64 @@ def verify_unified_captions(root: Path, report: dict) -> dict:
             }
         )
     return {"status": "passed", "shots": checks}
+
+
+_LIST_SLOT = re.compile(r"^(/content/[^/]+)/(\d+)(?:/.*)?$")
+
+
+def native_slot_counts(
+    group_id: str, text_paths: list[str], event_paths: list[dict]
+) -> dict | None:
+    """Fixed slot counts of one native group, as the compiler will require them.
+
+    The library entry lists every text/event path and a generic
+    ``capacity.per_page`` such as [1, 3], which the model read as "one label
+    is enough" (knowledge-talk planning 2047ecb8 bound one of Z-M03's three
+    labels). The compiler requires every listed path, so the counts are fixed.
+    """
+    lists: dict[str, set[int]] = {}
+    for path in text_paths:
+        match = _LIST_SLOT.match(path)
+        if match:
+            lists.setdefault(match.group(1), set()).add(int(match.group(2)))
+    repeated = {base: len(found) for base, found in lists.items() if len(found) > 1}
+    required = _REQUIRED_RELATIONS.get(group_id)
+    if not repeated and required is None:
+        return None
+    counts: dict = {
+        "text_paths": len(text_paths),
+        "event_paths": len(event_paths),
+        "lists": repeated,
+    }
+    if required is not None:
+        counts["relation"] = required[0]
+        counts["relation_items"] = len(required[1])
+    if group_id in _TEXT_LIMITS:
+        names = (
+            ["premise", "answer"]
+            if group_id == "Z-M09"
+            else list(_TEXT_BINDINGS[group_id])
+        )
+        counts["max_chars"] = {
+            "/content/" + name: limit
+            for name, limit in zip(names, _TEXT_LIMITS[group_id], strict=True)
+        }
+    return counts
+
+
+def missing_native_slots(beat: SemanticBeat, contract: dict) -> list[str]:
+    """Contract paths a beat leaves unbound, plus a short relation count note."""
+    text = {row.path for row in beat.native_text}
+    events = {row.path for row in beat.native_events}
+    missing = [p for p in contract["text_paths"] if p not in text]
+    missing += [r["path"] for r in contract["event_paths"] if r["path"] not in events]
+    required = _REQUIRED_RELATIONS.get(beat.group_id)
+    if required is not None and len(beat.relation_items) != len(required[1]):
+        missing.append(f"relation_items {len(beat.relation_items)}/{len(required[1])}")
+    return missing
+
+
+def event_for_text(group_id: str, text_path: str) -> str | None:
+    """The entrance event the compiler pairs with one native text slot."""
+    action = _TEXT_BINDINGS.get(group_id, {}).get(text_path.removeprefix("/content/"))
+    return _EVENT_PREFIX + action if action else None

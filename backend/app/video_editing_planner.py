@@ -66,7 +66,12 @@ from .video_editing_overlay_templates import (
     template_snapshot_matches,
     validate_template_plan,
 )
-from .video_editing_planning_quality import NATIVE_BINDING_POLICY, NATIVE_BINDING_PROMPT
+from .video_editing_planning_quality import (
+    NATIVE_BINDING_POLICY,
+    NATIVE_BINDING_PROMPT,
+    NATIVE_SLOT_COUNTS_POLICY,
+    NATIVE_SLOT_COUNTS_PROMPT,
+)
 from .video_editing_quantity_anchors import (
     IncompleteQuantity,
     measured_compound_quantities,
@@ -95,6 +100,7 @@ from .video_editing_unified_scenes import (
     UNIFIED_TEMPLATES,
     UNIFIED_VIDEO_VARIANTS,
     WHY_TEMPLATE_ID,
+    native_slot_counts,
 )
 from .video_editing_word_bindings import (
     IncompleteDenial,
@@ -159,6 +165,7 @@ def catalog_index(
     why_scene: bool = False,
     translation_scene: bool = False,
     native_role_capacities: bool = False,
+    slot_counts: bool = False,
 ) -> list[dict[str, Any]]:
     capabilities = {
         r["group_id"]: r
@@ -256,6 +263,18 @@ def catalog_index(
                     "event_paths": parameters["event_paths"],
                     "resource_paths": parameters["resource_paths"],
                     "scope": parameters["array_capacity_scope"],
+                    **(
+                        {"slot_counts": counts}
+                        if slot_counts
+                        and (
+                            counts := native_slot_counts(
+                                group["id"],
+                                parameters["text_paths"],
+                                parameters["event_paths"],
+                            )
+                        )
+                        else {}
+                    ),
                     **(
                         {
                             "native_evidence_requirements": parameters[
@@ -388,6 +407,8 @@ def build_request(
         native_role_capacities=bool(
             (runtime or {}).get("template_style", {}).get("native_role_capacities")
         ),
+        slot_counts=(runtime or {}).get("native_slot_counts")
+        == NATIVE_SLOT_COUNTS_POLICY,
     )
     schema = SemanticPlan.model_json_schema()
     if not question_card:
@@ -488,6 +509,8 @@ def build_request(
     )
     if (runtime or {}).get("native_binding_policy") == NATIVE_BINDING_POLICY:
         message += NATIVE_BINDING_PROMPT
+    if (runtime or {}).get("native_slot_counts") == NATIVE_SLOT_COUNTS_POLICY:
+        message += NATIVE_SLOT_COUNTS_PROMPT
     if template is not None and any(
         slot.get("layer") == "scene" for slot in template["slots"]
     ):
@@ -1238,6 +1261,11 @@ def generate(
                     (runtime or {})
                     .get("template_style", {})
                     .get("signature_group_ids", [])
+                ),
+                int(
+                    (runtime or {})
+                    .get("template_style", {})
+                    .get("minimum_signature_occurrences", 1)
                 ),
             )
             if scene_repairs:

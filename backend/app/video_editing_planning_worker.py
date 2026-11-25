@@ -75,6 +75,7 @@ from .video_editing_pipeline import measured_source_frame, probe
 from .video_editing_planning_preview import pending_auto_preview, resume_auto_preview
 from .video_editing_planning_quality import (
     NATIVE_BINDING_POLICY,
+    NATIVE_SLOT_COUNTS_POLICY,
     require_reference_transcript,
 )
 from .video_editing_planning_store import (
@@ -674,6 +675,7 @@ def process(
                 if profile is not None:
                     runtime["template_style"] = profile
                     runtime["native_binding_policy"] = NATIVE_BINDING_POLICY
+                    runtime["native_slot_counts"] = NATIVE_SLOT_COUNTS_POLICY
                 # New requests perform material/sentence retrieval once at preparation.
                 # Generated requests replay this immutable runtime snapshot.
                 runtime["material_alignment_version"] = "tengli.material-alignment/1"

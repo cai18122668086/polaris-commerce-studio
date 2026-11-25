@@ -792,6 +792,11 @@ class AuroraMainImageProvider:
             "authorized_fact_pool": _authorized_fact_pool_for_audit(
                 generation_request
             ),
+            # Identity wording is authorized copy, not a claim: the product
+            # name the user entered and text printed on the original label.
+            "authorized_identity_copy": _authorized_identity_copy_for_audit(
+                request, generation_request
+            ),
             "factual_copy_audit": {
                 "visible_copy_must_be_transcribed": True,
                 "unsupported_claim_is_material": True,
@@ -2679,6 +2684,28 @@ def _sha256(payload: bytes) -> str:
 
 def _mapping(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _authorized_identity_copy_for_audit(
+    request: ProviderRequest, generation_request: Mapping[str, Any]
+) -> dict[str, Any]:
+    job_settings = _mapping(
+        _mapping(_mapping(request.configuration).get("job")).get("settings")
+    )
+    constitution = _mapping(generation_request.get("campaign_constitution"))
+    identity = _mapping(constitution.get("product_identity"))
+    return {
+        "product_name": str(job_settings.get("product_name") or "").strip(),
+        "label_and_package_text_source": str(
+            identity.get("identity_summary") or ""
+        ).strip(),
+        "rule": (
+            "The entered product name and wording legibly printed on the "
+            "original product label or package may appear exactly as written; "
+            "they are identity copy, not claims. Any changed label character "
+            "is an identity failure."
+        ),
+    }
 
 
 def _authorized_fact_pool_for_audit(

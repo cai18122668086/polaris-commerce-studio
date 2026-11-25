@@ -139,7 +139,9 @@ def test_page_review_request_carries_fact_pool_and_page_contract(
         "page_index": 5,
         "page_role": page["page_role"],
         "page_contract": page,
-        "campaign_constitution": {"campaign_style_id": "style"},
+        "campaign_constitution": {
+            "product_identity": {"identity_summary": "瓶身下部可见“精光身体乳”"}
+        },
         "authorized_facts": {
             "display_facts": ["260g"],
             "selling_points": session["raw_input"]["product"][
@@ -166,7 +168,7 @@ def test_page_review_request_carries_fact_pool_and_page_contract(
         attempt_id="attempt_5",
         operation="domestic_main_image",
         idempotency_key="review-contract",
-        configuration={},
+        configuration={"job": {"settings": {"product_name": "OLAY超白瓶美白身体乳"}}},
     )
     with pytest.raises(AuroraPlanningError):
         # The recorded reply is an empty JSON object; only the request matters.
@@ -200,6 +202,12 @@ def test_page_review_request_carries_fact_pool_and_page_contract(
         "CLOSURE_SPEC_ARCH"
     )
     assert "authorized_fact_pool" in text and "page_contract" in text
+    assert "精光身体乳" in contract["authorized_identity_copy"][
+        "label_and_package_text_source"
+    ]
+    assert contract["authorized_identity_copy"]["product_name"] == (
+        "OLAY超白瓶美白身体乳"
+    )
 
 
 def test_reviewer_and_shadow_prompts_carry_no_toy_car_rules() -> None:

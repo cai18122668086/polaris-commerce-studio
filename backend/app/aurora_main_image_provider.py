@@ -95,9 +95,12 @@ plausible for the category; return a material failure with the exact visible
 wording and the required change to remove or replace it.
 For product_identity_match, compare the candidate against every supplied
 product_reference image as one complementary identity set. Fail materially
-when the candidate changes silhouette, proportions, wheel count or placement,
-seat count, red/black color partition, steering wheel, dashboard/music panel,
-grille, headlights, doors, steps, mirrors, labels, or component relationships.
+when the candidate changes silhouette, proportions, component count or
+placement, color partitions, materials, closures or fittings, logos, labels,
+or component relationships. Read every legible word on the product's own
+label, packaging and logo and compare it character by character with the
+references; a changed, missing or extra character on the product is an
+identity failure.
 User facts may authorize copy, but they never authorize a new visible part or
 variant component that the product references do not show. An identity failure
 must recommend rebuilding from the original product references, never polishing
@@ -158,6 +161,9 @@ class AuroraMainImageProvider:
             request
         ):
             return await self._execute_parallel_v20(request)
+        # Calls made for this page so far; a failed page still reports them.
+        generation_requests = 0
+        audit_usage: list[dict[str, Any]] = []
         try:
             item, harness_session = self._load_authorized_context(request)
             page_index = item.ordinal
@@ -166,7 +172,6 @@ class AuroraMainImageProvider:
             write_contract(session_path, harness_session)
             artifact: ProviderArtifact | None = None
             generation_usage: dict[str, Any] = {}
-            audit_usage: list[dict[str, Any]] = []
             actual_cost = 0
 
             for attempt_index in range(2):
@@ -215,6 +220,7 @@ class AuroraMainImageProvider:
                 )
                 generation_usage = dict(image_result.raw_usage or {})
                 actual_cost += int(image_result.actual_cost_micros or 0)
+                generation_requests += _image_network_requests(generation_usage)
                 if (
                     image_result.outcome != ProviderOutcome.SUCCEEDED
                     or image_result.artifact is None
@@ -357,10 +363,7 @@ class AuroraMainImageProvider:
             self._persist_session(request.job_id, current)
             raw_usage = dict(generation_usage)
             raw_usage["aurora_audit_calls"] = audit_usage
-            network_requests = raw_usage.get("network_requests", 1)
-            if not isinstance(network_requests, int) or network_requests < 0:
-                network_requests = 1
-            raw_usage["network_requests"] = network_requests + len(audit_usage)
+            raw_usage["network_requests"] = generation_requests + len(audit_usage)
             raw_metrics = raw_usage.get("metrics")
             metrics = dict(raw_metrics) if isinstance(raw_metrics, dict) else {}
             raw_usage["metrics"] = {
@@ -390,15 +393,19 @@ class AuroraMainImageProvider:
             OSError,
             ValueError,
         ) as exc:
+            made = generation_requests + len(audit_usage)
+            failure_usage: dict[str, Any] = {
+                "provider_type": self.gateway.provider_name,
+                "called": made > 0,
+            }
+            if made:
+                failure_usage["network_requests"] = made
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
                 error_code=getattr(exc, "code", "AURORA_EXECUTION_FAILED"),
                 error_message=str(exc),
                 usage_reported=False,
-                raw_usage={
-                    "provider_type": self.gateway.provider_name,
-                    "called": False,
-                },
+                raw_usage=failure_usage,
                 retryable=False,
                 provider_name=self.gateway.provider_name,
                 model_name=self.gateway.image_model,
@@ -2534,6 +2541,13 @@ def _normalize_aurora_square_artifact(
         provider_width=artifact.provider_width or artifact.width,
         provider_height=artifact.provider_height or artifact.height,
     )
+
+
+def _image_network_requests(raw_usage: Mapping[str, Any]) -> int:
+    """Upstream calls behind one gateway image result (at least one)."""
+
+    value = raw_usage.get("network_requests", 1)
+    return value if isinstance(value, int) and value >= 0 else 1
 
 
 def _failed_image_result(

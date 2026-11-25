@@ -1,0 +1,8 @@
+{
+  "patch_id": "polaris-claim-allocation-v1",
+  "source_archive_sha256": "0c5d3daa3889d0ff5964114996a49c428dce9b200b3591d9b690991170869d3c",
+  "file": "scripts/runtime/compiler.py",
+  "original_file_sha256": "bcd2d1328dc37c07836983998c6fe24530ecae48c5295f5ab99ce717c1b0cdf3",
+  "patched_file_sha256": "2de97a49a0176f200a8d666444c4b2416ded2106b6d46ff70ae911253f896910",
+  "reason": "Claim allocation: near-duplicate facts (normalized containment, e.g. 260g inside 260g 大容量) are one allocation unit; the closure page takes a spec/offer/service fact before carousel pages and never recycles the search hook; proof pages 2-4 never lead with a TEXT_ONLY_VERIFIED fact while a renderable fact exists; the search hook is not repeated as secondary copy. Root cause of job_9323577 page 6 HARNESS_BLOCKED."
+}

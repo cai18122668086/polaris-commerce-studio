@@ -90,33 +90,127 @@ ROLE_SOURCE_BONUS = [
 ]
 
 
+_NORMALIZE_STRIP = re.compile(r"[\s，,。；;：:·•|/、!！?？\-—_（）()【】\[\]“”\"'‘’]+")
+_SPEC_PATTERN = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:kg|mg|g|ml|l|mm|cm|m|w|mah|v|克|千克|毫升|升|片|包|支|瓶|件|个|只|袋|盒|罐|粒|寸|英寸|码)(?![a-z])",
+    re.IGNORECASE,
+)
+_SPEC_TERMS = ("规格", "容量", "净含量", "尺寸", "尺码", "重量", "套装", "组合装", "优惠", "价格", "赠", "包邮", "质保", "保修", "售后", "退换")
+CLOSURE_SOURCES = {"verified_offers", "verified_service_or_trust_facts", "verified_attributes"}
+VISUAL_PROOF_PAGES = {2, 3, 4}
+
+
+def _normalized_fact(text: str) -> str:
+    return _NORMALIZE_STRIP.sub("", text).lower()
+
+
+def _same_fact(left: str, right: str) -> bool:
+    """Treat a fact contained in another fact as the same allocation unit."""
+    a, b = _normalized_fact(left), _normalized_fact(right)
+    if not a or not b:
+        return a == b
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return shorter == longer or (len(shorter) >= 2 and shorter in longer)
+
+
+def _distinct_claims(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse near-duplicate facts (e.g. "260g" inside "260g 大容量").
+
+    The more informative (longer) wording represents the group and inherits the
+    best score of the group; every original string stays in the fact pool.
+    """
+    groups: list[dict[str, Any]] = []
+    for item in ranked:
+        group = next((existing for existing in groups if _same_fact(existing["text"], item["text"])), None)
+        if group is None:
+            groups.append(dict(item))
+            continue
+        if len(_normalized_fact(item["text"])) > len(_normalized_fact(group["text"])):
+            score = max(group["score"], item["score"])
+            group.clear()
+            group.update({**item, "score": score})
+    return groups
+
+
+def _is_closure_fact(item: dict[str, Any]) -> bool:
+    text = item["text"]
+    return item["source"] in CLOSURE_SOURCES or bool(_SPEC_PATTERN.search(text)) or any(term in text for term in _SPEC_TERMS)
+
+
 def _page_rankings(raw: dict[str, Any], index: int) -> list[dict[str, Any]]:
-    ranked = rank_claims(raw)
+    ranked = _distinct_claims(rank_claims(raw))
     return sorted(ranked, key=lambda item: (-(item["score"] + ROLE_SOURCE_BONUS[index].get(item["source"], 0)), item["text"]))
+
+
+def _pick_lead(ranking: list[dict[str, Any]], index: int, uses: dict[str, int], hook: str | None) -> dict[str, Any]:
+    def unused(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [item for item in items if uses.get(item["text"], 0) == 0]
+
+    def least_used(items: list[dict[str, Any]]) -> dict[str, Any]:
+        order = {item["text"]: position for position, item in enumerate(items)}
+        return min(items, key=lambda item: (item["text"] == hook, uses.get(item["text"], 0), order[item["text"]]))
+
+    if index == 5:
+        closure = [item for item in ranking if _is_closure_fact(item)]
+        others = [item for item in ranking if item["text"] != hook]
+        for pool in (unused(closure), unused(others)):
+            if pool:
+                return pool[0]
+        if closure:
+            return least_used(closure)
+        return least_used(others or ranking)
+    if index in VISUAL_PROOF_PAGES:
+        # A text-only fact (numbers, durations, service wording) cannot be the
+        # main claim of a page whose duty is visible proof; reuse a renderable
+        # fact instead.  Only when no renderable fact exists at all does the
+        # page fall back to text-only facts.
+        visual = [item for item in ranking if item["observability"] != "TEXT_ONLY_VERIFIED"]
+        if visual:
+            fresh = unused(visual)
+            return fresh[0] if fresh else least_used(visual)
+    available = unused(ranking)
+    return available[0] if available else least_used(ranking)
 
 
 def _assign_claims(raw: dict[str, Any]) -> list[dict[str, Any]]:
     all_ranked = rank_claims(raw)
     require(bool(all_ranked), "at least one user-provided display fact is required")
-    used: set[str] = set()
-    leads: list[dict[str, Any]] = []
-    for index in range(6):
-        ranking = _page_rankings(raw, index)
-        selected = next((item for item in ranking if item["text"] not in used), ranking[index % len(ranking)])
-        leads.append(selected)
-        used.add(selected["text"])
+    uses: dict[str, int] = {}
+    leads: dict[int, dict[str, Any]] = {}
+    # The search hook chooses first, the closure page second (so it can claim a
+    # spec/offer fact before carousel pages consume it), then the proof pages,
+    # and the identity page last because it can carry any remaining fact.
+    for index in (0, 5, 2, 3, 4, 1):
+        hook = leads[0]["text"] if 0 in leads else None
+        selected = _pick_lead(_page_rankings(raw, index), index, uses, hook)
+        leads[index] = selected
+        uses[selected["text"]] = uses.get(selected["text"], 0) + 1
+    hook_text = leads[0]["text"]
     result: list[dict[str, Any]] = []
-    for index, lead in enumerate(leads):
-        candidates = [item for item in _page_rankings(raw, index) if item["text"] != lead["text"]]
+    for index in range(6):
+        lead = leads[index]
+        candidates = [
+            item for item in _page_rankings(raw, index)
+            if not _same_fact(item["text"], lead["text"]) and (index == 0 or not _same_fact(item["text"], hook_text))
+        ]
         supports: list[str] = []
+        limit = 2 if index in {0, 5} else 1
+        if index == 5:
+            # Closure supports form a spec cluster: spec/offer/service facts
+            # first, then non-hook facts to complete the cluster.
+            candidates = sorted(candidates, key=lambda item: not _is_closure_fact(item))
+        elif index in VISUAL_PROOF_PAGES:
+            # Keep specs on the closure page instead of repeating them as
+            # secondary copy on every proof page.
+            candidates = sorted(candidates, key=_is_closure_fact)
         for item in candidates:
-            useful = (
+            useful = index == 5 or (
                 item["source"] in ROLE_SOURCE_BONUS[index]
-                and (item["source"] == lead["source"] or index in {0, 5})
+                and (item["source"] == lead["source"] or index == 0)
             )
             if useful and item["text"] not in supports:
                 supports.append(item["text"])
-            if len(supports) >= (2 if index in {0, 5} else 1):
+            if len(supports) >= limit:
                 break
         result.append({"lead": lead, "supports": supports})
     return result
@@ -130,6 +224,10 @@ def _closure(raw: dict[str, Any], index: int) -> str:
         return "使用一项完整核验优惠作为交易闭合，并保留所有条件"
     if index == 5 and offers:
         return "用完整核验优惠、规格或服务完成购买确认"
+    if index == 5:
+        specs = [item["text"] for item in _distinct_claims(rank_claims(raw)) if _is_closure_fact(item)]
+        if specs:
+            return "用已核验规格或服务事实（" + "、".join(specs[:3]) + "）形成数字锚点或规格簇完成购买确认"
     return "使用已核验规格、适用信息、服务或信任事实完成短闭合" if trust else "用本页已核验事实完成简洁结论"
 
 
@@ -160,8 +258,8 @@ def _display_copy_contract(lead: str, supports: list[str], index: int) -> dict[s
 
 
 def _search_cover_blueprint(raw: dict[str, Any], hook: str, display_copy: dict[str, Any]) -> dict[str, Any]:
-    ranked = rank_claims(raw)
-    modules = [item["text"] for item in ranked if item["text"] != hook][:3]
+    ranked = _distinct_claims(rank_claims(raw))
+    modules = [item["text"] for item in ranked if not _same_fact(item["text"], hook)][:3]
     offers = [item["text"] for item in fact_records(raw) if item["source"] == "verified_offers"]
     return {
         "role": "TAOBAO_LISTING_CLICK_COVER_NOT_CAROUSEL_HERO",

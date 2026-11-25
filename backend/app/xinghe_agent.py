@@ -17,6 +17,7 @@ import logging
 import math
 import re
 import secrets
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import AsyncExitStack
@@ -2125,6 +2126,64 @@ class _ProviderRoute:
     image_model: str
 
 
+# Review-style planner profiles whose observed latency is 20-140 s.  A route
+# that has not answered within this cap is treated as hung and the call fails
+# over instead of holding the page for the full planner budget.
+AURORA_REVIEW_PLANNER_PROFILES = frozenset(
+    {"aurora_v20_visual_audit", "aurora_style_calibration", "aurora_set_audit"}
+)
+
+
+class PlannerRouteCircuitBreaker:
+    """Park a planner route that keeps failing before any HTTP response.
+
+    Only transport-level failures (connection refused, DNS, socket timeout)
+    count; any HTTP response closes the circuit again.  While a route is open
+    the gateway goes straight to the next configured route.  After the
+    cool-down one probe call is allowed; a further failure reopens it.
+    """
+
+    def __init__(self, threshold: int = 2, cooldown_seconds: float = 300) -> None:
+        self.threshold = threshold
+        self.cooldown_seconds = cooldown_seconds
+        self._lock = threading.Lock()
+        self._failures: dict[str, int] = {}
+        self._open_until: dict[str, float] = {}
+
+    @staticmethod
+    def _key(route: _ProviderRoute) -> str:
+        return hashlib.sha256(
+            (route.planner_base_url + "\0" + route.planner_api_key).encode()
+        ).hexdigest()
+
+    def is_open(self, route: _ProviderRoute) -> bool:
+        with self._lock:
+            until = self._open_until.get(self._key(route))
+            return until is not None and time.monotonic() < until
+
+    def record_failure(self, route: _ProviderRoute) -> None:
+        key = self._key(route)
+        with self._lock:
+            failures = self._failures.get(key, 0) + 1
+            self._failures[key] = failures
+            if failures >= self.threshold:
+                self._open_until[key] = time.monotonic() + self.cooldown_seconds
+
+    def record_success(self, route: _ProviderRoute) -> None:
+        key = self._key(route)
+        with self._lock:
+            self._failures.pop(key, None)
+            self._open_until.pop(key, None)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._failures.clear()
+            self._open_until.clear()
+
+
+PLANNER_ROUTE_BREAKER = PlannerRouteCircuitBreaker()
+
+
 class UrllibOpenAITransport:
     """Small dependency-free OpenAI-compatible JSON/multipart transport."""
 
@@ -2290,6 +2349,7 @@ class TengliOpenAICompatibleGateway:
         planner_transient_retries: int = 1,
         planner_retry_backoff_seconds: float = 2,
         planner_primary_timeout_seconds: float = 300,
+        planner_review_timeout_seconds: float | None = None,
         planner_receipt_root: Path | None = None,
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
@@ -2327,6 +2387,7 @@ class TengliOpenAICompatibleGateway:
         self.planner_transient_retries = min(1, max(0, planner_transient_retries))
         self.planner_retry_backoff_seconds = planner_retry_backoff_seconds
         self.planner_primary_timeout_seconds = planner_primary_timeout_seconds
+        self.planner_review_timeout_seconds = planner_review_timeout_seconds
         self.planner_receipt_root = planner_receipt_root
         self.diagnostic_content_sample = diagnostic_content_sample
         self.transport = transport or UrllibOpenAITransport()
@@ -2608,6 +2669,10 @@ class TengliOpenAICompatibleGateway:
                 routes = routes[:1]
             last_route_index = len(routes) - 1
             for route_index, route in enumerate(routes):
+                if route_index < last_route_index and PLANNER_ROUTE_BREAKER.is_open(
+                    route
+                ):
+                    continue
                 route_payload = {**payload, "model": route.planner_model}
                 planner_key = request.idempotency_key
                 if (request.planning_profile == "aurora_native_fast_identity"
@@ -2663,6 +2728,14 @@ class TengliOpenAICompatibleGateway:
                         if self.planner_timeout_seconds is None
                         else self.planner_timeout_seconds
                     )
+                    if (
+                        self.planner_review_timeout_seconds is not None
+                        and request.planning_profile
+                        in AURORA_REVIEW_PLANNER_PROFILES
+                    ):
+                        timeout_seconds = min(
+                            timeout_seconds, self.planner_review_timeout_seconds
+                        )
                     if request.planning_deadline is not None:
                         remaining = request.planning_deadline - time.monotonic()
                         if remaining <= 0:
@@ -2697,6 +2770,7 @@ class TengliOpenAICompatibleGateway:
                         payload=route_payload,
                         timeout_seconds=timeout_seconds,
                     )
+                    PLANNER_ROUTE_BREAKER.record_success(route)
                     if native_state is not None:
                         native_state["response_received"] = True
                         native_state["http_status"] = status
@@ -2706,6 +2780,8 @@ class TengliOpenAICompatibleGateway:
                             else None
                         )
                 except XingheAgentError as exc:
+                    if exc.code == "PROVIDER_TRANSPORT_FAILED":
+                        PLANNER_ROUTE_BREAKER.record_failure(route)
                     if (
                         exc.retryable or exc.code == "PROVIDER_RESPONSE_INVALID"
                     ) and route_index < last_route_index:
@@ -3672,6 +3748,7 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         planner_transient_retries=settings.planner_transient_retries,
         planner_retry_backoff_seconds=settings.planner_retry_backoff_seconds,
         planner_primary_timeout_seconds=settings.planner_primary_timeout_seconds,
+        planner_review_timeout_seconds=settings.planner_review_timeout_seconds,
         planner_receipt_root=settings.aurora_work_root / "planner-transport",
     )
     from .image_capacity import limit_gateway
@@ -11235,6 +11312,19 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
     }
 
 
+def _aurora_audit_contract_text(product_information: Sequence[str]) -> str:
+    """Return the per-page audit contract exactly as the provider built it.
+
+    The provider serializes one JSON contract into ``product_information``;
+    embed it verbatim rather than re-quoting it as a JSON string.
+    """
+
+    items = [str(item) for item in product_information if str(item).strip()]
+    if len(items) == 1:
+        return items[0]
+    return json.dumps(items, ensure_ascii=False)
+
+
 def _planner_prompt(request: PlannerRequest) -> str:
     if request.authoring_stage:
         return authoring.prompt(request)
@@ -11429,6 +11519,11 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "decision_summary must be a concrete direct-pixel verdict sentence "
             "with at least 12 characters; never use a one-word verdict such as "
             "PASS, 合格 or 通过."
+            "\n\nThe audit contract for this page follows. Its "
+            "authorized_fact_pool is the only claim authority, page_contract is "
+            "the approved plan for this page, and layout_observation_contract "
+            "holds the exact layout tokens to copy.\naudit_contract="
+            + _aurora_audit_contract_text(request.product_information)
         )
     if request.planning_profile == "aurora_style_calibration":
         return (

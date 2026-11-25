@@ -1,0 +1,71 @@
+{
+ "source_job_id": "job_9323577dd79d47348bb2079660a53c87",
+ "note": "Dev job input and locked identity copied read-only for claim-allocation regression tests.",
+ "input": {
+  "instruction": "",
+  "product": {
+   "category": "身体乳",
+   "name": "OLAY超白瓶美白身体乳",
+   "original_references": [
+    "/app/.data/aurora-main-image/job_9323577dd79d47348bb2079660a53c87/evidence/source-01.png"
+   ],
+   "user_provided_display_facts": [
+    "260g"
+   ],
+   "verified_attributes": [],
+   "verified_offers": [],
+   "verified_scenes": [],
+   "verified_selling_points": [
+    "烟酰胺·色淡林精华配方",
+    "7天美白，一润到底",
+    "浮光栀子香，精致香氛",
+    "260g 大容量"
+   ],
+   "verified_service_or_trust_facts": []
+  },
+  "profile01_semantics_read": false,
+  "request_id": "job_9323577dd79d47348bb2079660a53c87",
+  "style_preferences": []
+ },
+ "identity": {
+  "evidence": [
+   {
+    "evidence_id": "asset_c2f8a452fd634fb5962a961412940a01",
+    "path": "/app/.data/aurora-main-image/job_9323577dd79d47348bb2079660a53c87/evidence/source-01.png",
+    "view_tags": [
+     "front view",
+     "full bottle",
+     "pump dispenser",
+     "front label",
+     "promotional layout"
+    ]
+   }
+  ],
+  "identity_summary": "OLAY超白瓶美白身体乳 shown as one front-facing 260g pump bottle. The bottle has a white-and-gold color scheme, black OLAY branding high on the front, a thin gold-outlined rectangular label with Chinese text below it, and a gold droplet emblem above smaller Chinese body-lotion and fragrance text.",
+  "must_not_change": [
+   "Do not change the single-bottle component count or replace the pump with another closure type",
+   "Do not alter the tall rounded bottle silhouette, shoulder shape, or body-to-base proportions",
+   "Do not move, remove, recolor, or restyle the OLAY wordmark",
+   "Do not remove or relocate the gold collar, gold base, outlined label panel, or droplet emblem",
+   "Do not introduce additional bottles, caps, handles, tubes, boxes, or accessories as part of the product",
+   "Do not substitute different label wording, fragrance wording, or weight marking where visible",
+   "Do not treat the source background, surrounding promotional text, icons, floor, shadows, or lighting as part of the bottle"
+  ],
+  "must_preserve": [
+   "One bottle with one integrated top pump dispenser",
+   "Tall body with softly rounded shoulders, nearly straight sides, and a rounded bottom profile",
+   "White pump head and white neck above a wide reflective gold-toned collar",
+   "Matte white main bottle body with a substantial rounded gold-toned base",
+   "Centered black OLAY wordmark on the upper front",
+   "Thin gold-outlined rectangular text panel centered below the OLAY wordmark",
+   "Gold droplet emblem centered beneath the rectangular panel",
+   "Small black Chinese text positioned below the droplet emblem",
+   "Visible front-label hierarchy and centered vertical alignment",
+   "White, black, and gold-toned color blocking",
+   "Visible 260g designation associated with the product in the source layout"
+  ],
+  "previous_generated_images_used": false,
+  "product_form": "Single tall, rounded rectangular body-lotion bottle with a white dispensing pump, short cylindrical neck, reflective gold-toned collar, matte white body, and rounded gold-toned base.",
+  "request_id": "job_9323577dd79d47348bb2079660a53c87"
+ }
+}

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .bihuo_suite import (
     conditional_layout,
+    frame_policy,
     layer_timeline,
     raster_cache,
     video_materials,
@@ -36,10 +37,17 @@ def render(payload: dict, output: Path) -> Path:
         raster_cache.native_raster_cache(module) as rasters,
         conditional_layout.execution(module, payload),
         video_materials.execution(module, payload),
+        # Inside the timeline so it records the layers actually shown.
+        frame_policy.execution(module, payload) as framing,
         layer_timeline.recording(module) as timeline,
     ):
         final = native_render(payload, output)
     timeline_receipt = timeline.write(output)
+    framing_receipt = (
+        framing.write(output)
+        if framing is not None
+        else frame_policy.unsupported(payload, module)
+    )
     receipt = output / "render-receipt.json"
     value = json.loads(receipt.read_text("utf-8"))
     value.update(
@@ -47,6 +55,8 @@ def render(payload: dict, output: Path) -> Path:
         video_materials=payload["config"].get("video_materials"),
         sync_policy=(payload["config"].get("sync_policy") or {}).get("version"),
         layer_timeline=timeline_receipt,
+        frame_policy=framing_receipt,
+        source_reframe=payload["config"].get("source_reframe"),
         render_seconds=round(time.monotonic() - started, 3),
         raster_cache_hits=rasters.hits,
         raster_cache_misses=rasters.misses,

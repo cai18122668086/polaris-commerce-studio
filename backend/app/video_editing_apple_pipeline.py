@@ -549,6 +549,7 @@ def render_suite(
     session.rollback()
     compiler = None
     selected_fonts = None
+    source_reframe: dict | None = None
     render_module = "app.apple_minimal.render"
     if frozen.get("engine") == "bihuo-full-suite":
         from .bihuo_suite.planning import compile_render_input as bihuo_compile
@@ -560,6 +561,7 @@ def render_suite(
             bihuo_compile,
             template_id=template_id,
             sync_policy=settings.video_editing_sync_policy,
+            frame_policy=settings.video_editing_frame_policy,
         )
         selected_fonts = fonts(template_id)
         render_module = "app.video_editing_bihuo_cached_render"
@@ -578,6 +580,14 @@ def render_suite(
                 Path(source_path), transcript.duration_ms / 1000, root, settings, guard
             )
         )
+        if settings.video_editing_frame_policy != "off":
+            from .bihuo_suite.reframe import prepare as reframe_source
+
+            # Static face framing for windowed templates (bihuo-reframe/1).
+            reframed, source_reframe = reframe_source(
+                Path(source_path), root, settings, guard
+            )
+            source_path = str(reframed)
         if definition(template_id).get("requires_foreground"):
             from .bihuo_suite.foreground import prepare as prepare_foreground
 
@@ -633,6 +643,8 @@ def render_suite(
         recipe_compiler=compiler,
     )
     session.rollback()
+    if source_reframe is not None and isinstance(config.get("config"), dict):
+        config["config"]["source_reframe"] = source_reframe
     config_path = root / "suite-input.json"
     atomic_json(config_path, config)
     atomic_json(root / "suite-plan.json", plan)

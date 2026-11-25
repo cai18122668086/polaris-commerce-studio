@@ -137,6 +137,8 @@ class Settings(BaseSettings):
     # Speech-led overlay timing for full-suite renders; "off" restores the
     # original compiled times (rollback switch).
     video_editing_sync_policy: Literal["bihuo-sync/1", "off"] = "bihuo-sync/1"
+    # Render-time face safety + overlay dissolves; "off" restores phase-1 output.
+    video_editing_frame_policy: Literal["bihuo-frame/1", "off"] = "bihuo-frame/1"
     video_editing_asr_provider: Literal["faster-whisper", "funasr"] = "faster-whisper"
     video_editing_asr_model: str = "small"
     video_editing_asr_device: Literal["cpu", "cuda"] = "cpu"

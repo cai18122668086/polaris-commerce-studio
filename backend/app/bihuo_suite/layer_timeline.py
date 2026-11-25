@@ -71,9 +71,10 @@ class Recorder:
         if self.error:
             return
         try:
+            # Runtimes return (rgb, roles) or (rgb, roles, meta).
             rgb, roles = (
-                result
-                if isinstance(result, tuple) and len(result) == 2
+                (result[0], result[1])
+                if isinstance(result, tuple) and len(result) >= 2
                 else (result, {})
             )
             row: dict[str, Any] = {

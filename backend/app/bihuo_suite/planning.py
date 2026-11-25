@@ -12,6 +12,7 @@ from typing import Any
 from .. import video_editing_apple_contracts as contracts
 from ..video_editing_captioning import text_boundaries
 from ..video_editing_contracts import Transcript
+from . import frame_policy as framing
 from . import sync_policy as sync
 
 
@@ -368,6 +369,7 @@ def compile_render_input(
     recipe_compiler: Any = None,
     template_id: str | None = None,
     sync_policy: str = sync.OFF,
+    frame_policy: str = framing.OFF,
 ) -> dict[str, Any]:
     if recipe_compiler is None:
         raise ValueError("Bihuo compilation requires its selected recipe compiler")
@@ -392,6 +394,15 @@ def compile_render_input(
             and isinstance(payload.get("config"), dict)
         ):
             payload["config"]["sync_policy"] = record
+        if frame_policy not in framing.POLICIES:
+            raise ValueError("Unknown frame layout policy")
+        if (
+            frame_policy != framing.OFF
+            and isinstance(payload, dict)
+            and isinstance(payload.get("config"), dict)
+        ):
+            # Render-time face safety and transitions (bihuo-frame/1).
+            payload["config"]["frame_policy"] = {"version": frame_policy}
         return payload
 
     cards = [{**asset, "id": ident} for ident, asset in asset_files.items()]

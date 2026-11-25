@@ -18,6 +18,11 @@ docs/video-editing-upgrade-plan-20261125.md:
   overlay layer is animating;
 - preview: the review proxy keeps the master's motion (near-duplicate frames
   versus the master scaled to the proxy size), with its bitrate reported.
+- occlusion (phase 2, needs ``frame-policy.jsonl``): share of the detected
+  face covered by layers drawn above the presenter, per frame; full-screen
+  pictures (B-roll) are exempt for episodes up to 2.5 s (owner decision);
+- face_visible (phase 2): the face found on the presenter layer is still
+  found on the decoded master (YuNet, 2 frames per second).
 
 Only ffmpeg is required (no ffprobe). Exit status is 0 when every gated check
 passes, 1 otherwise.
@@ -58,7 +63,14 @@ THRESHOLDS: dict[str, Any] = {
     # Review proxy must keep the master's motion: its near-duplicate count
     # (mpdecimate) may exceed the master scaled to the same size by <= 3%.
     "preview_extra_near_duplicates": 0.03,
+    "occlusion_frame": 0.05,
+    "occlusion_frames_share": 0.01,
+    "broll_max_s": 2.5,
+    "face_visible_recall": 0.95,
 }
+PRESENTER = re.compile(r"presenter|^raw$")
+PRESENTER_DECOR = re.compile(r"(presenter|window).*(border|glow|edge|shadow)|^frame$")
+FULL_FRAME_SHARE = 0.6
 
 
 def read_timeline(path: Path) -> list[dict[str, Any]]:
@@ -282,6 +294,164 @@ def video_kbps(ffmpeg: str, path: Path) -> dict[str, Any]:
     }
 
 
+def read_faces(path: Path) -> dict[int, list[int]]:
+    if not path.is_file():
+        return {}
+    faces = {}
+    with path.open(encoding="utf-8") as stream:
+        for line in stream:
+            row = json.loads(line)
+            if row.get("face"):
+                faces[int(row["n"])] = row["face"]
+    return faces
+
+
+def occlusion(
+    timeline: list[dict[str, Any]],
+    grids: dict[str, Any],
+    faces: dict[int, list[int]],
+    fps: int = FPS,
+    cell: int = 24,
+) -> dict[str, Any]:
+    """Per-frame share of the face covered by layers above the presenter.
+
+    Gridded overlay roles contribute their measured cell opacity; ungridded
+    roles above the presenter (captions) their alpha box times peak opacity.
+    """
+    import numpy as np
+
+    rows: list[tuple[int, float]] = []
+    broll_frames: set[int] = set()
+    for row in timeline:
+        n = int(row["n"])
+        face = faces.get(n)
+        roles = row.get("roles") or {}
+        names = list(roles)
+        presenters = [
+            k
+            for k in names
+            if PRESENTER.search(k)
+            and not PRESENTER_DECOR.search(k)
+            and roles[k]["bbox"]
+        ]
+        if not face or not presenters:
+            continue
+        top = max(names.index(k) for k in presenters)
+        x0, y0, x1, y1 = face
+        c0, r0 = max(0, x0 // cell), max(0, y0 // cell)
+        c1, r1 = -(-x1 // cell), -(-y1 // cell)
+        shape = (max(1, r1 - r0), max(1, c1 - c0))
+        clear = np.ones(shape)
+        full = False
+        for k in names[top + 1 :]:
+            entry = roles[k]
+            box = entry.get("bbox")
+            if not box or PRESENTER_DECOR.search(k):
+                continue
+            if (box[2] - box[0]) * (box[3] - box[1]) >= FULL_FRAME_SHARE * 1080 * 1920:
+                full = True
+            if k in grids and n < len(grids[k]):
+                cells = grids[k][n][r0:r1, c0:c1, 0].astype(float) / 255
+                alpha = np.zeros(shape)
+                alpha[: cells.shape[0], : cells.shape[1]] = cells
+            else:
+                ix = max(0, min(x1, box[2]) - max(x0, box[0]))
+                iy = max(0, min(y1, box[3]) - max(y0, box[1]))
+                share = ix * iy / max(1, (x1 - x0) * (y1 - y0))
+                alpha = np.full(shape, share * float(entry["peak"]))
+            clear *= 1 - alpha
+        cover = float(1 - clear.mean())
+        if full and cover > THRESHOLDS["occlusion_frame"]:
+            broll_frames.add(n)
+        rows.append((n, round(cover, 4)))
+    episodes: list[list[int]] = []
+    for n in sorted(broll_frames):
+        if episodes and n == episodes[-1][1] + 1:
+            episodes[-1][1] = n
+        else:
+            episodes.append([n, n])
+    exempt = {
+        n
+        for a, b in episodes
+        if (b - a + 1) / fps <= THRESHOLDS["broll_max_s"] + 1e-9
+        for n in range(a, b + 1)
+    }
+    over = [
+        n
+        for n, cover in rows
+        if cover > THRESHOLDS["occlusion_frame"] and n not in exempt
+    ]
+    report: dict[str, Any] = {
+        "face_frames": len(rows),
+        "frames_over": len(over),
+        "first_over": over[:20],
+        "max_cover": max((c for n, c in rows if n not in exempt), default=0.0),
+        "broll_episodes_s": [round((b - a + 1) / fps, 2) for a, b in episodes],
+    }
+    report["pass"] = bool(rows) and (
+        len(over) <= THRESHOLDS["occlusion_frames_share"] * len(rows)
+        and all(s <= THRESHOLDS["broll_max_s"] for s in report["broll_episodes_s"])
+    )
+    return report
+
+
+def face_visible(
+    ffmpeg: str, final: Path, faces: dict[int, list[int]], fps: int = FPS
+) -> dict[str, Any]:
+    """Recall of presenter-layer faces on the decoded master at 2 fps."""
+    try:
+        import numpy as np
+        from PIL import Image
+
+        from .bihuo_suite.subject import FaceDetector, model_available
+    except Exception as error:  # pragma: no cover - environment
+        return {"skipped": f"{type(error).__name__}: {error}"[:200]}
+    if not model_available() or not faces:
+        return {"skipped": "no face model or no presenter faces"}
+    w, h = 270, 480
+    raw = subprocess.run(
+        [
+            ffmpeg,
+            "-v",
+            "error",
+            "-i",
+            str(final),
+            "-an",
+            "-vf",
+            f"fps=2,scale={w}:{h}",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+    detector = FaceDetector((1080, 1920))
+    frames = np.frombuffer(raw, dtype=np.uint8).reshape(-1, h, w, 3)
+    eligible = found = 0
+    misses = []
+    for i, small in enumerate(frames):
+        n = round(i * fps / 2)
+        if n not in faces:
+            continue
+        eligible += 1
+        image = Image.fromarray(small).resize((1080, 1920))
+        if detector.detect(image) is not None:
+            found += 1
+        else:
+            misses.append(round(n / fps, 2))
+    recall = found / eligible if eligible else None
+    return {
+        "eligible": eligible,
+        "found": found,
+        "recall": round(recall, 3) if recall is not None else None,
+        "missed_at_s": misses[:20],
+        "pass": recall is not None and recall >= THRESHOLDS["face_visible_recall"],
+    }
+
+
 def check(
     root: Path, preview: Path | None = None, ffmpeg: str = "ffmpeg"
 ) -> dict[str, Any]:
@@ -384,6 +554,13 @@ def check(
         )
         report["preview"] = info
     report["acceptance_phase1"] = bool(sync["pass"] and cfr["pass"] and dup["pass"])
+    faces = read_faces(render / "frame-policy.jsonl")
+    if faces:
+        report["occlusion"] = occlusion(timeline, grids, faces, fps)
+        report["face_visible"] = face_visible(ffmpeg, final, faces, fps)
+        report["acceptance_phase2"] = bool(
+            report["occlusion"]["pass"] and report["face_visible"].get("pass", True)
+        )
     return report
 
 
@@ -405,6 +582,9 @@ def main(argv: list[str] | None = None) -> int:
         "cfr": report["fps_cfr"]["pass"],
         "dup_in_motion": report["dup_in_motion"]["pass"],
         "preview": report.get("preview"),
+        "acceptance_phase2": report.get("acceptance_phase2"),
+        "occlusion_over": (report.get("occlusion") or {}).get("frames_over"),
+        "face_recall": (report.get("face_visible") or {}).get("recall"),
     }
     print(json.dumps(summary, ensure_ascii=False))
     return 0 if report["acceptance_phase1"] else 1

@@ -128,6 +128,7 @@ def normalize_suite_output(
     repairs.extend(repair_suite_captions(changed, transcript))
     repairs.extend(_fit_opening_title_words(changed, transcript, positions))
     repairs.extend(_fit_suite_display_spans(changed, transcript, positions))
+    repairs.extend(_fit_feature_words(changed, transcript, positions))
     repairs.extend(_release_overlapping_closing(changed, positions))
     repairs.extend(_release_points_repeating_closing(changed, positions))
     repairs.extend(_repair_material_order(changed, transcript, positions))
@@ -304,6 +305,114 @@ def _release_features_before_materials(
             )
         else:
             kept.append(row)
+    if repairs:
+        raw["features"] = kept
+    return repairs
+
+
+FEATURE_CAPACITY = 20
+
+
+def _fit_feature_words(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Keep feature labels on whole recorded words.
+
+    Features become short labels; the capsule suite shows the last one as its
+    conclusion button. The model sometimes binds a feature to part of a word
+    (planning 8d64991d: only 「支，」 out of 「随身带一支，」), which renders a
+    fragment. Word length is not the test: a single-character word such as
+    「稳。」 stays. A feature that cuts a word is widened to its spoken clause
+    when that fits, else to its whole words; one that cannot be widened
+    without touching its neighbours is omitted (the words stay in captions).
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    if not plan.features:
+        return []
+    tokens = transcript.tokens
+    ends, clauses = _word_ends(transcript)
+    intro = positions.get(plan.opening.intro_last_token_id)
+    quote = (
+        positions.get(plan.quote_start_token_id)
+        if plan.quote_start_token_id
+        else len(tokens)
+    )
+    if intro is None or quote is None:
+        return []
+    spans = []
+    for row in plan.features:
+        first, last = (
+            positions.get(row.first_token_id),
+            positions.get(row.last_token_id),
+        )
+        if first is None or last is None or first > last:
+            return []  # unknown words stay a strict validation failure
+        spans.append((first, last))
+    point_lasts = [
+        positions.get(point.last_token_id)
+        for point in plan.points
+        if positions.get(point.last_token_id) is not None
+    ]
+    previous = max([intro, *[p for p in point_lasts if p is not None]])
+
+    def text(a: int, b: int) -> str:
+        return _join([token.text for token in tokens[a : b + 1]])
+
+    kept: list[dict[str, Any]] = []
+    repairs: list[dict[str, Any]] = []
+    for index, (row, (first, last)) in enumerate(
+        zip(raw["features"], spans, strict=True)
+    ):
+        lower = previous + 1
+        upper = (spans[index + 1][0] if index + 1 < len(spans) else quote) - 1
+        starts = first == 0 or first - 1 in ends
+        if starts and last in ends:
+            kept.append(row)
+            previous = last
+            continue
+        before = [c for c in clauses if c < first]
+        clause = (
+            (max(before) + 1 if before else 0),
+            min((c for c in clauses if c >= last), default=len(tokens) - 1),
+        )
+        word_first = first
+        while word_first > 0 and word_first - 1 not in ends:
+            word_first -= 1
+        words = (word_first, min((e for e in ends if e >= last), default=last))
+        chosen = None
+        for kind, (a, b) in (
+            ("feature_clause_fitted", clause),
+            ("feature_words_fitted", words),
+        ):
+            if lower <= a <= b <= upper and len(text(a, b)) <= FEATURE_CAPACITY:
+                chosen = (kind, a, b)
+                break
+        if chosen is None:
+            repairs.append(
+                {
+                    "kind": "optional_feature_omitted",
+                    "first_token_id": row["first_token_id"],
+                    "last_token_id": row["last_token_id"],
+                    "reason": "feature_cuts_a_word",
+                }
+            )
+            continue
+        kind, a, b = chosen
+        kept.append(
+            {**row, "first_token_id": tokens[a].id, "last_token_id": tokens[b].id}
+        )
+        repairs.append(
+            {
+                "kind": kind,
+                "from": [row["first_token_id"], row["last_token_id"]],
+                "to": [tokens[a].id, tokens[b].id],
+                "text": text(a, b),
+            }
+        )
+        previous = b
     if repairs:
         raw["features"] = kept
     return repairs

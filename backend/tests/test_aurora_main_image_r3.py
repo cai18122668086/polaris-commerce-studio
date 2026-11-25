@@ -7,6 +7,7 @@ both led with 「260g 大容量」.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -14,8 +15,8 @@ from typing import Any
 from app import label_fidelity
 from app.aurora_main_image_provider import (
     _copy_authority,
-    _poster_removal_instruction,
     _unauthorized_offproduct_lines,
+    _with_source_copy,
 )
 from app.xinghe_agent import FakeXingheGateway, PlannerCallResult, PlannerRequest
 from tests.test_aurora_main_image_quickwins import _compiled_session
@@ -63,34 +64,29 @@ def test_spec_headline_only_on_the_closure_page_and_no_repeated_headline(
         assert left != right
 
 
-# 1. Poster banners ----------------------------------------------------------
+# 1. Source-image copy is a user fact (original Skill core policy) -------------
 
 
-def test_off_fact_detection_keeps_facts_and_product_name() -> None:
-    authority = _copy_authority(FACTS, SETTINGS)
+def test_source_image_copy_is_authorized_and_only_invented_text_is_rejected() -> None:
+    facts = _with_source_copy(FACTS, POSTER_TEXT)
+    authority = _copy_authority(facts, SETTINGS)
     found = _unauthorized_offproduct_lines(
         [
             *POSTER_TEXT,
+            "【新品上市】",
             "7天美白 一润到底",
             "烟酰胺·色淡林 精华配方",
-            "OLAY超白瓶美白身体乳｜260g 大容量",
+            "医学级美白",
             "精华身体乳",
         ],
         authority,
     )
-    assert found == [
-        "密集美白",
-        "改善顽固色沉",
-        "【新品上市】｜OLAY超白瓶美白身体乳",
-        "精华身体乳",
-    ]
-    assert "「【新品上市】｜OLAY超白瓶美白身体乳」" in _poster_removal_instruction(
-        found
-    )
+    assert found == ["医学级美白", "精华身体乳"]
+    assert "【新品上市】｜OLAY超白瓶美白身体乳" in facts["display_facts"]
 
 
-class _PosterGateway(_MainLabelGateway):
-    """The poster carries 新品上市; page 0's first draft copies it."""
+class _SourceCopyGateway(_MainLabelGateway):
+    """The source poster carries 新品上市; page 0's first draft invents a claim."""
 
     def __init__(self, page_readings: list[list[str]]) -> None:
         super().__init__([], fail_page1_audit=False)
@@ -99,7 +95,7 @@ class _PosterGateway(_MainLabelGateway):
     def poster_reading(self) -> dict[str, Any]:
         return {
             "products": [{"label_lines": REFERENCE}],
-            "other_text_lines": POSTER_TEXT,
+            "other_text_lines": [*POSTER_TEXT, "模糊?字"],
         }
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
@@ -117,14 +113,14 @@ class _PosterGateway(_MainLabelGateway):
         return await super().plan(request)
 
 
-def test_poster_banner_is_named_for_removal_and_rejected_when_copied(
+def test_source_copy_joins_the_pool_and_invented_text_triggers_the_repair(
     tmp_path: Path,
 ) -> None:
-    gateway = _PosterGateway(
+    gateway = _SourceCopyGateway(
         [
-            ["7天美白", "【新品上市】"],  # page 0 draft copies the banner
-            ["7天美白", "一润到底"],  # page 0 repair is clean
-            ["260g 大容量"],  # page 1 draft
+            ["7天美白", "【新品上市】", "医学级美白"],  # page 0 draft invents
+            ["7天美白", "【新品上市】"],  # page 0 repair: source copy only
+            ["260g 大容量"],
         ]
     )
     settings = {
@@ -139,19 +135,21 @@ def test_poster_banner_is_named_for_removal_and_rejected_when_copied(
     )
 
     first_prompt = gateway.image_calls[0].prompt
-    removal = first_prompt.split("【清除原海报文字】", 1)[1]
-    assert "「【新品上市】｜OLAY超白瓶美白身体乳」" in removal
-    assert "「密集美白」" in removal and "「改善顽固色沉」" in removal
-    assert "7天美白" not in removal and "「260g」" not in removal
-    # The copied banner failed page 0, so its one repair removed it.
+    assert "【清除原海报文字】" not in first_prompt
     page0 = [v for v in provider.state["generated_versions"] if v["page_index"] == 0]
     assert len(page0) == 2
     excluded = provider.state["excluded_generated_assets"][0]
     assert "no_unsupported_claim" in excluded["failed_checks"]
     repair_prompt = gateway.image_calls[1].prompt
-    assert "「【新品上市】」" in repair_prompt
-    assert "【清除原海报文字】" in repair_prompt
+    assert "「医学级美白」" in repair_prompt
+    assert "「【新品上市】」" not in repair_prompt
     assert results[0].artifact is not None
     assert results[0].artifact.sha256 == page0[1]["sha256"]
-    # The poster is read once per job, not once per page.
-    assert all(r.outcome.value == "succeeded" for r in results)
+    workspace = provider._workspace(provider.state["request_id"])
+    cached = json.loads((workspace / "source-image-copy.json").read_text("utf-8"))
+    assert "【新品上市】｜OLAY超白瓶美白身体乳" in cached["lines"]
+    assert "模糊?字" not in cached["lines"]  # obscured text is never guessed
+    request = json.loads(
+        (workspace / "generation-page-1-attempt-1.json").read_text("utf-8")
+    )
+    assert "密集美白" in request["authorized_facts"]["display_facts"]

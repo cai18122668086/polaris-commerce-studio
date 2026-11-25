@@ -25,7 +25,7 @@
     "40a8ca9e255c69e31c266f057b1f3c6f56cb0302fec883e1c07ea484b6b36404  scripts/harness.py",
     "187e95f167f65d25339aa19ade2f14d002f140898259a7fb4a5d916b7e66c6e1  scripts/runtime/__init__.py",
     "3d1399dbfd2c3124a120ae61c1402ae397a8478ac5a1f761a3dd13d57ddbc3a8  scripts/runtime/audit.py",
-    "747008d4707b13813a109defc4b3376b02020f0716b6da7d922b52bb3f7d5084  scripts/runtime/compiler.py",
+    "6a674f35a62ede3de31b6c2b3dd49225bef3e5b25fe5422a9ebffe9301c89a38  scripts/runtime/compiler.py",
     "57206952ff2dbddbb9fea21740e23cfe1a497469c2d386c78c0b9e0fbdd024a9  scripts/runtime/core.py",
     "c4aa922eb553b33f0deacf9171b1dda00459db989ac948f6824ad9bc4a023b07  scripts/runtime/identity.py",
     "51f9d8fd0466340c5731cddbe573d1f1957dbb377f5486c15aadcef2c7d1e18d  scripts/runtime/session.py",

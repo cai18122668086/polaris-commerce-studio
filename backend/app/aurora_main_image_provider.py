@@ -95,14 +95,15 @@ product_identity_match, character by character against the references, and
 never as an unsupported claim. Text outside the product (headlines, badges,
 banners, spec boxes) may use only the authorized_fact_pool strings, faithful
 non-strengthening paraphrases of them, and the product name in
-authorized_identity_copy. Before deciding factual_copy_match or
+authorized_identity_copy. The pool already includes the clearly readable copy
+of the user's own source images (packaging and promotional text), which the
+original Skill treats as user facts. Before deciding factual_copy_match or
 no_unsupported_claim, transcribe every visible off-product headline, badge,
 number, comparison, feature label, rating, safety statement, and
 specification from the candidate pixels. Any off-product proposition absent
-from that pool, including slogans or badges copied from the source poster or
-from the package, is an unsupported claim even when it is plausible for the
-category; return a material failure with the exact visible wording and the
-required change to remove or replace it.
+from that pool is a model-invented, unsupported claim even when it is
+plausible for the category; return a material failure with the exact visible
+wording and the required change to remove or replace it.
 For product_identity_match, compare the candidate against every supplied
 product_reference image as one complementary identity set. Fail materially
 when the candidate changes silhouette, proportions, component count or
@@ -239,17 +240,16 @@ class AuroraMainImageProvider:
         verdicts[artifact.sha256] = (verdict, reading)
         return verdict
 
-    async def _poster_offfact_lines(
+    async def _source_image_copy(
         self,
         request: ProviderRequest,
         generation_request: Mapping[str, Any],
-        authority: Sequence[str],
         account: label_fidelity.GateAccount,
     ) -> list[str]:
-        """Off-product text on the source poster that is not authorized copy.
+        """Clearly readable text on the user's source image (label and poster).
 
-        One blind read of the product reference per job (cached in the job
-        workspace); every later generation is told to remove these texts.
+        One blind read per job, cached in the job workspace.  Lines with an
+        unreadable character are dropped: obscured text is never guessed.
         """
 
         if not self.label_gate_enabled:
@@ -259,12 +259,12 @@ class AuroraMainImageProvider:
             reference = next((item for item in references if item.payload), None)
             if reference is None:
                 return []
-            cache = self._workspace(request.job_id) / "poster-offfact-text.json"
+            cache = self._workspace(request.job_id) / "source-image-copy.json"
             with contextlib.suppress(OSError, ValueError):
                 cached = json.loads(cache.read_text(encoding="utf-8"))
                 if cached.get("reference_sha256") == reference.sha256:
-                    return [str(line) for line in cached.get("remove", [])]
-            lines = await self._label_gate.reference_lines(
+                    return [str(line) for line in cached.get("lines", [])]
+            label_lines = await self._label_gate.reference_lines(
                 workspace_id=request.workspace_id,
                 job_id=request.job_id,
                 idempotency_key=request.job_id,
@@ -276,25 +276,27 @@ class AuroraMainImageProvider:
                 job_id=request.job_id,
                 idempotency_key=f"{request.job_id}:poster-text",
                 payload=reference.payload,
-                reference_lines=lines or (),
+                reference_lines=label_lines or (),
                 account=account,
             )
             if reading is None:
                 return []
-            poster_lines = [str(line) for line in reading.get("other_text_lines", [])]
-            remove = _unauthorized_offproduct_lines(poster_lines, authority)
+            lines = [
+                line.strip()
+                for line in [
+                    *(label_lines or ()),
+                    *(str(item) for item in reading.get("other_text_lines", [])),
+                ]
+                if line.strip() and "?" not in line and "？" not in line
+            ]
+            lines = list(dict.fromkeys(lines))
             write_contract(
-                cache,
-                {
-                    "reference_sha256": reference.sha256,
-                    "other_text_lines": poster_lines,
-                    "remove": remove,
-                },
+                cache, {"reference_sha256": reference.sha256, "lines": lines}
             )
-            return remove
+            return lines
         except Exception as exc:  # never fail a paid page on this read
             logger.warning(
-                "Aurora poster text read skipped job=%s (%s)",
+                "Aurora source copy read skipped job=%s (%s)",
                 request.job_id,
                 type(exc).__name__,
             )
@@ -347,19 +349,29 @@ class AuroraMainImageProvider:
                     generation_request["authorized_facts"] = (
                         _normalize_commercial_fact_pool(job_settings)
                     )
-                    copy_authority = _copy_authority(
-                        generation_request["authorized_facts"], job_settings
+                    # The original Skill treats clearly readable copy in the
+                    # user's own same-product images as user facts: add the
+                    # blind-read source transcription to the fact pool.
+                    source_copy = await self._source_image_copy(
+                        request, generation_request, label_account
                     )
-                    poster_removals = await self._poster_offfact_lines(
-                        request, generation_request, copy_authority, label_account
+                    generation_request["authorized_facts"] = _with_source_copy(
+                        generation_request["authorized_facts"], source_copy
                     )
-                    if poster_removals:
-                        generation_request["poster_text_removal"] = poster_removals
-                        generation_request["prompt"] = (
-                            str(generation_request["prompt"])
-                            + "\n"
-                            + _poster_removal_instruction(poster_removals)
+                    # Without any user fact (legacy or offline jobs) there is
+                    # nothing to judge invented copy against.
+                    copy_authority = (
+                        _copy_authority(
+                            generation_request["authorized_facts"], job_settings
                         )
+                        if any(
+                            _copy_authority(
+                                _normalize_commercial_fact_pool(job_settings),
+                                job_settings,
+                            )
+                        )
+                        else ()
+                    )
                     write_contract(generation_request_path, generation_request)
                 sources = _generation_sources(generation_request, request.job_id)
                 image_result = await self.gateway.edit(
@@ -507,9 +519,9 @@ class AuroraMainImageProvider:
                         label_verdicts.get(artifact.sha256), copy_authority
                     )
                     if offfact:
-                        # Off-product text outside the fact pool (e.g. a poster
-                        # banner such as 新品上市) fails the page so the one
-                        # automatic repair removes it.
+                        # Off-product text found in neither the user facts nor
+                        # the source images (model-invented) fails the page so
+                        # the one automatic repair removes it.
                         _inject_offfact_failure(judgment, offfact)
                 else:
                     judgment, usage, cost = await self._audit_candidate(
@@ -3073,7 +3085,8 @@ def _authorized_identity_copy_for_audit(
             "on the product exactly as in the references; it is identity copy, "
             "not a claim, and any changed label character is an identity "
             "failure. Off the product, only the product name above and the "
-            "authorized_fact_pool may appear (see copy_policy)."
+            "authorized_fact_pool (user facts plus readable source-image copy) "
+            "may appear (see copy_policy)."
         ),
     }
 
@@ -3848,21 +3861,24 @@ def _offfact_lines(
     return _unauthorized_offproduct_lines(lines, authority)
 
 
-def _poster_removal_instruction(lines: Sequence[str]) -> str:
-    quoted = "".join(f"「{line}」" for line in lines)
-    return (
-        "【清除原海报文字】原图上的以下文字不在已核验事实池中，成图里必须全部去除，"
-        "连同其底板、括号和分隔线一起删掉，不得保留、改写或挪到别处："
-        + quoted
-        + "。商品本体上印刷的标签文字不在此列，按原商品逐字保留。"
-    )
+def _with_source_copy(
+    authorized_facts: Mapping[str, Any], source_copy: Sequence[str]
+) -> dict[str, Any]:
+    """Add the source-image transcription to the display-fact bucket."""
+
+    facts = {key: list(value) if isinstance(value, list) else value
+             for key, value in authorized_facts.items()}
+    display = [str(item) for item in facts.get("display_facts") or []]
+    display.extend(line for line in source_copy if line not in display)
+    facts["display_facts"] = display
+    return facts
 
 
 def _inject_offfact_failure(judgment: dict[str, Any], lines: Sequence[str]) -> None:
-    """Fail factual_copy_match for off-product text outside the fact pool."""
+    """Fail factual_copy_match for model-invented off-product text."""
 
     quoted = "".join(f"「{line}」" for line in lines)
-    problem = "画外出现不在已核验事实池中的文字：" + quoted
+    problem = "画外出现既不在用户事实、也不在原图中的文字（模型新增）：" + quoted
     change = (
         "删除画外文字" + quoted + "，连同其底板、括号和分隔线，用周围背景自然补全；"
         "商品标签和其余画面层保持不变"
@@ -3899,7 +3915,7 @@ def _inject_offfact_failure(judgment: dict[str, Any], lines: Sequence[str]) -> N
                 {
                     "check": name,
                     "visible_problem": problem,
-                    "root_cause": "沿用了原海报或包装上的营销文字",
+                    "root_cause": "生成时新增了用户事实和原图都没有的文字",
                     "required_change": change,
                 }
             )
@@ -3912,7 +3928,7 @@ def _apply_offfact_verdicts(
     repaired: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
     authority: Sequence[str],
 ) -> None:
-    """Deliver the pre-repair draft when only the repair added off-fact text."""
+    """Deliver the pre-repair draft when only the repair invented text."""
 
     before = _offfact_lines(pre_repair, authority)
     after = _offfact_lines(repaired, authority)
@@ -3923,7 +3939,7 @@ def _apply_offfact_verdicts(
     if after and not before and repaired is not None:
         item["label_exact"] = False
         item["evidence"] = (
-            "返修后画外出现未授权文字"
+            "返修后画外出现模型新增文字"
             + "".join(f"「{line}」" for line in after)
             + "，返修前没有。"
             + str(item.get("evidence") or "")

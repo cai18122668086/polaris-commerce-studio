@@ -44,7 +44,9 @@ def test_generation_prompt_and_review_contract_share_one_copy_policy(
     session = _compiled_session(tmp_path)
     pages = session["plan"]["pages"]
     policy = pages[0]["copy_policy"]
-    assert "逐字还原" in policy and "新品上市" in policy and "密集美白" in policy
+    assert "逐字还原" in policy
+    assert "用户原始同商品图片中清晰可读的包装和宣传文案" in policy
+    assert "不得发明事实池之外的宣称" in policy
     for page in pages:
         assert page["copy_policy"] == policy
         assert policy in page["prompt"]

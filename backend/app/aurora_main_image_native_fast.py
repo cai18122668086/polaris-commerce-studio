@@ -259,6 +259,19 @@ class NativeFastMainImagePlanner(AuroraMainImagePlanner):
             execution_mode=VERSION,
         )
 
+    async def _plan_authored(
+        self,
+        job_id: str,
+        workspace_id: str,
+        ids: list[str],
+        bindings: list[dict[str, Any]],
+        sources: Any,
+        settings: dict[str, Any],
+    ) -> JobStatus | None:
+        return await _authored_plan_method(
+            self, job_id, workspace_id, ids, bindings, sources, settings
+        )
+
     async def plan(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
@@ -498,7 +511,10 @@ async def _authored_plan_method(
     """One planning call authors the six pages (detail-page style)."""
 
     facts = _all_facts(settings)
-    result = await self.gateway.plan(
+    gateway = self.gateway
+    if gateway is None:
+        raise AuroraPlanningError("Main image planning gateway is unavailable")
+    result = await gateway.plan(
         PlannerRequest(
             workspace_id=workspace_id,
             job_id=job_id,
@@ -637,9 +653,6 @@ async def _authored_plan_method(
         confirm_validated_plan(session, job, plan, work_root=self.work_root)
         session.commit()
         return JobStatus(job.status)
-
-
-NativeFastMainImagePlanner._plan_authored = _authored_plan_method  # type: ignore[attr-defined]
 
 
 async def finalize_delivery(session_factory: Any, storage: Any, job_id: str) -> None:

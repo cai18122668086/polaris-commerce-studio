@@ -10,7 +10,7 @@ import styles from "./page.module.css";
 
 const emptyData: CommerceData = { customers: [], orders: [], ledger: [], jobs: [], cases: [], refunds: [], audit: [] };
 const navigation: Array<[CommerceTab, string]> = [["customers", "客户管理"], ["orders", "充值订单"], ["ledger", "积分流水"], ["jobs", "任务与售后"], ["refunds", "退款处理"], ["audit", "操作审计"]];
-const labels: Record<string, string> = { pending: "待付款", paid: "已到账", processing: "处理中", completed: "已完成", rejected: "已驳回", failed: "失败", partial: "部分成功", cancelled: "已取消", queued: "排队中", planning: "规划中", open: "待处理", in_progress: "跟进中", resolved: "已解决", purchase: "充值", membership: "会员发放", renewal: "待生效续费", reserve: "任务冻结", settle: "生成消费", release: "任务释放", expire: "积分到期", gift: "人工赠送", compensation: "售后补偿", refund_hold: "退款冻结", refund: "退款扣回", refund_release: "退款释放" };
+const labels: Record<string, string> = { pending: "待付款", paid: "已到账", processing: "处理中", completed: "已完成", rejected: "已驳回", failed: "失败", partial: "部分完成", cancelled: "已取消", queued: "排队中", planning: "规划中", open: "待处理", in_progress: "跟进中", resolved: "已解决", purchase: "充值", membership: "会员发放", renewal: "待生效续费", reserve: "任务冻结", settle: "生成消费", release: "任务释放", expire: "积分到期", gift: "人工赠送", compensation: "售后补偿", refund_hold: "退款冻结", refund: "退款扣回", refund_release: "退款释放" };
 const money = (fen: number) => `¥${(fen / 100).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const time = (value: string | null | undefined) => value ? new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "—";
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n.toLocaleString("zh-CN")}`;

@@ -83,3 +83,4 @@
 :global(.theme-ember) .loading{color:#78726a}
 :global(.theme-ember) .loadingText{color:#78726a}
 /* ember-dark:end */
+.reviewNotice { margin:0;padding:10px 12px;border:1px solid #591c02;border-radius:10px;background:rgb(255 250 244 / 0.025);color:#d6d2cb;font-size:12px;line-height:1.75; }

@@ -151,7 +151,9 @@ class Settings(BaseSettings):
     video_editing_subprocess_timeout: int = Field(default=3600, ge=30, le=14400)
     video_cosyvoice_enabled: bool = False
     video_cosyvoice_api_key: SecretStr = SecretStr("")
-    video_cosyvoice_platform: Literal["qianwen", "bailian_beijing"] = "qianwen"
+    video_cosyvoice_platform: Literal["qianwen", "bailian_beijing", "dashscope"] = (
+        "qianwen"
+    )
     video_cosyvoice_workspace_id: str = ""
     video_cosyvoice_model: Literal["cosyvoice-v3.5-flash"] = "cosyvoice-v3.5-flash"
 

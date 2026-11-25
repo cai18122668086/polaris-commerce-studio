@@ -793,18 +793,13 @@ class ExecutionCoordinator:
             if set_audit is False and set_audit_error is not None:
                 self._mark_parallel_aurora_set_audit_failed(job_id, set_audit_error)
             elif set_audit is False and set_audit_error is None:
-                from .main_image_auto_start import eligible as automatic_main_image
-
-                with self.session_factory() as session:
-                    job = session.get(JobRecord, job_id)
-                    automatic = job is not None and automatic_main_image(job)
-                if automatic:
-                    self._mark_parallel_aurora_set_audit_failed(
-                        job_id,
-                        ValueError("Automatic delivery needs a passing set audit"),
-                    )
-                    return self.finalize_job(job_id)
-                return self._mark_aurora_final_review_pending(job_id)
+                # A completed set audit only judges whether another page could
+                # also read as the search cover.  The harness records that as a
+                # residual issue; it never fails a page or the job.  Identity,
+                # label and claim errors are gated per page, not here.
+                return await self._maybe_finalize_domestic_automatic_delivery(
+                    job_id, self._mark_aurora_final_review_pending(job_id)
+                )
             elif set_audit is True and set_audit_error is None:
                 return await self._maybe_finalize_domestic_automatic_delivery(
                     job_id, self._mark_aurora_final_review_pending(job_id)

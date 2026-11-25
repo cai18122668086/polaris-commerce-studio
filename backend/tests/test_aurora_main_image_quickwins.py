@@ -228,12 +228,18 @@ def test_real_job_closure_page_gets_the_spec_and_proof_pages_no_text_only_lead(
     assert "7天美白，一润到底" not in pages[5]["claim_bundle"]
     assert pages[5]["supporting_claims"]
     assert "260g" in pages[5]["commercial_closure"]
-    # Pages that need visual proof never lead with a text-only fact.
-    for index in (2, 3, 4):
-        assert pages[index]["observability"] != "TEXT_ONLY_VERIFIED", leads
-    # The search hook is not repeated as secondary copy on later pages.
+    # Renderable facts lead the proof pages first; no fact leads two proof
+    # pages (round 4), so with only two renderable facts the third proof page
+    # takes a spare text-only fact under a different headline segment.
+    assert pages[2]["observability"] != "TEXT_ONLY_VERIFIED", leads
+    assert pages[3]["observability"] != "TEXT_ONLY_VERIFIED", leads
+    assert len({leads[2], leads[3], leads[4]}) == 3, leads
+    # The search hook is not repeated as secondary copy on later pages, and a
+    # page that recycles it headlines another segment.
     for page in pages[1:]:
-        assert "7天美白，一润到底" not in page["claim_bundle"]
+        assert "7天美白，一润到底" not in page["supporting_claims"]
+        if page["primary_claim"] == "7天美白，一润到底":
+            assert page["display_copy_contract"]["headline_exclusive_segment"]
     # "260g" and "260g 大容量" are one fact: never both on one page.
     for page in pages:
         assert not {"260g", "260g 大容量"} <= set(page["claim_bundle"])
@@ -252,8 +258,9 @@ def test_proof_pages_reuse_a_renderable_fact_instead_of_a_text_only_one(
     ]
     product["user_provided_display_facts"] = ["260g"]
     pages = _compiled_session(tmp_path, fixture)["plan"]["pages"]
-    for index in (2, 3, 4):
-        assert pages[index]["primary_claim"] == "柔滑乳液质地"
+    proof = [pages[index]["primary_claim"] for index in (2, 3, 4)]
+    assert proof[0] == "柔滑乳液质地"
+    assert len(set(proof)) == 3 and "260g 大容量" not in proof
     assert pages[5]["primary_claim"] == "260g 大容量"
 
 

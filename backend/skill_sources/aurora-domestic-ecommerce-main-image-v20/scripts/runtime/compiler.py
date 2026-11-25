@@ -118,7 +118,7 @@ CAMERA_DIRECTIVES = [
     "手持视角：手部自然握持商品，并给出与本页卖点相关的真实局部特写，形成大小双尺度",
     "生活方式使用场景：在可信使用环境中由人物或手部使用商品，形成接触动作；不得静态正面摆拍",
     "质地或细节微距特写：内容物、质地或材质微距为主视觉，完整商品只作小尺度定位",
-    "规格平铺俯拍：俯视或45度俯拍的平铺陈列，商品与规格信息簇形成收口；不得复用正面英雄构图",
+    "规格平铺俯拍：俯视或45度俯拍的平铺陈列，商品与质地、道具共同构成主画面；规格只作次级信息块（不超过画面宽度三分之一，字号明显小于商品），不得用超大数字或单一规格作主标题，不得出现直立商品加大号规格的搜索封面式构图",
 ]
 
 
@@ -164,7 +164,7 @@ def _page_rankings(raw: dict[str, Any], index: int) -> list[dict[str, Any]]:
     return sorted(ranked, key=lambda item: (-(item["score"] + ROLE_SOURCE_BONUS[index].get(item["source"], 0)), item["text"]))
 
 
-def _pick_lead(ranking: list[dict[str, Any]], index: int, uses: dict[str, int], hook: str | None) -> dict[str, Any]:
+def _pick_lead(ranking: list[dict[str, Any]], index: int, uses: dict[str, int], hook: str | None, proof_leads: set[str] | None = None, neighbors: set[str] | None = None) -> dict[str, Any]:
     def unused(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [item for item in items if uses.get(item["text"], 0) == 0]
 
@@ -172,7 +172,7 @@ def _pick_lead(ranking: list[dict[str, Any]], index: int, uses: dict[str, int], 
         order = {item["text"]: position for position, item in enumerate(items)}
         # Polaris r3: a spec/offer fact belongs to the closure page; carousel
         # pages recycle another fact before they would repeat the spec headline.
-        return min(items, key=lambda item: (item["text"] == hook, index not in {0, 5} and _is_closure_fact(item), uses.get(item["text"], 0), order[item["text"]]))
+        return min(items, key=lambda item: (item["text"] == hook, index not in {0, 5} and _is_closure_fact(item), item["text"] in (neighbors or set()), uses.get(item["text"], 0), order[item["text"]]))
 
     if index == 5:
         closure = [item for item in ranking if _is_closure_fact(item)]
@@ -189,9 +189,18 @@ def _pick_lead(ranking: list[dict[str, Any]], index: int, uses: dict[str, int], 
         # fact instead.  Only when no renderable fact exists at all does the
         # page fall back to text-only facts.
         visual = [item for item in ranking if item["observability"] != "TEXT_ONLY_VERIFIED"]
+        fresh = unused(visual)
+        if fresh:
+            return fresh[0]
+        # Polaris r4: no fact leads two proof pages.  When the renderable facts
+        # are used up, take any fact not yet leading a proof page (the spec
+        # last, since it belongs to the closure page) before repeating one.
+        taken = proof_leads or set()
+        spare = [item for item in ranking if item["text"] not in taken]
+        if spare:
+            return min(spare, key=lambda item: (_is_closure_fact(item), uses.get(item["text"], 0), ranking.index(item)))
         if visual:
-            fresh = unused(visual)
-            return fresh[0] if fresh else least_used(visual)
+            return least_used(visual)
     available = unused(ranking)
     return available[0] if available else least_used(ranking)
 
@@ -207,7 +216,9 @@ def _assign_claims(raw: dict[str, Any]) -> list[dict[str, Any]]:
     variants: dict[int, int] = {}
     for index in (0, 5, 2, 3, 4, 1):
         hook = leads[0]["text"] if 0 in leads else None
-        selected = _pick_lead(_page_rankings(raw, index), index, uses, hook)
+        proof_leads = {leads[page]["text"] for page in VISUAL_PROOF_PAGES if page in leads}
+        neighbors = {leads[page]["text"] for page in (index - 1, index + 1) if page in leads}
+        selected = _pick_lead(_page_rankings(raw, index), index, uses, hook, proof_leads, neighbors)
         leads[index] = selected
         variants[index] = uses.get(selected["text"], 0)
         uses[selected["text"]] = uses.get(selected["text"], 0) + 1
@@ -276,6 +287,7 @@ def _display_copy_contract(lead: str, supports: list[str], index: int, variant: 
         segments = [item.strip() for item in re.split(r"[，,。；;：:·・]", lead) if item.strip()]
         if len(segments) > 1:
             seed = segments[variant % len(segments)] if segments[variant % len(segments)] != seed else segments[-1]
+    exclusive = bool(variant) and seed != lead.strip()
     return {
         "source_claim": lead,
         "headline_seed_source_segment": seed,
@@ -285,7 +297,8 @@ def _display_copy_contract(lead: str, supports: list[str], index: int, variant: 
         "headline_max_lines": 2,
         "subheadline_max_lines": 1,
         "compression_rule": "忠实保留核心利益，不新增事实；长事实拆为短主标题、副标题或不等权辅助模块，不得缩小字号硬塞整句",
-        "full_source_as_headline_forbidden": len(re.sub(r"\s+", "", lead)) > (12 if index == 0 else 16),
+        "full_source_as_headline_forbidden": exclusive or len(re.sub(r"\s+", "", lead)) > (12 if index == 0 else 16),
+        "headline_exclusive_segment": seed if exclusive else None,
     }
 
 
@@ -412,6 +425,7 @@ def compile_prompt(raw: dict[str, Any], identity: dict[str, Any], plan: dict[str
         "【本页购买任务】" + page["buyer_question"],
         "【主卖点】" + page["primary_claim"],
         "【显示文案合同】源事实=" + display_copy["source_claim"] + "；短标题种子=" + display_copy["headline_seed_source_segment"] + "；目标=" + display_copy["headline_target_chars"] + "；硬上限=" + str(display_copy["headline_hard_max_chars"]) + "；最多" + str(display_copy["headline_max_lines"]) + "行；规则=" + display_copy["compression_rule"] + "。",
+        *(["【本页主标题】只用「" + display_copy["headline_exclusive_segment"] + "」作主标题；「" + display_copy["source_claim"] + "」整句已是其他页的标题，本页不得把整句做成标题。"] if display_copy.get("headline_exclusive_segment") else []),
         "【辅助卖点·按画面力量取舍】" + ("；".join(page["supporting_claims"]) if page["supporting_claims"] else "无强制辅助卖点"),
         "【画面证明】" + page["visual_proof"],
         "【构图职责】" + page["composition"],

@@ -386,7 +386,19 @@ def accept_repair(session_path: str, check_path: str) -> dict[str, Any]:
         verdicts[key] = item["label_exact"] and item["identity_intact"]
     draft_failures = next((entry["failed_checks"] for entry in reversed(session["excluded_generated_assets"]) if entry.get("sha256") == draft["sha256"]), [])
     version["post_repair_identity_check"] = copy.deepcopy(check)
-    if verdicts["pre_repair"] and not verdicts["repaired"]:
+    def mismatches(item: dict[str, Any]) -> int:
+        value = item.get("label_mismatch_count")
+        return int(value) if isinstance(value, int) and value >= 0 else (0 if item.get("label_exact") else 1)
+
+    # Polaris r4: when both drafts misprint the label, keep the one with fewer
+    # label mismatches (identity must still be intact).
+    fewer_mismatches = (
+        not verdicts["pre_repair"]
+        and not verdicts["repaired"]
+        and check["pre_repair"]["identity_intact"] is True
+        and mismatches(check["pre_repair"]) < mismatches(check["repaired"])
+    )
+    if (verdicts["pre_repair"] and not verdicts["repaired"]) or fewer_mismatches:
         version["status"] = "REJECTED_IDENTITY_REGRESSION"
         draft["status"] = "ACCEPTED_WITH_RESIDUALS"
         session["excluded_generated_assets"] = [entry for entry in session["excluded_generated_assets"] if entry.get("sha256") != draft["sha256"]]

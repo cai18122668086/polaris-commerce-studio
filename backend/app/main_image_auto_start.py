@@ -91,7 +91,7 @@ def finalize_validated_set(
     *,
     work_root: Path,
 ) -> bool:
-    """Use the original native finalizer only after a passing six-image audit."""
+    """Use the original native finalizer once the six-image audit completed."""
     from .aurora_execution_modes import is_parallel_aurora_mode
     from .aurora_main_image_runtime import AuroraV20HarnessRunner, write_contract
 
@@ -110,7 +110,11 @@ def finalize_validated_set(
         else "_sequential_v20_set_session"
     )
     state = plan.payload.get(key)
-    if not isinstance(state, Mapping) or state.get("set_audit_passed") is not True:
+    # Any completed set audit is enough: its only finding (another page could
+    # also read as the search cover) is a disclosed residual, not a failure.
+    if not isinstance(state, Mapping) or not isinstance(
+        state.get("set_audit"), Mapping
+    ):
         return False
     relative = "parallel-v20" if is_parallel_aurora_mode(mode) else "sequential-v20"
     workspace = (work_root / job.id / relative / "set-audit").resolve()

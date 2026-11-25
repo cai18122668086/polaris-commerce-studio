@@ -25,10 +25,10 @@
     "40a8ca9e255c69e31c266f057b1f3c6f56cb0302fec883e1c07ea484b6b36404  scripts/harness.py",
     "187e95f167f65d25339aa19ade2f14d002f140898259a7fb4a5d916b7e66c6e1  scripts/runtime/__init__.py",
     "3d1399dbfd2c3124a120ae61c1402ae397a8478ac5a1f761a3dd13d57ddbc3a8  scripts/runtime/audit.py",
-    "a79bcf9a867981d77d6902dfea5851637e54b6f101524af47cc4919729b67b20  scripts/runtime/compiler.py",
+    "747008d4707b13813a109defc4b3376b02020f0716b6da7d922b52bb3f7d5084  scripts/runtime/compiler.py",
     "57206952ff2dbddbb9fea21740e23cfe1a497469c2d386c78c0b9e0fbdd024a9  scripts/runtime/core.py",
     "c4aa922eb553b33f0deacf9171b1dda00459db989ac948f6824ad9bc4a023b07  scripts/runtime/identity.py",
-    "a69de7c29e3497241b0a0a67efc843dca2ef3e7e0fe925f6985032029bdcfa67  scripts/runtime/session.py",
+    "51f9d8fd0466340c5731cddbe573d1f1957dbb377f5486c15aadcef2c7d1e18d  scripts/runtime/session.py",
     "542b5a5187824055003d40cbfdb33f7a31087b9581eca21b464097c17218e1db  scripts/runtime/style.py",
     "a6ce9864e5a6522339db5e69cca90242dfb700320633f802f783f951eed9cb6c  SKILL.md"
   ]

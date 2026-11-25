@@ -3999,6 +3999,7 @@ def _apply_label_verdicts(
         if verdict.status not in {"PASS", "MISMATCH"}:
             continue
         item["label_exact"] = verdict.status == "PASS"
+        item["label_mismatch_count"] = verdict.mismatch_count
         if reading is not None:
             item["label_text_seen"] = "；".join(
                 "／".join(lines) for lines in reading.get("product_label_lines", [])

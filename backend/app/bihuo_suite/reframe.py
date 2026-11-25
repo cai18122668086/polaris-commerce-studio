@@ -36,6 +36,7 @@ MAX_SHIFT = 420
 MIN_FOUND_SHARE = 0.5
 SAMPLE_FPS = 5
 EDGE_ROWS = 24
+CORNER = 120
 
 
 def measure(source: Path, ffmpeg: str, timeout: float = 600) -> dict[str, Any]:
@@ -95,15 +96,28 @@ def shift_for(measured: dict[str, Any]) -> int:
 
 
 def filter_graph(shift: int) -> str:
+    """Shift the picture; fill the exposed edge from the two corners.
+
+    The middle of the edge rows is usually the presenter (hair at the top,
+    body at the bottom); the corners are the background, so the fill is a
+    heavily blurred stretch of the left and right corner patches.
+    """
     d = abs(shift)
-    blur = f"scale={W}:{d}:flags=bilinear,gblur=sigma=18"
+    half = W // 2
+    y = 0 if shift > 0 else H - EDGE_ROWS
+    corners = (
+        f"[b]crop={CORNER}:{EDGE_ROWS}:0:{y},scale={half}:{d}:flags=bilinear[l];"
+        f"[c]crop={CORNER}:{EDGE_ROWS}:{W - CORNER}:{y},"
+        f"scale={half}:{d}:flags=bilinear[r];"
+        f"[l][r]hstack=inputs=2,gblur=sigma=40[e];"
+    )
     if shift > 0:
         return (
-            f"[0:v]split=2[a][b];[b]crop={W}:{EDGE_ROWS}:0:0,{blur}[e];"
+            f"[0:v]split=3[a][b][c];{corners}"
             f"[a]crop={W}:{H - d}:0:0[m];[e][m]vstack=inputs=2,setsar=1[v]"
         )
     return (
-        f"[0:v]split=2[a][b];[b]crop={W}:{EDGE_ROWS}:0:{H - EDGE_ROWS},{blur}[e];"
+        f"[0:v]split=3[a][b][c];{corners}"
         f"[a]crop={W}:{H - d}:0:{d}[m];[m][e]vstack=inputs=2,setsar=1[v]"
     )
 

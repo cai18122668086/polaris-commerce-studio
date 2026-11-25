@@ -156,7 +156,7 @@ def test_late_conflict_eases_instead_of_jumping():
     p.detector = StubDetector((440, 340, 740, 740))
     p.track = subject.FaceTrack()
     tops = []
-    for n in range(4, 4 + fp.EASE_FRAMES + 2):
+    for n in range(4, 4 + fp.SETTLE_FRAMES + fp.EASE_FRAMES + 3):
         out = p.frame(n, frame(roles))
         tops.append(out[1]["card"].getchannel("A").getbbox()[1])
     steps = np.diff([420, *tops])
@@ -371,3 +371,18 @@ def test_face_zone_is_clipped_to_the_presenter_window():
     }
     result = frame(roles)
     assert p.frame(0, result) is result  # nothing above the window moves
+
+
+def test_cards_do_not_react_while_the_presenter_sweeps_past():
+    p = policy()
+    roles = {
+        "presenter": layer((0, 0, W, H), (90, 90, 90, 255)),
+        "zh_current": layer((130, 1172, 950, 1244)),
+    }
+    for n in range(20):  # face slides down 40 px per frame through the caption
+        top = 600 + 40 * n
+        p.detector = StubDetector((470, top, 640, top + 200))
+        out = p.frame(n, frame(roles))
+        if 3 <= n <= 17:
+            assert out[1]["zh_current"] is roles["zh_current"], n
+    assert not p.summary["moves"]

@@ -26,7 +26,6 @@ from app.aurora_main_image_runtime import AuroraV20HarnessRunner
 from app.config import Settings
 from app.provider import ProviderArtifact, ProviderOutcome, ProviderRequest
 from app.xinghe_agent import (
-    PLANNER_ROUTE_BREAKER,
     FakeXingheGateway,
     PlannerCallResult,
     PlannerRequest,
@@ -42,13 +41,6 @@ FIXTURE = (
 )
 PRIMARY_URL = "https://primary.invalid/"
 FAILOVER_URL = "https://failover.invalid/"
-
-
-@pytest.fixture(autouse=True)
-def _reset_route_breaker() -> Any:
-    PLANNER_ROUTE_BREAKER.reset()
-    yield
-    PLANNER_ROUTE_BREAKER.reset()
 
 
 def _real_job() -> dict[str, Any]:

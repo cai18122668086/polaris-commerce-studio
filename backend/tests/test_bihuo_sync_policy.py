@@ -142,7 +142,7 @@ def test_materials_hold_until_next_with_min_dwell_and_never_overlap() -> None:
         assert current["end"] == following["start"]  # hold, no gap, no overlap
         assert following["start"] - current["start"] >= MIN_DWELL_S - 1e-9
         assert current["spoken_span"]["end"] == current["end"]
-    assert out[-1]["end"] == 9.0
+    assert out[-1]["end"] == 9.0  # 3.48 s to the body end: under the cap
     assert all(on_grid(row["start"]) and row["start"] < row["end"] for row in out)
     assert out[0]["start"] >= 1.77
     assert record["targets"][0]["allowed_start"] == 2.0  # phrase after opening
@@ -239,3 +239,19 @@ def test_exit_of_previous_image_is_not_the_next_entry() -> None:
         events,
     )
     assert rows[0]["event"]["role"] == "material"
+
+
+def test_hold_is_capped_unless_the_next_image_is_due_within_the_bridge() -> None:
+    rows = [
+        material("a", "t1", 2.0, (2.0, 2.5), 0),
+        material("b", "t2", 6.5, (6.5, 7.0), 0),  # due 4.5 s later: bridge
+        material("c", "t3", 14.0, (14.0, 14.5), 30.0),  # 7.5 s later: cap
+    ]
+    timed, record = apply(resolved(materials=rows), "bihuo-02-v1")
+    a, b, c = timed["materials"]
+    assert a["end"] == b["start"]  # gap past the cap <= 0.5 s: held until b
+    assert b["end"] == floor_frame(b["start"] + 4.0) < c["start"]
+    assert c["end"] == floor_frame(c["start"] + 4.0) < 30.0  # last one too
+    assert b["spoken_span"]["end"] == b["end"]
+    assert all(m["end"] - m["start"] >= MIN_DWELL_S for m in (a, b, c))
+    assert record["max_hold_s"] == 4.0

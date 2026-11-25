@@ -14,7 +14,9 @@ Rules (docs/video-editing-upgrade-plan-20261125.md, section 3.1):
    own entry curve needs to reach 50% opacity, so the element is visibly
    present when the word starts. Times are floored to the 25 fps frame grid.
 3. A material stays until the next material is visible (or the body ends),
-   with at least ``MIN_DWELL_S`` on screen; materials never overlap.
+   with at least ``MIN_DWELL_S`` on screen and at most ``MAX_HOLD_S``
+   (per template), after which the base layout returns, unless the next
+   material is due within ``HOLD_BRIDGE_S``; materials never overlap.
 4. Points, feature phrases and chapter entries get the same lead-in.
 """
 
@@ -33,6 +35,11 @@ POLICIES = (VERSION, OFF, BASELINE)
 FPS = 25
 BASE_LEAD_S = 0.12
 MIN_DWELL_S = 1.2
+# Longest an image holds before the template's base layout (the presenter)
+# returns; a next image due within HOLD_BRIDGE_S of the cap is held until.
+MAX_HOLD_S = 4.0
+HOLD_BRIDGE_S = 0.5
+MAX_HOLD_BY_TEMPLATE: dict[str, float] = {}
 LONG_PHRASE_S = 2.5
 DEFAULT_HALF_S = 0.10
 # Seconds from an element's start time to 50% opacity under the template's own
@@ -73,6 +80,10 @@ def floor_frame(seconds: float, fps: int = FPS) -> float:
 def ceil_frame(seconds: float, fps: int = FPS) -> float:
     """Earliest frame boundary at or after ``seconds``."""
     return math.ceil(seconds * fps - 1e-6) / fps
+
+
+def max_hold_seconds(template_id: str | None) -> float:
+    return MAX_HOLD_BY_TEMPLATE.get(template_id or "", MAX_HOLD_S)
 
 
 def lead_seconds(template_id: str | None, kind: str) -> float:
@@ -184,9 +195,14 @@ def apply(
                 "lead_s": round(float(speech) - visible, 6),
             }
         )
+    max_hold = max_hold_seconds(template_id)
     if enabled:
         for current, following in zip(materials, materials[1:], strict=False):
             current["end"] = following["start"]
+        for material in materials:
+            capped = floor_frame(material["start"] + max_hold)
+            if material["end"] - capped > HOLD_BRIDGE_S + 1e-9:
+                material["end"] = capped
         # Material targets are recorded first, so targets[i] is material i.
         for index, material in enumerate(materials):
             if material["end"] <= material["start"]:
@@ -216,6 +232,8 @@ def apply(
         "fps": FPS,
         "base_lead_s": BASE_LEAD_S,
         "min_dwell_s": MIN_DWELL_S,
+        "max_hold_s": max_hold,
+        "hold_bridge_s": HOLD_BRIDGE_S,
         "material_lead_s": lead,
         "point_lead_s": point_lead,
         "targets": targets,

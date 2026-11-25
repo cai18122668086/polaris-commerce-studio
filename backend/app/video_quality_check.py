@@ -54,6 +54,7 @@ THRESHOLDS: dict[str, Any] = {
     "sync_max_s": 0.12,
     "sync_fail_s": 0.30,
     "material_dwell_s": 1.2,
+    "exit_fade_s": 0.4,
     # Review proxy must keep the master's motion: its near-duplicate count
     # (mpdecimate) may exceed the master scaled to the same size by <= 3%.
     "preview_extra_near_duplicates": 0.03,
@@ -328,6 +329,11 @@ def check(
         for row in matched
         if row["kind"] == "material" and row["event"]
     ]
+    max_hold = (
+        float(policy.get("max_hold_s", 1e9))
+        + float(policy.get("hold_bridge_s", 0))
+        + THRESHOLDS["exit_fade_s"]
+    )
     final = render / "final.mp4"
     cfr = stream_cfr(ffmpeg, final, fps)
     md5 = decoded_md5(ffmpeg, final)
@@ -354,8 +360,12 @@ def check(
         "sync": sync,
         "material_dwell": {
             "rows": dwell,
+            # Upper bound: the policy's hold cap, its bridge to a due next
+            # image, and the template's exit fade.
+            "max_allowed_s": max_hold,
             "pass": all(
-                row["seconds"] >= THRESHOLDS["material_dwell_s"] for row in dwell
+                THRESHOLDS["material_dwell_s"] <= row["seconds"] <= max_hold
+                for row in dwell
             ),
         },
         "fps_cfr": cfr,

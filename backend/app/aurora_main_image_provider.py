@@ -209,11 +209,7 @@ class AuroraMainImageProvider:
         if artifact.sha256 in verdicts:
             return verdicts[artifact.sha256][0]
         try:
-            references = tuple(
-                source
-                for source in _identity_sources(generation_request, request.job_id)
-                if "generated" not in Path(source.filename).parts
-            )
+            references = _label_reference_sources(generation_request, request.job_id)
             lines = await self._label_gate.reference_lines(
                 workspace_id=request.workspace_id,
                 job_id=request.job_id,
@@ -2481,6 +2477,22 @@ def _generation_sources(
     if not result:
         raise AuroraPlanningError("Aurora generation request has no usable references")
     return tuple(result)
+
+
+def _label_reference_sources(
+    generation_request: Mapping[str, Any], job_id: str
+) -> tuple[SourceImage, ...]:
+    """Original product evidence only, never a repair canvas.
+
+    A repair request lists the failed draft first in imagegen_reference_paths;
+    the label reference must come from the identity allowlist instead.
+    """
+
+    safe_request = dict(generation_request)
+    safe_request.update(
+        repair_canvas=None, edit_target=None, imagegen_reference_paths=None
+    )
+    return _generation_sources(safe_request, job_id)
 
 
 def _identity_sources(

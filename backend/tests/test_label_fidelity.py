@@ -416,6 +416,7 @@ class _MainLabelGateway(FakeXingheGateway):
         self.readings = list(readings)
         self.fail_page1_audit = fail_page1_audit
         self.audits_by_page: dict[int, int] = {}
+        self.reference_calls: list[PlannerRequest] = []
 
     async def edit(self, request: Any) -> Any:
         result = await super().edit(request)
@@ -435,6 +436,7 @@ class _MainLabelGateway(FakeXingheGateway):
 
     async def plan(self, request: PlannerRequest) -> PlannerCallResult:
         if request.planning_profile == label_fidelity.REFERENCE_PROFILE:
+            self.reference_calls.append(request)
             result = await super().plan(request)
             return replace(result, payload={"label_lines": REFERENCE})
         if request.planning_profile == label_fidelity.READ_PROFILE:
@@ -513,6 +515,9 @@ def test_main_label_typo_on_a_passing_page_triggers_the_one_repair(
     assert record["status"] == "REPAIRED"
     excluded = provider.state["excluded_generated_assets"]
     assert any("factual_copy_match" in item["failed_checks"] for item in excluded)
+    # The repair request lists the failed draft first; the label reference
+    # must still be the original product, transcribed once for the job.
+    assert len(gateway.reference_calls) == 1
 
 
 def test_injected_label_failure_is_a_valid_targeted_repair() -> None:

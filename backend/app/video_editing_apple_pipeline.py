@@ -7,6 +7,7 @@ the preserved 132-group motion catalog and never makes per-frame model calls.
 import hashlib
 import json
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -545,11 +546,16 @@ def render_suite(
     selected_fonts = None
     render_module = "app.apple_minimal.render"
     if frozen.get("engine") == "bihuo-full-suite":
-        from .bihuo_suite.planning import compile_render_input
+        from .bihuo_suite.planning import compile_render_input as bihuo_compile
         from .bihuo_suite.registry import compile_request, definition, fonts
         from .bihuo_suite.source import prepare as prepare_suite_source
 
         template_id = frozen["template_id"]
+        compile_render_input = partial(
+            bihuo_compile,
+            template_id=template_id,
+            sync_policy=settings.video_editing_sync_policy,
+        )
         selected_fonts = fonts(template_id)
         render_module = "app.video_editing_bihuo_cached_render"
         creative_options = dict(frozen.get("creative_options") or {})

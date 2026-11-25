@@ -13,7 +13,12 @@ import os
 import time
 from pathlib import Path
 
-from .bihuo_suite import conditional_layout, raster_cache, video_materials
+from .bihuo_suite import (
+    conditional_layout,
+    layer_timeline,
+    raster_cache,
+    video_materials,
+)
 from .bihuo_suite.registry import runtime
 from .bihuo_suite.render import render as native_render
 
@@ -31,13 +36,17 @@ def render(payload: dict, output: Path) -> Path:
         raster_cache.native_raster_cache(module) as rasters,
         conditional_layout.execution(module, payload),
         video_materials.execution(module, payload),
+        layer_timeline.recording(module) as timeline,
     ):
         final = native_render(payload, output)
+    timeline_receipt = timeline.write(output)
     receipt = output / "render-receipt.json"
     value = json.loads(receipt.read_text("utf-8"))
     value.update(
         conditional_layout=payload["config"].get("conditional_layout"),
         video_materials=payload["config"].get("video_materials"),
+        sync_policy=(payload["config"].get("sync_policy") or {}).get("version"),
+        layer_timeline=timeline_receipt,
         render_seconds=round(time.monotonic() - started, 3),
         raster_cache_hits=rasters.hits,
         raster_cache_misses=rasters.misses,

@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     video_editing_python: str = "python"
     video_editing_ffmpeg: str = "ffmpeg"
     video_editing_ffprobe: str = "ffprobe"
+    # Speech-led overlay timing for full-suite renders; "off" restores the
+    # original compiled times (rollback switch).
+    video_editing_sync_policy: Literal["bihuo-sync/1", "off"] = "bihuo-sync/1"
     video_editing_asr_provider: Literal["faster-whisper", "funasr"] = "faster-whisper"
     video_editing_asr_model: str = "small"
     video_editing_asr_device: Literal["cpu", "cuda"] = "cpu"

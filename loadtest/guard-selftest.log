@@ -1,0 +1,142 @@
+2026-11-25 02:14:11 guard start pidfile=dummy.pid interval=5s
+2026-11-25 02:14:11 baseline: 27 production containers
+2026-11-25 02:14:14 sample avail=6367MB load1=2.03 top: polaris-production-replica-worker-1=64.89% polaris-production-replica-api-1=24.13% polaris-production-worker-1=8.98% 
+2026-11-25 02:14:19 sample avail=7419MB load1=2.03 top: polaris-production-frontend-1=13.12% polaris-production-api-1=9.12% tengli-hk-new-newapi-postgres=3.54% 
+2026-11-25 02:14:24 sample avail=7206MB load1=1.95 top: polaris-production-replica-api-1=21.28% tengli-hk-new-sub2api=3.16% tengli-hk-new-newapi-redis=3.08% 
+2026-11-25 02:14:29 sample avail=7252MB load1=2.19 top: polaris-production-frontend-1=2.58% tengli-hk-new-sub2api=0.58% mpay-db=0.54% 
+2026-11-25 02:14:33 guard start pidfile=dummy.pid interval=5s
+2026-11-25 02:14:33 baseline: 27 production containers
+2026-11-25 02:14:36 sample avail=7264MB load1=2.45 top: polaris-production-detail-worker-1=10.03% tengli-hk-new-sub2api-postgres=1.04% mpay-db=0.53% 
+2026-11-25 02:14:36 TRIP: load1=2.45>0
+2026-11-25 02:14:36 sent TERM to pgid/pid 4024139
+2026-11-25 02:14:43 sample avail=7325MB load1=2.34 top: polaris-production-video-api-1=30.92% polaris-production-replica-api-1=4.11% polaris-production-postgres-1=2.96% 
+2026-11-25 02:14:43 TRIP: load1=2.34>0
+2026-11-25 02:14:45 guard start pidfile=dummy.pid interval=5s
+2026-11-25 02:14:45 baseline: 27 production containers
+2026-11-25 02:14:48 sample avail=7328MB load1=2.15 top: tengli-hk-new-newapi-postgres=3.40% polaris-production-caddy-1=2.66% mpay-db=0.58% 
+2026-11-25 02:14:48 TRIP: mem_available=7504444kB<99999999kB
+2026-11-25 02:14:48 sent TERM to pgid/pid 4028081
+2026-11-25 02:14:55 sample avail=7360MB load1=2.12 top: polaris-production-replica-api-1=12.47% mpay-db=5.15% tengli-hk-new-sub2api=0.69% 
+2026-11-25 02:14:55 TRIP: mem_available=7537068kB<99999999kB
+2026-11-25 02:14:57 guard start pidfile=dummy.pid interval=5s
+2026-11-25 02:14:57 baseline: 27 production containers
+2026-11-25 02:15:00 warn cpu polaris-production-dispatcher-1 0.36% > 0x25% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-detail-api-1 0.13% > 0x50% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-editing-worker-1 0.04% > 0x150% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-video-api-1 0.12% > 0x100% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-detail-worker-1 0.07% > 0x75% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-replica-worker-1 0.03% > 0x100% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-worker-1 0.06% > 0x75% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-replica-api-1 0.12% > 0x100% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-api-1 0.12% > 0x50% streak=1
+2026-11-25 02:15:00 warn cpu tengli-hk-new-sub2api 0.60% > 0x800% streak=1
+2026-11-25 02:15:00 warn cpu mpay-watch 0.04% > 0x800% streak=1
+2026-11-25 02:15:00 warn cpu mpay-work 0.12% > 0x800% streak=1
+2026-11-25 02:15:00 warn cpu mpay-db 0.49% > 0x800% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-supertokens-1 3.52% > 0x50% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-postgres-1 3.59% > 0x50% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-redis-1 0.26% > 0x25% streak=1
+2026-11-25 02:15:00 warn cpu polaris-production-minio-1 0.04% > 0x50% streak=1
+2026-11-25 02:15:00 warn cpu tengli-hk-new-new-api 0.07% > 0x800% streak=1
+2026-11-25 02:15:00 warn cpu tengli-hk-new-sub2api-postgres 3.44% > 0x800% streak=1
+2026-11-25 02:15:00 warn cpu tengli-hk-new-sub2api-redis 0.25% > 0x800% streak=1
+2026-11-25 02:15:00 warn cpu tengli-hk-new-newapi-redis 0.17% > 0x800% streak=1
+2026-11-25 02:15:00 sample avail=7337MB load1=1.95 top: polaris-production-postgres-1=3.59% polaris-production-supertokens-1=3.52% tengli-hk-new-sub2api-postgres=3.44% 
+2026-11-25 02:15:05 warn cpu polaris-production-dispatcher-1 0.39% > 0x25% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-detail-api-1 0.12% > 0x50% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-editing-worker-1 0.21% > 0x150% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-video-api-1 0.11% > 0x100% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-detail-worker-1 0.29% > 0x75% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-replica-worker-1 0.21% > 0x100% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-worker-1 0.28% > 0x75% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-replica-api-1 0.13% > 0x100% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-api-1 0.12% > 0x50% streak=2
+2026-11-25 02:15:05 warn cpu tengli-hk-new-sub2api 0.61% > 0x800% streak=2
+2026-11-25 02:15:05 warn cpu mpay-watch 0.26% > 0x800% streak=2
+2026-11-25 02:15:05 warn cpu mpay-work 0.17% > 0x800% streak=2
+2026-11-25 02:15:05 warn cpu mpay-db 5.37% > 0x800% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-supertokens-1 0.15% > 0x50% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-postgres-1 0.01% > 0x50% streak=2
+2026-11-25 02:15:05 warn cpu polaris-production-redis-1 0.29% > 0x25% streak=2
+2026-11-25 02:15:05 warn cpu tengli-hk-new-new-api 0.06% > 0x800% streak=2
+2026-11-25 02:15:05 warn cpu tengli-hk-new-sub2api-postgres 0.27% > 0x800% streak=2
+2026-11-25 02:15:05 warn cpu tengli-hk-new-sub2api-redis 0.21% > 0x800% streak=2
+2026-11-25 02:15:05 warn cpu tengli-hk-new-newapi-redis 0.18% > 0x800% streak=2
+2026-11-25 02:15:05 sample avail=7341MB load1=1.96 top: mpay-db=5.37% tengli-hk-new-sub2api=0.61% polaris-production-dispatcher-1=0.39% 
+2026-11-25 02:15:10 warn cpu polaris-production-dispatcher-1 0.57% > 0x25% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-detail-api-1 0.13% > 0x50% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-editing-worker-1 101.14% > 0x150% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-video-api-1 0.12% > 0x100% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-detail-worker-1 0.30% > 0x75% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-replica-worker-1 0.21% > 0x100% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-worker-1 0.24% > 0x75% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-replica-api-1 0.12% > 0x100% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-api-1 0.12% > 0x50% streak=3
+2026-11-25 02:15:10 warn cpu tengli-hk-new-sub2api 0.63% > 0x800% streak=3
+2026-11-25 02:15:10 warn cpu mpay-watch 0.04% > 0x800% streak=3
+2026-11-25 02:15:10 warn cpu mpay-work 0.16% > 0x800% streak=3
+2026-11-25 02:15:10 warn cpu mpay-db 0.61% > 0x800% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-supertokens-1 0.16% > 0x50% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-postgres-1 3.49% > 0x50% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-redis-1 0.49% > 0x25% streak=3
+2026-11-25 02:15:10 warn cpu polaris-production-minio-1 0.03% > 0x50% streak=1
+2026-11-25 02:15:10 warn cpu tengli-hk-new-new-api 0.34% > 0x800% streak=3
+2026-11-25 02:15:10 warn cpu tengli-hk-new-sub2api-postgres 3.73% > 0x800% streak=3
+2026-11-25 02:15:10 warn cpu tengli-hk-new-sub2api-redis 0.21% > 0x800% streak=3
+2026-11-25 02:15:10 warn cpu tengli-hk-new-newapi-redis 0.18% > 0x800% streak=3
+2026-11-25 02:15:10 sample avail=7398MB load1=1.88 top: polaris-production-editing-worker-1=101.14% tengli-hk-new-sub2api-postgres=3.73% polaris-production-postgres-1=3.49% 
+2026-11-25 02:15:10 TRIP: cpu:polaris-production-dispatcher-1 0.57%/25% x3 cpu:polaris-production-detail-api-1 0.13%/50% x3 cpu:polaris-production-editing-worker-1 101.14%/150% x3 cpu:polaris-production-video-api-1 0.12%/100% x3 cpu:polaris-production-detail-worker-1 0.30%/75% x3 cpu:polaris-production-replica-worker-1 0.21%/100% x3 cpu:polaris-production-worker-1 0.24%/75% x3 cpu:polaris-production-replica-api-1 0.12%/100% x3 cpu:polaris-production-api-1 0.12%/50% x3 cpu:tengli-hk-new-sub2api 0.63%/800% x3 cpu:mpay-watch 0.04%/800% x3 cpu:mpay-work 0.16%/800% x3 cpu:mpay-db 0.61%/800% x3 cpu:polaris-production-supertokens-1 0.16%/50% x3 cpu:polaris-production-postgres-1 3.49%/50% x3 cpu:polaris-production-redis-1 0.49%/25% x3 cpu:tengli-hk-new-new-api 0.34%/800% x3 cpu:tengli-hk-new-sub2api-postgres 3.73%/800% x3 cpu:tengli-hk-new-sub2api-redis 0.21%/800% x3 cpu:tengli-hk-new-newapi-redis 0.18%/800% x3
+2026-11-25 02:15:10 sent TERM to pgid/pid 4029003
+2026-11-25 02:15:17 warn cpu polaris-production-detail-api-1 0.12% > 0x50% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-editing-worker-1 0.25% > 0x150% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-video-api-1 0.12% > 0x100% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-detail-worker-1 0.27% > 0x75% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-replica-worker-1 56.52% > 0x100% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-worker-1 0.25% > 0x75% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-replica-api-1 0.12% > 0x100% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-api-1 0.13% > 0x50% streak=4
+2026-11-25 02:15:17 warn cpu tengli-hk-new-sub2api 0.52% > 0x800% streak=4
+2026-11-25 02:15:17 warn cpu mpay-watch 0.24% > 0x800% streak=4
+2026-11-25 02:15:17 warn cpu mpay-work 0.16% > 0x800% streak=4
+2026-11-25 02:15:17 warn cpu mpay-db 0.68% > 0x800% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-supertokens-1 0.16% > 0x50% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-redis-1 0.44% > 0x25% streak=4
+2026-11-25 02:15:17 warn cpu polaris-production-minio-1 0.02% > 0x50% streak=2
+2026-11-25 02:15:17 warn cpu tengli-hk-new-sub2api-postgres 0.27% > 0x800% streak=4
+2026-11-25 02:15:17 warn cpu tengli-hk-new-sub2api-redis 0.19% > 0x800% streak=4
+2026-11-25 02:15:17 warn cpu tengli-hk-new-newapi-redis 0.16% > 0x800% streak=4
+2026-11-25 02:15:17 sample avail=7353MB load1=1.81 top: polaris-production-replica-worker-1=56.52% mpay-db=0.68% tengli-hk-new-sub2api=0.52% 
+2026-11-25 02:15:17 TRIP: cpu:polaris-production-detail-api-1 0.12%/50% x4 cpu:polaris-production-editing-worker-1 0.25%/150% x4 cpu:polaris-production-video-api-1 0.12%/100% x4 cpu:polaris-production-detail-worker-1 0.27%/75% x4 cpu:polaris-production-replica-worker-1 56.52%/100% x4 cpu:polaris-production-worker-1 0.25%/75% x4 cpu:polaris-production-replica-api-1 0.12%/100% x4 cpu:polaris-production-api-1 0.13%/50% x4 cpu:tengli-hk-new-sub2api 0.52%/800% x4 cpu:mpay-watch 0.24%/800% x4 cpu:mpay-work 0.16%/800% x4 cpu:mpay-db 0.68%/800% x4 cpu:polaris-production-supertokens-1 0.16%/50% x4 cpu:polaris-production-redis-1 0.44%/25% x4 cpu:tengli-hk-new-sub2api-postgres 0.27%/800% x4 cpu:tengli-hk-new-sub2api-redis 0.19%/800% x4 cpu:tengli-hk-new-newapi-redis 0.16%/800% x4
+2026-11-25 02:15:23 warn cpu polaris-production-dispatcher-1 0.33% > 0x25% streak=1
+2026-11-25 02:15:23 warn cpu polaris-production-detail-api-1 0.12% > 0x50% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-editing-worker-1 0.28% > 0x150% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-video-api-1 0.12% > 0x100% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-detail-worker-1 0.19% > 0x75% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-replica-worker-1 0.22% > 0x100% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-worker-1 0.23% > 0x75% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-replica-api-1 0.13% > 0x100% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-api-1 0.12% > 0x50% streak=5
+2026-11-25 02:15:24 warn cpu tengli-hk-new-sub2api 3.22% > 0x800% streak=5
+2026-11-25 02:15:24 warn cpu mpay-watch 0.05% > 0x800% streak=5
+2026-11-25 02:15:24 warn cpu mpay-work 0.14% > 0x800% streak=5
+2026-11-25 02:15:24 warn cpu mpay-db 0.53% > 0x800% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-supertokens-1 0.16% > 0x50% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-redis-1 0.38% > 0x25% streak=5
+2026-11-25 02:15:24 warn cpu polaris-production-minio-1 2.70% > 0x50% streak=3
+2026-11-25 02:15:24 warn cpu tengli-hk-new-sub2api-postgres 0.28% > 0x800% streak=5
+2026-11-25 02:15:24 warn cpu tengli-hk-new-sub2api-redis 0.20% > 0x800% streak=5
+2026-11-25 02:15:24 warn cpu tengli-hk-new-newapi-redis 2.96% > 0x800% streak=5
+2026-11-25 02:15:24 sample avail=7394MB load1=1.67 top: tengli-hk-new-sub2api=3.22% tengli-hk-new-newapi-redis=2.96% polaris-production-minio-1=2.70% 
+2026-11-25 02:15:24 TRIP: cpu:polaris-production-detail-api-1 0.12%/50% x5 cpu:polaris-production-editing-worker-1 0.28%/150% x5 cpu:polaris-production-video-api-1 0.12%/100% x5 cpu:polaris-production-detail-worker-1 0.19%/75% x5 cpu:polaris-production-replica-worker-1 0.22%/100% x5 cpu:polaris-production-worker-1 0.23%/75% x5 cpu:polaris-production-replica-api-1 0.13%/100% x5 cpu:polaris-production-api-1 0.12%/50% x5 cpu:tengli-hk-new-sub2api 3.22%/800% x5 cpu:mpay-watch 0.05%/800% x5 cpu:mpay-work 0.14%/800% x5 cpu:mpay-db 0.53%/800% x5 cpu:polaris-production-supertokens-1 0.16%/50% x5 cpu:polaris-production-redis-1 0.38%/25% x5 cpu:polaris-production-minio-1 2.70%/50% x3 cpu:tengli-hk-new-sub2api-postgres 0.28%/800% x5 cpu:tengli-hk-new-sub2api-redis 0.20%/800% x5 cpu:tengli-hk-new-newapi-redis 2.96%/800% x5
+2026-11-25 02:49:13 guard start pidfile=/tmp/lt-dummy2.pid interval=5s
+2026-11-25 02:49:14 baseline: 29 production containers
+2026-11-25 02:49:18 sample avail=4658MB load1=5.53 top: tengli-hk-new-newapi-postgres=0.65% mpay-db=0.59% polaris-production-dispatcher-1=0.56% 
+2026-11-25 02:49:22 sample avail=4635MB load1=5.40 top: polaris-production-postgres-1=1.48% tengli-hk-new-sub2api-postgres=1.43% mpay-db=0.75% 
+2026-11-25 02:49:28 sample avail=4615MB load1=5.29 top: polaris-production-minio-1=8.83% polaris-production-worker-1=6.51% lt-guard-probe=2.74% 
+2026-11-25 02:49:32 sample avail=4483MB load1=5.11 top: polaris-production-postgres-1=3.72% tengli-hk-new-sub2api-postgres=3.64% polaris-production-caddy-1=2.44% 
+2026-11-25 02:49:32 TRIP: restart:lt-guard-probe(0 2026-11-24T18:49:13.201449688Z -> 0 2026-11-24T18:49:26.003466188Z)
+2026-11-25 02:49:32 sent TERM to pgid/pid 22252
+2026-11-25 02:49:40 sample avail=4822MB load1=4.86 top: polaris-production-video-api-1=32.20% polaris-production-api-1=24.52% polaris-production-detail-api-1=24.49% 
+2026-11-25 02:49:44 sample avail=4592MB load1=5.67 top: polaris-production-dispatcher-1=4.39% polaris-production-supertokens-1=3.36% polaris-production-replica-api-1=3.08% 
+2026-11-25 02:49:50 sample avail=4488MB load1=5.62 top: polaris-production-video-api-1=29.97% polaris-production-api-1=24.25% polaris-production-detail-api-1=22.52% 
+2026-11-25 02:49:50 TRIP: gone:lt-guard-probe

@@ -1,0 +1,151 @@
+# 压测用 staging：与正式站拓扑一致（postgres/redis/minio/supertokens/api/worker/detail-worker/replica-worker/dispatcher，
+# 另把视频接口单独起一个 video-api，对应正式站 video-api），资源按比例缩小并硬性封顶（合计 ≤3.0 CPU / ≤4.5 GiB）。
+# 独立项目名、网络、数据卷；不挂任何正式站卷；端口只绑 127.0.0.1；上游全部是进程内假实现（stg_boot.py），staging 里没有任何供应商密钥。
+# 代码：只读挂载 ${STG_CODE} 的 backend/（基线 = perf/concurrency-50 的起点 3a40dcd；对比 = origin/perf/concurrency-50）。
+name: polaris-loadstg
+
+x-app: &app
+  image: polaris-jgshai:426f4e624c4df90b
+  pull_policy: never
+  user: "10001:10001"
+  env_file: [stg.env, stg-app.env, stg-app-extra.env]   # extra：基线为空，对比轮 = stg-app-after.env
+  environment: &appenv
+    PYTHONPATH: /stg-shim
+    POLARIS_DATABASE_URL: postgresql+psycopg://polaris:${STG_PG_PASSWORD}@postgres:5432/polaris
+    POLARIS_CELERY_BROKER_URL: redis://:${STG_REDIS_PASSWORD}@redis:6379/0
+    POLARIS_CELERY_RESULT_BACKEND: redis://:${STG_REDIS_PASSWORD}@redis:6379/1
+    POLARIS_S3_ACCESS_KEY: ${STG_MINIO_USER}
+    POLARIS_S3_SECRET_KEY: ${STG_MINIO_PASSWORD}
+    POLARIS_SUPERTOKENS_API_KEY: ${STG_ST_API_KEY}
+    POLARIS_ACCESS_URL_SECRET: ${STG_ACCESS_URL_SECRET}
+  networks: [stg]
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  logging: { driver: json-file, options: { max-size: 20m, max-file: "3" } }
+  volumes:
+    - ${STG_CODE}/backend/app:/app/app:ro
+    - ${STG_CODE}/backend/migrations:/app/migrations:ro
+    - ${STG_CODE}/backend/alembic.ini:/app/alembic.ini:ro
+    - ${STG_CODE}/backend/skill_sources:/app/skill_sources:ro
+    - ./shim:/stg-shim:ro
+    - appdata:/app/.data
+
+services:
+  postgres:
+    image: postgres:18.4-alpine
+    pull_policy: never
+    environment: { POSTGRES_USER: polaris, POSTGRES_DB: polaris, POSTGRES_PASSWORD: "${STG_PG_PASSWORD}" }
+    command: ["postgres", "-c", "max_connections=100", "-c", "log_min_duration_statement=500", "-c", "log_lock_waits=on"]
+    volumes: [pgdata:/var/lib/postgresql]
+    ports: ["127.0.0.1:3415:5432"]
+    networks: [stg]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U polaris -d polaris"], interval: 5s, retries: 30 }
+    mem_limit: 512m
+    cpus: 0.40
+    restart: unless-stopped
+
+  redis:
+    image: redis@sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763
+    pull_policy: never
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000", "--requirepass", "${STG_REDIS_PASSWORD}"]
+    environment: { REDISCLI_AUTH: "${STG_REDIS_PASSWORD}" }
+    volumes: [redisdata:/data]
+    networks: [stg]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 30 }
+    mem_limit: 96m
+    cpus: 0.15
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    pull_policy: never
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment: { MINIO_ROOT_USER: "${STG_MINIO_USER}", MINIO_ROOT_PASSWORD: "${STG_MINIO_PASSWORD}" }
+    volumes: [miniodata:/data]
+    ports: ["127.0.0.1:3419:9000"]
+    networks: [stg]
+    healthcheck: { test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"], interval: 5s, retries: 30 }
+    mem_limit: 256m
+    cpus: 0.20
+    restart: unless-stopped
+
+  supertokens:
+    image: supertokens/supertokens-postgresql@sha256:4516ec7c00b8fb2a773012694d8ebf03b54799d59cfc974160590f16d235ce72
+    pull_policy: never
+    environment:
+      POSTGRESQL_CONNECTION_URI: postgresql://polaris:${STG_PG_PASSWORD}@postgres:5432/polaris
+      API_KEYS: "${STG_ST_API_KEY}"
+      DISABLE_TELEMETRY: "true"
+    ports: ["127.0.0.1:3417:3567"]
+    depends_on: { postgres: { condition: service_healthy } }
+    networks: [stg]
+    healthcheck: { test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3567/hello"], interval: 5s, retries: 40 }
+    mem_limit: 384m
+    cpus: 0.50   # 与正式站相同（第一轮用 0.25，登录爆发时成为瓶颈）
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+    mem_limit: 384m
+    cpus: 0.10
+
+  api:
+    <<: *app
+    command: ["python", "-m", "stg_boot", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+    ports: ["127.0.0.1:3410:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      supertokens: { condition: service_healthy }
+    mem_limit: 384m
+    cpus: 0.50
+
+  video-api:
+    <<: *app
+    command: ["python", "-m", "stg_boot", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+    ports: ["127.0.0.1:3411:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      supertokens: { condition: service_healthy }
+    mem_limit: 384m
+    cpus: 0.25
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "stg_boot", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${STG_WORKER_CONCURRENCY:-6}", "--prefetch-multiplier=1", "--queues=default"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    mem_limit: 768m
+    cpus: 0.35
+
+  detail-worker:
+    <<: *app
+    command: ["python", "-m", "stg_boot", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${STG_DETAIL_CONCURRENCY:-6}", "--prefetch-multiplier=1", "--queues=domestic_detail_v431", "--hostname=domestic-detail@%h"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    mem_limit: 896m
+    cpus: 0.25
+
+  replica-worker:
+    <<: *app
+    command: ["python", "-m", "stg_boot", "celery", "-A", "app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${STG_REPLICA_CONCURRENCY:-2}", "--prefetch-multiplier=1", "--queues=one_click_replica", "--hostname=one-click-replica@%h"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    mem_limit: 384m
+    cpus: 0.25
+
+  dispatcher:
+    <<: *app
+    command: ["python", "-m", "stg_boot", "app.outbox_worker"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    mem_limit: 192m
+    cpus: 0.15
+
+networks:
+  stg: {}
+volumes:
+  pgdata: {}
+  redisdata: {}
+  miniodata: {}
+  appdata: {}

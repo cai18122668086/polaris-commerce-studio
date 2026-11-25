@@ -276,3 +276,26 @@ def test_tutorial_caption_wraps_long_chinese_at_the_larger_size(tmp_path):
     ]
     assert len(cue.split(r"\N")) == 2
     assert cue.replace(r"\N", "") == text
+
+
+def test_single_unplaced_recording_plays_through_the_body(tmp_path):
+    transcript, context, _ = inputs()
+    one = {**context, "recordings": context["recordings"][:1]}
+    raw = {
+        "opening": {"intro_last_token_id": "w1"},
+        "materials": [],
+        "conclusion": {"first": {"first_token_id": "w10"}},
+    }
+    native, shared = accept_output(raw, one, transcript, tmp_path, {"task": "t"})
+    assert native == raw
+    assert shared["intent"]["steps"] == [
+        {"asset_id": "reference", "first_token_id": "w2", "last_token_id": "w9"}
+    ]
+    assert shared["origin"]["fallback"] == "single_recording_whole_body"
+
+
+def test_single_recording_fallback_needs_an_opening(tmp_path):
+    transcript, context, _ = inputs()
+    one = {**context, "recordings": context["recordings"][:1]}
+    with pytest.raises(ValueError, match="Missing shared tutorial_steps"):
+        accept_output({"materials": []}, one, transcript, tmp_path, {})

@@ -11543,6 +11543,8 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "Identify whether page 0 alone is visibly the search listing cover and "
             "give concrete pixel evidence explaining why each page 1 through 5 is "
             "not a search cover. Use the exact supplied image hashes."
+            "\nset_audit_contract="
+            + _aurora_audit_contract_text(request.product_information)
         )
     if request.planning_profile == "aurora_visual_audit":
         return (

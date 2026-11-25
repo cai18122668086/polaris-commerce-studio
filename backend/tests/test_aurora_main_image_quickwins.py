@@ -391,3 +391,55 @@ def test_repaired_page_counts_both_image_calls(tmp_path: Path) -> None:
     assert gateway.audits == 2
     assert result.raw_usage is not None
     assert result.raw_usage["network_requests"] == 4
+
+
+# 5. The six-page set audit receives its hashes and field contract ---------
+
+
+def test_set_audit_request_carries_hashes_and_field_contract() -> None:
+    from app.aurora_main_image_provider import (
+        _SET_AUDIT_SYSTEM_PROMPT,
+        _set_audit_contract,
+    )
+    from app.xinghe_agent import SourceImage
+
+    sources = tuple(
+        SourceImage(
+            asset_id=f"accepted-page-{index}",
+            group_key="job_set",
+            filename=f"page-{index}.png",
+            content_type="image/png",
+            sha256=f"{index}" * 64,
+            payload=b"pixels",
+            source_role="generated_candidate",
+        )
+        for index in range(6)
+    )
+    transport = _RecordingPlannerTransport()
+    asyncio.run(
+        _gateway(transport, failover_enabled=False).plan(
+            PlannerRequest(
+                workspace_id="workspace_one",
+                job_id="job_set",
+                group_key="job_set:v20-sequential-set-audit",
+                sources=sources,
+                page_count=6,
+                language="zh-CN",
+                product_name="Aurora v2.0 six-page set audit",
+                product_information=(_set_audit_contract(sources),),
+                platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
+                size="1024x1024",
+                idempotency_key="set-audit",
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
+                planning_profile="aurora_set_audit",
+            )
+        )
+    )
+    text = _user_text(transport.calls[0])
+    contract_text = text.split("set_audit_contract=", 1)[1]
+    contract = json.loads(contract_text.split("\nSource image", 1)[0])
+    assert contract["image_sha256_by_page"]["5"] == "5" * 64
+    assert "search_role_is_unique" in contract["required_fields"]
+    system = transport.calls[0]["payload"]["messages"][0]["content"]
+    assert "never report missing inputs" in system
+    assert transport.calls[0]["timeout_seconds"] == 180

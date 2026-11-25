@@ -107,6 +107,16 @@ must recommend rebuilding from the original product references, never polishing
 the failed candidate as a repair canvas.
 """.strip()
 
+_SET_AUDIT_SYSTEM_PROMPT = """
+You are the blind six-page set-role reviewer for the Aurora domestic
+e-commerce six-image Skill. The attached images are the six accepted pages in
+page order 0-5. Decide from pixels only whether page 0 alone reads as the
+search listing cover and whether any page 1-5 could be confused with it.
+Everything you need is in the supplied set_audit_contract, including the
+exact image hashes to copy; never report missing inputs. Return one JSON
+object with exactly the fields listed in the contract.
+""".strip()
+
 _STYLE_CALIBRATION_SYSTEM_PROMPT = """
 You are the direct-pixel style calibration reviewer for the Aurora domestic
 e-commerce six-image Skill. Inspect the supplied accepted generated pages and
@@ -1684,13 +1694,13 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora v2.0 six-page set audit",
-                product_information=(),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
                 idempotency_key=_set_audit_idempotency_key(
                     f"{job_id}:aurora-v20-set-audit:v1", audit_attempt
                 ),
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -1789,13 +1799,13 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora v2.0 six-page set audit",
-                product_information=(),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
                 idempotency_key=_set_audit_idempotency_key(
                     f"{job_id}:aurora-v20-sequential-set-audit:v1", audit_attempt
                 ),
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -2053,13 +2063,11 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora Six Page Blind Review",
-                product_information=(
-                    json.dumps({"image_sha256_by_page": expected_hashes}),
-                ),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_SET_ROLE_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{request.job_id}:aurora-set-role-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -3398,6 +3406,42 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
         other_cover_indexes if isinstance(other_cover_indexes, list) else [],
     )
     return payload
+
+
+def _set_audit_contract(sources: Sequence[SourceImage]) -> str:
+    """Contract for the six-page set-role review, including exact hashes."""
+
+    return json.dumps(
+        {
+            "image_sha256_by_page": {
+                str(index): source.sha256 for index, source in enumerate(sources)
+            },
+            "required_fields": {
+                "agent_pixel_reviewed": "true",
+                "review_mode": "BLIND_SIX_PAGE_ROLE_COMPARISON",
+                "reviewed_page_indexes": [0, 1, 2, 3, 4, 5],
+                "image_sha256_by_page": "copy the object above exactly",
+                "identified_search_page_index": (
+                    "index 0-5 of the page that reads as the search cover"
+                ),
+                "search_role_is_unique": (
+                    "true when only that page reads as a search cover"
+                ),
+                "confusable_page_indexes": (
+                    "other page indexes that could also read as a search cover; "
+                    "[] when none"
+                ),
+                "search_identification_evidence": (
+                    "concrete pixel evidence for the identified search page"
+                ),
+                "carousel_distinctions": (
+                    "for each page 1-5: {page_index, why_not_search_cover} "
+                    "with concrete pixel evidence"
+                ),
+            },
+        },
+        ensure_ascii=False,
+    )
 
 
 def _normalize_parallel_set_audit_payload(

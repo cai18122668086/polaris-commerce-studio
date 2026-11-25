@@ -72,6 +72,11 @@ SCALE_COST = 1200  # px of travel one full unit of shrink is worth
 EASE_FRAMES = 6
 SNAP_FRAMES = 3  # a group that just appeared takes its place without travel
 RESET_FRAMES = 3
+# A face moving faster than this (px per frame, centre, over SETTLE_FRAMES) is
+# a designed presenter transition (full screen -> window): start no new move
+# and do not retarget until it has settled, so cards never bounce mid-sweep.
+FAST_PX = 6.0
+SETTLE_FRAMES = 3
 
 DISSOLVE_FRAMES = 4
 CUT_DELTA = 0.08
@@ -289,6 +294,7 @@ class Policy:
         self.dissolves: dict[str, dict[str, Any]] = {}
         self.broll: dict[str, int] = {}
         self.easing: set[str] = set()
+        self.centres: list[tuple[int, float, float]] = []
         self.frames_seen = 0
         self.summary: dict[str, Any] = {
             "face_frames": 0,
@@ -342,6 +348,16 @@ class Policy:
             groups.setdefault(root(name), []).append(name)
         return list(groups.values())
 
+    def _sweeping(self, n: int) -> bool:
+        rows = [r for r in self.centres if n - r[0] <= SETTLE_FRAMES]
+        if len(rows) < 2:
+            return False
+        (n0, x0, y0), (n1, x1, y1) = rows[0], rows[-1]
+        if n1 == n0:
+            return False
+        speed = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5 / (n1 - n0)
+        return speed > FAST_PX
+
     def _current(self, st: dict[str, Any], n: int) -> tuple[float, float]:
         k = _ease((n - st["since"] + 1) / (EASE_FRAMES + 1))
         s = st["from_s"] + (st["s"] - st["from_s"]) * k
@@ -377,6 +393,12 @@ class Policy:
         face = self._face(n, roles, presenters)
         zone = self.track.update(n, face)
         row["face"] = list(face) if face else None
+        if face:
+            self.centres.append((n, (face[0] + face[2]) / 2, (face[1] + face[3]) / 2))
+            self.centres = self.centres[-(SETTLE_FRAMES + 1) :]
+        sweeping = self._sweeping(n)
+        if sweeping:
+            row["sweeping"] = True
         if face:
             self.summary["face_frames"] += 1
         if zone is None:
@@ -452,7 +474,7 @@ class Policy:
                         for k in group
                     ]
                     clear = union_coverage(shifted, core) <= COVER_TRIGGER
-                if not clear:
+                if not clear and not sweeping:
                     st = self._retarget(
                         n,
                         group,
@@ -464,7 +486,7 @@ class Policy:
                         st,
                         (s_now, dy_now),
                     )
-            elif covered > COVER_TRIGGER:
+            elif covered > COVER_TRIGGER and not sweeping:
                 offenders = [
                     k for k in group if coverage(roles[k], core) > ROLE_TRIGGER
                 ]

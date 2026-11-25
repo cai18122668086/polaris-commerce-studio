@@ -38,8 +38,10 @@ def test_unreliable_detection_does_not_reframe():
 def test_filter_graph_keeps_full_frame_size():
     down = reframe.filter_graph(296)
     assert "crop=1080:1624:0:0" in down and "[e][m]vstack" in down
+    assert "crop=120:24:0:0" in down and "crop=120:24:960:0" in down
     up = reframe.filter_graph(-120)
     assert "crop=1080:1800:0:120" in up and "[m][e]vstack" in up
+    assert "crop=120:24:0:1896" in up
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg missing")

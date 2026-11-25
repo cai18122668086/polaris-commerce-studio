@@ -177,13 +177,13 @@ export default function JobsPage() {
                 >
                   <JobRecordCover workspaceId={workspace?.id ?? ""} job={job} />
                   <div className="record-main">
-                    <div><StatusBadge status={job.status} /><small>{job.id}</small></div>
+                    <div><StatusBadge status={job.status} jobType={job.type} /><small>{job.id}</small></div>
                     <h3><TaskWorkspaceLink href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}>{jobTitle(job)}</TaskWorkspaceLink></h3><p>{jobNote(job)}</p>
                     {["queued", "planning", "processing", "cancelling"].includes(job.status) && <div className="record-progress"><i style={{ width: `${job.progress}%` }} /><span>{job.progress}%</span></div>}
                   </div>
                   <div className="record-meta"><span><Clock3 size={14} />{formatDate(job.created_at)}</span><strong>{jobCount(job)}</strong><small>{job.history_expires_at ? `保留至 ${formatDate(job.history_expires_at)}` : "实时更新"}</small></div>
                   <div className="record-actions">
-                    {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试任务 ${jobTitle(job)}`} title="重试失败项" className="emphasis" onClick={(event) => { event.stopPropagation(); runRetry(job); }} disabled={retry.isPending}><RotateCcw size={16} /></button>}
+                    {allowsJobAction(job.allowed_actions, "retry") && !(job.type === "local_edit" && job.status === "awaiting_final_review") && <button aria-label={`重试任务 ${jobTitle(job)}`} title="重试失败项" className="emphasis" onClick={(event) => { event.stopPropagation(); runRetry(job); }} disabled={retry.isPending}><RotateCcw size={16} /></button>}
                     {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} title="取消任务" onClick={(event) => { event.stopPropagation(); runCancel(job); }} disabled={cancel.isPending}><Ban size={16} /></button>}
                     <TaskWorkspaceLink aria-label={`打开对应工作台 ${jobTitle(job)}`} title="打开对应工作台" className="row-open" href={jobWorkspaceHref(job)} onClick={(event) => event.stopPropagation()}><ArrowUpRight size={16} /></TaskWorkspaceLink>
                   </div>
@@ -204,6 +204,7 @@ export default function JobsPage() {
           onRetry={(job) => runRetry(job)}
           onRetryItem={(job, itemId) => runRetry(job, itemId)}
           onConfirmPlan={runConfirmPlan}
+          onOpenJob={openJob}
           cancelPending={cancel.isPending}
           retryPending={retry.isPending}
           confirmPending={confirmPlan.isPending}

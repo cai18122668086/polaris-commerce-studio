@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
@@ -9,6 +10,8 @@ from typing import Any
 
 from .errors import ApiError
 from .video_assistance_provider import video_source_url
+
+logger = logging.getLogger(__name__)
 
 BENCHMARK_KIND = "benchmark_search"
 MAX_PAGES = 10
@@ -48,21 +51,70 @@ def posted_at(value: Any) -> str | None:
     return None
 
 
-def candidate(row: dict[str, Any]) -> dict[str, Any] | None:
+def drop_reason(row: Any) -> str | None:
+    """Why a provider row is not a usable short video, or None when it is."""
+    if not isinstance(row, dict):
+        return "not_object"
+    media_type = row.get("media_type")
     post_id = row.get("id")
     if type(post_id) is int:
         post_id = str(post_id)
     if not isinstance(post_id, str) or not re.fullmatch(r"[0-9]{6,25}", post_id):
-        return None
+        return "invalid_id"
     url = VIDEO_PREFIX + post_id
     source_url = row.get("url")
-    if not isinstance(source_url, str):
+    if source_url is not None and not isinstance(source_url, str):
+        return "url_invalid"
+    if source_url and source_url.strip():
+        try:
+            resolved = video_source_url(source_url)
+        except ApiError:
+            return "url_not_video"
+        # A short share link cannot be resolved offline; the numeric id is the
+        # canonical identity. A canonical link for another post is a mismatch.
+        if resolved != url and not resolved.startswith("https://v.douyin.com/"):
+            return "url_id_mismatch"
+    elif media_type != "video":
+        return "missing_url"
+    if media_type not in {"video", None}:
+        return "media_type_" + (
+            re.sub(r"[^a-z0-9_]", "", str(media_type).lower())[:24] or "other"
+        )
+    duration = row.get("duration_sec")
+    if (
+        isinstance(duration, (int, float))
+        and not isinstance(duration, bool)
+        and duration > 300
+    ):
+        return "longer_than_300s"
+    return None
+
+
+def diagnostic_row(row: Any, reason: str) -> dict[str, Any]:
+    """Skipped-row shape for diagnosis; never stores media or page URLs."""
+    if not isinstance(row, dict):
+        return {"reason": reason, "type": type(row).__name__}
+    url = row.get("url")
+    shape = None
+    if isinstance(url, str):
+        shape = re.sub(r"\d{6,}", "<id>", url.split("?", 1)[0])[:120]
+    return {
+        "reason": reason,
+        "keys": sorted(str(key) for key in row)[:40],
+        "id": str(row.get("id"))[:40],
+        "media_type": str(row.get("media_type"))[:40],
+        "url_shape": shape,
+        "duration_sec": row.get("duration_sec")
+        if isinstance(row.get("duration_sec"), (int, float))
+        else None,
+    }
+
+
+def candidate(row: dict[str, Any]) -> dict[str, Any] | None:
+    if drop_reason(row) is not None:
         return None
-    try:
-        if video_source_url(source_url) != url:
-            return None
-    except ApiError:
-        return None
+    post_id = str(row["id"])
+    url = VIDEO_PREFIX + post_id
     duration = row.get("duration_sec")
     duration = (
         duration
@@ -71,8 +123,6 @@ def candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         and duration > 0
         else None
     )
-    if duration is not None and duration > 300:
-        return None
     metrics = {key: count(row.get(key)) for key in METRICS}
     likes = metrics["like_count"]
     collects, shares = metrics["collect_count"], metrics["share_count"]
@@ -122,16 +172,18 @@ def benchmark_page(
 
     params, page = inputs["search_params"], inputs["page"]
     seen = set(inputs["seen_ids"])
-    items, original_rows = [], []
+    items, original_rows, skipped_rows = [], [], []
     duplicates = skipped = 0
+    reasons: Counter[str] = Counter()
     for row in rows:
-        item = (
-            candidate(row)
-            if isinstance(row, dict) and row.get("media_type") == "video"
-            else None
-        )
+        reason = drop_reason(row)
+        item = candidate(row) if reason is None else None
         if item is None:
             skipped += 1
+            reason = reason or "invalid"
+            reasons[reason] += 1
+            if len(skipped_rows) < 50:
+                skipped_rows.append(diagnostic_row(row, reason))
             continue
         if item["platform_id"] in seen:
             duplicates += 1
@@ -163,6 +215,11 @@ def benchmark_page(
         or page >= MAX_PAGES
     ):
         token = None
+    if skipped:
+        logger.warning(
+            "benchmark rows skipped",
+            extra={"task_id": task_id, "skip_reasons": dict(reasons)},
+        )
     authors = Counter(item["author_id"] for item in items if item["author_id"])
     billing = data.get("billing")
     return {
@@ -176,6 +233,7 @@ def benchmark_page(
         "received_count": len(rows),
         "duplicate_count": duplicates,
         "skipped_count": skipped,
+        "skip_reasons": dict(reasons),
         "author_count": len(authors),
         "top_author_item_count": max(authors.values(), default=0),
         "unknown_author_count": sum(not item["author_id"] for item in items),
@@ -188,6 +246,7 @@ def benchmark_page(
             and isinstance(billing.get(key), (bool, int, float, str))
         },
         "original_rows": original_rows,
+        "skipped_rows": skipped_rows,
         "seen_ids": sorted(seen),
         "next_page_token": token,
     }

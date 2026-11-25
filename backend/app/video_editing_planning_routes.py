@@ -378,6 +378,7 @@ def retry_task(
     if row.status not in {"failed", "cancelled"}:
         raise ApiError(409, "EDITING_PLANNING_NOT_RETRYABLE", "规划任务不需要重试。")
     require_active_planning_template(row.snapshot.get("overlay_template", {}).get("id"))
+    require_active_planning_template(row.snapshot.get("template_id"), settings)
     provider = planning_root(settings, row.id) / "provider"
     if row.mode == "generate" and saved_response_empty(provider):
         raise ApiError(

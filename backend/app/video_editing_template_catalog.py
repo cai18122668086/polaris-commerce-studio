@@ -13,6 +13,10 @@ from .motion_library_validation import group_status, motion_evidence_directory
 from .video_editing_apple_pipeline import suite_card
 from .video_editing_editorial_suite import STYLES as EDITORIAL_STYLES
 from .video_editing_overlay_templates import overlay_templates
+from .video_editing_template_capabilities import (
+    overlay_style_blocker,
+    suite_template_blocker,
+)
 from .video_editing_template_styles import FEATURED, PUBLIC_TEMPLATE_IDS, STYLES
 from .video_studio_schemas import StrictVideoModel
 
@@ -139,6 +143,8 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
     cards = []
     for template in templates:
         tid = template["id"]
+        if tid not in EDITORIAL_STYLES and overlay_style_blocker(template, settings):
+            continue  # Never offer a style this server cannot render.
         groups = [slot["group_id"] for slot in template["slots"]]
         b_variant = tid == "question-card-b-story-v1"
         pending = sorted(set(groups) & _PENDING | ({"AH-S03"} if b_variant else set()))
@@ -265,6 +271,8 @@ def template_catalog(settings: Settings, workspace_id: str) -> list[dict]:
     from .video_editing_suite_music import SUITE_MUSIC, music_file
 
     for card in bihuo_cards():
+        if suite_template_blocker(card["id"], settings):
+            continue  # e.g. presenter matte model not installed on this server.
         card["capabilities"] = [
             value for value in capabilities(card) if value != "music"
         ]

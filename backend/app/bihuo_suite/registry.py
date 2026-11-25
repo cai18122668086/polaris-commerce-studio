@@ -145,6 +145,13 @@ def runtime(template_id: str) -> Any:
 
 def compile_request(template_id: str, resolved: dict, **kwargs: Any) -> dict:
     module = runtime(template_id)
+    if "quote_start" in resolved and resolved["quote_start"] is None:
+        # A plan without a closing resolves quote_start to None. Six bundled
+        # runtimes (bihuo-40 and others) read resolved.get("quote_start",
+        # duration * k) and call float() on it, so a None they were never
+        # written for crashed the render. Absent is their documented
+        # "no closing" input; the bundles themselves stay byte-identical.
+        resolved = {k: v for k, v in resolved.items() if k != "quote_start"}
     config = module.compile_request(resolved, fonts=fonts(template_id), **kwargs)
     if not isinstance(config, dict):
         raise ValueError("Suite compiler must return executable JSON parameters")

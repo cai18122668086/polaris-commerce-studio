@@ -135,6 +135,9 @@ def _sequence(
                 "index": index,
                 "text": row.get("text", ""),
                 "speech_start": speech,
+                # The template reserves the opening for its title: nothing in
+                # the body can be visible earlier, whatever the speech does.
+                "allowed_start": max(speech, floor),
                 "visible_start": visible,
                 "lead_s": round(speech - visible, 6),
             }
@@ -176,6 +179,7 @@ def apply(
                 "asset_id": material.get("asset_id"),
                 "text": material.get("spoken_text", ""),
                 "speech_start": float(speech),
+                "allowed_start": max(float(speech), opening),
                 "visible_start": visible,
                 "lead_s": round(float(speech) - visible, 6),
             }

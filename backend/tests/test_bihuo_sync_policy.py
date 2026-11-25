@@ -136,7 +136,7 @@ def test_materials_hold_until_next_with_min_dwell_and_never_overlap() -> None:
         material("b", "t2", 2.6, (2.6, 3.0), 3.2),  # only 0.6 s after a
         material("c", "t3", 6.0, (5.8, 6.5), 9.0),
     ]
-    timed, _ = apply(resolved(materials=rows), "bihuo-23-v1")
+    timed, record = apply(resolved(materials=rows), "bihuo-23-v1")
     out = timed["materials"]
     for current, following in zip(out, out[1:], strict=False):
         assert current["end"] == following["start"]  # hold, no gap, no overlap
@@ -145,6 +145,15 @@ def test_materials_hold_until_next_with_min_dwell_and_never_overlap() -> None:
     assert out[-1]["end"] == 9.0
     assert all(on_grid(row["start"]) and row["start"] < row["end"] for row in out)
     assert out[0]["start"] >= 1.77
+    assert record["targets"][0]["allowed_start"] == 2.0  # phrase after opening
+
+
+def test_phrase_inside_opening_is_allowed_only_after_the_title() -> None:
+    m = material("a", "t1", 2.2, (0.35, 2.5), 9.0)
+    timed, record = apply(resolved(materials=[m], opening_end=1.64), "bihuo-02-v1")
+    assert timed["materials"][0]["start"] == 1.64
+    assert record["targets"][0]["speech_start"] == 0.35
+    assert record["targets"][0]["allowed_start"] == 1.64
 
 
 def test_last_material_clamped_inside_body() -> None:
@@ -207,3 +216,26 @@ def test_timeline_and_checker_measure_a_reveal_inside_an_opaque_card(
     )
     assert rows[0]["gap_s"] == pytest.approx(0.2 - 0.24)
     assert animating_frames(recorder.rows) == {4, 5, 6, 7}
+
+
+def test_exit_of_previous_image_is_not_the_next_entry() -> None:
+    import numpy as np
+
+    frames = 20
+    grid = np.zeros((frames, 2, 2, 2), dtype=np.int16)
+    grid[:10] = 255  # image A visible, fades out over frames 8..9
+    grid[8] = 120
+    grid[9] = 0
+    for n, a in zip(range(10, 14), (60, 140, 220, 255), strict=True):
+        grid[n] = a  # image B fades in, 50% reached at frame 11
+    grid[14:] = 255
+    card = np.zeros_like(grid)
+    card[11:] = 255  # a card entering at the same moment
+    events = onset_events({"material": grid, "information": card}, fps=FPS)
+    assert ("material", 11) in [(e["role"], e["onset_frame"]) for e in events]
+    assert all(e["onset_frame"] != 9 for e in events)
+    rows = match_targets(
+        [{"kind": "material", "index": 0, "speech_start": 0.5, "visible_start": 0.4}],
+        events,
+    )
+    assert rows[0]["event"]["role"] == "material"

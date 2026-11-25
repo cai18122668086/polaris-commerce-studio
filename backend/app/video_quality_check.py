@@ -41,10 +41,14 @@ EXCLUDED_ROLES = re.compile(r"presenter|caption|subtitle|background|stage|raw|so
 MIN_CELL_CHANGE = 24
 MIN_EVENT_CELLS = 2
 EVENT_GAP_FRAMES = 3
-MATCH_WINDOW = (-1.0, 1.5)
+# Seconds around the earliest allowed time; J measured lags up to +2.4 s.
+MATCH_WINDOW = (-1.0, 2.5)
 # Chapter labels are optional per template (most suites draw none), so they
 # are reported but never gate the sync check.
 GATED_KINDS = frozenset({"material", "point", "feature"})
+# Image slots live in media-like roles; prefer them for material targets so a
+# card entering at the same moment is not mistaken for the image.
+MEDIA_ROLES = re.compile(r"material|media|photo|image|slot|gallery")
 SYNC_MEDIAN_RANGE_S = (-0.25, 0.0)
 THRESHOLDS: dict[str, Any] = {
     "sync_max_s": 0.12,
@@ -67,6 +71,14 @@ def overlay_roles(frame: dict[str, Any]) -> dict[str, Any]:
         for name, row in frame.get("roles", {}).items()
         if not EXCLUDED_ROLES.search(name)
     }
+
+
+def _direction(delta: Any) -> int:
+    """+1/-1 for the dominant channel's change (opacity first, then luma)."""
+    for value in (int(delta[0]), int(delta[1])):
+        if abs(value) > 2:
+            return 1 if value > 0 else -1
+    return 0
 
 
 def onset_events(grids: dict[str, Any], fps: int = FPS) -> list[dict[str, Any]]:
@@ -96,11 +108,22 @@ def onset_events(grids: dict[str, Any], fps: int = FPS) -> list[dict[str, Any]]:
                     index += 1
                     continue
                 stop = index
+                direction = _direction(flat[index + 1, cell] - flat[index, cell])
                 while stop + 1 < len(steps) and steps[stop + 1]:
+                    # Split where the trend reverses, so a fade-out directly
+                    # followed by the next fade-in yields two transitions.
+                    turn = _direction(flat[stop + 2, cell] - flat[stop + 1, cell])
+                    if direction and turn and turn != direction:
+                        break
+                    direction = direction or turn
                     stop += 1
                 before = flat[index, cell]
-                total = int(np.abs(flat[stop + 1, cell] - before).max())
-                if total >= MIN_CELL_CHANGE:
+                after = flat[stop + 1, cell]
+                total = int(np.abs(after - before).max())
+                # A cell losing opacity is an exit (e.g. the previous image
+                # fading out), not the entry of the next element.
+                entering = int(after[0]) - int(before[0]) > -MIN_CELL_CHANGE
+                if total >= MIN_CELL_CHANGE and entering:
                     for frame in range(index + 1, stop + 2):
                         if np.abs(flat[frame, cell] - before).max() * 2 >= total:
                             onsets.append((frame, int(cell)))
@@ -134,19 +157,24 @@ def match_targets(targets: list[dict], events: list[dict]) -> list[dict[str, Any
     rows = []
     for target in sorted(targets, key=lambda t: t["speech_start"]):
         speech = float(target["speech_start"])
+        allowed = float(target.get("allowed_start", speech))
         intended = float(target.get("visible_start", speech))
         candidates = [
             (abs(event["onset_s"] - intended), i)
             for i, event in enumerate(events)
             if i not in used
-            and MATCH_WINDOW[0] <= event["onset_s"] - speech <= MATCH_WINDOW[1]
+            and MATCH_WINDOW[0] <= event["onset_s"] - allowed <= MATCH_WINDOW[1]
         ]
-        row = {**target, "event": None, "gap_s": None}
+        if target["kind"] == "material":
+            media = [c for c in candidates if MEDIA_ROLES.search(events[c[1]]["role"])]
+            candidates = media or candidates
+        row = {**target, "event": None, "gap_s": None, "gap_allowed_s": None}
         if candidates:
             _, index = min(candidates)
             used.add(index)
             row["event"] = events[index]
             row["gap_s"] = round(events[index]["onset_s"] - speech, 3)
+            row["gap_allowed_s"] = round(events[index]["onset_s"] - allowed, 3)
         rows.append(row)
     return rows
 
@@ -266,7 +294,11 @@ def check(
     events = onset_events(grids, fps)
     targets = policy.get("targets", [])
     matched = match_targets([t for t in targets if t["kind"] in GATED_KINDS], events)
-    gaps = [row["gap_s"] for row in matched if row["gap_s"] is not None]
+    # Gate on the gap to the earliest moment the template allows (a phrase
+    # that starts inside the title opening cannot be shown before it ends);
+    # the raw gap to the spoken word is reported alongside.
+    gaps = [row["gap_allowed_s"] for row in matched if row["gap_allowed_s"] is not None]
+    raw = [row["gap_s"] for row in matched if row["gap_s"] is not None]
     sync: dict[str, Any] = {
         "policy": policy.get("version"),
         "targets": len(matched),
@@ -274,6 +306,8 @@ def check(
         "matched": len(gaps),
         "median_s": round(statistics.median(gaps), 3) if gaps else None,
         "max_s": max(gaps) if gaps else None,
+        "raw_median_s": round(statistics.median(raw), 3) if raw else None,
+        "raw_max_s": max(raw) if raw else None,
         "rows": matched,
     }
     low, high = SYNC_MEDIAN_RANGE_S

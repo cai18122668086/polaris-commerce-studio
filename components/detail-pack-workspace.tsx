@@ -371,10 +371,10 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
               <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {isRefinedDetail ? "3:4 · 实际尺寸见结果" : imageSize}</strong></div></label>
               <label className="full"><span>真实卖点与商品资料</span><ProductFactsGuidance /><AutoGrowTextarea disabled={Boolean(jobId)} value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="可直接粘贴完整商品介绍，或逐行填写真实卖点和规格" /></label>
             </div>
-          <CreationSettings balanced={isRefinedDetail} summary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "简体中文" : "English"} · ${pageCount} 页`}>
+          <CreationSettings balanced={isRefinedDetail} summary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "简体中文" : "英文"} · ${pageCount} 页`}>
             {isRefinedDetail && <GenerationVersionField name="detail-speed" span="half" value={detailSpeed} onChange={setDetailSpeed} disabled={Boolean(jobId) || createJob.isPending} />}
             <SettingField label="内容语言" icon={<Languages size={15} />} span={isRefinedDetail ? "quarter" : "half"}>
-              <ChoiceControl name="detail-language" label="内容语言" value={language} onChange={setLanguage} disabled={Boolean(jobId)} options={[{ value:"zh-CN", label:"简体中文" }, { value:"en-US", label:"English" }]} />
+              <ChoiceControl name="detail-language" label="内容语言" value={language} onChange={setLanguage} disabled={Boolean(jobId)} options={[{ value:"zh-CN", label:"简体中文" }, { value:"en-US", label:"英文" }]} />
             </SettingField>
             <SettingField label="详情页数" icon={<FileCheck2 size={15} />} span={isRefinedDetail ? "quarter" : "half"}>
               <QuantityControl label="详情页数" unit="页" value={pageCount} onChange={setPageCount} allowedValues={isRefinedDetail ? Array.from({ length:12 }, (_, i) => i + 1) : [8,10,12]} disabled={Boolean(jobId)} />

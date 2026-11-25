@@ -15,6 +15,8 @@ import { JobProgressFeedback } from "@/components/job-progress-feedback";
 import { ImageDropZone } from "@/components/image-drop-zone";
 import { validateImageUpload } from "@/lib/image-upload";
 import { jobNote } from "@/lib/jobs/presentation";
+import { isSignedOutError } from "@/lib/api/request";
+import { loginHref } from "@/lib/auth/return-to";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -165,7 +167,18 @@ export function InspirationGalleryDb() {
   const [materializingCaseId, setMaterializingCaseId] = useState<string | null>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const composerMutationLock = useRef(false);
-  const { workspace, workspaceState } = useWorkspace();
+  const { workspace, workspaceState, error: workspaceError } = useWorkspace();
+  // Visitors may browse cases; any action that needs a workspace leads to sign-in instead of a workspace error.
+  const signedOut = isSignedOutError(workspaceError);
+  const [loginPrompted, setLoginPrompted] = useState(false);
+  const reportWorkspaceUnavailable = () => {
+    if (signedOut) {
+      setLoginPrompted(true);
+      composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setComposeError(workspaceState === "loading" ? "工作区正在准备，请稍后再试。" : "工作区不可用，请稍后再试。");
+  };
   const upload = useUploadAsset(workspace?.id);
   const createJob = useCreateJob(workspace?.id);
   const runtime = useRuntimeStatus();
@@ -267,7 +280,7 @@ export function InspirationGalleryDb() {
 
   const selectCase = async (item: Case) => {
     if (!workspace?.id) {
-      setComposeError(workspaceState === "loading" ? "工作区正在准备，请稍后再试。" : "工作区不可用，请稍后再试。");
+      reportWorkspaceUnavailable();
       return;
     }
     if (materializingCaseId || composerMutationLock.current || generating || createJob.isPending) return;
@@ -430,7 +443,7 @@ export function InspirationGalleryDb() {
     if (!remixCase) {
       if (!instruction.trim()) return;
       if (!workspace?.id) {
-        setComposeError(workspaceState === "loading" ? "工作区正在准备，请稍后再试。" : "工作区不可用，请稍后再试。");
+        reportWorkspaceUnavailable();
         return;
       }
       const productAssetIds = composerAssets.filter((asset) => asset.role === "user_upload").map((asset) => asset.asset_id);
@@ -500,7 +513,7 @@ export function InspirationGalleryDb() {
     const referenceAssetIds = composerAssets.filter((asset) => asset.role === "reference").map((asset) => asset.asset_id);
     if (remixCase.workflow_type === "product_prompt") {
       if (!workspace?.id) {
-        setComposeError(workspaceState === "loading" ? "工作区正在准备，请稍后再试。" : "工作区不可用，请稍后再试。");
+        reportWorkspaceUnavailable();
         return;
       }
       if (productAssetIds.length === 0) {
@@ -534,7 +547,7 @@ export function InspirationGalleryDb() {
       return;
     }
     if (!workspace?.id) {
-      setComposeError(workspaceState === "loading" ? "工作区正在准备，请稍后再试。" : "工作区不可用，请稍后再试。");
+      reportWorkspaceUnavailable();
       return;
     }
     if (productAssetIds.length === 0 || referenceAssetIds.length === 0) {
@@ -643,6 +656,10 @@ export function InspirationGalleryDb() {
             </div>}
           </ImageDropZone>
           <textarea value={instruction} onChange={(event) => { setInstruction(event.target.value); setCaseImportFailed(false); }} placeholder="请详细填写真实商品卖点、资料与希望呈现的画面，可粘贴商品介绍。" /><ProductFactsGuidance />
+          {signedOut && <div className={styles.loginGate} data-prompted={loginPrompted || undefined} role={loginPrompted ? "alert" : undefined}>
+            <p><strong>登录后即可生成</strong><span>浏览案例、查看创作指令无需登录；上传商品图、选用案例和生成同款需要先登录。</span></p>
+            <Link className={styles.loginGateButton} href={loginHref("/inspiration")}>登录 / 注册</Link>
+          </div>}
           <div className={styles.composerControls}>
             <button type="button" className={styles.repositoryButton} onClick={openRepository} disabled={composerDisabled}><Layers3 size={15} /> 素材库</button>
             <div className={styles.composerSetting}><span>比例</span><ReplicaSelect label="选择生成图片比例" size="compact" value={aspectRatio} onChange={value => setAspectRatio(value as InspirationAspectRatio)} disabled={Boolean(materializingCaseId)} options={ASPECT_OPTIONS.map(option => [option.value,option.label] as const)} /></div>

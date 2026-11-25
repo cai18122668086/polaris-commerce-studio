@@ -152,3 +152,11 @@ test("final API 401 is centralised without browser token storage", async () => {
     assert.doesNotMatch(source, /Authorization\s*:/i);
   }
 });
+
+test("returnTo keeps public marketing pages so login can come back to /inspiration", async () => {
+  const { sanitizeReturnTo, loginHref } = await importBundled("lib/auth/return-to.ts");
+  assert.equal(sanitizeReturnTo("/inspiration"), "/inspiration");
+  assert.equal(sanitizeReturnTo("/help"), "/help");
+  assert.equal(sanitizeReturnTo("/legal/terms"), "/");
+  assert.match(loginHref("/inspiration"), /returnTo=%2Finspiration/);
+});

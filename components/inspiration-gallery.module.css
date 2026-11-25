@@ -568,3 +568,13 @@
 :global(.theme-ember) .card .cardBody h3{color:#e9e8e6}
 :global(.theme-ember) .card .cardFooter small{color:#918b83}
 /* ember-dark:end */
+
+/* 未登录引导：克制的暗色条，主按钮用熔光；被点击操作触发时描边提亮一次。 */
+.loginGate{display:flex;align-items:center;justify-content:space-between;gap:12px 18px;margin-top:12px;padding:12px 14px;border:1px solid #2a2928;border-radius:10px;background:rgb(255 250 244 / 0.025);text-align:left}
+.loginGate p{display:grid;gap:3px;min-width:0;margin:0}
+.loginGate strong{color:#edeae4;font-size:13px;font-weight:600}
+.loginGate span{color:#8f8b84;font-size:12px;line-height:1.5}
+.loginGate[data-prompted]{border-color:#591c02}
+.loginGateButton{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 16px;border-radius:8px;background:#edeae4;color:#0f0e0d;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap}
+.loginGateButton:hover{background:#ff6a2b;color:#0b0b0b}
+@media(max-width:620px){.loginGate{flex-direction:column;align-items:stretch}.loginGateButton{width:100%}}

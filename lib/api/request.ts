@@ -14,6 +14,16 @@ export function unwrapApiResponse<T>({ data, error, response }: ApiResult<T>): T
   return data;
 }
 
+/** A final 401 from the API: the visitor is not signed in (public pages stay browsable). */
+export function isSignedOutError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
+/** 402 from a submission: the workspace lacks credits; the UI offers 「充值积分」. */
+export function isInsufficientCreditsError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 402 || error.code === "BUDGET_LIMIT_EXCEEDED");
+}
+
 export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return "请求未能完成，请稍后重试。";

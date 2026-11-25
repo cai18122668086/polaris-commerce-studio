@@ -1,4 +1,4 @@
-﻿import { AUTH_ROUTES, isPublicRoute } from "./routes";
+﻿import { AUTH_ROUTES, MARKETING_PUBLIC_ROUTES, isPublicRoute } from "./routes";
 
 const RETURN_TO_FALLBACK = "/";
 const LOCAL_ORIGIN = "https://app.local";
@@ -11,7 +11,9 @@ export function sanitizeReturnTo(value: string | null | undefined, fallback = RE
     const decodedPath = decodeURIComponent(candidate.split(/[?#]/, 1)[0]);
     if (decodedPath.includes("\\") || decodedPath.startsWith("//")) return fallback;
     const parsed = new URL(candidate, LOCAL_ORIGIN);
-    if (parsed.origin !== LOCAL_ORIGIN || isPublicRoute(parsed.pathname)) return fallback;
+    // Auth and legal pages would loop; public marketing pages (e.g. /inspiration) are valid destinations.
+    const marketing = (MARKETING_PUBLIC_ROUTES as readonly string[]).includes(parsed.pathname);
+    if (parsed.origin !== LOCAL_ORIGIN || (isPublicRoute(parsed.pathname) && !marketing)) return fallback;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
     return fallback;

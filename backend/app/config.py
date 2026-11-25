@@ -265,6 +265,10 @@ class Settings(BaseSettings):
     planner_transient_retries: int = Field(default=1, ge=0, le=1)
     planner_retry_backoff_seconds: float = Field(default=2, ge=0, le=10)
     planner_primary_timeout_seconds: float = Field(default=300, ge=30, le=600)
+    # Per-call cap for page/style/set review calls (observed 20-140 s).  A hung
+    # route fails over after this instead of holding the page for the full
+    # planner budget.  Unset falls back to the general planner timeout.
+    planner_review_timeout_seconds: float | None = Field(default=180, ge=30, le=900)
     image_api_key: SecretStr = SecretStr("")
     image_base_url: str = "https://api.artflow.vip"
     image_model: str = "gpt-image-2.5-flare"

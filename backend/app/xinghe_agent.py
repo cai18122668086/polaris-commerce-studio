@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import json
 import logging
 import math
 import re
 import secrets
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import AsyncExitStack
@@ -2125,6 +2127,146 @@ class _ProviderRoute:
     image_model: str
 
 
+# Review-style planner profiles whose observed latency is 20-140 s.  A route
+# that has not answered within this cap is treated as hung and the call fails
+# over instead of holding the page for the full planner budget.
+AURORA_REVIEW_PLANNER_PROFILES = frozenset(
+    {
+        "aurora_v20_visual_audit",
+        "aurora_style_calibration",
+        "aurora_set_audit",
+        "aurora_repair_identity_check",
+    }
+)
+
+
+class _BreakerStore(Protocol):
+    def incr(self, name: str) -> Any: ...
+    def expire(self, name: str, time: int) -> Any: ...
+    def set(self, name: str, value: str, ex: int | None = None) -> Any: ...
+    def exists(self, *names: str) -> Any: ...
+    def delete(self, *names: str) -> Any: ...
+
+
+class PlannerRouteCircuitBreaker:
+    """Park a planner route that keeps failing without a usable response.
+
+    Connection-level failures (refused, DNS, socket timeout, call deadline)
+    and upstream gateway errors (HTTP 502/503/504) count; any other HTTP
+    response closes the circuit again.  While a route is parked the gateway
+    goes straight to the next configured route.  After the cool-down one
+    probe call is allowed; a further failure parks it again.
+
+    State lives in Redis (shared by every worker process, with TTLs) when a
+    store is configured, and falls back to process memory otherwise or when
+    Redis is unavailable.
+    """
+
+    _PREFIX = "polaris:planner-route-breaker:"
+
+    def __init__(self, threshold: int = 2, cooldown_seconds: float = 300) -> None:
+        self.threshold = threshold
+        self.cooldown_seconds = cooldown_seconds
+        self._lock = threading.Lock()
+        self._failures: dict[str, int] = {}
+        self._open_until: dict[str, float] = {}
+        self._store: _BreakerStore | None = None
+
+    def configure_store(self, store: _BreakerStore | None) -> None:
+        self._store = store
+
+    def configure_redis(self, url: str) -> None:
+        if not url.startswith(("redis://", "rediss://")):
+            return
+        from redis import Redis
+
+        self._store = Redis.from_url(
+            url, socket_timeout=0.5, socket_connect_timeout=0.5
+        )
+
+    @staticmethod
+    def _key(route: _ProviderRoute) -> str:
+        return hashlib.sha256(
+            (route.planner_base_url + "\0" + route.planner_api_key).encode()
+        ).hexdigest()
+
+    def is_open(self, route: _ProviderRoute) -> bool:
+        key = self._key(route)
+        if self._store is not None:
+            try:
+                return bool(self._store.exists(self._PREFIX + key + ":open"))
+            except (RedisError, OSError):
+                pass
+        with self._lock:
+            until = self._open_until.get(key)
+            return until is not None and time.monotonic() < until
+
+    def record_failure(self, route: _ProviderRoute) -> None:
+        key = self._key(route)
+        ttl = max(1, int(self.cooldown_seconds))
+        if self._store is not None:
+            try:
+                failures = int(self._store.incr(self._PREFIX + key + ":failures"))
+                self._store.expire(self._PREFIX + key + ":failures", ttl)
+                if failures >= self.threshold:
+                    self._store.set(self._PREFIX + key + ":open", "1", ex=ttl)
+                return
+            except (RedisError, OSError, TypeError, ValueError):
+                pass
+        with self._lock:
+            failures = self._failures.get(key, 0) + 1
+            self._failures[key] = failures
+            if failures >= self.threshold:
+                self._open_until[key] = time.monotonic() + self.cooldown_seconds
+
+    def record_success(self, route: _ProviderRoute) -> None:
+        key = self._key(route)
+        if self._store is not None:
+            with contextlib.suppress(RedisError, OSError):
+                self._store.delete(
+                    self._PREFIX + key + ":failures", self._PREFIX + key + ":open"
+                )
+        with self._lock:
+            self._failures.pop(key, None)
+            self._open_until.pop(key, None)
+
+    def reset(self) -> None:
+        self._store = None
+        with self._lock:
+            self._failures.clear()
+            self._open_until.clear()
+
+
+_PARKING_HTTP_STATUSES = frozenset({502, 503, 504})
+_PLANNER_DEADLINE_GRACE_SECONDS = 5.0
+
+
+async def _within_call_deadline(
+    call: Any, timeout_seconds: float
+) -> tuple[int, dict[str, Any]]:
+    """Bound one planner HTTP call by a true total deadline.
+
+    The socket timeout bounds each blocking read, so a slowly streaming or
+    stalled reply could exceed the budget.  The worker thread may finish in
+    the background, but the page fails over at the deadline.
+    """
+
+    try:
+        result: tuple[int, dict[str, Any]] = await asyncio.wait_for(
+            call, timeout=timeout_seconds + _PLANNER_DEADLINE_GRACE_SECONDS
+        )
+    except TimeoutError as exc:
+        raise XingheAgentError(
+            "PROVIDER_TRANSPORT_FAILED",
+            "Provider call exceeded its total deadline.",
+            retryable=True,
+        ) from exc
+    return result
+
+
+PLANNER_ROUTE_BREAKER = PlannerRouteCircuitBreaker()
+
+
 class UrllibOpenAITransport:
     """Small dependency-free OpenAI-compatible JSON/multipart transport."""
 
@@ -2183,6 +2325,7 @@ class UrllibOpenAITransport:
     ) -> tuple[int, dict[str, Any]]:
         request = Request(url, data=body, headers=dict(headers), method="POST")
         error_status = False
+        started = time.monotonic()
         try:
             with cls._open(request, timeout_seconds) as response:
                 status = int(response.status)
@@ -2192,7 +2335,12 @@ class UrllibOpenAITransport:
                     from .planner_streaming import PlannerStreamError, read_chat_stream
 
                     try:
-                        streamed = read_chat_stream(response, timeout_seconds)
+                        # The stream deadline counts from the request start,
+                        # so header wait plus streaming stay within one budget.
+                        streamed = read_chat_stream(
+                            response,
+                            max(0.0, timeout_seconds - (time.monotonic() - started)),
+                        )
                     except PlannerStreamError as exc:
                         failure = XingheAgentError(exc.code, str(exc), retryable=True)
                         failure.planner_response = exc.envelope
@@ -2290,6 +2438,7 @@ class TengliOpenAICompatibleGateway:
         planner_transient_retries: int = 1,
         planner_retry_backoff_seconds: float = 2,
         planner_primary_timeout_seconds: float = 300,
+        planner_review_timeout_seconds: float | None = None,
         planner_receipt_root: Path | None = None,
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
@@ -2327,6 +2476,7 @@ class TengliOpenAICompatibleGateway:
         self.planner_transient_retries = min(1, max(0, planner_transient_retries))
         self.planner_retry_backoff_seconds = planner_retry_backoff_seconds
         self.planner_primary_timeout_seconds = planner_primary_timeout_seconds
+        self.planner_review_timeout_seconds = planner_review_timeout_seconds
         self.planner_receipt_root = planner_receipt_root
         self.diagnostic_content_sample = diagnostic_content_sample
         self.transport = transport or UrllibOpenAITransport()
@@ -2576,6 +2726,8 @@ class TengliOpenAICompatibleGateway:
             )
         elif request.planning_profile == "aurora_detail_revision_scope":
             payload.update({"max_completion_tokens": 4096})
+        elif request.planning_profile == "aurora_repair_identity_check":
+            payload.update({"max_completion_tokens": 3000})
         elif request.planning_profile == "aurora_v20_visual_audit":
             payload.update(
                 {
@@ -2608,6 +2760,10 @@ class TengliOpenAICompatibleGateway:
                 routes = routes[:1]
             last_route_index = len(routes) - 1
             for route_index, route in enumerate(routes):
+                if route_index < last_route_index and PLANNER_ROUTE_BREAKER.is_open(
+                    route
+                ):
+                    continue
                 route_payload = {**payload, "model": route.planner_model}
                 planner_key = request.idempotency_key
                 if (request.planning_profile == "aurora_native_fast_identity"
@@ -2663,6 +2819,14 @@ class TengliOpenAICompatibleGateway:
                         if self.planner_timeout_seconds is None
                         else self.planner_timeout_seconds
                     )
+                    if (
+                        self.planner_review_timeout_seconds is not None
+                        and request.planning_profile
+                        in AURORA_REVIEW_PLANNER_PROFILES
+                    ):
+                        timeout_seconds = min(
+                            timeout_seconds, self.planner_review_timeout_seconds
+                        )
                     if request.planning_deadline is not None:
                         remaining = request.planning_deadline - time.monotonic()
                         if remaining <= 0:
@@ -2689,7 +2853,7 @@ class TengliOpenAICompatibleGateway:
                         and type(self.transport) is UrllibOpenAITransport
                         else self.transport
                     )
-                    status, response = await transport.post_json(
+                    post = transport.post_json(
                         url=urljoin(route.planner_base_url, "v1/chat/completions"),
                         headers=self._headers(
                             planner_key, route.planner_api_key
@@ -2697,6 +2861,16 @@ class TengliOpenAICompatibleGateway:
                         payload=route_payload,
                         timeout_seconds=timeout_seconds,
                     )
+                    if request.planning_profile in AURORA_REVIEW_PLANNER_PROFILES:
+                        status, response = await _within_call_deadline(
+                            post, timeout_seconds
+                        )
+                    else:
+                        status, response = await post
+                    if status in _PARKING_HTTP_STATUSES:
+                        PLANNER_ROUTE_BREAKER.record_failure(route)
+                    else:
+                        PLANNER_ROUTE_BREAKER.record_success(route)
                     if native_state is not None:
                         native_state["response_received"] = True
                         native_state["http_status"] = status
@@ -2706,6 +2880,8 @@ class TengliOpenAICompatibleGateway:
                             else None
                         )
                 except XingheAgentError as exc:
+                    if exc.code == "PROVIDER_TRANSPORT_FAILED":
+                        PLANNER_ROUTE_BREAKER.record_failure(route)
                     if (
                         exc.retryable or exc.code == "PROVIDER_RESPONSE_INVALID"
                     ) and route_index < last_route_index:
@@ -3672,8 +3848,10 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         planner_transient_retries=settings.planner_transient_retries,
         planner_retry_backoff_seconds=settings.planner_retry_backoff_seconds,
         planner_primary_timeout_seconds=settings.planner_primary_timeout_seconds,
+        planner_review_timeout_seconds=settings.planner_review_timeout_seconds,
         planner_receipt_root=settings.aurora_work_root / "planner-transport",
     )
+    PLANNER_ROUTE_BREAKER.configure_redis(settings.celery_broker_url)
     from .image_capacity import limit_gateway
 
     return limit_gateway(gateway, settings.celery_broker_url, settings.image_global_concurrency)
@@ -9189,6 +9367,18 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
             "all_material_deficiencies": [],
             "audit_complete": True,
         }
+    if request.planning_profile == "aurora_repair_identity_check":
+        verdict = {
+            "label_text_seen": "OFFLINE LABEL",
+            "label_exact": True,
+            "identity_intact": True,
+            "evidence": "离线检查：标签文字与参考一致，商品结构未改变。",
+        }
+        return {
+            "reference_label_text": "OFFLINE LABEL",
+            "pre_repair": dict(verdict),
+            "repaired": dict(verdict),
+        }
     if request.planning_profile == "aurora_style_calibration":
         return {
             "agent_pixel_reviewed": True,
@@ -11220,6 +11410,35 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "schema": schema,
             },
         }
+    if request.planning_profile == "aurora_repair_identity_check":
+        draft = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "label_text_seen": {"type": "string"},
+                "label_exact": {"type": "boolean"},
+                "identity_intact": {"type": "boolean"},
+                "evidence": {"type": "string"},
+            },
+            "required": ["label_text_seen", "label_exact", "identity_intact", "evidence"],
+        }
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_repair_identity_check",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "reference_label_text": {"type": "string"},
+                        "pre_repair": draft,
+                        "repaired": draft,
+                    },
+                    "required": ["reference_label_text", "pre_repair", "repaired"],
+                },
+            },
+        }
     if request.planning_profile == "amazon_visual_suite_fast":
         from .amazon_suite_fast import planner_json_schema
         return {"type": "json_schema", "json_schema": {"name": "amazon_suite_fast_plan", "strict": True, "schema": planner_json_schema()}}
@@ -11233,6 +11452,19 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             "schema": _amazon_planner_json_schema(),
         },
     }
+
+
+def _aurora_audit_contract_text(product_information: Sequence[str]) -> str:
+    """Return the per-page audit contract exactly as the provider built it.
+
+    The provider serializes one JSON contract into ``product_information``;
+    embed it verbatim rather than re-quoting it as a JSON string.
+    """
+
+    items = [str(item) for item in product_information if str(item).strip()]
+    if len(items) == 1:
+        return items[0]
+    return json.dumps(items, ensure_ascii=False)
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
@@ -11429,6 +11661,27 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "decision_summary must be a concrete direct-pixel verdict sentence "
             "with at least 12 characters; never use a one-word verdict such as "
             "PASS, 合格 or 通过."
+            "\n\nThe audit contract for this page follows. Its "
+            "authorized_fact_pool is the only claim authority, page_contract is "
+            "the approved plan for this page, and layout_observation_contract "
+            "holds the exact layout tokens to copy.\naudit_contract="
+            + _aurora_audit_contract_text(request.product_information)
+        )
+    if request.planning_profile == "aurora_repair_identity_check":
+        return (
+            "Directly inspect the attached images. All images before the last two "
+            "are original product identity references. The second-to-last image is "
+            "the PRE-REPAIR draft and the last image is the REPAIRED draft of the "
+            "same page. Only the product itself matters here: ignore headlines, "
+            "badges, banners and every other text that is not printed on the "
+            "product or its package. Transcribe the text printed on the product "
+            "label in the references, then on the product in each draft, and "
+            "compare them character by character. label_exact is true only when "
+            "every legible label character matches the references (no changed, "
+            "missing, extra or garbled characters). identity_intact is true only "
+            "when silhouette, proportions, colour partitions and components match "
+            "the references. Return JSON only.\nrepair_check_contract="
+            + _aurora_audit_contract_text(request.product_information)
         )
     if request.planning_profile == "aurora_style_calibration":
         return (
@@ -11448,6 +11701,8 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "Identify whether page 0 alone is visibly the search listing cover and "
             "give concrete pixel evidence explaining why each page 1 through 5 is "
             "not a search cover. Use the exact supplied image hashes."
+            "\nset_audit_contract="
+            + _aurora_audit_contract_text(request.product_information)
         )
     if request.planning_profile == "aurora_visual_audit":
         return (

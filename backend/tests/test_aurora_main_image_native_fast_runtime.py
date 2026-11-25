@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from copy import deepcopy
@@ -19,6 +20,40 @@ SKILL_ID = "aurora-domestic-ecommerce-main-image-native-fast"
 ROOT = BACKEND / "skill_sources" / SKILL_ID
 ORIGINAL = BACKEND / "skill_sources/aurora-domestic-ecommerce-main-image-v20"
 SOURCE_MANIFEST = BACKEND / "source_manifests" / f"{SKILL_ID}-source.json"
+V20_PATCHES = (
+    BACKEND
+    / "source_manifests"
+    / "aurora-domestic-ecommerce-main-image-v20-polaris-patches.json"
+)
+
+
+def _v20_patched_hashes() -> dict[str, set[str]]:
+    """Recorded Polaris patches of the bundled v2.0 tree (file -> hashes)."""
+    records = json.loads(V20_PATCHES.read_text(encoding="utf-8"))
+    patched: dict[str, set[str]] = {}
+    for record in records:
+        patched.setdefault(record["file"], set()).add(record["patched_file_sha256"])
+    return patched
+
+
+def _pristine_v20(tmp_path: Path) -> Path:
+    """The bundled v2.0 tree with its compiler restored to the archive bytes.
+
+    Native-fast keeps the archive compiler byte-for-byte, while the bundled
+    v2.0 compiler carries recorded Polaris patches.
+    """
+    provenance = load(SOURCE_MANIFEST)
+    entry = next(
+        item
+        for item in provenance["files"]
+        if item["path"] == "scripts/runtime/compiler.py"
+    )
+    compiler = (ROOT / entry["path"]).read_bytes()
+    assert hashlib.sha256(compiler).hexdigest() == entry["sha256"]
+    pristine = tmp_path / "pristine-v20"
+    shutil.copytree(ORIGINAL, pristine, ignore=shutil.ignore_patterns("__pycache__"))
+    (pristine / entry["path"]).write_bytes(compiler)
+    return pristine
 
 
 def write(path, value):
@@ -118,12 +153,15 @@ def test_archive_provenance_and_all_unchanged_compiler_sources():
         "scripts/runtime/core.py",
         "schemas/session.schema.json",
     }
+    patched = _v20_patched_hashes()
     changed = set()
     for entry in provenance["files"]:
-        original = (ORIGINAL / entry["path"]).read_bytes()
-        assert hashlib.sha256(original).hexdigest() == entry["sha256"]
-        current = (ROOT / entry["path"]).read_bytes()
-        if current != original:
+        original = hashlib.sha256((ORIGINAL / entry["path"]).read_bytes()).hexdigest()
+        assert original == entry["sha256"] or original in patched.get(
+            entry["path"], set()
+        )
+        current = hashlib.sha256((ROOT / entry["path"]).read_bytes()).hexdigest()
+        if current != entry["sha256"]:
             changed.add(entry["path"])
     assert changed == permitted
 
@@ -153,7 +191,7 @@ def test_manifest_valid_and_refresh_needs_no_private_archive():
 
 def test_compiled_plan_and_six_complete_prompts_match_original_bytes(native):
     folder, native_session, prepare = native
-    original_session = prepare(ORIGINAL, "original-session.json")
+    original_session = prepare(_pristine_v20(folder), "original-session.json")
     original = load(original_session)
     fast = load(native_session)
     assert fast["plan"] == original["plan"]

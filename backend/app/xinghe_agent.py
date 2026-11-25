@@ -38,7 +38,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import detail_fast, detail_fast_runtime, refined_detail
+from . import detail_fast, detail_fast_runtime, label_fidelity, refined_detail
 from .aurora_detail_runtime import (
     AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
@@ -402,6 +402,11 @@ _AURORA_PLANNER_PROTOCOL_FILES = (
     # Keep the planner aware of the v4.3 commercial-comfort contract. It
     # requires a non-empty forbidden_visual_details policy on every module.
     "references/commercial-aversion-control.md",
+)
+# Detail Skills whose pages pass the product-label fidelity gate.  The
+# cross-border id is spelled out to avoid importing its adapter here.
+_LABEL_GATED_DETAIL_SKILL_IDS = frozenset(
+    {refined_detail.SKILL_ID, "xinghe-crossborder-detail-3"}
 )
 _DOMESTIC_DETAIL_SKILL_IDS = frozenset(
     {"xinghe-ecommerce-detail-domestic-3", _AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID}
@@ -2136,6 +2141,7 @@ AURORA_REVIEW_PLANNER_PROFILES = frozenset(
         "aurora_style_calibration",
         "aurora_set_audit",
         "aurora_repair_identity_check",
+        *label_fidelity.PROFILES,
     }
 )
 
@@ -2692,14 +2698,14 @@ class TengliOpenAICompatibleGateway:
                 }
             )
             encoded = base64.b64encode(source.payload).decode("ascii")
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{source.content_type};base64,{encoded}"
-                    },
-                }
-            )
+            image_url: dict[str, Any] = {
+                "url": f"data:{source.content_type};base64,{encoded}"
+            }
+            if request.planning_profile in label_fidelity.PROFILES:
+                # Fine print is the point of the label gate: never let the
+                # endpoint fall back to a low-detail downsample.
+                image_url["detail"] = "high"
+            content.append({"type": "image_url", "image_url": image_url})
         payload: dict[str, Any] = {
             "model": self.planner_model,
             "messages": [
@@ -2728,6 +2734,10 @@ class TengliOpenAICompatibleGateway:
             payload.update({"max_completion_tokens": 4096})
         elif request.planning_profile == "aurora_repair_identity_check":
             payload.update({"max_completion_tokens": 3000})
+        elif request.planning_profile in label_fidelity.PROFILES:
+            payload.update(
+                {"max_completion_tokens": label_fidelity.MAX_COMPLETION_TOKENS}
+            )
         elif request.planning_profile == "aurora_v20_visual_audit":
             payload.update(
                 {
@@ -6644,6 +6654,13 @@ class XingheImageProvider:
             if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
             else None
         )
+        # The offline gateway keeps its historical call counts; real routes
+        # always pass through the label gate (see label_fidelity).
+        self.label_gate_enabled = (
+            skill_id in _LABEL_GATED_DETAIL_SKILL_IDS
+            and gateway.provider_name != "mock"
+            and label_fidelity.gate_enabled()
+        )
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         try:
@@ -6925,6 +6942,16 @@ class XingheImageProvider:
             finally:
                 async with self._activity_lock:
                     self._active_requests -= 1
+        if (
+            self.label_gate_enabled
+            and not pair_mode
+            and result.outcome == ProviderOutcome.SUCCEEDED
+            and result.artifact is not None
+        ):
+            result = await self._label_fidelity_gate(
+                request, image_request, sources, result
+            )
+            finished_at = datetime.now(UTC)
         known_provider_failure = result.outcome == ProviderOutcome.FAILED
         if (
             pair_mode
@@ -7121,6 +7148,175 @@ class XingheImageProvider:
             model_name=self.gateway.image_model,
             pricing_version=self.gateway.pricing_version,
         )
+
+    async def _label_fidelity_gate(
+        self,
+        request: ProviderRequest,
+        image_request: ImageEditRequest,
+        sources: tuple[SourceImage, ...],
+        result: ImageCallResult,
+    ) -> ImageCallResult:
+        """Char-exact product-label check with at most one targeted repair.
+
+        Never fails the page: a gate error delivers the generated page with an
+        UNCHECKED record, and a label that is still wrong after the single
+        repair is delivered (better candidate) with a disclosed residual.
+        """
+
+        original = result.artifact
+        assert original is not None
+        account = label_fidelity.GateAccount()
+        gate = label_fidelity.LabelFidelityGate(self.gateway)
+        references = tuple(
+            source
+            for source in sources
+            if source.source_role == "product_reference" and source.payload
+        )
+        record: dict[str, Any] = {
+            "gate_version": label_fidelity.GATE_VERSION,
+            "status": "UNCHECKED",
+        }
+        delivered = original
+        image_requests = 0
+        image_cost = 0
+        try:
+            lines = await gate.reference_lines(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=request.job_id,
+                references=references,
+                account=account,
+            )
+            if not lines:
+                record["reason"] = (
+                    "reference_unavailable" if lines is None else "reference_has_no_label_text"
+                )
+            else:
+                record["reference_lines"] = list(lines)
+                verdict, reading = await gate.check(
+                    workspace_id=request.workspace_id,
+                    job_id=request.job_id,
+                    idempotency_key=image_request.idempotency_key,
+                    payload=original.payload,
+                    reference_lines=lines,
+                    account=account,
+                )
+                record["generated"] = {**verdict.as_record(), "reading": reading}
+                record["status"] = verdict.status
+                if verdict.status == "MISMATCH":
+                    repaired_result = await self._label_repair(
+                        image_request, references, original, lines, verdict
+                    )
+                    image_requests += 1
+                    image_cost += int(repaired_result.actual_cost_micros or 0)
+                    repaired = repaired_result.artifact
+                    if (
+                        repaired_result.outcome == ProviderOutcome.SUCCEEDED
+                        and repaired is not None
+                        and (repaired.width, repaired.height)
+                        == (original.width, original.height)
+                    ):
+                        second, second_reading = await gate.check(
+                            workspace_id=request.workspace_id,
+                            job_id=request.job_id,
+                            idempotency_key=image_request.idempotency_key + ":label-repair",
+                            payload=repaired.payload,
+                            reference_lines=lines,
+                            account=account,
+                        )
+                        record["repaired"] = {
+                            **second.as_record(),
+                            "reading": second_reading,
+                            "image_sha256": repaired.sha256,
+                        }
+                        if second.status == "PASS" or (
+                            second.status == "MISMATCH"
+                            and second.mismatch_count < verdict.mismatch_count
+                        ):
+                            delivered = repaired
+                            verdict = second
+                    else:
+                        record["repaired"] = {
+                            "status": "REPAIR_UNAVAILABLE",
+                            "error_code": repaired_result.error_code,
+                        }
+                    if verdict.status == "PASS":
+                        record["status"] = "REPAIRED"
+                    else:
+                        record["status"] = "RESIDUAL"
+                        record["residual"] = label_fidelity.residual_summary(verdict)
+                    record["delivered"] = (
+                        "label_repair" if delivered is not original else "generated"
+                    )
+        except Exception as exc:  # the gate must never lose a paid page
+            logger.warning(
+                "label fidelity gate skipped job=%s (%s)",
+                request.job_id,
+                type(exc).__name__,
+            )
+            record["status"] = "UNCHECKED"
+            record["reason"] = f"gate_error:{type(exc).__name__}"
+        record["vision_calls"] = account.calls
+        record["image_calls"] = image_requests
+        raw_usage = dict(result.raw_usage or {})
+        base_requests = raw_usage.get("network_requests", 1)
+        if type(base_requests) is not int or base_requests < 0:
+            base_requests = 1
+        raw_usage["network_requests"] = (
+            base_requests + account.requests + image_requests
+        )
+        metrics = raw_usage.get("metrics")
+        raw_usage["metrics"] = {
+            **(dict(metrics) if isinstance(metrics, Mapping) else {}),
+            "label_fidelity": record,
+        }
+        cost = result.actual_cost_micros
+        if cost is not None:
+            cost += account.cost_micros + image_cost
+        return replace(
+            result,
+            artifact=delivered,
+            raw_usage=raw_usage,
+            actual_cost_micros=cost,
+        )
+
+    async def _label_repair(
+        self,
+        image_request: ImageEditRequest,
+        references: tuple[SourceImage, ...],
+        original: ProviderArtifact,
+        lines: Sequence[str],
+        verdict: label_fidelity.LabelVerdict,
+    ) -> ImageCallResult:
+        canvas = SourceImage(
+            asset_id=f"label-repair-canvas-{original.sha256[:16]}",
+            group_key=image_request.group_key,
+            filename=original.filename,
+            content_type=original.content_type,
+            sha256=original.sha256,
+            payload=original.payload,
+            source_role="label_repair_canvas",
+        )
+        repair_request = replace(
+            image_request,
+            sources=(canvas, *references[:2]),
+            prompt=label_fidelity.repair_instruction(lines, verdict.mismatches),
+            idempotency_key=image_request.idempotency_key + ":label-repair",
+        )
+        async with self._semaphore:
+            try:
+                return await self.gateway.edit(repair_request)
+            except Exception as exc:
+                return ImageCallResult(
+                    outcome=ProviderOutcome.FAILED,
+                    provider_request_id=None,
+                    raw_usage=None,
+                    normalized_usage=normalize_usage(None),
+                    api_latency_seconds=0,
+                    actual_cost_micros=None,
+                    error_code="LABEL_REPAIR_FAILED",
+                    error_message=type(exc).__name__,
+                )
 
     def _generation_scope(
         self, request: ProviderRequest, sources: tuple[SourceImage, ...]
@@ -9277,6 +9473,8 @@ def _fake_usage(
 
 
 def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile in label_fidelity.PROFILES:
+        return label_fidelity.fake_payload(request.planning_profile)
     if request.planning_profile == detail_fast.PROFILE:
         return detail_fast.fake_strategy(_fake_plan(replace(request, planning_profile="detail_pack", domestic_protocol=False)), request)
     if request.planning_profile == refined_detail.PROFILE:
@@ -11124,6 +11322,8 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile in label_fidelity.PROFILES:
+        return label_fidelity.response_format(request.planning_profile)
     if request.planning_profile == "crossborder_detail":
         from .crossborder_planning_contract import (
             response_format as crossborder_response_format,
@@ -11514,6 +11714,8 @@ def _planner_prompt(request: PlannerRequest) -> str:
 
 
 def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile in label_fidelity.PROFILES:
+        return label_fidelity.prompt(request.planning_profile)
     if request.planning_profile == "aurora_native_fast_identity":
         return _planner_prompt_body(replace(request, planning_profile="aurora_identity")) + "\nReturn the complete identity response_schema:\n" + json.dumps(_aurora_identity_json_schema(), ensure_ascii=False)
     if request.planning_profile == "replica_fast_suite":

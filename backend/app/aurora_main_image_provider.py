@@ -15,6 +15,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import label_fidelity
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
     is_parallel_aurora_mode,
@@ -182,6 +183,63 @@ class AuroraMainImageProvider:
             else "aurora-v0.1.17"
         )
         self.work_root = (work_root or default_aurora_work_root()).resolve()
+        # Blind char-exact label reads (see app.label_fidelity).  The offline
+        # gateway keeps its historical call counts.
+        self.label_gate_enabled = (
+            is_v20_aurora_mode(execution_mode)
+            and gateway.provider_name != "mock"
+            and label_fidelity.gate_enabled()
+        )
+        self._label_gate = label_fidelity.LabelFidelityGate(
+            gateway, cache_root=self.work_root
+        )
+
+    async def _label_verdict(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+        artifact: ProviderArtifact,
+        account: label_fidelity.GateAccount,
+        verdicts: dict[str, tuple[label_fidelity.LabelVerdict, dict[str, Any] | None]],
+    ) -> label_fidelity.LabelVerdict | None:
+        """Blind label read of one candidate, compared in code (never raises)."""
+
+        if not self.label_gate_enabled:
+            return None
+        if artifact.sha256 in verdicts:
+            return verdicts[artifact.sha256][0]
+        try:
+            references = tuple(
+                source
+                for source in _identity_sources(generation_request, request.job_id)
+                if "generated" not in Path(source.filename).parts
+            )
+            lines = await self._label_gate.reference_lines(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=request.job_id,
+                references=references,
+                account=account,
+            )
+            if not lines:
+                return None
+            verdict, reading = await self._label_gate.check(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=request.idempotency_key,
+                payload=artifact.payload,
+                reference_lines=lines,
+                account=account,
+            )
+        except Exception as exc:  # the gate never fails a paid page
+            logger.warning(
+                "Aurora label gate skipped job=%s (%s)",
+                request.job_id,
+                type(exc).__name__,
+            )
+            return None
+        verdicts[artifact.sha256] = (verdict, reading)
+        return verdict
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if is_parallel_aurora_mode(self.execution_mode) or _request_uses_parallel_v20(
@@ -191,6 +249,11 @@ class AuroraMainImageProvider:
         # Calls made for this page so far; a failed page still reports them.
         generation_requests = 0
         audit_usage: list[dict[str, Any]] = []
+        label_account = label_fidelity.GateAccount()
+        label_verdicts: dict[
+            str, tuple[label_fidelity.LabelVerdict, dict[str, Any] | None]
+        ] = {}
+        label_repair_requested = False
         try:
             item, harness_session = self._load_authorized_context(request)
             page_index = item.ordinal
@@ -298,14 +361,30 @@ class AuroraMainImageProvider:
                     # A repaired page is delivered whatever a full re-audit
                     # says, so only check what can still change the outcome:
                     # did the repair damage the product label or identity?
-                    checked = await self._check_repair_identity(
-                        request,
-                        generation_request,
-                        pre_repair,
-                        (generated_path, artifact),
+                    # The label verdicts come from blind reads compared in
+                    # code; the model check keeps the identity judgment.
+                    checked, _ = await asyncio.gather(
+                        self._check_repair_identity(
+                            request,
+                            generation_request,
+                            pre_repair,
+                            (generated_path, artifact),
+                        ),
+                        self._label_verdict(
+                            request,
+                            generation_request,
+                            artifact,
+                            label_account,
+                            label_verdicts,
+                        ),
                     )
                     if checked is not None:
                         check, usage, cost = checked
+                        _apply_label_verdicts(
+                            check,
+                            label_verdicts.get(pre_repair[1].sha256),
+                            label_verdicts.get(artifact.sha256),
+                        )
                         audit_usage.append(usage)
                         actual_cost += cost
                         check_path = (
@@ -323,12 +402,28 @@ class AuroraMainImageProvider:
                             artifact = pre_repair[1]
                         break
                 if is_v20_aurora_mode(self.execution_mode):
-                    judgment, usage, cost = await self._audit_v20_candidate_with_retry(
-                        request,
-                        generation_request,
-                        generated_path,
-                        artifact,
+                    (judgment, usage, cost), label_verdict = await asyncio.gather(
+                        self._audit_v20_candidate_with_retry(
+                            request,
+                            generation_request,
+                            generated_path,
+                            artifact,
+                        ),
+                        self._label_verdict(
+                            request,
+                            generation_request,
+                            artifact,
+                            label_account,
+                            label_verdicts,
+                        ),
                     )
+                    if label_verdict is not None and label_verdict.status == "MISMATCH":
+                        # A wrong label character fails the page even when the
+                        # broad audit missed it; the one automatic repair then
+                        # edits this draft with the product references and the
+                        # harness label lock.
+                        _inject_label_failure(judgment, label_verdict)
+                        label_repair_requested = attempt_index == 0
                 else:
                     judgment, usage, cost = await self._audit_candidate(
                         request,
@@ -425,11 +520,24 @@ class AuroraMainImageProvider:
             self._persist_session(request.job_id, current)
             raw_usage = dict(generation_usage)
             raw_usage["aurora_audit_calls"] = audit_usage
-            raw_usage["network_requests"] = generation_requests + len(audit_usage)
+            raw_usage["label_fidelity_calls"] = label_account.calls
+            raw_usage["network_requests"] = (
+                generation_requests + len(audit_usage) + label_account.requests
+            )
+            actual_cost += label_account.cost_micros
             raw_metrics = raw_usage.get("metrics")
             metrics = dict(raw_metrics) if isinstance(raw_metrics, dict) else {}
             raw_usage["metrics"] = {
                 **metrics,
+                **(
+                    {
+                        "label_fidelity": _label_record(
+                            artifact, label_verdicts, label_repair_requested
+                        )
+                    }
+                    if self.label_gate_enabled
+                    else {}
+                ),
                 "harness_state": current.get("state"),
                 "page_index": page_index,
                 "automatic_repairs_used": current.get(
@@ -455,7 +563,7 @@ class AuroraMainImageProvider:
             OSError,
             ValueError,
         ) as exc:
-            made = generation_requests + len(audit_usage)
+            made = generation_requests + len(audit_usage) + label_account.requests
             failure_usage: dict[str, Any] = {
                 "provider_type": self.gateway.provider_name,
                 "called": made > 0,
@@ -3577,6 +3685,113 @@ def _normalize_repair_identity_check(payload: dict[str, Any]) -> dict[str, Any]:
             "evidence": str(item.get("evidence") or ""),
         }
     return check
+
+
+def _inject_label_failure(
+    judgment: dict[str, Any], verdict: label_fidelity.LabelVerdict
+) -> None:
+    """Fail factual_copy_match with the exact wrong label characters.
+
+    factual_copy_match is a hard check outside the rebuild set, so the one
+    automatic repair edits this draft (repair canvas + product references +
+    label lock) instead of redrawing the page.
+    """
+
+    problem = "商品标签文字与原商品不一致：" + verdict.summary()
+    change = (
+        "以原商品身份参考为准，只把错字逐字改回："
+        + "；".join(
+            f"「{item.seen}」→「{item.expected}」" for item in verdict.mismatches
+        )
+        + "；标签其余文字、构图和其他画面层保持不变"
+    )
+    for check in judgment.get("checks", []):
+        if isinstance(check, dict) and check.get("name") == "factual_copy_match":
+            check["passed"] = False
+            check["score"] = min(float(check.get("score") or 0), 40)
+            check["observed_evidence"] = problem
+    deficiencies = judgment.setdefault("all_material_deficiencies", [])
+    existing = next(
+        (
+            item
+            for item in deficiencies
+            if isinstance(item, dict) and item.get("check") == "factual_copy_match"
+        ),
+        None,
+    )
+    if existing is not None:
+        additions = {"visible_problem": problem, "required_change": change}
+        for key, addition in additions.items():
+            existing[key] = f"{existing.get(key, '')}；{addition}"
+    else:
+        deficiencies.append(
+            {
+                "check": "factual_copy_match",
+                "visible_problem": problem,
+                "root_cause": "生成时商品标签上的小字被改写，整页审图未逐字发现",
+                "required_change": change,
+            }
+        )
+    judgment["label_fidelity_gate"] = verdict.as_record()
+
+
+def _apply_label_verdicts(
+    check: dict[str, Any],
+    pre_repair: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+    repaired: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+) -> None:
+    """Replace the model's self-reported label_exact with code verdicts.
+
+    The repair check is asked to transcribe and compare in one answer and
+    echoed the reference on 2026-11-25 (浮光瓶子香 reported as exact).  A blind
+    read compared in code decides label_exact whenever the label was legible;
+    identity_intact stays with the model check.
+    """
+
+    for key, entry in (("pre_repair", pre_repair), ("repaired", repaired)):
+        item = check.get(key)
+        if entry is None or not isinstance(item, dict):
+            continue
+        verdict, reading = entry
+        if verdict.status not in {"PASS", "MISMATCH"}:
+            continue
+        item["label_exact"] = verdict.status == "PASS"
+        if reading is not None:
+            item["label_text_seen"] = "；".join(
+                "／".join(lines) for lines in reading.get("product_label_lines", [])
+            )
+        item["label_gate"] = verdict.as_record()
+        if verdict.status == "MISMATCH":
+            item["evidence"] = (
+                f"逐字读取标签：{verdict.summary()}。" + str(item.get("evidence") or "")
+            )
+
+
+def _label_record(
+    artifact: ProviderArtifact | None,
+    verdicts: Mapping[str, tuple[label_fidelity.LabelVerdict, dict[str, Any] | None]],
+    repair_requested: bool,
+) -> dict[str, Any]:
+    entry = verdicts.get(artifact.sha256) if artifact is not None else None
+    if entry is None:
+        return {"gate_version": label_fidelity.GATE_VERSION, "status": "UNCHECKED"}
+    verdict, reading = entry
+    status = verdict.status
+    if status == "MISMATCH":
+        status = "RESIDUAL"
+    elif status == "PASS" and repair_requested:
+        status = "REPAIRED"
+    return {
+        **verdict.as_record(),
+        "gate_version": label_fidelity.GATE_VERSION,
+        "status": status,
+        **(
+            {"residual": label_fidelity.residual_summary(verdict)}
+            if status == "RESIDUAL"
+            else {}
+        ),
+        "reading": reading,
+    }
 
 
 def _selected_page_sha(session: Mapping[str, Any], page_index: int) -> str | None:

@@ -2856,6 +2856,9 @@ class ExecutionCoordinator:
                         "visual_review_version"
                     ),
                     "delivery_status": result_metrics.get("delivery_status"),
+                    # Product-label fidelity gate: verified, repaired or a
+                    # disclosed residual (see app.label_fidelity).
+                    "label_fidelity": result_metrics.get("label_fidelity"),
                     "perceptual_dhash": result.raw_usage.get("perceptual_dhash"),
                     "aurora_pair_id": result_metrics.get("aurora_pair_id"),
                     "aurora_pair_canvas_dimensions": result_metrics.get(

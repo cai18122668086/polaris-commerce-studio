@@ -85,23 +85,53 @@ attestation only after all semantic checks pass. Do not invent image paths or
 hashes for those runtime-owned fields. decision_summary must be a concrete
 direct-pixel verdict sentence of at least 12 characters; never return a
 one-word verdict such as PASS, 合格 or 通过.
-The audit contract includes an authorized_fact_pool. Treat only those user
-entered strings, plus faithful non-strengthening paraphrases, as claim
-authority. Before deciding factual_copy_match or no_unsupported_claim,
-transcribe every visible headline, badge, number, comparison, feature label,
-rating, safety statement, and specification from the candidate pixels. Any
-proposition absent from that pool is an unsupported claim even when it is
-plausible for the category; return a material failure with the exact visible
-wording and the required change to remove or replace it.
+The audit contract includes an authorized_fact_pool and a copy_policy; the
+copy_policy is the same rule the image generator was given. Text printed on
+the product itself (label, package) is identity copy: judge it only under
+product_identity_match, character by character against the references, and
+never as an unsupported claim. Text outside the product (headlines, badges,
+banners, spec boxes) may use only the authorized_fact_pool strings, faithful
+non-strengthening paraphrases of them, and the product name in
+authorized_identity_copy. Before deciding factual_copy_match or
+no_unsupported_claim, transcribe every visible off-product headline, badge,
+number, comparison, feature label, rating, safety statement, and
+specification from the candidate pixels. Any off-product proposition absent
+from that pool, including slogans or badges copied from the source poster or
+from the package, is an unsupported claim even when it is plausible for the
+category; return a material failure with the exact visible wording and the
+required change to remove or replace it.
 For product_identity_match, compare the candidate against every supplied
 product_reference image as one complementary identity set. Fail materially
-when the candidate changes silhouette, proportions, wheel count or placement,
-seat count, red/black color partition, steering wheel, dashboard/music panel,
-grille, headlights, doors, steps, mirrors, labels, or component relationships.
+when the candidate changes silhouette, proportions, component count or
+placement, color partitions, materials, closures or fittings, logos, labels,
+or component relationships. Read every legible word on the product's own
+label, packaging and logo and compare it character by character with the
+references; a changed, missing or extra character on the product is an
+identity failure.
 User facts may authorize copy, but they never authorize a new visible part or
 variant component that the product references do not show. An identity failure
 must recommend rebuilding from the original product references, never polishing
 the failed candidate as a repair canvas.
+""".strip()
+
+_SET_AUDIT_SYSTEM_PROMPT = """
+You are the blind six-page set-role reviewer for the Aurora domestic
+e-commerce six-image Skill. The attached images are the six accepted pages in
+page order 0-5. Decide from pixels only whether page 0 alone reads as the
+search listing cover and whether any page 1-5 could be confused with it.
+Everything you need is in the supplied set_audit_contract, including the
+exact image hashes to copy; never report missing inputs. Return one JSON
+object with exactly the fields listed in the contract.
+""".strip()
+
+_REPAIR_CHECK_SYSTEM_PROMPT = """
+You are the post-repair product identity checker for the Aurora domestic
+e-commerce six-image Skill. Compare only the product itself in two drafts of
+one page against the original product references: the label and package
+text, character by character, and the product's silhouette, proportions,
+colour partitions and components. Ignore every headline, badge, banner or
+other text that is not printed on the product. Return the JSON fields of the
+supplied schema only.
 """.strip()
 
 _STYLE_CALIBRATION_SYSTEM_PROMPT = """
@@ -158,6 +188,9 @@ class AuroraMainImageProvider:
             request
         ):
             return await self._execute_parallel_v20(request)
+        # Calls made for this page so far; a failed page still reports them.
+        generation_requests = 0
+        audit_usage: list[dict[str, Any]] = []
         try:
             item, harness_session = self._load_authorized_context(request)
             page_index = item.ordinal
@@ -166,8 +199,8 @@ class AuroraMainImageProvider:
             write_contract(session_path, harness_session)
             artifact: ProviderArtifact | None = None
             generation_usage: dict[str, Any] = {}
-            audit_usage: list[dict[str, Any]] = []
             actual_cost = 0
+            pre_repair: tuple[Path, ProviderArtifact] | None = None
 
             for attempt_index in range(2):
                 generation_request_path = workspace / (
@@ -215,6 +248,7 @@ class AuroraMainImageProvider:
                 )
                 generation_usage = dict(image_result.raw_usage or {})
                 actual_cost += int(image_result.actual_cost_micros or 0)
+                generation_requests += _image_network_requests(generation_usage)
                 if (
                     image_result.outcome != ProviderOutcome.SUCCEEDED
                     or image_result.artifact is None
@@ -255,6 +289,39 @@ class AuroraMainImageProvider:
                     },
                 )
                 current = _load_json(session_path)
+                if (
+                    is_v20_aurora_mode(self.execution_mode)
+                    and attempt_index == 1
+                    and pre_repair is not None
+                    and (page_index != 0 or current.get("search_calibrated") is True)
+                ):
+                    # A repaired page is delivered whatever a full re-audit
+                    # says, so only check what can still change the outcome:
+                    # did the repair damage the product label or identity?
+                    checked = await self._check_repair_identity(
+                        request,
+                        generation_request,
+                        pre_repair,
+                        (generated_path, artifact),
+                    )
+                    if checked is not None:
+                        check, usage, cost = checked
+                        audit_usage.append(usage)
+                        actual_cost += cost
+                        check_path = (
+                            workspace / f"repair-check-page-{page_index + 1}.json"
+                        )
+                        write_contract(check_path, check)
+                        self.harness.run(
+                            "accept-repair",
+                            workspace,
+                            {"session": session_path, "check": check_path},
+                        )
+                        current = _load_json(session_path)
+                        delivered = _selected_page_sha(current, page_index)
+                        if delivered == pre_repair[1].sha256:
+                            artifact = pre_repair[1]
+                        break
                 if is_v20_aurora_mode(self.execution_mode):
                     judgment, usage, cost = await self._audit_v20_candidate_with_retry(
                         request,
@@ -302,6 +369,7 @@ class AuroraMainImageProvider:
                     )
                     current = _load_json(session_path)
                 if current.get("state") == "REPAIR_REQUIRED" and attempt_index == 0:
+                    pre_repair = (generated_path, artifact)
                     repair_path = workspace / f"repair-page-{page_index + 1}.json"
                     write_contract(
                         repair_path,
@@ -357,10 +425,7 @@ class AuroraMainImageProvider:
             self._persist_session(request.job_id, current)
             raw_usage = dict(generation_usage)
             raw_usage["aurora_audit_calls"] = audit_usage
-            network_requests = raw_usage.get("network_requests", 1)
-            if not isinstance(network_requests, int) or network_requests < 0:
-                network_requests = 1
-            raw_usage["network_requests"] = network_requests + len(audit_usage)
+            raw_usage["network_requests"] = generation_requests + len(audit_usage)
             raw_metrics = raw_usage.get("metrics")
             metrics = dict(raw_metrics) if isinstance(raw_metrics, dict) else {}
             raw_usage["metrics"] = {
@@ -390,15 +455,19 @@ class AuroraMainImageProvider:
             OSError,
             ValueError,
         ) as exc:
+            made = generation_requests + len(audit_usage)
+            failure_usage: dict[str, Any] = {
+                "provider_type": self.gateway.provider_name,
+                "called": made > 0,
+            }
+            if made:
+                failure_usage["network_requests"] = made
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
                 error_code=getattr(exc, "code", "AURORA_EXECUTION_FAILED"),
                 error_message=str(exc),
                 usage_reported=False,
-                raw_usage={
-                    "provider_type": self.gateway.provider_name,
-                    "called": False,
-                },
+                raw_usage=failure_usage,
                 retryable=False,
                 provider_name=self.gateway.provider_name,
                 model_name=self.gateway.image_model,
@@ -668,6 +737,100 @@ class AuroraMainImageProvider:
                 pricing_version=self.gateway.pricing_version,
             )
 
+    async def _check_repair_identity(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+        pre_repair: tuple[Path, ProviderArtifact],
+        repaired: tuple[Path, ProviderArtifact],
+    ) -> tuple[dict[str, Any], dict[str, Any], int] | None:
+        """Compare the product label/identity of the draft and its repair.
+
+        Returns None when the check cannot be completed; the caller then
+        falls back to the full re-audit.
+        """
+
+        page_index = int(generation_request["page_index"])
+        drafts = []
+        for role, (path, artifact) in (
+            ("pre_repair_candidate", pre_repair),
+            ("repaired_candidate", repaired),
+        ):
+            drafts.append(
+                SourceImage(
+                    asset_id=f"{role}-page-{page_index}",
+                    group_key=request.job_id,
+                    filename=str(path),
+                    content_type=artifact.content_type,
+                    sha256=artifact.sha256,
+                    payload=artifact.payload,
+                    source_role="generated_candidate",
+                )
+            )
+        identity = _identity_sources(generation_request, request.job_id)
+        sources = (*identity[: _MAX_VISUAL_AUDIT_IMAGES - 2], *drafts)
+        contract = {
+            "page_index": page_index,
+            "pre_repair_image_sha256": pre_repair[1].sha256,
+            "repaired_image_sha256": repaired[1].sha256,
+            "identity_reference_count": len(sources) - 2,
+            "copy_policy": str(
+                _mapping(generation_request.get("page_contract")).get("copy_policy")
+                or ""
+            ),
+        }
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                group_key=f"{request.job_id}:v20-repair-check:{page_index}",
+                sources=tuple(sources),
+                page_count=page_index + 1,
+                language="zh-CN",
+                product_name="Aurora v2.0 repair identity check",
+                product_information=(json.dumps(contract, ensure_ascii=False),),
+                platform_code="TAOBAO_AURORA_V20_REPAIR_CHECK",
+                size="1024x1024",
+                idempotency_key=(
+                    f"{request.idempotency_key}:v20-repair-check:{page_index}:"
+                    f"{generation_request.get('revision', 1)}"
+                ),
+                system_prompt=_REPAIR_CHECK_SYSTEM_PROMPT,
+                planning_profile="aurora_repair_identity_check",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            logger.warning(
+                "Aurora repair identity check unavailable job=%s page=%s code=%s",
+                request.job_id,
+                page_index,
+                result.error_code,
+            )
+            return None
+        try:
+            check = _normalize_repair_identity_check(dict(result.payload))
+        except AuroraPlanningError:
+            logger.warning(
+                "Aurora repair identity check malformed job=%s page=%s",
+                request.job_id,
+                page_index,
+            )
+            return None
+        check.update(
+            {
+                "agent_pixel_reviewed": True,
+                "review_mode": "DIRECT_PIXEL_LABEL_AND_IDENTITY_COMPARISON",
+                "page_index": page_index,
+                "pre_repair_image_sha256": pre_repair[1].sha256,
+                "repaired_image_sha256": repaired[1].sha256,
+            }
+        )
+        return (
+            check,
+            dict(result.normalized_usage),
+            int(result.actual_cost_micros or 0),
+        )
+
     async def _audit_v20_candidate_with_retry(
         self,
         request: ProviderRequest,
@@ -784,6 +947,15 @@ class AuroraMainImageProvider:
             ),
             "authorized_fact_pool": _authorized_fact_pool_for_audit(
                 generation_request
+            ),
+            # Identity wording is authorized copy, not a claim: the product
+            # name the user entered and text printed on the original label.
+            "authorized_identity_copy": _authorized_identity_copy_for_audit(
+                request, generation_request
+            ),
+            "copy_policy": str(
+                _mapping(generation_request.get("page_contract")).get("copy_policy")
+                or ""
             ),
             "factual_copy_audit": {
                 "visible_copy_must_be_transcribed": True,
@@ -1672,13 +1844,13 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora v2.0 six-page set audit",
-                product_information=(),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
                 idempotency_key=_set_audit_idempotency_key(
                     f"{job_id}:aurora-v20-set-audit:v1", audit_attempt
                 ),
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -1777,13 +1949,13 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora v2.0 six-page set audit",
-                product_information=(),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
                 idempotency_key=_set_audit_idempotency_key(
                     f"{job_id}:aurora-v20-sequential-set-audit:v1", audit_attempt
                 ),
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -2041,13 +2213,11 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora Six Page Blind Review",
-                product_information=(
-                    json.dumps({"image_sha256_by_page": expected_hashes}),
-                ),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_SET_ROLE_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{request.job_id}:aurora-set-role-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -2536,6 +2706,13 @@ def _normalize_aurora_square_artifact(
     )
 
 
+def _image_network_requests(raw_usage: Mapping[str, Any]) -> int:
+    """Upstream calls behind one gateway image result (at least one)."""
+
+    value = raw_usage.get("network_requests", 1)
+    return value if isinstance(value, int) and value >= 0 else 1
+
+
 def _failed_image_result(
     result: Any, provider: AuroraMainImageProvider
 ) -> ProviderResult:
@@ -2665,6 +2842,29 @@ def _sha256(payload: bytes) -> str:
 
 def _mapping(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _authorized_identity_copy_for_audit(
+    request: ProviderRequest, generation_request: Mapping[str, Any]
+) -> dict[str, Any]:
+    job_settings = _mapping(
+        _mapping(_mapping(request.configuration).get("job")).get("settings")
+    )
+    constitution = _mapping(generation_request.get("campaign_constitution"))
+    identity = _mapping(constitution.get("product_identity"))
+    return {
+        "product_name": str(job_settings.get("product_name") or "").strip(),
+        "label_and_package_text_source": str(
+            identity.get("identity_summary") or ""
+        ).strip(),
+        "rule": (
+            "Wording printed on the product label or package must be reproduced "
+            "on the product exactly as in the references; it is identity copy, "
+            "not a claim, and any changed label character is an identity "
+            "failure. Off the product, only the product name above and the "
+            "authorized_fact_pool may appear (see copy_policy)."
+        ),
+    }
 
 
 def _authorized_fact_pool_for_audit(
@@ -3357,6 +3557,73 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
         other_cover_indexes if isinstance(other_cover_indexes, list) else [],
     )
     return payload
+
+
+def _normalize_repair_identity_check(payload: dict[str, Any]) -> dict[str, Any]:
+    check: dict[str, Any] = {
+        "reference_label_text": str(payload.get("reference_label_text") or "")
+    }
+    for key in ("pre_repair", "repaired"):
+        item = payload.get(key)
+        if not isinstance(item, Mapping) or not all(
+            isinstance(item.get(name), bool)
+            for name in ("label_exact", "identity_intact")
+        ):
+            raise AuroraPlanningError(f"Aurora repair identity check lacks {key}")
+        check[key] = {
+            "label_text_seen": str(item.get("label_text_seen") or ""),
+            "label_exact": item["label_exact"],
+            "identity_intact": item["identity_intact"],
+            "evidence": str(item.get("evidence") or ""),
+        }
+    return check
+
+
+def _selected_page_sha(session: Mapping[str, Any], page_index: int) -> str | None:
+    versions = [
+        item
+        for item in session.get("generated_versions", [])
+        if isinstance(item, Mapping)
+        and item.get("page_index") == page_index
+        and item.get("status") in {"ACCEPTED", "ACCEPTED_WITH_RESIDUALS"}
+    ]
+    return str(versions[-1].get("sha256")) if versions else None
+
+
+def _set_audit_contract(sources: Sequence[SourceImage]) -> str:
+    """Contract for the six-page set-role review, including exact hashes."""
+
+    return json.dumps(
+        {
+            "image_sha256_by_page": {
+                str(index): source.sha256 for index, source in enumerate(sources)
+            },
+            "required_fields": {
+                "agent_pixel_reviewed": "true",
+                "review_mode": "BLIND_SIX_PAGE_ROLE_COMPARISON",
+                "reviewed_page_indexes": [0, 1, 2, 3, 4, 5],
+                "image_sha256_by_page": "copy the object above exactly",
+                "identified_search_page_index": (
+                    "index 0-5 of the page that reads as the search cover"
+                ),
+                "search_role_is_unique": (
+                    "true when only that page reads as a search cover"
+                ),
+                "confusable_page_indexes": (
+                    "other page indexes that could also read as a search cover; "
+                    "[] when none"
+                ),
+                "search_identification_evidence": (
+                    "concrete pixel evidence for the identified search page"
+                ),
+                "carousel_distinctions": (
+                    "for each page 1-5: {page_index, why_not_search_cover} "
+                    "with concrete pixel evidence"
+                ),
+            },
+        },
+        ensure_ascii=False,
+    )
 
 
 def _normalize_parallel_set_audit_payload(

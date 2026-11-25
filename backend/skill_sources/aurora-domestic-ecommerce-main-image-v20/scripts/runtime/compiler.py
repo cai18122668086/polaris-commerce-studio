@@ -90,33 +90,149 @@ ROLE_SOURCE_BONUS = [
 ]
 
 
+_NORMALIZE_STRIP = re.compile(r"[\s，,。；;：:·•|/、!！?？\-—_（）()【】\[\]“”\"'‘’]+")
+_SPEC_PATTERN = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:kg|mg|g|ml|l|mm|cm|m|w|mah|v|克|千克|毫升|升|片|包|支|瓶|件|个|只|袋|盒|罐|粒|寸|英寸|码)(?![a-z])",
+    re.IGNORECASE,
+)
+_SPEC_TERMS = ("规格", "容量", "净含量", "尺寸", "尺码", "重量", "套装", "组合装", "优惠", "价格", "赠", "包邮", "质保", "保修", "售后", "退换")
+CLOSURE_SOURCES = {"verified_offers", "verified_service_or_trust_facts", "verified_attributes"}
+VISUAL_PROOF_PAGES = {2, 3, 4}
+
+
+# Polaris patch: one copy rule shared by generation and the direct-pixel review.
+# The Polaris API copies page["copy_policy"] verbatim into the audit contract.
+COPY_POLICY = (
+    "【文案权限】画面文字分两类，生成与审图使用同一条规则："
+    "①商品本体上的文字（瓶身、标签、包装上实际印刷的品牌、品名、规格、成分字样）必须按原商品参考图逐字还原，"
+    "不得改字、删字、增字或重新排版；这类文字属于商品身份，不算卖点。"
+    "②商品之外新增的文字（主标题、副标题、角标、徽章、规格框、横幅）只能使用已核验事实池中的原文或不加强的忠实改写，以及用户填写的商品名；"
+    "原海报或包装上的营销口号、角标和功效宣称（例如「新品上市」「密集美白」）若不在事实池中，不得作为商品之外的文字出现。"
+    "不得猜测模糊文字，不得把生成图新增文字或模型推断当成事实来源。"
+)
+# Polaris patch: one distinct camera and shot type per page so the set is not
+# six front-on product shots.  Prompt-only: no extra calls.
+CAMERA_DIRECTIVES = [
+    "正面英雄视角：商品正面完整、平视，标签正对镜头，商品占画高55%–75%",
+    "三分之四侧角：商品转向约30–45度，露出侧面厚度与轮廓；不得再用正面平视",
+    "手持视角：手部自然握持商品，并给出与本页卖点相关的真实局部特写，形成大小双尺度",
+    "生活方式使用场景：在可信使用环境中由人物或手部使用商品，形成接触动作；不得静态正面摆拍",
+    "质地或细节微距特写：内容物、质地或材质微距为主视觉，完整商品只作小尺度定位",
+    "规格平铺俯拍：俯视或45度俯拍的平铺陈列，商品与规格信息簇形成收口；不得复用正面英雄构图",
+]
+
+
+def _normalized_fact(text: str) -> str:
+    return _NORMALIZE_STRIP.sub("", text).lower()
+
+
+def _same_fact(left: str, right: str) -> bool:
+    """Treat a fact contained in another fact as the same allocation unit."""
+    a, b = _normalized_fact(left), _normalized_fact(right)
+    if not a or not b:
+        return a == b
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return shorter == longer or (len(shorter) >= 2 and shorter in longer)
+
+
+def _distinct_claims(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse near-duplicate facts (e.g. "260g" inside "260g 大容量").
+
+    The more informative (longer) wording represents the group and inherits the
+    best score of the group; every original string stays in the fact pool.
+    """
+    groups: list[dict[str, Any]] = []
+    for item in ranked:
+        group = next((existing for existing in groups if _same_fact(existing["text"], item["text"])), None)
+        if group is None:
+            groups.append(dict(item))
+            continue
+        if len(_normalized_fact(item["text"])) > len(_normalized_fact(group["text"])):
+            score = max(group["score"], item["score"])
+            group.clear()
+            group.update({**item, "score": score})
+    return groups
+
+
+def _is_closure_fact(item: dict[str, Any]) -> bool:
+    text = item["text"]
+    return item["source"] in CLOSURE_SOURCES or bool(_SPEC_PATTERN.search(text)) or any(term in text for term in _SPEC_TERMS)
+
+
 def _page_rankings(raw: dict[str, Any], index: int) -> list[dict[str, Any]]:
-    ranked = rank_claims(raw)
+    ranked = _distinct_claims(rank_claims(raw))
     return sorted(ranked, key=lambda item: (-(item["score"] + ROLE_SOURCE_BONUS[index].get(item["source"], 0)), item["text"]))
+
+
+def _pick_lead(ranking: list[dict[str, Any]], index: int, uses: dict[str, int], hook: str | None) -> dict[str, Any]:
+    def unused(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [item for item in items if uses.get(item["text"], 0) == 0]
+
+    def least_used(items: list[dict[str, Any]]) -> dict[str, Any]:
+        order = {item["text"]: position for position, item in enumerate(items)}
+        return min(items, key=lambda item: (item["text"] == hook, uses.get(item["text"], 0), order[item["text"]]))
+
+    if index == 5:
+        closure = [item for item in ranking if _is_closure_fact(item)]
+        others = [item for item in ranking if item["text"] != hook]
+        for pool in (unused(closure), unused(others)):
+            if pool:
+                return pool[0]
+        if closure:
+            return least_used(closure)
+        return least_used(others or ranking)
+    if index in VISUAL_PROOF_PAGES:
+        # A text-only fact (numbers, durations, service wording) cannot be the
+        # main claim of a page whose duty is visible proof; reuse a renderable
+        # fact instead.  Only when no renderable fact exists at all does the
+        # page fall back to text-only facts.
+        visual = [item for item in ranking if item["observability"] != "TEXT_ONLY_VERIFIED"]
+        if visual:
+            fresh = unused(visual)
+            return fresh[0] if fresh else least_used(visual)
+    available = unused(ranking)
+    return available[0] if available else least_used(ranking)
 
 
 def _assign_claims(raw: dict[str, Any]) -> list[dict[str, Any]]:
     all_ranked = rank_claims(raw)
     require(bool(all_ranked), "at least one user-provided display fact is required")
-    used: set[str] = set()
-    leads: list[dict[str, Any]] = []
-    for index in range(6):
-        ranking = _page_rankings(raw, index)
-        selected = next((item for item in ranking if item["text"] not in used), ranking[index % len(ranking)])
-        leads.append(selected)
-        used.add(selected["text"])
+    uses: dict[str, int] = {}
+    leads: dict[int, dict[str, Any]] = {}
+    # The search hook chooses first, the closure page second (so it can claim a
+    # spec/offer fact before carousel pages consume it), then the proof pages,
+    # and the identity page last because it can carry any remaining fact.
+    for index in (0, 5, 2, 3, 4, 1):
+        hook = leads[0]["text"] if 0 in leads else None
+        selected = _pick_lead(_page_rankings(raw, index), index, uses, hook)
+        leads[index] = selected
+        uses[selected["text"]] = uses.get(selected["text"], 0) + 1
+    hook_text = leads[0]["text"]
     result: list[dict[str, Any]] = []
-    for index, lead in enumerate(leads):
-        candidates = [item for item in _page_rankings(raw, index) if item["text"] != lead["text"]]
+    for index in range(6):
+        lead = leads[index]
+        candidates = [
+            item for item in _page_rankings(raw, index)
+            if not _same_fact(item["text"], lead["text"]) and (index == 0 or not _same_fact(item["text"], hook_text))
+        ]
         supports: list[str] = []
+        limit = 2 if index in {0, 5} else 1
+        if index == 5:
+            # Closure supports form a spec cluster: spec/offer/service facts
+            # first, then non-hook facts to complete the cluster.
+            candidates = sorted(candidates, key=lambda item: not _is_closure_fact(item))
+        elif index in VISUAL_PROOF_PAGES:
+            # Keep specs on the closure page instead of repeating them as
+            # secondary copy on every proof page.
+            candidates = sorted(candidates, key=_is_closure_fact)
         for item in candidates:
-            useful = (
+            useful = index == 5 or (
                 item["source"] in ROLE_SOURCE_BONUS[index]
-                and (item["source"] == lead["source"] or index in {0, 5})
+                and (item["source"] == lead["source"] or index == 0)
             )
             if useful and item["text"] not in supports:
                 supports.append(item["text"])
-            if len(supports) >= (2 if index in {0, 5} else 1):
+            if len(supports) >= limit:
                 break
         result.append({"lead": lead, "supports": supports})
     return result
@@ -130,6 +246,10 @@ def _closure(raw: dict[str, Any], index: int) -> str:
         return "使用一项完整核验优惠作为交易闭合，并保留所有条件"
     if index == 5 and offers:
         return "用完整核验优惠、规格或服务完成购买确认"
+    if index == 5:
+        specs = [item["text"] for item in _distinct_claims(rank_claims(raw)) if _is_closure_fact(item)]
+        if specs:
+            return "用已核验规格或服务事实（" + "、".join(specs[:3]) + "）形成数字锚点或规格簇完成购买确认"
     return "使用已核验规格、适用信息、服务或信任事实完成短闭合" if trust else "用本页已核验事实完成简洁结论"
 
 
@@ -160,8 +280,8 @@ def _display_copy_contract(lead: str, supports: list[str], index: int) -> dict[s
 
 
 def _search_cover_blueprint(raw: dict[str, Any], hook: str, display_copy: dict[str, Any]) -> dict[str, Any]:
-    ranked = rank_claims(raw)
-    modules = [item["text"] for item in ranked if item["text"] != hook][:3]
+    ranked = _distinct_claims(rank_claims(raw))
+    modules = [item["text"] for item in ranked if not _same_fact(item["text"], hook)][:3]
     offers = [item["text"] for item in fact_records(raw) if item["source"] == "verified_offers"]
     return {
         "role": "TAOBAO_LISTING_CLICK_COVER_NOT_CAROUSEL_HERO",
@@ -285,6 +405,7 @@ def compile_prompt(raw: dict[str, Any], identity: dict[str, Any], plan: dict[str
         "【辅助卖点·按画面力量取舍】" + ("；".join(page["supporting_claims"]) if page["supporting_claims"] else "无强制辅助卖点"),
         "【画面证明】" + page["visual_proof"],
         "【构图职责】" + page["composition"],
+        "【镜头】" + (page.get("camera_directive") or CAMERA_DIRECTIVES[page["index"]]) + "。",
         "【页面版式合同】原型=" + layout["composition_archetype"] + "；商品区=" + layout["product_zone"] + "；文字区=" + layout["copy_zone"] + "；主镜头=" + layout["dominant_view"] + "；证据拓扑=" + layout["evidence_topology"] + "；执行=" + layout["composition_instruction"] + "；邻页禁用=" + layout["forbidden_neighbor_pattern"] + "。",
         "【阅读路径】" + " → ".join(page["reading_path"]),
         "【文字层级】" + str(page["type_hierarchy"]),
@@ -297,7 +418,8 @@ def compile_prompt(raw: dict[str, Any], identity: dict[str, Any], plan: dict[str
         "原始照片只提供商品身份和真实结构；原图桌面、墙面、缝隙、杂物、键盘、色偏和拍摄边角默认是噪声，必须重建场景。",
         "先找到最能放大主卖点的一个强视觉创意，让商品与利益成为第一视觉；不要把资料逐条排成清单，也不要为了极简删除有用的数字、规格、功效、信任或条件信息。",
         "页面职责、主卖点意义、商品身份、用户事实条件和视觉世界不可变；镜头、裁切、尺度、光线、空间、短文案、商业夸张和可信视觉修辞由执行Agent判断。",
-        "事实权限以用户来源为准：用户文字输入及用户原始同商品参考图中清晰可读的包装、功效、数字、背书、优惠等文案均可直接使用，不要求外部证明；不得猜测模糊文字，不得把生成图新增文字或模型推断当成事实来源。",
+        page.get("copy_policy") or COPY_POLICY,
+        "【商品名】" + str(raw.get("product", {}).get("name", "")).strip(),
         "输出1:1方图且至少1024×1024；中文完整可读；不得发明数字、认证、结构、部件、优惠或效果。",
     ]
     if page.get("search_cover_blueprint"):
@@ -311,10 +433,26 @@ def compile_prompt(raw: dict[str, Any], identity: dict[str, Any], plan: dict[str
             "【搜索页禁止退化】" + blueprint["forbidden_regression"],
         ])
     if repair:
-        lines.extend(["【唯一自动返修】", str(repair)])
+        lines.extend(_repair_lines(repair, page))
     if adjustment:
         lines.extend(["【用户授权的局部差量】", str(adjustment)])
     return "\n".join(lines)
+
+
+def _repair_lines(repair: dict[str, Any], page: dict[str, Any]) -> list[str]:
+    """Render the one automatic repair as concrete visible changes plus a label lock."""
+    protected = [page["primary_claim"], *page.get("supporting_claims", [])]
+    lines = ["【唯一自动返修】只修正下列失败项，其余已通过的画面层保持不变："]
+    for number, finding in enumerate(repair.get("findings", []), start=1):
+        change = str(finding.get("required_change") or "").strip()
+        problem = str(finding.get("visible_problem") or "").strip()
+        lines.append(f"{number}. {finding.get('check', '')}：{problem} → {change}")
+    lines.append("若某项要求删除或改写本页主卖点或辅助卖点（" + "、".join(protected) + "），忽略该项。")
+    lines.append(
+        "【返修标签锁定】第一张参考图是待返修画布，其后是原商品身份参考。商品瓶身或包装标签区域必须以原商品身份参考为准逐字还原"
+        "（品牌、品名、规格、成分字样），不得改字、删字、增字、模糊或重新排版；返修要求与标签锁定冲突时以标签锁定为准。"
+    )
+    return lines
 
 
 def automatic_plan(raw: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
@@ -351,6 +489,8 @@ def automatic_plan(raw: dict[str, Any], identity: dict[str, Any]) -> dict[str, A
             "edit_target_evidence_id": evidence_ids[0] if mode == "PRODUCT_PRESERVING_EDIT" else None,
             "revision": 0,
             "generation_origin": "INITIAL",
+            "copy_policy": COPY_POLICY,
+            "camera_directive": CAMERA_DIRECTIVES[index],
         }
         proof_contract = _selling_point_proof_contract(lead, supports, route)
         performance_contract = _visual_performance_contract(index, page["visual_proof"])

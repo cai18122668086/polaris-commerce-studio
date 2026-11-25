@@ -17,6 +17,16 @@ def _unpriced_video_actions(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("POLARIS_VIDEO_CREDIT_PRICES", "{}")
 
 
+@pytest.fixture(autouse=True)
+def _fresh_planner_route_breaker() -> Iterator[None]:
+    """The route circuit breaker is process-wide; isolate it per test."""
+    from app.xinghe_agent import PLANNER_ROUTE_BREAKER
+
+    PLANNER_ROUTE_BREAKER.reset()
+    yield
+    PLANNER_ROUTE_BREAKER.reset()
+
+
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return Settings(

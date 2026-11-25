@@ -3821,6 +3821,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/main-image/missing-pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Main Image Missing Pages
+         * @description Reconciled missing pages and the charge rule shown before a redo.
+         */
+        get: operations["get_main_image_missing_pages_api_v1_workspaces__workspace_id__jobs__job_id__main_image_missing_pages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/plan": {
         parameters: {
             query?: never;
@@ -7991,11 +8011,41 @@ export interface components {
             /** Worker Id */
             worker_id?: string | null;
         };
+        /** MainImageMissingPagesResponse */
+        MainImageMissingPagesResponse: {
+            /** Charge Rule */
+            charge_rule: string;
+            /** Credits Per Page */
+            credits_per_page: number;
+            /** Delivered Pages */
+            delivered_pages: number[];
+            /** Job Id */
+            job_id: string;
+            /** Max Credits */
+            max_credits: number;
+            /** Missing Pages */
+            missing_pages: components["schemas"]["MissingMainImagePage"][];
+        };
         /**
          * MembershipRole
          * @enum {string}
          */
         MembershipRole: "owner" | "admin" | "member" | "viewer";
+        /** MissingMainImagePage */
+        MissingMainImagePage: {
+            /** Page Index */
+            page_index: number;
+            /** Page Name */
+            page_name: string;
+            /** Page Number */
+            page_number: number;
+            /** Page Role */
+            page_role: string;
+            /** Reason */
+            reason: string;
+            /** Recover From Local Result */
+            recover_from_local_result: boolean;
+        };
         /** ModelPoseAssetRequest */
         ModelPoseAssetRequest: {
             /** Pose Slug */
@@ -8622,6 +8672,8 @@ export interface components {
         };
         /** RetryRequest */
         RetryRequest: {
+            /** Confirm Missing Pages */
+            confirm_missing_pages?: number[] | null;
             /** Item Ids */
             item_ids?: string[];
             /** Local Edit Instruction */
@@ -18053,6 +18105,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomesticDetailLocalRevisionQuote"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_main_image_missing_pages_api_v1_workspaces__workspace_id__jobs__job_id__main_image_missing_pages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MainImageMissingPagesResponse"];
                 };
             };
             /** @description Validation Error */

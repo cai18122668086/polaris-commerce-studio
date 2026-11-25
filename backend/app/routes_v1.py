@@ -132,6 +132,7 @@ from .schemas_v1 import (
     JobListResponse,
     LocalEditJobCreate,
     LocalEditReviewDecision,
+    MainImageMissingPagesResponse,
     ModelPoseAssetRequest,
     ModelPoseTransferJobCreate,
     PlanConfirmRequest,
@@ -1823,6 +1824,28 @@ def get_job(
     )
 
 
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/main-image/missing-pages",
+    response_model=MainImageMissingPagesResponse,
+    tags=["jobs"],
+)
+def get_main_image_missing_pages(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> MainImageMissingPagesResponse:
+    """Reconciled missing pages and the charge rule shown before a redo."""
+
+    from .aurora_main_image_missing_pages import reconcile
+
+    return MainImageMissingPagesResponse.model_validate(reconcile(
+        session,
+        get_workspace_job(session, workspace.workspace_id, job_id),
+        request.app.state.settings.aurora_work_root,
+    ))
+
+
 def _is_preserved_amazon_review_infrastructure_failure(
     item: JobItemRecord,
 ) -> bool:
@@ -2466,9 +2489,16 @@ def retry_job(
                 "job_id": job_id,
                 **payload.model_dump(
                     mode="json",
-                    exclude={"local_edit_instruction"}
-                    if payload.local_edit_instruction is None
-                    else set(),
+                    exclude=(
+                        {"local_edit_instruction"}
+                        if payload.local_edit_instruction is None
+                        else set()
+                    )
+                    | (
+                        {"confirm_missing_pages"}
+                        if payload.confirm_missing_pages is None
+                        else set()
+                    ),
                 ),
             }
         ),
@@ -2496,6 +2526,17 @@ def retry_job(
                 "请先恢复原任务，再修改要求生成新版本。",
             )
 
+    if payload.confirm_missing_pages is not None:
+        from .aurora_main_image_missing_pages import confirm_and_release
+
+        if payload.scope != RetryScope.FAILED:
+            raise ApiError(422, "VALIDATION_ERROR", "补齐缺页只能重做失败的页。")
+        confirm_and_release(
+            session,
+            source,
+            payload.confirm_missing_pages,
+            request.app.state.settings.aurora_work_root,
+        )
     replan_main_image = require_recoverable_plan(
         session, source, allow_replanning=payload.scope == RetryScope.FAILED
     )

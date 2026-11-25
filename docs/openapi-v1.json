@@ -10061,6 +10061,50 @@
         "title": "LoginJobCreateRequest",
         "type": "object"
       },
+      "MainImageMissingPagesResponse": {
+        "properties": {
+          "charge_rule": {
+            "title": "Charge Rule",
+            "type": "string"
+          },
+          "credits_per_page": {
+            "title": "Credits Per Page",
+            "type": "integer"
+          },
+          "delivered_pages": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Delivered Pages",
+            "type": "array"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "max_credits": {
+            "title": "Max Credits",
+            "type": "integer"
+          },
+          "missing_pages": {
+            "items": {
+              "$ref": "#/components/schemas/MissingMainImagePage"
+            },
+            "title": "Missing Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_id",
+          "delivered_pages",
+          "missing_pages",
+          "credits_per_page",
+          "max_credits",
+          "charge_rule"
+        ],
+        "title": "MainImageMissingPagesResponse",
+        "type": "object"
+      },
       "MembershipRole": {
         "enum": [
           "owner",
@@ -10070,6 +10114,44 @@
         ],
         "title": "MembershipRole",
         "type": "string"
+      },
+      "MissingMainImagePage": {
+        "properties": {
+          "page_index": {
+            "title": "Page Index",
+            "type": "integer"
+          },
+          "page_name": {
+            "title": "Page Name",
+            "type": "string"
+          },
+          "page_number": {
+            "title": "Page Number",
+            "type": "integer"
+          },
+          "page_role": {
+            "title": "Page Role",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "recover_from_local_result": {
+            "title": "Recover From Local Result",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "page_index",
+          "page_number",
+          "page_name",
+          "page_role",
+          "reason",
+          "recover_from_local_result"
+        ],
+        "title": "MissingMainImagePage",
+        "type": "object"
       },
       "ModelPoseAssetRequest": {
         "additionalProperties": false,
@@ -11741,6 +11823,22 @@
       },
       "RetryRequest": {
         "properties": {
+          "confirm_missing_pages": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 6,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Missing Pages"
+          },
           "item_ids": {
             "items": {
               "type": "string"
@@ -30844,6 +30942,63 @@
           }
         ],
         "summary": "Quote Domestic Detail Local Revision",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/main-image/missing-pages": {
+      "get": {
+        "description": "Reconciled missing pages and the charge rule shown before a redo.",
+        "operationId": "get_main_image_missing_pages_api_v1_workspaces__workspace_id__jobs__job_id__main_image_missing_pages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MainImageMissingPagesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Main Image Missing Pages",
         "tags": [
           "jobs"
         ]

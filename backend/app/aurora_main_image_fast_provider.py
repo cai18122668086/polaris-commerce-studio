@@ -295,7 +295,7 @@ class FastMainImageProvider:
                     409, "FAST_MAIN_IMAGE_PLAN_CHANGED", "已有图片不属于当前冻结方案。"
                 )
             if (
-                old.get("state") in {"invoked", "unknown"}
+                old.get("state") in {"invoked", "unknown", "abandoned_unknown"}
                 and self.stage is not None
                 and old.get("attempt_id")
             ):
@@ -337,7 +337,12 @@ class FastMainImageProvider:
                         409, "FAST_MAIN_IMAGE_SCOPE_INVALID", "已有图片归属无效。"
                     )
                 return old
-            if old and (old.get("state") != "rejected" or old.get("job_id") == job.id):
+            # A user-confirmed redo (abandoned_unknown) may call again, but
+            # only from the new job and only after the local lookup above.
+            if old and (
+                old.get("state") not in {"rejected", "abandoned_unknown"}
+                or old.get("job_id") == job.id
+            ):
                 raise ApiError(
                     409,
                     "PROVIDER_OUTCOME_UNKNOWN",

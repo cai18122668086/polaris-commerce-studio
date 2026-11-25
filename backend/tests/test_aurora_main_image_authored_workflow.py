@@ -162,3 +162,9 @@ def test_page_sources_put_the_page_choice_first_and_keep_the_primary():
     assert authored.page_source_ids(strategy, 4, ids) == ["a5", "a2", "a3"]
     strategy["plan"]["pages"][0]["reference_sources"] = [3]
     assert authored.page_source_ids(strategy, 0, ids) == ["a3"]
+
+
+def test_identity_is_described_as_geometry_without_lookalike_names():
+    prompt = authored.system_prompt()
+    assert "visible geometry" in prompt
+    assert "Never name an animal, character or object" in prompt

@@ -294,6 +294,36 @@ class FastMainImageProvider:
                 raise ApiError(
                     409, "FAST_MAIN_IMAGE_PLAN_CHANGED", "已有图片不属于当前冻结方案。"
                 )
+            if (
+                old.get("state") in {"invoked", "unknown"}
+                and self.stage is not None
+                and old.get("attempt_id")
+            ):
+                # Same receipt, same page: a worker that died after the image
+                # arrived leaves it in the local stage. Recover it without a
+                # new provider call.
+                found = self.stage.path(
+                    request.workspace_id, old["job_id"], old["attempt_id"]
+                )
+                if found.is_file():
+                    data = self.stage.read(
+                        found, self.storage.validator.max_upload_bytes
+                    )
+                    image = _prepared_image(
+                        data,
+                        f"{request.workspace_id}/main-image-fast/"
+                        f"{old['job_id']}/{key}/",
+                    )
+                    old = {
+                        **old,
+                        "state": "storage_pending",
+                        "object_key": image.object_key,
+                        "sha256": image.sha256,
+                        "recovered_from": "local_stage",
+                    }
+                    receipts[key] = old
+                    job.configuration = {**job.configuration, RECEIPTS_KEY: receipts}
+                    session.commit()
             if old.get("state") in {"returned", "storage_pending"} or (
                 old.get("state") == "rejected"
                 and old.get("object_key")

@@ -1684,7 +1684,18 @@ class ExecutionCoordinator:
                 return None
 
             recovered, expired_handled = self._recover_expired_attempt(session, job)
-            if expired_handled:
+            handled_any = expired_handled
+            # One delivery resolves every expired attempt of the job instead of
+            # one per broker delivery (each delivery used to advance one page).
+            for _ in range(32):
+                if recovered is not None or not expired_handled:
+                    break
+                session.flush()
+                recovered, expired_handled = self._recover_expired_attempt(
+                    session, job
+                )
+                handled_any = handled_any or expired_handled
+            if handled_any:
                 session.commit()
             if recovered is not None:
                 return recovered
@@ -2069,6 +2080,55 @@ class ExecutionCoordinator:
         attempt.error_code = "PROVIDER_OUTCOME_UNKNOWN"
         attempt.error_message = "生成请求已发出但结果未确认，已停止自动重试。"
         attempt.finished_at = now
+        if self._fast_main_image_record(job):
+            # The interrupted call was sent: count it and keep its supplier
+            # cost separate from customer credits (unconfirmed, never billed
+            # to the customer unless a page is delivered).
+            session.add(
+                UsageEventRecord(
+                    workspace_id=job.workspace_id,
+                    job_id=job.id,
+                    job_item_id=item.id,
+                    attempt_id=attempt.id,
+                    provider=attempt.provider or self.provider.name,
+                    model=getattr(self.provider, "model", "unknown"),
+                    operation=job.type,
+                    provider_request_id=attempt.provider_request_id,
+                    quality=item.quality,
+                    usage_reported=False,
+                    raw_usage={
+                        "network_requests": 1,
+                        "interrupted_by_worker_loss": True,
+                        "supplier_cost_status": "unconfirmed",
+                        "customer_charge": "none_unless_delivered",
+                    },
+                    pricing_version=getattr(
+                        self.provider, "pricing_version", "unknown"
+                    ),
+                    currency=job.currency or "USD",
+                    estimated_cost_micros=None,
+                    actual_cost_micros=None,
+                )
+            )
+            if attempt.attempt_no <= self.max_aurora_retries:
+                # Re-enter the provider only to look up this page's existing
+                # result by its receipt (local stage / storage). The provider
+                # never issues a new image call for an unresolved receipt.
+                item.status = JobItemStatus.RETRY_WAIT.value
+                item.stage = "retry_wait_outcome_reconciliation"
+                item.error_code = "PROVIDER_OUTCOME_UNKNOWN"
+                item.error_message = (
+                    "Worker lease expired; looking up the existing page result."
+                )
+                item.error_details = {
+                    "retryable": True,
+                    "outcome_unknown": True,
+                    "provider_idempotency_key": attempt.provider_idempotency_key,
+                }
+                item.next_attempt_at = now
+                item.finished_at = None
+                item.state_version += 1
+                return None, True
         pair_reconcile = (
             job.type == JobType.DETAIL_PACK.value
             and not self._is_domestic_detail_job_record(job)

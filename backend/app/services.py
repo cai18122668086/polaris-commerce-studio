@@ -937,7 +937,7 @@ def reserve_credits(
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "CREDIT_ACCOUNT_NOT_CONFIGURED",
-            "工作区额度账户尚未配置。",
+            "积分账户尚未配置，请联系帮助。",
         )
     enforced = credit_enforcement_enabled(workspace_id)
     if enforced:
@@ -949,7 +949,7 @@ def reserve_credits(
         raise ApiError(
             status.HTTP_402_PAYMENT_REQUIRED,
             "BUDGET_LIMIT_EXCEEDED",
-            "当前工作区可用额度不足。",
+            "当前可用积分不足，请充值积分后再试。",
             {"required_credits": credits, "available_credits": available},
         )
     reservation = CreditReservationRecord(
@@ -983,7 +983,7 @@ def reserve_credits(
         )
         if cast(CursorResult[Any], changed).rowcount != 1:
             raise ApiError(
-                402, "BUDGET_LIMIT_EXCEEDED", "当前可用积分不足，请充值后再试。"
+                402, "BUDGET_LIMIT_EXCEEDED", "当前可用积分不足，请充值积分后再试。"
             )
         session.refresh(account)
     session.add(reservation)

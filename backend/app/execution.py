@@ -1152,7 +1152,9 @@ class ExecutionCoordinator:
             item.status = JobItemStatus.FAILED.value
             item.stage = "set_audit_failed"
             item.error_code = "AURORA_SET_AUDIT_FAILED"
-            item.error_message = "Aurora v2.0 six-page set audit did not pass."
+            item.error_message = (
+                "六张图片已生成，但整组一致性检查未通过，暂不能作为完整套图交付。"
+            )
             item.error_details = {
                 "retryable": False,
                 "scope": "set_audit",
@@ -2070,7 +2072,7 @@ class ExecutionCoordinator:
         # the result is unknown and the request must never be issued blindly.
         attempt.status = AttemptStatus.OUTCOME_UNKNOWN.value
         attempt.error_code = "PROVIDER_OUTCOME_UNKNOWN"
-        attempt.error_message = "Worker lease expired after provider invocation."
+        attempt.error_message = "生成请求已发出但结果未确认，已停止自动重试。"
         attempt.finished_at = now
         pair_reconcile = (
             job.type == JobType.DETAIL_PACK.value
@@ -2343,7 +2345,7 @@ class ExecutionCoordinator:
                 result,
                 outcome=ProviderOutcome.FAILED,
                 error_code="OUTPUT_STORAGE_UNAVAILABLE",
-                error_message="Generated output storage is unavailable.",
+                error_message="结果存储暂不可用，本次图片未能保存。",
                 retryable=False,
                 artifact=None,
             )
@@ -3001,11 +3003,11 @@ class ExecutionCoordinator:
             attempt.status = AttemptStatus.FAILED.value
             attempt.provider_request_id = result.provider_request_id
             attempt.error_code = "USAGE_RECORD_FAILED"
-            attempt.error_message = "Usage could not be recorded; execution closed."
+            attempt.error_message = "生成用量未能记录，已停止本次生成。"
             attempt.finished_at = now
             item.status = JobItemStatus.FAILED.value
             item.error_code = "USAGE_RECORD_FAILED"
-            item.error_message = "Usage could not be recorded; execution closed."
+            item.error_message = "生成用量未能记录，已停止本次生成。"
             item.finished_at = now
             item.state_version += 1
             session.add(

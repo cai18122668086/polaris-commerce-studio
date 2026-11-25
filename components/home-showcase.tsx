@@ -122,7 +122,7 @@ export function HomeHomeReveal() {
 const SHOWCASE_TOOLS = [
   { id: "change-background", label: "更换背景", title: "同一件商品，不止一种好场景。", description: "告别单调的展示背景，让光影、材质与空间一起衬托商品。", href: "/workspace/product-image/change-background" },
   { id: "local-edit", label: "一句话改图", title: "小小的改变，也能让质感出彩。", description: "圈出要修改的局部，用自然语言表达想法，让商品细节更贴近你的创意。", href: "/workspace/local-edit" },
-  { id: "reference-remix", label: "一键模仿", title: "好灵感，变成自己的商品视觉。", description: "借鉴参考图的构图与氛围，为自己的商品找到新的表达方式。", href: "/workspace/reference-remix" },
+  { id: "reference-remix", label: "一键复刻", title: "好灵感，变成自己的商品视觉。", description: "借鉴参考图的构图与氛围，为自己的商品找到新的表达方式。", href: "/style-replica" },
 ] as const;
 
 // The latest homepage promotes replica instead of background editing. Keep this
@@ -205,7 +205,7 @@ export function HomeProductShowcase() {
 const CREATIVE_ROLES = [
   { role: "店铺运营", avatar: "operations", title: "我的每次上新，都想有好视觉", text: "我最在意商品能不能第一眼抓住人。主图把质感拍出来，详情再把卖点讲清楚，整套看起来统一，上新才更有底气。", tag: "主图 · 换背景" },
   { role: "服饰商家", avatar: "fashion", title: "我想把穿搭灵感，直接展示出来", text: "同一件衣服，我总想多试几种模特和场景。不只是让买家看清款式，更希望他们能想象，穿在自己身上是什么感觉。", tag: "模特 · 商品试穿" },
-  { role: "品牌主理人", avatar: "brand", title: "我的商品，要有自己的表达", text: "看到好构图，我也会心动。但我更想保留自己商品的特点，把喜欢的氛围变成品牌自己的视觉，而不是千篇一律的套版。", tag: "参考图 · 一键模仿" },
+  { role: "品牌主理人", avatar: "brand", title: "我的商品，要有自己的表达", text: "看到好构图，我也会心动。但我更想保留自己商品的特点，把喜欢的氛围变成品牌自己的视觉，而不是千篇一律的套版。", tag: "参考图 · 一键复刻" },
   { role: "跨境卖家", avatar: "crossborder", title: "我想用一整套图，把商品讲明白", text: "我的主图要吸引注意，副图要说明细节，A+ 还要讲好使用场景。把这些内容放在一起规划，才更像是在完整地介绍一个商品。", tag: "亚马逊套图" },
   { role: "电商设计师", avatar: "designer", title: "我想把时间，留给更好的创意", text: "有了方向，我就想多试几步。换个背景、调整一个细节、参考一种光影，让 AI 帮我展开思路，我再把注意力放回商品和表达。", tag: "一句话改图" },
   { role: "家居商家", avatar: "home", title: "我卖的不只是物件，也是一种生活", text: "我希望商品走进合适的居家场景。自然的光、舒服的空间，让买家一眼就能想到，它放在自己家里会是什么样子。", tag: "场景主图" },

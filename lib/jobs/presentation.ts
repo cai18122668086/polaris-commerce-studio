@@ -4,7 +4,7 @@ const JOB_TYPE_LABELS: Record<Job["type"], string> = {
   product_replica: "旧版商品复刻",
   local_edit: "一句话改图",
   product_image: "万能生图",
-  reference_remix: "一键模仿",
+  reference_remix: "一键复刻",
   model_pose_transfer: "模特换姿势",
   creative_image: "电商创意图",
   detail_pack: "商品详情图",
@@ -67,7 +67,7 @@ const JOB_ITEM_STATUS_LABELS: Record<JobItemStatus, string> = {
   succeeded: "成功",
   failed: "失败",
   cancelled: "已取消",
-  skipped: "已跳过",
+  skipped: "未生成",
   reused: "已复用",
 };
 

@@ -1596,6 +1596,68 @@ def test_asset_library_hides_inputs_and_helper_assets(client: TestClient) -> Non
     assert body["total"] == len(listed)
 
 
+def test_qa_failed_amazon_outputs_are_hidden_and_not_downloadable(
+    client: TestClient,
+) -> None:
+    """Withheld outputs (is_deliverable=false) never reach the library."""
+
+    job_id, failed_item_id = _seed_partial_retry_source(
+        client,
+        job_type=JobType.AMAZON_VISUAL_SUITE,
+        failed_error_details={"qa_failed_item": True},
+    )
+    failed = upload_asset(client, filename="amazon-qa-failed.png")
+    final = upload_asset(client, filename="amazon-delivered.png")
+    superseded = upload_asset(client, filename="amazon-superseded.png")
+    with client.app.state.session_factory() as session:
+        passed_item_id = session.scalars(
+            select(JobItemRecord.id).where(
+                JobItemRecord.job_id == job_id, JobItemRecord.id != failed_item_id
+            )
+        ).first()
+        for ordinal, (asset, item_id, deliverable) in enumerate(
+            (
+                (failed, failed_item_id, False),
+                (final, passed_item_id, True),
+                (superseded, passed_item_id, False),
+            )
+        ):
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    job_item_id=item_id,
+                    asset_id=asset["id"],
+                    direction="output",
+                    role="amazon_visual",
+                    ordinal=ordinal,
+                    is_deliverable=deliverable,
+                    validation={},
+                )
+            )
+        session.commit()
+
+    response = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets", params={"include_total": True}
+    )
+    assert response.status_code == 200, response.text
+    listed = {item["id"] for item in response.json()["items"]}
+    assert final["id"] in listed
+    assert not {failed["id"], superseded["id"]} & listed
+
+    blocked = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets/{failed['id']}/access-url",
+        json={"disposition": "attachment", "variant": "original"},
+    )
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["error"]["code"] == "ASSET_NOT_DELIVERABLE"
+    allowed = client.post(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets/{final['id']}/access-url",
+        json={"disposition": "attachment", "variant": "original"},
+    )
+    assert allowed.status_code == 200, allowed.text
+
+
 def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
     client: TestClient,
 ) -> None:

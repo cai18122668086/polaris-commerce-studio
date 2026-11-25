@@ -1067,9 +1067,10 @@ def _is_intermediate_only_asset(workspace_id: str) -> Any:
     """Match pipeline intermediates and helper assets.
 
     The asset library lists uploads and final results only: local-edit
-    raw/locked candidates, selection masks, QA contact sheets and catalog pose
-    references are hidden. An asset that a job also delivers as an output
-    stays visible.
+    raw/locked candidates, selection masks, QA contact sheets, catalog pose
+    references and outputs a job withheld from delivery (e.g. Amazon images
+    that failed QA, superseded edit versions) are hidden. An asset that a job
+    also delivers as an output stays visible.
     """
 
     def linked(*conditions: Any) -> Any:
@@ -1098,6 +1099,11 @@ def _is_intermediate_only_asset(workspace_id: str) -> Any:
                 ),
                 # Helper outputs (e.g. the Amazon QA contact sheet) and masks.
                 linked(JobAssetRecord.role.in_(_LIBRARY_HELPER_ROLES)),
+                # Outputs the job withheld (QA-failed, failed or superseded).
+                linked(
+                    JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                    JobAssetRecord.is_deliverable.is_(False),
+                ),
                 # Catalog pose references the system materialized for a job;
                 # a pose the customer uploaded stays in the library.
                 and_(
@@ -1302,11 +1308,38 @@ def _signed_asset_url(
     return url
 
 
+def _is_failed_withheld_output(
+    session: Session, workspace_id: str, asset_id: str
+) -> bool:
+    """True for an output of a failed item (e.g. Amazon QA) never delivered."""
+
+    links = session.execute(
+        select(JobAssetRecord.is_deliverable, JobItemRecord.status)
+        .outerjoin(JobItemRecord, JobItemRecord.id == JobAssetRecord.job_item_id)
+        .where(
+            JobAssetRecord.workspace_id == workspace_id,
+            JobAssetRecord.asset_id == asset_id,
+            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+        )
+    ).all()
+    return (
+        bool(links)
+        and not any(deliverable for deliverable, _ in links)
+        and any(item_status == JobItemStatus.FAILED.value for _, item_status in links)
+    )
+
+
 def _asset_for_storage(
     session: Session, workspace_id: str, asset_id: str
 ) -> AssetRecord:
     """Return loaded scalar metadata without holding a connection during I/O."""
     asset = get_workspace_asset(session, workspace_id, asset_id)
+    if _is_failed_withheld_output(session, workspace_id, asset.id):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "ASSET_NOT_DELIVERABLE",
+            "这张图未通过质检，不提供查看或下载。",
+        )
     from .local_edit_billing import require_image_access
     require_image_access(session, asset)
     session.expunge(asset)

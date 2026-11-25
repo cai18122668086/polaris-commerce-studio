@@ -26,10 +26,11 @@ const statusMap: Record<
   cancelled: { label: "已取消", className: "status-neutral", icon: Ban },
 };
 
-/** Pass jobType so single-image jobs never read as a whole-set confirmation. */
-export function StatusBadge({ status, jobType }: { status: JobStatus; jobType?: Job["type"] }) {
+/** Pass jobType so single-image jobs never read as a whole-set confirmation.
+ *  `label` overrides the text for item-level states that reuse a job style. */
+export function StatusBadge({ status, jobType, label: labelOverride }: { status: JobStatus; jobType?: Job["type"]; label?: string }) {
   const config = statusMap[status];
-  const label = status === "awaiting_final_review" && jobType ? jobStatusLabel(status, jobType) : config.label;
+  const label = labelOverride ?? (status === "awaiting_final_review" && jobType ? jobStatusLabel(status, jobType) : config.label);
   const Icon = config.icon;
 
   return (

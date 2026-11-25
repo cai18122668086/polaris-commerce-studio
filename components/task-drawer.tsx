@@ -165,7 +165,7 @@ export function TaskDrawer({
         <div className="drawer-list">
           {signedOut && <div className="api-state drawer-signed-out"><p><strong>登录后查看任务进度</strong><span>生成记录、进度和结果会保存在你的账户里。</span></p><Link className="primary-button" href={loginHref(pathname)}>登录 / 注册</Link></div>}
           {!signedOut && (workspaceError || jobs.error || cancel.error || retry.error) && <div className="api-state api-state--error" role="alert"><p>{errorMessage(workspaceError ?? jobs.error ?? cancel.error ?? retry.error)}</p><button className="secondary-button" onClick={() => void jobs.refetch()}>重新加载任务</button></div>}
-          {jobs.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>加载任务中…</p></div>}
+          {!signedOut && jobs.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>加载任务中…</p></div>}
           {!workspaceError && !jobs.error && !jobs.isPending && visibleJobs.length === 0 && <div className="api-state"><p>暂无生成任务。</p></div>}
           {visibleJobs.map((job) => (
             <article key={job.id} className="drawer-job drawer-job--api">

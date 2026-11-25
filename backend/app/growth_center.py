@@ -116,15 +116,18 @@ def invitation_center(
         .outerjoin(totals, totals.c.invitee == UserRecord.id)
         .where(InvitationRecord.inviter_user_id == user.id)
     )
-    counts: dict[str, int] = dict(
-        session.execute(
+    # .tuples(): SQLAlchemy 2.0 (the lock) types rows as Row[Any] and 2.1 as Row[*Ts];
+    # only TupleResult unpacks to typed values under both versions.
+    counts: dict[str, int] = {
+        payment_status: count
+        for payment_status, count in session.execute(
             select(paid_status, func.count())
             .select_from(InvitationRecord)
             .outerjoin(purchases, purchases.c.buyer == InvitationRecord.invitee_user_id)
             .where(InvitationRecord.inviter_user_id == user.id)
             .group_by(paid_status)
-        ).all()
-    )
+        ).tuples()
+    }
     if status != "all":
         statement = statement.where(paid_status == status)
     records = []

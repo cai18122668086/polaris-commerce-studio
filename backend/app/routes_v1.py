@@ -1056,6 +1056,33 @@ async def materialize_model_pose_asset(
     return response
 
 
+def _is_intermediate_only_asset(workspace_id: str) -> Any:
+    """Match pipeline intermediates (e.g. local-edit raw/locked candidates).
+
+    The asset library lists uploads and final results only. An asset that a
+    job also delivers as an output stays visible.
+    """
+
+    def linked(*conditions: Any) -> Any:
+        return (
+            select(JobAssetRecord.id)
+            .where(
+                JobAssetRecord.workspace_id == workspace_id,
+                JobAssetRecord.asset_id == AssetRecord.id,
+                *conditions,
+            )
+            .exists()
+        )
+
+    return and_(
+        linked(JobAssetRecord.direction == JobAssetDirection.INTERMEDIATE.value),
+        ~linked(
+            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+            JobAssetRecord.is_deliverable.is_(True),
+        ),
+    )
+
+
 @router.get(
     "/workspaces/{workspace_id}/assets",
     response_model=AssetListResponse,
@@ -1080,6 +1107,7 @@ def list_assets(
     filters: list[Any] = [
         AssetRecord.workspace_id == workspace.workspace_id,
         asset_is_available(),
+        ~_is_intermediate_only_asset(workspace.workspace_id),
     ]
     if origin_kind is not None:
         filters.append(AssetRecord.origin_kind == origin_kind.value)
@@ -1703,7 +1731,7 @@ def list_jobs(
                 item,
                 output_asset_count=output_summaries.get(item.id, (0, None))[0],
                 primary_output_asset_id=output_summaries.get(item.id, (0, None))[1],
-                generated_set_complete=_is_audit_only_generated_set(
+                audit_only_set_failure=_is_audit_only_generated_set(
                     item,
                     item_groups.get(item.id, []),
                     output_summaries.get(item.id, (0, None))[0],

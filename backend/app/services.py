@@ -434,7 +434,12 @@ def _is_audit_only_generated_set(
     items: Sequence[JobItemRecord],
     output_asset_count: int,
 ) -> bool:
-    """Treat the legacy synthetic set-audit marker as a QA warning only."""
+    """Detect a six-page set whose only failure is the set-audit marker.
+
+    The page images are preserved as deliverables, but the set audit did not
+    pass, so the job stays honestly ``partial``. A FAILED-scope retry never
+    regenerates such a preserved page, so the retry action would be a dead end.
+    """
 
     return bool(
         job.type == JobType.DOMESTIC_MAIN_IMAGE.value
@@ -454,28 +459,26 @@ def job_list_response(
     *,
     output_asset_count: int = 0,
     primary_output_asset_id: str | None = None,
-    generated_set_complete: bool = False,
+    audit_only_set_failure: bool = False,
 ) -> JobListItemResponse:
-    status = JobStatus.COMPLETED if generated_set_complete else JobStatus(job.status)
+    actions = allowed_actions(job)
+    if audit_only_set_failure:
+        actions = [action for action in actions if action != "retry"]
     return JobListItemResponse(
         id=job.id,
         workspace_id=job.workspace_id,
         type="product_replica" if job.type == "product_replica" else JobType(job.type),
-        status=status,
-        stage="completed" if generated_set_complete else job.stage,
+        status=JobStatus(job.status),
+        stage=job.stage,
         display_name=job.display_name,
         task_preset=job_task_preset(job),
         progress=job.progress,
         expected_item_count=job.expected_item_count,
-        succeeded_item_count=(
-            job.expected_item_count
-            if generated_set_complete
-            else job.succeeded_item_count
-        ),
-        failed_item_count=0 if generated_set_complete else job.failed_item_count,
+        succeeded_item_count=job.succeeded_item_count,
+        failed_item_count=job.failed_item_count,
         output_asset_count=output_asset_count,
         primary_output_asset_id=primary_output_asset_id,
-        allowed_actions=["clone"] if generated_set_complete else allowed_actions(job),
+        allowed_actions=actions,
         cost=cost_summary(job),
         created_at=job.created_at,
         updated_at=job.updated_at,
@@ -514,7 +517,7 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         if relation.direction == JobAssetDirection.OUTPUT.value
         and relation.is_deliverable
     ]
-    generated_set_complete = _is_audit_only_generated_set(
+    audit_only_set_failure = _is_audit_only_generated_set(
         job, items, len(deliverable_outputs)
     )
     base = job_list_response(
@@ -523,7 +526,7 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         primary_output_asset_id=(
             deliverable_outputs[0].asset_id if deliverable_outputs else None
         ),
-        generated_set_complete=generated_set_complete,
+        audit_only_set_failure=audit_only_set_failure,
     ).model_dump()
     if (
         job.type == JobType.LOCAL_EDIT.value

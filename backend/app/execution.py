@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import logging
 import re
 import socket
@@ -1081,9 +1082,20 @@ class ExecutionCoordinator:
         attempts = 3
         retry_delay_seconds = 5.0
         last_error: Exception | None = None
+        try:
+            accepts_attempt = "audit_attempt" in inspect.signature(audit).parameters
+        except (TypeError, ValueError):
+            accepts_attempt = False
         for attempt in range(1, attempts + 1):
             try:
-                return bool(await audit(job_id)), None
+                # A repeated call must be a new planner request: the durable
+                # transport journal replays a saved (failed) result by key.
+                verdict = (
+                    await audit(job_id, audit_attempt=attempt)
+                    if accepts_attempt
+                    else await audit(job_id)
+                )
+                return bool(verdict), None
             except Exception as exc:
                 last_error = exc
                 if attempt >= attempts:

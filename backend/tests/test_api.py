@@ -1396,6 +1396,141 @@ def test_domestic_set_audit_failure_preserves_deliverables_on_failed_retry(
         ] == [2, 3, 4, 5]
 
 
+def test_domestic_set_audit_failure_is_reported_as_partial(
+    client: TestClient,
+) -> None:
+    """A failed set audit must not be presented as a completed 6/6 job."""
+
+    asset = upload_asset(client, filename="aurora-set-audit.png")
+    job_id = f"job_{uuid4().hex}"
+    now = utc_now()
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.DOMESTIC_MAIN_IMAGE.value,
+                status=JobStatus.PARTIAL.value,
+                stage=JobStatus.PARTIAL.value,
+                display_name="Aurora set audit status fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=6,
+                succeeded_item_count=5,
+                failed_item_count=1,
+                currency="USD",
+                finished_at=now,
+            )
+        )
+        for ordinal in range(6):
+            item_id = f"item_{uuid4().hex}"
+            set_audit_failed = ordinal == 5
+            session.add(
+                JobItemRecord(
+                    id=item_id,
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    item_key=f"PAGE-{ordinal + 1:02d}",
+                    ordinal=ordinal,
+                    status=(
+                        JobItemStatus.FAILED.value
+                        if set_audit_failed
+                        else JobItemStatus.REUSED.value
+                    ),
+                    configuration={},
+                    error_code=(
+                        "AURORA_SET_AUDIT_FAILED" if set_audit_failed else None
+                    ),
+                    finished_at=now,
+                )
+            )
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    job_item_id=item_id,
+                    asset_id=asset["id"],
+                    direction="output",
+                    role="domestic_main_image",
+                    ordinal=ordinal,
+                    is_deliverable=True,
+                    validation={},
+                )
+            )
+        session.commit()
+
+    listed = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs")
+    assert listed.status_code == 200, listed.text
+    row = next(item for item in listed.json()["items"] if item["id"] == job_id)
+    detail = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/jobs/{job_id}")
+    assert detail.status_code == 200, detail.text
+    for body in (row, detail.json()):
+        assert body["status"] == "partial"
+        assert body["stage"] == "partial"
+        assert body["succeeded_item_count"] == 5
+        assert body["failed_item_count"] == 1
+        # A FAILED-scope retry never regenerates a preserved set-audit page.
+        assert "retry" not in body["allowed_actions"]
+        assert "clone" in body["allowed_actions"]
+
+
+def test_asset_library_hides_pipeline_intermediates(client: TestClient) -> None:
+    upload = upload_asset(client, filename="source.png")
+    raw = upload_asset(client, filename="gen_raw.png")
+    locked = upload_asset(client, filename="gen_locked.png")
+    result = upload_asset(client, filename="local-edit-result.png")
+    job_id = f"job_{uuid4().hex}"
+    with client.app.state.session_factory() as session:
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.LOCAL_EDIT.value,
+                status=JobStatus.COMPLETED.value,
+                stage=JobStatus.COMPLETED.value,
+                display_name="Local edit intermediates fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=1,
+                succeeded_item_count=1,
+                currency="USD",
+                finished_at=utc_now(),
+            )
+        )
+        for ordinal, (asset, direction, role, deliverable) in enumerate(
+            (
+                (upload, "input", "source", False),
+                (raw, "intermediate", "provider_raw", False),
+                (locked, "intermediate", "locked_candidate", False),
+                (result, "output", "local_edit_result", True),
+            )
+        ):
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    asset_id=asset["id"],
+                    direction=direction,
+                    role=role,
+                    ordinal=ordinal,
+                    is_deliverable=deliverable,
+                    validation={},
+                )
+            )
+        session.commit()
+
+    response = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets", params={"include_total": True}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    listed = {item["id"] for item in body["items"]}
+    assert {upload["id"], result["id"]} <= listed
+    assert raw["id"] not in listed
+    assert locked["id"] not in listed
+    assert body["total"] == len(listed)
+
+
 def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
     client: TestClient,
 ) -> None:

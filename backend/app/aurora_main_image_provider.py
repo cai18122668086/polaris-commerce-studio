@@ -1408,6 +1408,72 @@ class AuroraMainImageProvider:
                     "真实物理证据和已核验事实闭合。"
                 )
 
+        # The immutable Harness rejects a judgment whose passed checks contradict
+        # its own observations (``require`` -> HARNESS_BLOCKED), which ends the
+        # page without its automatic repair. Closure/spec pages hit this often:
+        # the reviewer passes selling-point dominance on the full pack shot while
+        # observing that the claim evidence is not the primary visual. Mirror
+        # every such Harness invariant here and downgrade the contradicted pass
+        # to a normal material failure so the page enters its one-repair state.
+        layout = _mapping(
+            _mapping(generation_request.get("page_contract")).get("layout_contract")
+        )
+        layout_matches = bool(layout) and all(
+            observations.get(observation_key) == layout.get(contract_key)
+            for observation_key, contract_key in (
+                ("composition_archetype_seen", "composition_archetype"),
+                ("product_zone_seen", "product_zone"),
+                ("copy_zone_seen", "copy_zone"),
+                ("dominant_view_seen", "dominant_view"),
+                ("evidence_topology_seen", "evidence_topology"),
+            )
+        )
+        neighbor_difference = str(
+            observations.get("neighbor_layout_difference") or ""
+        ).strip()
+        contradictions: list[tuple[str, bool, str]] = [
+            (
+                "selling_point_visual_dominance",
+                observations.get("evidence_is_primary_visual") is True,
+                "卖点证据不是画面首要视觉，卖点视觉主导不能判定通过。",
+            ),
+            (
+                "evidence_relation_visible",
+                bool(observations.get("physical_evidence")),
+                "画面没有可见的物理证据，证据关系不能判定通过。",
+            ),
+        ]
+        if layout:
+            contradictions.extend(
+                [
+                    (
+                        "layout_not_cloned",
+                        layout_matches,
+                        "可见空间结构未满足本页版式合同，版式独立性不能判定通过。",
+                    ),
+                    (
+                        "approved_plan_fidelity_match",
+                        layout_matches,
+                        "可见版式未满足已批准方案的版式合同。",
+                    ),
+                ]
+            )
+        if expected_page > 0:
+            contradictions.append(
+                (
+                    "layout_not_cloned",
+                    len(neighbor_difference) >= 12,
+                    "未观察到与上一页的具体可见版式差异。",
+                )
+            )
+        checks_by_canonical_name = {str(item.get("name")): item for item in checks}
+        for check_name, consistent, evidence in contradictions:
+            check = checks_by_canonical_name[check_name]
+            if check.get("passed") is True and not consistent:
+                check["passed"] = False
+                check["score"] = min(float(check.get("score", 69)), 69)
+                check["observed_evidence"] = evidence
+
         # A contradictory passed=true/score<70 response must become a normal
         # material failure so the Harness can enter its one-repair state rather
         # than terminating the entire job during validation.
@@ -1482,7 +1548,9 @@ class AuroraMainImageProvider:
         normalized["audit_complete"] = True
         return normalized
 
-    async def audit_parallel_set(self, job_id: str) -> bool:
+    async def audit_parallel_set(
+        self, job_id: str, audit_attempt: int = 1
+    ) -> bool:
         """Merge six page-local sessions and run the native v2.0 set audit."""
 
         with self.session_factory() as db:
@@ -1607,7 +1675,9 @@ class AuroraMainImageProvider:
                 product_information=(),
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
-                idempotency_key=f"{job_id}:aurora-v20-set-audit:v1",
+                idempotency_key=_set_audit_idempotency_key(
+                    f"{job_id}:aurora-v20-set-audit:v1", audit_attempt
+                ),
                 system_prompt=_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
@@ -1665,7 +1735,9 @@ class AuroraMainImageProvider:
             db.commit()
         return passed
 
-    async def audit_sequential_v20_set(self, job_id: str) -> bool:
+    async def audit_sequential_v20_set(
+        self, job_id: str, audit_attempt: int = 1
+    ) -> bool:
         """Run the native v2.0 set audit over the shared sequential session."""
 
         with self.session_factory() as db:
@@ -1708,7 +1780,9 @@ class AuroraMainImageProvider:
                 product_information=(),
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
-                idempotency_key=f"{job_id}:aurora-v20-sequential-set-audit:v1",
+                idempotency_key=_set_audit_idempotency_key(
+                    f"{job_id}:aurora-v20-sequential-set-audit:v1", audit_attempt
+                ),
                 system_prompt=_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
@@ -2490,6 +2564,19 @@ def _failed_image_result(
         model_name=provider.gateway.image_model,
         pricing_version=provider.gateway.pricing_version,
     )
+
+
+def _set_audit_idempotency_key(base: str, attempt: int) -> str:
+    """Give each coordinator set-audit attempt its own durable planner call.
+
+    The planner transport journal replays a saved result for a repeated
+    idempotency key, including a failed one. With one fixed key, the
+    coordinator's set-audit retries replayed the first non-JSON response
+    instead of asking the reviewer again. Attempt 1 keeps the historical key so
+    crash recovery still replays an already paid verdict.
+    """
+
+    return base if attempt <= 1 else f"{base}:attempt-{attempt}"
 
 
 def _request_uses_parallel_v20(request: ProviderRequest) -> bool:

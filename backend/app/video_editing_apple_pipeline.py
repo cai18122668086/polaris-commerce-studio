@@ -573,6 +573,7 @@ def render_suite(
             )
 
         def compiler(resolved: dict, **kwargs: Any) -> dict:
+            from .bihuo_suite.title_fit import fitted_compiler
             from .bihuo_suite.video_materials import compile_request as compile_media
 
             kwargs.pop("fonts", None)
@@ -580,7 +581,9 @@ def render_suite(
             return compile_media(
                 template_id,
                 resolved,
-                compile_request,
+                # Fit the planned title to this suite's width before compiling;
+                # rendering must never fail on title width after paid planning.
+                fitted_compiler(compile_request, lambda tid: definition(tid)["bundle"]),
                 root=root,
                 settings=settings,
                 guard=guard,

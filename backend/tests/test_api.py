@@ -1531,6 +1531,71 @@ def test_asset_library_hides_pipeline_intermediates(client: TestClient) -> None:
     assert body["total"] == len(listed)
 
 
+def test_asset_library_hides_inputs_and_helper_assets(client: TestClient) -> None:
+    """Masks, QA contact sheets and catalog poses are helpers, not library finals."""
+
+    upload = upload_asset(client, filename="product.png")
+    uploaded_pose = upload_asset(client, filename="my-pose.png")
+    mask = upload_asset(client, filename="selection.png", media_kind="mask")
+    sheet = upload_asset(client, filename="contact-sheet.png")
+    catalog_pose = upload_asset(client, filename="catalog-pose.png")
+    final = upload_asset(client, filename="amazon-main.png")
+    job_id = f"job_{uuid4().hex}"
+    with client.app.state.session_factory() as session:
+        pose_record = session.get(AssetRecord, catalog_pose["id"])
+        assert pose_record is not None
+        pose_record.origin_kind = "imported"
+        session.add(
+            JobRecord(
+                id=job_id,
+                workspace_id=WORKSPACE_ID,
+                type=JobType.AMAZON_VISUAL_SUITE.value,
+                status=JobStatus.COMPLETED.value,
+                stage=JobStatus.COMPLETED.value,
+                display_name="Library helper fixture",
+                progress=100,
+                configuration={},
+                expected_item_count=1,
+                succeeded_item_count=1,
+                currency="USD",
+                finished_at=utc_now(),
+            )
+        )
+        for ordinal, (asset, direction, role, deliverable) in enumerate(
+            (
+                (upload, "input", "product_reference", False),
+                (uploaded_pose, "input", "pose_reference", False),
+                (mask, "input", "selection_mask", False),
+                (catalog_pose, "input", "pose_reference", False),
+                (sheet, "output", "amazon_contact_sheet", False),
+                (final, "output", "amazon_visual", True),
+            )
+        ):
+            session.add(
+                JobAssetRecord(
+                    workspace_id=WORKSPACE_ID,
+                    job_id=job_id,
+                    asset_id=asset["id"],
+                    direction=direction,
+                    role=role,
+                    ordinal=ordinal,
+                    is_deliverable=deliverable,
+                    validation={},
+                )
+            )
+        session.commit()
+
+    response = client.get(
+        f"/api/v1/workspaces/{WORKSPACE_ID}/assets", params={"include_total": True}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    listed = {item["id"] for item in body["items"]}
+    assert {upload["id"], uploaded_pose["id"], final["id"]} <= listed
+    assert not {mask["id"], sheet["id"], catalog_pose["id"]} & listed
+    assert body["total"] == len(listed)
+
+
 def test_parallel_aurora_retry_requeues_synthetic_style_blockers(
     client: TestClient,
 ) -> None:

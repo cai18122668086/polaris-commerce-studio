@@ -1060,11 +1060,16 @@ async def materialize_model_pose_asset(
     return response
 
 
-def _is_intermediate_only_asset(workspace_id: str) -> Any:
-    """Match pipeline intermediates (e.g. local-edit raw/locked candidates).
+_LIBRARY_HELPER_ROLES = ("selection_mask", "amazon_contact_sheet")
 
-    The asset library lists uploads and final results only. An asset that a
-    job also delivers as an output stays visible.
+
+def _is_intermediate_only_asset(workspace_id: str) -> Any:
+    """Match pipeline intermediates and helper assets.
+
+    The asset library lists uploads and final results only: local-edit
+    raw/locked candidates, selection masks, QA contact sheets and catalog pose
+    references are hidden. An asset that a job also delivers as an output
+    stays visible.
     """
 
     def linked(*conditions: Any) -> Any:
@@ -1078,11 +1083,28 @@ def _is_intermediate_only_asset(workspace_id: str) -> Any:
             .exists()
         )
 
-    return and_(
-        linked(JobAssetRecord.direction == JobAssetDirection.INTERMEDIATE.value),
-        ~linked(
-            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
-            JobAssetRecord.is_deliverable.is_(True),
+    delivered = linked(
+        JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+        JobAssetRecord.is_deliverable.is_(True),
+    )
+    return or_(
+        # Selection masks are drawing aids, never images a customer reuses.
+        AssetRecord.media_kind == AssetMediaKind.MASK.value,
+        and_(
+            ~delivered,
+            or_(
+                linked(
+                    JobAssetRecord.direction == JobAssetDirection.INTERMEDIATE.value
+                ),
+                # Helper outputs (e.g. the Amazon QA contact sheet) and masks.
+                linked(JobAssetRecord.role.in_(_LIBRARY_HELPER_ROLES)),
+                # Catalog pose references the system materialized for a job;
+                # a pose the customer uploaded stays in the library.
+                and_(
+                    AssetRecord.origin_kind == AssetOriginKind.IMPORTED.value,
+                    linked(JobAssetRecord.role == "pose_reference"),
+                ),
+            ),
         ),
     )
 

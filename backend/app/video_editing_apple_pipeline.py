@@ -564,6 +564,14 @@ def render_suite(
                 Path(source_path), transcript.duration_ms / 1000, root, settings, guard
             )
         )
+        from .video_editing_suite_source_hold import hold_tail
+
+        # A lipsync video may end a frame or two before its audio.
+        source_path = str(
+            hold_tail(
+                Path(source_path), transcript.duration_ms / 1000, root, settings, guard
+            )
+        )
         if definition(template_id).get("requires_foreground"):
             from .bihuo_suite.foreground import prepare as prepare_foreground
 

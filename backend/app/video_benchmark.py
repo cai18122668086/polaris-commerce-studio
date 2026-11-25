@@ -172,7 +172,9 @@ def benchmark_page(
 
     params, page = inputs["search_params"], inputs["page"]
     seen = set(inputs["seen_ids"])
-    items, original_rows, skipped_rows = [], [], []
+    items: list[dict[str, Any]] = []
+    original_rows: list[dict[str, Any]] = []
+    skipped_rows: list[dict[str, Any]] = []
     duplicates = skipped = 0
     reasons: Counter[str] = Counter()
     for row in rows:

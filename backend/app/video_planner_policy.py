@@ -18,6 +18,9 @@ from .video_editing_suite_caption_repair import repair_suite_captions
 EMPTY_RESPONSE = "EDITING_PLAN_EMPTY_RESPONSE"
 MIN_SUITE_INTRO_MS = 1600
 SUITE_POINT_CAPACITY = 24
+TITLE_CAPACITY = 20
+SUBTITLE_CAPACITY = 32
+MATERIAL_MAX_SHIFT_MS = 1500
 
 
 def normalize_material_anchors(
@@ -64,7 +67,10 @@ def normalize_material_anchors(
 
 
 def normalize_suite_output(
-    raw: dict[str, Any], transcript: Transcript
+    raw: dict[str, Any],
+    transcript: Transcript,
+    *,
+    features_follow_materials: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     changed, anchor_repairs = normalize_material_anchors(raw, transcript)
     repairs: list[dict[str, Any]] = [dict(row) for row in anchor_repairs]
@@ -117,9 +123,249 @@ def normalize_suite_output(
             kept.append(chapter)
         changed["chapters"] = kept
     repairs.extend(repair_suite_captions(changed, transcript))
+    repairs.extend(_fit_opening_title_words(changed, transcript, positions))
     repairs.extend(_fit_suite_display_spans(changed, transcript, positions))
     repairs.extend(_release_overlapping_closing(changed, positions))
+    repairs.extend(_repair_material_order(changed, transcript, positions))
+    if features_follow_materials:
+        repairs.extend(
+            _release_features_before_materials(changed, transcript, positions)
+        )
     return changed, repairs
+
+
+def _release_features_before_materials(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Apple layout plays feature cards after all materials; omit early ones.
+
+    Features are optional labels; matched project materials are not. A
+    feature starting before the last material would reject the whole plan,
+    so only that feature is omitted (its words stay in the captions).
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    if not plan.materials or not plan.features:
+        return []
+    tokens = transcript.tokens
+    last = plan.materials[-1]
+    point = positions.get(last.show_at_token_id)
+    if point is None:
+        return []
+    last_ms = tokens[point].start_ms if last.edge == "start" else tokens[point].end_ms
+    kept, repairs = [], []
+    for feature, row in zip(plan.features, raw["features"], strict=True):
+        first = positions.get(feature.first_token_id)
+        if first is None:
+            return []
+        if tokens[first].start_ms <= last_ms:
+            repairs.append(
+                {
+                    "kind": "optional_feature_omitted",
+                    "first_token_id": feature.first_token_id,
+                    "last_token_id": feature.last_token_id,
+                    "reason": "feature_before_material_playback",
+                }
+            )
+        else:
+            kept.append(row)
+    if repairs:
+        raw["features"] = kept
+    return repairs
+
+
+def _word_ends(transcript: Transcript) -> tuple[set[int], set[int]]:
+    """Token indexes ending a lexical (jieba) word, and those ending a clause."""
+    tokens = transcript.tokens
+    lexical, preferred = text_boundaries("".join(token.text for token in tokens))
+    offset = 0
+    ends, clauses = set(), set()
+    for index, token in enumerate(tokens):
+        offset += len(token.text)
+        if offset in lexical or index == len(tokens) - 1:
+            ends.add(index)
+        if offset in preferred or index == len(tokens) - 1:
+            clauses.add(index)
+    return ends, clauses
+
+
+def _fit_opening_title_words(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Keep the opening title and subtitle on whole recorded words.
+
+    The model sometimes ends the title inside a word (「这款白色头」 +
+    「戴耳机，」). Extend the title to the end of that word when it still fits
+    the opening and its capacity; otherwise end it at the previous word. A
+    subtitle that started right after the old title end follows the new one.
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    tokens = transcript.tokens
+    title_a = positions.get(plan.opening.title.first_token_id)
+    title_b = positions.get(plan.opening.title.last_token_id)
+    sub_a = positions.get(plan.opening.subtitle.first_token_id)
+    sub_b = positions.get(plan.opening.subtitle.last_token_id)
+    intro = positions.get(plan.opening.intro_last_token_id)
+    if None in (title_a, title_b, sub_a, sub_b, intro):
+        return []
+    assert title_a is not None and title_b is not None and intro is not None
+    assert sub_a is not None and sub_b is not None
+    if not title_a <= title_b <= intro:
+        return []
+    ends, clauses = _word_ends(transcript)
+    if title_b in ends:
+        return []
+
+    def text(a: int, b: int) -> str:
+        return _join([token.text for token in tokens[a : b + 1]])
+
+    adjacent = sub_a == title_b + 1
+    # Prefer completing the spoken clause (「这款白色头戴耳机，」) over the
+    # next jieba word, which may still split a compound (「头戴|耳机」).
+    forward = next(
+        (
+            i
+            for i in range(title_b + 1, intro + 1)
+            if i in clauses and len(text(title_a, i)) <= TITLE_CAPACITY
+        ),
+        None,
+    ) or next((i for i in range(title_b + 1, intro + 1) if i in ends), None)
+    choice = None
+    if forward is not None and len(text(title_a, forward)) <= TITLE_CAPACITY:
+        new_sub_a = forward + 1 if adjacent or sub_a <= forward else sub_a
+        new_sub_b = sub_b
+        if new_sub_a > new_sub_b:
+            # The subtitle was swallowed by the whole word; let it run on to
+            # the next clause end inside the opening, within its capacity.
+            clause = set(caption_boundaries(transcript).get("cue_end_token_ids", []))
+            new_sub_b = next(
+                (
+                    i
+                    for i in range(new_sub_a, intro + 1)
+                    if i in ends
+                    and tokens[i].id in clause
+                    and len(text(new_sub_a, i)) <= SUBTITLE_CAPACITY
+                ),
+                -1,
+            )
+        if new_sub_a <= new_sub_b <= intro and re.search(
+            r"[\w㐀-鿿]", text(new_sub_a, new_sub_b)
+        ):
+            choice = (forward, new_sub_a, new_sub_b)
+    if choice is None:
+        back = next((i for i in range(title_b - 1, title_a - 1, -1) if i in ends), None)
+        if back is None or not re.search(r"[\w㐀-鿿]", text(title_a, back)):
+            return []
+        new_sub_a = back + 1 if adjacent else sub_a
+        if new_sub_a > sub_b or len(text(new_sub_a, sub_b)) > SUBTITLE_CAPACITY:
+            new_sub_a = sub_a
+        choice = (back, new_sub_a, sub_b)
+    end, new_sub_a, new_sub_b = choice
+    opening = raw["opening"]
+    opening["title"]["last_token_id"] = tokens[end].id
+    opening["subtitle"]["first_token_id"] = tokens[new_sub_a].id
+    opening["subtitle"]["last_token_id"] = tokens[new_sub_b].id
+    return [
+        {
+            "kind": "opening_title_word_boundary",
+            "title_from": text(title_a, title_b),
+            "title_to": text(title_a, end),
+            "subtitle_from": text(sub_a, sub_b),
+            "subtitle_to": text(new_sub_a, new_sub_b),
+        }
+    ]
+
+
+def _repair_material_order(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Move or drop single material placements that break the body order.
+
+    One image anchored inside the opening (or after the quote, or out of
+    speech order) used to reject the whole paid plan. Move such a placement
+    to the nearest valid word edge inside its own matched phrase, at most
+    MATERIAL_MAX_SHIFT_MS away; otherwise drop just that placement. When no
+    placement would remain, leave the plan untouched so it fails strictly.
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    if not plan.materials:
+        return []
+    tokens = transcript.tokens
+    intro = positions.get(plan.opening.intro_last_token_id)
+    if intro is None:
+        return []
+    intro_ms = tokens[intro].end_ms
+    quote = (
+        positions.get(plan.quote_start_token_id)
+        if plan.quote_start_token_id
+        else len(tokens)
+    )
+    if quote is None:
+        return []
+    quote_ms = tokens[quote].start_ms if quote < len(tokens) else transcript.duration_ms
+
+    def at(index: int, edge: str) -> int:
+        return tokens[index].start_ms if edge == "start" else tokens[index].end_ms
+
+    kept: list[dict[str, Any]] = []
+    repairs: list[dict[str, Any]] = []
+    prior = -1
+    for material, row in zip(plan.materials, raw["materials"], strict=True):
+        first = positions.get(material.first_token_id)
+        last = positions.get(material.last_token_id)
+        point = positions.get(material.show_at_token_id)
+        if first is None or last is None or point is None or first > last:
+            return []  # Unknown words remain a strict validation failure.
+        start = at(point, material.edge)
+        if intro_ms <= start < quote_ms and start > prior:
+            kept.append(row)
+            prior = start
+            continue
+        options = [
+            (abs(at(i, edge) - start), i, edge)
+            for i in range(first, last + 1)
+            for edge in ("start", "end")
+            if intro_ms <= at(i, edge) < quote_ms
+            and at(i, edge) > prior
+            and abs(at(i, edge) - start) <= MATERIAL_MAX_SHIFT_MS
+        ]
+        if options:
+            _, index, edge = min(options)
+            moved = {**row, "show_at_token_id": tokens[index].id, "edge": edge}
+            kept.append(moved)
+            prior = at(index, edge)
+            repairs.append(
+                {
+                    "kind": "material_placement_moved",
+                    "asset_id": material.asset_id,
+                    "from": material.show_at_token_id,
+                    "from_edge": material.edge,
+                    "to": tokens[index].id,
+                    "to_edge": edge,
+                    "reason": "placement_outside_body_order",
+                }
+            )
+        else:
+            repairs.append(
+                {
+                    "kind": "material_placement_dropped",
+                    "asset_id": material.asset_id,
+                    "show_at_token_id": material.show_at_token_id,
+                    "reason": "no_valid_slot_in_matched_phrase",
+                }
+            )
+    if not repairs or not kept:
+        return []
+    raw["materials"] = kept
+    return repairs
 
 
 def _release_overlapping_closing(

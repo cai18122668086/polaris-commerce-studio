@@ -376,7 +376,12 @@ def plan_suite(
             {"response_sha256": sha256(response_path)},
         )
         atomic_json(folder / "tutorial-plan.json", tutorial)
-    raw, adaptations = normalize_suite_output(raw, transcript)
+    raw, adaptations = normalize_suite_output(
+        raw,
+        transcript,
+        features_follow_materials=snapshot.get("engine")
+        not in {"bihuo-full-suite", EDITORIAL_ENGINE},
+    )
     plan = verify_plan(
         raw,
         transcript,

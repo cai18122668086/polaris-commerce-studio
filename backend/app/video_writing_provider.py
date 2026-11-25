@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+from contextlib import suppress
 from itertools import groupby
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -66,9 +67,14 @@ NUMERIC = re.compile(
 )
 
 
+# 「一个」「一瓶」这类单个计数是口语量词（如「备一个护手霜」），不是规格或数量承诺。
+SINGLE_COUNT = {("一", "个"), ("一", "瓶"), ("一", "片"), ("一", "包")}
+
+
 def numeric_claims(text: str) -> set[tuple[str, str]]:
     aliases = {"ml": "毫升", "cm": "厘米", "kg": "公斤", "g": "克", "％": "%"}
-    return {(n, aliases.get(u.lower(), u.lower())) for n, u in NUMERIC.findall(text)}
+    claims = {(n, aliases.get(u.lower(), u.lower())) for n, u in NUMERIC.findall(text)}
+    return claims - SINGLE_COUNT
 
 
 def validate_draft(
@@ -106,6 +112,14 @@ def validate_draft(
             raise ValueError(
                 "Draft contains a numeric claim absent from its mapped facts"
             )
+    # The user's fact value may itself contain the source wording (source
+    # 「护手霜」 -> fact 「樱花香护手霜」). Text inside the registered
+    # replacements is never an unreplaced source fact.
+    residual = text
+    for replacement in sorted(
+        draft.replacements, key=lambda row: len(row.replacement), reverse=True
+    ):
+        residual = residual.replace(replacement.replacement, "")
     for replacement in draft.replacements:
         fact = known.get(replacement.fact_id)
         if (
@@ -120,7 +134,9 @@ def validate_draft(
             )
         if (
             replacement.original != replacement.replacement
-            and replacement.original in text
+            and replacement.original in residual
+            # Wording the user's own fact contains is endorsed by that fact.
+            and replacement.original not in (fact.value or "")
         ):
             raise ValueError("Old source fact remains in the draft")
     if any(term in text for term in facts.forbidden_terms):
@@ -351,6 +367,7 @@ def plan_writing(
         "provider_route": data.get("_polaris_planner_route"),
         "writing_rules": rules,
     }
+    content: Any = None
     try:
         content = data["choices"][0]["message"]["content"]
         parsed = output.model_validate_json(content)
@@ -385,5 +402,20 @@ def plan_writing(
             if shape["verdict"] == "FAIL":
                 result["validation_error"] = "VIDEO_WRITING_SHAPE_INVALID"
         return result, receipt
-    except (ValueError, KeyError, TypeError, IndexError):
-        return {"validation_error": "VIDEO_WRITING_EVIDENCE_INVALID"}, receipt
+    except (ValueError, KeyError, TypeError, IndexError) as error:
+        # Keep the rejected output and the failed rule for offline replay;
+        # previously both were discarded, so failures could not be diagnosed.
+        task_id = inputs.get("writing_task_id")
+        if isinstance(task_id, str) and re.fullmatch(r"[0-9a-f-]{36}", task_id):
+            with suppress(OSError):
+                atomic_json(
+                    service.settings.video_editing_tasks_dir
+                    / "_writing"
+                    / task_id
+                    / "rejected-response.json",
+                    {"kind": kind, "content": content, "error": str(error)[:500]},
+                )
+        return {
+            "validation_error": "VIDEO_WRITING_EVIDENCE_INVALID",
+            "validation_detail": str(error)[:300],
+        }, receipt

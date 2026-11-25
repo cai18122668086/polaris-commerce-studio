@@ -56,7 +56,8 @@ class BenchmarkExtractionRequest(StrictVideoModel):
     items: list[BenchmarkExtractionPick] = Field(min_length=1, max_length=10)
 
 
-def owned_searches(workspace: VideoWorkspace) -> Select[VideoAssistanceRecord]:
+# Select[Any]: the Select type parameters differ between SQLAlchemy 2.0 and 2.1.
+def owned_searches(workspace: VideoWorkspace) -> Select[Any]:
     return select(VideoAssistanceRecord).where(
         VideoAssistanceRecord.workspace_id == workspace.workspace_id,
         VideoAssistanceRecord.owner_user_id == workspace.principal.user_id,

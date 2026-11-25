@@ -20,6 +20,7 @@ from .bihuo_suite import (
     opening_card,
     raster_cache,
     video_materials,
+    window_crop,
 )
 from .bihuo_suite.registry import runtime
 from .bihuo_suite.render import render as native_render
@@ -39,6 +40,7 @@ def render(payload: dict, output: Path) -> Path:
         conditional_layout.execution(module, payload),
         video_materials.execution(module, payload),
         opening_card.execution(module, payload) as opening,
+        window_crop.execution(module, payload) as cropping,
         # Inside the timeline so it records the layers actually shown.
         frame_policy.execution(module, payload) as framing,
         layer_timeline.recording(module) as timeline,
@@ -60,6 +62,7 @@ def render(payload: dict, output: Path) -> Path:
         frame_policy=framing_receipt,
         source_reframe=payload["config"].get("source_reframe"),
         opening_card=opening.receipt() if opening is not None else None,
+        window_crop=cropping,
         render_seconds=round(time.monotonic() - started, 3),
         raster_cache_hits=rasters.hits,
         raster_cache_misses=rasters.misses,

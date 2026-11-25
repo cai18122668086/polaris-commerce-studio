@@ -134,6 +134,58 @@ RULES = [
 ]
 
 
+BEAT_RELATIONS = frozenset(
+    {
+        "explanation",
+        "parallel",
+        "contrast",
+        "cause",
+        "sequence",
+        "summary",
+        "condition",
+        "negation",
+        "transformation",
+        "amount",
+        "question",
+        "call_to_action",
+    }
+)
+# Section-like labels the model sometimes invents for chapter templates.
+SEQUENCE_ALIASES = frozenset({"chapter", "section", "step", "steps", "order", "list"})
+
+
+def normalize_beat_relations(raw: Any) -> tuple[Any, list[dict[str, Any]]]:
+    """Map an invented beat relation to an allowed one instead of failing.
+
+    The relation only selects how a beat is described, never which words or
+    template slots it binds, so an unknown label (``"chapter"`` in a chapter
+    template, unified-chapter retest 2026-11-26) is replaced deterministically:
+    section-like labels become ``sequence``, anything else ``explanation``.
+    """
+    if not isinstance(raw, dict) or not isinstance(raw.get("beats"), list):
+        return raw, []
+    repairs: list[dict[str, Any]] = []
+    beats = []
+    for index, beat in enumerate(raw["beats"]):
+        relation = beat.get("relation") if isinstance(beat, dict) else None
+        if isinstance(relation, str) and relation not in BEAT_RELATIONS:
+            label = relation.strip().lower()
+            fixed = "sequence" if label in SEQUENCE_ALIASES else "explanation"
+            beat = {**beat, "relation": fixed}
+            repairs.append(
+                {
+                    "kind": "beat_relation_mapped",
+                    "beat": index,
+                    "from": relation[:40],
+                    "to": fixed,
+                }
+            )
+        beats.append(beat)
+    if not repairs:
+        return raw, []
+    return {**raw, "beats": beats}, repairs
+
+
 def rule_pack(package: Path) -> dict[str, Any]:
     return {
         "version": RULES_VERSION,
@@ -1247,6 +1299,8 @@ def generate(
         )
         normalized, chapter_repairs = normalize_chapter_starts(normalized, template)
         native_window_repairs.extend(chapter_repairs)
+        normalized, relation_repairs = normalize_beat_relations(normalized)
+        native_window_repairs.extend(relation_repairs)
         plan = SemanticPlan.model_validate(normalized)
         if template is not None:
             from .video_editing_unified_repair import repair_unified_beats

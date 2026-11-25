@@ -21,6 +21,7 @@ from .domain import (
 from .errors import ApiError
 from .models import (
     UserRecord,
+    UserSignupSourceRecord,
     WorkspaceCreditAccountRecord,
     WorkspaceLimitRecord,
     WorkspaceMemberRecord,
@@ -248,7 +249,23 @@ async def get_principal(
     return await run_in_threadpool(
         _external_principal, session, identity,
         code if subject in {identity.primary_user_id, identity.recipe_user_id} else "",
+        signup_source(request.headers.get("X-Signup-Source", "")),
     )
+
+
+SIGNUP_SOURCE_LENGTH = 30
+
+
+def signup_source(value: str) -> str:
+    """Normalise the ``?from=`` code a visitor arrived with; anything unexpected is dropped."""
+    code = value.strip().lower()
+    if not 1 <= len(code) <= SIGNUP_SOURCE_LENGTH:
+        return ""
+    if not (code[0].isascii() and code[0].isalnum()):
+        return ""
+    if any(not (ch.isascii() and (ch.isalnum() or ch in "-_")) for ch in code):
+        return ""
+    return code
 
 
 def _development_principal(session: Session, user_id: str) -> Principal:
@@ -263,7 +280,10 @@ def _development_principal(session: Session, user_id: str) -> Principal:
 
 
 def _external_principal(
-    session: Session, identity: ExternalIdentity, invite_code: str = ""
+    session: Session,
+    identity: ExternalIdentity,
+    invite_code: str = "",
+    source: str = "",
 ) -> Principal:
     # Pool checkout and provisioning use the synchronous SQLAlchemy driver.
     # Keep them off the ASGI event loop so occupied connections cannot freeze
@@ -283,6 +303,8 @@ def _external_principal(
             from .welcome_credits import register_growth
 
             register_growth(session, user, identity.joined_at, invite_code)
+            if source and session.get(UserSignupSourceRecord, user.id) is None:
+                session.add(UserSignupSourceRecord(user_id=user.id, source=source))
         session.commit()
     except ApiError:
         raise

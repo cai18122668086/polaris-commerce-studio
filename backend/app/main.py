@@ -349,6 +349,7 @@ def create_app(
         "Content-Type",
         "Idempotency-Key",
         "X-Signup-Invitation",
+        "X-Signup-Source",
         "X-Request-Id",
     ]
     if app_settings.auth_mode == "development":

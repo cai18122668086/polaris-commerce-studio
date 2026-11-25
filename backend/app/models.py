@@ -96,6 +96,23 @@ class UserRecord(TimestampMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class UserSignupSourceRecord(Base):
+    """Where a new account came from: the ``?from=`` code of the link the visitor
+    arrived through (one per platform account in the operations console).
+    Written once, when the account is first provisioned; existing users never get one.
+    """
+
+    __tablename__ = "user_signup_sources"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
 class ProcessingConsentRecord(Base):
     __tablename__ = "processing_consents"
 

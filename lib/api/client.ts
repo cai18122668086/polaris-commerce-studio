@@ -5,6 +5,7 @@ import { isLocalDevelopmentAuthEnabled, LOCAL_DEV_AUTH_USER_ID } from "@/lib/aut
 import { emitAuthUnauthorised } from "@/lib/auth/session-events";
 
 import { pendingSignupInvitation } from "@/lib/auth/signup-invitation";
+import { pendingSignupSource } from "@/lib/auth/signup-source";
 
 import { API_BASE_URL } from "./base-url";
 import type { paths } from "./generated/openapi";
@@ -24,6 +25,8 @@ const requestMetadata: Middleware = {
     headers.set("X-Request-Id", crypto.randomUUID());
     const invite = pendingSignupInvitation();
     if (invite) headers.set("X-Signup-Invitation", invite);
+    const source = pendingSignupSource();
+    if (source) headers.set("X-Signup-Source", source);
     if (isLocalDevelopmentAuthEnabled()) {
       headers.set("X-User-Id", LOCAL_DEV_AUTH_USER_ID);
     }

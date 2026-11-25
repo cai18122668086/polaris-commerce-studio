@@ -68,6 +68,11 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--judgment", required=True)
     command.set_defaults(call=lambda a: workflow.audit_current(a.session, a.judgment))
 
+    command = sub.add_parser("accept-repair")
+    command.add_argument("--session", required=True)
+    command.add_argument("--check", required=True)
+    command.set_defaults(call=lambda a: workflow.accept_repair(a.session, a.check))
+
     command = sub.add_parser("prepare-repair")
     command.add_argument("--session", required=True)
     command.add_argument("--repair-plan", required=True)

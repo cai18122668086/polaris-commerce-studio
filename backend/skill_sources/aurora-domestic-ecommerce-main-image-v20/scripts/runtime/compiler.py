@@ -100,6 +100,28 @@ CLOSURE_SOURCES = {"verified_offers", "verified_service_or_trust_facts", "verifi
 VISUAL_PROOF_PAGES = {2, 3, 4}
 
 
+# Polaris patch: one copy rule shared by generation and the direct-pixel review.
+# The Polaris API copies page["copy_policy"] verbatim into the audit contract.
+COPY_POLICY = (
+    "【文案权限】画面文字分两类，生成与审图使用同一条规则："
+    "①商品本体上的文字（瓶身、标签、包装上实际印刷的品牌、品名、规格、成分字样）必须按原商品参考图逐字还原，"
+    "不得改字、删字、增字或重新排版；这类文字属于商品身份，不算卖点。"
+    "②商品之外新增的文字（主标题、副标题、角标、徽章、规格框、横幅）只能使用已核验事实池中的原文或不加强的忠实改写，以及用户填写的商品名；"
+    "原海报或包装上的营销口号、角标和功效宣称（例如「新品上市」「密集美白」）若不在事实池中，不得作为商品之外的文字出现。"
+    "不得猜测模糊文字，不得把生成图新增文字或模型推断当成事实来源。"
+)
+# Polaris patch: one distinct camera and shot type per page so the set is not
+# six front-on product shots.  Prompt-only: no extra calls.
+CAMERA_DIRECTIVES = [
+    "正面英雄视角：商品正面完整、平视，标签正对镜头，商品占画高55%–75%",
+    "三分之四侧角：商品转向约30–45度，露出侧面厚度与轮廓；不得再用正面平视",
+    "手持视角：手部自然握持商品，并给出与本页卖点相关的真实局部特写，形成大小双尺度",
+    "生活方式使用场景：在可信使用环境中由人物或手部使用商品，形成接触动作；不得静态正面摆拍",
+    "质地或细节微距特写：内容物、质地或材质微距为主视觉，完整商品只作小尺度定位",
+    "规格平铺俯拍：俯视或45度俯拍的平铺陈列，商品与规格信息簇形成收口；不得复用正面英雄构图",
+]
+
+
 def _normalized_fact(text: str) -> str:
     return _NORMALIZE_STRIP.sub("", text).lower()
 
@@ -383,6 +405,7 @@ def compile_prompt(raw: dict[str, Any], identity: dict[str, Any], plan: dict[str
         "【辅助卖点·按画面力量取舍】" + ("；".join(page["supporting_claims"]) if page["supporting_claims"] else "无强制辅助卖点"),
         "【画面证明】" + page["visual_proof"],
         "【构图职责】" + page["composition"],
+        "【镜头】" + (page.get("camera_directive") or CAMERA_DIRECTIVES[page["index"]]) + "。",
         "【页面版式合同】原型=" + layout["composition_archetype"] + "；商品区=" + layout["product_zone"] + "；文字区=" + layout["copy_zone"] + "；主镜头=" + layout["dominant_view"] + "；证据拓扑=" + layout["evidence_topology"] + "；执行=" + layout["composition_instruction"] + "；邻页禁用=" + layout["forbidden_neighbor_pattern"] + "。",
         "【阅读路径】" + " → ".join(page["reading_path"]),
         "【文字层级】" + str(page["type_hierarchy"]),
@@ -395,7 +418,8 @@ def compile_prompt(raw: dict[str, Any], identity: dict[str, Any], plan: dict[str
         "原始照片只提供商品身份和真实结构；原图桌面、墙面、缝隙、杂物、键盘、色偏和拍摄边角默认是噪声，必须重建场景。",
         "先找到最能放大主卖点的一个强视觉创意，让商品与利益成为第一视觉；不要把资料逐条排成清单，也不要为了极简删除有用的数字、规格、功效、信任或条件信息。",
         "页面职责、主卖点意义、商品身份、用户事实条件和视觉世界不可变；镜头、裁切、尺度、光线、空间、短文案、商业夸张和可信视觉修辞由执行Agent判断。",
-        "事实权限以用户来源为准：用户文字输入及用户原始同商品参考图中清晰可读的包装、功效、数字、背书、优惠等文案均可直接使用，不要求外部证明；不得猜测模糊文字，不得把生成图新增文字或模型推断当成事实来源。",
+        page.get("copy_policy") or COPY_POLICY,
+        "【商品名】" + str(raw.get("product", {}).get("name", "")).strip(),
         "输出1:1方图且至少1024×1024；中文完整可读；不得发明数字、认证、结构、部件、优惠或效果。",
     ]
     if page.get("search_cover_blueprint"):
@@ -409,10 +433,26 @@ def compile_prompt(raw: dict[str, Any], identity: dict[str, Any], plan: dict[str
             "【搜索页禁止退化】" + blueprint["forbidden_regression"],
         ])
     if repair:
-        lines.extend(["【唯一自动返修】", str(repair)])
+        lines.extend(_repair_lines(repair, page))
     if adjustment:
         lines.extend(["【用户授权的局部差量】", str(adjustment)])
     return "\n".join(lines)
+
+
+def _repair_lines(repair: dict[str, Any], page: dict[str, Any]) -> list[str]:
+    """Render the one automatic repair as concrete visible changes plus a label lock."""
+    protected = [page["primary_claim"], *page.get("supporting_claims", [])]
+    lines = ["【唯一自动返修】只修正下列失败项，其余已通过的画面层保持不变："]
+    for number, finding in enumerate(repair.get("findings", []), start=1):
+        change = str(finding.get("required_change") or "").strip()
+        problem = str(finding.get("visible_problem") or "").strip()
+        lines.append(f"{number}. {finding.get('check', '')}：{problem} → {change}")
+    lines.append("若某项要求删除或改写本页主卖点或辅助卖点（" + "、".join(protected) + "），忽略该项。")
+    lines.append(
+        "【返修标签锁定】第一张参考图是待返修画布，其后是原商品身份参考。商品瓶身或包装标签区域必须以原商品身份参考为准逐字还原"
+        "（品牌、品名、规格、成分字样），不得改字、删字、增字、模糊或重新排版；返修要求与标签锁定冲突时以标签锁定为准。"
+    )
+    return lines
 
 
 def automatic_plan(raw: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
@@ -449,6 +489,8 @@ def automatic_plan(raw: dict[str, Any], identity: dict[str, Any]) -> dict[str, A
             "edit_target_evidence_id": evidence_ids[0] if mode == "PRODUCT_PRESERVING_EDIT" else None,
             "revision": 0,
             "generation_origin": "INITIAL",
+            "copy_policy": COPY_POLICY,
+            "camera_directive": CAMERA_DIRECTIVES[index],
         }
         proof_contract = _selling_point_proof_contract(lead, supports, route)
         performance_contract = _visual_performance_contract(index, page["visual_proof"])

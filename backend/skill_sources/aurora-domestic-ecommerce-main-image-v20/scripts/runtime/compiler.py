@@ -170,7 +170,9 @@ def _pick_lead(ranking: list[dict[str, Any]], index: int, uses: dict[str, int], 
 
     def least_used(items: list[dict[str, Any]]) -> dict[str, Any]:
         order = {item["text"]: position for position, item in enumerate(items)}
-        return min(items, key=lambda item: (item["text"] == hook, uses.get(item["text"], 0), order[item["text"]]))
+        # Polaris r3: a spec/offer fact belongs to the closure page; carousel
+        # pages recycle another fact before they would repeat the spec headline.
+        return min(items, key=lambda item: (item["text"] == hook, index not in {0, 5} and _is_closure_fact(item), uses.get(item["text"], 0), order[item["text"]]))
 
     if index == 5:
         closure = [item for item in ranking if _is_closure_fact(item)]
@@ -202,10 +204,12 @@ def _assign_claims(raw: dict[str, Any]) -> list[dict[str, Any]]:
     # The search hook chooses first, the closure page second (so it can claim a
     # spec/offer fact before carousel pages consume it), then the proof pages,
     # and the identity page last because it can carry any remaining fact.
+    variants: dict[int, int] = {}
     for index in (0, 5, 2, 3, 4, 1):
         hook = leads[0]["text"] if 0 in leads else None
         selected = _pick_lead(_page_rankings(raw, index), index, uses, hook)
         leads[index] = selected
+        variants[index] = uses.get(selected["text"], 0)
         uses[selected["text"]] = uses.get(selected["text"], 0) + 1
     hook_text = leads[0]["text"]
     result: list[dict[str, Any]] = []
@@ -221,7 +225,7 @@ def _assign_claims(raw: dict[str, Any]) -> list[dict[str, Any]]:
             # Closure supports form a spec cluster: spec/offer/service facts
             # first, then non-hook facts to complete the cluster.
             candidates = sorted(candidates, key=lambda item: not _is_closure_fact(item))
-        elif index in VISUAL_PROOF_PAGES:
+        elif index in VISUAL_PROOF_PAGES or index == 1:
             # Keep specs on the closure page instead of repeating them as
             # secondary copy on every proof page.
             candidates = sorted(candidates, key=_is_closure_fact)
@@ -234,7 +238,7 @@ def _assign_claims(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 supports.append(item["text"])
             if len(supports) >= limit:
                 break
-        result.append({"lead": lead, "supports": supports})
+        result.append({"lead": lead, "supports": supports, "headline_variant": variants[index]})
     return result
 
 
@@ -263,9 +267,15 @@ def _shot_key(index: int) -> dict[str, str]:
     }
 
 
-def _display_copy_contract(lead: str, supports: list[str], index: int) -> dict[str, Any]:
+def _display_copy_contract(lead: str, supports: list[str], index: int, variant: int = 0) -> dict[str, Any]:
     clauses = [item.strip() for item in re.split(r"[，,。；;：:]", lead) if item.strip()]
     seed = clauses[0] if clauses else lead.strip()
+    if variant:
+        # Polaris r3: when too few facts force a fact to lead a second page,
+        # that page headlines a different segment of it, never the same words.
+        segments = [item.strip() for item in re.split(r"[，,。；;：:·・]", lead) if item.strip()]
+        if len(segments) > 1:
+            seed = segments[variant % len(segments)] if segments[variant % len(segments)] != seed else segments[-1]
     return {
         "source_claim": lead,
         "headline_seed_source_segment": seed,
@@ -464,7 +474,7 @@ def automatic_plan(raw: dict[str, Any], identity: dict[str, Any]) -> dict[str, A
     for index, assignment in enumerate(assignments):
         lead = assignment["lead"]["text"]
         supports = assignment["supports"]
-        display_copy = _display_copy_contract(lead, supports, index)
+        display_copy = _display_copy_contract(lead, supports, index, assignment.get("headline_variant", 0))
         layout_contract = copy.deepcopy(LAYOUT_CONTRACTS[index])
         mode = "PRODUCT_PRESERVING_EDIT" if index in IDENTITY_SENSITIVE_PAGES else "REFERENCE_GUIDED_GENERATION"
         page = {

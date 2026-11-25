@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
@@ -237,6 +239,67 @@ class AuroraMainImageProvider:
         verdicts[artifact.sha256] = (verdict, reading)
         return verdict
 
+    async def _poster_offfact_lines(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+        authority: Sequence[str],
+        account: label_fidelity.GateAccount,
+    ) -> list[str]:
+        """Off-product text on the source poster that is not authorized copy.
+
+        One blind read of the product reference per job (cached in the job
+        workspace); every later generation is told to remove these texts.
+        """
+
+        if not self.label_gate_enabled:
+            return []
+        try:
+            references = _label_reference_sources(generation_request, request.job_id)
+            reference = next((item for item in references if item.payload), None)
+            if reference is None:
+                return []
+            cache = self._workspace(request.job_id) / "poster-offfact-text.json"
+            with contextlib.suppress(OSError, ValueError):
+                cached = json.loads(cache.read_text(encoding="utf-8"))
+                if cached.get("reference_sha256") == reference.sha256:
+                    return [str(line) for line in cached.get("remove", [])]
+            lines = await self._label_gate.reference_lines(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=request.job_id,
+                references=references,
+                account=account,
+            )
+            _, reading = await self._label_gate.check(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=f"{request.job_id}:poster-text",
+                payload=reference.payload,
+                reference_lines=lines or (),
+                account=account,
+            )
+            if reading is None:
+                return []
+            poster_lines = [str(line) for line in reading.get("other_text_lines", [])]
+            remove = _unauthorized_offproduct_lines(poster_lines, authority)
+            write_contract(
+                cache,
+                {
+                    "reference_sha256": reference.sha256,
+                    "other_text_lines": poster_lines,
+                    "remove": remove,
+                },
+            )
+            return remove
+        except Exception as exc:  # never fail a paid page on this read
+            logger.warning(
+                "Aurora poster text read skipped job=%s (%s)",
+                request.job_id,
+                type(exc).__name__,
+            )
+            return []
+
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if is_parallel_aurora_mode(self.execution_mode) or _request_uses_parallel_v20(
             request
@@ -250,6 +313,7 @@ class AuroraMainImageProvider:
             str, tuple[label_fidelity.LabelVerdict, dict[str, Any] | None]
         ] = {}
         label_repair_requested = False
+        copy_authority: tuple[str, ...] = ()
         try:
             item, harness_session = self._load_authorized_context(request)
             page_index = item.ordinal
@@ -283,6 +347,19 @@ class AuroraMainImageProvider:
                     generation_request["authorized_facts"] = (
                         _normalize_commercial_fact_pool(job_settings)
                     )
+                    copy_authority = _copy_authority(
+                        generation_request["authorized_facts"], job_settings
+                    )
+                    poster_removals = await self._poster_offfact_lines(
+                        request, generation_request, copy_authority, label_account
+                    )
+                    if poster_removals:
+                        generation_request["poster_text_removal"] = poster_removals
+                        generation_request["prompt"] = (
+                            str(generation_request["prompt"])
+                            + "\n"
+                            + _poster_removal_instruction(poster_removals)
+                        )
                     write_contract(generation_request_path, generation_request)
                 sources = _generation_sources(generation_request, request.job_id)
                 image_result = await self.gateway.edit(
@@ -381,6 +458,12 @@ class AuroraMainImageProvider:
                             label_verdicts.get(pre_repair[1].sha256),
                             label_verdicts.get(artifact.sha256),
                         )
+                        _apply_offfact_verdicts(
+                            check,
+                            label_verdicts.get(pre_repair[1].sha256),
+                            label_verdicts.get(artifact.sha256),
+                            copy_authority,
+                        )
                         audit_usage.append(usage)
                         actual_cost += cost
                         check_path = (
@@ -420,6 +503,14 @@ class AuroraMainImageProvider:
                         # harness label lock.
                         _inject_label_failure(judgment, label_verdict)
                         label_repair_requested = attempt_index == 0
+                    offfact = _offfact_lines(
+                        label_verdicts.get(artifact.sha256), copy_authority
+                    )
+                    if offfact:
+                        # Off-product text outside the fact pool (e.g. a poster
+                        # banner such as 新品上市) fails the page so the one
+                        # automatic repair removes it.
+                        _inject_offfact_failure(judgment, offfact)
                 else:
                     judgment, usage, cost = await self._audit_candidate(
                         request,
@@ -3697,6 +3788,146 @@ def _normalize_repair_identity_check(payload: dict[str, Any]) -> dict[str, Any]:
             "evidence": str(item.get("evidence") or ""),
         }
     return check
+
+
+_COPY_NOISE = re.compile(
+    r"[\s，,。；;：:·•・|｜/、【】\[\]()（）「」“”\"'!！?？\-—_~～+＋]+"
+)
+
+
+def _norm_copy(text: str) -> str:
+    return _COPY_NOISE.sub("", unicodedata.normalize("NFKC", text)).lower()
+
+
+def _copy_authority(
+    authorized_facts: Mapping[str, Any], job_settings: Mapping[str, Any]
+) -> tuple[str, ...]:
+    """Every string that may appear off the product: facts plus product name."""
+
+    values: list[str] = []
+    for bucket in authorized_facts.values():
+        if isinstance(bucket, list):
+            values.extend(str(item) for item in bucket if str(item).strip())
+    name = str(job_settings.get("product_name") or "").strip()
+    if name:
+        values.append(name)
+    return tuple(dict.fromkeys(values))
+
+
+def _unauthorized_offproduct_lines(
+    lines: Sequence[str], authority: Sequence[str]
+) -> list[str]:
+    """Off-product text lines whose wording is not covered by the authority."""
+
+    pool = [norm for norm in (_norm_copy(item) for item in authority) if norm]
+    if not pool:
+        return []
+    found: list[str] = []
+    for line in lines:
+        norm = _norm_copy(str(line))
+        if not norm or any(norm in item for item in pool):
+            continue
+        segments = [
+            part
+            for part in (_norm_copy(piece) for piece in _COPY_NOISE.split(str(line)))
+            if part
+        ]
+        if segments and all(any(part in item for item in pool) for part in segments):
+            continue
+        found.append(str(line).strip())
+    return list(dict.fromkeys(found))
+
+
+def _offfact_lines(
+    entry: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+    authority: Sequence[str],
+) -> list[str]:
+    if entry is None or entry[1] is None or not authority:
+        return []
+    lines = [str(line) for line in entry[1].get("other_text_lines", [])]
+    return _unauthorized_offproduct_lines(lines, authority)
+
+
+def _poster_removal_instruction(lines: Sequence[str]) -> str:
+    quoted = "".join(f"「{line}」" for line in lines)
+    return (
+        "【清除原海报文字】原图上的以下文字不在已核验事实池中，成图里必须全部去除，"
+        "连同其底板、括号和分隔线一起删掉，不得保留、改写或挪到别处："
+        + quoted
+        + "。商品本体上印刷的标签文字不在此列，按原商品逐字保留。"
+    )
+
+
+def _inject_offfact_failure(judgment: dict[str, Any], lines: Sequence[str]) -> None:
+    """Fail factual_copy_match for off-product text outside the fact pool."""
+
+    quoted = "".join(f"「{line}」" for line in lines)
+    problem = "画外出现不在已核验事实池中的文字：" + quoted
+    change = (
+        "删除画外文字" + quoted + "，连同其底板、括号和分隔线，用周围背景自然补全；"
+        "商品标签和其余画面层保持不变"
+    )
+    for check in judgment.get("checks", []):
+        if isinstance(check, dict) and check.get("name") == "factual_copy_match":
+            check["passed"] = False
+            check["score"] = min(float(check.get("score") or 0), 40)
+            check["observed_evidence"] = problem
+        if isinstance(check, dict) and check.get("name") == "no_unsupported_claim":
+            check["passed"] = False
+            check["score"] = min(float(check.get("score") or 0), 40)
+            check["observed_evidence"] = problem
+    deficiencies = judgment.setdefault("all_material_deficiencies", [])
+    for name in ("factual_copy_match", "no_unsupported_claim"):
+        existing = next(
+            (
+                item
+                for item in deficiencies
+                if isinstance(item, dict) and item.get("check") == name
+            ),
+            None,
+        )
+        if existing is not None:
+            if quoted not in str(existing.get("visible_problem", "")):
+                existing["visible_problem"] = (
+                    f"{existing.get('visible_problem', '')}；{problem}"
+                )
+                existing["required_change"] = (
+                    f"{existing.get('required_change', '')}；{change}"
+                )
+        else:
+            deficiencies.append(
+                {
+                    "check": name,
+                    "visible_problem": problem,
+                    "root_cause": "沿用了原海报或包装上的营销文字",
+                    "required_change": change,
+                }
+            )
+    judgment["offproduct_copy_gate"] = {"unauthorized_lines": list(lines)}
+
+
+def _apply_offfact_verdicts(
+    check: dict[str, Any],
+    pre_repair: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+    repaired: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+    authority: Sequence[str],
+) -> None:
+    """Deliver the pre-repair draft when only the repair added off-fact text."""
+
+    before = _offfact_lines(pre_repair, authority)
+    after = _offfact_lines(repaired, authority)
+    item = check.get("repaired")
+    if not isinstance(item, dict):
+        return
+    item["offproduct_unauthorized_text"] = after
+    if after and not before and repaired is not None:
+        item["label_exact"] = False
+        item["evidence"] = (
+            "返修后画外出现未授权文字"
+            + "".join(f"「{line}」" for line in after)
+            + "，返修前没有。"
+            + str(item.get("evidence") or "")
+        )
 
 
 def _inject_label_failure(

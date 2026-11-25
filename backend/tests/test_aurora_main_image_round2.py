@@ -174,7 +174,11 @@ class _Page1RepairGateway(FakeXingheGateway):
         return result
 
 
-def _run_pages(tmp_path: Path, gateway: _Page1RepairGateway) -> tuple[Any, list[Any]]:
+def _run_pages(
+    tmp_path: Path,
+    gateway: _Page1RepairGateway,
+    configuration: dict[str, Any] | None = None,
+) -> tuple[Any, list[Any]]:
     _compiled_session(tmp_path)
     session_path = tmp_path / "session.json"
     AuroraV20HarnessRunner().run(
@@ -216,7 +220,7 @@ def _run_pages(tmp_path: Path, gateway: _Page1RepairGateway) -> tuple[Any, list[
                         attempt_id=f"attempt_{index}",
                         operation="domestic_main_image",
                         idempotency_key=f"round2-{index}",
-                        configuration={},
+                        configuration=configuration or {},
                     )
                 )
             )

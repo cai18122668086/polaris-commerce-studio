@@ -411,6 +411,9 @@ class _MainLabelGateway(FakeXingheGateway):
 
     provider_name = "scripted"
 
+    def poster_reading(self) -> dict[str, Any]:
+        return {"products": [{"label_lines": REFERENCE}], "other_text_lines": []}
+
     def __init__(self, readings: list[str], *, fail_page1_audit: bool) -> None:
         super().__init__()
         self.readings = list(readings)
@@ -441,6 +444,9 @@ class _MainLabelGateway(FakeXingheGateway):
             return replace(result, payload={"label_lines": REFERENCE})
         if request.planning_profile == label_fidelity.READ_PROFILE:
             result = await super().plan(request)
+            if ":poster-text" in request.idempotency_key:
+                # The one per-job read of the source poster's off-product text.
+                return replace(result, payload=self.poster_reading())
             return replace(result, payload=_reading(self.readings.pop(0)))
         result = await super().plan(request)
         if request.planning_profile == "aurora_repair_identity_check":

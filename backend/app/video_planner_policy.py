@@ -641,6 +641,61 @@ def normalize_azl_windows(
     return changed, repairs
 
 
+CHAPTER_TEMPLATE_IDS = frozenset(("unified-chapter-v1", "unified-live-chapters-v1"))
+CHAPTER_GROUP_IDS = frozenset(("Z-M05", "Z-M15"))
+
+
+def normalize_chapter_starts(
+    raw: dict[str, Any], template: dict | None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Complete a chapter list the model cut short (unified-chapter e2e).
+
+    The chapter templates need one start word per argument_outline item. The
+    saved response gave five outline items and five beats, one per item, but
+    only the first chapter start, so the whole paid plan was rejected. When
+    the beats map one-to-one onto the outline and every given start (and every
+    chapter-motion beat) is a beat start, the beat starts are the chapters.
+    Anything else still fails strictly.
+    """
+    if not template or template.get("id") not in CHAPTER_TEMPLATE_IDS:
+        return raw, []
+    starts = raw.get("chapter_start_token_ids")
+    outline = raw.get("argument_outline")
+    beats = raw.get("beats")
+    if not (
+        isinstance(starts, list)
+        and starts
+        and isinstance(outline, list)
+        and isinstance(beats, list)
+        and all(isinstance(beat, dict) for beat in beats)
+    ) or len(starts) == len(outline):
+        return raw, []
+    beat_starts = [beat.get("first_token_id") for beat in beats]
+    chapter_beats = {
+        beat.get("first_token_id")
+        for beat in beats
+        if beat.get("group_id") in CHAPTER_GROUP_IDS
+    }
+    if (
+        len(beat_starts) != len(outline)
+        or len(set(beat_starts)) != len(beat_starts)
+        or not all(isinstance(start, str) for start in beat_starts)
+        or not set(starts) <= set(beat_starts)
+        or not chapter_beats <= set(beat_starts)
+    ):
+        return raw, []
+    changed = deepcopy(raw)
+    changed["chapter_start_token_ids"] = beat_starts
+    return changed, [
+        {
+            "kind": "chapter_starts_completed",
+            "from": list(starts),
+            "to": beat_starts,
+            "reason": "one_beat_per_outline_item",
+        }
+    ]
+
+
 def json_planning_options(model: str) -> dict[str, Any]:
     # DeepSeek defaults to thinking mode. Its thought tokens share max_tokens
     # with the JSON answer; structured planning needs the final answer instead.

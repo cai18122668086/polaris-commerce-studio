@@ -109,6 +109,7 @@ from .video_planner_policy import (
     bind_selected_native_assets,
     json_planning_options,
     normalize_azl_windows,
+    normalize_chapter_starts,
     require_planning_content,
 )
 
@@ -1221,7 +1222,27 @@ def generate(
         normalized, native_asset_repairs = bind_selected_native_assets(
             normalized, asset_cards or []
         )
+        normalized, chapter_repairs = normalize_chapter_starts(normalized, template)
+        native_window_repairs.extend(chapter_repairs)
         plan = SemanticPlan.model_validate(normalized)
+        if template is not None:
+            from .video_editing_unified_repair import repair_unified_beats
+
+            normalized, scene_repairs = repair_unified_beats(
+                normalized,
+                plan,
+                settings.video_editing_library_dir,
+                transcript,
+                asset_cards or [],
+                set(
+                    (runtime or {})
+                    .get("template_style", {})
+                    .get("signature_group_ids", [])
+                ),
+            )
+            if scene_repairs:
+                plan = SemanticPlan.model_validate(normalized)
+                native_window_repairs.extend(scene_repairs)
         if native_asset_repairs:
             atomic_json(
                 root / "native-asset-adaptation.json",

@@ -17,6 +17,7 @@ from .bihuo_suite import (
     conditional_layout,
     frame_policy,
     layer_timeline,
+    opening_card,
     raster_cache,
     video_materials,
 )
@@ -37,6 +38,7 @@ def render(payload: dict, output: Path) -> Path:
         raster_cache.native_raster_cache(module) as rasters,
         conditional_layout.execution(module, payload),
         video_materials.execution(module, payload),
+        opening_card.execution(module, payload) as opening,
         # Inside the timeline so it records the layers actually shown.
         frame_policy.execution(module, payload) as framing,
         layer_timeline.recording(module) as timeline,
@@ -57,6 +59,7 @@ def render(payload: dict, output: Path) -> Path:
         layer_timeline=timeline_receipt,
         frame_policy=framing_receipt,
         source_reframe=payload["config"].get("source_reframe"),
+        opening_card=opening.receipt() if opening is not None else None,
         render_seconds=round(time.monotonic() - started, 3),
         raster_cache_hits=rasters.hits,
         raster_cache_misses=rasters.misses,

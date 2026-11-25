@@ -2,11 +2,12 @@
 
 import json
 import re
+import types
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Union, get_args, get_origin
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from .errors import ApiError
 from .video_editing_apple_contracts import AppleSuitePlan, _join
@@ -72,9 +73,11 @@ def normalize_suite_output(
     *,
     features_follow_materials: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    changed, anchor_repairs = normalize_material_anchors(raw, transcript)
-    repairs: list[dict[str, Any]] = [dict(row) for row in anchor_repairs]
     positions = {token.id: i for i, token in enumerate(transcript.tokens)}
+    shaped = deepcopy(raw)
+    shape_repairs = _repair_plan_shape(shaped, transcript, positions)
+    changed, anchor_repairs = normalize_material_anchors(shaped, transcript)
+    repairs: list[dict[str, Any]] = [*shape_repairs, *anchor_repairs]
     captions = changed.get("captions")
     if isinstance(captions, list) and captions and isinstance(captions[0], dict):
         first = captions[0].get("first_token_id")
@@ -126,12 +129,142 @@ def normalize_suite_output(
     repairs.extend(_fit_opening_title_words(changed, transcript, positions))
     repairs.extend(_fit_suite_display_spans(changed, transcript, positions))
     repairs.extend(_release_overlapping_closing(changed, positions))
+    repairs.extend(_release_points_repeating_closing(changed, positions))
     repairs.extend(_repair_material_order(changed, transcript, positions))
     if features_follow_materials:
         repairs.extend(
             _release_features_before_materials(changed, transcript, positions)
         )
     return changed, repairs
+
+
+def _nested_model(annotation: Any) -> tuple[type[BaseModel] | None, bool]:
+    """The plan sub-model a field holds, and whether it is a list of them."""
+    origin = get_origin(annotation)
+    if origin in (Union, types.UnionType):
+        for arg in get_args(annotation):
+            found = _nested_model(arg)
+            if found[0] is not None:
+                return found
+        return None, False
+    if origin is list:
+        (item,) = get_args(annotation) or (None,)
+        model, _ = _nested_model(item)
+        return model, model is not None
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation, False
+    return None, False
+
+
+def _drop_null_extras(
+    value: Any, model: type[BaseModel], path: str, removed: list[str]
+) -> None:
+    if not isinstance(value, dict):
+        return
+    fields = model.model_fields
+    for key in [k for k in value if k not in fields and value[k] is None]:
+        del value[key]
+        removed.append(f"{path}{key}")
+    for name, info in fields.items():
+        child = value.get(name)
+        nested, many = _nested_model(info.annotation)
+        if nested is None or child is None:
+            continue
+        if many and isinstance(child, list):
+            for index, item in enumerate(child):
+                _drop_null_extras(item, nested, f"{path}{name}.{index}.", removed)
+        elif not many:
+            _drop_null_extras(child, nested, f"{path}{name}.", removed)
+
+
+def _repair_plan_shape(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Undo two JSON-mode shape slips before the strict schema check.
+
+    The planner runs in json_object mode, so the provider does not enforce
+    the output schema. Saved responses (bihuo-33/34) carried an empty extra
+    key on every span (``"net": null``) or wrote each caption keyword as
+    ``{"<any key>": "<token id>"}``. A null extra field carries nothing and is
+    removed. A one-entry keyword naming a real word inside its caption becomes
+    the recorded lexical word holding that token. Anything else still fails
+    strict validation unchanged.
+    """
+    if not isinstance(raw, dict):
+        return []
+    removed: list[str] = []
+    _drop_null_extras(raw, AppleSuitePlan, "", removed)
+    repairs: list[dict[str, Any]] = []
+    if removed:
+        repairs.append({"kind": "null_extra_fields_removed", "fields": removed})
+    captions = raw.get("captions")
+    if not isinstance(captions, list):
+        return repairs
+    tokens = transcript.tokens
+    ends, _ = _word_ends(transcript)
+    for cue in captions:
+        if not isinstance(cue, dict) or not isinstance(cue.get("emphasis"), list):
+            continue
+        first = positions.get(str(cue.get("first_token_id")))
+        last = positions.get(str(cue.get("last_token_id")))
+        if first is None or last is None or first > last:
+            continue
+        cut_id = cue.get("line_break_after_token_id")
+        cut = positions.get(cut_id) if isinstance(cut_id, str) else None
+        if cut_id is not None and cut is None:
+            continue  # Unknown recorded IDs must still fail strict validation.
+        rebuilt: list[Any] = []
+        prior = first - 1
+        for item in cue["emphasis"]:
+            if not (
+                isinstance(item, dict)
+                and "first_token_id" not in item
+                and "last_token_id" not in item
+                and len(item) == 1
+            ):
+                rebuilt.append(item)
+                continue
+            ((key, ident),) = item.items()
+            point = positions.get(ident) if isinstance(ident, str) else None
+            if point is None or not first <= point <= last:
+                rebuilt.append(item)
+                continue
+            low, high = first, last
+            if cut is not None:
+                low, high = (first, cut) if point <= cut else (cut + 1, last)
+            start = point
+            while start > low and start - 1 not in ends:
+                start -= 1
+            end = point
+            while end < high and end not in ends:
+                end += 1
+            if len(_join([t.text for t in tokens[start : end + 1]])) > 10:
+                start = end = point
+            if start <= prior:
+                repairs.append(
+                    {
+                        "kind": "caption_emphasis_dropped",
+                        "token_id": ident,
+                        "reason": "overlaps_previous_keyword",
+                    }
+                )
+                continue
+            span = {
+                "first_token_id": tokens[start].id,
+                "last_token_id": tokens[end].id,
+            }
+            rebuilt.append(span)
+            prior = end
+            repairs.append(
+                {
+                    "kind": "caption_emphasis_shape_repaired",
+                    "key": str(key)[:40],
+                    "token_id": ident,
+                    "to": span,
+                }
+            )
+        cue["emphasis"] = rebuilt
+    return repairs
 
 
 def _release_features_before_materials(
@@ -416,6 +549,61 @@ def _release_overlapping_closing(
             }
         ]
     return []
+
+
+def _release_points_repeating_closing(
+    raw: dict[str, Any], positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Omit a point card whose words are wholly a closing phrase again.
+
+    A short script's last clause may be planned both as the last point and as
+    the first closing layer (bihuo-28 planning 522b996f). The point then starts
+    at the quote, so strict order rejects the whole saved response on every
+    retry. The closing already shows those spoken words, so only the
+    duplicate point is omitted; the words stay in the closing and captions.
+    Duplicate feature cards are handled the same way by the suite verifier.
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    if plan.conclusion is None or plan.quote_start_token_id is None:
+        return []
+    quote = positions.get(plan.quote_start_token_id)
+    closing = [
+        (positions.get(row.first_token_id), positions.get(row.last_token_id))
+        for row in (plan.conclusion.first, plan.conclusion.second)
+    ]
+    if quote is None or any(a is None or b is None for a, b in closing):
+        return []
+    kept, repairs = [], []
+    for point, row in zip(plan.points, raw["points"], strict=True):
+        first, last = (
+            positions.get(point.first_token_id),
+            positions.get(point.last_token_id),
+        )
+        if (
+            first is not None
+            and last is not None
+            and last >= quote
+            and any(
+                a is not None and b is not None and a <= first <= last <= b
+                for a, b in closing
+            )
+        ):
+            repairs.append(
+                {
+                    "kind": "duplicate_point_omitted",
+                    "first_token_id": point.first_token_id,
+                    "last_token_id": point.last_token_id,
+                    "reason": "point_repeats_closing_phrase",
+                }
+            )
+        else:
+            kept.append(row)
+    if repairs:
+        raw["points"] = kept
+    return repairs
 
 
 def _fit_suite_display_spans(

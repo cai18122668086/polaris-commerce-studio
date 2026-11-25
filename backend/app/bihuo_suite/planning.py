@@ -12,6 +12,7 @@ from typing import Any
 from .. import video_editing_apple_contracts as contracts
 from ..video_editing_captioning import text_boundaries
 from ..video_editing_contracts import Transcript
+from . import sync_policy as sync
 
 
 def _fit_capsule_captions(payload: dict, transcript: Transcript) -> dict:
@@ -365,6 +366,8 @@ def compile_render_input(
     ffmpeg: str = "ffmpeg",
     size: tuple[int, int] = (1080, 1920),
     recipe_compiler: Any = None,
+    template_id: str | None = None,
+    sync_policy: str = sync.OFF,
 ) -> dict[str, Any]:
     if recipe_compiler is None:
         raise ValueError("Bihuo compilation requires its selected recipe compiler")
@@ -372,14 +375,24 @@ def compile_render_input(
     def fitted_recipe(resolved: dict, **options: Any) -> dict:
         from .conditional_layout import prepare
 
-        return prepare(
+        # Speech-led visual timing is a versioned compile-time policy; the
+        # saved plan, word clock and installed bundle stay unchanged.
+        timed, record = sync.apply(resolved, template_id, sync_policy)
+        payload = prepare(
             _fit_capsule_captions(
                 recipe_compiler(
-                    native_caption_text(resolved, verified, transcript), **options
+                    native_caption_text(timed, verified, transcript), **options
                 ),
                 transcript,
             )
         )
+        if (
+            sync_policy != sync.OFF
+            and isinstance(payload, dict)
+            and isinstance(payload.get("config"), dict)
+        ):
+            payload["config"]["sync_policy"] = record
+        return payload
 
     cards = [{**asset, "id": ident} for ident, asset in asset_files.items()]
     verified = verify_plan(plan, transcript, cards)

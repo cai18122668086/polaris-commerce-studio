@@ -116,7 +116,66 @@ def test_rejected_output_and_failed_rule_are_kept_for_replay(tmp_path, monkeypat
     result, _ = provider.plan_writing(service, "fact_draft", inputs)  # type: ignore[arg-type]
     assert result["validation_error"] == "VIDEO_WRITING_EVIDENCE_INVALID"
     assert "numeric claim" in result["validation_detail"]
+    assert result["validation_issue"]["kind"] == "numeric_claim"
+    assert result["validation_issue"]["index"] == 0
     saved = json.loads(
         (tmp_path / "_writing" / task_id / "rejected-response.json").read_text("utf-8")
     )
     assert saved["content"] == content and "numeric claim" in saved["error"]
+
+
+REAL = json.loads(
+    (Path(__file__).parent / "fixtures/writing_fact_draft_7cbeebd1.json").read_text(
+        "utf-8"
+    )
+)
+
+
+def check_real(draft):
+    return provider.validate_draft(
+        draft,
+        WritingReference.model_validate(REAL["reference"]),
+        WritingFacts.model_validate(REAL["facts"]),
+        WritingAnalysis.model_validate(REAL["analysis"]),
+    )
+
+
+def test_real_7cbeebd1_output_registers_the_unspoken_fact_note_and_now_passes():
+    draft = WritingStructureDraft.model_validate_json(REAL["rejected_content"])
+    assert draft.replacements[0].replacement == "樱花香护手霜（测试示例）"
+    text = check_real(draft)
+    # Narrowed to the spoken, verbatim part of the same fact; saved draft agrees.
+    assert draft.replacements[0].replacement == "樱花香护手霜"
+    assert "樱花香护手霜" in text and "测试示例" not in text
+    assert draft.replacements[1].replacement == "淡淡樱花香"
+
+
+@pytest.mark.parametrize(
+    ("replacement", "kind"),
+    [
+        ("淡雅樱花香", "replacement_ungrounded"),
+        ("玫瑰香护手霜", "replacement_ungrounded"),
+    ],
+)
+def test_invented_or_paraphrased_replacements_stay_rejected_with_their_index(
+    replacement, kind
+):
+    draft = WritingStructureDraft.model_validate_json(REAL["rejected_content"])
+    draft.replacements[1].replacement = replacement
+    with pytest.raises(provider.DraftIssue) as caught:
+        check_real(draft)
+    assert caught.value.issue["kind"] == kind
+    assert caught.value.issue["index"] == 1
+    assert replacement in caught.value.issue["text"]
+
+
+def test_sentence_issue_names_the_line():
+    draft = WritingStructureDraft.model_validate_json(REAL["rejected_content"])
+    draft.sentences[2].text = "一次买两瓶更划算。"
+    with pytest.raises(provider.DraftIssue) as caught:
+        check_real(draft)
+    assert caught.value.issue == {
+        "kind": "numeric_claim",
+        "index": 2,
+        "text": "一次买两瓶更划算。",
+    }

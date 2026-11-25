@@ -6,6 +6,7 @@ import { unwrapApiResponse } from "@/lib/api/request";
 import { ApiError } from "@/lib/api/api-error";
 import { billableLabel } from "@/features/video-studio/credit-notes";
 import styles from "./writing-workflow.module.css";
+import { writingIssueMessage, type WritingIssue } from "@/features/video-studio/writing-issue";
 import { ShortOfCredits } from "./studio-content";
 
 type Fact = { id: string; category: "identity" | "product" | "story"; label: string; value: string | null; status: "user_declared" | "unknown"; source_note: string };
@@ -22,7 +23,7 @@ type Draft = {
 const draftModeName = (draft: Draft["draft"]) => draft.schema_version === "tengli.structure-draft/1" ? "借鉴结构创作" : "按原结构改编";
 type CommonDocument = { id: string; created_at: string; reference_document_id: string | null; analysis_document_id: string | null; facts_document_id: string | null; assistance_task_id: string | null };
 type Document = CommonDocument & ({ kind: "reference"; body: { original_text: string; source_note?: string; sentences: { id: string; text: string }[] } } | { kind: "analysis"; body: Analysis } | { kind: "facts"; body: Facts } | { kind: "draft"; body: Draft });
-type Job = { id: string; request_id: string; kind: string; status: string; error_code: string | null; writing_document_saved?: boolean | null; result: { analysis?: Analysis; draft?: Draft["draft"]; text?: string; shape_check?: Draft["shape_check"] } };
+type Job = { id: string; request_id: string; kind: string; status: string; error_code: string | null; writing_document_saved?: boolean | null; result: { analysis?: Analysis; draft?: Draft["draft"]; text?: string; shape_check?: Draft["shape_check"]; validation_issue?: WritingIssue | null } };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 const stamp = (date: string) => new Date(date).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const blankFact = (): Fact => ({ id: crypto.randomUUID(), category: "product", label: "产品信息", value: null, status: "unknown", source_note: "" });
@@ -221,7 +222,7 @@ export function WritingWorkflow({ workspaceId, projectId, revision, saved, refer
       {config.can_generate && draftBlocker && <small role="status">{draftBlocker}</small>}
       {!config.can_generate && <small>文稿模型暂未配置，可以先保存原文与事实卡。</small>}
     </fieldset>
-    {latestNotes.map(j => { const step = j.kind === "ref_analysis" ? "拆解" : "写稿"; return <p key={j.id} role="status">{j.status === "unknown" ? `上次${step}的提交结果未能确认，可能已计费。确需重新${step}时可再次调用，会按新请求计费。` : j.status === "failed" ? `上次${step}未通过检查，请核对原文和事实后重试。` : `文稿模型正在${step}…`}</p>; })}
+    {latestNotes.map(j => { const step = j.kind === "ref_analysis" ? "拆解" : "写稿"; return <p key={j.id} role="status">{j.status === "unknown" ? `上次${step}的提交结果未能确认，可能已计费。确需重新${step}时可再次调用，会按新请求计费。` : j.status === "failed" ? j.kind === "fact_draft" ? writingIssueMessage(j.result?.validation_issue) : `上次${step}未通过检查，请核对原文和事实后重试。` : `文稿模型正在${step}…`}</p>; })}
     {unsavedResults.map(job => <div key={job.id} className={styles.result}><b>{job.kind === "ref_analysis" ? "拆解结果待保存" : "新稿结果待保存"}</b><p className={styles.document}>{job.result.analysis?.topic || job.result.text}</p><button type="button" disabled={busy || !!editingDraftId} onClick={() => void keepResult(job)}>保存这份{job.kind === "ref_analysis" ? "拆解" : "草稿"}</button></div>)}
     {selectedDraft && <section className={styles.result}>
       <b>核对新稿及事实映射</b>

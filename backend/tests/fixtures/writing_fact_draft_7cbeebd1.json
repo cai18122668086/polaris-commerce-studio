@@ -1,0 +1,171 @@
+{
+  "source": "real 3112 fact_draft 7cbeebd1: inputs and the rejected model output saved by rejected-response.json (structure mode)",
+  "reference": {
+    "sentences": [
+      {
+        "id": "r0000",
+        "text": "56块钱买这个牌子的护手霜，它真的好香，我买的是樱花味的对我买的是樱花味的。"
+      },
+      {
+        "id": "r0001",
+        "text": "然后他送过来这个盒子也很漂亮，就是很漂亮，我感觉很适合拿来送人。"
+      },
+      {
+        "id": "r0002",
+        "text": "现在刚好要冬天嘛，所以就买这个护手霜就是香香的。"
+      },
+      {
+        "id": "r0003",
+        "text": "然后哦这个香味就是像那个舒肤佳那个樱花味的那个沐浴露的味道，就很香，超级香。"
+      }
+    ],
+    "source_url": "https://www.douyin.com/video/7689717768342862841",
+    "source_note": "抖音对标「护手霜」作品 7689717768342862841。搜索页 fca0d1ec-3426-4460-b4f0-2e4265714ebe，采集于 2026-11-22T19:34:13.573109+00:00。语音转写，正文待核对。",
+    "reference_id": "e5b8dbd6-37c9-4d28-a35b-ff4189c67a99",
+    "original_text": "56块钱买这个牌子的护手霜，它真的好香，我买的是樱花味的对我买的是樱花味的。然后他送过来这个盒子也很漂亮，就是很漂亮，我感觉很适合拿来送人。现在刚好要冬天嘛，所以就买这个护手霜就是香香的。\n然后哦这个香味就是像那个舒肤佳那个樱花味的那个沐浴露的味道，就很香，超级香。",
+    "visual_evidence": "not_provided",
+    "interaction_evidence": "not_provided",
+    "source_project_revision": 1
+  },
+  "facts": {
+    "facts": [
+      {
+        "id": "f1",
+        "label": "产品",
+        "value": "樱花香护手霜（测试示例）",
+        "status": "user_declared",
+        "category": "product",
+        "source_note": "端到端测试用示例事实"
+      },
+      {
+        "id": "f2",
+        "label": "香型",
+        "value": "淡淡樱花香",
+        "status": "user_declared",
+        "category": "product",
+        "source_note": "端到端测试用示例事实"
+      },
+      {
+        "id": "f3",
+        "label": "质地",
+        "value": "清爽不黏腻，吸收快",
+        "status": "user_declared",
+        "category": "product",
+        "source_note": "端到端测试用示例事实"
+      }
+    ],
+    "forbidden_terms": [],
+    "restricted_claims": [
+      "health_effect",
+      "price"
+    ]
+  },
+  "analysis": {
+    "topic": "护手霜单品口播：价格开场、香型体验与送礼场景",
+    "sections": [
+      {
+        "id": "hook_price_scent",
+        "function": "钩子：价格数字+品类+主观香感断言开场",
+        "explanation": "首句以「56块钱」具体价格起手，紧接「买这个牌子的护手霜」给出品类与品牌指向，再用「它真的好香」下强主观感受判断，形成价格锚点+体验预判的双钩。「我买的是樱花味的对我买的是樱花味的」为口播中的自我重复与确认，起到强调具体香型的作用，属语音转写特征，无独立新信息。",
+        "last_sentence_id": "r0000",
+        "first_sentence_id": "r0000"
+      },
+      {
+        "id": "packaging_gift",
+        "function": "论证一：包装观感与送礼适配",
+        "explanation": "由收到的盒子「也很漂亮，就是很漂亮」重复修饰强化外观评价，再落到「很适合拿来送人」的用途判断。此段把产品从自用体验扩展到送礼场景，属于以个人观感推断适用场景，未提供画面佐证。",
+        "last_sentence_id": "r0001",
+        "first_sentence_id": "r0001"
+      },
+      {
+        "id": "season_reason",
+        "function": "购买动机：季节需求说明",
+        "explanation": "「现在刚好要冬天嘛」给出购买时机理由，「所以就买这个护手霜就是香香的」把季节需求与香感需求合为购买动因，收束在前两句已建立的「香」主线，起过渡作用。",
+        "last_sentence_id": "r0002",
+        "first_sentence_id": "r0002"
+      },
+      {
+        "id": "scent_comparison",
+        "function": "论证二+收口：类比知名香型并叠加香感强度",
+        "explanation": "末句用「像那个舒肤佳那个樱花味的那个沐浴露的味道」以大众熟悉的香气作类比，降低香型理解成本；「就很香，超级香」用程度词叠加收口，回到开头的「真的好香」，形成首尾呼应的香感闭环。全段为纯语言描述，无素材或数据支撑。",
+        "last_sentence_id": "r0003",
+        "first_sentence_id": "r0003"
+      }
+    ],
+    "limitations": [
+      "参考原文为语音转写且标注正文待核对，存在重复与口语冗余，语义以转写文本为准",
+      "未提供画面证据，无法核验包装外观、产品形态与口播场景，视觉相关结论不作推断",
+      "未提供互动数据，不分析点赞评论或完播表现",
+      "未提供跨账号样本，不进行账号间结构与效果比较",
+      "原句价格、品牌、香型均为参考作者的购买事实，不可视为客户事实"
+    ],
+    "source_claims": [
+      {
+        "quote": "56块钱买这个牌子的护手霜",
+        "reason": "价格与品牌归属为参考原作者的购买事实，不得自动继承为客户事实或价格；须按当前事实卡核对，禁价格时须替换或删除价格表述。",
+        "category": "product",
+        "handling": "do_not_copy",
+        "sentence_id": "r0000"
+      },
+      {
+        "quote": "我买的是樱花味的",
+        "reason": "具体香型为个人选的款式，新稿香型须以客户事实卡为准，不能直接沿用樱花。",
+        "category": "product",
+        "handling": "requires_user_fact",
+        "sentence_id": "r0000"
+      },
+      {
+        "quote": "我感觉很适合拿来送人",
+        "reason": "送礼适配是主观推断的用途承诺，无独立核验，未获客户事实授权不得作为卖点承诺。",
+        "category": "promise",
+        "handling": "do_not_copy",
+        "sentence_id": "r0001"
+      },
+      {
+        "quote": "他送过来这个盒子也很漂亮",
+        "reason": "收货与开盒为原作者个人经历，新稿须以客户提供的真实场景整段替换，不可照搬他人收货叙事。",
+        "category": "story",
+        "handling": "must_replace",
+        "sentence_id": "r0001"
+      },
+      {
+        "quote": "现在刚好要冬天嘛",
+        "reason": "季节时点为参考原文发布期的购买动机，不能被当作当下的时间事实引用。",
+        "category": "story",
+        "handling": "do_not_copy",
+        "sentence_id": "r0002"
+      },
+      {
+        "quote": "像那个舒肤佳那个樱花味的那个沐浴露的味道",
+        "reason": "对第三方品牌香型的类比涉及他牌，新稿须替换为不指向具体他牌的香感描述，避免借用他牌资产。",
+        "category": "product",
+        "handling": "do_not_copy",
+        "sentence_id": "r0003"
+      },
+      {
+        "quote": "就很香，超级香",
+        "reason": "香感强度为主观评价，若作卖点需由客户事实或授权表述支撑，不可照抄为功效承诺。",
+        "category": "promise",
+        "handling": "requires_user_fact",
+        "sentence_id": "r0003"
+      }
+    ],
+    "visual_review": "not_provided",
+    "schema_version": "tengli.writing-analysis/1",
+    "hook_sentence_ids": [
+      "r0000"
+    ],
+    "reusable_structure": [
+      "钩子：具体价格/数量数字 + 品类 + 一句主观体验断言，快速给停留理由",
+      "重复确认具体香型/款式，强化记忆点",
+      "包装观感→送礼场景的用途推断，扩展使用人群",
+      "季节/时机需求说明，交代购买动因",
+      "以大众熟悉的香型或场景作类比，降低理解成本",
+      "结尾用程度词叠加回扣开头的体验断言，首尾收口"
+    ],
+    "interaction_analysis": "not_provided",
+    "cross_account_comparison": "not_provided"
+  },
+  "rejected_content": "{\"title\":\"樱花香护手霜口播稿（结构重写）\",\"sentences\":[{\"text\":\"这支樱花香护手霜，香味真的好闻。\",\"analysis_section_id\":\"hook_price_scent\",\"fact_ids\":[\"f1\",\"f2\"]},{\"text\":\"我用下来最直接的感觉，就是它闻着是淡淡的樱花香。\",\"analysis_section_id\":\"hook_price_scent\",\"fact_ids\":[\"f2\"]},{\"text\":\"上手推开是清爽不黏腻的，吸收也快，涂完不耽误做别的事。\",\"analysis_section_id\":\"packaging_gift\",\"fact_ids\":[\"f3\"]},{\"text\":\"这种淡淡樱花香、又清爽好吸收的护手霜，秋冬想给自己添一支的时候可以优先看看它。\",\"analysis_section_id\":\"season_reason\",\"fact_ids\":[\"f2\",\"f3\"]},{\"text\":\"要说它最打动我的地方，还是这个淡樱花香，不是冲鼻子的那种，闻着舒服。\",\"analysis_section_id\":\"scent_comparison\",\"fact_ids\":[\"f2\",\"f3\"]}],\"replacements\":[{\"category\":\"product\",\"original\":\"这个牌子的护手霜\",\"replacement\":\"樱花香护手霜（测试示例）\",\"fact_id\":\"f1\"},{\"category\":\"product\",\"original\":\"樱花味的\",\"replacement\":\"淡淡樱花香\",\"fact_id\":\"f2\"}],\"missing_facts\":[\"参考原文中的价格数字未采用：当前事实卡禁价格，新稿不写任何价格或净含量\",\"包装外观与开盒观感无独立事实，新稿不描述盒子外观\",\"送礼适配场景未获客户事实授权，新稿不作送礼承诺\",\"与具体他牌沐浴露香型的类比不保留，缺少可替代的可核验香感参照事实\",\"香感强度评价（很香/超级香）缺少授权表述，仅以事实卡香型与质地作支撑\"],\"warnings\":[\"事实卡中 f1、f2、f3 均为 user_declared 的测试示例事实，仅代表用户提供，不构成独立核实或机构背书\",\"参考原文为语音转写且正文待核对，含口语重复，语义以转写文本为准\",\"未提供画面证据、互动数据与跨账号样本，视觉、完播与爆款归因均未核验，不作推断\",\"参考原文的价格、品牌归属、收货经历、季节时点及他牌香型类比均为原作者个人事实，未继承至新稿\"],\"schema_version\":\"tengli.structure-draft/1\"}",
+  "rejected_error": "Replacement is not grounded in original source and user fact"
+}

@@ -77,6 +77,32 @@ def numeric_claims(text: str) -> set[tuple[str, str]]:
     return claims - SINGLE_COUNT
 
 
+class DraftIssue(ValueError):
+    """A rejection tied to one draft line or replacement, for the user message."""
+
+    def __init__(self, message: str, kind: str, index: int, text: str) -> None:
+        super().__init__(message)
+        self.issue = {"kind": kind, "index": index, "text": text[:120]}
+
+
+ANNOTATION = re.compile(r"\s*[（(][^（）()]*[）)]\s*")
+
+
+def spoken_replacement(replacement: FactReplacement, text: str) -> None:
+    """Narrow a replacement to the fact wording that is actually spoken.
+
+    Models often register the whole fact value, including a bracketed note
+    that nobody reads aloud (「樱花香护手霜（测试示例）」 while the line says
+    「樱花香护手霜」). The narrowed value is still a contiguous part of the
+    same fact; paraphrases that are not verbatim fact text stay rejected.
+    """
+    if replacement.replacement in text:
+        return
+    spoken = ANNOTATION.sub("", replacement.replacement).strip()
+    if spoken and spoken != replacement.replacement and spoken in text:
+        replacement.replacement = spoken
+
+
 def validate_draft(
     draft: WritingDraft | WritingStructureDraft,
     reference: WritingReference,
@@ -96,22 +122,47 @@ def validate_draft(
         sections = [
             key for key, _ in groupby(draft.sentences, lambda s: s.analysis_section_id)
         ]
-        if sections != [section.id for section in analysis.sections]:
-            raise ValueError("Draft must cover each analyzed section in order")
+        expected = [section.id for section in analysis.sections]
+        if sections != expected:
+            position = next(
+                (
+                    i
+                    for i, (a, b) in enumerate(zip(sections, expected, strict=False))
+                    if a != b
+                ),
+                min(len(sections), len(expected)),
+            )
+            section = analysis.sections[position] if position < len(expected) else None
+            raise DraftIssue(
+                "Draft must cover each analyzed section in order",
+                "section_order",
+                position,
+                section.function if section else "",
+            )
         if any(not s.text.strip() for s in draft.sentences):
             raise ValueError("Structure draft contains an empty spoken line")
         text = "\n".join(s.text for s in draft.sentences)
     known = {f.id: f for f in facts.facts if f.status == "user_declared"}
     if len(text) > 3000:
         raise ValueError("Draft exceeds the existing editor limit; no truncation")
-    for sentence in draft.sentences:
+    for index, sentence in enumerate(draft.sentences):
         if not set(sentence.fact_ids).issubset(known):
-            raise ValueError("Draft used an unknown or invented user fact")
+            raise DraftIssue(
+                "Draft used an unknown or invented user fact",
+                "unknown_fact",
+                index,
+                sentence.text,
+            )
         declared = "\n".join(known[f].value or "" for f in sentence.fact_ids)
         if not numeric_claims(sentence.text).issubset(numeric_claims(declared)):
-            raise ValueError(
-                "Draft contains a numeric claim absent from its mapped facts"
+            raise DraftIssue(
+                "Draft contains a numeric claim absent from its mapped facts",
+                "numeric_claim",
+                index,
+                sentence.text,
             )
+    for replacement in draft.replacements:
+        spoken_replacement(replacement, text)
     # The user's fact value may itself contain the source wording (source
     # 「护手霜」 -> fact 「樱花香护手霜」). Text inside the registered
     # replacements is never an unreplaced source fact.
@@ -120,7 +171,7 @@ def validate_draft(
         draft.replacements, key=lambda row: len(row.replacement), reverse=True
     ):
         residual = residual.replace(replacement.replacement, "")
-    for replacement in draft.replacements:
+    for index, replacement in enumerate(draft.replacements):
         fact = known.get(replacement.fact_id)
         if (
             not fact
@@ -129,8 +180,11 @@ def validate_draft(
             or replacement.replacement not in (fact.value or "")
             or replacement.replacement not in text
         ):
-            raise ValueError(
-                "Replacement is not grounded in original source and user fact"
+            raise DraftIssue(
+                "Replacement is not grounded in original source and user fact",
+                "replacement_ungrounded",
+                index,
+                f"{replacement.original} → {replacement.replacement}",
             )
         if (
             replacement.original != replacement.replacement
@@ -138,7 +192,12 @@ def validate_draft(
             # Wording the user's own fact contains is endorsed by that fact.
             and replacement.original not in (fact.value or "")
         ):
-            raise ValueError("Old source fact remains in the draft")
+            raise DraftIssue(
+                "Old source fact remains in the draft",
+                "source_leftover",
+                index,
+                replacement.original,
+            )
     if any(term in text for term in facts.forbidden_terms):
         raise ValueError("Draft contains a user forbidden term")
     if "price" in facts.restricted_claims and re.search(
@@ -415,7 +474,10 @@ def plan_writing(
                     / "rejected-response.json",
                     {"kind": kind, "content": content, "error": str(error)[:500]},
                 )
-        return {
+        rejected: dict[str, Any] = {
             "validation_error": "VIDEO_WRITING_EVIDENCE_INVALID",
             "validation_detail": str(error)[:300],
-        }, receipt
+        }
+        if isinstance(error, DraftIssue):
+            rejected["validation_issue"] = error.issue
+        return rejected, receipt

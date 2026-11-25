@@ -44,6 +44,16 @@ from .test_api import dispatch_pending, idem, upload_asset
 PROFILE = "aurora_native_fast_identity"
 
 
+@pytest.fixture(autouse=True)
+def _legacy_native_compiler(monkeypatch):
+    """These cases cover the retained identity + native-compiler plan path.
+
+    New main-image plans are authored in one pass by default; see
+    test_aurora_main_image_authored_workflow.py.
+    """
+    monkeypatch.setenv("POLARIS_MAIN_IMAGE_AUTHORED_PLAN", "false")
+
+
 class NativeGateway(SyntheticSuiteGateway):
     async def plan(self, request):
         assert request.planning_profile == PROFILE, (

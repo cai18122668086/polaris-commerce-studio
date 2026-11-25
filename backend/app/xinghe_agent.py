@@ -38,7 +38,13 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import detail_fast, detail_fast_runtime, label_fidelity, refined_detail
+from . import (
+    aurora_main_image_authored,
+    detail_fast,
+    detail_fast_runtime,
+    label_fidelity,
+    refined_detail,
+)
 from .aurora_detail_runtime import (
     AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
@@ -2718,6 +2724,8 @@ class TengliOpenAICompatibleGateway:
             payload.update(stream=True, stream_options={"include_usage": True})
         if request.planning_profile in {"replica_fast_suite", "aurora_native_fast_identity"}:
             payload["max_completion_tokens"] = 16000
+        if request.planning_profile == aurora_main_image_authored.PROFILE:
+            payload["max_completion_tokens"] = 20000
         if request.planning_profile in {"replica_native_contract", "replica_exact_compact"}:
             payload.update({"max_completion_tokens": 16000})
         elif request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}:
@@ -9475,6 +9483,10 @@ def _fake_usage(
 def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
     if request.planning_profile in label_fidelity.PROFILES:
         return label_fidelity.fake_payload(request.planning_profile)
+    if request.planning_profile == aurora_main_image_authored.PROFILE:
+        return aurora_main_image_authored.fake_strategy(
+            request.product_name, len(request.sources)
+        )
     if request.planning_profile == detail_fast.PROFILE:
         return detail_fast.fake_strategy(_fake_plan(replace(request, planning_profile="detail_pack", domestic_protocol=False)), request)
     if request.planning_profile == refined_detail.PROFILE:
@@ -11451,6 +11463,15 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "schema": schema,
             },
         }
+    if request.planning_profile == aurora_main_image_authored.PROFILE:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_main_image_authored_plan",
+                "strict": False,
+                "schema": aurora_main_image_authored.strategy_schema(),
+            },
+        }
     if request.planning_profile == "aurora_identity":
         return {
             "type": "json_schema",
@@ -12009,6 +12030,26 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "Unknown comparisons are null with audit_complete=false and stop processing. "
             "Return JSON only.\n\nproduct_information="
             + json.dumps(list(request.product_information), ensure_ascii=False)
+        )
+    if request.planning_profile == aurora_main_image_authored.PROFILE:
+        settings = request.intake_settings or {}
+        category = next(
+            (
+                value.split("：", 1)[1]
+                for value in request.product_information
+                if value.startswith("商品类目：")
+            ),
+            str(settings.get("category") or "商品"),
+        )
+        return aurora_main_image_authored.planner_prompt(
+            product_name=request.product_name,
+            category=category,
+            facts=[
+                value
+                for value in request.product_information
+                if not value.startswith("商品类目：")
+            ],
+            source_count=len(request.sources),
         )
     if request.planning_profile == "aurora_identity":
         return (

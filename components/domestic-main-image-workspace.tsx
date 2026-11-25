@@ -1,5 +1,4 @@
 "use client";
-import { GenerationVersionField } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
 import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
@@ -30,7 +29,7 @@ import { JobRegenerateSet, canRegenerateSet } from "@/features/jobs/components/j
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import type { Asset, DomesticMainImageJobCreate } from "@/lib/api/types";
-import { mainImageSpeed, mainImageSpeedSettings, useMainImageSpeedDraft } from "@/lib/domestic-main-image-speed";
+import { mainImageSpeed, mainImageSpeedSettings } from "@/lib/domestic-main-image-speed";
 import { errorMessage } from "@/lib/api/request";
 import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_EXTENSIONS, IMAGE_UPLOAD_FORMAT_HINT, IMAGE_UPLOAD_MIME_TYPES } from "@/lib/image-upload";
 import { allowsJobAction } from "@/lib/jobs/actions";
@@ -169,7 +168,8 @@ export function DomesticMainImageWorkspace() {
   const [trustFacts, setTrustFacts] = useDraftState(workspace?.id, "domestic-main-image", "trustFacts", "");
   const [style, setStyle] = useDraftState(workspace?.id, "domestic-main-image", "style", "");
   const [instruction, setInstruction] = useDraftState(workspace?.id, "domestic-main-image", "instruction", "");
-  const [speed, setSpeed] = useMainImageSpeedDraft(workspace?.id);
+  // 主图只有一个版本：一次规划、六张并行生成。旧任务按其保存的设置展示。
+  const speed = "native_fast" as const;
   const [shadowMode, setShadowMode] = useState<AuroraShadowMode>("off");
   const [createdJobId, setCreatedJobId] = useState<string>();
   const jobId = requestedJobId ?? createdJobId;
@@ -399,7 +399,6 @@ export function DomesticMainImageWorkspace() {
 
             <section className={styles.card}>
               <div className={styles.heading}><span>02</span><div><h2>告诉我们商品的亮点</h2><p>填写商品基本信息，真实卖点和资料越完整，越有助于规划整套图片。</p></div></div>
-              <GenerationVersionField name="main-image-speed" span="full" value={activeSpeed === "native_fast" ? "fast" : "standard"} onChange={value => setSpeed(value === "fast" ? "native_fast" : "standard")} disabled={Boolean(jobId) || busy} />
               <ProductFactsGuidance /><div className={styles.form}>
                 <label><span>商品名称 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("product_name") : productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：轻量保温随行杯" /></label>
                 <label><span>商品类目 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("category") : category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：杯壶 / 保温杯" /></label>

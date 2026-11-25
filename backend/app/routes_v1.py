@@ -5504,7 +5504,9 @@ def _copy_job_relations_for_retry(
         if source_plan is not None and source_plan.confirmed_at is not None:
             copied_payload = dict(source_plan.payload)
             copied_payload["state"] = "confirmed"
-            if source_plan.schema_version == "aurora-main-image-native-fast-plan-v1":
+            from .aurora_main_image_native_fast import FAST_PLAN_SCHEMAS
+
+            if source_plan.schema_version in FAST_PLAN_SCHEMAS:
                 for key in (
                     "_native_final_job_id", "_native_final_session",
                     "_native_final_manifest", "technical_delivery",

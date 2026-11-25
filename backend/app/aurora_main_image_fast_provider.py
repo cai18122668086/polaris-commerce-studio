@@ -17,6 +17,7 @@ from typing import Any
 from PIL import Image
 from sqlalchemy import select
 
+from . import aurora_main_image_authored as authored
 from .aurora_main_image_planner import PAGE_ROLES
 from .errors import ApiError
 from .generation_image_stage import GenerationImageStage, staged_or_stored
@@ -124,16 +125,19 @@ class FastMainImageProvider:
                     "FAST_MAIN_IMAGE_SCOPE_INVALID",
                     "快速主图任务归属或执行状态无效。",
                 )
-            version, schema_version, skill_id = (
-                NATIVE_VERSION,
-                NATIVE_SCHEMA_VERSION,
-                NATIVE_SKILL_ID,
-            )
             row = session.scalar(
                 select(JobPlanRecord)
                 .where(JobPlanRecord.job_id == job.id)
                 .order_by(JobPlanRecord.revision.desc())
                 .limit(1)
+            )
+            authored_plan = (
+                row is not None and row.schema_version == authored.SCHEMA_VERSION
+            )
+            version, schema_version, skill_id = (
+                (authored.VERSION, authored.SCHEMA_VERSION, authored.REFERENCE_ID)
+                if authored_plan
+                else (NATIVE_VERSION, NATIVE_SCHEMA_VERSION, NATIVE_SKILL_ID)
             )
             if (
                 row is None
@@ -190,9 +194,10 @@ class FastMainImageProvider:
                             "原生快速主图提示词或逐页来源绑定无效。",
                         )
             if (
-                BundledSkillManifestValidator().validate(skill_id)
-                != plan["skill_content_hash"]
-            ):
+                authored.reference_bundle()[1]
+                if authored_plan
+                else BundledSkillManifestValidator().validate(skill_id)
+            ) != plan["skill_content_hash"]:
                 raise ApiError(
                     409,
                     "FAST_MAIN_IMAGE_SKILL_CHANGED",

@@ -377,7 +377,12 @@ def plan_suite(
             {"response_sha256": sha256(response_path)},
         )
         atomic_json(folder / "tutorial-plan.json", tutorial)
-    raw, adaptations = normalize_suite_output(raw, transcript)
+    raw, adaptations = normalize_suite_output(
+        raw,
+        transcript,
+        features_follow_materials=snapshot.get("engine")
+        not in {"bihuo-full-suite", EDITORIAL_ENGINE},
+    )
     plan = verify_plan(
         raw,
         transcript,
@@ -565,6 +570,14 @@ def render_suite(
                 Path(source_path), transcript.duration_ms / 1000, root, settings, guard
             )
         )
+        from .video_editing_suite_source_hold import hold_tail
+
+        # A lipsync video may end a frame or two before its audio.
+        source_path = str(
+            hold_tail(
+                Path(source_path), transcript.duration_ms / 1000, root, settings, guard
+            )
+        )
         if definition(template_id).get("requires_foreground"):
             from .bihuo_suite.foreground import prepare as prepare_foreground
 
@@ -574,6 +587,7 @@ def render_suite(
             )
 
         def compiler(resolved: dict, **kwargs: Any) -> dict:
+            from .bihuo_suite.title_fit import fitted_compiler
             from .bihuo_suite.video_materials import compile_request as compile_media
 
             kwargs.pop("fonts", None)
@@ -581,7 +595,9 @@ def render_suite(
             return compile_media(
                 template_id,
                 resolved,
-                compile_request,
+                # Fit the planned title to this suite's width before compiling;
+                # rendering must never fail on title width after paid planning.
+                fitted_compiler(compile_request, lambda tid: definition(tid)["bundle"]),
                 root=root,
                 settings=settings,
                 guard=guard,

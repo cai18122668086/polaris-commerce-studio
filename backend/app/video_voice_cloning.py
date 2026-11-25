@@ -39,6 +39,7 @@ from .video_cosyvoice import (
     LANGUAGES,
     MODEL,
     PREVIEW_TEXT,
+    SERVICE_UNAVAILABLE,
     CosyVoice,
     account_scope,
     ready,
@@ -59,6 +60,7 @@ class CloneResponse(BaseModel):
     preview_status: str
     preview_url: str | None
     error_code: str | None
+    error_message: str | None = None
     created_at: str
     sample_seconds: float | None
 
@@ -106,6 +108,25 @@ def rows_for(
     ).all()
 
 
+FAILURE_MESSAGES = {
+    "VIDEO_CLONE_REJECTED": "声音服务未通过本段录音，请换一段清晰的本人独白重试。",
+    "VIDEO_CLONE_OUTCOME_UNKNOWN": "克隆结果尚未确认，请稍后刷新查看。",
+    "VIDEO_PROVIDER_OUTCOME_UNKNOWN": "声音服务结果尚未确认，请稍后刷新查看。",
+}
+
+
+def failure_message(row: VideoClonedVoiceRecord) -> str | None:
+    if not row.error_code:
+        return None
+    failure = (row.details or {}).get("failure") or {}
+    message = failure.get("message") if isinstance(failure, dict) else None
+    return (
+        message
+        if isinstance(message, str) and message
+        else FAILURE_MESSAGES.get(row.error_code, "声音克隆失败，请联系客服。")
+    )
+
+
 def response(row: VideoClonedVoiceRecord) -> CloneResponse:
     return CloneResponse(
         id=row.id,
@@ -113,6 +134,7 @@ def response(row: VideoClonedVoiceRecord) -> CloneResponse:
         status=row.status,
         preview_status=row.preview_status,
         error_code=row.error_code,
+        error_message=failure_message(row),
         created_at=row.created_at.isoformat(),
         sample_seconds=row.details.get("sample_seconds"),
         preview_url=f"/api/v1/video-studio/workspaces/{row.workspace_id}/voice-clones/{row.id}/preview"
@@ -230,10 +252,20 @@ def enroll(
         except ApiError as error:
             row.status = (
                 "failed"
-                if error.code == "VIDEO_PROVIDER_REJECTED" and not row.provider_voice_id
+                if error.code in {"VIDEO_PROVIDER_REJECTED", SERVICE_UNAVAILABLE}
+                and not row.provider_voice_id
                 else "unknown"
             )
             row.error_code = error.code
+            # A definite failure releases the credit hold (status "failed").
+            # Keep the provider's reason so 我的声音 can show it.
+            row.details = {
+                **row.details,
+                "failure": {
+                    "message": error.message,
+                    **(error.details if isinstance(error.details, dict) else {}),
+                },
+            }
         except Exception:
             row.status, row.error_code = "unknown", "VIDEO_CLONE_OUTCOME_UNKNOWN"
         session.commit()

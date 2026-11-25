@@ -2,11 +2,12 @@
 
 import json
 import re
+import types
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Union, get_args, get_origin
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from .errors import ApiError
 from .video_editing_apple_contracts import AppleSuitePlan, _join
@@ -18,6 +19,9 @@ from .video_editing_suite_caption_repair import repair_suite_captions
 EMPTY_RESPONSE = "EDITING_PLAN_EMPTY_RESPONSE"
 MIN_SUITE_INTRO_MS = 1600
 SUITE_POINT_CAPACITY = 24
+TITLE_CAPACITY = 20
+SUBTITLE_CAPACITY = 32
+MATERIAL_MAX_SHIFT_MS = 1500
 
 
 def normalize_material_anchors(
@@ -64,11 +68,16 @@ def normalize_material_anchors(
 
 
 def normalize_suite_output(
-    raw: dict[str, Any], transcript: Transcript
+    raw: dict[str, Any],
+    transcript: Transcript,
+    *,
+    features_follow_materials: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    changed, anchor_repairs = normalize_material_anchors(raw, transcript)
-    repairs: list[dict[str, Any]] = [dict(row) for row in anchor_repairs]
     positions = {token.id: i for i, token in enumerate(transcript.tokens)}
+    shaped = deepcopy(raw)
+    shape_repairs = _repair_plan_shape(shaped, transcript, positions)
+    changed, anchor_repairs = normalize_material_anchors(shaped, transcript)
+    repairs: list[dict[str, Any]] = [*shape_repairs, *anchor_repairs]
     captions = changed.get("captions")
     if isinstance(captions, list) and captions and isinstance(captions[0], dict):
         first = captions[0].get("first_token_id")
@@ -117,9 +126,379 @@ def normalize_suite_output(
             kept.append(chapter)
         changed["chapters"] = kept
     repairs.extend(repair_suite_captions(changed, transcript))
+    repairs.extend(_fit_opening_title_words(changed, transcript, positions))
     repairs.extend(_fit_suite_display_spans(changed, transcript, positions))
     repairs.extend(_release_overlapping_closing(changed, positions))
+    repairs.extend(_release_points_repeating_closing(changed, positions))
+    repairs.extend(_repair_material_order(changed, transcript, positions))
+    if features_follow_materials:
+        repairs.extend(
+            _release_features_before_materials(changed, transcript, positions)
+        )
     return changed, repairs
+
+
+def _nested_model(annotation: Any) -> tuple[type[BaseModel] | None, bool]:
+    """The plan sub-model a field holds, and whether it is a list of them."""
+    origin = get_origin(annotation)
+    if origin in (Union, types.UnionType):
+        for arg in get_args(annotation):
+            found = _nested_model(arg)
+            if found[0] is not None:
+                return found
+        return None, False
+    if origin is list:
+        (item,) = get_args(annotation) or (None,)
+        model, _ = _nested_model(item)
+        return model, model is not None
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation, False
+    return None, False
+
+
+def _drop_null_extras(
+    value: Any, model: type[BaseModel], path: str, removed: list[str]
+) -> None:
+    if not isinstance(value, dict):
+        return
+    fields = model.model_fields
+    for key in [k for k in value if k not in fields and value[k] is None]:
+        del value[key]
+        removed.append(f"{path}{key}")
+    for name, info in fields.items():
+        child = value.get(name)
+        nested, many = _nested_model(info.annotation)
+        if nested is None or child is None:
+            continue
+        if many and isinstance(child, list):
+            for index, item in enumerate(child):
+                _drop_null_extras(item, nested, f"{path}{name}.{index}.", removed)
+        elif not many:
+            _drop_null_extras(child, nested, f"{path}{name}.", removed)
+
+
+def _repair_plan_shape(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Undo two JSON-mode shape slips before the strict schema check.
+
+    The planner runs in json_object mode, so the provider does not enforce
+    the output schema. Saved responses (bihuo-33/34) carried an empty extra
+    key on every span (``"net": null``) or wrote each caption keyword as
+    ``{"<any key>": "<token id>"}``. A null extra field carries nothing and is
+    removed. A one-entry keyword naming a real word inside its caption becomes
+    the recorded lexical word holding that token. Anything else still fails
+    strict validation unchanged.
+    """
+    if not isinstance(raw, dict):
+        return []
+    removed: list[str] = []
+    _drop_null_extras(raw, AppleSuitePlan, "", removed)
+    repairs: list[dict[str, Any]] = []
+    if removed:
+        repairs.append({"kind": "null_extra_fields_removed", "fields": removed})
+    captions = raw.get("captions")
+    if not isinstance(captions, list):
+        return repairs
+    tokens = transcript.tokens
+    ends, _ = _word_ends(transcript)
+    for cue in captions:
+        if not isinstance(cue, dict) or not isinstance(cue.get("emphasis"), list):
+            continue
+        first = positions.get(str(cue.get("first_token_id")))
+        last = positions.get(str(cue.get("last_token_id")))
+        if first is None or last is None or first > last:
+            continue
+        cut_id = cue.get("line_break_after_token_id")
+        cut = positions.get(cut_id) if isinstance(cut_id, str) else None
+        if cut_id is not None and cut is None:
+            continue  # Unknown recorded IDs must still fail strict validation.
+        rebuilt: list[Any] = []
+        prior = first - 1
+        for item in cue["emphasis"]:
+            if not (
+                isinstance(item, dict)
+                and "first_token_id" not in item
+                and "last_token_id" not in item
+                and len(item) == 1
+            ):
+                rebuilt.append(item)
+                continue
+            ((key, ident),) = item.items()
+            point = positions.get(ident) if isinstance(ident, str) else None
+            if point is None or not first <= point <= last:
+                rebuilt.append(item)
+                continue
+            low, high = first, last
+            if cut is not None:
+                low, high = (first, cut) if point <= cut else (cut + 1, last)
+            start = point
+            while start > low and start - 1 not in ends:
+                start -= 1
+            end = point
+            while end < high and end not in ends:
+                end += 1
+            if len(_join([t.text for t in tokens[start : end + 1]])) > 10:
+                start = end = point
+            if start <= prior:
+                repairs.append(
+                    {
+                        "kind": "caption_emphasis_dropped",
+                        "token_id": ident,
+                        "reason": "overlaps_previous_keyword",
+                    }
+                )
+                continue
+            span = {
+                "first_token_id": tokens[start].id,
+                "last_token_id": tokens[end].id,
+            }
+            rebuilt.append(span)
+            prior = end
+            repairs.append(
+                {
+                    "kind": "caption_emphasis_shape_repaired",
+                    "key": str(key)[:40],
+                    "token_id": ident,
+                    "to": span,
+                }
+            )
+        cue["emphasis"] = rebuilt
+    return repairs
+
+
+def _release_features_before_materials(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Apple layout plays feature cards after all materials; omit early ones.
+
+    Features are optional labels; matched project materials are not. A
+    feature starting before the last material would reject the whole plan,
+    so only that feature is omitted (its words stay in the captions).
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    if not plan.materials or not plan.features:
+        return []
+    tokens = transcript.tokens
+    last = plan.materials[-1]
+    point = positions.get(last.show_at_token_id)
+    if point is None:
+        return []
+    last_ms = tokens[point].start_ms if last.edge == "start" else tokens[point].end_ms
+    kept, repairs = [], []
+    for feature, row in zip(plan.features, raw["features"], strict=True):
+        first = positions.get(feature.first_token_id)
+        if first is None:
+            return []
+        if tokens[first].start_ms <= last_ms:
+            repairs.append(
+                {
+                    "kind": "optional_feature_omitted",
+                    "first_token_id": feature.first_token_id,
+                    "last_token_id": feature.last_token_id,
+                    "reason": "feature_before_material_playback",
+                }
+            )
+        else:
+            kept.append(row)
+    if repairs:
+        raw["features"] = kept
+    return repairs
+
+
+def _word_ends(transcript: Transcript) -> tuple[set[int], set[int]]:
+    """Token indexes ending a lexical (jieba) word, and those ending a clause."""
+    tokens = transcript.tokens
+    lexical, preferred = text_boundaries("".join(token.text for token in tokens))
+    offset = 0
+    ends, clauses = set(), set()
+    for index, token in enumerate(tokens):
+        offset += len(token.text)
+        if offset in lexical or index == len(tokens) - 1:
+            ends.add(index)
+        if offset in preferred or index == len(tokens) - 1:
+            clauses.add(index)
+    return ends, clauses
+
+
+def _fit_opening_title_words(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Keep the opening title and subtitle on whole recorded words.
+
+    The model sometimes ends the title inside a word (「这款白色头」 +
+    「戴耳机，」). Extend the title to the end of that word when it still fits
+    the opening and its capacity; otherwise end it at the previous word. A
+    subtitle that started right after the old title end follows the new one.
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    tokens = transcript.tokens
+    title_a = positions.get(plan.opening.title.first_token_id)
+    title_b = positions.get(plan.opening.title.last_token_id)
+    sub_a = positions.get(plan.opening.subtitle.first_token_id)
+    sub_b = positions.get(plan.opening.subtitle.last_token_id)
+    intro = positions.get(plan.opening.intro_last_token_id)
+    if None in (title_a, title_b, sub_a, sub_b, intro):
+        return []
+    assert title_a is not None and title_b is not None and intro is not None
+    assert sub_a is not None and sub_b is not None
+    if not title_a <= title_b <= intro:
+        return []
+    ends, clauses = _word_ends(transcript)
+    if title_b in ends:
+        return []
+
+    def text(a: int, b: int) -> str:
+        return _join([token.text for token in tokens[a : b + 1]])
+
+    adjacent = sub_a == title_b + 1
+    # Prefer completing the spoken clause (「这款白色头戴耳机，」) over the
+    # next jieba word, which may still split a compound (「头戴|耳机」).
+    forward = next(
+        (
+            i
+            for i in range(title_b + 1, intro + 1)
+            if i in clauses and len(text(title_a, i)) <= TITLE_CAPACITY
+        ),
+        None,
+    ) or next((i for i in range(title_b + 1, intro + 1) if i in ends), None)
+    choice = None
+    if forward is not None and len(text(title_a, forward)) <= TITLE_CAPACITY:
+        new_sub_a = forward + 1 if adjacent or sub_a <= forward else sub_a
+        new_sub_b = sub_b
+        if new_sub_a > new_sub_b:
+            # The subtitle was swallowed by the whole word; let it run on to
+            # the next clause end inside the opening, within its capacity.
+            clause = set(caption_boundaries(transcript).get("cue_end_token_ids", []))
+            new_sub_b = next(
+                (
+                    i
+                    for i in range(new_sub_a, intro + 1)
+                    if i in ends
+                    and tokens[i].id in clause
+                    and len(text(new_sub_a, i)) <= SUBTITLE_CAPACITY
+                ),
+                -1,
+            )
+        if new_sub_a <= new_sub_b <= intro and re.search(
+            r"[\w㐀-鿿]", text(new_sub_a, new_sub_b)
+        ):
+            choice = (forward, new_sub_a, new_sub_b)
+    if choice is None:
+        back = next((i for i in range(title_b - 1, title_a - 1, -1) if i in ends), None)
+        if back is None or not re.search(r"[\w㐀-鿿]", text(title_a, back)):
+            return []
+        new_sub_a = back + 1 if adjacent else sub_a
+        if new_sub_a > sub_b or len(text(new_sub_a, sub_b)) > SUBTITLE_CAPACITY:
+            new_sub_a = sub_a
+        choice = (back, new_sub_a, sub_b)
+    end, new_sub_a, new_sub_b = choice
+    opening = raw["opening"]
+    opening["title"]["last_token_id"] = tokens[end].id
+    opening["subtitle"]["first_token_id"] = tokens[new_sub_a].id
+    opening["subtitle"]["last_token_id"] = tokens[new_sub_b].id
+    return [
+        {
+            "kind": "opening_title_word_boundary",
+            "title_from": text(title_a, title_b),
+            "title_to": text(title_a, end),
+            "subtitle_from": text(sub_a, sub_b),
+            "subtitle_to": text(new_sub_a, new_sub_b),
+        }
+    ]
+
+
+def _repair_material_order(
+    raw: dict[str, Any], transcript: Transcript, positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Move or drop single material placements that break the body order.
+
+    One image anchored inside the opening (or after the quote, or out of
+    speech order) used to reject the whole paid plan. Move such a placement
+    to the nearest valid word edge inside its own matched phrase, at most
+    MATERIAL_MAX_SHIFT_MS away; otherwise drop just that placement. When no
+    placement would remain, leave the plan untouched so it fails strictly.
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    if not plan.materials:
+        return []
+    tokens = transcript.tokens
+    intro = positions.get(plan.opening.intro_last_token_id)
+    if intro is None:
+        return []
+    intro_ms = tokens[intro].end_ms
+    quote = (
+        positions.get(plan.quote_start_token_id)
+        if plan.quote_start_token_id
+        else len(tokens)
+    )
+    if quote is None:
+        return []
+    quote_ms = tokens[quote].start_ms if quote < len(tokens) else transcript.duration_ms
+
+    def at(index: int, edge: str) -> int:
+        return tokens[index].start_ms if edge == "start" else tokens[index].end_ms
+
+    kept: list[dict[str, Any]] = []
+    repairs: list[dict[str, Any]] = []
+    prior = -1
+    for material, row in zip(plan.materials, raw["materials"], strict=True):
+        first = positions.get(material.first_token_id)
+        last = positions.get(material.last_token_id)
+        point = positions.get(material.show_at_token_id)
+        if first is None or last is None or point is None or first > last:
+            return []  # Unknown words remain a strict validation failure.
+        start = at(point, material.edge)
+        if intro_ms <= start < quote_ms and start > prior:
+            kept.append(row)
+            prior = start
+            continue
+        options = [
+            (abs(at(i, edge) - start), i, edge)
+            for i in range(first, last + 1)
+            for edge in ("start", "end")
+            if intro_ms <= at(i, edge) < quote_ms
+            and at(i, edge) > prior
+            and abs(at(i, edge) - start) <= MATERIAL_MAX_SHIFT_MS
+        ]
+        if options:
+            _, index, edge = min(options)
+            moved = {**row, "show_at_token_id": tokens[index].id, "edge": edge}
+            kept.append(moved)
+            prior = at(index, edge)
+            repairs.append(
+                {
+                    "kind": "material_placement_moved",
+                    "asset_id": material.asset_id,
+                    "from": material.show_at_token_id,
+                    "from_edge": material.edge,
+                    "to": tokens[index].id,
+                    "to_edge": edge,
+                    "reason": "placement_outside_body_order",
+                }
+            )
+        else:
+            repairs.append(
+                {
+                    "kind": "material_placement_dropped",
+                    "asset_id": material.asset_id,
+                    "show_at_token_id": material.show_at_token_id,
+                    "reason": "no_valid_slot_in_matched_phrase",
+                }
+            )
+    if not repairs or not kept:
+        return []
+    raw["materials"] = kept
+    return repairs
 
 
 def _release_overlapping_closing(
@@ -170,6 +549,61 @@ def _release_overlapping_closing(
             }
         ]
     return []
+
+
+def _release_points_repeating_closing(
+    raw: dict[str, Any], positions: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Omit a point card whose words are wholly a closing phrase again.
+
+    A short script's last clause may be planned both as the last point and as
+    the first closing layer (bihuo-28 planning 522b996f). The point then starts
+    at the quote, so strict order rejects the whole saved response on every
+    retry. The closing already shows those spoken words, so only the
+    duplicate point is omitted; the words stay in the closing and captions.
+    Duplicate feature cards are handled the same way by the suite verifier.
+    """
+    try:
+        plan = AppleSuitePlan.model_validate(raw)
+    except ValidationError:
+        return []
+    if plan.conclusion is None or plan.quote_start_token_id is None:
+        return []
+    quote = positions.get(plan.quote_start_token_id)
+    closing = [
+        (positions.get(row.first_token_id), positions.get(row.last_token_id))
+        for row in (plan.conclusion.first, plan.conclusion.second)
+    ]
+    if quote is None or any(a is None or b is None for a, b in closing):
+        return []
+    kept, repairs = [], []
+    for point, row in zip(plan.points, raw["points"], strict=True):
+        first, last = (
+            positions.get(point.first_token_id),
+            positions.get(point.last_token_id),
+        )
+        if (
+            first is not None
+            and last is not None
+            and last >= quote
+            and any(
+                a is not None and b is not None and a <= first <= last <= b
+                for a, b in closing
+            )
+        ):
+            repairs.append(
+                {
+                    "kind": "duplicate_point_omitted",
+                    "first_token_id": point.first_token_id,
+                    "last_token_id": point.last_token_id,
+                    "reason": "point_repeats_closing_phrase",
+                }
+            )
+        else:
+            kept.append(row)
+    if repairs:
+        raw["points"] = kept
+    return repairs
 
 
 def _fit_suite_display_spans(
@@ -393,6 +827,61 @@ def normalize_azl_windows(
                 break
         index += 1
     return changed, repairs
+
+
+CHAPTER_TEMPLATE_IDS = frozenset(("unified-chapter-v1", "unified-live-chapters-v1"))
+CHAPTER_GROUP_IDS = frozenset(("Z-M05", "Z-M15"))
+
+
+def normalize_chapter_starts(
+    raw: dict[str, Any], template: dict | None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Complete a chapter list the model cut short (unified-chapter e2e).
+
+    The chapter templates need one start word per argument_outline item. The
+    saved response gave five outline items and five beats, one per item, but
+    only the first chapter start, so the whole paid plan was rejected. When
+    the beats map one-to-one onto the outline and every given start (and every
+    chapter-motion beat) is a beat start, the beat starts are the chapters.
+    Anything else still fails strictly.
+    """
+    if not template or template.get("id") not in CHAPTER_TEMPLATE_IDS:
+        return raw, []
+    starts = raw.get("chapter_start_token_ids")
+    outline = raw.get("argument_outline")
+    beats = raw.get("beats")
+    if not (
+        isinstance(starts, list)
+        and starts
+        and isinstance(outline, list)
+        and isinstance(beats, list)
+        and all(isinstance(beat, dict) for beat in beats)
+    ) or len(starts) == len(outline):
+        return raw, []
+    beat_starts = [beat.get("first_token_id") for beat in beats]
+    chapter_beats = {
+        beat.get("first_token_id")
+        for beat in beats
+        if beat.get("group_id") in CHAPTER_GROUP_IDS
+    }
+    if (
+        len(beat_starts) != len(outline)
+        or len(set(beat_starts)) != len(beat_starts)
+        or not all(isinstance(start, str) for start in beat_starts)
+        or not set(starts) <= set(beat_starts)
+        or not chapter_beats <= set(beat_starts)
+    ):
+        return raw, []
+    changed = deepcopy(raw)
+    changed["chapter_start_token_ids"] = beat_starts
+    return changed, [
+        {
+            "kind": "chapter_starts_completed",
+            "from": list(starts),
+            "to": beat_starts,
+            "reason": "one_beat_per_outline_item",
+        }
+    ]
 
 
 def json_planning_options(model: str) -> dict[str, Any]:

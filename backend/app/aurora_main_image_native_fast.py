@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import hashlib
 from dataclasses import dataclass
@@ -499,6 +500,9 @@ class NativeFastMainImagePlanner(AuroraMainImagePlanner):
             return JobStatus(job.status)
 
 
+AUTHORED_REPLAN_DELAY_SECONDS = 20.0
+
+
 async def _authored_plan_method(
     self: NativeFastMainImagePlanner,
     job_id: str,
@@ -514,46 +518,64 @@ async def _authored_plan_method(
     gateway = self.gateway
     if gateway is None:
         raise AuroraPlanningError("Main image planning gateway is unavailable")
-    result = await gateway.plan(
-        PlannerRequest(
-            workspace_id=workspace_id,
-            job_id=job_id,
-            group_key=job_id,
-            sources=sources,
-            page_count=6,
-            language="zh-CN",
-            product_name=settings["product_name"],
-            product_information=tuple(facts),
-            platform_code="TAOBAO_DOMESTIC_MAIN_IMAGE",
-            size="1024x1024",
-            idempotency_key=f"{job_id}:{authored.VERSION}:plan",
-            system_prompt=authored.system_prompt(),
-            planning_profile=authored.PROFILE,
+    # Loosened: one automatic re-plan when the call fails or its plan does not
+    # validate, instead of failing the whole order on the first answer.
+    results: list[Any] = []
+    strategy: dict[str, Any] | None = None
+    failure: Exception | None = None
+    for planning_try in range(2):
+        result = await gateway.plan(
+            PlannerRequest(
+                workspace_id=workspace_id,
+                job_id=job_id,
+                group_key=job_id,
+                sources=sources,
+                page_count=6,
+                language="zh-CN",
+                product_name=settings["product_name"],
+                product_information=tuple(facts),
+                platform_code="TAOBAO_DOMESTIC_MAIN_IMAGE",
+                size="1024x1024",
+                idempotency_key=f"{job_id}:{authored.VERSION}:plan"
+                + (f":retry-{planning_try}" if planning_try else ""),
+                system_prompt=authored.system_prompt(),
+                planning_profile=authored.PROFILE,
+            )
         )
-    )
-    receipt = {
-        "state": "returned",
-        "provider_request_id": result.provider_request_id,
-        "usage": result.normalized_usage,
-        "elapsed_seconds": result.api_latency_seconds,
-        "actual_cost_micros": total_cost(result),
-        "planner_recovery": summary(result),
-        "error_code": result.error_code,
-    }
-    with self.session_factory() as session:
-        job = session.get(JobRecord, job_id, with_for_update=True)
-        if job is None:
-            return None
-        job.configuration = {**job.configuration, "_main_image_fast_planning": receipt}
+        results.append(result)
+        if result.error_code and planning_try == 0:
+            # A provider outage is often brief: wait before the one re-plan.
+            await asyncio.sleep(AUTHORED_REPLAN_DELAY_SECONDS)
         try:
             if result.error_code:
                 raise authored.AuthoredPlanError(
                     result.error_message or "主图规划调用失败"
                 )
             strategy = authored.validate_strategy(result.payload, len(ids))
+            break
         except authored.AuthoredPlanError as error:
+            failure = error
+    costs = [total_cost(item) for item in results]
+    receipt = {
+        "state": "returned",
+        "provider_request_id": result.provider_request_id,
+        "usage": result.normalized_usage,
+        "elapsed_seconds": sum(item.api_latency_seconds or 0 for item in results),
+        "actual_cost_micros": None
+        if any(cost is None for cost in costs)
+        else sum(cost or 0 for cost in costs),
+        "planner_recovery": summary(result),
+        "error_code": result.error_code,
+        "planning_attempts": len(results),
+    }
+    with self.session_factory() as session:
+        job = session.get(JobRecord, job_id, with_for_update=True)
+        if job is None:
+            return None
+        job.configuration = {**job.configuration, "_main_image_fast_planning": receipt}
+        if strategy is None:
             session.commit()
-            raise AuroraPlanningError(str(error)) from error
+            raise AuroraPlanningError(str(failure or "主图规划失败"))
         if job.status != "planning" or job.cancel_requested_at:
             session.commit()
             return JobStatus(job.status)
@@ -613,7 +635,7 @@ async def _authored_plan_method(
                     {
                         "provider": getattr(self.gateway, "provider_name", "unknown"),
                         "reported": bool(
-                            (result.normalized_usage or {}).get("reported")
+                            (call.normalized_usage or {}).get("reported")
                         ),
                         **_planner_usage_record(call),
                         "provider_request_id_presence": "present"
@@ -623,7 +645,7 @@ async def _authored_plan_method(
                         "raw_usage": call.raw_usage,
                         "normalized_usage": call.normalized_usage,
                     }
-                    for call in (_planner_call_results([result]) or (result,))
+                    for call in (_planner_call_results(results) or tuple(results))
                 ]
             },
         }

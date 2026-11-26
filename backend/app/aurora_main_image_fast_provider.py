@@ -337,17 +337,31 @@ class FastMainImageProvider:
                         409, "FAST_MAIN_IMAGE_SCOPE_INVALID", "已有图片归属无效。"
                     )
                 return old
+            # An explicit rejection in this same job may be called again by a
+            # later automatic attempt (never by the attempt that saw it, and
+            # never for an unconfirmed result).
+            same_job_retry = bool(
+                old
+                and old.get("state") == "rejected"
+                and old.get("job_id") == job.id
+                and old.get("attempt_id") != request.attempt_id
+            )
             # A user-confirmed redo (abandoned_unknown) may call again, but
             # only from the new job and only after the local lookup above.
-            if old and (
-                old.get("state") not in {"rejected", "abandoned_unknown"}
-                or old.get("job_id") == job.id
+            if (
+                old
+                and not same_job_retry
+                and (
+                    old.get("state") not in {"rejected", "abandoned_unknown"}
+                    or old.get("job_id") == job.id
+                )
             ):
                 raise ApiError(
                     409,
                     "PROVIDER_OUTCOME_UNKNOWN",
                     "原生图结果尚未核实，已停止重复提交。",
                 )
+            retry_no = int(old.get("retry_no") or 0) + 1 if same_job_retry else 0
             receipts[key] = {
                 "state": "invoked",
                 "job_id": job.id,
@@ -358,10 +372,11 @@ class FastMainImageProvider:
                     image_prompt(plan, page).encode()
                 ).hexdigest(),
                 "started_at": utc_now().isoformat(),
+                "retry_no": retry_no,
             }
             job.configuration = {**job.configuration, RECEIPTS_KEY: receipts}
             session.commit()
-            return {}
+            return {"_invoke": True, "retry_no": retry_no}
 
     def _finish(
         self, page: dict[str, Any], request: ProviderRequest, receipt: dict[str, Any]
@@ -384,11 +399,35 @@ class FastMainImageProvider:
 
     @staticmethod
     def _artifact(
-        data: bytes, canvas: list[int], *, strict_square: bool = True
+        data: bytes,
+        canvas: list[int],
+        *,
+        strict_square: bool = True,
+        normalize: bool = False,
     ) -> ProviderArtifact:
         with Image.open(BytesIO(data)) as image:
             image.load()
             w, h, fmt = *image.size, image.format
+            if (
+                normalize
+                and fmt in {"PNG", "JPEG", "WEBP"}
+                and (w != h or min(w, h) < canvas[0])
+                and min(w, h) >= 768
+                and 0.8 <= w / h <= 1.25
+            ):
+                # Loosened: a near-square or slightly small result is centre
+                # cropped to square and fitted to the canvas, not rejected.
+                side = min(w, h)
+                left, top = (w - side) // 2, (h - side) // 2
+                fitted = image.convert("RGB").crop((left, top, left + side, top + side))
+                if side < canvas[0]:
+                    fitted = fitted.resize(
+                        (canvas[0], canvas[1]), Image.Resampling.LANCZOS
+                    )
+                buffer = BytesIO()
+                fitted.save(buffer, format="PNG")
+                data = buffer.getvalue()
+                w, h, fmt = *fitted.size, "PNG"
         # Main images are square; keep the native 1024 minimum rather than
         # applying the replica channel's alternative elongated-image threshold.
         if (
@@ -455,7 +494,7 @@ class FastMainImageProvider:
             if self.stage:
                 self.stage.require_writable(self.storage.validator.max_upload_bytes)
             cached = self._claim(plan, page, request)
-            while cached:
+            while cached and not cached.get("_invoke"):
                 stage_path = (
                     self.stage.path(
                         request.workspace_id, cached["job_id"], cached["attempt_id"]
@@ -487,7 +526,12 @@ class FastMainImageProvider:
                         ) from error
                     self.stage.discard(stage_path)
                 try:
-                    artifact = self._artifact(data, plan["canvas"], strict_square=True)
+                    artifact = self._artifact(
+                        data,
+                        plan["canvas"],
+                        strict_square=True,
+                        normalize=plan.get("version") == authored.VERSION,
+                    )
                 except ApiError:
                     if cached.get("state") != "rejected":
                         raise
@@ -518,7 +562,14 @@ class FastMainImageProvider:
                     sources=tuple(sources),
                     prompt=image_prompt(plan, page),
                     quality="high",
-                    idempotency_key=request.idempotency_key,
+                    # A retry after an explicit rejection must not replay
+                    # the rejected request's cached answer.
+                    idempotency_key=request.idempotency_key
+                    + (
+                        f":retry-{cached['retry_no']}"
+                        if cached.get("retry_no")
+                        else ""
+                    ),
                     size=f"{plan['canvas'][0]}x{plan['canvas'][1]}",
                     output_format="png",
                     preserve_provider_artifact=True,
@@ -567,6 +618,7 @@ class FastMainImageProvider:
                     error_message="原生图结果尚未核实，请先核对原任务。"
                     if unknown
                     else "本张主图生成未完成，可重试。",
+                    retryable=not unknown,
                     provider_request_id=result.provider_request_id,
                     raw_usage=usage,
                     usage_reported=bool(usage.get("reported")),
@@ -608,7 +660,12 @@ class FastMainImageProvider:
             await self.storage.save_validated(image)
             artifact = None
             with suppress(ApiError):
-                artifact = self._artifact(data, plan["canvas"], strict_square=True)
+                artifact = self._artifact(
+                        data,
+                        plan["canvas"],
+                        strict_square=True,
+                        normalize=plan.get("version") == authored.VERSION,
+                    )
             self._finish(
                 page,
                 request,
@@ -632,6 +689,7 @@ class FastMainImageProvider:
                 error_message=None
                 if artifact
                 else "本张主图原始画幅未达要求，结果已保留，可重试。",
+                retryable=artifact is None,
                 provider_request_id=result.provider_request_id,
                 raw_usage={
                     **usage,

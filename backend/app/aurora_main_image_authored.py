@@ -322,18 +322,22 @@ def validate_strategy(value: object, source_count: int) -> dict[str, Any]:
         raise AuthoredPlanError(f"规划结果不完整：{path} {error.message}"[:300])
     strategy = json.loads(json.dumps(value, ensure_ascii=False))
     pages = strategy["plan"]["pages"]
+    roles = [page["page_role"] for page in pages]
+    if roles != list(PAGE_ROLES) and sorted(roles) == sorted(PAGE_ROLES):
+        # Loosened: all six duties are present, only out of order.
+        pages.sort(key=lambda page: list(PAGE_ROLES).index(page["page_role"]))
     if [page["page_role"] for page in pages] != list(PAGE_ROLES):
-        raise AuthoredPlanError("六页职责顺序不对")
-    primary = strategy["plan"]["product_identity_lock"]["primary_product_source"]
-    if primary > source_count:
-        raise AuthoredPlanError("商品主参考图编号超出原图数量")
+        raise AuthoredPlanError("六页职责不完整")
+    lock = strategy["plan"]["product_identity_lock"]
+    if not 1 <= lock["primary_product_source"] <= source_count:
+        # Loosened: an impossible source number falls back to source 1.
+        lock["primary_product_source"] = 1
+    primary = lock["primary_product_source"]
     for page in pages:
-        if any(index > source_count for index in page["reference_sources"]):
-            raise AuthoredPlanError("页面参考图编号超出原图数量")
-        page["reference_sources"] = list(dict.fromkeys(page["reference_sources"]))
-    prompts = [page["page_prompt"].strip() for page in pages]
-    if len(set(prompts)) != len(prompts):
-        raise AuthoredPlanError("六页的画面描述有重复")
+        valid = [i for i in page["reference_sources"] if 1 <= i <= source_count]
+        page["reference_sources"] = list(dict.fromkeys(valid)) or [primary]
+    # Similar page descriptions are no longer a failure: the page duties,
+    # cameras and scenes still differ, and the order should be delivered.
     return strategy
 
 

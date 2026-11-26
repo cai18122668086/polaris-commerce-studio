@@ -12,8 +12,8 @@ from app.config import default_aurora_v20_skill_root
 from app.models import CreditReservationRecord, JobPlanRecord
 from app.xinghe_agent import FakeXingheGateway
 
-from ._main_image_workflow_helpers import assert_delivery, confirm, detail
 from ._main_image_workflow_helpers import Gateway as SyntheticSuiteGateway
+from ._main_image_workflow_helpers import assert_delivery, confirm, detail
 from .test_api import dispatch_pending
 from .test_aurora_main_image_native_fast_workflow import create
 
@@ -76,7 +76,8 @@ def test_one_planning_call_six_parallel_images_no_review(client, tmp_path, auto)
     for request in gateway.image_calls:
         index = request.page_number - 1
         page = stored["pages"][index]
-        assert request.prompt == page["prompt"] == authored.compile_prompt(strategy, index)
+        assert request.prompt == page["prompt"]
+        assert request.prompt == authored.compile_prompt(strategy, index)
         assert [s.asset_id for s in request.sources] == page["source_asset_ids"]
         assert request.size == "1024x1024" and request.quality == "high"
     assert current["cost"]["actual_credits"] == 48
@@ -106,6 +107,8 @@ def test_incomplete_plan_fails_planning_without_images(client, tmp_path):
     assert current["stage"] == "planning_failed"
     assert not gateway.image_calls
     assert current["cost"]["actual_credits"] == 0
+    # One automatic re-plan, then the order fails without images.
+    assert len(gateway.planner_calls) == 2
 
 
 def test_strategy_validation_rejects_unusable_plans():
@@ -113,24 +116,12 @@ def test_strategy_validation_rejects_unusable_plans():
     assert authored.validate_strategy(good, 3)["plan"]["pages"][0]["page_role"] == (
         PAGE_ROLES[0]
     )
+    # Order, source numbers and similar descriptions are repaired (see
+    # test_aurora_main_image_loosened); a missing duty or field is not.
     cases = []
-    swapped = deepcopy(good)
-    swapped["plan"]["pages"][0], swapped["plan"]["pages"][1] = (
-        swapped["plan"]["pages"][1],
-        swapped["plan"]["pages"][0],
-    )
-    cases.append(swapped)
-    out_of_range = deepcopy(good)
-    out_of_range["plan"]["pages"][2]["reference_sources"] = [4]
-    cases.append(out_of_range)
-    primary = deepcopy(good)
-    primary["plan"]["product_identity_lock"]["primary_product_source"] = 9
-    cases.append(primary)
-    duplicate = deepcopy(good)
-    duplicate["plan"]["pages"][3]["page_prompt"] = duplicate["plan"]["pages"][2][
-        "page_prompt"
-    ]
-    cases.append(duplicate)
+    repeated = deepcopy(good)
+    repeated["plan"]["pages"][1]["page_role"] = PAGE_ROLES[0]
+    cases.append(repeated)
     missing = deepcopy(good)
     del missing["plan"]["pages"][4]["scene"]
     cases.append(missing)

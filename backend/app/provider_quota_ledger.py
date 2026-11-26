@@ -366,27 +366,29 @@ def _fast_main_image_unplanned_charge(
         if job.status == JobStatus.CANCELLED.value:
             return [], 0, 0, 0
         raise ProviderQuotaLedgerError("Fast main-image planning receipt is missing.")
+    calls = receipt.get("planning_attempts")
+    calls = int(calls) if _is_positive_int(calls) and int(calls) <= 2 else 1
     actual = receipt.get("actual_cost_micros")
     if _is_non_negative_int(actual):
         charge, reported = int(actual), True
     else:
-        charge = _planner_unit_reserve(reservation, job, reserved_cost)
+        charge = _planner_unit_reserve(reservation, job, reserved_cost) * calls
         reported = False
     return (
         [
             {
                 "source": "main_image_fast_planner_receipt",
                 "planner_ordinal": 0,
-                "provider_request_count": 1,
+                "provider_request_count": calls,
                 "charged_cost_micros": charge,
                 "cost_basis": "actual" if reported else "conservative_unknown",
                 "actual_cost_reported": reported,
                 "receipt_state": str(receipt.get("state", "unknown"))[:32],
             }
         ],
-        1,
+        calls,
         charge,
-        int(reported),
+        calls if reported else 0,
     )
 
 

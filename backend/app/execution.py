@@ -24,6 +24,7 @@ from . import detail_fast, detail_fast_runtime, refined_detail
 from . import provider_quota_ledger as quota_ledger
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
+    is_fast_main_image_mode,
     is_parallel_aurora_mode,
     is_v20_aurora_mode,
 )
@@ -2045,6 +2046,21 @@ class ExecutionCoordinator:
             policy.get("execution_mode")
         )
 
+    @staticmethod
+    def _job_uses_fast_main_image(session: Session, job_id: str) -> bool:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job_id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None or not isinstance(plan.payload, Mapping):
+            return False
+        policy = plan.payload.get("execution_policy")
+        return isinstance(policy, Mapping) and is_fast_main_image_mode(
+            policy.get("execution_mode")
+        )
+
     def _recover_expired_attempt(
         self, session: Session, job: JobRecord
     ) -> tuple[AttemptLease | None, bool]:
@@ -2717,6 +2733,11 @@ class ExecutionCoordinator:
                     or (
                         job.type == JobType.DOMESTIC_MAIN_IMAGE.value
                         and self._job_uses_v20_aurora(session, job.id)
+                        and attempt.attempt_no <= self.max_aurora_retries
+                    )
+                    or (
+                        job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                        and self._job_uses_fast_main_image(session, job.id)
                         and attempt.attempt_no <= self.max_aurora_retries
                     )
                 )

@@ -20,6 +20,12 @@ owner decisions in 8.1):
 2. Transitions. An overlay card layer that cuts hard (static, then replaced,
    shown or removed in one frame) dissolves over ``DISSOLVE_FRAMES`` instead.
    The presenter, its frame decorations and captions are never dissolved.
+   When a switch only changes thin content on an unchanged card (text that
+   moves or is replaced), a crossfade would show old and new text on top of
+   each other; that switch instead fades the old text into the card and the
+   new text out of it (``text-dip``), so the two are never visible together.
+   A text-only layer without a shared card (sparse on a transparent layer)
+   fades out completely before the new text fades in.
 
 Only frames that change are recomposited:
 ``out = rgb + plain(adjusted roles) - plain(original roles)``, so a template
@@ -79,6 +85,16 @@ FAST_PX = 6.0
 SETTLE_FRAMES = 3
 
 DISSOLVE_FRAMES = 4
+# A switch whose changed pixels stay below this share of the layer's visible
+# area is a text change on a card (text-dip); above it, a picture (crossfade).
+TEXT_DIP_SHARE = 0.5
+CHANGED_LEVEL = 24
+# Text and line art are thin strokes: few of their opaque pixels survive a
+# 9x9 erosion. Pictures and cards are solid (most pixels survive).
+SOLID_SHARE = 0.3
+# Weight of the card underneath the text per dissolve step, then of the new
+# layer: out with the old text, one frame of bare card, in with the new text.
+TEXT_DIP_STEPS = (("out", 0.5), ("out", 1.0), ("in", 0.5), ("in", 0.85))
 CUT_DELTA = 0.08
 STATIC_DELTA = 0.01
 MIN_CUT_SHARE = 0.004
@@ -266,6 +282,52 @@ def _blend(a: Any, b: Any, w: float) -> Any:
     return result
 
 
+def _text_dip_base(a: Any, b: Any) -> Any | None:
+    """What the old content dips into before the new one appears, or None.
+
+    * Text changing on a card both layers share: the new layer with the
+      changed pixels painted out (the bare card).
+    * Text-only layers (sparse, no card): an empty layer, so the old text is
+      gone before the new text appears.
+    None means a picture or a large change: keep the plain crossfade.
+    """
+    import cv2
+    import numpy as np
+    from PIL import Image
+
+    pa = np.asarray(a, dtype=np.int16)
+    pb = np.asarray(b, dtype=np.int16)
+    opaque_a, opaque_b = pa[..., 3] > 8, pb[..., 3] > 8
+    if not opaque_a.any() or not opaque_b.any():
+        return None
+    changed = np.abs(pa - pb).max(axis=2) > CHANGED_LEVEL
+    if not changed.any():
+        return None
+
+    def solid(opaque: Any) -> float:
+        core = cv2.erode(opaque.astype(np.uint8), np.ones((9, 9), np.uint8))
+        return float(core.sum()) / float(opaque.sum())
+
+    visible = opaque_a & opaque_b
+    if (changed & ~visible).any() or changed.sum() > TEXT_DIP_SHARE * visible.sum():
+        if solid(opaque_a) < SOLID_SHARE and solid(opaque_b) < SOLID_SHARE:
+            return Image.new("RGBA", b.size, (0, 0, 0, 0))
+        return None
+    ys, xs = np.nonzero(changed)
+    pad = 12
+    x0, y0 = max(0, int(xs.min()) - pad), max(0, int(ys.min()) - pad)
+    x1, y1 = min(W, int(xs.max()) + pad + 1), min(H, int(ys.max()) + pad + 1)
+    mask = cv2.dilate(
+        changed[y0:y1, x0:x1].astype(np.uint8) * 255, np.ones((5, 5), np.uint8)
+    )
+    patch = np.asarray(b, dtype=np.uint8)[y0:y1, x0:x1]
+    rgb = cv2.inpaint(np.ascontiguousarray(patch[..., :3]), mask, 5, cv2.INPAINT_TELEA)
+    alpha = cv2.inpaint(np.ascontiguousarray(patch[..., 3]), mask, 5, cv2.INPAINT_TELEA)
+    base = b.copy()
+    base.paste(Image.fromarray(np.dstack([rgb, alpha]), "RGBA"), (x0, y0))
+    return base
+
+
 def _plain(roles: dict[str, Any]) -> Any:
     import numpy as np
     from PIL import Image
@@ -304,6 +366,7 @@ class Policy:
             "unresolved": 0,
             "broll": [],
             "dissolves": {"switch": 0, "appear": 0, "disappear": 0},
+            "text_dips": 0,
             "recomposited_frames": 0,
         }
         if subject.model_available():
@@ -643,12 +706,24 @@ class Policy:
                 self.dissolves[k] = {"from": start, "since": n, "kind": kind}
                 self.summary["dissolves"][kind] += 1
                 row.setdefault("dissolves", []).append([k, kind])
+                if kind == "switch":
+                    base = _text_dip_base(start, image)
+                    if base is not None:
+                        self.dissolves[k]["base"] = base
+                        self.summary["text_dips"] += 1
+                        row.setdefault("text_dips", []).append(k)
             state = self.dissolves.get(k)
             shown = image
             if state is not None:
                 step = n - state["since"]
                 if step >= DISSOLVE_FRAMES:
                     self.dissolves.pop(k, None)
+                elif "base" in state:
+                    phase, w = TEXT_DIP_STEPS[step]
+                    if phase == "out":
+                        shown = _blend(state["from"], state["base"], w)
+                    else:
+                        shown = _blend(state["base"], image, w)
                 else:
                     w = _cubic_out((step + 1) / (DISSOLVE_FRAMES + 1))
                     shown = _blend(state["from"], image, w)

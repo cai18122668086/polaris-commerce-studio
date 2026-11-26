@@ -13,6 +13,7 @@ from .. import video_editing_apple_contracts as contracts
 from ..video_editing_captioning import text_boundaries
 from ..video_editing_contracts import Transcript
 from . import frame_policy as framing
+from . import info_card
 from . import sync_policy as sync
 
 CAPTION_LINES = "bihuo-caption-lines/1"
@@ -466,6 +467,8 @@ def compile_render_input(
             )
         )
         payload = _hold_capsule_card(payload)
+        # Opening info card in spoken order (bihuo-info-card/1).
+        payload = info_card.apply(payload)
         if (
             sync_policy != sync.OFF
             and isinstance(payload, dict)

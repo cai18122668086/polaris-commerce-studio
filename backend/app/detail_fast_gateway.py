@@ -60,6 +60,7 @@ class DurableFastDetailGateway:
         skill_id: str,
         skill_content_hash: str,
         stage_root: Path | None = None,
+        pipeline: str = PIPELINE,
     ) -> None:
         self.session_factory = session_factory
         self.gateway = gateway
@@ -67,6 +68,8 @@ class DurableFastDetailGateway:
         self.stage = GenerationImageStage(stage_root, "detail") if stage_root else None
         self.skill_id = skill_id
         self.skill_content_hash = skill_content_hash
+        # The authored 精致版 reuses this adapter under its own pipeline id.
+        self.pipeline = pipeline
 
     def __getattr__(self, key: str) -> Any:
         return getattr(self.gateway, key)
@@ -95,7 +98,7 @@ class DurableFastDetailGateway:
             )
         return {
             "workspace_id": request.workspace_id,
-            "pipeline": PIPELINE,
+            "pipeline": self.pipeline,
             "skill_id": self.skill_id,
             "skill_content_hash": self.skill_content_hash,
             "model": getattr(self.gateway, "image_model", None),
@@ -125,7 +128,7 @@ class DurableFastDetailGateway:
             or job.type != "detail_pack"
             or job.status != "processing"
             or job.workspace_id != request.workspace_id
-            or job.configuration.get("domestic_detail_pipeline") != PIPELINE
+            or job.configuration.get("domestic_detail_pipeline") != self.pipeline
             or item.workspace_id != request.workspace_id
             or item.job_id != job.id
             or attempt.workspace_id != request.workspace_id
@@ -152,7 +155,7 @@ class DurableFastDetailGateway:
             plan is None
             or plan.validation_status != "valid"
             or not isinstance(metadata, dict)
-            or metadata.get("version") != PIPELINE
+            or metadata.get("version") != self.pipeline
             or metadata.get("skill_id") != self.skill_id
             or metadata.get("skill_content_hash") != self.skill_content_hash
             or not item.configuration.get("resume_signature")
@@ -239,7 +242,7 @@ class DurableFastDetailGateway:
                     or previous.workspace_id != job.workspace_id
                     or previous.type != job.type
                     or previous.configuration.get("domestic_detail_pipeline")
-                    != PIPELINE
+                    != self.pipeline
                 ):
                     raise ApiError(409, "DETAIL_FAST_SCOPE_INVALID", "原任务归属无效。")
                 prior_item = session.scalar(

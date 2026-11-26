@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
-from . import detail_fast, detail_fast_runtime, refined_detail
+from . import aurora_detail_authored, detail_fast, detail_fast_runtime, refined_detail
 from .admin_auth import is_admin
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
 from .archive_response import ArchiveResponse, close_archive, open_archive
@@ -2126,6 +2126,7 @@ def update_draft_job(
                 PIPELINE_VERSION,
                 refined_detail.PIPELINE_VERSION,
                 detail_fast.PIPELINE_VERSION,
+                aurora_detail_authored.PIPELINE_VERSION,
             }:
                 updated_configuration["domestic_detail_pipeline"] = pipeline
                 # Skill selection is immutable once the job has been created.
@@ -4784,6 +4785,9 @@ def _new_job_from_payload(
                     "domestic_detail_pipeline": (
                         detail_fast.PIPELINE_VERSION
                         if payload.configuration.detail_speed == "fast"
+                        else aurora_detail_authored.PIPELINE_VERSION
+                        if payload.configuration.detail_skill == "refined"
+                        and aurora_detail_authored.enabled()
                         else refined_detail.PIPELINE_VERSION
                         if payload.configuration.detail_skill == "refined"
                         else PIPELINE_VERSION

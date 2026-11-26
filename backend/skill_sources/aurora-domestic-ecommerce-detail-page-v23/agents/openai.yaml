@@ -1,0 +1,4 @@
+interface:
+  display_name: "极光国内电商详情图 v2.3.0｜配方卖点独立拆屏"
+  short_description: "原子卖点履约、动态屏数、屏间衔接与真实像素审核"
+  default_prompt: "Use $aurora-domestic-ecommerce-detail-page to plan and execute a fact-grounded domestic e-commerce detail page."

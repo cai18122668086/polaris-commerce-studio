@@ -20,4 +20,5 @@ test("saved task identity takes precedence over unsaved form state", () => {
   assert.equal(savedDetailSkill({ settings: {} }), "quick");
   assert.equal(savedDetailSkill({ domestic_detail_pipeline: "aurora-domestic-detail-v4.3.1" }), "quick");
   assert.equal(savedDetailSkill({ domestic_detail_pipeline: "xinghe-domestic-detail-v4.0" }), "refined");
+  assert.equal(savedDetailSkill({ domestic_detail_pipeline: "aurora-domestic-detail-v2.3-authored" }), "refined");
 });

@@ -295,7 +295,12 @@ def test_known_failure_retry_reuses_successful_pages_without_replanning(
         assert len(bundle.namelist()) == 3
 
 
-def test_standard_default_preserves_request_identity_and_fast_is_explicit(client):
+def test_standard_default_preserves_request_identity_and_fast_is_explicit(
+    client, monkeypatch
+):
+    # The request-identity contract is the same for both 精致版 pipelines;
+    # this pins the historical one (aurora authored is covered separately).
+    monkeypatch.setenv("POLARIS_DETAIL_AURORA_AUTHORED", "false")
     source = upload_asset(client)
     request = request_payload(source["id"], 1, None)
     omitted = DetailPackConfiguration.model_validate(

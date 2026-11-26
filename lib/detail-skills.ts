@@ -18,5 +18,5 @@ export function detailSkillSettings(region: "domestic" | "international", skill:
 
 export function savedDetailSkill(configuration?: { domestic_detail_pipeline?: unknown; settings?: unknown }): DetailSkill {
   // The pipeline is assigned by the server at creation and survives retries.
-  return ["xinghe-domestic-detail-v4.0", "xinghe-domestic-detail-v4.0-fast"].includes(String(configuration?.domestic_detail_pipeline)) ? "refined" : "quick";
+  return ["xinghe-domestic-detail-v4.0", "xinghe-domestic-detail-v4.0-fast", "aurora-domestic-detail-v2.3-authored"].includes(String(configuration?.domestic_detail_pipeline)) ? "refined" : "quick";
 }

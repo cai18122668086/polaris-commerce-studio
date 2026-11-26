@@ -259,6 +259,14 @@ class Settings(BaseSettings):
     # rotates models without notice: change POLARIS_ANALYSIS_MODEL to move the
     # model instead of editing this default.
     analysis_model: str = "gpt-5.6-sol"
+    # Main-image planning only (one-pass authored plan and native-fast
+    # identity).  Empty keeps the shared analysis/failover models above, so
+    # every other feature and an unset deployment behave exactly as before.
+    # main_image_failover_planner_model applies to failover routes only, for a
+    # failover account whose model catalogue differs from the primary's;
+    # empty there falls back to main_image_planner_model.
+    main_image_planner_model: str = ""
+    main_image_failover_planner_model: str = ""
     analysis_timeout_seconds: float = Field(default=600, gt=0, le=1800)
     planner_streaming_enabled: bool = False
     planner_recovery_enabled: bool = False

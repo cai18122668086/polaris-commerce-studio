@@ -358,12 +358,10 @@ def authorize_aurora_plan(
 ) -> None:
     """Record the first and only pre-generation user authorization in Harness."""
 
-    from .aurora_main_image_native_fast import (
-        SCHEMA_VERSION as NATIVE_FAST_SCHEMA,
-    )
+    from .aurora_main_image_native_fast import FAST_PLAN_SCHEMAS
     from .aurora_main_image_native_fast import authorize as authorize_native
 
-    if plan.schema_version == NATIVE_FAST_SCHEMA:
+    if plan.schema_version in FAST_PLAN_SCHEMAS:
         authorize_native(plan, job, approval_text)
         return
 

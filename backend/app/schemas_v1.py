@@ -836,9 +836,32 @@ class ReplicaImageSelection(BaseModel):
     local_edit_job_id: str | None = Field(default=None, min_length=1, max_length=40)
 
 
+class MissingMainImagePage(BaseModel):
+    page_index: int
+    page_number: int
+    page_name: str
+    page_role: str
+    reason: str
+    recover_from_local_result: bool
+
+
+class MainImageMissingPagesResponse(BaseModel):
+    job_id: str
+    delivered_pages: list[int]
+    missing_pages: list[MissingMainImagePage]
+    credits_per_page: int
+    max_credits: int
+    charge_rule: str
+
+
 class RetryRequest(BaseModel):
     scope: RetryScope = RetryScope.FAILED
     item_ids: list[str] = Field(default_factory=list, max_length=12)
+    # Main image: the exact missing pages (0-based) the user confirmed on the
+    # reconciliation screen; required to redo pages whose result is unknown.
+    confirm_missing_pages: list[int] | None = Field(
+        default=None, min_length=1, max_length=6
+    )
     local_edit_instruction: str | None = Field(
         default=None, min_length=1, max_length=4000
     )

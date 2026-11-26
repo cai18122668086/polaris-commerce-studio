@@ -1,5 +1,4 @@
 "use client";
-import { GenerationVersionField } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
 import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
@@ -24,13 +23,13 @@ import { WorkspaceHeader } from "@/components/workspace-header";
 import { FormDisclosure } from "@/components/form-disclosure";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
-import { useConfirmPlan, useCreateJob, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
+import { useConfirmPlan, useCreateJob, useFinalizeJob, useJob, useMainImageMissingPages, useRedoMissingPages, useRetryJob } from "@/features/jobs/api/jobs";
 import { jobFailureMessage } from "@/lib/jobs/presentation";
 import { JobRegenerateSet, canRegenerateSet } from "@/features/jobs/components/job-regenerate-set";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import type { Asset, DomesticMainImageJobCreate } from "@/lib/api/types";
-import { mainImageSpeed, mainImageSpeedSettings, useMainImageSpeedDraft } from "@/lib/domestic-main-image-speed";
+import { mainImageSpeed, mainImageSpeedSettings } from "@/lib/domestic-main-image-speed";
 import { errorMessage } from "@/lib/api/request";
 import { IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_EXTENSIONS, IMAGE_UPLOAD_FORMAT_HINT, IMAGE_UPLOAD_MIME_TYPES } from "@/lib/image-upload";
 import { allowsJobAction } from "@/lib/jobs/actions";
@@ -148,6 +147,8 @@ export function DomesticMainImageWorkspace() {
   const confirmPlan = useConfirmPlan(workspace?.id);
   const finalizeJob = useFinalizeJob(workspace?.id);
   const retryJob = useRetryJob(workspace?.id);
+  const redoMissing = useRedoMissingPages(workspace?.id);
+  const [redoConfirming, setRedoConfirming] = useState(false);
   const runtime = useRuntimeStatus();
   const workflow = presentWorkflow(
     runtime.data?.capabilities.features?.domestic_main_image,
@@ -169,7 +170,8 @@ export function DomesticMainImageWorkspace() {
   const [trustFacts, setTrustFacts] = useDraftState(workspace?.id, "domestic-main-image", "trustFacts", "");
   const [style, setStyle] = useDraftState(workspace?.id, "domestic-main-image", "style", "");
   const [instruction, setInstruction] = useDraftState(workspace?.id, "domestic-main-image", "instruction", "");
-  const [speed, setSpeed] = useMainImageSpeedDraft(workspace?.id);
+  // 主图只有一个版本：一次规划、六张并行生成。旧任务按其保存的设置展示。
+  const speed = "native_fast" as const;
   const [shadowMode, setShadowMode] = useState<AuroraShadowMode>("off");
   const [createdJobId, setCreatedJobId] = useState<string>();
   const jobId = requestedJobId ?? createdJobId;
@@ -215,6 +217,14 @@ export function DomesticMainImageWorkspace() {
     && !hasCompleteSet,
   );
   const recoveryMode = mainImageRecoveryMode(job.data);
+  // Pages whose result never came back cannot use the ordinary retry; the
+  // user confirms exactly which pages to redo (charged only when delivered).
+  const missingPages = useMainImageMissingPages(
+    workspace?.id,
+    job.data?.id,
+    Boolean(job.data && terminalIncomplete && fastMode),
+  );
+  const missingList = missingPages.data?.missing_pages ?? [];
   const showGeneration = Boolean(
     job.data && ["processing", "awaiting_final_review", "completed", "partial", "failed"].includes(job.data.status),
   );
@@ -338,6 +348,19 @@ export function DomesticMainImageWorkspace() {
     }
   }
 
+  async function redoMissingPages() {
+    if (!job.data || !missingList.length) return;
+    setLocalError(undefined);
+    try {
+      const redone = await redoMissing.mutateAsync({ jobId: job.data.id, pages: missingList.map(page => page.page_index) });
+      setRedoConfirming(false);
+      router.replace(`/workspace/domestic-main-image?jobId=${encodeURIComponent(redone.id)}`);
+    } catch (error) {
+      setLocalError(errorMessage(error));
+      void missingPages.refetch();
+    }
+  }
+
   async function retryFailedPages() {
     if (!job.data || !recoveryMode || !allowsJobAction(job.data.allowed_actions, "retry")) return;
     setLocalError(undefined);
@@ -399,7 +422,6 @@ export function DomesticMainImageWorkspace() {
 
             <section className={styles.card}>
               <div className={styles.heading}><span>02</span><div><h2>告诉我们商品的亮点</h2><p>填写商品基本信息，真实卖点和资料越完整，越有助于规划整套图片。</p></div></div>
-              <GenerationVersionField name="main-image-speed" span="full" value={activeSpeed === "native_fast" ? "fast" : "standard"} onChange={value => setSpeed(value === "fast" ? "native_fast" : "standard")} disabled={Boolean(jobId) || busy} />
               <ProductFactsGuidance /><div className={styles.form}>
                 <label><span>商品名称 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("product_name") : productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：轻量保温随行杯" /></label>
                 <label><span>商品类目 *</span><input disabled={Boolean(jobId)} value={jobId ? restoredString("category") : category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：杯壶 / 保温杯" /></label>
@@ -469,6 +491,14 @@ export function DomesticMainImageWorkspace() {
             <details className="creation-dev-options"><summary>六图创作说明</summary><p>固定六张，不增不减；每页最多自动修复一次。</p></details>
             {runtime.data?.environment === "development" && <details className="creation-dev-options"><summary>开发服务设置</summary><DevelopmentProviderSettings /></details>}
             {handoff.error && <p className={styles.error} role="alert">{errorMessage(handoff.error)}</p>}
+            {missingList.length > 0 && !allowsJobAction(job.data?.allowed_actions ?? [], "retry") && <section className={styles.card} aria-label="补齐缺页">
+              <div className={styles.heading}><span>05</span><div><h2>补齐缺页</h2><p>以下页面没有交付，可以只重做这几页；已交付的页不会重做。</p></div></div>
+              <ul>{missingList.map(page => <li key={page.page_index}>第 {page.page_number} 页 · {page.page_name}：{page.reason}{page.recover_from_local_result ? "（已找到结果，直接恢复，不重新生成）" : ""}</li>)}</ul>
+              <p className={styles.note}>{missingPages.data?.charge_rule} 每页 {missingPages.data?.credits_per_page} 积分，最多 {missingPages.data?.max_credits} 积分。</p>
+              {!redoConfirming
+                ? <button className={styles.primary} disabled={busy || redoMissing.isPending} onClick={() => setRedoConfirming(true)}>补齐这 {missingList.length} 页</button>
+                : <div><button className={styles.primary} disabled={redoMissing.isPending} onClick={() => void redoMissingPages()}>{redoMissing.isPending ? <LoaderCircle className="spin" size={17} /> : null}确认补齐（第 {missingList.map(page => page.page_number).join("、")} 页）</button> <button disabled={redoMissing.isPending} onClick={() => setRedoConfirming(false)}>取消</button></div>}
+            </section>}
             {localError || createJob.error || confirmPlan.error || finalizeJob.error || retryJob.error ? <p className={styles.error}>{localError ?? errorMessage(createJob.error ?? confirmPlan.error ?? finalizeJob.error ?? retryJob.error)}</p> : null}
             {!jobId && <CreditCostHint jobType="domestic_main_image" count={6} variant={fastMode ? "fast" : undefined} />}
             {!jobId ? <button className={styles.primary} disabled={!canCreate || busy} onClick={() => void createPlan()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}生成主图六件套<ArrowRight size={17} /></button> : job.data && !automaticPlan && allowsJobAction(job.data.allowed_actions, "finalize") ? <button className={styles.primary} disabled={finalizeJob.isPending} onClick={() => finalizeJob.mutate({ jobId: job.data!.id, allowedActions: job.data!.allowed_actions, approvalText: "我已审阅六张成图，确认整组结果并批准按 Aurora Skill 完成交付。" })}>{finalizeJob.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认整组并完成交付<ArrowRight size={17} /></button> : job.data && recoveryMode && !hasCompleteSet && providerReady ? <button className={styles.primary} disabled={retryJob.isPending} onClick={() => void retryFailedPages()}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{recoveryMode === "replan" ? "重新规划并生成" : "按原方案重新生成"}<ArrowRight size={17} /></button> : !automaticPlan && job.data?.plan && allowsJobAction(job.data.allowed_actions, "confirm_plan") && providerReady ? <button className={styles.primary} disabled={confirmPlan.isPending} onClick={() => confirmPlan.mutate({ jobId: job.data!.id, revision: job.data!.plan!.revision, allowedActions: job.data!.allowed_actions, approvalText: fastMode ? "我确认当前快速六图规划，授权独立生成并直接交付，成图未经独立 AI 复审。" : "我确认当前六图规划，并授权按 Aurora Skill 逐张生成、审图及执行每页至多一次自动修复。" })}>{confirmPlan.isPending ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}确认方案并开始<ArrowRight size={17} /></button> : job.data && workspace && !recoveryMode && canRegenerateSet(job.data) ? <JobRegenerateSet compact workspaceId={workspace.id} job={job.data} onCreated={(id) => router.replace(`/workspace/domestic-main-image?jobId=${encodeURIComponent(id)}`)} /> : <button className={styles.primary} disabled><LoaderCircle className={job.data && ["queued", "planning", "processing"].includes(job.data.status) ? "spin" : ""} size={17} />{terminalIncomplete ? "任务已终止" : automaticPlan && job.data?.status === "awaiting_final_review" ? "正在整理交付" : job.data?.status === "completed" && hasCompleteSet ? "整组已完成" : job.data?.status === "completed" ? "未生成真实图片" : workflow.mode === "mock" && job.data?.status === "awaiting_confirmation" ? "真实生成服务未启用" : "任务处理中"}</button>}

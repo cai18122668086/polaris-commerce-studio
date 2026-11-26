@@ -278,6 +278,47 @@ export function useRetryJob(workspaceId: string | undefined) {
   );
 }
 
+/** Reconciled missing main-image pages and the charge rule (read-only). */
+export function useMainImageMissingPages(
+  workspaceId: string | undefined,
+  jobId: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: [...jobKeys.detail(workspaceId ?? "pending", jobId ?? "pending"), "missing-pages"],
+    enabled: Boolean(workspaceId && jobId && enabled),
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.GET(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/main-image/missing-pages",
+        { params: { path: { workspace_id: workspaceId!, job_id: jobId! } }, signal },
+      );
+      return unwrapApiResponse(result);
+    },
+  });
+}
+
+/** Redo only the confirmed missing pages; the server re-checks the list. */
+export function useRedoMissingPages(workspaceId: string | undefined) {
+  return useJobMutation<JobDetail, { jobId: string; pages: number[] }>(
+    workspaceId,
+    "redo-missing-pages",
+    ({ jobId, pages }) => ({ jobId, pages: [...pages].sort((a, b) => a - b) }),
+    async (id, input, key) => {
+      const result = await apiClient.POST(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/retry",
+        {
+          params: {
+            path: { workspace_id: id, job_id: input.jobId },
+            header: { "Idempotency-Key": key },
+          },
+          body: { scope: "failed", item_ids: [], confirm_missing_pages: input.pages },
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+  );
+}
+
 export function useLocalEditDecision(workspaceId: string | undefined) {
   return useJobMutation<JobDetail, AuthorizedJobAction & {
     action: "accept" | "review"; candidateSha256: string;

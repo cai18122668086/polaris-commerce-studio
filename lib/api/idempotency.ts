@@ -6,6 +6,7 @@ export type IdempotentOperation =
   | "local-revision"
   | "cancel-job"
   | "retry-job"
+  | "redo-missing-pages"
   | "clone-job"
   | "resolve-intake"
   | "continue-detail-brand"

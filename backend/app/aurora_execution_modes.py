@@ -9,6 +9,14 @@ PARALLEL_V20_CALIBRATED = "parallel_v20_calibrated"
 SEQUENTIAL_V20 = "sequential_v20"
 PARALLEL_AURORA_MODES = frozenset({PARALLEL_V20, PARALLEL_V20_CALIBRATED})
 V20_AURORA_MODES = frozenset({SEQUENTIAL_V20, *PARALLEL_AURORA_MODES})
+# Fast main image (one plan, six parallel pages): native and authored plans.
+FAST_MAIN_IMAGE_MODES = frozenset(
+    {"aurora-main-image-native-fast-v1", "aurora-main-image-authored-v1"}
+)
+
+
+def is_fast_main_image_mode(mode: object) -> bool:
+    return isinstance(mode, str) and mode in FAST_MAIN_IMAGE_MODES
 
 
 def is_parallel_aurora_mode(mode: object) -> bool:

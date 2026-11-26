@@ -24,6 +24,7 @@ from . import detail_fast, detail_fast_runtime, refined_detail
 from . import provider_quota_ledger as quota_ledger
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
+    is_fast_main_image_mode,
     is_parallel_aurora_mode,
     is_v20_aurora_mode,
 )
@@ -1684,7 +1685,18 @@ class ExecutionCoordinator:
                 return None
 
             recovered, expired_handled = self._recover_expired_attempt(session, job)
-            if expired_handled:
+            handled_any = expired_handled
+            # One delivery resolves every expired attempt of the job instead of
+            # one per broker delivery (each delivery used to advance one page).
+            for _ in range(32):
+                if recovered is not None or not expired_handled:
+                    break
+                session.flush()
+                recovered, expired_handled = self._recover_expired_attempt(
+                    session, job
+                )
+                handled_any = handled_any or expired_handled
+            if handled_any:
                 session.commit()
             if recovered is not None:
                 return recovered
@@ -2034,6 +2046,21 @@ class ExecutionCoordinator:
             policy.get("execution_mode")
         )
 
+    @staticmethod
+    def _job_uses_fast_main_image(session: Session, job_id: str) -> bool:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job_id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None or not isinstance(plan.payload, Mapping):
+            return False
+        policy = plan.payload.get("execution_policy")
+        return isinstance(policy, Mapping) and is_fast_main_image_mode(
+            policy.get("execution_mode")
+        )
+
     def _recover_expired_attempt(
         self, session: Session, job: JobRecord
     ) -> tuple[AttemptLease | None, bool]:
@@ -2069,6 +2096,55 @@ class ExecutionCoordinator:
         attempt.error_code = "PROVIDER_OUTCOME_UNKNOWN"
         attempt.error_message = "生成请求已发出但结果未确认，已停止自动重试。"
         attempt.finished_at = now
+        if self._fast_main_image_record(job):
+            # The interrupted call was sent: count it and keep its supplier
+            # cost separate from customer credits (unconfirmed, never billed
+            # to the customer unless a page is delivered).
+            session.add(
+                UsageEventRecord(
+                    workspace_id=job.workspace_id,
+                    job_id=job.id,
+                    job_item_id=item.id,
+                    attempt_id=attempt.id,
+                    provider=attempt.provider or self.provider.name,
+                    model=getattr(self.provider, "model", "unknown"),
+                    operation=job.type,
+                    provider_request_id=attempt.provider_request_id,
+                    quality=item.quality,
+                    usage_reported=False,
+                    raw_usage={
+                        "network_requests": 1,
+                        "interrupted_by_worker_loss": True,
+                        "supplier_cost_status": "unconfirmed",
+                        "customer_charge": "none_unless_delivered",
+                    },
+                    pricing_version=getattr(
+                        self.provider, "pricing_version", "unknown"
+                    ),
+                    currency=job.currency or "USD",
+                    estimated_cost_micros=None,
+                    actual_cost_micros=None,
+                )
+            )
+            if attempt.attempt_no <= self.max_aurora_retries:
+                # Re-enter the provider only to look up this page's existing
+                # result by its receipt (local stage / storage). The provider
+                # never issues a new image call for an unresolved receipt.
+                item.status = JobItemStatus.RETRY_WAIT.value
+                item.stage = "retry_wait_outcome_reconciliation"
+                item.error_code = "PROVIDER_OUTCOME_UNKNOWN"
+                item.error_message = (
+                    "Worker lease expired; looking up the existing page result."
+                )
+                item.error_details = {
+                    "retryable": True,
+                    "outcome_unknown": True,
+                    "provider_idempotency_key": attempt.provider_idempotency_key,
+                }
+                item.next_attempt_at = now
+                item.finished_at = None
+                item.state_version += 1
+                return None, True
         pair_reconcile = (
             job.type == JobType.DETAIL_PACK.value
             and not self._is_domestic_detail_job_record(job)
@@ -2657,6 +2733,11 @@ class ExecutionCoordinator:
                     or (
                         job.type == JobType.DOMESTIC_MAIN_IMAGE.value
                         and self._job_uses_v20_aurora(session, job.id)
+                        and attempt.attempt_no <= self.max_aurora_retries
+                    )
+                    or (
+                        job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                        and self._job_uses_fast_main_image(session, job.id)
                         and attempt.attempt_no <= self.max_aurora_retries
                     )
                 )

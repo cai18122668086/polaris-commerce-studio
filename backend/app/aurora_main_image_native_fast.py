@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import hashlib
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from typing import Any, ClassVar
 from jsonschema import Draft202012Validator
 from sqlalchemy import select
 
+from . import aurora_main_image_authored as authored
 from .aurora_main_image_planner import (
     _IDENTITY_SYSTEM_PROMPT,
     PAGE_ROLES,
@@ -46,6 +48,9 @@ from .xinghe_agent import (
 VERSION = "aurora-main-image-native-fast-v1"
 SCHEMA_VERSION = "aurora-main-image-native-fast-plan-v1"
 SKILL_ID = "aurora-domestic-ecommerce-main-image-native-fast"
+# Plans executed by the fast pipeline: the retained native-compiler plan and
+# the one-pass authored plan (the default for new tasks).
+FAST_PLAN_SCHEMAS = frozenset({SCHEMA_VERSION, authored.SCHEMA_VERSION})
 PROFILE = "aurora_native_fast_identity"
 
 
@@ -99,7 +104,45 @@ def public_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return public
 
 
+def _validate_authored_plan(plan: JobPlanRecord, job: JobRecord) -> None:
+    payload = plan.payload
+    ids = job.configuration.get("input", {}).get("product_asset_ids", [])
+    if (
+        job.configuration.get("settings", {}).get("main_image_speed") != "native_fast"
+        or payload.get("version") != authored.VERSION
+        or payload.get("skill_id") != authored.REFERENCE_ID
+        or payload.get("canvas") != list(authored.CANVAS)
+        or payload.get("product_asset_ids") != ids
+        or canonical_hash(payload) != plan.payload_hash
+        or not isinstance(payload.get("product_identity_lock"), dict)
+        or not isinstance(payload.get("style_lock"), dict)
+        or len(payload.get("pages", [])) != 6
+    ):
+        raise AuroraPlanningError("Main image plan version or identity binding changed")
+    pages = payload["pages"]
+    if [p.get("page_index") for p in pages] != list(range(6)) or [
+        p.get("page_role") for p in pages
+    ] != list(PAGE_ROLES):
+        raise AuroraPlanningError("Main image plan must preserve all six page duties")
+    for page in pages:
+        if (
+            not isinstance(page.get("prompt"), str)
+            or not page["prompt"].strip()
+            or not page.get("source_asset_ids")
+            or not set(page["source_asset_ids"]).issubset(ids)
+            or len(page["source_asset_ids"]) != len(set(page["source_asset_ids"]))
+            or hashlib.sha256(page["prompt"].encode()).hexdigest()
+            != page.get("prompt_sha256")
+        ):
+            raise AuroraPlanningError("Main image frozen prompt or references changed")
+    if authored.reference_bundle()[1] != payload.get("skill_content_hash"):
+        raise AuroraPlanningError("Main image planning references changed")
+
+
 def validate_plan(plan: JobPlanRecord, job: JobRecord) -> None:
+    if plan.schema_version == authored.SCHEMA_VERSION:
+        _validate_authored_plan(plan, job)
+        return
     payload = plan.payload
     ids = job.configuration.get("input", {}).get("product_asset_ids", [])
     if (
@@ -142,6 +185,12 @@ def validate_plan(plan: JobPlanRecord, job: JobRecord) -> None:
 def authorize(plan: JobPlanRecord, job: JobRecord, approval_text: str) -> None:
     validate_plan(plan, job)
     payload = copy.deepcopy(plan.payload)
+    if plan.schema_version == authored.SCHEMA_VERSION:
+        # The authored plan already holds the frozen per-page prompts; there is
+        # no harness session to authorize.
+        payload.update(harness_state="AUTHORIZED", approval_text=approval_text)
+        plan.payload, plan.payload_hash = payload, canonical_hash(payload)
+        return
     root = Path(payload["_native_workspace"])
     runner = NativeFastHarnessRunner()
     session_path = root / "session.json"
@@ -211,6 +260,19 @@ class NativeFastMainImagePlanner(AuroraMainImagePlanner):
             execution_mode=VERSION,
         )
 
+    async def _plan_authored(
+        self,
+        job_id: str,
+        workspace_id: str,
+        ids: list[str],
+        bindings: list[dict[str, Any]],
+        sources: Any,
+        settings: dict[str, Any],
+    ) -> JobStatus | None:
+        return await _authored_plan_method(
+            self, job_id, workspace_id, ids, bindings, sources, settings
+        )
+
     async def plan(self, job_id: str) -> JobStatus | None:
         with self.session_factory() as session:
             job = session.get(JobRecord, job_id, with_for_update=True)
@@ -260,6 +322,10 @@ class NativeFastMainImagePlanner(AuroraMainImagePlanner):
         gateway = self.gateway
         if gateway is None:
             raise AuroraPlanningError("Native identity gateway is unavailable")
+        if authored.enabled():
+            return await self._plan_authored(
+                job_id, workspace_id, ids, bindings, sources, settings
+            )
         result = await gateway.plan(
             PlannerRequest(
                 workspace_id=workspace_id,
@@ -434,6 +500,183 @@ class NativeFastMainImagePlanner(AuroraMainImagePlanner):
             return JobStatus(job.status)
 
 
+AUTHORED_REPLAN_DELAY_SECONDS = 20.0
+
+
+async def _authored_plan_method(
+    self: NativeFastMainImagePlanner,
+    job_id: str,
+    workspace_id: str,
+    ids: list[str],
+    bindings: list[dict[str, Any]],
+    sources: Any,
+    settings: dict[str, Any],
+) -> JobStatus | None:
+    """One planning call authors the six pages (detail-page style)."""
+
+    facts = _all_facts(settings)
+    gateway = self.gateway
+    if gateway is None:
+        raise AuroraPlanningError("Main image planning gateway is unavailable")
+    # Loosened: one automatic re-plan when the call fails or its plan does not
+    # validate, instead of failing the whole order on the first answer.
+    results: list[Any] = []
+    strategy: dict[str, Any] | None = None
+    failure: Exception | None = None
+    for planning_try in range(2):
+        result = await gateway.plan(
+            PlannerRequest(
+                workspace_id=workspace_id,
+                job_id=job_id,
+                group_key=job_id,
+                sources=sources,
+                page_count=6,
+                language="zh-CN",
+                product_name=settings["product_name"],
+                product_information=tuple(facts),
+                platform_code="TAOBAO_DOMESTIC_MAIN_IMAGE",
+                size="1024x1024",
+                idempotency_key=f"{job_id}:{authored.VERSION}:plan"
+                + (f":retry-{planning_try}" if planning_try else ""),
+                system_prompt=authored.system_prompt(),
+                planning_profile=authored.PROFILE,
+            )
+        )
+        results.append(result)
+        if result.error_code and planning_try == 0:
+            # A provider outage is often brief: wait before the one re-plan.
+            await asyncio.sleep(AUTHORED_REPLAN_DELAY_SECONDS)
+        try:
+            if result.error_code:
+                raise authored.AuthoredPlanError(
+                    result.error_message or "主图规划调用失败"
+                )
+            strategy = authored.validate_strategy(result.payload, len(ids))
+            break
+        except authored.AuthoredPlanError as error:
+            failure = error
+    costs = [total_cost(item) for item in results]
+    receipt = {
+        "state": "returned",
+        "provider_request_id": result.provider_request_id,
+        "usage": result.normalized_usage,
+        "elapsed_seconds": sum(item.api_latency_seconds or 0 for item in results),
+        "actual_cost_micros": None
+        if any(cost is None for cost in costs)
+        else sum(cost or 0 for cost in costs),
+        "planner_recovery": summary(result),
+        "error_code": result.error_code,
+        "planning_attempts": len(results),
+    }
+    with self.session_factory() as session:
+        job = session.get(JobRecord, job_id, with_for_update=True)
+        if job is None:
+            return None
+        job.configuration = {**job.configuration, "_main_image_fast_planning": receipt}
+        if strategy is None:
+            session.commit()
+            raise AuroraPlanningError(str(failure or "主图规划失败"))
+        if job.status != "planning" or job.cancel_requested_at:
+            session.commit()
+            return JobStatus(job.status)
+        pages = []
+        for index, page in enumerate(strategy["plan"]["pages"]):
+            prompt = authored.compile_prompt(strategy, index)
+            pages.append(
+                {
+                    **authored.public_page(page, index),
+                    "status": "awaiting_plan_approval",
+                    "prompt": prompt,
+                    "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                    "source_asset_ids": authored.page_source_ids(strategy, index, ids),
+                }
+            )
+        identity = strategy["plan"]["product_identity_lock"]
+        payload = {
+            "schema_version": authored.SCHEMA_VERSION,
+            "version": authored.VERSION,
+            "skill_id": authored.REFERENCE_ID,
+            "skill_content_hash": authored.reference_bundle()[1],
+            "compiler_lineage": "authored-one-pass-planner",
+            "approval_checkpoint": "six_page_plan",
+            "product": {
+                "name": settings.get("product_name"),
+                "category": settings.get("category"),
+            },
+            "product_identity_lock": {
+                "identity_summary": identity["identity"],
+                "label_text": identity["label_text"],
+                "must_not_change": identity["do_not_change"],
+                "physical_logic": identity["physical_logic"],
+            },
+            "campaign_style": strategy["plan"]["campaign_style_lock"],
+            "source_copy_lines": strategy["analysis"]["source_copy_lines"],
+            "source_bindings": bindings,
+            "product_asset_ids": ids,
+            "canvas": list(authored.CANVAS),
+            "user_facts": settings,
+            "confirmed_facts": strategy["analysis"]["confirmed_facts"],
+            "style_lock": strategy["plan"]["campaign_style_lock"],
+            "pages": pages,
+            "execution_policy": {
+                "execution_mode": authored.VERSION,
+                "concurrency": 6,
+                "automatic_redraw_enabled": False,
+                "plan_authorization_required": True,
+                "final_set_approval_required": False,
+            },
+            "validation": {
+                "status": "STRUCTURALLY_VALIDATED",
+                "visual_review": "NOT_REVIEWED",
+            },
+            "_authored_strategy": strategy,
+            "usage": {
+                "planner": [
+                    {
+                        "provider": getattr(self.gateway, "provider_name", "unknown"),
+                        "reported": bool(
+                            (call.normalized_usage or {}).get("reported")
+                        ),
+                        **_planner_usage_record(call),
+                        "provider_request_id_presence": "present"
+                        if call.provider_request_id
+                        else "absent",
+                        "provider_request_id": call.provider_request_id,
+                        "raw_usage": call.raw_usage,
+                        "normalized_usage": call.normalized_usage,
+                    }
+                    for call in (_planner_call_results(results) or tuple(results))
+                ]
+            },
+        }
+        plan = JobPlanRecord(
+            id=new_id("plan"),
+            workspace_id=workspace_id,
+            job_id=job_id,
+            revision=1,
+            schema_version=authored.SCHEMA_VERSION,
+            payload=payload,
+            payload_hash=canonical_hash(payload),
+            validation_status=PlanValidationStatus.VALID.value,
+            validation_errors=[],
+            validator_version=authored.VERSION,
+            validated_at=utc_now(),
+        )
+        validate_plan(plan, job)
+        session.add(plan)
+        transition_job(
+            job,
+            JobStatus.AWAITING_CONFIRMATION,
+            stage="awaiting_plan_confirmation",
+            progress=15,
+        )
+        from .main_image_auto_start import confirm_validated_plan
+
+        confirm_validated_plan(session, job, plan, work_root=self.work_root)
+        session.commit()
+        return JobStatus(job.status)
+
+
 async def finalize_delivery(session_factory: Any, storage: Any, job_id: str) -> None:
     """Bind six actual delivered originals into the trimmed native runtime.
 
@@ -455,6 +698,9 @@ async def finalize_delivery(session_factory: Any, storage: Any, job_id: str) -> 
             .limit(1)
         )
         if plan is None or plan.payload.get("_native_final_job_id") == job_id:
+            return
+        if plan.schema_version == authored.SCHEMA_VERSION:
+            # No harness session to bind: pages are delivered as generated.
             return
         items = session.scalars(
             select(JobItemRecord)

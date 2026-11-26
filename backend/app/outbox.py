@@ -1,6 +1,8 @@
 import asyncio
 import json
+import logging
 import socket
+import time
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
@@ -12,6 +14,8 @@ from .config import Settings
 from .domain import JobStatus, OutboxStatus
 from .models import JobRecord, OutboxEventRecord, utc_now
 from .task_runner import MockTaskRunner
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_QUEUE = "default"
 _DETAIL_QUEUE = "domestic_detail_v431"
@@ -178,6 +182,71 @@ def _broker_job_ids(app: Any) -> set[str] | None:
     return job_ids
 
 
+_ORPHAN_MIN_AGE_SECONDS = 120
+
+
+def orphaned_job_tags(entries: dict[str, Any], live_task_ids: set[str]) -> list[str]:
+    """Delivery tags of old unacked job messages no live worker holds.
+
+    ``entries`` maps delivery tag -> Kombu's raw unacked value
+    (``[message, exchange, routing_key]`` as JSON); callers pass only entries
+    older than the orphan age. Non-job tasks and anything unreadable are left
+    alone.
+    """
+
+    tags: list[str] = []
+    for tag, raw in entries.items():
+        if raw is None:
+            continue
+        try:
+            headers = json.loads(raw)[0].get("headers") or {}
+        except (ValueError, TypeError, IndexError, AttributeError):
+            continue
+        if headers.get("task") in _JOB_TASKS and headers.get("id") not in live_task_ids:
+            tags.append(tag)
+    return tags
+
+
+def _restore_orphaned_unacked(app: Any, live_task_ids: set[str]) -> list[str]:
+    """Return job deliveries held by a dead worker to their queue.
+
+    Kombu's Redis transport keeps a delivered message in ``unacked`` until the
+    worker acknowledges it; a killed worker never does, and the message stays
+    there for the whole visibility timeout (one hour by default), which also
+    makes the job look live. Only called with a complete worker snapshot:
+    a job delivery older than two minutes whose task is neither active nor
+    reserved on any live worker is restored by its delivery tag. Database
+    claims and leases keep the redelivery safe.
+    """
+
+    from redis import Redis
+
+    restored: list[str] = []
+    with app.connection_for_write(connect_timeout=2) as connection:
+        if connection.transport.driver_type != "redis":
+            return restored
+        connection.ensure_connection(max_retries=0)
+        channel = connection.default_channel
+        prefix = channel.global_keyprefix or ""
+        cutoff = time.time() - _ORPHAN_MIN_AGE_SECONDS
+        with Redis(connection_pool=channel.client.connection_pool) as client:
+            tags = [
+                tag.decode() if isinstance(tag, bytes) else str(tag)
+                for tag in client.zrangebyscore(
+                    prefix + channel.unacked_index_key, 0, cutoff
+                )
+            ]
+            entries = {
+                tag: client.hget(prefix + channel.unacked_key, tag) for tag in tags
+            }
+            for tag in orphaned_job_tags(entries, live_task_ids):
+                channel.qos.restore_by_tag(tag, client=client)
+                restored.append(tag)
+    if restored:
+        logger.warning("restored orphaned job deliveries: %s", ", ".join(restored))
+    return restored
+
+
 def _live_celery_job_ids() -> set[str] | None:
     """Protect broker and worker deliveries. Only a complete view permits recovery."""
     from .celery_app import celery_app
@@ -190,6 +259,24 @@ def _live_celery_job_ids() -> set[str] | None:
         reserved, active = inspector.reserved(), inspector.active()
         if not active or not reserved or active.keys() != reserved.keys():
             return None
+        live_task_ids = {
+            str(task.get("id"))
+            for snapshot in (active, reserved)
+            for tasks in snapshot.values()
+            for task in tasks
+            if task.get("id")
+        }
+        try:
+            restored = _restore_orphaned_unacked(celery_app, live_task_ids)
+        except Exception:
+            # Restoring a dead worker's delivery only shortens recovery; the
+            # broker's visibility timeout remains the fallback.
+            logger.warning("orphaned delivery restore skipped", exc_info=True)
+            restored = []
+        if restored:
+            job_ids = _broker_job_ids(celery_app)
+            if job_ids is None:
+                return None
         for snapshot in (active, reserved):
             for tasks in snapshot.values():
                 for task in tasks:

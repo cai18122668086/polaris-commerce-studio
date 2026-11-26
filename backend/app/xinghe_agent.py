@@ -2562,11 +2562,17 @@ class TengliOpenAICompatibleGateway:
                 image_model=image_failover_model or self.image_model,
             )
         self._provider_routes = routes
-        self._rotation_order = tuple(
-            name.strip().lower()
-            for name in rotation_order.split(",")
-            if name.strip().lower() in routes
-        ) or ("primary",)
+        # "failover-*" stands for every numbered failover route in key order,
+        # so any number of fallback keys can be placed ahead of "primary".
+        expanded: list[str] = []
+        for token in (part.strip().lower() for part in rotation_order.split(",")):
+            if token == "failover-*":
+                expanded.extend(
+                    name for name in routes if name.startswith("failover-")
+                )
+            elif token in routes:
+                expanded.append(token)
+        self._rotation_order = tuple(dict.fromkeys(expanded)) or ("primary",)
 
     def _ordered_routes(self) -> tuple[_ProviderRoute, ...]:
         """Return configured routes in stable, de-duplicated rotation order."""

@@ -52,6 +52,9 @@ RULES: dict[str, dict[str, tuple[tuple[str, ...], int, float]]] = {
     },
     "tpl_27d83f66e3": {"title": (("main", "body"), 40, 900)},
     "tpl_dc421f64d0": {"title": (("title",), 54, 980)},
+    # bihuo-03 app_window_engine.py:95: the opening navigation row draws the
+    # title at 54 px in 380 px and shrinks to 82 % (44 px) before rejecting.
+    "fk-1109-app-window-studio-top": {"title": (("bold",), 44, 380)},
 }
 MARGIN = 0.97
 # Width errors raised by installed suites; any other error is not ours to fix.

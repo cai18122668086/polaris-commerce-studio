@@ -48,8 +48,26 @@ def test_independent_eyebrow_keeps_the_template_mapping():
     )
     before = deepcopy(data["config"]["chapters"])
     out = info_card.apply(data)
+    before[0]["label"] = ""  # The card already shows the title.
     assert out["config"]["chapters"] == before
     assert out["config"]["info_card"]["applied"] is False
+    assert out["config"]["info_card"]["label_cleared"] is True
+
+
+def test_title_ending_a_clause_keeps_the_mapping_and_drops_the_repeat():
+    # bihuo-03 planning b9f6560d: title 「这款白色头戴耳机，」 is a whole phrase
+    # and the subtitle the next sentence, so gray/blue stay as designed.
+    data = payload(title="这款白色头戴耳机，", subtitle="我在办公桌上用了一个月。")
+    out = info_card.apply(data)
+    scene = out["config"]["chapters"][0]
+    assert (scene["gray"], scene["blue"]) == (
+        "我在办公桌上用了一个月。",
+        "这款白色头戴耳机，",
+    )
+    assert scene["label"] == ""
+    assert scene["nav"] == "这款白色头戴耳机，"
+    record = out["config"]["info_card"]
+    assert record["applied"] is False and record["label_cleared"] is True
 
 
 def test_other_engines_and_later_scenes_are_untouched():

@@ -91,3 +91,19 @@ def test_unrelated_compile_errors_are_not_swallowed():
         fitted_compiler(compiler, lambda _: "no-rules")(
             "bihuo-36-v1", {"title": "这款白色头戴耳机"}, creative_options={}
         )
+
+
+def test_bihuo03_saved_title_fits_the_navigation_row():
+    # e2e 2026-11-26 planning b9f6560d: the opening navigation row draws the
+    # title at 54 px in 380 px and rejects it below 44 px
+    # (App text exceeds declared role capacity).
+    resolved, _, _ = fit_inputs(
+        bundle("bihuo-03-v1"), dict(SAVED), None, fonts("bihuo-03-v1")
+    )
+    engine = runtime("bihuo-03-v1")
+    path = fonts("bihuo-03-v1")["bold"]
+    module = engine.top if hasattr(engine, "top") else engine
+    face = module.font(path, 44)
+    assert face.getlength(SAVED["title"]) > 380  # The failure.
+    assert face.getlength(resolved["title"]) <= 380
+    assert resolved["title"] == "这款白色头戴耳机"

@@ -685,6 +685,8 @@ def _release_points_repeating_closing(
     ]
     if quote is None or any(a is None or b is None for a, b in closing):
         return []
+    if not plan.points:  # feature-card suites (bihuo-02) send no "points" key
+        return []
     kept, repairs = [], []
     for point, row in zip(plan.points, raw["points"], strict=True):
         first, last = (

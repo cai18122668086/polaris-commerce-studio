@@ -14,8 +14,10 @@ noun), without trailing clause punctuation, and the opening scene's chapter
 label is cleared because the card already shows it (the pill keeps its
 number). Header and navigation draw title before subtitle and stay as they
 are. A subtitle that is not the title's continuation (an eyebrow over a
-headline) keeps the template mapping. Speech, captions and the bundle are
-unchanged; the record is stored as ``config.info_card``.
+headline), or a title that ends a clause (a whole phrase followed by the next
+sentence), keeps the template mapping; only a label repeating the title is
+cleared. Speech, captions and the bundle are unchanged; the record is stored
+as ``config.info_card``.
 """
 
 from __future__ import annotations
@@ -56,8 +58,23 @@ def apply(payload: Any) -> Any:
     spoken = "".join(str(token.get("text", "")) for token in tokens)
     if opening is None or not title or not subtitle:
         record["reason"] = "no split opening title"
-    elif title + subtitle not in spoken:
+    elif title.rstrip() != title.rstrip(TRAILING) or title + subtitle not in spoken:
+        # A title that ends a clause (「这款白色头戴耳机，」) is a whole phrase
+        # and the subtitle the next sentence: keep the template mapping.
         record["reason"] = "title and subtitle are separate phrases"
+        if (
+            opening is not None
+            and title
+            and opening.get("label")
+            in {
+                title,
+                _display(title),
+            }
+        ):
+            # The card already shows the title; the pill and footer would
+            # repeat it a third time (bihuo-03 planning b9f6560d).
+            opening["label"] = ""
+            record["label_cleared"] = True
     else:
         gray, blue = _display(title), _display(subtitle)
         cleared = opening.get("label") in {title, gray}

@@ -109,3 +109,16 @@ def test_null_extra_fields_are_removed_but_real_extras_still_fail():
     changed, _ = normalize_suite_output(raw, transcript)
     with pytest.raises(ValidationError):
         verify(changed, transcript)
+
+
+def test_feature_card_plan_without_points_reaches_the_contract_check():
+    # bihuo-02 planning a80438d2 (e2e 2026-11-26) sends features and no
+    # "points" key; the closing repair raised KeyError and the whole saved
+    # response failed as EDITING_PLAN_CONTRACT_INVALID without a reason.
+    raw, transcript = load("bihuo02_plan_without_points.json")
+    assert "points" not in raw
+    changed, repairs = normalize_suite_output(raw, transcript)
+    assert "duplicate_point_omitted" not in {r["kind"] for r in repairs}
+    # The model's own order error is still reported as such.
+    with pytest.raises(ValueError, match="follow the quote"):
+        verify(changed, transcript)

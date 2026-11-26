@@ -15,6 +15,70 @@ from ..video_editing_contracts import Transcript
 from . import frame_policy as framing
 from . import sync_policy as sync
 
+CAPTION_LINES = "bihuo-caption-lines/1"
+# A line with at most this many word characters next to a longer one is an
+# orphan ("质地" over "清爽不黏腻，") when the whole caption fits on one line.
+ORPHAN_CHARS = 2
+CAPSULE_ENDING = "bihuo-capsule-ending/1"
+
+
+def _merged_line(lines: list[dict]) -> dict:
+    first, second = lines
+    shift = len(first["text"])
+    return {
+        **first,
+        "text": first["text"] + second["text"],
+        "emphasis_spans": [list(span) for span in first.get("emphasis_spans", [])]
+        + [[a + shift, b + shift] for a, b in second.get("emphasis_spans", [])],
+    }
+
+
+def _hold_capsule_card(payload: dict) -> dict:
+    """Keep bihuo-02's information card up to the last frame when nothing follows.
+
+    Without a closing quote the bundle exits the card over the last 0.36 s and
+    schedules its closing card at the clip end, i.e. after the last frame: the
+    card grows past the side margins while fading and the final frame is empty
+    apart from the presenter circle (acceptance 2026-11-26, ACCEPT-39 #5).
+    Only in that case the card exit moves past the end; a closing card that
+    starts inside the clip keeps the native exit.
+    """
+    if payload.get("template_id") != "bihuo-02-v1":
+        return payload
+    cfg = payload.get("config")
+    if not isinstance(cfg, dict):
+        return payload
+    third = cfg.get("third") or {}
+    frames = int(cfg.get("frame_count") or cfg.get("frames") or 0)
+    fps = float(cfg.get("fps") or 25)
+    exit_times = cfg.get("card_exit")
+    if not frames or not isinstance(exit_times, list) or len(exit_times) != 2:
+        return payload
+    last = (frames - 1) / fps
+    record = {
+        "version": CAPSULE_ENDING,
+        "original_exit": list(exit_times),
+        "held": False,
+    }
+    if float(third.get("title_at", 0)) <= last:
+        record["reason"] = "closing card starts inside the clip"
+    elif float(exit_times[0]) > last:
+        record["reason"] = "card already stays to the end"
+    else:
+        held = [
+            round(float(cfg["duration"]) + 1.0, 3),
+            round(float(cfg["duration"]) + 1.35, 3),
+        ]
+        cfg["card_exit"] = held
+        spec = cfg.get("_list_spec")
+        if isinstance(spec, dict) and isinstance(spec.get("events"), dict):
+            spec["events"]["exit"] = list(held)
+        record.update(
+            held=True, exit=held, reason="closing card starts after the last frame"
+        )
+    cfg["capsule_ending"] = record
+    return payload
+
 
 def _fit_capsule_captions(payload: dict, transcript: Transcript) -> dict:
     """Supply a missing display break using the frozen native font metrics.
@@ -43,8 +107,16 @@ def _fit_capsule_captions(payload: dict, transcript: Transcript) -> dict:
         )
 
     changed = []
+    merged = []
     for cue in cfg["captions"]:
         lines = cue.get("lines", [{"text": cue["text"], "emphasis_spans": []}])
+        if len(lines) == 2:
+            short = min(len(re.findall(r"\w", line["text"])) for line in lines)
+            whole = _merged_line(lines)
+            if short <= ORPHAN_CHARS and width(whole) <= limit:
+                changed.append({**cue, "lines": [whole]})
+                merged.append(cue["text"])
+                continue
         if all(width(line) <= limit for line in lines):
             changed.append(cue)
             continue
@@ -112,6 +184,11 @@ def _fit_capsule_captions(payload: dict, transcript: Transcript) -> dict:
         changed.append({**cue, "lines": min(candidates, key=lambda row: row[0])[1]})
     if any(a is not b for a, b in zip(changed, cfg["captions"], strict=True)):
         payload = {**payload, "config": {**cfg, "captions": changed}}
+    if merged:
+        payload["config"]["caption_lines"] = {
+            "version": CAPTION_LINES,
+            "merged": merged,
+        }
     # Exercise the actual native painter now; do not defer capacity errors to
     # the subprocess after source preparation and a long video render.
     for cue in payload["config"]["captions"]:
@@ -388,6 +465,7 @@ def compile_render_input(
                 transcript,
             )
         )
+        payload = _hold_capsule_card(payload)
         if (
             sync_policy != sync.OFF
             and isinstance(payload, dict)

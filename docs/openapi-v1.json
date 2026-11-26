@@ -2035,6 +2035,17 @@
             ],
             "title": "Error Code"
           },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
           "id": {
             "title": "Id",
             "type": "string"

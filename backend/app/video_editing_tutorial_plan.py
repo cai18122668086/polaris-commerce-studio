@@ -150,6 +150,42 @@ def legacy_suite_intent(
     return validate_intent({"steps": steps}, transcript, context)
 
 
+def single_recording_intent(
+    raw: dict, transcript: Transcript, context: dict
+) -> dict | None:
+    """Bind one unplaced recording to the whole body when the model omitted it.
+
+    With exactly one selected recording there is no order to infer: it plays
+    from the first word after the opening through the word before the spoken
+    conclusion (or quote), like the last step of ``legacy_suite_intent``. Two
+    or more unplaced recordings stay a strict failure.
+    """
+    if len(context["recordings"]) != 1:
+        return None
+    positions = {token.id: i for i, token in enumerate(transcript.tokens)}
+    intro = (raw.get("opening") or {}).get("intro_last_token_id")
+    if intro not in positions:
+        return None
+    first = positions[intro] + 1
+    ends = [
+        positions[token] - 1
+        for token in (
+            ((raw.get("conclusion") or {}).get("first") or {}).get("first_token_id"),
+            raw.get("quote_start_token_id"),
+        )
+        if token in positions
+    ]
+    last = min(ends) if ends else len(transcript.tokens) - 1
+    if not 0 <= first <= last < len(transcript.tokens):
+        return None
+    step = {
+        "asset_id": context["recordings"][0]["id"],
+        "first_token_id": transcript.tokens[first].id,
+        "last_token_id": transcript.tokens[last].id,
+    }
+    return validate_intent({"steps": [step]}, transcript, context)
+
+
 def save_plan(
     tasks: Path, context: dict, intent: dict, transcript: Transcript, origin: dict
 ) -> dict:
@@ -219,6 +255,10 @@ def accept_output(
             if submitted is not None
             else legacy_suite_intent(native, transcript, context)
         )
+        if intent is None and submitted is None:
+            intent = single_recording_intent(native, transcript, context)
+            if intent is not None:
+                origin = {**origin, "fallback": "single_recording_whole_body"}
         if intent is None:
             raise ValueError("Missing shared tutorial_steps for selected recordings")
         shared = save_plan(tasks, context, intent, transcript, origin)

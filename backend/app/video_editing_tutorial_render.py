@@ -45,6 +45,7 @@ from .video_editing_tutorial_surfaces import (
 
 VERSION = "tengli.tutorial-presentation/5"
 LARGE_VIEW = (0, 162, 1080, 1280)
+RECORDING_FIT = "blurred-cover-backdrop/1"
 CAPTION_SIZE = 62
 CAPTION_WIDTH = SIZE[0] - 2 * (68 + 5)
 RECORDING_TIMESCALE = 15360
@@ -164,10 +165,18 @@ def _recording_graph(
     nw, nh = layout.viewport[2:]
     pad = f":color={layout.pad_color}"
 
-    def fit(width: int, height: int) -> str:
+    def fit(width: int, height: int, name: str) -> str:
+        # A portrait clip in a landscape window used to sit between two flat
+        # white bars (chenxi-broll e2e at 10.1 s). Fill the window with a
+        # blurred cover of the same clip and keep the whole clip sharp on top.
+        tag = f"fit{name}"
         return (
-            f"scale={width}:{height}:force_original_aspect_ratio=decrease:"
-            f"force_divisible_by=2,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2{pad},setsar=1"
+            f"split[{tag}b][{tag}f];"
+            f"[{tag}b]scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},boxblur=28:2,eq=brightness=-0.03[{tag}bg];"
+            f"[{tag}f]scale={width}:{height}:force_original_aspect_ratio=decrease:"
+            f"force_divisible_by=2[{tag}fg];"
+            f"[{tag}bg][{tag}fg]overlay=(W-w)/2:(H-h)/2,setsar=1"
         )
 
     def crop() -> str:
@@ -186,8 +195,8 @@ def _recording_graph(
         f"fps=30:start_time=0,tpad=stop_mode=clone:"
         f"stop_duration={1 + step['tail_hold_ms'] / 1000},trim=end_frame={frames}"
     )
-    normal = f"{fit(nw, nh)},pad={wc}:{hc}:0:0{pad}"
-    large = crop() + fit(wc, hc)
+    normal = f"{fit(nw, nh, 'normal')},pad={wc}:{hc}:0:0{pad}"
+    large = crop() + fit(wc, hc, "large")
     if normal_frames == 0:
         graph = f"{prefix},{large}"
     elif normal_frames == frames:
@@ -234,6 +243,7 @@ def prepare_recording(
             "version": VERSION,
             "viewport_size": viewport_size,
             "background": layout.pad_color,
+            "window_fit": RECORDING_FIT,
         }
     )
     parent = cache / key[:20]

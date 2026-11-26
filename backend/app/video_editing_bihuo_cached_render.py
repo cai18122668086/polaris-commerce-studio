@@ -13,7 +13,15 @@ import os
 import time
 from pathlib import Path
 
-from .bihuo_suite import conditional_layout, raster_cache, video_materials
+from .bihuo_suite import (
+    conditional_layout,
+    frame_policy,
+    layer_timeline,
+    opening_card,
+    raster_cache,
+    video_materials,
+    window_crop,
+)
 from .bihuo_suite.registry import runtime
 from .bihuo_suite.render import render as native_render
 
@@ -31,13 +39,30 @@ def render(payload: dict, output: Path) -> Path:
         raster_cache.native_raster_cache(module) as rasters,
         conditional_layout.execution(module, payload),
         video_materials.execution(module, payload),
+        opening_card.execution(module, payload) as opening,
+        window_crop.execution(module, payload) as cropping,
+        # Inside the timeline so it records the layers actually shown.
+        frame_policy.execution(module, payload) as framing,
+        layer_timeline.recording(module) as timeline,
     ):
         final = native_render(payload, output)
+    timeline_receipt = timeline.write(output)
+    framing_receipt = (
+        framing.write(output)
+        if framing is not None
+        else frame_policy.unsupported(payload, module)
+    )
     receipt = output / "render-receipt.json"
     value = json.loads(receipt.read_text("utf-8"))
     value.update(
         conditional_layout=payload["config"].get("conditional_layout"),
         video_materials=payload["config"].get("video_materials"),
+        sync_policy=(payload["config"].get("sync_policy") or {}).get("version"),
+        layer_timeline=timeline_receipt,
+        frame_policy=framing_receipt,
+        source_reframe=payload["config"].get("source_reframe"),
+        opening_card=opening.receipt() if opening is not None else None,
+        window_crop=cropping,
         render_seconds=round(time.monotonic() - started, 3),
         raster_cache_hits=rasters.hits,
         raster_cache_misses=rasters.misses,

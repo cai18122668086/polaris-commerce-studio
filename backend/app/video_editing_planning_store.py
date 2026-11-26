@@ -48,6 +48,7 @@ from .video_editing_task_models import (
     EditingSourceRecord,
     EditingTaskRecord,
 )
+from .video_editing_template_capabilities import suite_template_blocker
 from .video_editing_template_styles import style_blockers
 from .video_editing_transcript_store import (
     read_transcript_artifact,
@@ -82,7 +83,14 @@ def execution_available(settings: Settings) -> bool:
     return settings.video_editing_planning_enabled and planner_configured(settings)
 
 
-def require_active_planning_template(template_id: str | None) -> None:
+def require_active_planning_template(
+    template_id: str | None, settings: Settings | None = None
+) -> None:
+    if settings is not None:
+        # Fail before the paid planning call, not at render after paying.
+        blocker = suite_template_blocker(template_id, settings)
+        if blocker:
+            raise ApiError(409, "EDITING_TEMPLATE_CAPABILITY_UNAVAILABLE", blocker)
     if bihuo_template(template_id):
         from .bihuo_suite.registry import available
 
@@ -317,7 +325,7 @@ def create_planning_task(
                 409, "EDITING_PLANNING_REQUEST_REUSED", "此请求编号已用于其他规划输入。"
             )
         return previous
-    require_active_planning_template(body.template_id)
+    require_active_planning_template(body.template_id, settings)
     if base.status != "completed" or base.library_release != MOTION_SHA256:
         raise ApiError(
             409,
@@ -466,6 +474,7 @@ def create_planning_task(
         require_active_planning_template(
             prepared.snapshot.get("overlay_template", {}).get("id")
         )
+        require_active_planning_template(prepared.snapshot.get("template_id"), settings)
         if not execution_available(settings):
             raise ApiError(
                 503,

@@ -7,6 +7,7 @@ the preserved 132-group motion catalog and never makes per-frame model calls.
 import hashlib
 import json
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -376,7 +377,12 @@ def plan_suite(
             {"response_sha256": sha256(response_path)},
         )
         atomic_json(folder / "tutorial-plan.json", tutorial)
-    raw, adaptations = normalize_suite_output(raw, transcript)
+    raw, adaptations = normalize_suite_output(
+        raw,
+        transcript,
+        features_follow_materials=snapshot.get("engine")
+        not in {"bihuo-full-suite", EDITORIAL_ENGINE},
+    )
     plan = verify_plan(
         raw,
         transcript,
@@ -543,13 +549,20 @@ def render_suite(
     session.rollback()
     compiler = None
     selected_fonts = None
+    source_reframe: dict | None = None
     render_module = "app.apple_minimal.render"
     if frozen.get("engine") == "bihuo-full-suite":
-        from .bihuo_suite.planning import compile_render_input
+        from .bihuo_suite.planning import compile_render_input as bihuo_compile
         from .bihuo_suite.registry import compile_request, definition, fonts
         from .bihuo_suite.source import prepare as prepare_suite_source
 
         template_id = frozen["template_id"]
+        compile_render_input = partial(
+            bihuo_compile,
+            template_id=template_id,
+            sync_policy=settings.video_editing_sync_policy,
+            frame_policy=settings.video_editing_frame_policy,
+        )
         selected_fonts = fonts(template_id)
         render_module = "app.video_editing_bihuo_cached_render"
         creative_options = dict(frozen.get("creative_options") or {})
@@ -559,6 +572,22 @@ def render_suite(
                 Path(source_path), transcript.duration_ms / 1000, root, settings, guard
             )
         )
+        from .video_editing_suite_source_hold import hold_tail
+
+        # A lipsync video may end a frame or two before its audio.
+        source_path = str(
+            hold_tail(
+                Path(source_path), transcript.duration_ms / 1000, root, settings, guard
+            )
+        )
+        if settings.video_editing_frame_policy != "off":
+            from .bihuo_suite.reframe import prepare as reframe_source
+
+            # Static face framing for windowed templates (bihuo-reframe/1).
+            reframed, source_reframe = reframe_source(
+                Path(source_path), root, settings, guard
+            )
+            source_path = str(reframed)
         if definition(template_id).get("requires_foreground"):
             from .bihuo_suite.foreground import prepare as prepare_foreground
 
@@ -568,6 +597,7 @@ def render_suite(
             )
 
         def compiler(resolved: dict, **kwargs: Any) -> dict:
+            from .bihuo_suite.title_fit import fitted_compiler
             from .bihuo_suite.video_materials import compile_request as compile_media
 
             kwargs.pop("fonts", None)
@@ -575,7 +605,9 @@ def render_suite(
             return compile_media(
                 template_id,
                 resolved,
-                compile_request,
+                # Fit the planned title to this suite's width before compiling;
+                # rendering must never fail on title width after paid planning.
+                fitted_compiler(compile_request, lambda tid: definition(tid)["bundle"]),
                 root=root,
                 settings=settings,
                 guard=guard,
@@ -611,6 +643,8 @@ def render_suite(
         recipe_compiler=compiler,
     )
     session.rollback()
+    if source_reframe is not None and isinstance(config.get("config"), dict):
+        config["config"]["source_reframe"] = source_reframe
     config_path = root / "suite-input.json"
     atomic_json(config_path, config)
     atomic_json(root / "suite-plan.json", plan)

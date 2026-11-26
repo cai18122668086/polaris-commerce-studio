@@ -16,10 +16,16 @@
 | 出图 | 1 | api.artflow.vip（`POLARIS_IMAGE_*`） | gpt-image-2.5-flare |
 | 出图 | 兜底 | api.jgshai.cn（`POLARIS_TENGLI_*`，`POLARIS_REPLICA_IMAGE_FAILOVER_ENABLED=true`） | gpt-image-2 |
 
-`POLARIS_PROVIDER_ROTATION_ORDER=failover,failover-1,failover-2,failover-3,failover-4,primary`。
-只配一个 ooapi key 时，线路名是 `failover` 而不是 `failover-1`；把两种名字都写上，
-无论几个 key 都保证 ooapi 在前、jgshai 最后。正式站现在配了 4 个 key，实际顺序与
-线上原来的 `failover-1,…,failover-4,primary` 完全相同。
+`POLARIS_PROVIDER_ROTATION_ORDER=failover,failover-1,failover-2,failover-3,failover-4,failover-*,primary`。
+
+- `failover-*` 代表全部带编号的 ooapi 线路（按 key 的先后），所以不论配了多少个 key，
+  全部都排在 jgshai 前面。
+- 只配一个 ooapi key 时，线路名是 `failover` 而不是 `failover-1`，所以 `failover` 也写上。
+- `failover-1…4` 仍然逐个写出：不认识 `failover-*` 的旧镜像会忽略这个名字，
+  照样把现在的 4 个 key 排在前面。
+- 正式站现在配了 4 个 key，实际顺序与线上原来的 `failover-1,…,failover-4,primary` 完全相同。
+- 注意：在还不认识 `failover-*` 的旧镜像上，第 5 个及以后的 key 仍会排在 jgshai 之后，
+  要等用上包含本改动的镜像才生效。
 
 ## 核对线上（只读）
 

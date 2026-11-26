@@ -39,7 +39,7 @@ def _host(url: str) -> str:
     return urlparse(url).netloc
 
 
-@pytest.mark.parametrize("failover_key_count", [0, 1, 2, 4, 5])
+@pytest.mark.parametrize("failover_key_count", [0, 1, 2, 4, 5, 9])
 def test_policy_mirror_matches_gateway(monkeypatch, failover_key_count):
     env = _policy_env(monkeypatch, failover_key_count)
     gateway = build_tengli_gateway(Settings())
@@ -56,13 +56,17 @@ def test_policy_mirror_matches_gateway(monkeypatch, failover_key_count):
     assert images == mirrored["image_routes"]
 
 
-@pytest.mark.parametrize("failover_key_count", [1, 2, 4])
+@pytest.mark.parametrize("failover_key_count", [0, 1, 2, 4, 5, 9])
 def test_ooapi_first_and_jgshai_last(monkeypatch, failover_key_count):
     _policy_env(monkeypatch, failover_key_count)
     gateway = build_tengli_gateway(Settings())
-    hosts = [_host(route.planner_base_url) for route in gateway._ordered_routes()]
+    routes = gateway._ordered_routes()
+    hosts = [_host(route.planner_base_url) for route in routes]
+    # Every configured ooapi key, in key order, then api.jgshai.cn last.
     assert hosts[:-1] == ["api.ooapi.cc"] * failover_key_count
     assert hosts[-1] == "api.jgshai.cn"
+    keys = [route.planner_api_key for route in routes[:-1]]
+    assert keys == [f"offline-failover-{i}" for i in range(failover_key_count)]
     assert {route.planner_model for route in gateway._ordered_routes()} == {
         "gpt-6.1-sol"
     }
@@ -70,6 +74,28 @@ def test_ooapi_first_and_jgshai_last(monkeypatch, failover_key_count):
     assert gateway.vision_model == "gpt-6.1-sol"
     images = [_host(route.image_base_url) for route in gateway._image_routes()]
     assert images == ["api.artflow.vip", "api.jgshai.cn"]
+
+
+@pytest.mark.parametrize(
+    ("order", "expected"),
+    [
+        # Explicit names keep their place; the wildcard adds the rest in order.
+        (
+            "failover-2,failover-*,primary",
+            ["failover-2", "failover-1", "failover-3", "primary"],
+        ),
+        # Without the wildcard, unlisted keys still fall after primary.
+        ("failover-1,primary", ["failover-1", "primary", "failover-2", "failover-3"]),
+        ("primary,failover-*", ["primary", "failover-1", "failover-2", "failover-3"]),
+        ("bogus", ["primary", "failover-1", "failover-2", "failover-3"]),
+    ],
+)
+def test_failover_wildcard(monkeypatch, order, expected):
+    _policy_env(monkeypatch, 3)
+    monkeypatch.setenv("POLARIS_PROVIDER_ROTATION_ORDER", order)
+    gateway = build_tengli_gateway(Settings())
+    assert [route.name for route in gateway._ordered_routes()] == expected
+    assert policy.planner_route_names(order, 3) == expected
 
 
 def test_policy_holds_no_secret():

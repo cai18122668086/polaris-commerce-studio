@@ -41,10 +41,12 @@ PRODUCTION_PROVIDER_ROUTES: dict[str, str] = {
     "POLARIS_PROVIDER_FAILOVER_BASE_URL": "https://api.ooapi.cc",
     "POLARIS_PROVIDER_FAILOVER_MODEL": "gpt-6.1-sol",
     # "failover" is the route name when exactly one ooapi key is configured;
-    # with several keys they are failover-1, failover-2, ... Listing both keeps
-    # ooapi ahead of api.jgshai.cn whatever the key count.
+    # with several keys they are failover-1, failover-2, ... and "failover-*"
+    # covers all of them, so every ooapi key is ahead of api.jgshai.cn.
+    # failover-1..4 stay listed so an image built before "failover-*" existed
+    # (it ignores unknown names) still puts today's four keys first.
     "POLARIS_PROVIDER_ROTATION_ORDER": (
-        "failover,failover-1,failover-2,failover-3,failover-4,primary"
+        "failover,failover-1,failover-2,failover-3,failover-4,failover-*,primary"
     ),
     "POLARIS_IMAGE_BASE_URL": "https://api.artflow.vip",
     "POLARIS_IMAGE_MODEL": "gpt-image-2.5-flare",
@@ -95,9 +97,12 @@ def planner_route_names(rotation_order: str, failover_key_count: int) -> list[st
     elif failover_key_count > 1:
         routes.extend(f"failover-{i}" for i in range(1, failover_key_count + 1))
     ordered: list[str] = []
-    for name in (part.strip().lower() for part in rotation_order.split(",")):
-        if name in routes and name not in ordered:
-            ordered.append(name)
+    for token in (part.strip().lower() for part in rotation_order.split(",")):
+        if token == "failover-*":
+            names = [name for name in routes if name.startswith("failover-")]
+        else:
+            names = [token] if token in routes else []
+        ordered.extend(name for name in names if name not in ordered)
     if not ordered:
         ordered = ["primary"]
     ordered.extend(name for name in routes if name not in ordered)

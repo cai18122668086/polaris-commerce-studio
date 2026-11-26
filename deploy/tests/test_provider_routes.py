@@ -48,10 +48,28 @@ class RouteOrderTest(unittest.TestCase):
             policy.planner_route_names(order, 4),
             ["failover-1", "failover-2", "failover-3", "failover-4", "primary"],
         )
+        for count in (2, 4, 5, 9, 16):
+            with self.subTest(count=count):
+                self.assertEqual(
+                    policy.planner_route_names(order, count),
+                    [f"failover-{i}" for i in range(1, count + 1)] + ["primary"],
+                )
 
-    def test_old_literal_order_would_put_jgshai_first_with_one_key(self) -> None:
+    def test_old_literal_order_would_put_jgshai_first(self) -> None:
         old = "failover-1,failover-2,failover-3,failover-4,primary"
         self.assertEqual(policy.planner_route_names(old, 1), ["primary", "failover"])
+        self.assertEqual(
+            policy.planner_route_names(old, 5)[-2:], ["primary", "failover-5"]
+        )
+
+    def test_policy_order_on_an_image_without_the_wildcard(self) -> None:
+        # Images built before "failover-*" ignore it; today's four keys stay first.
+        order = policy.PRODUCTION_PROVIDER_ROUTES["POLARIS_PROVIDER_ROTATION_ORDER"]
+        legacy = ",".join(p for p in order.split(",") if p != "failover-*")
+        self.assertEqual(
+            policy.planner_route_names(legacy, 4),
+            ["failover-1", "failover-2", "failover-3", "failover-4", "primary"],
+        )
 
     def test_effective_routes(self) -> None:
         routes = policy.effective_routes(production_env())

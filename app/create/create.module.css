@@ -180,3 +180,49 @@
 :global(.theme-ember) .alternatives a > svg{color:#6c6760}
 :global(.theme-ember) .page a:focus-visible{outline:2px solid #aca7a1}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{color:var(--accent-text-on-light, #2c2b28)}
+:global(.theme-plaster) .breadcrumb a:hover{color:#1a1a19}
+:global(.theme-plaster) .breadcrumb > span:nth-child(2){color:#b9b7b1}
+:global(.theme-plaster) .hero{border:1px solid #e0dfdd;background:linear-gradient(115deg, #e6e5e3, #eeeeed 60%, #edeceb);border-radius:22px}
+:global(.theme-plaster) .heroCopy h1{font-weight:400}
+:global(.theme-plaster) .heroArt img{border:5px solid #ffffff;box-shadow:0 5px 18px rgb(30 27 22 / 0.125)}
+:global(.theme-plaster) .heroArt > span{border:1px solid #cecdc9;background:#eeedec;color:#3d3c37;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .markets{border:1px solid #e4e3e1;background:#f0efee;border-radius:14px}
+:global(.theme-plaster) .markets a{font-weight:500}
+:global(.theme-plaster) .markets a:hover{color:#1a1a19;background:#e6e5e3}
+:global(.theme-plaster) .markets a[aria-current="page"]{color:#32302d;background:#eeedec}
+:global(.theme-plaster) .card{border:1px solid #dcdbd8;background:#ffffff;border-radius:18px}
+:global(.theme-plaster) .card:hover{border-color:#b7b5af;box-shadow:0 9px 24px rgb(30 27 22 / 0.071)}
+:global(.theme-plaster) .cardVisual{background:linear-gradient(115deg, #e9e9e7, #e1e0de)}
+:global(.theme-plaster) .card[data-tone="lime"] .cardVisual{background:linear-gradient(115deg, #f0efee, #e8e7e5)}
+:global(.theme-plaster) .visualCopy strong{color:#484741}
+:global(.theme-plaster) .visualCopy p{color:#6c6962}
+:global(.theme-plaster) .card[data-tone="lime"] .visualCopy strong{color:#56544e}
+:global(.theme-plaster) .card[data-tone="lime"] .visualCopy p{color:#6f6c64}
+:global(.theme-plaster) .cardVisual img{border:5px solid #ffffff;box-shadow:0 5px 14px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .cardVisual > span{border:1px solid rgb(255 255 255 / 0.69);background:rgb(236 235 234 / 0.937);color:#1a1a19;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3);font-weight:500}
+:global(.theme-plaster) .card[data-tone="lime"] .cardVisual > span{background:rgb(239 238 237 / 0.937);color:#1a1a19}
+:global(.theme-plaster) .cardVisual > small{color:#6c6962}
+:global(.theme-plaster) .cardBody h3{color:#2c2b28}
+:global(.theme-plaster) .output{color:#807d74}
+:global(.theme-plaster) .output strong{color:#4e4c46;font-weight:500}
+:global(.theme-plaster) .cardAction{border-top:1px solid #e6e6e4;color:#1a1a19}
+:global(.theme-plaster) .cardAction > span{color:#3e3c38;background:#ecebea}
+:global(.theme-plaster) .card:hover .cardAction > span,:global(.theme-plaster) .card:focus-visible .cardAction > span{background:#eae9e7}
+:global(.theme-plaster) .notes p > svg{color:#817e75}
+:global(.theme-plaster) .notes a{color:#1a1a19}
+:global(.theme-plaster) .assetNotice{border:1px solid #e0dfdd;background:#f2f2f1;color:#5f5d56;border-radius:12px}
+:global(.theme-plaster) .assetNotice a{color:#5f5d56}
+:global(.theme-plaster) .empty{border:1px dashed #d2d1ce;background:#f2f2f1;color:#1a1a19;border-radius:16px}
+:global(.theme-plaster) .empty h3{color:#1a1a19}
+:global(.theme-plaster) .empty a{color:#32302d;background:#eeedec;border-radius:9px}
+:global(.theme-plaster) .alternatives{border-top:1px solid #e6e6e4}
+:global(.theme-plaster) .alternatives a{border:1px solid #e3e2e0;background:#f5f4f4;border-radius:14px}
+:global(.theme-plaster) .alternatives a:hover{border-color:#c1bfba;background:#f0efee}
+:global(.theme-plaster) .alternativeIcon{background:#e6e5e3;color:#1a1a19;border-radius:12px}
+:global(.theme-plaster) .alternatives a:nth-child(2) .alternativeIcon{color:#1a1a19;background:#ebeae9}
+:global(.theme-plaster) .alternatives a > svg{color:#97948c}
+:global(.theme-plaster) .page a:focus-visible{outline:2px solid #1a1a19}
+/* plaster:end */

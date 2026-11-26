@@ -18,9 +18,13 @@ export function VideoStudioGate({ screen }: { screen: StudioScreen }) {
     root.setAttribute("data-video-studio", "");
     const added = !root.classList.contains("theme-ember");
     if (added) root.classList.add("theme-ember");
+    // 全站是石膏灰白（theme-plaster）时，视频空间仍用自带的暗色：进入时暂时摘掉浅色主题，离开时还原。
+    const hadPlaster = root.classList.contains("theme-plaster");
+    if (hadPlaster) root.classList.remove("theme-plaster");
     return () => {
       root.removeAttribute("data-video-studio");
       if (added) root.classList.remove("theme-ember");
+      if (hadPlaster) root.classList.add("theme-plaster");
     };
   }, []);
   const grant = useVideoStudioGrantState();

@@ -103,6 +103,9 @@ void main(){
   gl_FragColor=vec4(col,1.);
 }`;
 
+// 石膏灰白（浅色）主题下不画熔光光带，首屏和收尾改用 CSS 里很淡的暖光（见 ember-landing.module.css 末尾）。
+const lightTheme = () => document.documentElement.classList.contains("theme-plaster");
+
 function startBand(canvas: HTMLCanvasElement, opts: { yc: number; th: number; k?: () => number; seed?: number }, isPaused: () => boolean) {
   const gl = canvas.getContext("webgl", { antialias: false, premultipliedAlpha: false, powerPreference: "low-power" });
   if (!gl) return null;
@@ -199,7 +202,7 @@ export function EmberHero() {
     const el = hero.current!; const reduce = prefersReduced();
     const accT = setTimeout(() => el.querySelector(`.${styles.acc}`)?.classList.add(styles.in), 900);
 
-    const stopBand = band.current ? startBand(band.current, { yc: .2, th: .15, k: () => 1 - clamp(scrollY / innerHeight) * .5, seed: 3 }, isPaused) : null;
+    const stopBand = band.current && !lightTheme() ? startBand(band.current, { yc: .2, th: .15, k: () => 1 - clamp(scrollY / innerHeight) * .5, seed: 3 }, isPaused) : null;
     if (stopBand && fallback.current) fallback.current.style.opacity = "0";
 
     // 打字演示：点击后可以自己输入
@@ -607,7 +610,7 @@ export function EmberFinal() {
   const word = useRef<HTMLDivElement>(null);
   useReveal(root);
   useEffect(() => {
-    const stop = band.current ? startBand(band.current, { yc: .42, th: .17, k: () => .95, seed: 11 }, isPaused) : null;
+    const stop = band.current && !lightTheme() ? startBand(band.current, { yc: .42, th: .17, k: () => .95, seed: 11 }, isPaused) : null;
     const sec = root.current!.querySelector<HTMLElement>(`.${styles.final}`)!; let raf = 0;
     const tick = () => { const fb = sec.getBoundingClientRect(); if (fb.top < innerHeight) word.current!.style.setProperty("--wp", clamp((innerHeight - fb.top) / fb.height).toFixed(3)); raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);

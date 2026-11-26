@@ -18,3 +18,21 @@
 :global(.theme-ember) .legacyImages img{background:rgb(255 250 244 / 0.06)}
 :global(.theme-ember) .legacyImages figcaption{color:#7e7870}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .audit{border:1px solid #d3d2cf;background:#efeeed;color:#4a4943;border-radius:16px}
+:global(.theme-plaster) .audit p{color:#79766d}
+:global(.theme-plaster) .selector select{border:1px solid #cdccc8;background:#ffffff;color:#4a4943;border-radius:9px}
+:global(.theme-plaster) .selected{border:1px solid #dbdad7;background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .selected>a{color:#1a1a19}
+:global(.theme-plaster) .roles strong{color:#4a4943}
+:global(.theme-plaster) .inputExamples{border:1px solid #dad9d7;background:#f2f2f1;border-radius:12px}
+:global(.theme-plaster) .inputExamples>summary{color:#1a1a19}
+:global(.theme-plaster) .inputExamples>p{color:#87847b}
+:global(.theme-plaster) .roleExamples img{background:#e8e8e6;border-radius:8px}
+:global(.theme-plaster) .roleExamples figcaption{color:#807d74}
+:global(.theme-plaster) .roleExamples strong{color:#5f5d56}
+:global(.theme-plaster) .legacyGrid>section{border:1px solid #d9d8d5;background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .legacyImages img{background:#ebeae9}
+:global(.theme-plaster) .legacyImages figcaption{color:#87847b}
+/* plaster:end */

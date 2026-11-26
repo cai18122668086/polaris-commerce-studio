@@ -33,3 +33,24 @@
 :global(.theme-ember) .error{color:#fa682a}
 :global(.theme-ember) .loading{color:#79736b}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .dialog{border:1px solid #e2e1df;background:#ffffff;color:#242321;box-shadow:0 24px 100px rgb(30 27 22 / 0.22);border-radius:22px}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(27 26 25 / 0.408)}
+:global(.theme-plaster) .header{border-bottom:1px solid #e8e7e5}
+:global(.theme-plaster) .header h2{font-weight:500}
+:global(.theme-plaster) .header p{color:#8c887f}
+:global(.theme-plaster) .header>button{background:#eeeeed;color:#76736b;border-radius:999px}
+:global(.theme-plaster) .preview{border:1px solid #e3e2e0;background:#f2f1f0;color:#8c8980;border-radius:16px}
+:global(.theme-plaster) .version{border:1px solid #e4e3e1;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .version[aria-pressed=true]{border-color:#45443f;box-shadow:0 0 0 1px #1e1b16}
+:global(.theme-plaster) .version>img,:global(.theme-plaster) .placeholder{background:#ededec;border-radius:8px}
+:global(.theme-plaster) .version .status{color:#8c887f}
+:global(.theme-plaster) .version small{color:#8c887f}
+:global(.theme-plaster) .version time{color:#a09e96}
+:global(.theme-plaster) .primary{background:#242321;color:#ffffff}
+:global(.theme-plaster) .primary:hover:not(:disabled){background:#eae9e7;color:#242321}
+:global(.theme-plaster) .detail{color:#807d74}
+:global(.theme-plaster) .error{color:#b23a0e}
+:global(.theme-plaster) .loading{color:#8c887f}
+/* plaster:end */

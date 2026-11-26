@@ -69,3 +69,24 @@
 :global(.theme-ember) .entry:hover .entryArrow,:global(.theme-ember) .entry:focus-visible .entryArrow{border-color:#33302d;background:rgb(255 250 244 / 0.025);color:#e9e8e6}
 :global(.theme-ember) .entry:focus-visible,:global(.theme-ember) .guide:focus-visible{outline:2px solid #aca7a1}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .section{color:var(--accent-text-on-light, #2c2b28)}
+:global(.theme-plaster) .heading h2{font-weight:400}
+:global(.theme-plaster) .heading p{color:var(--accent-text-muted, #69665f)}
+:global(.theme-plaster) .guide{color:var(--violet-700, #1a1a19)}
+:global(.theme-plaster) .group{border:1px solid #d9d8d5;background:#ffffff;border-radius:16px}
+:global(.theme-plaster) .group[data-market="international"]{border-color:#dfdedc}
+:global(.theme-plaster) .marketHeading{background:#efefee}
+:global(.theme-plaster) .group[data-market="international"] .marketHeading{background:#f0f0ef}
+:global(.theme-plaster) .marketHeading p{color:var(--accent-text-muted, #69665f)}
+:global(.theme-plaster) .marketIcon{background:#e1e1de;color:var(--violet-700, #1a1a19);border-radius:14px}
+:global(.theme-plaster) .group[data-market="international"] .marketIcon{background:#e6e6e4;color:#1a1a19}
+:global(.theme-plaster) .entry{border-top:1px solid #e7e7e5}
+:global(.theme-plaster) .entry strong{font-weight:500}
+:global(.theme-plaster) .entry small{color:var(--accent-text-muted, #69665f)}
+:global(.theme-plaster) .entryArrow{border:1px solid #dcdbd8;color:#1a1a19;background:#f2f2f1}
+:global(.theme-plaster) .entry:hover{background:#f4f4f3}
+:global(.theme-plaster) .entry:hover .entryArrow,:global(.theme-plaster) .entry:focus-visible .entryArrow{border-color:#cfcdca;background:#eeedec;color:#2c2b28}
+:global(.theme-plaster) .entry:focus-visible,:global(.theme-plaster) .guide:focus-visible{outline:2px solid #1a1a19}
+/* plaster:end */

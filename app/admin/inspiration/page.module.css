@@ -16,3 +16,20 @@
 :global(.theme-ember) .formGrid input,:global(.theme-ember) .formGrid select,:global(.theme-ember) .formGrid textarea{background:rgb(255 250 244 / 0.04);border-radius:12px}
 :global(.theme-ember) .uploadCard{border:1px dashed #35322f;background:rgb(255 250 244 / 0.025);border-radius:16px}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{background:#f2f1f0}
+:global(.theme-plaster) .eyebrow{font-weight:500}
+:global(.theme-plaster) .primary,:global(.theme-plaster) .publish,:global(.theme-plaster) .secondary,:global(.theme-plaster) .archive{font-weight:500}
+:global(.theme-plaster) .primary,:global(.theme-plaster) .publish{color:#ffffff;box-shadow:0 4px 12px rgb(30 27 22 / 0.169)}
+:global(.theme-plaster) .secondary{background:#ffffff}
+:global(.theme-plaster) .sidebar,:global(.theme-plaster) .editor{border:1px solid #e5e4e2;background:#ffffff;box-shadow:0 10px 30px rgb(30 27 22 / 0.035)}
+:global(.theme-plaster) .tabs button:hover,:global(.theme-plaster) .tabActive{font-weight:500}
+:global(.theme-plaster) .listItem strong{font-weight:500}
+:global(.theme-plaster) .dot_draft{background:#cb6e10}
+:global(.theme-plaster) .empty button{font-weight:500}
+:global(.theme-plaster) .statusBadge{font-weight:500}
+:global(.theme-plaster) .formGrid label>span{font-weight:500}
+:global(.theme-plaster) .formGrid input,:global(.theme-plaster) .formGrid select,:global(.theme-plaster) .formGrid textarea{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .uploadCard{border:1px dashed #cccbc7;background:#f5f5f4;border-radius:16px}
+/* plaster:end */

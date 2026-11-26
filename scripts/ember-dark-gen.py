@@ -17,10 +17,16 @@ import colorsys, glob, os, re, sys
 
 ROOT = sys.argv[1]
 OUT = os.path.join(ROOT, 'app/ember-dark.generated.css')
-OWN = {'app/ember-dark.generated.css', 'app/ember-dark.css', 'app/home-ember-dark.css', 'app/ember-studio.css'}
+OWN = {'app/ember-dark.generated.css', 'app/ember-dark.css', 'app/home-ember-dark.css', 'app/ember-studio.css',
+       'app/plaster.generated.css', 'app/plaster.css'}
 SCOPE = '.theme-ember'
 GLOBAL_EXCLUDE = ':where(:not([data-video-studio]))'
 START, END = '/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */', '/* ember-dark:end */'
+# 每个 *.module.css 末尾可能依次挂着多套主题的生成块（熔光暗色、石膏灰白），各生成器只改自己那一块，别的原样保留
+THEME_BLOCKS = [(START, END), ('/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */', '/* plaster:end */')]
+THEME_SCOPES = ('.theme-ember', '.theme-plaster')
+HEADER = ('/* 全站暗色（熔光）——由 scripts/ember-dark-gen.py 从现有浅色样式自动映射生成，请勿手改。\n'
+          '   手调覆盖写在 app/ember-dark.css（全站）和 app/home-ember-dark.css（首页）。 */\n')
 OLD_MARKERS = [('/* home-ember-dark:start — 由 scripts/home-dark-gen.py 生成，请勿手改 */', '/* home-ember-dark:end */')]
 
 # ---------- colour maths ----------
@@ -167,6 +173,8 @@ def scope_selector(sel):
         return None
     if SCOPE in sel:
         return sel
+    if any(t in sel for t in THEME_SCOPES):  # 别的主题手写的规则，不属于本主题
+        return None
     if MODULE_MODE[0]:
         if sel.startswith((':root', 'html')):
             return None
@@ -273,46 +281,64 @@ def walk(css, wrap=None):
 
 ORDER = ['globals', 'focus-inspired', 'commerce-theme', 'commerce-surfaces', 'commerce-workspaces',
          'commerce-forms', 'commerce-readability', 'showcase-cases']
-files = sorted((os.path.relpath(p, ROOT) for p in glob.glob(os.path.join(ROOT, 'app', '**', '*.css'), recursive=True)
-                if not p.endswith('.module.css')),
-               key=lambda p: (ORDER.index(os.path.basename(p)[:-4]) if os.path.basename(p)[:-4] in ORDER else 99, p))
-for f in files:
-    if f in OWN or f.startswith('app/home-ember-dark'):
-        continue
-    walk(strip_comments(open(os.path.join(ROOT, f), encoding='utf-8').read()))
-    print('global', f)
-
-MODULE_MODE[0] = True
 # 视频空间（components/video-studio）的样式本身已按熔光暗色手调，文件里的 ember-dark 块来自视频分支，
 # 不能再按“浅色 → 暗色”映射一遍（2026-11-25 集成时重跑导致深底深字）。整个目录跳过，块原样保留。
 OWN_DARK_DIRS = ('/components/video-studio/',)
-mods = [p for p in glob.glob(os.path.join(ROOT, '**', '*.module.css'), recursive=True)
-        if '/node_modules/' not in p and '/dist/' not in p and '/.next/' not in p
-        and not any(d in p.replace(os.sep, '/') for d in OWN_DARK_DIRS)]
-for mp in sorted(mods):
-    src = open(mp, encoding='utf-8').read()
-    base = src
-    if 'ember-dark:skip' in src:
-        stripped = re.sub(r'\n?' + re.escape(START) + r'.*?' + re.escape(END) + r'\n?', '\n', src, flags=re.S)
-        if stripped != src:
-            open(mp, 'w', encoding='utf-8').write(stripped)
-        continue
-    for a, b in OLD_MARKERS + [(START, END)]:
-        base = re.sub(r'\n?' + re.escape(a) + r'.*?' + re.escape(b) + r'\n?', '\n', base, flags=re.S)
-    base = base.rstrip('\n') + '\n'
-    before = len(emitted)
-    walk(strip_comments(base))
-    block = emitted[before:]
-    del emitted[before:]
-    new = base + ('\n' + START + '\n' + '\n'.join(block) + '\n' + END + '\n' if block else '')
-    if new != src:
-        open(mp, 'w', encoding='utf-8').write(new)
-MODULE_MODE[0] = False
-print('modules:', len(mods))
 
-with open(OUT, 'w', encoding='utf-8') as fh:
-    fh.write('/* 全站暗色（熔光）——由 scripts/ember-dark-gen.py 从现有浅色样式自动映射生成，请勿手改。\n'
-             '   手调覆盖写在 app/ember-dark.css（全站）和 app/home-ember-dark.css（首页）。 */\n')
-    # 全局映射不作用于视频空间：它挂 html[data-video-studio]，样式自带暗色（:where 不增加优先级）。
-    fh.write(re.sub(r'\.theme-ember(?![\w-])', '.theme-ember' + GLOBAL_EXCLUDE, '\n'.join(emitted)) + '\n')
-print('rules:', len(emitted), 'bytes:', os.path.getsize(OUT))
+def _strip(src, a, b):
+    return re.sub(r'\n?' + re.escape(a) + r'.*?' + re.escape(b) + r'\n?', '\n', src, flags=re.S)
+
+def _find(src, a, b):
+    m = re.search(re.escape(a) + r'.*?' + re.escape(b), src, flags=re.S)
+    return m.group(0) if m else None
+
+def run():
+    """生成本主题的全局映射文件和各模块末尾的块。SCOPE/START/END/OUT/HEADER/conv 可由别的主题脚本改写后再调用。"""
+    files = sorted((os.path.relpath(p, ROOT) for p in glob.glob(os.path.join(ROOT, 'app', '**', '*.css'), recursive=True)
+                    if not p.endswith('.module.css')),
+                   key=lambda p: (ORDER.index(os.path.basename(p)[:-4]) if os.path.basename(p)[:-4] in ORDER else 99, p))
+    for f in files:
+        if f in OWN or f.startswith('app/home-ember-dark'):
+            continue
+        walk(strip_comments(open(os.path.join(ROOT, f), encoding='utf-8').read()))
+        print('global', f)
+
+    MODULE_MODE[0] = True
+    mods = [p for p in glob.glob(os.path.join(ROOT, '**', '*.module.css'), recursive=True)
+            if '/node_modules/' not in p and '/dist/' not in p and '/.next/' not in p
+            and not any(d in p.replace(os.sep, '/') for d in OWN_DARK_DIRS)]
+    for mp in sorted(mods):
+        src = open(mp, encoding='utf-8').read()
+        if 'ember-dark:skip' in src:
+            stripped = _strip(src, START, END)
+            if stripped != src:
+                open(mp, 'w', encoding='utf-8').write(stripped)
+            continue
+        kept = {k: _find(src, a, b) for k, (a, b) in enumerate(THEME_BLOCKS)}
+        base = src
+        for a, b in OLD_MARKERS + THEME_BLOCKS:
+            base = _strip(base, a, b)
+        base = base.rstrip('\n') + '\n'
+        before = len(emitted)
+        walk(strip_comments(base))
+        block = emitted[before:]
+        del emitted[before:]
+        new = base
+        for k, (a, b) in enumerate(THEME_BLOCKS):
+            if a == START:
+                new += '\n' + START + '\n' + '\n'.join(block) + '\n' + END + '\n' if block else ''
+            elif kept[k]:
+                new += '\n' + kept[k] + '\n'
+        if new != src:
+            open(mp, 'w', encoding='utf-8').write(new)
+    MODULE_MODE[0] = False
+    print('modules:', len(mods))
+
+    with open(OUT, 'w', encoding='utf-8') as fh:
+        fh.write(HEADER)
+        # 全局映射不作用于视频空间：它挂 html[data-video-studio]，样式自带暗色（:where 不增加优先级）。
+        fh.write(re.sub(re.escape(SCOPE) + r'(?![\w-])', SCOPE + GLOBAL_EXCLUDE, '\n'.join(emitted)) + '\n')
+    print('rules:', len(emitted), 'bytes:', os.path.getsize(OUT))
+
+if __name__ == '__main__':
+    run()

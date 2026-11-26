@@ -41,3 +41,43 @@
 :global(.theme-ember) .skeleton{background:rgb(255 250 244 / 0.06)}
 :global(.theme-ember) .root button:focus-visible{outline:3px solid #504c47}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .hero{border:1px solid #d4d3d0;background:radial-gradient(ellipse at 95% 10%,rgb(202 201 197 / 0.467),transparent 55%),linear-gradient(115deg,#ffffff,#eaeae8)}
+:global(.theme-plaster) .eyebrow{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .hero h2{color:#31302c}
+:global(.theme-plaster) .hero p{color:#7e7b72}
+:global(.theme-plaster) .root .code{border:1px dashed #b9b7b2;background:rgb(255 255 255 / 0.612);color:#1a1a19;border-radius:11px}
+:global(.theme-plaster) .code>span{color:#8b887e}
+:global(.theme-plaster) .root .share{border:1px solid #1a1a19;background:#1a1a19;color:#ffffff;border-radius:11px;font-weight:500}
+:global(.theme-plaster) .rate{color:#1a1a19}
+:global(.theme-plaster) .rate p{color:#1a1a19}
+:global(.theme-plaster) .stats>div{border:1px solid #e0dfdd;background:#ffffff;border-radius:16px}
+:global(.theme-plaster) .stats>div>span{color:#837f76}
+:global(.theme-plaster) .stats strong{color:#403e3a}
+:global(.theme-plaster) .stats small{color:#8b887f}
+:global(.theme-plaster) .friends h2{color:#3b3a36;font-weight:500}
+:global(.theme-plaster) .filters{background:#e7e7e5;border-radius:11px}
+:global(.theme-plaster) .root .filters button{color:#807d74;border-radius:999px}
+:global(.theme-plaster) .root .filters button[aria-pressed=true]{background:#ffffff;color:#1a1a19;box-shadow:0 1px 5px rgb(30 27 22 / 0.039)}
+:global(.theme-plaster) .tableHeading{background:#e9e9e7;color:#8d8a81;border-radius:11px}
+:global(.theme-plaster) .rows li{border-bottom:1px solid #e2e2df}
+:global(.theme-plaster) .rows strong{color:#585650}
+:global(.theme-plaster) .rows time{color:#8a877d}
+:global(.theme-plaster) .status{background:#e9e8e7;color:#8e8b82}
+:global(.theme-plaster) .status[data-status=paid]{background:#ebebe9;color:#54825e}
+:global(.theme-plaster) .status[data-status=refunded]{background:#eaeae8;color:#ec4f16}
+:global(.theme-plaster) .rows li>b{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .rows small{color:#9e9b94}
+:global(.theme-plaster) .empty{border:1px dashed #d2d0cd;background:#f4f4f3;color:#a9a7a0;border-radius:16px}
+:global(.theme-plaster) .empty strong{color:#1a1a19}
+:global(.theme-plaster) .empty p{color:#9c9991}
+:global(.theme-plaster) .pagination{color:#918f86}
+:global(.theme-plaster) .root .pagination button{border:1px solid #d3d2cf;background:#ffffff;color:#1a1a19;border-radius:999px}
+:global(.theme-plaster) .rules{color:#918e86}
+:global(.theme-plaster) .rules p{color:#1a1a19}
+:global(.theme-plaster) .fallback{color:#1a1a19}
+:global(.theme-plaster) .fallback input{border:1px solid #cfceca;background:#ffffff;color:#1a1a19;border-radius:9px}
+:global(.theme-plaster) .skeleton{background:#e8e7e6}
+:global(.theme-plaster) .root button:focus-visible{outline:3px solid #1a1a19}
+/* plaster:end */

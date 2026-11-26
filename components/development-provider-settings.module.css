@@ -22,3 +22,26 @@
 :global(.theme-ember) .dialog footer button{border:1px solid #373430;background:rgb(255 250 244 / 0.04);color:#b8b4af;border-radius:999px;font-weight:500}
 :global(.theme-ember) .dialog footer .save{border-color:#89837a;background:#e6e2db;color:#0f0e0d}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .trigger{border:1px solid #cac9c5;background:#ffffff;color:#57554f;border-radius:15px;font-weight:500}
+:global(.theme-plaster) .trigger:hover{border-color:#1a1a19;color:#1a1a19}
+:global(.theme-plaster) .backdrop{background:rgb(27 27 25 / 0.722);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialog{border:1px solid #d4d3cf;background:#f4f4f3;box-shadow:0 30px 90px rgb(30 27 22 / 0.333)}
+:global(.theme-plaster) .dialog header{border-bottom:1px solid #dad9d6}
+:global(.theme-plaster) .dialog header span{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .dialog h2{color:#282725}
+:global(.theme-plaster) .dialog header p{color:#706d65}
+:global(.theme-plaster) .dialog header button{border:1px solid #d1d0cc;background:#ffffff}
+:global(.theme-plaster) .dialog label{color:#504e48;font-weight:500}
+:global(.theme-plaster) .dialog input{border:1px solid #cac9c5;background:#ffffff;color:#2b2a27;border-radius:14px}
+:global(.theme-plaster) .dialog input:focus{border-color:#1a1a19;box-shadow:0 0 0 3px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .secret{border:1px solid #cac9c5;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .secret:focus-within{border-color:#1a1a19;box-shadow:0 0 0 3px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .secret>button{color:#6d6b63}
+:global(.theme-plaster) .state{background:#e9e9e7;color:#615f58}
+:global(.theme-plaster) .error{background:#ededec;color:#b23a0e}
+:global(.theme-plaster) .success{background:#eeeeec;color:#237152}
+:global(.theme-plaster) .dialog footer button{border:1px solid #cac9c5;background:#ffffff;color:#57554f;border-radius:999px;font-weight:500}
+:global(.theme-plaster) .dialog footer .save{border-color:#1a1a19;background:#1a1a19;color:#ffffff}
+/* plaster:end */

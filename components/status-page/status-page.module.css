@@ -12,3 +12,15 @@
 .primary { background: #edeae4; border-color: #edeae4; color: #0b0b0b; }
 .primary:hover { background: #fff; border-color: #fff; }
 .btn:focus-visible { outline: 2px solid #f07a2b; outline-offset: 3px; }
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{background:#1b1a19;color:#e6e5e3}
+:global(.theme-plaster) .code{color:#727067}
+:global(.theme-plaster) .text{color:#8a877e}
+:global(.theme-plaster) .ref{color:#5c5953}
+:global(.theme-plaster) .btn{border:1px solid #292825;color:#e6e5e3}
+:global(.theme-plaster) .btn:hover{border-color:#474540}
+:global(.theme-plaster) .primary{background:#e6e5e3;border-color:#e6e5e3;color:#1b1a19}
+:global(.theme-plaster) .primary:hover{background:#ffffff;border-color:#ffffff}
+:global(.theme-plaster) .btn:focus-visible{outline:2px solid #ec5119}
+/* plaster:end */

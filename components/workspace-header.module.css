@@ -6,3 +6,8 @@
 :global(.theme-ember) .taskIdentity{color:var(--ink-500, #948e86)}
 :global(.theme-ember) .taskIdentity a{color:var(--studio-orange, #aca7a1)}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .taskIdentity{color:var(--ink-500, #737168)}
+:global(.theme-plaster) .taskIdentity a{color:var(--studio-orange, #1a1a19)}
+/* plaster:end */

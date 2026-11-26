@@ -29,15 +29,15 @@ html.theme-ember:where(:not([data-video-studio])), html.theme-ember:where(:not([
 
 /* 顶栏 */
 .theme-ember:where(:not([data-video-studio])) .top-nav { color: var(--pc-text); background: rgb(11 11 11 / 78%); border-bottom: 1px solid var(--pc-hair); backdrop-filter: blur(18px) saturate(1.2); }
-.app-shell--home .top-nav[data-transparent="true"] { background: transparent; border-color: transparent; }
+:where(.theme-ember) .app-shell--home .top-nav[data-transparent="true"] { background: transparent; border-color: transparent; }
 .theme-ember:where(:not([data-video-studio])) .brand-lockup .brand-copy strong { color: var(--pc-text); }
 .theme-ember:where(:not([data-video-studio])) .brand-lockup .brand-copy small { color: var(--pc-dim); }
 .theme-ember:where(:not([data-video-studio])) .top-nav :is(.main-nav > a, .nav-menu__trigger) { color: var(--pc-muted); }
 .theme-ember:where(:not([data-video-studio])) .top-nav :is(.main-nav > a, .nav-menu__trigger):is(:hover, .active) { color: var(--pc-text); background: transparent; }
-.app-shell--home .top-nav[data-transparent="true"] :is(.main-nav > a.active, .nav-menu__trigger.active) { background: transparent; }
+:where(.theme-ember) .app-shell--home .top-nav[data-transparent="true"] :is(.main-nav > a.active, .nav-menu__trigger.active) { background: transparent; }
 .theme-ember:where(:not([data-video-studio])) .top-nav :is(.main-nav > a, .nav-menu__trigger)::after { background: var(--pc-ember); height: 1.5px; }
 .theme-ember:where(:not([data-video-studio])) .top-nav :is(.usage-pill, .icon-button, .user-menu, .mobile-tool-entry, .announcement-center__trigger),
-.app-shell--home .top-nav[data-transparent="true"] :is(.announcement-center__trigger, .usage-pill, .user-menu) { color: var(--pc-muted); background: transparent; border-color: transparent; }
+:where(.theme-ember) .app-shell--home .top-nav[data-transparent="true"] :is(.announcement-center__trigger, .usage-pill, .user-menu) { color: var(--pc-muted); background: transparent; border-color: transparent; }
 .theme-ember:where(:not([data-video-studio])) .top-nav :is(.usage-pill, .icon-button, .user-menu, .mobile-tool-entry, .announcement-center__trigger):hover { color: var(--pc-text); background: var(--pc-sel); border-color: var(--pc-border); }
 .theme-ember:where(:not([data-video-studio])) .top-nav .announcement-center__trigger svg, .theme-ember:where(:not([data-video-studio])) .top-nav .usage-pill svg { color: currentColor; }
 .theme-ember:where(:not([data-video-studio])) .top-nav .task-trigger { color: var(--pc-text); background: transparent; border: 1px solid var(--pc-border); border-radius: 999px; }
@@ -53,30 +53,30 @@ html.theme-ember:where(:not([data-video-studio])), html.theme-ember:where(:not([
 .theme-ember:where(:not([data-video-studio])) .home-showcase-footer__filing { color: #726c65; }
 
 /* 任务详情：整组重做与改图确认提示、全站积分不足提示、未登录任务抽屉。克制的暗色面板，熔光只用于强调线。 */
-.job-recovery, .job-review-notice { display: grid; gap: 12px; padding: 14px; border: 1px solid #2a2928; border-left: 2px solid #c8340a; border-radius: 12px; background: rgb(255 250 244 / 0.025); }
-.job-recovery__copy, .job-review-notice { min-width: 0; }
-.job-recovery__copy { display: grid; gap: 6px; }
-.job-recovery strong, .job-review-notice strong { color: #edeae4; font-size: 14px; font-weight: 600; }
-.job-recovery p, .job-review-notice p { margin: 0; color: #a9a59e; font-size: 12px; line-height: 1.7; }
-.job-review-notice .job-review-notice__credits { color: #8f8b84; }
-.job-recovery__action { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
-.job-recovery__price { color: #8f8b84; font-size: 12px; }
-.job-recovery__price a { color: #edeae4; text-decoration: underline; text-underline-offset: 3px; }
-.job-recovery__error { color: #fa682a !important; }
-.job-recovery .primary-button, .job-review-notice .primary-button { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
-.text-button { padding: 0; border: 0; background: none; color: #edeae4; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.credit-shortfall { position: fixed; z-index: 120; left: 50%; bottom: 20px; display: flex; align-items: center; gap: 12px; width: min(560px, calc(100vw - 32px)); padding: 12px 12px 12px 16px; border: 1px solid #2a2928; border-left: 2px solid #c8340a; border-radius: 12px; background: #121212; color: #edeae4; box-shadow: 0 18px 48px rgb(0 0 0 / 55%); transform: translateX(-50%); }
-.credit-shortfall > svg { flex: 0 0 auto; color: #f07a2b; }
-.credit-shortfall p { display: grid; flex: 1; gap: 2px; min-width: 0; margin: 0; }
-.credit-shortfall strong { font-size: 13px; font-weight: 600; }
-.credit-shortfall span { color: #8f8b84; font-size: 12px; line-height: 1.6; }
-.credit-shortfall .primary-button { flex: 0 0 auto; white-space: nowrap; }
-.drawer-signed-out { display: grid; justify-items: start; gap: 12px; text-align: left; }
-.drawer-signed-out p { display: grid; gap: 4px; margin: 0; }
-.drawer-signed-out strong { color: #edeae4; font-size: 14px; }
-.drawer-signed-out span { color: #8f8b84; font-size: 12px; }
+:where(.theme-ember) .job-recovery, :where(.theme-ember) .job-review-notice { display: grid; gap: 12px; padding: 14px; border: 1px solid #2a2928; border-left: 2px solid #c8340a; border-radius: 12px; background: rgb(255 250 244 / 0.025); }
+:where(.theme-ember) .job-recovery__copy, :where(.theme-ember) .job-review-notice { min-width: 0; }
+:where(.theme-ember) .job-recovery__copy { display: grid; gap: 6px; }
+:where(.theme-ember) .job-recovery strong, :where(.theme-ember) .job-review-notice strong { color: #edeae4; font-size: 14px; font-weight: 600; }
+:where(.theme-ember) .job-recovery p, :where(.theme-ember) .job-review-notice p { margin: 0; color: #a9a59e; font-size: 12px; line-height: 1.7; }
+:where(.theme-ember) .job-review-notice .job-review-notice__credits { color: #8f8b84; }
+:where(.theme-ember) .job-recovery__action { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+:where(.theme-ember) .job-recovery__price { color: #8f8b84; font-size: 12px; }
+:where(.theme-ember) .job-recovery__price a { color: #edeae4; text-decoration: underline; text-underline-offset: 3px; }
+:where(.theme-ember) .job-recovery__error { color: #fa682a !important; }
+:where(.theme-ember) .job-recovery .primary-button, :where(.theme-ember) .job-review-notice .primary-button { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
+:where(.theme-ember) .text-button { padding: 0; border: 0; background: none; color: #edeae4; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+:where(.theme-ember) .credit-shortfall { position: fixed; z-index: 120; left: 50%; bottom: 20px; display: flex; align-items: center; gap: 12px; width: min(560px, calc(100vw - 32px)); padding: 12px 12px 12px 16px; border: 1px solid #2a2928; border-left: 2px solid #c8340a; border-radius: 12px; background: #121212; color: #edeae4; box-shadow: 0 18px 48px rgb(0 0 0 / 55%); transform: translateX(-50%); }
+:where(.theme-ember) .credit-shortfall > svg { flex: 0 0 auto; color: #f07a2b; }
+:where(.theme-ember) .credit-shortfall p { display: grid; flex: 1; gap: 2px; min-width: 0; margin: 0; }
+:where(.theme-ember) .credit-shortfall strong { font-size: 13px; font-weight: 600; }
+:where(.theme-ember) .credit-shortfall span { color: #8f8b84; font-size: 12px; line-height: 1.6; }
+:where(.theme-ember) .credit-shortfall .primary-button { flex: 0 0 auto; white-space: nowrap; }
+:where(.theme-ember) .drawer-signed-out { display: grid; justify-items: start; gap: 12px; text-align: left; }
+:where(.theme-ember) .drawer-signed-out p { display: grid; gap: 4px; margin: 0; }
+:where(.theme-ember) .drawer-signed-out strong { color: #edeae4; font-size: 14px; }
+:where(.theme-ember) .drawer-signed-out span { color: #8f8b84; font-size: 12px; }
 @media (max-width: 620px) {
-  .credit-shortfall { flex-wrap: wrap; bottom: 12px; }
-  .credit-shortfall .primary-button { flex: 1 0 100%; justify-content: center; }
-  .credit-shortfall .icon-button { position: absolute; top: 8px; right: 8px; }
+  :where(.theme-ember) .credit-shortfall { flex-wrap: wrap; bottom: 12px; }
+  :where(.theme-ember) .credit-shortfall .primary-button { flex: 1 0 100%; justify-content: center; }
+  :where(.theme-ember) .credit-shortfall .icon-button { position: absolute; top: 8px; right: 8px; }
 }

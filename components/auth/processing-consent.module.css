@@ -3,3 +3,7 @@
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .panel{background:rgb(255 250 244 / 0.04);border-radius:16px}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .panel{background:#ffffff;border-radius:16px}
+/* plaster:end */

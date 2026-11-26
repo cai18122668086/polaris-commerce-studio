@@ -311,3 +311,89 @@
   .root *, .root *::before, .root *::after { animation: none !important; transition-duration: .01ms !important; }
   .js [data-reveal] { opacity: 1 !important; transform: none !important; filter: none !important; }
 }
+
+/* ---------- 石膏灰白（html.theme-plaster，2026-11-26）：同一张首页的浅色版 ----------
+   石膏灰底、白色卡纸、墨色文字与墨色胶囊按钮；熔光只留在强调词下划线、进度线、焦点和少量暖光里。
+   首屏与收尾的熔光光带（WebGL）在浅色下不绘制，换成很淡的暖光。不使用蓝色、紫色或蓝紫渐变。 */
+:global(html.theme-plaster) .root {
+  --bg: #eeedea; --hair: rgb(30 28 24 / 9%); --border: rgb(30 28 24 / 15%);
+  --text: #1a1a19; --muted: #5d5c59; --dim: #73726e;
+  --ember: #e0571a;
+  --paper: #ffffff;
+  --lift: 0 1px 2px rgb(30 28 24 / 6%), 0 24px 48px -26px rgb(30 28 24 / 32%);
+}
+:global(html.theme-plaster) .root .btnWhite { background: var(--text); color: #fff; }
+:global(html.theme-plaster) .root .btnWhite:hover { background: #000; }
+:global(html.theme-plaster) .btnGhost { background: var(--paper); border-color: var(--border); }
+:global(html.theme-plaster) .btnGhost:hover { border-color: rgb(30 28 24 / 35%); }
+:global(html.theme-plaster) .root .btnEmber { background: var(--text); color: #fff; }
+:global(html.theme-plaster) .btnEmber::before { display: none; }
+
+/* 首屏 */
+:global(html.theme-plaster) .band { display: none; }
+:global(html.theme-plaster) .bandFallback { background:
+  radial-gradient(42% 30% at 50% 70%, rgb(240 122 43 / 13%), transparent 72%),
+  radial-gradient(70% 50% at 50% 0%, rgb(255 255 255 / 70%), transparent 70%),
+  var(--bg); }
+:global(html.theme-plaster) .grid { background-image: linear-gradient(90deg, rgb(30 28 24 / 5%) 1px, transparent 1px); }
+:global(html.theme-plaster) .sub { color: var(--muted); text-shadow: none; }
+:global(html.theme-plaster) .composer { background: var(--paper); border-color: var(--hair); box-shadow: var(--lift); -webkit-backdrop-filter: none; backdrop-filter: none; }
+:global(html.theme-plaster) .chip { border-color: var(--border); background: transparent; color: var(--muted); }
+:global(html.theme-plaster) .sheen::after { background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 35%) 50%, transparent 70%); }
+:global(html.theme-plaster) .mat { background: var(--paper); border-color: var(--hair); box-shadow: var(--lift); }
+:global(html.theme-plaster) .mat figcaption b { color: var(--text); }
+:global(html.theme-plaster) .far { filter: none; opacity: .92; }
+:global(html.theme-plaster) .logos { border-top-color: var(--hair); background: rgb(255 255 255 / 40%); }
+:global(html.theme-plaster) .logos span { color: var(--muted); }
+:global(html.theme-plaster) .logos span + span { border-left-color: var(--hair); }
+:global(html.theme-plaster) .logos span:hover { color: var(--text); background: radial-gradient(60% 80% at 50% 100%, rgb(240 122 43 / 10%), transparent); }
+:global(html.theme-plaster) .iconBtn { border-color: var(--border); background: rgb(255 255 255 / 70%); }
+:global(html.theme-plaster) .cursorDots { background: radial-gradient(circle, rgb(224 87 26 / 45%) 1.1px, transparent 1.7px) 0 0 / 9px 9px; }
+:global(html.theme-plaster) .cursorDots::after { display: none; }
+
+/* 流程演示 */
+:global(html.theme-plaster) .steps::after { box-shadow: none; }
+:global(html.theme-plaster) .canvas { background: radial-gradient(70% 60% at 50% 60%, rgb(240 122 43 / 8%), transparent 70%), var(--paper); border-color: var(--hair); box-shadow: var(--lift); }
+:global(html.theme-plaster) .ph { background: var(--paper); box-shadow: 0 30px 60px -30px rgb(30 28 24 / 40%), 0 0 0 1px var(--hair); }
+:global(html.theme-plaster) :is(.tag, .lb, .artRow figcaption) { color: var(--text); background: rgb(255 255 255 / 82%); border-color: var(--hair); }
+:global(html.theme-plaster) .scan { box-shadow: 0 0 14px 2px rgb(240 122 43 / 30%); }
+:global(html.theme-plaster) .fact { background: rgb(255 255 255 / 92%); border-color: var(--hair); box-shadow: 0 10px 24px -14px rgb(30 28 24 / 30%); }
+:global(html.theme-plaster) .develop { box-shadow: 0 40px 80px -30px rgb(30 28 24 / 45%), 0 0 0 1px var(--hair); }
+:global(html.theme-plaster) .dots { background: radial-gradient(circle, rgb(238 237 234 / 92%) 1.2px, transparent 1.8px) 0 0 / 7px 7px; mix-blend-mode: normal; }
+:global(html.theme-plaster) .bar { background: rgb(255 255 255 / 55%); }
+:global(html.theme-plaster) .cap { color: #fff; text-shadow: 0 1px 8px rgb(0 0 0 / 45%); }
+
+/* 前后对比 */
+:global(html.theme-plaster) .compare { border-color: var(--hair); box-shadow: var(--lift); }
+:global(html.theme-plaster) .handle { box-shadow: 0 0 0 1px rgb(30 28 24 / 10%); }
+:global(html.theme-plaster) .handle span { color: var(--text); background: rgb(255 255 255 / 85%); border-color: var(--hair); }
+
+/* 能力卡片 */
+:global(html.theme-plaster) .seam { visibility: hidden; }
+:global(html.theme-plaster) .card { background: var(--paper); box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 10px 26px -18px rgb(30 28 24 / 22%); }
+:global(html.theme-plaster) .card::before { background: radial-gradient(420px circle at var(--mx) var(--my), rgb(240 122 43 / 40%), transparent 45%), linear-gradient(var(--hair), var(--hair)); }
+:global(html.theme-plaster) .card::after { background: radial-gradient(380px circle at var(--mx) var(--my), rgb(240 122 43 / 5%), transparent 60%); }
+:global(html.theme-plaster) .art img { box-shadow: 0 20px 40px -22px rgb(30 28 24 / 45%); }
+:global(html.theme-plaster) .art::after { background: linear-gradient(180deg, transparent 35%, rgb(255 255 255 / 96%) 78%); }
+:global(html.theme-plaster) .fr { background: var(--paper); border-color: var(--hair); box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 18px 34px -22px rgb(30 28 24 / 38%); }
+:global(html.theme-plaster) .ring { border-color: rgb(224 87 26 / 85%); background: rgb(240 122 43 / 8%); box-shadow: none; }
+:global(html.theme-plaster) .say { color: var(--text); background: rgb(255 255 255 / 92%); border-color: var(--hair); box-shadow: 0 10px 24px -14px rgb(30 28 24 / 30%); }
+:global(html.theme-plaster) .arrow { color: var(--text); border-color: var(--hair); background: rgb(255 255 255 / 88%); }
+
+/* 案例 */
+:global(html.theme-plaster) .tile { background: var(--paper); border-color: var(--hair); box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 12px 26px -18px rgb(30 28 24 / 28%); }
+:global(html.theme-plaster) .tile:hover { border-color: rgb(224 87 26 / 35%); }
+:global(html.theme-plaster) .tileCap b { color: var(--text); }
+:global(html.theme-plaster) .lightboxOn { background: rgb(30 28 24 / 55%); }
+
+/* 价格 */
+:global(html.theme-plaster) .plan, :global(html.theme-plaster) .packs { background: var(--paper); border-color: transparent; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 10px 26px -18px rgb(30 28 24 / 22%); }
+:global(html.theme-plaster) .pro { background: var(--paper); border-color: transparent; box-shadow: inset 0 2px 0 var(--ember), 0 1px 2px rgb(30 28 24 / 5%), 0 18px 36px -20px rgb(30 28 24 / 30%); }
+:global(html.theme-plaster) .plan ul { color: var(--muted); }
+:global(html.theme-plaster) .pro li::before { background: var(--ember); }
+
+/* 常见问题、收尾、页脚 */
+:global(html.theme-plaster) .faq .lead a { text-decoration-color: rgb(224 87 26 / 60%); }
+:global(html.theme-plaster) .final { background: radial-gradient(60% 40% at 50% 40%, rgb(240 122 43 / 8%), transparent 70%); }
+:global(html.theme-plaster) .wordmark { background: linear-gradient(180deg, rgb(30 28 24 / 14%), rgb(30 28 24 / 2%)); -webkit-background-clip: text; background-clip: text; }
+:global(html.theme-plaster) .footer { background: rgb(238 237 234 / 85%); }

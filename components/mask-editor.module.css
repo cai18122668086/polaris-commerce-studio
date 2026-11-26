@@ -59,3 +59,10 @@
 :global(.theme-ember) .emptyState p{color:#9a958e}
 :global(.theme-ember) .viewport > .stack{background:rgb(255 250 244 / 0.06);box-shadow:0 9px 32px rgb(0 0 0 / 0.396)}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .viewport > .emptyState{color:#858278}
+:global(.theme-plaster) .emptyState h3{color:#44423d}
+:global(.theme-plaster) .emptyState p{color:#6e6b64}
+:global(.theme-plaster) .viewport > .stack{background:#d7d6d2;box-shadow:0 9px 32px rgb(30 27 22 / 0.22)}
+/* plaster:end */

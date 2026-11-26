@@ -1,57 +1,57 @@
 /* 首页暗色（熔光）专属细节：首屏、区块、页脚。全站色板在 ember-dark.css。 */
 /* 首屏 */
-.app-shell--home .commerce-hero { background: #0b0b0b; }
-.app-shell--home .commerce-hero::before { opacity: 1; background-image: linear-gradient(rgb(237 234 228 / 3.5%) 1px, transparent 1px), linear-gradient(90deg, rgb(237 234 228 / 3.5%) 1px, transparent 1px); mask-image: radial-gradient(ellipse 70% 80% at 70% 45%, #000 20%, transparent 75%); }
-.app-shell--home .commerce-hero::after { height: 160px; background: linear-gradient(transparent, #0b0b0b); }
-.app-shell--home .commerce-color-wash i { background: radial-gradient(ellipse, rgb(200 52 10 / 30%) 0%, rgb(240 122 43 / 12%) 34%, transparent 66%); opacity: .55; filter: blur(48px); }
-.app-shell--home .commerce-color-wash i:nth-child(2) { background: radial-gradient(ellipse, rgb(233 180 76 / 10%) 0%, transparent 60%); }
-.app-shell--home .commerce-color-wash i:nth-child(3) { display: none; }
-.app-shell--home .commerce-hero.is-pointer-active .commerce-color-wash i { opacity: .8; }
-.app-shell--home .commerce-hero__wordmark { color: transparent; -webkit-text-stroke: 1px rgb(237 234 228 / 6%); font-weight: 300; letter-spacing: -.04em; }
-.app-shell--home .commerce-eyebrow { color: var(--pc-muted); letter-spacing: .04em; font-weight: 500; }
-.app-shell--home .commerce-eyebrow > span { display: none; }
-.app-shell--home .commerce-hero h1 { color: var(--pc-text); font-weight: 300; letter-spacing: -.04em; line-height: 1.28; }
-.app-shell--home .commerce-selection { border: 1px dashed rgb(237 234 228 / 32%); background: none; color: transparent; background-image: var(--pc-ember-grad); -webkit-background-clip: text; background-clip: text; font-weight: 400; transform: rotate(-2deg); }
-.app-shell--home .commerce-selection i { width: 6px; height: 6px; background: #0b0b0b; border: 1px solid rgb(237 234 228 / 70%); }
-.app-shell--home .commerce-hero__description { color: var(--pc-muted); }
-.app-shell--home .commerce-hero__note { color: var(--pc-dim); }
-.app-shell--home .commerce-button { color: #0b0b0b; background: var(--pc-text); border: 1px solid var(--pc-text); border-radius: 999px; box-shadow: none; font-weight: 500; transition: background .2s cubic-bezier(.23,1,.32,1), transform .2s cubic-bezier(.23,1,.32,1); }
-.app-shell--home .commerce-button:hover { color: #0b0b0b; background: #fff; border-color: #fff; box-shadow: none; transform: translateY(-1px); }
-.app-shell--home .commerce-button:active { transform: scale(.98); }
-.app-shell--home .commerce-text-link { color: var(--pc-text); border-color: var(--pc-border); }
-.app-shell--home .commerce-text-link:hover { border-color: var(--pc-text); }
+:where(.theme-ember) .app-shell--home .commerce-hero { background: #0b0b0b; }
+:where(.theme-ember) .app-shell--home .commerce-hero::before { opacity: 1; background-image: linear-gradient(rgb(237 234 228 / 3.5%) 1px, transparent 1px), linear-gradient(90deg, rgb(237 234 228 / 3.5%) 1px, transparent 1px); mask-image: radial-gradient(ellipse 70% 80% at 70% 45%, #000 20%, transparent 75%); }
+:where(.theme-ember) .app-shell--home .commerce-hero::after { height: 160px; background: linear-gradient(transparent, #0b0b0b); }
+:where(.theme-ember) .app-shell--home .commerce-color-wash i { background: radial-gradient(ellipse, rgb(200 52 10 / 30%) 0%, rgb(240 122 43 / 12%) 34%, transparent 66%); opacity: .55; filter: blur(48px); }
+:where(.theme-ember) .app-shell--home .commerce-color-wash i:nth-child(2) { background: radial-gradient(ellipse, rgb(233 180 76 / 10%) 0%, transparent 60%); }
+:where(.theme-ember) .app-shell--home .commerce-color-wash i:nth-child(3) { display: none; }
+:where(.theme-ember) .app-shell--home .commerce-hero.is-pointer-active .commerce-color-wash i { opacity: .8; }
+:where(.theme-ember) .app-shell--home .commerce-hero__wordmark { color: transparent; -webkit-text-stroke: 1px rgb(237 234 228 / 6%); font-weight: 300; letter-spacing: -.04em; }
+:where(.theme-ember) .app-shell--home .commerce-eyebrow { color: var(--pc-muted); letter-spacing: .04em; font-weight: 500; }
+:where(.theme-ember) .app-shell--home .commerce-eyebrow > span { display: none; }
+:where(.theme-ember) .app-shell--home .commerce-hero h1 { color: var(--pc-text); font-weight: 300; letter-spacing: -.04em; line-height: 1.28; }
+:where(.theme-ember) .app-shell--home .commerce-selection { border: 1px dashed rgb(237 234 228 / 32%); background: none; color: transparent; background-image: var(--pc-ember-grad); -webkit-background-clip: text; background-clip: text; font-weight: 400; transform: rotate(-2deg); }
+:where(.theme-ember) .app-shell--home .commerce-selection i { width: 6px; height: 6px; background: #0b0b0b; border: 1px solid rgb(237 234 228 / 70%); }
+:where(.theme-ember) .app-shell--home .commerce-hero__description { color: var(--pc-muted); }
+:where(.theme-ember) .app-shell--home .commerce-hero__note { color: var(--pc-dim); }
+:where(.theme-ember) .app-shell--home .commerce-button { color: #0b0b0b; background: var(--pc-text); border: 1px solid var(--pc-text); border-radius: 999px; box-shadow: none; font-weight: 500; transition: background .2s cubic-bezier(.23,1,.32,1), transform .2s cubic-bezier(.23,1,.32,1); }
+:where(.theme-ember) .app-shell--home .commerce-button:hover { color: #0b0b0b; background: #fff; border-color: #fff; box-shadow: none; transform: translateY(-1px); }
+:where(.theme-ember) .app-shell--home .commerce-button:active { transform: scale(.98); }
+:where(.theme-ember) .app-shell--home .commerce-text-link { color: var(--pc-text); border-color: var(--pc-border); }
+:where(.theme-ember) .app-shell--home .commerce-text-link:hover { border-color: var(--pc-text); }
 
-.app-shell--home .commerce-collage__shape { opacity: .92; background:
+:where(.theme-ember) .app-shell--home .commerce-collage__shape { opacity: .92; background:
   radial-gradient(circle, rgb(11 11 11 / 55%) 1.05px, transparent 1.6px) 0 0 / 6px 6px,
   var(--pc-ember-grad); }
-.app-shell--home .commerce-photo { color: var(--pc-text); background: #141414; border: 1px solid var(--pc-border); border-radius: 10px; box-shadow: 0 30px 60px -20px rgb(0 0 0 / 80%), 0 0 0 1px rgb(0 0 0 / 40%); }
-.app-shell--home .commerce-photo:hover { box-shadow: 0 40px 70px -18px rgb(0 0 0 / 85%), 0 0 0 1px rgb(237 234 228 / 18%); filter: none; }
-.app-shell--home .commerce-photo img { border-radius: 6px; }
-.app-shell--home .commerce-photo__bar > span { background: #3a3835; }
-.app-shell--home .commerce-photo__bar small, .app-shell--home .commerce-photo__tag { color: var(--pc-dim); }
-.app-shell--home .commerce-photo__caption { color: var(--pc-text); font-weight: 500; }
-.app-shell--home .commerce-collage__spark { color: rgb(237 234 228 / 70%); font-weight: 200; }
-.app-shell--home .commerce-collage__sticker { color: var(--pc-text); background: rgb(22 22 22 / 72%); border: 1px solid rgb(237 234 228 / 14%); border-radius: 999px; backdrop-filter: blur(14px); }
-.app-shell--home .commerce-collage__cursor svg { fill: var(--pc-text); stroke: #0b0b0b; }
-.app-shell--home .commerce-collage__cursor b { color: #0b0b0b; background: var(--pc-ember); }
-.app-shell--home .commerce-hero__bottom { color: var(--pc-dim); border-top-color: var(--pc-hair); }
-.app-shell--home .commerce-hero__bottom button { color: var(--pc-muted); }
+:where(.theme-ember) .app-shell--home .commerce-photo { color: var(--pc-text); background: #141414; border: 1px solid var(--pc-border); border-radius: 10px; box-shadow: 0 30px 60px -20px rgb(0 0 0 / 80%), 0 0 0 1px rgb(0 0 0 / 40%); }
+:where(.theme-ember) .app-shell--home .commerce-photo:hover { box-shadow: 0 40px 70px -18px rgb(0 0 0 / 85%), 0 0 0 1px rgb(237 234 228 / 18%); filter: none; }
+:where(.theme-ember) .app-shell--home .commerce-photo img { border-radius: 6px; }
+:where(.theme-ember) .app-shell--home .commerce-photo__bar > span { background: #3a3835; }
+:where(.theme-ember) .app-shell--home .commerce-photo__bar small, :where(.theme-ember) .app-shell--home .commerce-photo__tag { color: var(--pc-dim); }
+:where(.theme-ember) .app-shell--home .commerce-photo__caption { color: var(--pc-text); font-weight: 500; }
+:where(.theme-ember) .app-shell--home .commerce-collage__spark { color: rgb(237 234 228 / 70%); font-weight: 200; }
+:where(.theme-ember) .app-shell--home .commerce-collage__sticker { color: var(--pc-text); background: rgb(22 22 22 / 72%); border: 1px solid rgb(237 234 228 / 14%); border-radius: 999px; backdrop-filter: blur(14px); }
+:where(.theme-ember) .app-shell--home .commerce-collage__cursor svg { fill: var(--pc-text); stroke: #0b0b0b; }
+:where(.theme-ember) .app-shell--home .commerce-collage__cursor b { color: #0b0b0b; background: var(--pc-ember); }
+:where(.theme-ember) .app-shell--home .commerce-hero__bottom { color: var(--pc-dim); border-top-color: var(--pc-hair); }
+:where(.theme-ember) .app-shell--home .commerce-hero__bottom button { color: var(--pc-muted); }
 
 /* 区块：统一黑底，用细线分隔，不再用浅色色块区分 */
-.app-shell--home :is(.commerce-showcase, .commerce-gallery, .commerce-reviews) { background: var(--pc-bg); border-top: 1px solid var(--pc-hair); }
-.app-shell--home :is(.commerce-showcase, .commerce-gallery, .commerce-reviews, .focus-home) h2 { font-weight: 400; letter-spacing: -.035em; color: var(--pc-text); }
-.app-shell--home .focus-home .home-ai-toolbox__eyebrow { color: var(--pc-muted); background: none; border-color: transparent; padding: 0; letter-spacing: .04em; }
+:where(.theme-ember) .app-shell--home :is(.commerce-showcase, .commerce-gallery, .commerce-reviews) { background: var(--pc-bg); border-top: 1px solid var(--pc-hair); }
+:where(.theme-ember) .app-shell--home :is(.commerce-showcase, .commerce-gallery, .commerce-reviews, .focus-home) h2 { font-weight: 400; letter-spacing: -.035em; color: var(--pc-text); }
+:where(.theme-ember) .app-shell--home .focus-home .home-ai-toolbox__eyebrow { color: var(--pc-muted); background: none; border-color: transparent; padding: 0; letter-spacing: .04em; }
 
 /* 图片上的小标签：深色毛玻璃 */
-.app-shell--home .commerce-comparison__label,
-.app-shell--home .commerce-comparison__label--after { color: var(--pc-text); background: rgb(11 11 11 / 62%); border: 1px solid rgb(237 234 228 / 12%); backdrop-filter: blur(10px); }
+:where(.theme-ember) .app-shell--home .commerce-comparison__label,
+:where(.theme-ember) .app-shell--home .commerce-comparison__label--after { color: var(--pc-text); background: rgb(11 11 11 / 62%); border: 1px solid rgb(237 234 228 / 12%); backdrop-filter: blur(10px); }
 
 /* 卡片 */
-.app-shell--home .commerce-reviews article { background: var(--pc-field); border-color: var(--pc-hair); box-shadow: none; }
-.app-shell--home .commerce-reviews article h3 { color: var(--pc-text); font-weight: 500; }
-.app-shell--home .commerce-reviews > header p { color: var(--pc-dim); }
-.app-shell--home .commerce-reviews__person > img { border-color: var(--pc-border); filter: grayscale(1) contrast(1.05); }
+:where(.theme-ember) .app-shell--home .commerce-reviews article { background: var(--pc-field); border-color: var(--pc-hair); box-shadow: none; }
+:where(.theme-ember) .app-shell--home .commerce-reviews article h3 { color: var(--pc-text); font-weight: 500; }
+:where(.theme-ember) .app-shell--home .commerce-reviews > header p { color: var(--pc-dim); }
+:where(.theme-ember) .app-shell--home .commerce-reviews__person > img { border-color: var(--pc-border); filter: grayscale(1) contrast(1.05); }
 
 /* 收尾区与页脚 */
-.app-shell--home .home-showcase-footer { background: var(--pc-bg); border-top: 1px solid var(--pc-hair); }
-.app-shell--home .commerce-closing__flower { color: transparent; background-image: var(--pc-ember-grad); -webkit-background-clip: text; background-clip: text; opacity: .22; }
+:where(.theme-ember) .app-shell--home .home-showcase-footer { background: var(--pc-bg); border-top: 1px solid var(--pc-hair); }
+:where(.theme-ember) .app-shell--home .commerce-closing__flower { color: transparent; background-image: var(--pc-ember-grad); -webkit-background-clip: text; background-clip: text; opacity: .22; }

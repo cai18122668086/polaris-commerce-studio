@@ -90,3 +90,49 @@
 :global(.theme-ember) .emptyState button{background:rgb(255 250 244 / 0.025);color:#d8d6d3;border-radius:999px}
 :global(.theme-ember) .cardImage>img{background:rgb(255 250 244 / 0.06)}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{color:#272624}
+:global(.theme-plaster) .inspirationBanner{border:1px solid #e4e3e1;background:linear-gradient(110deg,#e8e7e5,#d6d5d2 60%,#eae9e8);border-radius:19px}
+:global(.theme-plaster) .inspirationBanner>span{color:#1a1a19}
+:global(.theme-plaster) .inspirationBanner>strong{color:#1a1a19}
+:global(.theme-plaster) .inspirationBanner img{border:3px solid #ffffff;box-shadow:0 3px 6px rgb(30 27 22 / 0.078)}
+:global(.theme-plaster) .welcome p{color:#9a9890}
+:global(.theme-plaster) .welcome>span{color:#9d9a92}
+:global(.theme-plaster) .spotlight{border:1px solid #e1e0de;background:#e8e8e6;border-radius:18px}
+:global(.theme-plaster) .spotlight[data-tone=lime]{border-color:#e5e4e2;background:#efefed}
+:global(.theme-plaster) .spotlight>div>span{color:#97958d}
+:global(.theme-plaster) .spotlight h2{color:#2d2c29}
+:global(.theme-plaster) .spotlight p{color:#858278}
+:global(.theme-plaster) .spotlight b{background:#ffffff;color:#4a4843;border-radius:8px}
+:global(.theme-plaster) .spotlight>img{border:7px solid #ffffff;box-shadow:0 3px 12px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .spotlight:hover{box-shadow:0 8px 22px rgb(30 27 22 / 0.063)}
+:global(.theme-plaster) .spotlight:hover b{color:#242321;background:#eae9e7}
+:global(.theme-plaster) .quickLinks>a{border:1px solid #e8e7e5;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .quickLinks>a:hover{border-color:#c3c1bd;background:#f4f4f3}
+:global(.theme-plaster) .quickLinks img,:global(.theme-plaster) .quickIcon{background:#eae9e8;color:#1a1a19;border-radius:9px}
+:global(.theme-plaster) .quickLinks strong{color:#5e5b55}
+:global(.theme-plaster) .quickLinks small{color:#9c9991}
+:global(.theme-plaster) .quickLinks>a>svg{color:#a8a59f}
+:global(.theme-plaster) .directoryHead h2{font-weight:500}
+:global(.theme-plaster) .searchBox{border:1px solid #e2e1df;background:#ffffff;color:#a09e96;border-radius:11px}
+:global(.theme-plaster) .searchBox:focus-within{border-color:#bab9b3;box-shadow:0 0 0 3px #ffffff}
+:global(.theme-plaster) .searchBox input{color:#5d5b54}
+:global(.theme-plaster) .searchBox button{color:#928f86}
+:global(.theme-plaster) .filterBar>span{color:#a9a7a0}
+:global(.theme-plaster) .filters button{color:#939087;border-radius:999px}
+:global(.theme-plaster) .filters button:hover{background:#ededeb;color:#595650}
+:global(.theme-plaster) .filters button[aria-pressed=true]{color:#292825;background:#eeedec}
+:global(.theme-plaster) .toolCard{background:#f0efee;border-radius:15px}
+:global(.theme-plaster) .toolCard:hover{border-color:#d2d1cd;background:#ffffff;box-shadow:0 8px 20px rgb(30 27 22 / 0.063)}
+:global(.theme-plaster) .cardTitle h3{color:#494842;font-weight:500}
+:global(.theme-plaster) .cardTitle>span{background:#efeeed;color:#1a1a19}
+:global(.theme-plaster) .cardImage{background:#e8e7e5;border-radius:11px}
+:global(.theme-plaster) .cardImage>span{color:#363431;background:#ededeb;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .toolCard>p{color:#9c9992}
+:global(.theme-plaster) .cardFooter{color:#8d8a81}
+:global(.theme-plaster) .emptyState{border:1px dashed #dad9d7;color:#9a9890;background:#f4f4f3;border-radius:16px}
+:global(.theme-plaster) .emptyState h3{color:#68655e}
+:global(.theme-plaster) .emptyState button{background:#eeedec;color:#403e3a;border-radius:999px}
+:global(.theme-plaster) .cardImage>img{background:#e8e8e6}
+/* plaster:end */

@@ -51,6 +51,8 @@
 
 .sourcePreview { display:block;max-width:100%;max-height:520px;object-fit:contain;margin:auto; }
 
+.reviewNotice { margin:0;padding:10px 12px;border:1px solid #591c02;border-radius:10px;background:rgb(255 250 244 / 0.025);color:#d6d2cb;font-size:12px;line-height:1.75; }
+
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .preview{border:1px solid #232120;background:rgb(255 250 244 / 0.025);border-radius:16px}
 :global(.theme-ember) .previewBar{border-bottom:1px solid #232120;color:#979189}
@@ -83,4 +85,37 @@
 :global(.theme-ember) .loading{color:#78726a}
 :global(.theme-ember) .loadingText{color:#78726a}
 /* ember-dark:end */
-.reviewNotice { margin:0;padding:10px 12px;border:1px solid #591c02;border-radius:10px;background:rgb(255 250 244 / 0.025);color:#d6d2cb;font-size:12px;line-height:1.75; }
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .preview{border:1px solid #e3e2e0;background:#f2f1f0;border-radius:16px}
+:global(.theme-plaster) .previewBar{border-bottom:1px solid #e3e2e0;color:#716e66}
+:global(.theme-plaster) .versions select{border:1px solid #d9d8d5;background:#ffffff;color:#242321;border-radius:9px}
+:global(.theme-plaster) .variantTabs{border:1px solid #e3e2e0;background:#ebeae9;border-radius:12px}
+:global(.theme-plaster) .variantTabs button{color:#7c7970;border-radius:999px}
+:global(.theme-plaster) .variantTabs button[aria-pressed=true]{background:#ffffff;color:#242321;box-shadow:0 1px 4px rgb(30 27 22 / 0.071)}
+:global(.theme-plaster) .preview input[type=range]{accent-color:#242321}
+:global(.theme-plaster) .preview a[download]{color:#5a5852}
+:global(.theme-plaster) .status{color:#76736b}
+:global(.theme-plaster) .status i{background:#918e85}
+:global(.theme-plaster) .waiting i{background:#1a1a19;box-shadow:0 0 0 3px #ffffff}
+:global(.theme-plaster) .heading h3{color:#242321;font-weight:500}
+:global(.theme-plaster) .heading p{color:#8c8980}
+:global(.theme-plaster) .primary{background:#242321;color:#ffffff;border-radius:999px}
+:global(.theme-plaster) .primary:hover:not(:disabled){background:#eae9e7;color:#242321}
+:global(.theme-plaster) .secondaryActions button{border:1px solid #dbdad8;background:#ffffff;color:#66645c;border-radius:999px}
+:global(.theme-plaster) .secondaryActions button:hover:not(:disabled){border-color:#aeaca6;color:#242321}
+:global(.theme-plaster) .price{color:#949189}
+:global(.theme-plaster) .price strong{color:#5a5852}
+:global(.theme-plaster) .abandon{color:#a19f97}
+:global(.theme-plaster) .abandon:hover{color:#66645c}
+:global(.theme-plaster) .disclosure{border-top:1px solid #e9e8e7;color:#807d74}
+:global(.theme-plaster) .disclosure small{color:#9c9a92}
+:global(.theme-plaster) .error{color:#b23a0e}
+:global(.theme-plaster) .regeneration label{color:#66645c}
+:global(.theme-plaster) .regeneration textarea{border:1px solid #d9d8d5;background:#f3f3f2;color:#242321;border-radius:12px}
+:global(.theme-plaster) .regeneration textarea:focus{outline:2px solid #d4d3d0}
+:global(.theme-plaster) .regenerationActions > button:first-child{border:1px solid #dbdad8;background:#ffffff;color:#66645c;border-radius:999px}
+:global(.theme-plaster) .loading{color:#8c8980}
+:global(.theme-plaster) .loadingText{color:#8c8980}
+:global(.theme-plaster) .reviewNotice{border:1px solid #b23a0e;background:rgb(244 244 243 / 0.025);color:#cdcbc7;border-radius:14px}
+/* plaster:end */

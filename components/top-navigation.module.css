@@ -32,3 +32,12 @@
 :global(.theme-ember) .accountMenuPanel > a:hover,:global(.theme-ember) .accountMenuPanel > button:hover{background:rgb(255 250 244 / 0.025)}
 :global(.theme-ember) .accountMenuPanel small{color:#9a958d}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .taskNotice:global(.task-trigger) > i{color:#d0cfcc;background:rgb(255 255 255 / 0.12)}
+:global(.theme-plaster) .header .videoEntry{color:#1a1a19}
+:global(.theme-plaster) .videoEntry > span{background:#e5e5e3;color:#1a1a19}
+:global(.theme-plaster) .accountMenuPanel{border:1px solid #e0dfdd;background:#ffffff;box-shadow:0 14px 40px rgb(30 27 22 / 0.141);color:#1a1a19;border-radius:22px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .accountMenuPanel > a:hover,:global(.theme-plaster) .accountMenuPanel > button:hover{background:#ecebe9}
+:global(.theme-plaster) .accountMenuPanel small{color:#6e6b64}
+/* plaster:end */

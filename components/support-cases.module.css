@@ -130,3 +130,27 @@
 :global(.theme-ember) .recordStatus[data-status="open"]{background:rgb(255 250 244 / 0.025);color:#dc7f06}
 :global(.theme-ember) .recordStatus[data-status="resolved"]{background:rgb(255 250 244 / 0.06);color:#c1bdb9}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .panel{border:1px solid #dcdbd8;background:#ffffff;color:#353330;border-radius:22px}
+:global(.theme-plaster) .header p,:global(.theme-plaster) .panel .empty{color:#615f58}
+:global(.theme-plaster) .panel .contact,:global(.theme-plaster) .panel .submit,:global(.theme-plaster) .historyError button{border:1px solid #d1d0cc;background:#efeeed;color:#1a1a19}
+:global(.theme-plaster) .panel .contact:hover,:global(.theme-plaster) .historyError button:hover:not(:disabled){background:#e5e4e2}
+:global(.theme-plaster) .panel .submit{border-color:#1a1a19;background:#1a1a19;color:#ffffff}
+:global(.theme-plaster) .panel .submit:hover:not(:disabled){background:#1a1a19}
+:global(.theme-plaster) .panel :is(a, button, input, textarea):focus-visible{outline:2px solid #1a1a19}
+:global(.theme-plaster) .panel label{font-weight:500}
+:global(.theme-plaster) .panel label small,:global(.theme-plaster) .counter{color:#615f58}
+:global(.theme-plaster) .panel :is(input, textarea){border:1px solid #d0cfcb;background:#ffffff;border-radius:11px}
+:global(.theme-plaster) .panel .success{background:#edeceb;color:#255b3e}
+:global(.theme-plaster) .panel .error{background:#ededec;color:#b23a0e}
+:global(.theme-plaster) .history{border-top:1px solid #e3e2e0}
+:global(.theme-plaster) .record{border:1px solid #e3e2e0;background:#f3f3f2;border-radius:14px}
+:global(.theme-plaster) .record p{color:#4c4a45}
+:global(.theme-plaster) .record .resolution{background:#e8e8e6;border-radius:8px}
+:global(.theme-plaster) .record footer small{color:#615f58}
+:global(.theme-plaster) .record footer a{color:#1a1a19}
+:global(.theme-plaster) .recordStatus{background:#e6e6e4;color:#4d4b46}
+:global(.theme-plaster) .recordStatus[data-status="open"]{background:#edeceb;color:#97510c}
+:global(.theme-plaster) .recordStatus[data-status="resolved"]{background:#ebeae8;color:#255b3e}
+/* plaster:end */

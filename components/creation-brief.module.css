@@ -68,3 +68,14 @@
   .foot { flex-direction: column; align-items: stretch; }
   .go { justify-content: center; }
 }
+
+/* ---------- 石膏灰白（html.theme-plaster，2026-11-26）：白色输入卡 + 墨色胶囊按钮 ---------- */
+:global(html.theme-plaster) .composer { background: #ffffff; border-color: rgb(30 28 24 / 9%); box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 24px 48px -28px rgb(30 28 24 / 30%); -webkit-backdrop-filter: none; backdrop-filter: none; }
+:global(html.theme-plaster) .composer::before { background: linear-gradient(120deg, rgb(224 87 26 / 0%), rgb(224 87 26 / 55%), rgb(233 180 76 / 45%), rgb(224 87 26 / 0%)); }
+:global(html.theme-plaster) .label { color: #73726e; }
+:global(html.theme-plaster) .composer .field { color: #1a1a19; caret-color: #e0571a; }
+:global(html.theme-plaster) .field::placeholder { color: #8f8d88; }
+:global(html.theme-plaster) .foot { border-top-color: rgb(30 28 24 / 8%); }
+:global(html.theme-plaster) .hint { color: #73726e; }
+:global(html.theme-plaster) .go { background: #1a1a19; color: #ffffff; box-shadow: 0 1px 2px rgb(30 28 24 / 12%), 0 10px 22px -12px rgb(30 28 24 / 45%); }
+:global(html.theme-plaster) .go:hover { background: #000000; }

@@ -45,3 +45,18 @@
 :global(.theme-ember) .art[data-case-art=amazon-visual-suite],:global(.theme-ember) .art[data-case-art=domestic-main-image]{background:rgb(255 250 244 / 0.04)}
 :global(.theme-ember) .art[data-case-art=amazon-visual-suite] .sequence,:global(.theme-ember) .art[data-case-art=amazon-visual-suite] .sourceFrame,:global(.theme-ember) .art[data-case-art=amazon-visual-suite] .revealFrame{background:rgb(255 250 244 / 0.04)}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .art{background:#e6e6e4;color:#54524c}
+:global(.theme-plaster) .sequence,:global(.theme-plaster) .sourceFrame,:global(.theme-plaster) .referenceFrame,:global(.theme-plaster) .revealFrame{background:#e6e6e4;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .frameLabel,:global(.theme-plaster) .resultLabel,:global(.theme-plaster) .hoverHint{border:1px solid rgb(255 255 255 / 0.651);background:rgb(255 255 255 / 0.902);color:#585650;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .hoverHint{background:rgb(255 255 255 / 0.902);color:#706d65}
+:global(.theme-plaster) .scanLine{background:rgb(255 255 255 / 0.6);box-shadow:0 0 12px #ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .inputOnly{background:linear-gradient(145deg,#ebebe9,#e5e4e2)}
+:global(.theme-plaster) .label{color:#747269}
+:global(.theme-plaster) .goal{color:#75726a}
+:global(.theme-plaster) .landscape{background:#eae9e7}
+:global(.theme-plaster) .portrait{background:#ecebea}
+:global(.theme-plaster) .art[data-case-art=amazon-visual-suite],:global(.theme-plaster) .art[data-case-art=domestic-main-image]{background:#ffffff}
+:global(.theme-plaster) .art[data-case-art=amazon-visual-suite] .sequence,:global(.theme-plaster) .art[data-case-art=amazon-visual-suite] .sourceFrame,:global(.theme-plaster) .art[data-case-art=amazon-visual-suite] .revealFrame{background:#ffffff}
+/* plaster:end */

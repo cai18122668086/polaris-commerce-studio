@@ -23,3 +23,15 @@
 :global(.theme-ember) .option strong{color:#e9e8e6}
 :global(.theme-ember) .option small{color:#9c968f}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .fieldset legend{color:#242320}
+:global(.theme-plaster) .hint{color:#75736a}
+:global(.theme-plaster) .option{border:1px solid #e1e1de;background:#ffffff;border-radius:19px}
+:global(.theme-plaster) .option[data-selected="true"]{border-color:#1a1a19;background:#f0efee}
+:global(.theme-plaster) .option:focus-within{outline:2px solid #1a1a19}
+:global(.theme-plaster) .option input{accent-color:#1a1a19}
+:global(.theme-plaster) .icon{color:#1a1a19}
+:global(.theme-plaster) .option strong{color:#282724}
+:global(.theme-plaster) .option small{color:#6d6a62}
+/* plaster:end */

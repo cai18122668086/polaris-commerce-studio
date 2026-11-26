@@ -41,3 +41,19 @@
 :global(.theme-ember) .feedback .note{border-top:1px solid #22201e}
 :global(.theme-ember) .details{border-top:1px solid #22201e;color:#9c968f}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .feedback{border:1px solid var(--ink-150, #e2e1df);background:linear-gradient(125deg, #f4f4f3, #ffffff 60%);color:var(--ink-800, #2c2b28);border-radius:19px}
+:global(.theme-plaster) .icon{color:#1a1a19;background:#ebeae9;border-radius:14px}
+:global(.theme-plaster) .feedback .copy p,:global(.theme-plaster) .feedback .note{color:#757269}
+:global(.theme-plaster) .meta strong{font-weight:500}
+:global(.theme-plaster) .meta span{color:#817e75}
+:global(.theme-plaster) .track{background:#e5e5e3}
+:global(.theme-plaster) .track i{background:#1a1a19}
+:global(.theme-plaster) .track[data-moving="true"] i::after{background:linear-gradient(90deg, transparent, rgb(255 255 255 / 0.533), transparent);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .track[data-indeterminate="true"] i{background:#ec5119}
+:global(.theme-plaster) .connection{color:#817e75}
+:global(.theme-plaster) .connection button{border:1px solid #d6d5d2;background:#ffffff;color:#6c6a62;border-radius:999px}
+:global(.theme-plaster) .feedback .note{border-top:1px solid #e5e4e2}
+:global(.theme-plaster) .details{border-top:1px solid #e5e4e2;color:#6d6a63}
+/* plaster:end */

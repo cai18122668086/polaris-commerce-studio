@@ -480,3 +480,33 @@
 :global(.theme-ember) .stageHint a{color:#fa682a}
 :global(.theme-ember) .stageHint a:focus-visible{outline:3px solid #dc7f06}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .dialog{border:1px solid #f2cfb8;background:#f3f3f2;color:#b23a0e;box-shadow:0 28px 90px rgb(30 27 22 / 0.314);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(27 26 25 / 0.502)}
+:global(.theme-plaster) .top{background:linear-gradient(115deg,#d44511,#b23a0e);color:#ffffff;border-bottom:3px solid #f6dbca}
+:global(.theme-plaster) .top:before,:global(.theme-plaster) .top:after{border-top:3px solid #f7e1d2;box-shadow:0 -5px 0 rgb(255 255 255 / 0.31),0 -10px 0 rgb(255 255 255 / 0.173)}
+:global(.theme-plaster) .badge{color:#f9e7db}
+:global(.theme-plaster) .top h2{font-weight:400}
+:global(.theme-plaster) .close{color:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .priceValue strong,:global(.theme-plaster) .creditValue strong{font-weight:400}
+:global(.theme-plaster) .priceValue>span{font-weight:400}
+:global(.theme-plaster) .creditValue{border-left:1px solid #efc4a7}
+:global(.theme-plaster) .creditValue>span{font-weight:500}
+:global(.theme-plaster) .countdown{border:1px solid #efc1a3;background:#f9e8dd}
+:global(.theme-plaster) .countdown b{background:#b23a0e;color:#ffffff;border-radius:9px}
+:global(.theme-plaster) .buy{border:1px solid #f7dfd0;background:linear-gradient(115deg,#f9e8dd,#f3d2bc);color:#b23a0e;font-weight:500}
+:global(.theme-plaster) .buy:hover{background:#f7e2d3}
+:global(.theme-plaster) .bottom{color:#b23a0e}
+:global(.theme-plaster) .bottom details{color:#e44a12}
+:global(.theme-plaster) .dialog button:focus-visible,:global(.theme-plaster) .buy:focus-visible,:global(.theme-plaster) .bottom summary:focus-visible{outline:3px solid #cb6e10}
+:global(.theme-plaster) .floating{border:1px solid #cb6e10;background:linear-gradient(135deg,#d74611,#b23a0e);color:#ffffff;box-shadow:0 7px 20px rgb(30 27 22 / 0.2)}
+:global(.theme-plaster) .floating:before,:global(.theme-plaster) .floating:after{border:2px solid #f5d8c4}
+:global(.theme-plaster) .floatingPrice{color:#f7e1d2;font-weight:400}
+:global(.theme-plaster) .floating time{background:#f7e0d1;color:#b23a0e;font-weight:500}
+:global(.theme-plaster) .floatingClose{border:1px solid #f3d1bb;background:#f4f4f3;color:#b23a0e;box-shadow:0 2px 6px rgb(30 27 22 / 0.102);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .floating:focus-visible,:global(.theme-plaster) .floatingClose:focus-visible{outline:3px solid #cb6e10}
+:global(.theme-plaster) .stageHint{border:1px solid #d7d6d3;background:#f2f2f1;color:#b63b0f;border-radius:999px}
+:global(.theme-plaster) .stageHint a{color:#b23a0e}
+:global(.theme-plaster) .stageHint a:focus-visible{outline:3px solid #cb6e10}
+/* plaster:end */

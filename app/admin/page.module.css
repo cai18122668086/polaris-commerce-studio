@@ -294,3 +294,107 @@
 :global(.theme-ember) .permissionOptions{border:1px solid #262422;background:rgb(21 20 19 / 0.86);box-shadow:0 12px 30px rgb(0 0 0 / 0.252);border-radius:12px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
 :global(.theme-ember) .permissionOptions label{color:#a39d97}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{color:#232320}
+:global(.theme-plaster) .header p,:global(.theme-plaster) .sectionHeading p{color:#807d74}
+:global(.theme-plaster) .eyebrow,:global(.theme-plaster) .sectionEyebrow{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .secondary,:global(.theme-plaster) .primary{border:1px solid #e0dfdd;background:#ffffff;color:#504e48;border-radius:999px;font-weight:500}
+:global(.theme-plaster) .primary{border-color:#1a1a19;background:#1a1a19;color:#ffffff}
+:global(.theme-plaster) .metricCard{border:1px solid #e8e7e5;background:linear-gradient(145deg, #ffffff, #f4f3f3);box-shadow:0 12px 30px rgb(30 27 22 / 0.04)}
+:global(.theme-plaster) .metricCardWarn{border-color:#ebeae9;background:#f4f4f3}
+:global(.theme-plaster) .metricIcon{background:#eae9e8;color:#1a1a19;border-radius:16px}
+:global(.theme-plaster) .metricCardWarn .metricIcon{background:#ebeae9;color:#1a1a19}
+:global(.theme-plaster) .metricCard small,:global(.theme-plaster) .platformHeading small,:global(.theme-plaster) .accountRow small{color:#9c9991}
+:global(.theme-plaster) .metricCard p{color:#807d74}
+:global(.theme-plaster) .section{border:1px solid #e8e7e5;background:#ffffff;box-shadow:0 15px 40px rgb(30 27 22 / 0.035)}
+:global(.theme-plaster) .warningBadge,:global(.theme-plaster) .readyBadge,:global(.theme-plaster) .statusNeedsLogin,:global(.theme-plaster) .statusReady,:global(.theme-plaster) .busy,:global(.theme-plaster) .relogin{font-weight:500}
+:global(.theme-plaster) .warningBadge{color:#ca4210;background:#ededeb}
+:global(.theme-plaster) .readyBadge{color:#3c8d67;background:#f0efee}
+:global(.theme-plaster) .platformCard{border:1px solid #e9e9e7;background:#f5f5f4;border-radius:20px}
+:global(.theme-plaster) .statusNeedsLogin{color:#1a1a19;background:#ebeae9}
+:global(.theme-plaster) .statusReady{color:#3c8d67;background:#f0efee}
+:global(.theme-plaster) .platformStats{color:#8d8a81}
+:global(.theme-plaster) .platformStats b{color:#43413c}
+:global(.theme-plaster) .accountList{border-top:1px solid #e8e7e5}
+:global(.theme-plaster) .accountMain strong{color:#504e48}
+:global(.theme-plaster) .dot{background:#c1c0bb}
+:global(.theme-plaster) .dotReady{background:#62b78b;box-shadow:0 0 0 3px #ffffff}
+:global(.theme-plaster) .dotWarn{background:#1a1a19;box-shadow:0 0 0 3px #ffffff}
+:global(.theme-plaster) .busy{color:#1a1a19;background:#eae9e8}
+:global(.theme-plaster) .relogin{color:#1a1a19;background:#ebeae9}
+:global(.theme-plaster) .empty{color:#9c9991}
+:global(.theme-plaster) .plannedGrid > div{background:#f4f3f3;border-radius:18px}
+:global(.theme-plaster) .plannedGrid p{color:#86837a}
+:global(.theme-plaster) .generatedAt{color:#9c9991}
+:global(.theme-plaster) .center{color:#807d74}
+:global(.theme-plaster) .center h1{color:#33322e}
+:global(.theme-plaster) .sectionCount{color:#8d8a81}
+:global(.theme-plaster) .table{color:#504e48}
+:global(.theme-plaster) .table th{color:#97958c;font-weight:500}
+:global(.theme-plaster) .table td{border-top:1px solid #e8e7e5}
+:global(.theme-plaster) .table td strong{color:#43413c}
+:global(.theme-plaster) .table td small{color:#9c9991}
+:global(.theme-plaster) .tableEmpty{color:#9c9991}
+:global(.theme-plaster) .statusPill{color:#3c8d67;background:#f0efee;font-weight:500}
+:global(.theme-plaster) .warningText{color:#ca4210 !important}
+:global(.theme-plaster) .logFilters{border:1px solid #e8e7e5;background:#f4f3f3;border-radius:18px}
+:global(.theme-plaster) .logFilters label{color:#88857c;font-weight:500}
+:global(.theme-plaster) .logFilters input,:global(.theme-plaster) .logFilters select{border:1px solid #e0dfdd;background:#ffffff;color:#504e48;border-radius:11px}
+:global(.theme-plaster) .logPagination{color:#88857c}
+:global(.theme-plaster) .logPagination select{border:1px solid #e0dfdd;background:#ffffff;color:#504e48;border-radius:9px}
+:global(.theme-plaster) .logStatus,:global(.theme-plaster) .logStatusFailed{color:#3c8d67 !important;background:#f0efee;font-weight:500}
+:global(.theme-plaster) .logStatusFailed{color:#ca4210 !important;background:#ededeb}
+:global(.theme-plaster) .detailButton{border:1px solid #d8d7d4;background:#f2f1f0;color:#1a1a19;border-radius:999px;font-weight:500}
+:global(.theme-plaster) .detailButton:hover{border-color:#1a1a19;background:#eae9e8}
+:global(.theme-plaster) .dialogBackdrop{background:rgb(30 29 27 / 0.38);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialog{border:1px solid #e8e7e5;background:#ffffff;box-shadow:0 24px 80px rgb(30 27 22 / 0.22)}
+:global(.theme-plaster) .dialogHeader{border-bottom:1px solid #e8e7e5}
+:global(.theme-plaster) .dialogHeader h2{color:#33322e}
+:global(.theme-plaster) .dialogHeader p{color:#8d8a81}
+:global(.theme-plaster) .closeButton{border:1px solid #e0dfdd;background:#ffffff;color:#88857c;border-radius:999px}
+:global(.theme-plaster) .dialogLoading,:global(.theme-plaster) .dialogError{color:#807d74}
+:global(.theme-plaster) .dialogError{color:#ca4210}
+:global(.theme-plaster) .detailSummary{background:#f4f3f3;border-radius:18px}
+:global(.theme-plaster) .detailSummary small{color:#9c9991}
+:global(.theme-plaster) .detailSummary strong{color:#43413c}
+:global(.theme-plaster) .timelineHeading h3{color:#43413c}
+:global(.theme-plaster) .timelineHeading span{color:#9c9991}
+:global(.theme-plaster) .timeline::before{background:#e1e0de;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .timelineDot{border:3px solid #ffffff;background:#1a1a19;box-shadow:0 0 0 1px #ffffff}
+:global(.theme-plaster) .timelineMeta strong{color:#504e48}
+:global(.theme-plaster) .timelineMeta time{color:#9c9991}
+:global(.theme-plaster) .timelineItem p{color:#807d74}
+:global(.theme-plaster) .timelineItem small{color:#9c9991}
+:global(.theme-plaster) .adminNav{border:1px solid #e4e3e1;background:#f5f5f4;border-radius:18px}
+:global(.theme-plaster) .adminNav a{color:#726f67;font-weight:500}
+:global(.theme-plaster) .adminNav a:hover{color:#1a1a19;border-color:#d9d8d5;background:#f1f0ef}
+:global(.theme-plaster) .adminNav .adminNavActive{color:#1a1a19;border-color:#d9d8d5;background:#ededeb}
+:global(.theme-plaster) .assetCard{border:1px solid #e8e7e5;background:#ffffff;border-radius:16px}
+:global(.theme-plaster) .assetThumb{background:#eeedec;border-radius:12px}
+:global(.theme-plaster) .assetPlaceholder{color:#9c9991}
+:global(.theme-plaster) .assetInfo small{color:#8d8a81}
+:global(.theme-plaster) .assetTitle strong{color:#43413c}
+:global(.theme-plaster) .assetTitle span{color:#1a1a19;background:#ebebe9;font-weight:500}
+:global(.theme-plaster) .downloadLink{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .downloadLink:hover{color:#1a1a19}
+:global(.theme-plaster) .jobItem{border:1px solid #e8e7e5;background:#f4f3f3;border-radius:16px}
+:global(.theme-plaster) .jobItemHeader strong{color:#43413c}
+:global(.theme-plaster) .jobItemHeader small{color:#9c9991}
+:global(.theme-plaster) .jobItemMeta{color:#807d74}
+:global(.theme-plaster) .jobItemError{color:#ca4210}
+:global(.theme-plaster) .providerStages{border-top:1px solid #e8e7e5}
+:global(.theme-plaster) .providerStages > small{color:#9c9991;font-weight:500}
+:global(.theme-plaster) .providerStage{color:#69675f}
+:global(.theme-plaster) .providerStage span:last-child{font-weight:500}
+:global(.theme-plaster) .adminCreateForm{border:1px solid #e5e4e2;background:#f5f5f4;border-radius:16px}
+:global(.theme-plaster) .adminCreateForm label{color:#67655e;font-weight:500}
+:global(.theme-plaster) .adminCreateForm input{border:1px solid #dfdfdc;color:#43413c;background:#ffffff;border-radius:11px}
+:global(.theme-plaster) .adminCreateForm input:focus{border-color:#1a1a19;box-shadow:0 0 0 3px rgb(30 27 22 / 0.12)}
+:global(.theme-plaster) .adminError{color:#b33a0f;background:#f0f0ee;border-radius:12px}
+:global(.theme-plaster) .adminLoading{color:#8d8a81}
+:global(.theme-plaster) .superAdminBadge{color:#1a1a19;background:#eae9e8;font-weight:500}
+:global(.theme-plaster) .permissionEditor summary{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .permissionOptions{border:1px solid #e0dfdd;background:#ffffff;box-shadow:0 12px 30px rgb(30 27 22 / 0.14);border-radius:12px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .permissionOptions label{color:#67655e}
+/* plaster:end */

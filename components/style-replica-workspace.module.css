@@ -211,3 +211,108 @@
 :global(.theme-ember) .sidebar .sidebarFooter{border-top:1px solid #1f1e1c;background:rgb(255 250 244 / 0.04)}
 :global(.theme-ember) .retrySuiteButton{color:#0f0e0d;border-radius:999px;font-weight:500}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{--accent:var(--violet-600,#1a1a19);--accent-soft:var(--violet-50,#f1f0ef);background:#f2f1f0;color:#272724}
+:global(.theme-plaster) .stepItem{color:#a6a39c}
+:global(.theme-plaster) .stepItem span{background:#e6e6e4;font-weight:500}
+:global(.theme-plaster) .stepItem i{background:#d9d8d4}
+:global(.theme-plaster) .stepCurrent{color:#262523}
+:global(.theme-plaster) .stepCurrent span{color:#ffffff}
+:global(.theme-plaster) .sidebar,:global(.theme-plaster) .stage{background:#ffffff;border:1px solid #e1e0de}
+:global(.theme-plaster) .fieldHeading small{color:#97948c}
+:global(.theme-plaster) .page em{color:#e94c13}
+:global(.theme-plaster) .hint{color:#99968e}
+:global(.theme-plaster) .uploadArea{border:1px dashed #d9d8d5;background:#f4f4f3;border-radius:15px}
+:global(.theme-plaster) .uploadTarget,:global(.theme-plaster) .addUpload{color:#8b887f}
+:global(.theme-plaster) .uploadTarget svg{background:#ebebe9;color:#96938b;border-radius:14px}
+:global(.theme-plaster) .uploadTarget small{color:#a5a29b}
+:global(.theme-plaster) .uploadThumb{background:#ebeae8;border-radius:9px}
+:global(.theme-plaster) .uploadThumb button{background:#ffffff;border:1px solid #dfdedc;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .imagePlaceholder{color:#aba9a2}
+:global(.theme-plaster) .modeTabs{background:#efefed;border-radius:11px}
+:global(.theme-plaster) .modeTabs button{color:#8f8c83;border-radius:999px}
+:global(.theme-plaster) .modeTabs .activeTab{background:#2a2926;color:#ffffff;box-shadow:0 2px 5px rgb(30 27 22 / 0.102)}
+:global(.theme-plaster) .guide{background:#f1f0ef;border-radius:12px}
+:global(.theme-plaster) .guide p{color:#8f8c83}
+:global(.theme-plaster) .field small{color:#a29f98}
+:global(.theme-plaster) .field select,:global(.theme-plaster) .field input,:global(.theme-plaster) .field textarea,:global(.theme-plaster) .planCard textarea{border:1px solid #e6e5e3;background:#f3f2f1;color:#4b4944;border-radius:11px}
+:global(.theme-plaster) .field input::placeholder,:global(.theme-plaster) .field textarea::placeholder,:global(.theme-plaster) .planCard textarea::placeholder{color:#b1afa9}
+:global(.theme-plaster) .linkInput button{background:#2c2b28;color:#ffffff;border-radius:999px}
+:global(.theme-plaster) .startButton{color:#ffffff;box-shadow:0 3px 8px rgb(30 27 22 / 0.102);border-radius:999px;font-weight:500}
+:global(.theme-plaster) .footerNote{color:#a7a49d}
+:global(.theme-plaster) .stageHeader>div>span{color:#a3a099}
+:global(.theme-plaster) .stageHeader button,:global(.theme-plaster) .textButton,:global(.theme-plaster) .resultActions button,:global(.theme-plaster) .resultActions a{background:#f0f0ee;color:#6c6962}
+:global(.theme-plaster) .stageHeader button svg{color:#7a776e}
+:global(.theme-plaster) .emptyIcon{border:1px solid #ebeae8}
+:global(.theme-plaster) .emptyState h2{color:#737068}
+:global(.theme-plaster) .emptyState p{color:#a3a19a}
+:global(.theme-plaster) .emptySteps{color:#a09d96}
+:global(.theme-plaster) .emptyState>button{border:1px solid #dfdedc;border-radius:999px}
+:global(.theme-plaster) .error{background:#eeedec;color:#c84110;border:1px solid #e0dfdd;border-radius:11px}
+:global(.theme-plaster) .sourceHeading>span{color:#939188}
+:global(.theme-plaster) .sourceTabs{border-bottom:1px solid #e9e8e7}
+:global(.theme-plaster) .sourceTabs button{color:#99968e}
+:global(.theme-plaster) .sourceTabs b{background:#ededeb}
+:global(.theme-plaster) .sourceTile{background:#efefed;border-radius:14px}
+:global(.theme-plaster) .sourceTile>button{border:1px solid #d4d3d0;background:#ffffff;color:#96938b;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .sourceSelected>button{color:#ffffff}
+:global(.theme-plaster) .orbit{border:1px solid #dfdfdc}
+:global(.theme-plaster) .analysisState p{color:#9f9c95}
+:global(.theme-plaster) .analysisState progress::-webkit-progress-bar{background:#ebebe9}
+:global(.theme-plaster) .analysisState small{color:#a5a39c}
+:global(.theme-plaster) .planIntro p{color:#a09d96}
+:global(.theme-plaster) .planCard{border:1px solid #e6e6e4}
+:global(.theme-plaster) .planReference{background:#f2f1f0;border-radius:11px}
+:global(.theme-plaster) .planCard p{color:#8c8980}
+:global(.theme-plaster) .planCard details p{background:#f2f2f1;border-radius:9px}
+:global(.theme-plaster) .confirmBar{background:#f3f2f1;border:1px solid #e7e7e5;border-radius:16px}
+:global(.theme-plaster) .confirmBar small{color:#99968e}
+:global(.theme-plaster) .resultCard{border:1px solid #e4e4e2}
+:global(.theme-plaster) .resultMedia{background:#f4f4f3}
+:global(.theme-plaster) .generating span{color:#7b7870}
+:global(.theme-plaster) .generating small{color:#a6a49d}
+:global(.theme-plaster) .resultMeta>span{color:#9f9c95}
+:global(.theme-plaster) .overlay,:global(.theme-plaster) .lightbox{background:rgb(27 26 25 / 0.502);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .modal{background:#ffffff}
+:global(.theme-plaster) .modal p,:global(.theme-plaster) .modal li{color:#918e85}
+:global(.theme-plaster) .closeModal{background:#f0efee;color:#929087;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .lightbox{background:rgb(27 26 25 / 0.859)}
+:global(.theme-plaster) .lightbox>button{color:#ffffff;background:rgb(255 255 255 / 0.082);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .sidebarFooter{background:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .selectionActions{color:#97958c}
+:global(.theme-plaster) .selectionActions button{background:#efefed;color:#6a6760;border-radius:999px}
+:global(.theme-plaster) .sourceTile>button.previewTile{background:rgb(255 255 255 / 0.929);color:#605e57}
+:global(.theme-plaster) .resultActions .localEditButton{background:#242321;color:#ffffff;border-radius:999px;font-weight:500}
+:global(.theme-plaster) .resultActions .localEditButton:hover{background:#eae9e7;color:#242321}
+:global(.theme-plaster) .resultPreviewButton:focus-visible{outline:2px solid #242321}
+:global(.theme-plaster) .editedBadge{background:rgb(36 35 33 / 0.851);color:#ffffff;border-radius:999px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .stageHeader .newReplicaButton{background:#ffffff;color:#494742;border:1px solid #d7d6d3;border-radius:999px;font-weight:500}
+:global(.theme-plaster) .stageHeader .newReplicaButton:focus-visible{outline:3px solid #1a1a19}
+:global(.theme-plaster) .executionProgress{border:1px solid #ebeae9;background:#f3f2f2;border-radius:19px}
+:global(.theme-plaster) .executionProgress progress{accent-color:#1a1a19}
+:global(.theme-plaster) .executionProgress span{color:#55534d}
+:global(.theme-plaster) .executionProgress small{color:#6f6c65}
+:global(.theme-plaster) .auditReasons{color:#b23a0e}
+:global(.theme-plaster) .outputGroup{border:1px solid #e1e1de;background:#f3f3f2;border-radius:14px}
+:global(.theme-plaster) .page{--accent:#242321;--accent-soft:#eae9e7;color:#292825}
+:global(.theme-plaster) .sidebar,:global(.theme-plaster) .stage{border-color:#e2e1df;box-shadow:0 6px 25px rgb(30 27 22 / 0.016)}
+:global(.theme-plaster) .stepCurrent span{background:#eae9e7;color:#201f1d;box-shadow:0 0 0 4px #ffffff}
+:global(.theme-plaster) .uploadArea{background:#f5f4f4;border-color:#d4d3cf}
+:global(.theme-plaster) .field select,:global(.theme-plaster) .field input,:global(.theme-plaster) .field textarea,:global(.theme-plaster) .planCard textarea{background:#f3f3f2;color:#44423d;border-color:#e3e3e0}
+:global(.theme-plaster) .modeTabs .modeActive{background:#ffffff;color:#242321}
+:global(.theme-plaster) .startButton{background:#242321}
+:global(.theme-plaster) .stageHeader .newReplicaButton{background:#ffffff}
+:global(.theme-plaster) .startButton:hover:not(:disabled),:global(.theme-plaster) .stageHeader .newReplicaButton:hover:not(:disabled){color:#201f1d;background:#eae9e7}
+:global(.theme-plaster) .emptyState h2{color:#282724;font-weight:500}
+:global(.theme-plaster) .emptyState p{color:#908d84}
+:global(.theme-plaster) .emptyState>button{color:#33322e;background:#efefed;border-color:#e2e2df}
+:global(.theme-plaster) .executionProgress,:global(.theme-plaster) .confirmBar{background:#efefee;border-color:#e0dfdd}
+:global(.theme-plaster) .executionProgress span,:global(.theme-plaster) .executionProgress small{color:#737068}
+:global(.theme-plaster) .sourceSelected{border-color:#1a1a19}
+:global(.theme-plaster) .sourceSelected>button{color:#201f1d;background:#eae9e7;border-color:#1a1a19}
+@media(max-width:640px){:global(.theme-plaster) .stepItem b{font-weight:500}}
+:global(.theme-plaster) .factsSection textarea{background:#ffffff}
+:global(.theme-plaster) .sidebar .sidebarFooter{border-top:1px solid #e7e6e4;background:#ffffff}
+:global(.theme-plaster) .retrySuiteButton{color:#ffffff;border-radius:999px;font-weight:500}
+/* plaster:end */

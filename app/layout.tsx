@@ -14,6 +14,9 @@ import "./ember-dark.generated.css";
 import "./ember-dark.css";
 import "./home-ember-dark.css";
 import "./ember-studio.css";
+// 全站主题：石膏灰白（2026-11-26）。暗色熔光的样式仍在，<html> 换回 theme-ember 即可切回。
+import "./plaster.generated.css";
+import "./plaster.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -65,7 +68,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="theme-ember">
+    <html lang="zh-CN" className="theme-plaster">
       <body>
         <Providers>{children}</Providers>
       </body>

@@ -105,3 +105,44 @@
 :global(.theme-ember) .form label{color:#918b83}
 :global(.theme-ember) .form p{color:#756f68}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{color:#262522}
+:global(.theme-plaster) .eyebrow{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .header p,:global(.theme-plaster) .muted{color:#7c7970}
+:global(.theme-plaster) .button,:global(.theme-plaster) .primary,:global(.theme-plaster) .danger{border:1px solid #dfdedc;background:#ffffff;color:#1a1a19}
+:global(.theme-plaster) .primary{background:#1a1a19;border-color:#1a1a19;color:#ffffff}
+:global(.theme-plaster) .danger{color:#bc3d0f;background:#f1f0ef;border-color:#d6d5d2}
+:global(.theme-plaster) .button:focus-visible,:global(.theme-plaster) .primary:focus-visible,:global(.theme-plaster) .danger:focus-visible,:global(.theme-plaster) .tab:focus-visible{outline:3px solid #1a1a19}
+:global(.theme-plaster) .metric{border:1px solid #e3e2e0;background:#ffffff;border-radius:22px}
+:global(.theme-plaster) .metric small{color:#88857c}
+:global(.theme-plaster) .metric em{color:#868379}
+:global(.theme-plaster) .workspace{background:#e7e6e4;border:1px solid #d1d0cc;border-radius:16px}
+:global(.theme-plaster) .panel{border:1px solid #e2e1df;background:#ffffff}
+:global(.theme-plaster) .tabs{border-bottom:1px solid #e5e5e3}
+:global(.theme-plaster) .tab{color:#827f76}
+:global(.theme-plaster) .active{color:#1a1a19;border-bottom-color:#1a1a19}
+:global(.theme-plaster) .toolbar input,:global(.theme-plaster) .toolbar select,:global(.theme-plaster) .form input,:global(.theme-plaster) .form textarea,:global(.theme-plaster) .form select{border:1px solid #d5d4d1;color:#3c3a36;background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .table th{background:#f2f1f0;color:#848178;border-block:1px solid #e8e7e5;font-weight:500}
+:global(.theme-plaster) .table td{border-bottom:1px solid #e9e9e7;color:#514f4a}
+:global(.theme-plaster) .table tbody tr:hover{background:#f5f4f4}
+:global(.theme-plaster) .table td strong{color:#3a3935}
+:global(.theme-plaster) .table td small{color:#949189}
+:global(.theme-plaster) .badge{color:#6c6a62;background:#e8e8e6;border-radius:999px}
+:global(.theme-plaster) .good{color:#39785b;background:#edeceb}
+:global(.theme-plaster) .warn{color:#df4912;background:#eeedec}
+:global(.theme-plaster) .bad{color:#c94210;background:#eaeae8}
+:global(.theme-plaster) .empty{color:#939188}
+:global(.theme-plaster) .pagination{color:#8a877e}
+:global(.theme-plaster) .message,:global(.theme-plaster) .error{border:1px solid #e2e1df;background:#f0f0ef;color:#4c7657;border-radius:14px}
+:global(.theme-plaster) .error{color:#c34010;border-color:#d7d6d3;background:#f1f0ef}
+:global(.theme-plaster) .dialog{border:1px solid #d9d8d5;color:#3b3935;box-shadow:0 25px 100px rgb(30 27 22 / 0.2)}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(29 28 26 / 0.4)}
+:global(.theme-plaster) .dialogHeader{border-bottom:1px solid #e5e5e3}
+:global(.theme-plaster) .dialogHeader p{color:#8c897f}
+:global(.theme-plaster) .details{background:#f0f0ef;border-radius:16px}
+:global(.theme-plaster) .details dt{color:#8e8b82}
+:global(.theme-plaster) .form{border-top:1px solid #e6e5e3}
+:global(.theme-plaster) .form label{color:#75736a}
+:global(.theme-plaster) .form p{color:#8f8c83}
+/* plaster:end */

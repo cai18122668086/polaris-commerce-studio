@@ -7,3 +7,11 @@
 :global(.theme-ember) .field label>span{color:#78726a}
 :global(.theme-ember) .field input{border:1px solid #2d2b28;background:rgb(255 250 244 / 0.04);color:#bab6b1;border-radius:9px}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .field{color:#7b786f}
+:global(.theme-plaster) .field summary:after{color:#918e86}
+:global(.theme-plaster) .field summary>span{background:#e5e4e2;color:#1a1a19}
+:global(.theme-plaster) .field label>span{color:#8c8980}
+:global(.theme-plaster) .field input{border:1px solid #d5d4d0;background:#ffffff;color:#1a1a19;border-radius:9px}
+/* plaster:end */

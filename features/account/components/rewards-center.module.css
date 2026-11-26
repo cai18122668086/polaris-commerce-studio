@@ -79,3 +79,37 @@
 :global(.theme-ember) .history li>b small{color:#6d6760}
 :global(.theme-ember) .skeleton{background:rgb(255 250 244 / 0.06);border-radius:22px}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .card{border:1px solid #dcdbd8;background:#ffffff;box-shadow:0 4px 20px rgb(30 27 22 / 0.016);border-radius:22px}
+:global(.theme-plaster) .card h2{color:#292825}
+:global(.theme-plaster) .icon{background:#e8e8e6;color:#1a1a19;border-radius:16px}
+:global(.theme-plaster) .amount{color:#1a1a19}
+:global(.theme-plaster) .amount>span{color:#706d65}
+:global(.theme-plaster) .card .description{color:#6f6c64}
+:global(.theme-plaster) .statistics{color:#6f6c64}
+:global(.theme-plaster) .statistics b{color:#4a4943}
+:global(.theme-plaster) .invitation{background:linear-gradient(135deg,#f4f4f3,#ededeb)}
+:global(.theme-plaster) .invitation .icon{background:#e0dfdd}
+:global(.theme-plaster) .root .action{border:1px solid #31302c;background:#31302c;color:#ffffff;border-radius:12px;font-weight:500}
+:global(.theme-plaster) .root .action:hover:not(:disabled){background:#1a1a19;box-shadow:0 4px 12px rgb(30 27 22 / 0.102)}
+:global(.theme-plaster) .root .action:focus-visible{outline:3px solid #1a1a19}
+:global(.theme-plaster) .root .action[data-claimed]{background:#e9e9e7;color:#807d74;border-color:#e4e3e1}
+:global(.theme-plaster) .footnote{color:#6f6c64}
+:global(.theme-plaster) .footnote summary{color:#76736b}
+:global(.theme-plaster) .footnote details div{border:1px solid #dbdad7;background:#ffffff;box-shadow:0 10px 30px rgb(30 27 22 / 0.071);color:#6e6c64;border-radius:14px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .root .feedback{color:#1a1a19}
+:global(.theme-plaster) .adjustment{color:#76736b}
+:global(.theme-plaster) .copyFallback{color:#76736b}
+:global(.theme-plaster) .copyFallback input{border:1px solid #d1d0cc;background:#ffffff;color:#1a1a19;border-radius:8px}
+:global(.theme-plaster) .history{border-top:1px solid #e2e1df}
+:global(.theme-plaster) .history h2{color:#42403b;font-weight:500}
+:global(.theme-plaster) .history header a{color:#807d73}
+:global(.theme-plaster) .history li{border-bottom:1px solid #e7e7e5}
+:global(.theme-plaster) .eventIcon{background:#ebebe9;color:#1a1a19;border-radius:14px}
+:global(.theme-plaster) .history li strong{color:#54524c}
+:global(.theme-plaster) .history li div small{color:#716f66}
+:global(.theme-plaster) .history li>b{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .history li>b small{color:#96938b}
+:global(.theme-plaster) .skeleton{background:#eae9e7;border-radius:22px}
+/* plaster:end */

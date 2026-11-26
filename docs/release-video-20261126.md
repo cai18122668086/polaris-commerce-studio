@@ -1,8 +1,9 @@
-# 视频服务发布说明（待负责人批准）— 2026-11-26
+# 视频服务发布说明 — 2026-11-26
 
-> 状态：**待审阅，未部署**。#201（release → main）仍 open，未并入 main。负责人确认前不动正式站。
-> 范围：只升级视频三件套 **video-api / editing-worker / editing-maintenance**。前端、Caddy、数据库结构、图片服务（7 个后端角色）都不动。
-> 视频仍只对灰度邮箱开放（`backend/app/video_studio_access.py`），本次不放开。
+> 状态：**已上线（2026-11-26 17:42 UTC）**，只升级了视频三件套。#201（release → main）仍 open，未并入 main。
+> 范围：只升级视频三件套 **video-api / editing-worker / editing-maintenance**。前端、Caddy、数据库结构、图片服务（7 个后端角色）都没动。
+> 视频仍只对灰度邮箱开放（`backend/app/video_studio_access.py`），本次没有放开。价格覆盖保持 `{}`，声音克隆保持关闭。
+> 实际执行情况见第 11 节。
 
 ## 1. 现在线上是什么（polaris-review report，2026-11-26 14:28 UTC，只读）
 
@@ -122,3 +123,54 @@
 
 ## 10. 本次付费记录（开发环境）
 - 今晚端到端：真实编排 6 次（02、03、09、36 各 1 次；修复后 02、03 各重跑 1 次），都是 deepseek-v4.1-flash，开发测试积分。
+
+## 11. 实际执行记录（2026-11-26，负责人批准：「可以部署」）
+
+**结果**
+- 视频三件套现在用的镜像：`sha256:cdebfe3694d4fe68ea336d292a53c24db161e4a5d67e68fa56f3bb33ba25bf0e`（代码 `cd5b45bc`，标签 `polaris-jgshai:video-cd5b45bc-a`）。video-api、editing-worker healthy，editing-maintenance 运行中，都没有重启，日志没有错误。
+- 其余 13 个正式站容器的 ID 和镜像都没变（整机 117 个容器里只有这 3 个变了）。数据库结构仍是 `20261125_0053`，没有跑迁移。
+- 环境变量只新增了 `POLARIS_VIDEO_CREDIT_PRICES={}`（全部不扣、不显示价格）。`POLARIS_AUTH_MODE=external` 没变，声音克隆仍然关闭。
+- 公网匿名检查：视频接口（含新增的 credit-prices、generation-requests、editing-works/active）返回 401，不存在的路径返回 404，首页 200。
+
+**两次切换**
+1. 17:39:24 UTC 第一次切换，镜像 `sha256:ae649dfc…` = `deploy/video_studio/editing-overlay.Dockerfile`，底版是线上 editing-worker 镜像 `polaris-jgshai:426f4e624c4df90b`，覆盖 cd5b45bc 的 `backend/app`。
+2. 上线后逐文件对比旧 video-api 镜像（`d726bbf1`），发现新镜像少了公共形象「知禾·专业主播」的坐姿图 `/assets/video-studio/owned/presenter-female-v3-seated-20261118.png`（`video_generation.py:71/728` 在用）。原因是 426f 底版早于这张图，而 overlay 只复制代码。
+3. 17:42:32 UTC 第二次切换，镜像 `sha256:cdebfe36…` 在 ae649dfc 上补了仓库的 `assets/video-studio`（10 个文件，坐姿图哈希与旧镜像一致）和 `backend/migrations`、`alembic.ini`。再次逐文件对比：除了一个运行时不用的 0052 迁移文件，旧镜像有的文件新镜像都有。
+4. 两次切换前都确认没有排队中或进行中的视频任务；每次切换只有几秒中断。
+
+**为什么没用 `integrated_release.py` / `upgrade_editing.py`**
+- `integrated_release.py` 是首次集成上线用的：会同时改 frontend 和 Caddy，并重写模型等环境变量（例如把编排模型写成固定值），超出本次"只换视频三件套"的范围。
+- `upgrade_editing.py` 的角色表含 frontend，会用新标签重建线上石膏前端；本次要求前端不动。
+- 实际做法：沿用每个服务现有的 compose 文件栈，加一个只改 `image` 和 `POLARIS_VIDEO_CREDIT_PRICES` 的覆盖文件，`up -d --no-deps --no-build --pull never` 逐个替换（先停 worker 和 maintenance，再换 api，再起 worker 和 maintenance）。上线前用 `docker compose config` 核对过：三个服务各自只有 image 和这一个变量不同；现有文件栈解析出的环境、挂载、命令、网络与运行中的容器完全一致。
+
+**磁盘阈值**
+- 构建第二版镜像时，`~/work/heavy.sh` 因根分区只剩约 7.1 GB（低于 8 GB 阈值）拒绝排队。这次构建只增加约 7 MB 文件，为了尽快补上缺的形象图，直接执行 `docker build`，跳过了这次阈值检查。没有清理任何其他任务目录或生产数据。
+
+**备份与记录**（`/opt/polaris/releases/video-rel-cd5b45bc/`，root 600）
+- `database-before.dump`：66 MB，sha256 `b3f35cf3e6787c29…`，第一次切换前生成。没做对象和媒体备份：本次不改对象、媒体和结构。
+- `images-before.txt` / `images-after.txt`、`compose-files.txt`、`<服务>.before.json` / `.after.json`、`<服务>.override.json`、`assets.Dockerfile`、`deploy.sh`、`release.json`。
+
+**回滚**
+```
+sudo /opt/polaris/releases/video-rel-cd5b45bc/deploy.sh rollback
+```
+用每个服务原来的文件栈（不带本次覆盖）重建三件套，回到 video-api `polaris-jgshai:d726bbf145afc719`、editing-worker `polaris-jgshai:426f4e624c4df90b`、editing-maintenance `polaris-jgshai:e0e9045552f08a4d`。数据库不用动。这三个旧镜像要保留，不能清理。
+
+## 12. 灰度验收步骤（负责人操作，不需要提供密码）
+
+用灰度邮箱在 https://www.jgshai.cn 正常登录后：
+1. **入口**：导航里能看到"视频创作"并能进入。再用普通账号（或退出登录）确认看不到入口、直接访问视频页会被拦。
+2. **价格**：在视频首页或剪辑页确认**不显示积分单价**、不提示扣费（价格覆盖为 `{}`）。记下当前积分余额。
+3. **形象库**：形象页能看到「知禾·专业主播」等公共形象，缩略图都能正常显示（这是第二次切换修的那张图）。
+4. **声音**：声音页的"克隆新声音"应该不可用或提示未开通（保持关闭），系统音色可以试听。
+5. **真实剪辑一条**（会调用一次付费编排模型，但不扣用户积分）：
+   - 进入"智能剪辑"，选一条已有口播或上传一段 10–30 秒的竖屏口播；
+   - 模板建议选 **bihuo-02**（胶囊卡）或 **bihuo-03**（App 窗口），可选上传 2–3 张商品图做素材；
+   - 生成编排 → 预览 → 导出。
+6. **看成片**（预览或导出的视频）：
+   - 人脸全程没被标题、卡片或字幕挡住；
+   - 03：开场信息卡不倒序、不重复标题；文字切换时旧字先淡出、新字再淡入，不叠字；
+   - 02：字幕不出现只有一两个字的单独一行；结尾信息卡不提前消失；
+   - 声音和字幕对得上，开头结尾没有黑屏或卡帧。
+7. **积分**：确认余额与第 2 步相同。
+8. 有问题时记下作品名称、时间、截图，发给执行人。任何时候都可以按第 11 节的回滚命令回退，几秒内完成。

@@ -2278,6 +2278,13 @@ async def _within_call_deadline(
 
 PLANNER_ROUTE_BREAKER = PlannerRouteCircuitBreaker()
 
+# Planning profiles owned by the main-image six-page workflow.  Only these may
+# use POLARIS_MAIN_IMAGE_PLANNER_MODEL; detail, replica, Amazon and every other
+# caller keep the shared analysis/failover models.
+MAIN_IMAGE_PLANNER_PROFILES = frozenset(
+    {"aurora_main_image_authored", "aurora_native_fast_identity"}
+)
+
 
 class UrllibOpenAITransport:
     """Small dependency-free OpenAI-compatible JSON/multipart transport."""
@@ -2440,6 +2447,8 @@ class TengliOpenAICompatibleGateway:
         failover_base_url: str | None = None,
         failover_model: str | None = None,
         failover_image_model: str | None = None,
+        main_image_planner_model: str | None = None,
+        main_image_failover_planner_model: str | None = None,
         image_failover_api_key: str | None = None,
         image_failover_base_url: str | None = None,
         image_failover_model: str | None = None,
@@ -2534,6 +2543,10 @@ class TengliOpenAICompatibleGateway:
                     image_base_url=self._image_base_url,
                     image_model=self.image_model,
                 )
+        self._main_image_planner_model = (main_image_planner_model or "").strip()
+        self._main_image_failover_planner_model = (
+            main_image_failover_planner_model or ""
+        ).strip()
         self._image_failover_route: _ProviderRoute | None = None
         self._image_failover_queue = image_failover_queue
         if image_failover_api_key:
@@ -2585,6 +2598,18 @@ class TengliOpenAICompatibleGateway:
     @property
     def visual_review_route_count(self) -> int:
         return min(4, len(self._ordered_routes()))
+
+    def _planner_model_for(
+        self, request: PlannerRequest, route: _ProviderRoute
+    ) -> str:
+        """Main-image planning may use its own model; all else is unchanged."""
+
+        if request.planning_profile in MAIN_IMAGE_PLANNER_PROFILES:
+            if route.name != "primary" and self._main_image_failover_planner_model:
+                return self._main_image_failover_planner_model
+            if self._main_image_planner_model:
+                return self._main_image_planner_model
+        return route.planner_model
 
     @staticmethod
     def _should_failover_status(status: int) -> bool:
@@ -2782,20 +2807,21 @@ class TengliOpenAICompatibleGateway:
                     route
                 ):
                     continue
-                route_payload = {**payload, "model": route.planner_model}
+                effective_model = self._planner_model_for(request, route)
+                route_payload = {**payload, "model": effective_model}
                 planner_key = request.idempotency_key
                 if (request.planning_profile == "aurora_native_fast_identity"
-                    and route.planner_model.casefold().startswith("deepseek")):
+                    and effective_model.casefold().startswith("deepseek")):
                     route_payload["max_completion_tokens"] = 32768
                     route_payload["response_format"] = {"type": "json_object"}
                 if (request.planning_profile in {"replica_fast_suite"}
-                    and route.planner_model.casefold().startswith("deepseek")):
+                    and effective_model.casefold().startswith("deepseek")):
                     route_payload["max_completion_tokens"] = 32768
                     route_payload["reasoning_effort"] = "low"
                 if (
                     request.planning_profile
                     in _BOUNDED_JSON_PLANNER_PROFILES | {"amazon_visual_suite_fast"}
-                    and route.planner_model.casefold().startswith("deepseek")
+                    and effective_model.casefold().startswith("deepseek")
                 ):
                     # This provider includes reasoning in the output allowance.
                     # Keep the complete schema and thinking mode. Bound its
@@ -3844,6 +3870,10 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         failover_base_url=settings.provider_failover_base_url,
         failover_model=settings.provider_failover_model,
         failover_image_model=settings.provider_failover_image_model,
+        main_image_planner_model=settings.main_image_planner_model.strip() or None,
+        main_image_failover_planner_model=(
+            settings.main_image_failover_planner_model.strip() or None
+        ),
         image_failover_api_key=(
             settings.tengli_api_key.get_secret_value()
             if settings.replica_image_failover_enabled else None

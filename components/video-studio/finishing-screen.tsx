@@ -161,7 +161,7 @@ function FinishRow({ index, workspaceId, entry, draft, platform, onChange, onGen
   return <li className={styles.row} aria-label={`第 ${index + 1} 条`}>
     <div className={styles.rowVideo}>
       <span className={styles.rowIndex}>{String(index + 1).padStart(2, "0")}</span>
-      {video.data ? <video controls playsInline preload="metadata" src={mediaUrl(video.data)} aria-label="视频预览" /> : <div className={styles.videoPlaceholder}>{notReady ? "剪辑完成后可成片" : "视频读取中"}</div>}
+      {video.data ? <video controls playsInline preload="metadata" src={mediaUrl(video.data)} aria-label="视频预览" /> : <div className={styles.videoPlaceholder}>{notReady ? "剪辑完成后可成片" : video.isPending && video.fetchStatus !== "idle" ? "视频读取中" : "暂时没有可播放的成片"}</div>}
     </div>
     <div className={styles.rowCovers}>
       <div className={styles.rowLabel}><b>封面</b>{shown.length > 0 && <span>点选一张</span>}</div>
@@ -213,9 +213,10 @@ function CoverChoice({ workspaceId, cover, selected, onSelect }: { workspaceId: 
     </div>;
   }
   return <button type="button" role="radio" aria-checked={selected} className={`${styles.coverChoice} ${selected ? styles.coverSelected : ""}`} onClick={onSelect} title={cover.cover_text}>
-    <img src={mediaUrl(coverImageUrl(workspaceId, cover.id, "thumb"))} alt={`封面：${cover.cover_text}`} loading="lazy" />
-    <span className={styles.coverTag}>{cover.parent_id ? "改字" : cover.background_label}</span>
-    {selected && <span className={styles.coverCheck} aria-hidden="true"><Check size={13} strokeWidth={2.6} /></span>}
-    {cover.checks?.picture_cool_hint && <span className={styles.coverHint}>画面偏冷</span>}
+    <span className={styles.coverImage}>
+      <img src={mediaUrl(coverImageUrl(workspaceId, cover.id, "thumb"))} alt={`封面：${cover.cover_text}`} loading="lazy" />
+      {selected && <span className={styles.coverCheck} aria-hidden="true"><Check size={13} strokeWidth={2.6} /></span>}
+    </span>
+    <span className={styles.coverTag}>{cover.parent_id ? "改字版" : cover.background_label}{cover.checks?.picture_cool_hint ? " · 画面偏冷" : ""}</span>
   </button>;
 }

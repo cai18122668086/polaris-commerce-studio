@@ -79,12 +79,13 @@
 .rowLabel b { font-weight: 500; }
 .rowLabel span { font-size: 12px; color: var(--fw-faint); }
 .coverStrip { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
-.coverChoice, .coverPending { position: relative; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; border: 1px solid var(--fw-line); background: var(--fw-sunken); padding: 0; }
-.coverChoice img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.coverChoice:hover { border-color: var(--fw-line-strong); }
-.coverSelected { outline: 2px solid var(--fw-accent); outline-offset: 2px; border-color: transparent; }
-.coverTag { position: absolute; left: 6px; bottom: 6px; font-size: 10px; line-height: 1; padding: 4px 6px; border-radius: 6px; background: rgb(20 18 16 / 62%); color: #f5f1eb; }
-.coverHint { position: absolute; right: 6px; bottom: 6px; font-size: 10px; line-height: 1; padding: 4px 6px; border-radius: 6px; background: rgb(255 250 244 / 86%); color: #5d5c59; }
+.coverPending { position: relative; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; border: 1px solid var(--fw-line); background: var(--fw-sunken); padding: 0; }
+.coverChoice { display: grid; gap: 6px; padding: 0; border: 0; background: none; text-align: left; color: inherit; }
+.coverImage { position: relative; display: block; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; border: 1px solid var(--fw-line); background: var(--fw-sunken); }
+.coverImage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.coverChoice:hover .coverImage { border-color: var(--fw-line-strong); }
+.coverSelected .coverImage { outline: 2px solid var(--fw-accent); outline-offset: 2px; border-color: transparent; }
+.coverTag { font-size: 11px; line-height: 1.3; color: var(--fw-muted); }
 .coverCheck { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--fw-accent); color: #fff; }
 .coverPending { display: grid; place-items: center; align-content: center; gap: 8px; color: var(--fw-muted); font-size: 11px; text-align: center; padding: 10px; }
 .coverEmpty { display: flex; align-items: center; gap: 8px; height: 72px; padding: 0 14px; border-radius: 10px; border: 1px dashed var(--fw-line-strong); color: var(--fw-muted); font-size: 13px; }

@@ -28,7 +28,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## alextangson/autocrew（skills/cover-generator、skills/xhs-cover-review、docs/research/2026-09-27-platform-cover-surfaces.md）
+## alextangson/directors-chair（原名 alextangson/autocrew；skills/cover-generator、skills/xhs-cover-review、docs/research/2026-09-27-platform-cover-surfaces.md）
 
 ```
 MIT License

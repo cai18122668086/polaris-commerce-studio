@@ -42,3 +42,21 @@
 :global(.theme-ember) .field{color:#c6c3bf}
 :global(.theme-ember) .global{border-top:1px solid #1c1b19}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .workbench{border:1px solid #e3e2e0;background:#ffffff;color:#2c2b28;border-radius:11px}
+:global(.theme-plaster) .head span{color:#6d6a63}
+:global(.theme-plaster) .preview{background:#1b1a19;border-radius:8px}
+:global(.theme-plaster) .segments ol{border-top:1px solid #ebeae9}
+:global(.theme-plaster) .segments li button{border-bottom:1px solid #ebeae9}
+:global(.theme-plaster) .segments li button:hover{background:#f3f3f2}
+:global(.theme-plaster) .segments li button[aria-pressed="true"]{background:#f0f0ee;box-shadow:inset 2px 0 0 var(--edit-accent,#1e1b16)}
+:global(.theme-plaster) .segments li button[data-attention="true"] .meta{color:#c34010}
+:global(.theme-plaster) .index{color:#8b887f}
+:global(.theme-plaster) .meta{color:#6d6a63}
+:global(.theme-plaster) .inspector{border-left:1px solid #ebeae9}
+:global(.theme-plaster) .quote{color:#4c4b45}
+:global(.theme-plaster) .check small{color:#8b887f}
+:global(.theme-plaster) .field{color:#4c4b45}
+:global(.theme-plaster) .global{border-top:1px solid #ebeae9}
+/* plaster:end */

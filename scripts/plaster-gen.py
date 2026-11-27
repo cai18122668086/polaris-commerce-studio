@@ -65,6 +65,9 @@ def conv(r, g, b, a, role):
 
 
 gen.conv = conv
+# 视频空间（components/video-studio）也跟全站一样用石膏灰白（2026-11-27）：熔光暗色仍跳过该目录（那里的 ember-dark
+# 块是手调的，原样保留），浅色映射则照常从各模块的基础样式生成。
+gen.OWN_DARK_DIRS = ()
 gen.SCOPE = '.theme-plaster'
 gen.START, gen.END = gen.THEME_BLOCKS[1]
 gen.OUT = os.path.join(ROOT, 'app/plaster.generated.css')

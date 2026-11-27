@@ -66,3 +66,11 @@
   .stages { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .form, .progress, .problem, .results > section { padding: 16px; }
 }
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{--aw-warm:#c74110;--aw-surface:#ffffff}
+:global(.theme-plaster) .label{font-weight:500}
+:global(.theme-plaster) .platforms label[data-active]{font-weight:500}
+:global(.theme-plaster) .tabs button[aria-selected="true"]{font-weight:500}
+:global(.theme-plaster) .error{color:#b23a0e}
+/* plaster:end */

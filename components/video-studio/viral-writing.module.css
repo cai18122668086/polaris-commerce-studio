@@ -160,8 +160,25 @@
 
 /* 视频工作室跑在 html.theme-ember（暗色）下：表面跟随暗底，暖色调亮一档。 */
 :global(html.theme-ember) .layout { --vw-surface: #0f0e0d; --vw-warm: #f07a2b; }
+:global(html.theme-plaster) .layout { --vw-surface: #ffffff; --vw-warm: #e0571a; }
 .keyword input, .linkInput, .fact textarea, .table textarea, .searchRow select, .history select, .draftHead select { background: var(--vw-surface); color: var(--ink); }
 .card[data-checked] .check { color: var(--vw-surface); }
 
 .keyword input { background: transparent; }
 .table td, .table th { overflow-wrap: anywhere; }
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .layout{--vw-warm:#c74110;--vw-surface:#ffffff}
+:global(.theme-plaster) .steps b{font-weight:500}
+:global(.theme-plaster) .error{color:#b23a0e}
+:global(.theme-plaster) .segment button[aria-selected="true"],:global(.theme-plaster) .tabs button[aria-selected="true"]{font-weight:500}
+:global(.theme-plaster) .platforms label[data-active]{font-weight:500}
+:global(.theme-plaster) .duration{background:rgb(27 26 25 / 0.62);color:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .check{border:1.5px solid #ffffff;background:rgb(27 26 25 / 0.25);color:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .cardTitle{font-weight:500}
+:global(.theme-plaster) .tray{box-shadow:0 8px 28px rgb(30 27 22 / 0.08);border-radius:14px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .tray > span:first-child{font-weight:500}
+:global(.theme-plaster) .panel h3{font-weight:500}
+:global(.theme-plaster) .stats dd{font-weight:500}
+:global(html.theme-plaster) .layout{--vw-surface:#ffffff;--vw-warm:#ea4c13}
+/* plaster:end */

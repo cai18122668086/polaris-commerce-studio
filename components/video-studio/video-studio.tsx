@@ -5,19 +5,18 @@ import { ApiError } from "@/lib/api/api-error";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowDownToLine, ArrowLeft, ArrowRight, AudioLines, BookOpenText, Check,
-  ChevronDown, CircleHelp, Clapperboard, ExternalLink, Flame, Images,
-  FolderOpen, Play, Plus, Search,
-  Settings2, Sparkles, Upload, UserRound, UsersRound, Video, Volume2,
+  ArrowDownToLine, ArrowRight, AudioLines, BookOpenText, CircleHelp, Clapperboard, ExternalLink, FolderOpen, Images, Play, Plus, Search,
+  Sparkles, UserRound, Video, Volume2,
 } from "lucide-react";
 import styles from "./video-studio.module.css";
 import { Brand, Dialog, Empty } from "./studio-primitives";
 import { VoiceBrowser, VoicePicker } from "./voice-picker";
 import { AvatarPicker } from "./avatar-picker";
+import { TalkingStudio } from "./talking-studio";
 import { AvatarCloneDialog } from "./avatar-cloning";
 import { GenerationPreview } from "./generation-preview";
 import { StudioEditingScreen } from "./studio-editing-screen";
-import { GuidedEmpty, PageHero, PortraitOutline } from "./page-hero";
+import { GuidedEmpty, PageHero } from "./page-hero";
 import { ProjectStepBar } from "./project-step-bar";
 import { TaskCenter } from "./task-center";
 import { WritingStudio } from "./writing-studio";
@@ -26,9 +25,7 @@ import { ScriptProofread } from "./script-proofread";
 import { Disclosure, MetadataGrid, Notice, TextDocument } from "./studio-content";
 import { GenerationWorkCard } from "./generation-work-card";
 import { StudioIntro } from "./studio-intro";
-import { ScriptAssistantPanel } from "./script-assistant-panel";
 import { ScriptHistory } from "./script-history";
-import { ScriptLibrary } from "./script-library";
 import { ScriptLibraryPage } from "./script-library-page";
 import { parseFlowParams, voiceHref } from "@/features/video-studio/flow-params";
 import { FinishingScreen } from "./finishing-screen";
@@ -36,12 +33,11 @@ import { WorksHome } from "./works-home";
 import { StudioToast, type ToastMessage, type ToastTone } from "./studio-toast";
 import { useAutoReveal } from "@/features/video-studio/use-auto-reveal";
 import { billableLabel, useVideoCredits } from "@/features/video-studio/credits";
-import { CostLine, ShortOfCredits } from "./studio-content";
+import { CostLine } from "./studio-content";
 import { PENDING_COPY, decodePending, encodePending, pendingOutcome } from "@/features/video-studio/pending-submission";
 import workflowStyles from "./studio-workflow.module.css";
 import { MyVoices, VoiceCloneDialog } from "./voice-cloning";
 import { useVoiceClones } from "@/features/video-studio/voice-clones";
-import type { AssistantMode } from "@/features/video-studio/assistance";
 import { useScriptReference } from "@/features/video-studio/use-script-reference";
 import { useProjectSession } from "@/features/video-studio/use-project-session";
 import { useVideoLibrary, type VideoAvatar, type GenerationJob } from "@/features/video-studio/library";
@@ -134,7 +130,6 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const setDraft = (value: Draft | ((current: Draft) => Draft)) => session.edit({ ...session.state.content, draft: typeof value === "function" ? value(session.state.content.draft) : value });
   const copies: SavedCopy[] = persisted.copies.map(v => ({ id: v.id, title: v.snapshot.draft.name === "未命名视频" ? v.snapshot.draft.text.slice(0, 18) : v.snapshot.draft.name, text: v.snapshot.draft.text, date: v.created_at }));
   const works: DemoWork[] = persisted.tasks.map(t => ({ id: t.id, draft: t.snapshot.draft, date: t.created_at, projectId: t.project_id, content: t.snapshot }));
-  const loaded = status !== "loading";
   const [modal, setModal] = useState<Modal>(null);
   const [toast, setToast] = useState<ToastMessage>();
   const dismissToast = useCallback(() => setToast(undefined), []);
@@ -145,15 +140,14 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const [assetTab, setAssetTab] = useState("public");
   const [selectedAvatar, setSelectedAvatar] = useState(EMPTY_DRAFT.avatarId);
   const [selectedVoice, setSelectedVoice] = useState("");
-  const [rightTab, setRightTab] = useState("assistant");
-  const assistantPanelRef = useRef<HTMLElement>(null);
+  const [, setRightTab] = useState("assistant");
   const scriptInputRef = useRef<HTMLTextAreaElement>(null);
   const revealScript = () => requestAnimationFrame(() => {
     scriptInputRef.current?.focus({ preventScroll: true });
     if (window.matchMedia("(max-width: 1050px)").matches) scriptInputRef.current?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   });
   const [previewWork, setPreviewWork] = useState<DemoWork>();
-  const [audioSelection, setAudio] = useState<{ projectId: string; name: string; url: string }>();
+  const [audioSelection] = useState<{ projectId: string; name: string; url: string }>();
   const audio = audioSelection?.projectId === projectId ? audioSelection : undefined;
   const audioUrl = useRef<string | undefined>(undefined);
   const [speaking, setSpeaking] = useState(false);
@@ -215,10 +209,6 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const filteredAvatars = AVATARS.filter(item => (assetTab === "own" ? item.source === "self_owned" : item.source === "quanyu_public") && (gender === "全部" || item.gender === gender) && `${item.name}${item.tag}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const [visibleAvatarCount, hasMoreAvatars, avatarLoadMoreRef] = useAutoReveal(filteredAvatars.length, `${screen}:${assetTab}:${gender}:${search}`);
   const avatarLabel = (item: Avatar) => item.name.replace(/-(sit_body|whole_body)$/, "").replaceAll("-", " · ");
-  const showAssistant = (mode: AssistantMode, reveal = true) => {
-    writing.setAssistantMode(mode); setRightTab("assistant");
-    if (reveal && window.matchMedia("(max-width: 1050px)").matches) requestAnimationFrame(() => assistantPanelRef.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }));
-  };
   const copyText = (text: string) => attempt(async () => { await navigator.clipboard.writeText(text); notify("全文已复制", "success"); });
 
   const audition = (text = draft.text || "你好，欢迎来到极光商绘，让每一个好产品，都有自己的表达。") => {
@@ -235,15 +225,6 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     if (!draft.text.trim()) return notify("请先输入文案");
     if (copies.some(copy => copy.text === draft.text)) return notify("这段文案已经在文案库中");
     attempt(async () => { await session.save("library"); notify("已存入文案库，可在右侧文案库中查看", "success"); });
-  };
-  const generate = () => {
-    if (!AVATARS.some(a => a.id === draft.avatarId)) { notify("请选择真实数字人形象"); return open("avatar"); }
-    if (!avatar.ready) { setTemplateAvatar(avatar); return open("h3-template"); }
-    if (draft.drive === "text" && !draft.text.trim()) return notify("请输入视频文案");
-    if (draft.drive === "text" && !voice) return open("voice");
-    if (draft.drive === "text" && voice?.available === false) return notify("所选音色暂未启用，请选择可用音色");
-    if (draft.drive === "audio" && !draft.audioAssetId) return notify("请先上传一段音频");
-    open("generate");
   };
   const createRealVideo = () => attempt(async () => {
     if (submitting) return;
@@ -279,7 +260,6 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     <div className={styles.avatarCaption}><strong>{avatarLabel(item)}</strong><span>{item.gender === "未知" ? item.tag : item.gender}</span><button type="button" className={styles.textButton} onClick={() => inDialog ? setSelectedAvatar(item.id) : selectAvatar(item)}>{inDialog ? (selectedAvatar === item.id ? "已选择" : "选择") : "使用"}</button>{item.source === "self_owned" && !item.ready && <button type="button" className={styles.textButton} onClick={() => { setTemplateAvatar(item); open("h3-template"); }}>生成动作模板</button>}</div>
   </div>)}</div>{filteredAvatars.length > 0 && <div ref={avatarLoadMoreRef} className={workflowStyles.galleryProgress} role="status">{hasMoreAvatars ? `已展示 ${visibleAvatarCount} / ${filteredAvatars.length}，向下浏览自动加载` : `已展示全部 ${filteredAvatars.length} 个形象`}</div>}</>;
   const voiceGrid = () => <VoiceBrowser voices={VOICES.filter(item => item.source !== "own" && item.available !== false)} selectedId={selectedVoice || draft.voiceId} playingId={playingVoice} onPreview={previewVoice} onSelect={item => { setSelectedVoice(item.id); applyVoice(item.id); go("create"); }} />;
-  const copyList = (compact = false) => <ScriptLibrary copies={copies} compact={compact} keyword={search} onCopy={copyText} onCreate={() => go("create")} onUse={copy => { updateDraft({ text:copy.text, name:copy.title }); if (!compact) go("create"); notify("文案已填入编辑器"); }} />;
   const demoWorkList = (compact = false) => works.length ? <div className={`${styles.worksGrid} ${compact ? styles.compactWorks : ""}`}>{works.filter(work => work.draft.name.includes(compact ? "" : search)).map(work => {
     const model = AVATARS.find(item => item.id === work.draft.avatarId) ?? EMPTY_AVATAR;
     return <article className={styles.workCard} key={work.id}><button type="button" className={styles.workImage} onClick={() => { setPreviewWork(work); setModal("preview"); }}><img src={mediaUrl(imageOf(model))} alt={model.name} /><span>本地演示</span><i><Play size={21} fill="currentColor" /></i></button><div><b>{work.draft.name}</b><time>{dateLabel(work.date)}</time><p>演示预览 · 尚未生成视频</p><button className={styles.textButton} onClick={() => attempt(async () => { await session.select(work.projectId); session.edit(work.content); await session.save(); go("create"); if (compact) setRightTab("assistant"); })}>继续编辑 <ArrowRight size={14} /></button></div></article>;
@@ -298,28 +278,14 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     </Disclosure>
   </>;
 
-  const assistant = <ScriptAssistantPanel workspaceId={workspaceId} projectId={projectId} session={session} content={content} writing={writing}
-    onRevealScript={revealScript} notify={notify} attempt={attempt} copyText={copyText} updateDraft={updateDraft} onGoWriting={() => go("writing")} />;
 
   const stepBar = (step: "writing" | "create" | "editing" | "finish") => <ProjectStepBar flow={flow} workspaceId={workspaceId} projectId={projectId} saved={Boolean(persisted.revision)} screen={step} hasScript={Boolean(draft.text.trim())} jobs={library.jobs} onGo={go} />;
-  const editor = <main className={styles.editor}>
-    <section className={styles.editorMain} aria-label="视频编辑器">{stepBar("create")}<header className={styles.editorHeader}><Link href={persisted.revision ? `/video-studio?project=${projectId}` : "/video-studio"} onClick={event => { event.preventDefault(); go("home"); }} className={styles.back} aria-label="返回视频空间"><ArrowLeft size={19} /></Link>{tabs([{ key: "text", label: "文本驱动" }, { key: "audio", label: "音频驱动" }], draft.drive, drive => updateDraft({ drive: drive as Draft["drive"] }))}<label className={styles.projectName}><span>视频名称</span><input aria-label="视频名称" value={draft.name} maxLength={80} onChange={event => updateDraft({ name: event.target.value })} /></label><select aria-label="切换视频项目" value={persisted.projects.some(p => p.id === projectId) ? projectId : ""} onChange={event => attempt(() => session.select(event.target.value))}><option value="" disabled>新项目</option>{persisted.projects.map(p => <option value={p.id} key={p.id}>{p.content.draft.name || "未命名视频"}</option>)}</select><button type="button" className={styles.textButton} onClick={() => attempt(() => session.newProject())}>新建</button><span role="status" aria-label="项目保存状态" className={styles.autosave}><Check size={12} />{!loaded ? "载入中" : status === "saved" ? "已保存" : status === "saving" ? "保存中" : status === "dirty" ? "待保存" : "未保存"}</span></header>
-      <div className={styles.editorBody}><div className={styles.portraitColumn}><div className={styles.portrait}>{avatar.id ? <><img src={mediaUrl(imageOf(avatar))} alt={avatarLabel(avatar)} /><span className={styles.portraitBadge}>{avatarLabel(avatar)} · {avatar.tag}</span><span className={styles.portraitRatio}>9:16</span></> : <div className={styles.portraitEmpty}><PortraitOutline /><b>先选择出镜形象</b><span>公共模特，随时开始创作</span></div>}</div><button type="button" className={styles.selectAvatar} onClick={() => open("avatar")}><UsersRound size={17} />选择数字人<ChevronDown size={15} /></button><div className={styles.portraitNote}><Video size={13} /> 数字人口播视频</div></div>
-        <div className={styles.scriptColumn}>{draft.drive === "text" ? <><button type="button" className={styles.voiceSelector} onClick={() => open("voice")}><span className={styles.voiceSelectorIcon}><AudioLines size={23} /></span><span><b>{voice?.name ?? "请选择声音"}</b><small>{voice ? `${voice.gender === "未知" ? "" : `${voice.gender}声 · `}${voice.tag}` : "让你的数字人拥有专属声音"}</small></span><ChevronDown size={16} /></button><div className={styles.voiceParams}><label className={styles.speed}><span>语速 <b>{draft.speed.toFixed(1)}×</b></span><input aria-label="语速" type="range" min="0.5" max="1.5" step="0.1" value={draft.speed} onChange={event => updateDraft({ speed: Number(event.target.value) })} /></label><label><span>情绪</span><select aria-label="情绪" value={draft.emotion} disabled={!voice || (voice.emotions?.length ?? 1) < 2} onChange={event => updateDraft({ emotion: event.target.value as Draft["emotion"] })}>{(voice?.emotions?.includes(draft.emotion) ? voice.emotions : [draft.emotion, ...(voice?.emotions || []).filter(e => e !== draft.emotion)]).map(emotion => <option key={emotion}>{emotion}</option>)}</select></label><label><span>语言</span><select aria-label="语言" value={draft.language || "auto"} disabled={!voice || Object.keys(voice.languages || {}).length < 2} onChange={event => updateDraft({ language: event.target.value })}>{Object.entries(voice?.languages || { auto: "自动识别文案语言" }).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div>
-          <div className={styles.scriptBox}><div className={styles.scriptToolbar}><span>视频文案</span><button type="button" onClick={() => setModal("proofread")}>原文校对</button><button type="button" title="播放所选音色的固定短样片" onClick={() => voice ? previewVoice(voice) : open("voice")}><Volume2 size={15} />{playingVoice && playingVoice === voice?.id ? "停止试听" : "音色试听"}</button></div><textarea ref={scriptInputRef} aria-label="视频文案" value={draft.text} placeholder={"请输入你希望数字人讲述的内容…\n\n也可以用右侧文案助手原创，或去「爆款文案」照着爆款仿写。"} maxLength={3000} onChange={event => updateDraft({ text: event.target.value })} /><span className={styles.wordCount}>{draft.text.length} / 3000</span></div><div className={styles.copyActions}><button type="button" onClick={() => go("writing")}><Flame size={15} />照着爆款写</button><button type="button" onClick={() => showAssistant("create")}><Sparkles size={15} />AI 文案创作</button><button type="button" onClick={() => attempt(async () => { await session.loadHistory(); setModal("history"); })}>文案版本</button><button type="button" onClick={saveCopy}><FolderOpen size={15} />存入文案库</button></div></> : <div className={styles.audioDrive}><span className={styles.bigIcon}><AudioLines size={37} /></span><h2>上传音频，驱动数字人</h2><p>使用已经录制好的声音，让数字人替你讲述。</p><label className={styles.uploadButton}><Upload size={16} />选择音频<input type="file" accept="audio/*" onChange={event => {
-            const file = event.target.files?.[0]; if (!file) return;
-            if (!file.type.startsWith("audio/")) { notify("请选择音频文件"); return; }
-            if (file.size > 50 * 1024 * 1024) { notify("请选择 50 MB 以内的音频"); return; }
-            if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
-            const url = URL.createObjectURL(file); audioUrl.current = url; setAudio({ projectId, name: file.name, url }); updateDraft({ audioAssetId: null });
-            const uploadProjectId = projectId;
-            attempt(async () => { const uploaded = await library.uploadAudio(file); if (session.state.projectId === uploadProjectId) updateDraft({ audioAssetId: uploaded.id }); notify("音频已保存，可用于口型驱动"); });
-            session.edit({ ...session.state.content, media: [{ id: uid(), kind: "audio", name: file.name, mime_type: file.type, size_bytes: file.size, availability: "local_only" }, ...session.state.content.media.filter(m => m.kind !== "audio")] });
-          }} /></label>{draft.audioAssetId && !audio && <audio controls src={mediaUrl(`/api/v1/video-studio/workspaces/${workspaceId}/audio-files/${draft.audioAssetId}`)} />}{audio ? <div className={styles.audioFile}><b>{audio.name}</b><audio controls src={mediaUrl(audio.url)} /><small>上传完成后可跨设备继续使用</small></div> : <small>{draft.audioAssetId ? "音频已保存，可继续生成" : content.media.find(m => m.kind === "audio") ? `已关联 ${content.media.find(m => m.kind === "audio")?.name}，请重新选择原文件` : "支持 MP3、WAV、M4A · 最大 50 MB"}</small>}</div>}</div></div>
-      <footer className={styles.editorFooter}><label><Settings2 size={15} /><select aria-label="视频清晰度" value="source" disabled title="按所选动作模板的原始分辨率交付"><option value="source">模板原始清晰度</option></select></label>{credits.note(["lipsync"]).insufficient && <ShortOfCredits credits={credits.note(["lipsync"]).credits} />}<button type="button" className={styles.generateButton} disabled={credits.note(["lipsync"]).insufficient} onClick={generate}><Video size={18} />{billableLabel("生成视频", credits.note(["lipsync"]).credits)}</button></footer>
-    </section>
-    <aside ref={assistantPanelRef} className={styles.editorAside}><div className={styles.rightTabs} role="group" aria-label="创作工具">{[{ key: "works", label: "作品" }, { key: "library", label: "文案库" }, { key: "assistant", label: "文案助手" }].map(item => <button type="button" key={item.key} className={rightTab === item.key ? styles.activeRightTab : ""} aria-pressed={rightTab === item.key} onClick={() => setRightTab(item.key)}>{item.label}</button>)}</div><div className={styles.rightContent}>{rightTab === "assistant" ? assistant : rightTab === "works" ? <div className={styles.workList}>{workList(true)}</div> : copyList(true)}</div></aside>
-  </main>;
+  // 口播（v3）：四步面板 + 批次结果区，见 talking-studio.tsx（W2）。
+  const lipsyncNote = credits.note(["lipsync"]);
+  const editor = <TalkingStudio userId={userId} workspaceId={workspaceId} avatars={AVATARS} voices={VOICES}
+    libraryLoading={library.loading} libraryError={library.error} onReloadLibrary={() => attempt(() => library.reload())}
+    uploadAudio={library.uploadAudio} price={lipsyncNote.credits} available={credits.balance?.available} enforced={credits.balance?.enforced}
+    notify={notify} stepBar={stepBar("create")} onBack={() => go("home")} onWriting={() => go("writing")} />;
 
   const entries = [
     { key: "writing", title: "文案", note: "推荐从这里开始", copy: "找对标写爆款，标题、发布正文、口播稿一起出，自动进文案库。", step: "第 1 步", action: () => go("writing") },

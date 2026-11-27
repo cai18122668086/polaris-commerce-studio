@@ -371,6 +371,12 @@ def create_planning_task(
         ),
         "source_subtitles": base.options["source_subtitles"],
         **({"music": body.music} if body.music is not None else {}),
+        # W4: frozen only when chosen, so older snapshots stay byte-identical.
+        **(
+            {"supplement": body.supplement.model_dump(mode="json")}
+            if body.supplement is not None and body.supplement.mg is not None
+            else {}
+        ),
     }
     if body.template_id == APPLE_TEMPLATE_ID or bihuo_template(body.template_id):
         if base.options["source_subtitles"] != "none":

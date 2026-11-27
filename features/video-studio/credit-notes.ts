@@ -1,4 +1,4 @@
-export type PricedAction = "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate" | "cover_generate";
+export type PricedAction = "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate" | "cover_generate" | "editing_auto_image";
 export type PriceTable = Partial<Record<PricedAction, number | null>>;
 export type CreditAccount = { available: number; enforced: boolean };
 export type CostNote = { text: string; credits: number | null; insufficient: boolean };

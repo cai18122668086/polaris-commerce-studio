@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterable
-from datetime import timedelta
+from datetime import UTC, timedelta
 from threading import Event, Thread
 from typing import Any, cast
 from uuid import UUID, uuid5
@@ -389,12 +389,16 @@ class TalkingItemView(StrictVideoModel):
     stage: str | None = None
     video_url: str | None = None
     can_retry: bool = False
+    # The paid submission's outcome is unknown: shown as 结果待确认 with a
+    # 查询结果 button; never re-submitted automatically.
+    awaiting_check: bool = False
 
 
 class TalkingBatchResponse(StrictVideoModel):
     batch: WorkBatchResponse
     talking: list[TalkingItemView]
     parallel_limit: int = TALKING_PARALLEL
+    notice: str | None = None
 
 
 def talking_view(session: Session, batch: VideoWorkBatchRecord) -> TalkingBatchResponse:
@@ -411,6 +415,7 @@ def talking_view(session: Session, batch: VideoWorkBatchRecord) -> TalkingBatchR
             job = session.get(VideoGenerationRecord, item.generation_task_id)
             if job is not None:
                 view.stage = job.stage
+                view.awaiting_check = job.status == "unknown"
                 if job.status == "completed":
                     view.video_url = base + job.id + "/video"
         views.append(view)
@@ -637,6 +642,7 @@ def sweep_once(
             .limit(20)
         ).all()
     leased: list[tuple[str, VideoRunLease]] = []
+    leased += recover_stale_running(factory, settings)
     for job_id in orphans:
         if job_id in started:
             continue
@@ -656,6 +662,164 @@ def sweep_once(
             name=f"video-talking-{job_id[:8]}",
         ).start()
     return started + [job_id for job_id, _ in leased]
+
+
+STALE_RUNNING_SECONDS = 180
+CHECK_NOTICE = (
+    "这条的提交结果还在确认：不会重新生成，也不会重复扣积分。"
+    "系统会继续核对，长时间没有结果请联系客服。"
+)
+
+
+def _take_over(
+    factory: sessionmaker[Session], settings: Settings, job_id: str, *, stale_only: bool
+) -> tuple[str, VideoRunLease] | None:
+    """Continue one batch task whose run was lost, without ever re-submitting.
+
+    Same rules as the general recovery scanner, for batch tasks only: a task
+    whose provider job id is known (or that has not reached a paid submission)
+    continues and only *queries* the provider; a task that may have been
+    submitted but has no provider id is marked unknown (结果待确认) instead.
+    Returns the lease when the task should be run.
+    """
+    from .video_generation_recovery import eligible  # noqa: PLC0415 (import cycle)
+    from .video_generation_runtime import owner_can_run, unconfirmed_paid_submission
+
+    lease = acquire_run(factory, settings, job_id)
+    if lease is None:
+        return None  # Someone still owns it: not lost.
+    try:
+        with factory() as session:
+            job = session.get(VideoGenerationRecord, job_id)
+            cutoff = utc_now() - timedelta(seconds=STALE_RUNNING_SECONDS)
+            updated = job.updated_at if job else None
+            if updated is not None and updated.tzinfo is None:
+                updated = updated.replace(tzinfo=UTC)
+            if (
+                job is None
+                or job.status not in {"running", "unknown"}
+                or (
+                    stale_only
+                    and job.status == "running"
+                    and updated
+                    and updated > cutoff
+                )
+                or not owner_can_run(session, job)
+            ):
+                lease.release()
+                return None
+            if not eligible(job, settings):
+                if job.status == "running" or unconfirmed_paid_submission(
+                    job, settings
+                ):
+                    job.status, job.error_code = (
+                        "unknown",
+                        "VIDEO_PROVIDER_OUTCOME_UNKNOWN",
+                    )
+                session.commit()
+                lease.release()
+                return None
+            changed = session.execute(
+                update(VideoGenerationRecord)
+                .where(
+                    VideoGenerationRecord.id == job_id,
+                    VideoGenerationRecord.status == job.status,
+                )
+                .values(status="queued")
+            )
+            session.commit()
+            if cast(CursorResult, changed).rowcount != 1:
+                lease.release()
+                return None
+        return job_id, lease
+    except Exception:
+        lease.release()
+        raise
+
+
+def recover_stale_running(
+    factory: sessionmaker[Session], settings: Settings
+) -> list[tuple[str, VideoRunLease]]:
+    """Batch tasks still ``running`` 3+ minutes after their last heartbeat.
+
+    The general recovery scanner is off in production, so a deploy restart
+    would otherwise leave these items spinning forever.
+    """
+    cutoff = utc_now() - timedelta(seconds=STALE_RUNNING_SECONDS)
+    with factory() as session:
+        ids = session.scalars(
+            select(VideoGenerationRecord.id)
+            .join(
+                VideoWorkItemRecord,
+                VideoWorkItemRecord.generation_task_id == VideoGenerationRecord.id,
+            )
+            .where(
+                VideoWorkItemRecord.stage == "talking",
+                VideoGenerationRecord.status == "running",
+                VideoGenerationRecord.updated_at <= cutoff,
+            )
+            .limit(20)
+        ).all()
+    taken: list[tuple[str, VideoRunLease]] = []
+    for job_id in ids:
+        try:
+            result = _take_over(factory, settings, job_id, stale_only=True)
+        except Exception:
+            logger.exception("talking stale task %s deferred", job_id)
+            continue
+        if result:
+            taken.append(result)
+    return taken
+
+
+@router.post("/work-items/{item_id}/talking-check", response_model=TalkingBatchResponse)
+def check_talking(
+    item_id: str,
+    request: Request,
+    background: BackgroundTasks,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> TalkingBatchResponse:
+    """查询结果: query the provider for an unknown outcome. Never re-submits."""
+    require_workspace_write(workspace)
+    item = session.get(VideoWorkItemRecord, item_id)
+    if item is None or (item.workspace_id, item.owner_user_id) != (
+        workspace.workspace_id,
+        workspace.principal.user_id,
+    ):
+        raise ApiError(404, "VIDEO_WORK_ITEM_NOT_FOUND", "未找到这条作品。")
+    batch = _own_batch(session, workspace, item.batch_id)
+    job = (
+        session.get(VideoGenerationRecord, item.generation_task_id)
+        if item.generation_task_id
+        else None
+    )
+    notice = None
+    if job is not None and job.status in {"unknown", "running"}:
+        settings = request.app.state.settings
+        session.commit()
+        taken = _take_over(
+            request.app.state.session_factory, settings, job.id, stale_only=True
+        )
+        if taken:
+            job_id, lease = taken
+            background.add_task(
+                process_generation,
+                request.app.state.session_factory,
+                settings,
+                job_id,
+                providers(request),
+                lease=lease,
+            )
+        else:
+            session.expire_all()
+            fresh = session.get(VideoGenerationRecord, job.id)
+            if fresh is not None and fresh.status == "unknown":
+                notice = CHECK_NOTICE
+    sync_items(session, batch_items(session, batch.id))
+    view = talking_view(session, batch)
+    view.notice = notice
+    return view
 
 
 class TalkingSweeper:

@@ -298,6 +298,16 @@ def restricted_claim(text: str, facts: WritingFacts) -> str | None:
     return None
 
 
+# Price, ranking and endorsement wording a seller may only use when their own
+# facts say so (「平价好物」 without a price is an invented price claim).
+UNBACKED_CLAIMS = re.compile(
+    r"平价|便宜|白菜价|性价比|最低价|全网最低|特价|骨折价|"
+    r"销量第一|排名第一|第一名|卖爆|爆卖|断货|NO\.?\s*1|"
+    r"医生推荐|专家推荐|明星同款|官方认证",
+    re.I,
+)
+
+
 def validate_publish(
     draft: WritingDraft | WritingStructureDraft,
     platform: str,
@@ -452,6 +462,14 @@ def validate_publish(
             "、".join(invented)[:120],
             f"标题或正文里的「{'、'.join(invented)[:60]}」事实卡里没有，删掉这些数字",
         )
+    for match in UNBACKED_CLAIMS.finditer(both):
+        if match.group(0).lower() not in declared.lower():
+            raise PublishIssue(
+                "Publish text makes a claim absent from the facts",
+                "publish_unbacked",
+                match.group(0),
+                f"标题或正文（含话题标签）里的「{match.group(0)}」事实卡里没有依据，删掉或换成用户写过的卖点",
+            )
     kind = restricted_claim(both, facts)
     if kind:
         words = {"price": "价格", "net_quantity": "净含量", "health_effect": "功效疗效"}

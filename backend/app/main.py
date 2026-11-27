@@ -82,6 +82,10 @@ from .video_editing_material_routes import router as video_editing_material_rout
 from .video_editing_native_plan_routes import router as video_editing_native_plan_router
 from .video_editing_planning_routes import router as video_editing_planning_router
 from .video_editing_routes import router as video_editing_router
+from .video_editing_supplement_routes import (
+    material_router as video_editing_supplement_material_router,
+)
+from .video_editing_supplement_routes import router as video_editing_supplement_router
 from .video_editing_task_routes import router as video_editing_task_router
 from .video_editing_transcript_routes import router as video_editing_transcript_router
 from .video_generation import router as video_generation_router
@@ -601,6 +605,8 @@ def create_app(
     application.include_router(video_editing_planning_router)
     application.include_router(video_editing_task_router)
     application.include_router(video_editing_material_router)
+    application.include_router(video_editing_supplement_router)
+    application.include_router(video_editing_supplement_material_router)
     application.include_router(video_editing_library_note_router)
     application.include_router(video_editing_transcript_router)
     application.include_router(video_assistance_router)

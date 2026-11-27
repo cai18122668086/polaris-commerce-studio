@@ -61,7 +61,7 @@ Box = tuple[int, int, int, int]
 # Normalised title zones, from references/layouts.md.
 ZONES: dict[str, tuple[float, float, float, float]] = {
     "top": (0.07, 0.07, 0.93, 0.36),
-    "bottom": (0.07, 0.58, 0.93, 0.86),
+    "bottom": (0.07, 0.58, 0.93, 0.90),
     "side_left": (0.06, 0.18, 0.50, 0.78),
     "side_right": (0.50, 0.18, 0.94, 0.78),
     "center": (0.08, 0.34, 0.92, 0.66),
@@ -70,6 +70,8 @@ MAX_LINES = {"top": 3, "bottom": 3, "side": 4, "center": 3}
 
 NO_LINE_START = set("，。！？、；：」』）》】…—·,.!?;:)]%")
 NO_LINE_END = set("「『（《【([")
+# Particles that belong to the word before them never start a line.
+PARTICLES = set("的了着吗呢吧啊地得么")
 
 
 class CoverComposeError(Exception):
@@ -87,18 +89,26 @@ def _px(box: tuple[float, float, float, float], size: tuple[int, int]) -> Box:
     return (round(box[0] * w), round(box[1] * h), round(box[2] * w), round(box[3] * h))
 
 
+FACE_MARGIN_CAP = 48
+
+
 def forbidden_zone(face: Box | None, size: tuple[int, int] = CANVAS) -> Box | None:
-    """Face box grown by 15% left/right, 25% up, 10% down (SKILL.md step 4)."""
+    """Face box grown 15% left/right, 25% up, 10% down, each at most 48 px.
+
+    The cap keeps a close-up (a face half the frame wide) from turning the
+    whole picture into a no-text zone; the face itself is always kept clear.
+    """
 
     if face is None:
         return None
     x0, y0, x1, y1 = face
     w, h = x1 - x0, y1 - y0
+    cap = FACE_MARGIN_CAP
     return (
-        max(0, round(x0 - w * 0.15)),
-        max(0, round(y0 - h * 0.25)),
-        min(size[0], round(x1 + w * 0.15)),
-        min(size[1], round(y1 + h * 0.10)),
+        max(0, round(x0 - min(w * 0.15, cap))),
+        max(0, round(y0 - min(h * 0.25, cap))),
+        min(size[0], round(x1 + min(w * 0.15, cap))),
+        min(size[1], round(y1 + min(h * 0.10, cap))),
     )
 
 
@@ -263,29 +273,15 @@ def pick_keyframe(video: Path, workdir: Path, count: int = 12) -> Keyframe:
     return best
 
 
-def crop_to_canvas(
-    image: Image.Image, face: Box | None
-) -> tuple[Image.Image, Box | None]:
-    """Largest 3:4 window around the face, scaled to 1080x1440."""
-
+def _window(image: Image.Image) -> tuple[int, int]:
     w, h = image.size
     target = CANVAS[0] / CANVAS[1]
-    if w / h > target:
-        cw, ch = round(h * target), h
-    else:
-        cw, ch = w, round(w / target)
-    if face:
-        cx, cy = (face[0] + face[2]) / 2, (face[1] + face[3]) / 2
-        # Keep the face a little above centre: headroom reads better on covers.
-        left = min(max(0, round(cx - cw / 2)), w - cw)
-        top = min(max(0, round(cy - ch * 0.42)), h - ch)
-    else:
-        left, top = (w - cw) // 2, (h - ch) // 2
-    cropped = image.crop((left, top, left + cw, top + ch)).resize(
-        CANVAS, Image.Resampling.LANCZOS
-    )
+    return (round(h * target), h) if w / h > target else (w, round(w / target))
+
+
+def _crop_face(face: Box | None, left: int, top: int, cw: int, ch: int) -> Box | None:
     if not face:
-        return cropped, None
+        return None
     sx, sy = CANVAS[0] / cw, CANVAS[1] / ch
     moved = (
         round((face[0] - left) * sx),
@@ -293,15 +289,84 @@ def crop_to_canvas(
         round((face[2] - left) * sx),
         round((face[3] - top) * sy),
     )
-    clipped = (
+    box = (
         max(0, moved[0]),
         max(0, moved[1]),
         min(CANVAS[0], moved[2]),
         min(CANVAS[1], moved[3]),
     )
-    return cropped, clipped if clipped[2] > clipped[0] and clipped[3] > clipped[
-        1
-    ] else None
+    return box if box[2] > box[0] and box[3] > box[1] else None
+
+
+def _whole_face(face: Box, window: tuple[int, int], size: tuple[int, int]) -> bool:
+    """The face and some headroom stay inside the window."""
+
+    left, top = window
+    headroom = min(48, (face[3] - face[1]) * 0.12)
+    return (
+        face[0] >= left
+        and face[2] <= left + size[0]
+        and face[1] - headroom >= top
+        and face[3] <= top + size[1]
+    )
+
+
+def crop_windows(image: Image.Image, face: Box | None) -> list[tuple[int, int]]:
+    """Possible (left, top) of the 3:4 window; the first one is the default."""
+
+    w, h = image.size
+    cw, ch = _window(image)
+    if not face:
+        return [((w - cw) // 2, (h - ch) // 2)]
+    cx, cy = (face[0] + face[2]) / 2, (face[1] + face[3]) / 2
+    options: list[tuple[int, int]] = []
+    # Face a little above centre reads best; the rest trade headroom for title room.
+    for ax, ay in (
+        (0.5, 0.42),
+        (0.5, 0.30),
+        (0.5, 0.58),
+        (0.5, 0.0),
+        (0.5, 1.0),
+        (0.30, 0.42),
+        (0.70, 0.42),
+    ):
+        left = min(max(0, round(cx - cw * ax)), w - cw)
+        top = min(max(0, round(cy - ch * ay)), h - ch)
+        if (left, top) not in options:
+            options.append((left, top))
+    return options
+
+
+def crop_to_canvas(
+    image: Image.Image, face: Box | None, text: str | None = None
+) -> tuple[Image.Image, Box | None]:
+    """A 3:4 window around the face, scaled to 1080x1440.
+
+    With ``text``, the window slides within the source (a 9:16 frame has 480 px
+    of play) to where the title fits biggest around the face.
+    """
+
+    cw, ch = _window(image)
+    windows = crop_windows(image, face)
+    left, top = windows[0]
+    if text and face and len(windows) > 1:
+        best = -1
+        for option in windows:
+            moved = _crop_face(face, option[0], option[1], cw, ch)
+            if not _whole_face(face, option, (cw, ch)):
+                continue  # never trade a cut-off face for title room
+            sizes = [
+                fit.size
+                for layout in choose_layouts(moved, text=text)
+                if (fit := fit_text(text, text_zone(layout, moved), layout))
+            ]
+            score = max(sizes, default=0)
+            if score > best:
+                best, (left, top) = score, option
+    cropped = image.crop((left, top, left + cw, top + ch)).resize(
+        CANVAS, Image.Resampling.LANCZOS
+    )
+    return cropped, _crop_face(face, left, top, cw, ch)
 
 
 def warm_grade(image: Image.Image) -> Image.Image:
@@ -323,19 +388,31 @@ def warm_grade(image: Image.Image) -> Image.Image:
 # ------------------------------------------------------------------- layouts
 
 
-def choose_layouts(face: Box | None, previous: tuple[str, ...] = ()) -> list[Layout]:
-    """Two structurally different layouts for a face (references/layouts.md)."""
+def choose_layouts(
+    face: Box | None, previous: tuple[str, ...] = (), text: str | None = None
+) -> list[Layout]:
+    """Layouts in preference order for a face position (references/layouts.md).
 
+    With ``text``, only layouts whose zone (after stepping away from the face)
+    can hold the title are kept; layouts used by the previous batch go last.
+    Candidate ``n`` starts from entry ``n``, so two candidates differ whenever
+    two layouts fit.
+    """
+
+    order: list[Layout]
     if face is None:
-        order: list[Layout] = ["center", "top", "bottom"]
+        order = ["center", "top", "bottom"]
     else:
         cx = (face[0] + face[2]) / 2 / CANVAS[0]
         cy = (face[1] + face[3]) / 2 / CANVAS[1]
         vertical: list[Layout] = ["top", "bottom"] if cy > 0.42 else ["bottom", "top"]
-        order = ["side", *vertical] if cx < 0.38 or cx > 0.62 else [*vertical, "side"]
-    fresh = [layout for layout in order if layout not in previous]
-    ranked = fresh + [layout for layout in order if layout in previous]
-    return ranked[:2] if len(ranked) >= 2 else ranked + ["top"]
+        side_first = cx < 0.38 or cx > 0.62
+        order = ["side", *vertical] if side_first else [*vertical, "side"]
+    if text is not None:
+        fitting = [x for x in order if fit_text(text, text_zone(x, face), x)]
+        order = fitting or order
+    fresh = [x for x in order if x not in previous]
+    return fresh + [x for x in order if x in previous]
 
 
 def text_zone(layout: Layout, face: Box | None) -> Box:
@@ -371,25 +448,43 @@ def text_zone(layout: Layout, face: Box | None) -> Box:
 # ------------------------------------------------------------------ text fit
 
 
-def _units(text: str) -> list[str]:
-    """Break units: one CJK character, or a run of latin letters/digits."""
+BREAK_AFTER = set("，。！？；：、,.!?;:")
 
+
+@lru_cache(maxsize=1)
+def _word_tokenizer() -> Any:
+    """The caption module's pinned jieba dictionary, or None (then per character)."""
+
+    try:
+        from .video_editing_captioning import tokenizer
+
+        return tokenizer()
+    except Exception:
+        return None
+
+
+def _is_latin(ch: str) -> bool:
+    return ch.isascii() and (ch.isalnum() or ch in ".%")
+
+
+def _units(text: str) -> list[str]:
+    """Break units: jieba words when available, else one CJK character; latin
+    letters and digits always stay together."""
+
+    engine = _word_tokenizer()
+    pieces = list(engine.cut(text, HMM=False)) if engine is not None else list(text)
     units: list[str] = []
-    for ch in text:
-        if (
-            units
-            and (ch.isascii() and (ch.isalnum() or ch in ".%"))
-            and units[-1][-1:].isascii()
-            and (units[-1][-1].isalnum() or units[-1][-1] in ".%")
-        ):
-            units[-1] += ch
+    for piece in pieces:
+        if units and piece and _is_latin(piece[0]) and _is_latin(units[-1][-1]):
+            units[-1] += piece
         else:
-            units.append(ch)
-    return units
+            units.append(piece)
+    return [unit for unit in units if unit]
 
 
 def break_lines(text: str, lines: int) -> list[str] | None:
-    """Split into ``lines`` near-even lines that respect 避头尾 punctuation."""
+    """Split into ``lines`` lines: even lengths, words kept whole, breaks after
+    punctuation preferred, 避头尾 punctuation respected."""
 
     units = _units(text)
     if lines <= 1 or len(units) <= 1:
@@ -401,15 +496,20 @@ def break_lines(text: str, lines: int) -> list[str] | None:
     position, consumed = 0, 0
     for line in range(1, lines):
         goal = total * line / lines
-        best, best_distance = None, None
-        for index in range(position + 1, len(units)):
+        best, best_cost = None, None
+        for index in range(position + 1, len(units) - (lines - 1 - line)):
             length = consumed + sum(len(u) for u in units[position:index])
             head, tail = units[index], units[index - 1]
-            if head[0] in NO_LINE_START or tail[-1] in NO_LINE_END or head == " ":
+            if (
+                head[0] in NO_LINE_START
+                or head[0] in PARTICLES
+                or tail[-1] in NO_LINE_END
+                or head == " "
+            ):
                 continue
-            distance = abs(length - goal)
-            if best_distance is None or distance < best_distance:
-                best, best_distance = index, distance
+            cost = abs(length - goal) - (2.5 if tail[-1] in BREAK_AFTER else 0)
+            if best_cost is None or cost < best_cost:
+                best, best_cost = index, cost
         if best is None:
             return None
         consumed += sum(len(u) for u in units[position:best])

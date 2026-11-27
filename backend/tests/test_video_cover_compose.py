@@ -46,7 +46,7 @@ def test_every_layout_keeps_the_title_exact_and_off_the_face(title, face):
 
 def test_two_candidates_use_structurally_different_layouts():
     for face in (FACE_LOW, FACE_HIGH, FACE_RIGHT, None):
-        first, second = cc.choose_layouts(face)
+        first, second = cc.choose_layouts(face, text="夏天必备的冰丝凉席")[:2]
         assert first != second
     assert cc.choose_layouts(FACE_LOW)[0] == "top"
     assert cc.choose_layouts(FACE_HIGH)[0] == "bottom"
@@ -142,3 +142,12 @@ def test_crop_keeps_the_face_inside_a_3_4_canvas():
 def test_sample_times_skip_the_edges():
     times = cc.sample_times(20.0, 12)
     assert len(times) == 12 and times[0] == 1.0 and times[-1] == 19.0
+
+
+def test_layouts_that_cannot_hold_the_title_are_skipped():
+    big_face = (345, 377, 708, 832)  # a close-up: the space above the head is too small
+    text = "3个方法让皮肤状态翻倍，学生党也能做到"
+    layouts = cc.choose_layouts(big_face, text=text)
+    assert layouts and "top" not in layouts and "side" not in layouts
+    for layout in layouts:
+        assert cc.compose(plain(), text, [layout], big_face)[1].passed

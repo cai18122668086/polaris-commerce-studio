@@ -12,7 +12,7 @@ import { resumableEditing } from "@/features/video-studio/editing-resume";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import type { CostNote } from "@/features/video-studio/credit-notes";
-import { editingMessage } from "@/features/video-studio/editing-presentation";
+import { editingMessage, editingTemplateName } from "@/features/video-studio/editing-presentation";
 import { isEditingSuite } from "@/features/video-studio/editing-suite";
 import { matchesReferenceScript, referenceScript, type EditingMusicPreference, isEditingMusicPreference } from "@/features/video-studio/editing-options";
 import { projectApi, type VideoVersion } from "@/features/video-studio/projects";
@@ -436,7 +436,8 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     resumeAfterSave.current = false;
     resumeBegin();
   }, [saved, busy]);
-  const historyTasks = tasks.filter(task => (task.options.mode !== "transcript" || task.id === focusedTaskId) && (!historyQuery.trim() || `${task.template_name || ""} ${stageLabel[task.stage] || task.status} ${new Date(task.created_at).toLocaleDateString("zh-CN")}`.includes(historyQuery.trim())));
+  const taskTemplateName = (task: { template_id?: string | null; template_name?: string | null }) => task.template_id ? editingTemplateName(task.template_id, task.template_name ?? undefined) : task.template_name || "";
+  const historyTasks = tasks.filter(task => (task.options.mode !== "transcript" || task.id === focusedTaskId) && (!historyQuery.trim() || `${taskTemplateName(task)} ${stageLabel[task.stage] || task.status} ${new Date(task.created_at).toLocaleDateString("zh-CN")}`.includes(historyQuery.trim())));
   const renderTasks = tasks.filter(task => task.options.mode !== "transcript");
   const flowSteps = editingFlowSteps({
     hasSource: Boolean(selectedGeneration || restoredSource || (selected === "upload" ? file : selected)),
@@ -519,7 +520,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       const planId = task.options.native_plan_id;
       const layoutFailed = task.status === "failed" && (task.error_code === "EDITING_EFFECT_LAYOUT_FAILED" || task.error_code === "EDITING_NATIVE_LAYOUT_FAILED");
       const progress = editingTaskProgress({ status: task.status, stage: task.stage, mode: task.options.mode });
-      return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{task.template_name && `${task.template_name} · `}{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
+      return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{taskTemplateName(task) && `${taskTemplateName(task)} · `}{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.status !== "completed" && task.status !== "cancelled" && <EditingProgressSteps progress={progress} />}
         {task.planning_origin === "operator_candidate" && <p className={styles.note}>人工调整版</p>}
         {final ? <video id={`editing-film-${task.id}`} controls playsInline preload="metadata" src={mediaUrl(final.url)} poster={mediaUrl(poster?.url)} aria-label="剪辑成片预览" /> : task.status === "awaiting_review" && preview && <video key={preview.id} id={`editing-preview-${task.id}`} controls playsInline preload="metadata" src={mediaUrl(preview.url)} poster={mediaUrl(poster?.url)} aria-label="剪辑视频预览" onError={() => markPreviewFailure(preview.id)} />}

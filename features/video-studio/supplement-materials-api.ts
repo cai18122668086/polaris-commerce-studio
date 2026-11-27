@@ -74,11 +74,18 @@ export async function listMaterials(workspaceId: string, projectId: string): Pro
   return result.items as unknown as MaterialRow[];
 }
 
+/** 模板可能把素材名称显示在画面上：相机/截图式文件名不直接用。 */
+export function uploadLabel(fileName: string): string {
+  const stem = fileName.replace(/\.[^.]+$/, "").trim();
+  if (!stem || /^(img|dsc|dcim|vid|mov|mvimg|pxl|wx|mmexport|screenshot|photo|image|video|微信图片|屏幕截图)[\s_-]*\d/i.test(stem) || /^[\d\s_-]+$/.test(stem)) return "我的素材";
+  return stem.slice(0, 40);
+}
+
 export async function uploadMaterial(workspaceId: string, projectId: string, file: File, description: string, progress: (value: UploadProgress) => void): Promise<MaterialRow> {
   const form = new FormData();
   form.append("file", file);
   form.append("request_id", crypto.randomUUID());
-  form.append("label", file.name.replace(/\.[^.]+$/, "").slice(0, 120) || "我的素材");
+  form.append("label", uploadLabel(file.name));
   form.append("description", description.slice(0, 400));
   return unwrapApiResponse(await apiClient.POST(materials, {
     params: { path: { workspace_id: workspaceId, project_id: projectId } },

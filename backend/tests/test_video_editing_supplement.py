@@ -1024,3 +1024,28 @@ def test_one_supplement_per_sentence_excludes_covered_sentences():
         r["sentence_index"] for r in pick_paintable(analysis, 6, exclude=[0])
     ]
     assert 3 not in pick_stock_sentences(analysis, exclude=[3])
+
+
+def test_rank_prefers_candidates_whose_tags_match_the_query():
+    def cand(ref, title, kind="image"):
+        return Candidate(
+            provider="pixabay",
+            provider_ref=ref,
+            kind=kind,
+            width=1000,
+            height=1500,
+            duration_ms=None,
+            thumb_url="https://pixabay.com/t.jpg",
+            download_url="https://pixabay.com/d.jpg",
+            page_url="https://pixabay.com/p",
+            author="a",
+            author_url=None,
+            license="l",
+            license_url="https://pixabay.com/l",
+            title=title,
+        )
+
+    cat = cand("1", "cat, soft, pet, fur")
+    ear = cand("2", "headphones, ear cushion, music")
+    assert rank([cat, ear], ["white headphones ear cushion"])[0].provider_ref == "2"
+    assert rank([cat, ear])[0].provider_ref == "1"  # no query: original order rules

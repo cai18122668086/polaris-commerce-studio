@@ -267,6 +267,7 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
         <small>可一次选多个 · 图片 JPG/PNG/WebP · 视频 MP4/MOV/WebM，最长 5 分钟</small>
         <input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" onChange={event => { if (event.target.files) add(event.target.files); event.target.value = ""; }} />
       </label>
+      {placement === "manual" && <p className={styles.note}>第 1 句是开场标题，素材从第 2 句开始放。</p>}
       {error && <p className={styles.error}>{error}</p>}
       {uploads.length > 0 && (
         <ul className={styles.uploads}>
@@ -292,7 +293,11 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
                   onChange={event => void pin(row, event.target.value === "" ? null : Number(event.target.value))}
                 >
                   <option value="">自动</option>
-                  {sentences.map((text, index) => <option key={index} value={index}>第 {index + 1} 句 · {text.slice(0, 14)}</option>)}
+                  {sentences.map((text, index) => (
+                    <option key={index} value={index} disabled={index === 0}>
+                      第 {index + 1} 句 · {index === 0 ? "开场标题，不放素材" : text.slice(0, 14)}
+                    </option>
+                  ))}
                 </select>
               )}
               <button type="button" className={styles.iconButton} onClick={() => void remove(row)} aria-label={`删除 ${row.label}`}><Trash2 size={13} /></button>

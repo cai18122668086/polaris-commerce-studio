@@ -603,14 +603,14 @@ def test_mg_plan_falls_back_to_rules_with_one_call_budget(tmp_path, video):
 
 def test_mg_placement_avoids_face_caption_and_cards_or_skips():
     blocked = [(300, 300, 800, 800), (0, 1500, 1080, 1700)]
-    x, y = place("data_callout", blocked, (1080, 1920))
+    x, y, scale = place("data_callout", blocked, (1080, 1920))
     rect = (x, y, x + 840, y + 400)
     assert not any(
         rect[0] < b[2] and b[0] < rect[2] and rect[1] < b[3] and b[1] < rect[3]
         for b in blocked
     )
     assert place("data_callout", [(0, 0, 1080, 1920)], (1080, 1920)) is None
-    assert place("title_reveal", [(0, 0, 1080, 1920)], (1080, 1920)) == (0, 0)
+    assert place("title_reveal", [(0, 0, 1080, 1920)], (1080, 1920)) == (0, 0, 1.0)
     timeline = [
         {
             "n": n,

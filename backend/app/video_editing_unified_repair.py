@@ -123,12 +123,16 @@ def repair_unified_beats(
     from .video_editing_native_content import CHAPTER_GROUPS
     from .video_editing_overlay_recipes import _unified_entry
     from .video_editing_overlay_templates import MIN_OVERLAY_TYPES
-    from .video_editing_unified_scenes import UNIFIED_SCENE_GROUPS
+    from .video_editing_unified_scenes import BROWSER_LIST_SCENES, UNIFIED_SCENE_GROUPS
 
+    # Browser list scenes (vertical/horizontal splits, fruit list) belong to the
+    # unified catalog but compile through their own entries, never through
+    # _unified_entry; checking them here rejected every complete split beat.
+    own_entry = CHAPTER_GROUPS | BROWSER_LIST_SCENES
     targets = [
         i
         for i, beat in enumerate(plan.beats)
-        if beat.group_id in UNIFIED_SCENE_GROUPS and beat.group_id not in CHAPTER_GROUPS
+        if beat.group_id in UNIFIED_SCENE_GROUPS and beat.group_id not in own_entry
     ]
     if not targets:
         return raw, []
@@ -141,9 +145,7 @@ def repair_unified_beats(
         1
         for beat in plan.beats
         if beat.group_id in signature_group_ids
-        and (
-            beat.group_id not in UNIFIED_SCENE_GROUPS or beat.group_id in CHAPTER_GROUPS
-        )
+        and (beat.group_id not in UNIFIED_SCENE_GROUPS or beat.group_id in own_entry)
     )
     for i in targets:
         beat = plan.beats[i]

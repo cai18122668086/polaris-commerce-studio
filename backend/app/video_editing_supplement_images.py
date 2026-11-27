@@ -30,6 +30,7 @@ from .config import Settings
 from .models import utc_now
 from .video_editing_materials import material_file
 from .video_editing_task_models import EditingImageRequestRecord, EditingMaterialRecord
+from .video_image_routes import image_routes
 
 logger = logging.getLogger(__name__)
 
@@ -81,29 +82,6 @@ def available(settings: Settings) -> bool:
     )
 
 
-def _routes(settings: Settings) -> list[tuple[str, str, str]]:
-    routes = [
-        (
-            settings.image_base_url.rstrip("/"),
-            settings.image_api_key.get_secret_value(),
-            settings.image_model,
-        )
-    ]
-    if (
-        settings.provider_failover_enabled
-        and settings.provider_failover_api_key.get_secret_value()
-        and settings.provider_failover_base_url.startswith("https://")
-    ):
-        routes.append(
-            (
-                settings.provider_failover_base_url.rstrip("/"),
-                settings.provider_failover_api_key.get_secret_value(),
-                settings.provider_failover_image_model,
-            )
-        )
-    return routes
-
-
 async def call_provider(
     settings: Settings,
     prompt: str,
@@ -116,7 +94,9 @@ async def call_provider(
     client = client or httpx.AsyncClient(timeout=httpx.Timeout(170.0, connect=15.0))
     last: Exception | None = None
     try:
-        for base, key, model in _routes(settings):
+        # Shared with covers (W5): primary, then failover-1/2… one key each.
+        for route in image_routes(settings):
+            base, key, model = route.base_url, route.api_key, route.model
             try:
                 response = await client.post(
                     f"{base}/v1/images/generations",
@@ -141,8 +121,9 @@ async def call_provider(
                 "content_policy" in text or "safety" in text or "moderation" in text
             ):
                 raise ImageRefused()
-            if response.status_code >= 500 or response.status_code == 429:
-                last = RuntimeError(f"provider {response.status_code}")
+            if response.status_code >= 500 or response.status_code in (401, 403, 429):
+                # This route's key or upstream is unusable: try the next route.
+                last = RuntimeError(f"{route.name} {response.status_code}")
                 continue
             if response.status_code != 200:
                 raise RuntimeError(f"provider {response.status_code}")

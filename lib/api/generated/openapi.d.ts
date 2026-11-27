@@ -3071,6 +3071,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Batches */
+        get: operations["list_batches_api_v1_video_studio_workspaces__workspace_id__work_batches_get"];
+        put?: never;
+        /** Create Batch */
+        post: operations["create_batch_api_v1_video_studio_workspaces__workspace_id__work_batches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch */
+        get: operations["get_batch_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Items */
+        get: operations["list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Item */
+        get: operations["get_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Item */
+        patch: operations["patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch"];
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/writing-config": {
         parameters: {
             query?: never;
@@ -9300,6 +9370,19 @@ export interface components {
             /** View Count */
             view_count?: number | null;
         };
+        /**
+         * SourceVideoRef
+         * @description Editing input: a talking result, a library video or an upload.
+         */
+        SourceVideoRef: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "talking" | "library" | "upload";
+        };
         /** StructureDraftLine */
         StructureDraftLine: {
             /** Analysis Section Id */
@@ -9765,6 +9848,187 @@ export interface components {
             rules_release: string;
             /** Script Sha256 */
             script_sha256: string;
+        };
+        /** WorkBatchCreate */
+        WorkBatchCreate: {
+            /** Items */
+            items: components["schemas"]["WorkItemCreate"][];
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Source
+             * @default talking
+             * @enum {string}
+             */
+            source: "talking" | "editing_upload";
+        };
+        /** WorkBatchResponse */
+        WorkBatchResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Item Ids */
+            item_ids: string[];
+            /** Items */
+            items: components["schemas"]["WorkItemResponse"][];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "talking" | "editing_upload";
+            /** Status Counts */
+            status_counts: {
+                [key: string]: number;
+            };
+        };
+        /** WorkItemCreate */
+        WorkItemCreate: {
+            /** Audio File Id */
+            audio_file_id?: string | null;
+            /** Avatar Id */
+            avatar_id?: string | null;
+            /**
+             * Drive Mode
+             * @default text
+             * @enum {string}
+             */
+            drive_mode: "text" | "audio" | "uploaded_video";
+            /** Persona Id */
+            persona_id?: string | null;
+            /**
+             * Publish Body
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @default
+             */
+            publish_title: string;
+            /** Script Document Id */
+            script_document_id?: string | null;
+            /**
+             * Script Text
+             * @default
+             */
+            script_text: string;
+            source_video_ref?: components["schemas"]["SourceVideoRef"] | null;
+            /** Voice Id */
+            voice_id?: string | null;
+        };
+        /**
+         * WorkItemPatch
+         * @description Partial update; only fields that are sent are written.
+         *
+         *     Ownership by line (not enforced by the server): W2 writes persona/avatar/
+         *     voice/audio/generation_task_id; W3 writes source_video_ref/editing_task_id;
+         *     W5 writes cover_asset_id and the final publish_title/publish_body. Each line
+         *     moves ``stage``/``status``/``error`` while the item is in its stage.
+         */
+        WorkItemPatch: {
+            /** Audio File Id */
+            audio_file_id?: string | null;
+            /** Avatar Id */
+            avatar_id?: string | null;
+            /** Cover Asset Id */
+            cover_asset_id?: string | null;
+            /** Editing Task Id */
+            editing_task_id?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Expected Version */
+            expected_version: number;
+            /** Generation Task Id */
+            generation_task_id?: string | null;
+            /** Persona Id */
+            persona_id?: string | null;
+            /** Publish Body */
+            publish_body?: string | null;
+            /** Publish Title */
+            publish_title?: string | null;
+            /** Script Document Id */
+            script_document_id?: string | null;
+            /** Script Text */
+            script_text?: string | null;
+            source_video_ref?: components["schemas"]["SourceVideoRef"] | null;
+            /** Stage */
+            stage?: ("talking" | "editing" | "finishing" | "done") | null;
+            /** Status */
+            status?: ("pending" | "queued" | "running" | "succeeded" | "failed" | "canceled") | null;
+            /** Voice Id */
+            voice_id?: string | null;
+        };
+        /** WorkItemResponse */
+        WorkItemResponse: {
+            /** Audio File Id */
+            audio_file_id: string | null;
+            /** Avatar Id */
+            avatar_id: string | null;
+            /** Batch Id */
+            batch_id: string;
+            /** Cover Asset Id */
+            cover_asset_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Drive Mode
+             * @enum {string}
+             */
+            drive_mode: "text" | "audio" | "uploaded_video";
+            /** Editing Task Id */
+            editing_task_id: string | null;
+            /** Error */
+            error: string | null;
+            /** Generation Task Id */
+            generation_task_id: string | null;
+            /** History */
+            history: {
+                [key: string]: string[];
+            };
+            /** Id */
+            id: string;
+            /** Persona Id */
+            persona_id: string | null;
+            /** Position */
+            position: number;
+            /** Publish Body */
+            publish_body: string;
+            /** Publish Title */
+            publish_title: string;
+            /** Script Document Id */
+            script_document_id: string | null;
+            /** Script Text */
+            script_text: string;
+            source_video_ref: components["schemas"]["SourceVideoRef"] | null;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "talking" | "editing" | "finishing" | "done";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "queued" | "running" | "succeeded" | "failed" | "canceled";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /** Voice Id */
+            voice_id: string | null;
         };
         /** WorkerAccountSessionRequest */
         WorkerAccountSessionRequest: {
@@ -16728,6 +16992,215 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_batches_api_v1_video_studio_workspaces__workspace_id__work_batches_get: {
+        parameters: {
+            query?: {
+                source?: ("talking" | "editing_upload") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkBatchResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_batch_api_v1_video_studio_workspaces__workspace_id__work_batches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+                /** @description 逗号分隔的条目 id */
+                ids?: string | null;
+                stage?: ("talking" | "editing" | "finishing" | "done")[] | null;
+                status?: ("pending" | "queued" | "running" | "succeeded" | "failed" | "canceled")[] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"];
                 };
             };
             /** @description Validation Error */

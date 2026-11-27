@@ -86,6 +86,7 @@ from .video_editing_transcript_routes import router as video_editing_transcript_
 from .video_generation import router as video_generation_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router
+from .video_work_routes import router as video_work_router
 from .video_writing_routes import router as video_writing_router
 
 logger = logging.getLogger(__name__)
@@ -570,6 +571,7 @@ def create_app(
     application.include_router(video_studio_router)
     application.include_router(video_voice_cloning_router)
     application.include_router(video_generation_router)
+    application.include_router(video_work_router)
     application.include_router(video_avatar_uploads_router)
     application.include_router(video_editing_router)
     application.include_router(video_editing_native_plan_router)

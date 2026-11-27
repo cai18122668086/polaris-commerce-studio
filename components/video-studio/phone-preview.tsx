@@ -4,15 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Copy, Download, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { mediaUrl } from "@/lib/api/base-url";
 import { finishHref } from "@/features/video-studio/flow-params";
-import { neighbour, shortDate, splitTopics, type WorkCard } from "@/features/video-studio/works";
+import { neighbour, posterPath, shortDate, splitTopics, type WorkCard } from "@/features/video-studio/works";
 import { coverImageUrl, useWorkVideo } from "@/features/video-studio/use-finishing";
 import styles from "./finish-works.module.css";
 
 type Notify = (text: string, tone?: "success" | "error" | "info") => void;
 
 /** 点开作品：居中手机外框里自动播放，旁边是完整标题、正文与口播稿；←/→ 切换，Esc 关闭。 */
-export function PhonePreview({ workspaceId, cards, current, onMove, onClose, notify }: {
+export function PhonePreview({ workspaceId, cards, current, accountName, onMove, onClose, notify }: {
   workspaceId: string;
+  accountName: string;
   cards: WorkCard[];
   current: WorkCard;
   onMove: (key: string) => void;
@@ -32,7 +33,8 @@ export function PhonePreview({ workspaceId, cards, current, onMove, onClose, not
   const setTab = (value: "post" | "script") => setView({ key: current.key, paused, tab: value });
   const previous = neighbour(cards, current.key, -1);
   const next = neighbour(cards, current.key, 1);
-  const cover = current.coverId ? mediaUrl(coverImageUrl(workspaceId, current.coverId)) : undefined;
+  const posterSource = current.coverId ? coverImageUrl(workspaceId, current.coverId) : posterPath(workspaceId, current);
+  const cover = posterSource ? mediaUrl(posterSource) : undefined;
 
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
@@ -73,9 +75,10 @@ export function PhonePreview({ workspaceId, cards, current, onMove, onClose, not
         <div className={styles.phoneScreen}>
           {src ? <video key={current.key} ref={player} className={styles.phoneVideo} src={mediaUrl(src)} poster={cover} autoPlay muted={muted} loop playsInline onClick={toggle} onPause={() => setPaused(true)} onPlay={() => setPaused(false)} />
             : cover ? <img className={styles.phoneVideo} src={cover} alt="" /> : <div className={styles.phoneEmpty}>视频读取中</div>}
+          {/* Like the feed: account and one title line only; body and topics stay in the side panel. */}
           <div className={styles.phoneOverlay}>
+            <span className={styles.phoneAccount}>@{accountName}</span>
             <b>{current.title}</b>
-            {current.body && <p>{splitTopics(current.body).map((part, index) => part.topic ? <span key={index} className={styles.topic}>{part.text}</span> : part.text)}</p>}
           </div>
           <div className={styles.phoneControls}>
             <button type="button" onClick={toggle} aria-label={paused ? "播放" : "暂停"}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>

@@ -8,8 +8,8 @@ import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import { mediaUrl } from "@/lib/api/base-url";
 import { finishHref } from "@/features/video-studio/flow-params";
-import { batchOptions, filterWorkCards, mergeWorkCards, shortDate, type TalkJobLike, type WorkCard, type WorkRange } from "@/features/video-studio/works";
-import { coverImageUrl, useAllWorkItems, useWorkVideo } from "@/features/video-studio/use-finishing";
+import { batchOptions, filterWorkCards, mergeWorkCards, posterPath, shortDate, type TalkJobLike, type WorkCard, type WorkRange } from "@/features/video-studio/works";
+import { coverImageUrl, useAllWorkItems } from "@/features/video-studio/use-finishing";
 import { ActiveEditingWorks } from "./editing-works";
 import { GuidedEmpty } from "./page-hero";
 import { PhonePreview } from "./phone-preview";
@@ -98,18 +98,17 @@ export function WorksHome({ userId, workspaceId, jobs, initialBatch, notify }: {
     <div className={styles.activeBelow}><ActiveEditingWorks userId={userId} workspaceId={workspaceId} keyword="" /></div>
     {edits.hasNextPage && <button type="button" className={styles.more} disabled={edits.isFetchingNextPage} onClick={() => void edits.fetchNextPage()}>{edits.isFetchingNextPage ? "正在加载…" : "加载更早的作品"}</button>}
 
-    {opened && <PhonePreview workspaceId={workspaceId} cards={shown.filter(card => card.finished)} current={opened} onMove={key => setOpen(key)} onClose={() => setOpen(null)} notify={notify} />}
+    {opened && <PhonePreview workspaceId={workspaceId} cards={shown.filter(card => card.finished)} current={opened} accountName={name.data || "我的工作区"} onMove={key => setOpen(key)} onClose={() => setOpen(null)} notify={notify} />}
   </section>;
 }
 
 function WorkTile({ workspaceId, card, onOpen }: { workspaceId: string; card: WorkCard; onOpen: () => void }) {
-  const needsVideo = card.hasVideo && !card.coverId && !card.videoUrl && (card.editingTaskId || card.generationTaskId);
-  const video = useWorkVideo(workspaceId, needsVideo ? { editing_task_id: card.editingTaskId, generation_task_id: card.generationTaskId } : null);
-  const videoUrl = card.videoUrl ?? video.data ?? null;
-  const media = card.coverId
-    ? <img src={mediaUrl(coverImageUrl(workspaceId, card.coverId, "thumb"))} alt="" loading="lazy" />
-    : videoUrl ? <video muted playsInline preload="metadata" src={`${mediaUrl(videoUrl)}#t=0.5`} aria-hidden="true" tabIndex={-1} />
-      : <div className={styles.tileBlank} aria-hidden="true"><Clapperboard size={22} /><span>{card.hasVideo ? "暂无封面" : "视频还在路上"}</span></div>;
+  const [broken, setBroken] = useState(false);
+  const source = card.coverId ? coverImageUrl(workspaceId, card.coverId, "thumb") : posterPath(workspaceId, card);
+  const placeholder = <div className={styles.tileBlank} aria-hidden="true"><Clapperboard size={22} /><span>{card.progress?.label ?? "暂无封面"}</span></div>;
+  const media = source && !broken
+    ? <img src={mediaUrl(source)} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
+    : placeholder;
   const body = <>
     <div className={styles.tileMedia}>
       {media}

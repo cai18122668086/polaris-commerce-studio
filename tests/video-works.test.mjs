@@ -81,3 +81,14 @@ test("items still in 口播 never ask for a video; finished ones do", () => {
   assert.equal(itemCard(item({ stage: "editing", status: "running" })).hasVideo, true);
   assert.equal(talkCard({ id: "g", kind: "lipsync", status: "running", created_at: "2026-11-28T00:00:00Z" }).hasVideo, false);
 });
+
+import { posterPath } from "../features/video-studio/works.ts";
+
+test("works without a cover get a server-cut poster whenever a video exists", () => {
+  const ws = "ws1";
+  assert.equal(posterPath(ws, itemCard(item({ cover_asset_id: null }))), "/api/v1/video-studio/workspaces/ws1/work-posters/editing/e1");
+  assert.equal(posterPath(ws, itemCard(item({ editing_task_id: null, stage: "editing", status: "pending" }))), "/api/v1/video-studio/workspaces/ws1/work-posters/generation/g1");
+  assert.equal(posterPath(ws, itemCard(item({ editing_task_id: null, stage: "talking", status: "running" }))), null);
+  assert.equal(posterPath(ws, editCard({ task_id: "e9", project_id: "p", project_title: "x", created_at: "2026-11-01T00:00:00Z", final: { url: "/f" } })), "/api/v1/video-studio/workspaces/ws1/work-posters/editing/e9");
+  assert.equal(posterPath(ws, talkCard({ id: "g7", kind: "lipsync", status: "running", created_at: "2026-11-28T00:00:00Z" })), null);
+});

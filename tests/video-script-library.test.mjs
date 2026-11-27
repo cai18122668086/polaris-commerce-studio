@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  bodySummary, displayTitle, editChanged, hashtags, pageState, scriptStats,
+  bodySummary, displayTitle, editChanged, hashtags, needsFill, pageState, scriptStats,
   titleWarning, toggle, togglePage, MAX_SELECTED,
 } from "../features/video-studio/script-library-format.ts";
 
@@ -57,4 +57,10 @@ test("an edit is a change only when a part differs after trimming", () => {
   const entry = { publish_title: "标题", publish_body: "正文 #a #b #c", script: "口播。" };
   assert.equal(editChanged(entry, { publish_title: " 标题 ", publish_body: "正文 #a #b #c", script: "口播。\n" }), false);
   assert.equal(editChanged(entry, { ...entry, script: "改了。" }), true);
+});
+
+test("only an entry with just a script offers 补写标题和正文", () => {
+  assert.equal(needsFill({ publish_title: "", publish_body: "", script: "冬天手干怎么办？" }), true);
+  assert.equal(needsFill({ publish_title: "有标题", publish_body: "", script: "x" }), false);
+  assert.equal(needsFill({ publish_title: "", publish_body: "", script: "  " }), false);
 });

@@ -72,6 +72,7 @@ from .task_runner import build_task_runner, validate_task_runner_settings
 from .thumbnails import ThumbnailCache
 from .video_assistance import router as video_assistance_router
 from .video_auto_writing import router as video_auto_writing_router
+from .video_avatar_polish import router as video_avatar_polish_router
 from .video_avatar_uploads import router as video_avatar_uploads_router
 from .video_benchmark_routes import router as video_benchmark_router
 from .video_cover_routes import router as video_cover_router
@@ -90,7 +91,6 @@ from .video_editing_task_routes import router as video_editing_task_router
 from .video_editing_transcript_routes import router as video_editing_transcript_router
 from .video_generation import router as video_generation_router
 from .video_personas import router as video_personas_router
-from .video_avatar_polish import router as video_avatar_polish_router
 from .video_script_library import router as video_script_library_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router

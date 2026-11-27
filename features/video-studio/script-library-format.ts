@@ -14,6 +14,12 @@ export type LibraryEntry = {
 };
 export type LibraryPage = { items: LibraryEntry[]; total: number; limit: number; offset: number; missing_ids: string[] };
 export type LibraryEdit = { publish_title: string; publish_body: string; script: string };
+export type FillStatus = { task_id: string; status: string; error_code: string | null; message: string; entry: LibraryEntry | null };
+
+/** Only the script: an entry saved before v3 (or by hand) that can get a title and body written. */
+export function needsFill(entry: Pick<LibraryEntry, "publish_title" | "publish_body" | "script">): boolean {
+  return !entry.publish_title.trim() && !entry.publish_body.trim() && !!entry.script.trim();
+}
 
 export const LIBRARY_PLATFORM_LABEL: Record<LibraryPlatform, string> = { douyin: "抖音", xiaohongshu: "小红书" };
 export const SOURCE_LABEL: Record<LibrarySource, string> = { auto_writing: "AI 全自动", manual: "手动", imported: "导入" };

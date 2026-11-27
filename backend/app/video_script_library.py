@@ -16,19 +16,22 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from pydantic import Field, StringConstraints
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .errors import ApiError
 from .models import utc_now
+from .video_assistance import provider
+from .video_assistance_models import VideoAssistanceRecord
 from .video_studio_access import require_video_studio_access
 from .video_studio_models import VideoProjectRecord, VideoScriptVersionRecord
 from .video_studio_routes import VideoWorkspace, scope
-from .video_studio_schemas import StrictVideoModel
+from .video_studio_schemas import StrictVideoModel, VideoProjectContent
 from .video_writing_models import VideoScriptLibraryEntry, VideoWritingDocument
 
 log = logging.getLogger(__name__)
@@ -545,3 +548,215 @@ def delete_entry(
     row.deleted_at = utc_now()
     session.commit()
     return {"id": row.id, "deleted": True}
+
+
+# ------------------------------------------------- 补写标题和正文（旧文案）----
+
+FILL_KIND = "publish_fill"
+FILL_ACTION = "writing_publish_fill"
+
+
+class FillRequest(StrictVideoModel):
+    request_id: UUID
+    platform: Platform
+
+
+class FillStatus(StrictVideoModel):
+    task_id: str
+    status: str
+    error_code: str | None
+    message: str
+    entry: LibraryEntry | None
+
+
+def fill_status(
+    session: Session, workspace: WorkspaceContext, task: VideoAssistanceRecord
+) -> FillStatus:
+    entry = session.scalar(
+        owned_query(workspace).where(
+            VideoScriptLibraryEntry.id == task.inputs.get("entry_id"),
+            VideoScriptLibraryEntry.deleted_at.is_(None),
+        )
+    )
+    return FillStatus(
+        task_id=task.id,
+        status=task.status,
+        error_code=task.error_code,
+        message=str((task.result or {}).get("message") or ""),
+        entry=entry_response(entry) if entry else None,
+    )
+
+
+def attach_project(
+    session: Session, workspace: WorkspaceContext, row: VideoScriptLibraryEntry
+) -> str:
+    """A task belongs to a project; a manual entry without one gets its own."""
+    content = VideoProjectContent.model_validate(
+        {
+            "draft": {
+                "name": (row.publish_title or "文案库文案")[:80],
+                "text": row.script[:3000],
+            }
+        }
+    )
+    project = VideoProjectRecord(
+        id=str(uuid4()),
+        workspace_id=workspace.workspace_id,
+        owner_user_id=workspace.principal.user_id,
+        revision=1,
+        content=content.model_dump(mode="json"),
+    )
+    session.add(project)
+    session.flush()
+    row.project_id = project.id
+    return project.id
+
+
+def run_fill(factory: Any, task_id: str, service: Any) -> None:
+    """Write the title and body; the entry gets them as a new revision."""
+    from .video_writing_provider import plan_publish_fill
+
+    with factory() as session:
+        task = session.get(VideoAssistanceRecord, task_id)
+        if task is None or task.status != "running":
+            return
+        inputs = dict(task.inputs)
+    try:
+        result, receipt = plan_publish_fill(
+            service, inputs["script"], inputs["platform"]
+        )
+    except Exception:  # noqa: BLE001 - provider down: failed, not charged
+        log.warning("script library: publish fill call failed", exc_info=True)
+        result, receipt = {"validation_error": "VIDEO_WRITING_PROVIDER_FAILED"}, {}
+    with factory() as session:
+        task = session.get(VideoAssistanceRecord, task_id)
+        assert task is not None
+        task.receipt = receipt
+        entry = session.get(VideoScriptLibraryEntry, inputs["entry_id"])
+        if result.get("validation_error") or entry is None or entry.deleted_at:
+            task.status, task.stage = "failed", "done"
+            task.error_code = (
+                "VIDEO_SCRIPT_LIBRARY_NOT_FOUND"
+                if entry is None or (entry and entry.deleted_at)
+                else str(result.get("validation_error"))
+            )
+            task.result = {
+                **{k: v for k, v in result.items() if k != "validation_error"},
+                "message": "这次没写好，没有扣积分，可以再试一次。",
+            }
+        else:
+            apply_change(
+                entry,
+                publish_title=str(result["publish_title"])[:80],
+                publish_body=str(result["publish_body"])[:2000],
+                script=entry.script,
+                platform=inputs["platform"],
+            )
+            task.status, task.stage = "completed", "done"
+            task.result = {
+                "entry_id": entry.id,
+                "revision": entry.revision,
+                "publish_title": entry.publish_title,
+                "publish_body": entry.publish_body,
+                "warnings": result.get("warnings") or [],
+                "message": "",
+            }
+        task.updated_at = utc_now()
+        session.commit()
+
+
+@router.post("/script-library/{entry_id}/publish-fill", response_model=FillStatus)
+def start_fill(
+    entry_id: str,
+    body: FillRequest,
+    request: Request,
+    background: BackgroundTasks,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> FillStatus:
+    require_workspace_write(workspace)
+    settings = request.app.state.settings
+    existing = session.scalar(
+        select(VideoAssistanceRecord).where(
+            VideoAssistanceRecord.workspace_id == workspace.workspace_id,
+            VideoAssistanceRecord.owner_user_id == workspace.principal.user_id,
+            VideoAssistanceRecord.request_id == str(body.request_id),
+        )
+    )
+    if existing:
+        if existing.kind != FILL_KIND or existing.inputs.get("entry_id") != entry_id:
+            raise ApiError(409, "VIDEO_REQUEST_REUSED", "此请求已提交过其他内容。")
+        return fill_status(session, workspace, existing)
+    if not settings.video_script_planning_enabled:
+        raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "写稿服务尚未开放。")
+    row = own_entry(session, workspace, entry_id)
+    running = session.scalar(
+        select(VideoAssistanceRecord).where(
+            VideoAssistanceRecord.workspace_id == workspace.workspace_id,
+            VideoAssistanceRecord.owner_user_id == workspace.principal.user_id,
+            VideoAssistanceRecord.kind == FILL_KIND,
+            VideoAssistanceRecord.status == "running",
+            VideoAssistanceRecord.inputs["entry_id"].as_string() == row.id,
+        )
+    )
+    if running:
+        return fill_status(session, workspace, running)
+    project_id = row.project_id or attach_project(session, workspace, row)
+    task = VideoAssistanceRecord(
+        id=str(uuid4()),
+        workspace_id=workspace.workspace_id,
+        owner_user_id=workspace.principal.user_id,
+        project_id=project_id,
+        request_id=str(body.request_id),
+        request_hash=str(body.request_id),
+        kind=FILL_KIND,
+        status="running",
+        stage="fill",
+        inputs={
+            "revision": row.revision,
+            "entry_id": row.id,
+            "platform": body.platform,
+            "script": row.script,
+        },
+        result={},
+    )
+    session.add(task)
+    try:
+        video_credits.hold(
+            session,
+            settings,
+            workspace.workspace_id,
+            FILL_ACTION,
+            "video_assistance",
+            task.id,
+        )
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise ApiError(
+            409, "VIDEO_REQUEST_REUSED", "补写请求发生冲突，请重试。"
+        ) from None
+    factory = request.app.state.session_factory
+    background.add_task(run_fill, factory, task.id, provider(request))
+    background.add_task(
+        video_credits.settle_after, factory, "video_assistance", task.id
+    )
+    return fill_status(session, workspace, task)
+
+
+@router.get(
+    "/script-library/{entry_id}/publish-fill/{task_id}", response_model=FillStatus
+)
+def get_fill(
+    entry_id: str, task_id: str, workspace: VideoWorkspace, session: SessionDependency
+) -> FillStatus:
+    task = session.get(VideoAssistanceRecord, task_id)
+    if (
+        task is None
+        or task.kind != FILL_KIND
+        or task.workspace_id != workspace.workspace_id
+        or task.owner_user_id != workspace.principal.user_id
+        or task.inputs.get("entry_id") != entry_id
+    ):
+        raise ApiError(404, "VIDEO_SCRIPT_LIBRARY_NOT_FOUND", "没有找到这次补写。")
+    return fill_status(session, workspace, task)

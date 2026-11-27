@@ -4,13 +4,19 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, AudioLines, BookOpenText, Check, CopyCheck, Download, FileText, Flame, Pause, Play, Plus, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
-import type { VideoAvatar, VideoVoice } from "@/features/video-studio/library";
+import type { useVideoLibrary, VideoAvatar, VideoVoice } from "@/features/video-studio/library";
+import type { useVoiceClones } from "@/features/video-studio/voice-clones";
+import { usePersonas, type VideoPersona } from "@/features/video-studio/personas";
+import { AvatarCreateDrawer } from "./avatar-create-drawer";
+import { PersonaCreateDrawer } from "./persona-create-drawer";
+import { VoiceCloneDrawer } from "./voice-clone-drawer";
 import { generationProgress } from "@/features/video-studio/generation-progress";
+import { scriptStats } from "@/features/video-studio/script-library-format";
 import { editingHref, parseFlowParams } from "@/features/video-studio/flow-params";
-import { scriptFromLibrary, talkingApi, type LibraryEntry, type PersonaEntry } from "@/features/video-studio/talking-api";
+import { scriptFromLibrary, talkingApi, type LibraryEntry } from "@/features/video-studio/talking-api";
 import {
   addScripts, assign, assignmentFor, batchItems, batchSettled, editingCta, decodeDraft, displayTitle, draftKey, durationLabel, emptyDraft, encodeDraft,
-  MAX_SCRIPTS, PARALLEL_LIMIT, problems, removeScript, resultBoxes, scriptSeconds, spokenChars, summary, switchDrive, switchMode,
+  MAX_SCRIPTS, PARALLEL_LIMIT, problems, removeScript, resultBoxes, scriptChars, scriptSeconds, summary, switchDrive, switchMode,
   voiceFromPersona, withAvatar, withPersona, withVoice, type Assignment, type TalkingBatch, type TalkingDraft, type TalkingScript,
 } from "@/features/video-studio/talking-batch";
 import { mediaUrl } from "@/lib/api/base-url";
@@ -26,6 +32,7 @@ type Props = {
   userId: string; workspaceId: string;
   avatars: VideoAvatar[]; voices: VideoVoice[]; libraryLoading: boolean; libraryError: string; onReloadLibrary: () => void;
   uploadAudio: (file: File) => Promise<{ id: string }>;
+  library: ReturnType<typeof useVideoLibrary>; clones: ReturnType<typeof useVoiceClones>;
   price: number | null; available?: number; enforced?: boolean;
   notify: (text: string, tone?: "info" | "success" | "error") => void;
   stepBar: React.ReactNode; onBack: () => void; onWriting: () => void;
@@ -42,7 +49,9 @@ export function TalkingStudio(props: Props) {
   const storageKey = draftKey(userId, workspaceId);
   const [draft, setDraftState] = useState<TalkingDraft>(emptyDraft);
   const [restored, setRestored] = useState(false);
-  const [personas, setPersonas] = useState<PersonaEntry[]>([]);
+  const personaStore = usePersonas(workspaceId);
+  const personas: VideoPersona[] = personaStore.personas;
+  const [drawer, setDrawer] = useState<{ kind: "avatar" | "persona" | "voice"; target: string } | null>(null);
   const [picker, setPicker] = useState<Picker>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [manualText, setManualText] = useState("");
@@ -88,7 +97,6 @@ export function TalkingStudio(props: Props) {
         try { const view = await api.status(batchId); if (active) setBatch(view); } catch { /* 批次读不到时不打扰 */ }
       }
     })();
-    void api.personas().then(list => { if (active) setPersonas(list); }).catch(() => undefined);
     return () => { active = false; };
     // 只在进入页面时执行一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -200,12 +208,6 @@ export function TalkingStudio(props: Props) {
     router.replace("/video-studio/create", { scroll: false });
   };
 
-  const gotoLibrary = (path: "/video-studio/avatars" | "/video-studio/voices") => {
-    // W6 的就地抽屉合入前：草稿已在 sessionStorage，去形象库定制完回到口播页会原样恢复。
-    setPicker(null);
-    router.push(path);
-  };
-
   const applyPresenter = (target: string, next: (current: Assignment) => Assignment) => setDraft(current => assign(current, target, next));
 
   // ---- 渲染 ----
@@ -224,7 +226,7 @@ export function TalkingStudio(props: Props) {
     <span className={styles.scriptIndex}>{index + 1}</span>
     <div className={styles.scriptText}>
       <b>{displayTitle(script)}</b>
-      <small>{script.source === "audio" ? (script.audioId ? `音频 · ${script.audioSeconds ? durationLabel(script.audioSeconds) : "已上传"}` : "正在上传…") : `${spokenChars(script.script)} 字 · 约 ${durationLabel(scriptSeconds(script))}${script.source === "library" ? " · 来自文案库" : ""}`}</small>
+      <small>{script.source === "audio" ? (script.audioId ? `音频 · ${script.audioSeconds ? durationLabel(script.audioSeconds) : "已上传"}` : "正在上传…") : `${scriptChars(script)} 字 · 约 ${durationLabel(scriptSeconds(script))}${script.source === "library" ? " · 来自文案库" : ""}`}</small>
       {script.source !== "audio" && <p>{script.script}</p>}
     </div>
     <button type="button" className={styles.iconButton} aria-label={`移除第 ${index + 1} 条`} onClick={() => setDraft(current => removeScript(current, script.key))}><Trash2 size={15} /></button>
@@ -250,7 +252,7 @@ export function TalkingStudio(props: Props) {
   const assignTable = (withVoiceColumn: boolean) => <div className={styles.assignTable} data-cols={withVoiceColumn ? 3 : 2} role="table" aria-label="每条稿的数字人与音色">
     <div className={styles.assignHead} role="row"><span role="columnheader">稿</span><span role="columnheader">数字人</span>{withVoiceColumn && <span role="columnheader">音色</span>}</div>
     {draft.scripts.map((script, index) => { const row = assignmentFor(draft, script.key); return <div key={script.key} className={styles.assignRow} role="row">
-      <div role="cell" className={styles.assignScript}><span className={styles.scriptIndex}>{index + 1}</span><span><b>{displayTitle(script)}</b><small>{script.source === "audio" ? "音频" : `${spokenChars(script.script)} 字 · 约 ${durationLabel(scriptSeconds(script))}`}</small></span></div>
+      <div role="cell" className={styles.assignScript}><span className={styles.scriptIndex}>{index + 1}</span><span><b>{displayTitle(script)}</b><small>{script.source === "audio" ? "音频" : `${scriptChars(script)} 字 · 约 ${durationLabel(scriptSeconds(script))}`}</small></span></div>
       <div role="cell">{presenterCell(script.key, row)}</div>
       {withVoiceColumn && <div role="cell">{voiceCell(script.key, row)}</div>}
     </div>; })}
@@ -267,7 +269,7 @@ export function TalkingStudio(props: Props) {
       {missing > 0 && <p className={styles.warn}>有 {missing} 条文案已删除，已跳过。</p>}
       {draft.scripts.length > 0 && <ol className={styles.scriptList}>{draft.scripts.map(scriptLine)}</ol>}
       {textDrive ? <>
-        {manualOpen && <div className={styles.manual}><textarea aria-label="手动输入口播稿" value={manualText} maxLength={3000} placeholder="粘贴或输入一条口播稿，数字人会照着念" onChange={event => setManualText(event.target.value)} /><div><small>{spokenChars(manualText)} 字 · 约 {durationLabel(Math.round(spokenChars(manualText) / 4.8))}</small><button type="button" className={baseStyles.outlineButton} onClick={() => { setManualOpen(false); setManualText(""); }}>取消</button><button type="button" className={baseStyles.primaryButton} disabled={!manualText.trim()} onClick={addManual}>加入这条</button></div></div>}
+        {manualOpen && <div className={styles.manual}><textarea aria-label="手动输入口播稿" value={manualText} maxLength={3000} placeholder="粘贴或输入一条口播稿，数字人会照着念" onChange={event => setManualText(event.target.value)} /><div><small>{scriptStats(manualText).label}</small><button type="button" className={baseStyles.outlineButton} onClick={() => { setManualOpen(false); setManualText(""); }}>取消</button><button type="button" className={baseStyles.primaryButton} disabled={!manualText.trim()} onClick={addManual}>加入这条</button></div></div>}
         <div className={styles.actions}>
           <button type="button" className={baseStyles.outlineButton} disabled={draft.scripts.length >= MAX_SCRIPTS} onClick={() => setLibraryOpen(true)}><BookOpenText size={15} />从文案库选择</button>
           {!manualOpen && <button type="button" className={baseStyles.outlineButton} disabled={draft.scripts.length >= MAX_SCRIPTS} onClick={() => setManualOpen(true)}><Plus size={15} />手动输入一条</button>}
@@ -301,7 +303,7 @@ export function TalkingStudio(props: Props) {
     {stepHeader(3, draft.mode === "same" || draft.scripts.length <= 1 ? (voiceOf(shared.voiceId)?.name ?? "选择数字人的声音") : "每条稿的音色")}
     {draft.step === 3 && textDrive && <div className={styles.stepBody}>
       {draft.mode === "same" || draft.scripts.length <= 1 ? <div className={styles.sharedPick}>{voiceCell("all", draft.mode === "same" ? shared : assignmentFor(draft, draft.scripts[0]?.key ?? ""))}</div> : assignTable(true)}
-      <div className={styles.actions}><button type="button" className={styles.quietButton} disabled aria-disabled="true" title="声音克隆暂未开通"><Plus size={14} />克隆新声音 · 暂未开通</button></div>
+      <div className={styles.actions}><button type="button" className={styles.quietButton} onClick={() => setDrawer({ kind: "voice", target: "all" })}><Plus size={14} />克隆新声音</button></div>
       <footer className={styles.stepFoot}><small /><button type="button" className={baseStyles.primaryButton} disabled={!stepDone(3)} onClick={() => goStep(4)}>下一步：确认生成</button></footer>
     </div>}
   </section>;
@@ -320,7 +322,7 @@ export function TalkingStudio(props: Props) {
       {issues.length > 0 && <ul className={styles.issues}>{issues.map(issue => <li key={issue.text}><button type="button" onClick={() => goStep(issue.step)}>第 {issue.step} 步：{issue.text}</button></li>)}</ul>}
       {submitError && <p className={styles.warn} role="alert">{submitError}</p>}
       {short && <ShortOfCredits credits={totals.credits} />}
-      <footer className={styles.stepFoot}><small /><button type="button" className={`${baseStyles.primaryButton} ${styles.generate}`} disabled={submitting || issues.length > 0 || short || uploading > 0} onClick={() => void generate()}>{submitting ? "正在提交…" : submitError && !short ? "再次确认（不会重复扣费）" : `确认生成 ${totals.count} 条${totals.credits ? ` · ${totals.credits} 积分` : ""}`}</button></footer>
+      <footer className={styles.stepFoot}><small /><button type="button" className={`${baseStyles.primaryButton} ${styles.generate}`} aria-busy={submitting} disabled={submitting || issues.length > 0 || short || uploading > 0} onClick={() => void generate()}>{submitting ? <><span className={styles.spinner} aria-hidden="true" />正在提交…</> : submitError && !short ? "再次确认（不会重复扣费）" : `确认生成 ${totals.count} 条${totals.credits ? ` · ${totals.credits} 积分` : ""}`}</button></footer>
     </div>}
   </section>;
 
@@ -358,8 +360,16 @@ export function TalkingStudio(props: Props) {
     })}</ol>
   </section>;
 
+  // 有批次时：结果在最上面，四步收成一行本批摘要；点「再做一批」才清空重来。
+  const batchNames = batch ? [...new Set(batch.batch.items.map(item => personaOf(item.persona_id ?? undefined)?.name ?? (avatarOf(item.avatar_id ?? undefined) ? avatarLabel(avatarOf(item.avatar_id ?? undefined)!).split(" · ")[0] : "")).filter(Boolean))] : [];
+  const batchState = !batch ? "" : batchSettled(batch) ? (boxes.length - doneCount ? `${doneCount} 条完成 · ${boxes.length - doneCount} 条失败` : "已完成") : `生成中 · 已完成 ${doneCount} 条`;
+  const batchLine = batch && <section className={styles.batchLine} aria-label="本批设置">
+    <span className={styles.stepNo}><Check size={13} /></span>
+    <p><b>本批：{boxes.length} 条</b>{batchNames.length > 0 && <> · {batchNames.join(" / ")}</>} · {batchState}</p>
+  </section>;
   const pickerTarget = picker?.target ?? "all";
   const pickerRow = pickerTarget === "all" ? (draft.mode === "same" ? shared : assignmentFor(draft, draft.scripts[0]?.key ?? "")) : assignmentFor(draft, pickerTarget);
+  const drawerRow = drawer ? (drawer.target === "all" ? (draft.mode === "same" ? shared : assignmentFor(draft, draft.scripts[0]?.key ?? "")) : assignmentFor(draft, drawer.target)) : {};
   const pickerTitle = pickerTarget === "all" || draft.mode === "same" ? "选择数字人" : `第 ${draft.scripts.findIndex(s => s.key === pickerTarget) + 1} 条的数字人`;
 
   return <main className={styles.page}>
@@ -369,15 +379,22 @@ export function TalkingStudio(props: Props) {
         <Link href="/video-studio" className={styles.back} aria-label="返回视频空间" onClick={event => { event.preventDefault(); props.onBack(); }}><ArrowLeft size={18} /></Link>
         <div><h1>口播</h1><p>选好文案、数字人和音色，一次生成多条口播视频。</p></div>
       </header>
-      {!restored ? <div className={styles.loading} role="status">正在载入…</div> : <div className={styles.steps}>{stepOne}{stepTwo}{stepThree}{stepFour}</div>}
-      {results}
+      {!restored ? <div className={styles.loading} role="status">正在载入…</div> : batch ? <>{batchLine}{results}</> : <div className={styles.steps}>{stepOne}{stepTwo}{stepThree}{stepFour}</div>}
     </div>
     {libraryOpen && <ScriptLibraryDialog api={api} chosen={new Set(draft.scripts.map(s => s.documentId).filter((id): id is string => !!id))} room={MAX_SCRIPTS - draft.scripts.length} onClose={() => setLibraryOpen(false)} onAdd={entries => { setDraft(current => addScripts(current.drive === "audio" ? switchDrive(current, "text") : current, entries.map(scriptFromLibrary))); setLibraryOpen(false); }} />}
     {picker?.kind === "presenter" && <PresenterPicker title={pickerTitle} personas={personas} avatars={avatars} voices={voices} selected={pickerRow}
       onClose={() => setPicker(null)}
       onApply={choice => { applyPresenter(pickerTarget, current => choice.kind === "persona" ? withPersona(choice.persona) : withAvatar(current, choice.avatar.id)); setPicker(null); }}
-      onCreatePersona={() => gotoLibrary("/video-studio/avatars")} onCreateAvatar={() => gotoLibrary("/video-studio/avatars")} />}
-    {picker?.kind === "voice" && <VoicePickerFor voices={usableVoices} row={pickerRow} playing={playing} onPreview={previewVoice} onClose={() => setPicker(null)} onApply={voiceId => { applyPresenter(pickerTarget, current => withVoice(current, voiceId)); setPicker(null); }} notify={notify} />}
+      onCreatePersona={() => setDrawer({ kind: "persona", target: pickerTarget })} onCreateAvatar={() => setDrawer({ kind: "avatar", target: pickerTarget })} jobs={props.library.jobs} />}
+    {picker?.kind === "voice" && <VoicePickerFor voices={usableVoices} row={pickerRow} playing={playing} onPreview={previewVoice} onClose={() => setPicker(null)} onApply={voiceId => { applyPresenter(pickerTarget, current => withVoice(current, voiceId)); setPicker(null); }} onClone={() => setDrawer({ kind: "voice", target: pickerTarget })} />}
+    <AvatarCreateDrawer open={drawer?.kind === "avatar"} onClose={() => setDrawer(null)} workspaceId={workspaceId} userId={userId} library={props.library}
+      onCreated={() => notify("形象开始定制了，完成后会出现在「我的形象」里。可以先给其他稿选别的数字人。", "success")}
+      onReady={avatar => { const target = drawer?.target ?? "all"; applyPresenter(target, current => withAvatar(current, avatar.id)); setDrawer(null); setPicker(null); notify(`已用上新形象「${avatar.name}」`, "success"); }} />
+    <PersonaCreateDrawer open={drawer?.kind === "persona"} onClose={() => setDrawer(null)} library={props.library} personas={personaStore}
+      initialAvatarId={drawer?.kind === "persona" ? (drawerRow.avatarId ?? "") : ""} initialVoiceId={drawer?.kind === "persona" ? (drawerRow.voiceId ?? "") : ""}
+      onCreated={persona => { if (persona.available) { applyPresenter(drawer?.target ?? "all", () => withPersona(persona)); setPicker(null); notify(`已保存并选用固定形象「${persona.name}」`, "success"); } else notify(`已保存固定形象「${persona.name}」：${persona.unavailable_reason || "暂时不能使用"}`); }} />
+    <VoiceCloneDrawer open={drawer?.kind === "voice"} onClose={() => setDrawer(null)} workspaceId={workspaceId} clones={props.clones}
+      onCreated={() => { void props.library.reload(); notify("声音开始克隆了，完成后会出现在「我的声音」里", "success"); }} onUseSystemVoices={() => setDrawer(null)} />
   </main>;
 }
 
@@ -391,9 +408,9 @@ function ResultVideo({ src, poster, label }: { src: string; poster?: string; lab
   </>;
 }
 
-function VoicePickerFor({ voices, row, playing, onPreview, onApply, onClose, notify }: { voices: VideoVoice[]; row: Assignment; playing: string; onPreview: (voice: VideoVoice) => void; onApply: (voiceId: string) => void; onClose: () => void; notify: Props["notify"] }) {
+function VoicePickerFor({ voices, row, playing, onPreview, onApply, onClose, onClone }: { voices: VideoVoice[]; row: Assignment; playing: string; onPreview: (voice: VideoVoice) => void; onApply: (voiceId: string) => void; onClose: () => void; onClone: () => void }) {
   const [selected, setSelected] = useState(row.voiceId ?? "");
-  return <VoicePicker voices={voices} selectedId={selected} playingId={playing} onSelect={voice => setSelected(voice.id)} onPreview={onPreview} onApply={() => { if (selected) onApply(selected); }} onClose={onClose} onClone={() => notify("声音克隆暂未开通")} cloneLabel="克隆新声音 · 暂未开通" />;
+  return <VoicePicker voices={voices} selectedId={selected} playingId={playing} onSelect={voice => setSelected(voice.id)} onPreview={onPreview} onApply={() => { if (selected) onApply(selected); }} onClose={onClose} onClone={onClone} cloneLabel="克隆新声音" />;
 }
 
 /** 文案库多选：显示标题 + 口播稿，按选择顺序加入。 */

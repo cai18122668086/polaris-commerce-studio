@@ -293,7 +293,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const lipsyncNote = credits.note(["lipsync"]);
   const editor = <TalkingStudio userId={userId} workspaceId={workspaceId} avatars={AVATARS} voices={VOICES}
     libraryLoading={library.loading} libraryError={library.error} onReloadLibrary={() => attempt(() => library.reload())}
-    uploadAudio={library.uploadAudio} price={lipsyncNote.credits} available={credits.balance?.available} enforced={credits.balance?.enforced}
+    uploadAudio={library.uploadAudio} library={library} clones={clones} price={lipsyncNote.credits} available={credits.balance?.available} enforced={credits.balance?.enforced}
     notify={notify} stepBar={stepBar("create")} onBack={() => go("home")} onWriting={() => go("writing")} />;
 
   const entries = [

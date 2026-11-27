@@ -3292,6 +3292,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/{entry_id}/publish-fill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Fill */
+        post: operations["start_fill_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__publish_fill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/{entry_id}/publish-fill/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fill */
+        get: operations["get_fill_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__publish_fill__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/tasks": {
         parameters: {
             query?: never;
@@ -8424,6 +8458,31 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** FillRequest */
+        FillRequest: {
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "douyin" | "xiaohongshu";
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** FillStatus */
+        FillStatus: {
+            entry: components["schemas"]["LibraryEntry"] | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Message */
+            message: string;
+            /** Status */
+            status: string;
+            /** Task Id */
+            task_id: string;
+        };
         /** FinalizeJobRequest */
         FinalizeJobRequest: {
             /** Approval Text */
@@ -10696,7 +10755,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate" | "cover_generate" | "editing_auto_image" | "avatar_polish";
+            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate" | "cover_generate" | "editing_auto_image" | "avatar_polish" | "writing_publish_fill";
             /** Credits */
             credits: number | null;
         };
@@ -18888,6 +18947,75 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_fill_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__publish_fill_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FillRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FillStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fill_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__publish_fill__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FillStatus"];
                 };
             };
             /** @description Validation Error */

@@ -9368,6 +9368,77 @@
         "title": "FetchItemRequest",
         "type": "object"
       },
+      "FillRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "platform": {
+            "enum": [
+              "douyin",
+              "xiaohongshu"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "platform"
+        ],
+        "title": "FillRequest",
+        "type": "object"
+      },
+      "FillStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "entry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LibraryEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "status",
+          "error_code",
+          "message",
+          "entry"
+        ],
+        "title": "FillStatus",
+        "type": "object"
+      },
       "FinalizeJobRequest": {
         "properties": {
           "approval_text": {
@@ -15749,7 +15820,8 @@
               "writing_generate",
               "cover_generate",
               "editing_auto_image",
-              "avatar_polish"
+              "avatar_polish",
+              "writing_publish_fill"
             ],
             "title": "Action",
             "type": "string"
@@ -32062,6 +32134,137 @@
           }
         ],
         "summary": "Update Entry",
+        "tags": [
+          "video-script-library"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/{entry_id}/publish-fill": {
+      "post": {
+        "operationId": "start_fill_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__publish_fill_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FillStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Start Fill",
+        "tags": [
+          "video-script-library"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/{entry_id}/publish-fill/{task_id}": {
+      "get": {
+        "operationId": "get_fill_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__publish_fill__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FillStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Fill",
         "tags": [
           "video-script-library"
         ]

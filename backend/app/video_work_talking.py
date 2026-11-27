@@ -171,11 +171,26 @@ def sync_items(session: Session, items: Iterable[VideoWorkItemRecord]) -> None:
 
 
 def waiting(item: VideoWorkItemRecord) -> bool:
+    """Confirmed by the user (queued) but not yet given a task.
+
+    ``pending`` items were never confirmed: only the submit/retry POST turns
+    them into ``queued``, so polling can never start a paid task by itself.
+    """
     return (
         item.stage == "talking"
-        and item.status in {"pending", "queued"}
+        and item.status == "queued"
         and not item.generation_task_id
     )
+
+
+def confirm(session: Session, items: Iterable[VideoWorkItemRecord]) -> None:
+    for item in items:
+        if (
+            item.stage == "talking"
+            and item.status == "pending"
+            and not item.generation_task_id
+        ):
+            _write(session, item, status="queued")
 
 
 def _active_count(session: Session, user_id: str) -> int:
@@ -370,6 +385,7 @@ def submit_talking(
     batch = _own_batch(session, workspace, batch_id)
     if batch.source != "talking":
         raise ApiError(422, "VIDEO_WORK_BATCH_SOURCE", "这个批次不需要口播。")
+    confirm(session, batch_items(session, batch.id))
     settings = request.app.state.settings
     started = dispatch(
         session, settings, workspace, batch.id, lambda: providers(request)
@@ -437,7 +453,7 @@ def retry_talking(
             session,
             item,
             generation_task_id=None,
-            status="pending",
+            status="queued",
             error=None,
             history=history,
         )

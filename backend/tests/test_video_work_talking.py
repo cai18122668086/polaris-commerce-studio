@@ -202,6 +202,14 @@ def test_parallel_limit_queues_the_rest_with_positions(studio, monkeypatch):
     workspace = WorkspaceContext(Principal(user_id=user), ws, MembershipRole.OWNER)
     settings = client.app.state.settings
     with client.app.state.session_factory() as session:
+        # Unconfirmed items are never started, not even by a dispatch.
+        assert (
+            talking.dispatch(
+                session, settings, workspace, batch["id"], lambda: provider
+            )
+            == []
+        )
+        talking.confirm(session, talking.batch_items(session, batch["id"]))
         started = talking.dispatch(
             session, settings, workspace, batch["id"], lambda: provider
         )
@@ -337,3 +345,12 @@ def test_editing_upload_batch_cannot_be_sent_to_talking(studio):
     batch = client.post(root + "/work-batches", json=body).json()
     assert client.post(root + f"/work-batches/{batch['id']}/talking").status_code == 422
     assert submits(provider) == []
+
+
+def test_polling_never_starts_an_unconfirmed_batch(studio):
+    client, _, provider, root, _, _ = studio
+    batch = new_batch(client, root, item("稿一"), item("稿二"))
+    for _ in range(2):
+        view = client.get(root + f"/work-batches/{batch['id']}/talking").json()
+    assert [i["status"] for i in view["batch"]["items"]] == ["pending", "pending"]
+    assert submits(provider) == [] and jobs(client) == 0

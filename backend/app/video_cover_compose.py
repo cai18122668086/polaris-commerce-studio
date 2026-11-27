@@ -28,6 +28,7 @@ import colorsys
 import json
 import math
 import subprocess
+import threading
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -134,12 +135,21 @@ def intersection(a: Box, b: Box) -> int:
     return max(0, w) * max(0, h)
 
 
+# OpenCV 5's new DNN engine makes no thread-safety promise and covers run in
+# parallel background threads, so every detector call goes through this lock
+# and OpenCV keeps a single internal thread.
+_CV_LOCK = threading.Lock()
+
+
 @lru_cache(maxsize=4)
 def _detector(size: tuple[int, int]) -> Any:  # pragma: no cover - needs OpenCV
+    import cv2
+
     from .bihuo_suite.subject import FaceDetector, model_available
 
     if not model_available():
         return None
+    cv2.setNumThreads(1)
     scale = 4 if min(size) >= 720 else 2
     return FaceDetector(size=size, scale=scale)
 
@@ -148,10 +158,11 @@ def detect_face(image: Image.Image) -> tuple[Box, float] | None:
     """Largest confident face, or None when the model is unavailable."""
 
     try:
-        detector = _detector(image.size)
-        if detector is None:
-            return None
-        return detector.detect(image.convert("RGB"))
+        with _CV_LOCK:
+            detector = _detector(image.size)
+            if detector is None:
+                return None
+            return detector.detect(image.convert("RGB"))
     except Exception:  # detection never fails a cover
         return None
 
@@ -451,16 +462,27 @@ def text_zone(layout: Layout, face: Box | None) -> Box:
 BREAK_AFTER = set("，。！？；：、,.!?;:")
 
 
-@lru_cache(maxsize=1)
+_WORDS_LOCK = threading.Lock()
+_WORDS: list[Any] = []
+
+
 def _word_tokenizer() -> Any:
-    """The caption module's pinned jieba dictionary, or None (then per character)."""
+    """The caption module's pinned jieba dictionary, or None (then per character).
 
-    try:
-        from .video_editing_captioning import tokenizer
+    Loaded once per process under a lock: two covers must not build it at once.
+    """
 
-        return tokenizer()
-    except Exception:
-        return None
+    if _WORDS:
+        return _WORDS[0]
+    with _WORDS_LOCK:
+        if not _WORDS:
+            try:
+                from .video_editing_captioning import tokenizer
+
+                _WORDS.append(tokenizer())
+            except Exception:
+                _WORDS.append(None)
+    return _WORDS[0]
 
 
 def _is_latin(ch: str) -> bool:

@@ -71,6 +71,7 @@ from .support_routes import router as support_router
 from .task_runner import build_task_runner, validate_task_runner_settings
 from .thumbnails import ThumbnailCache
 from .video_assistance import router as video_assistance_router
+from .video_auto_writing import router as video_auto_writing_router
 from .video_avatar_uploads import router as video_avatar_uploads_router
 from .video_benchmark_routes import router as video_benchmark_router
 from .video_editing_library_note_routes import (
@@ -580,6 +581,7 @@ def create_app(
     application.include_router(video_assistance_router)
     application.include_router(video_benchmark_router)
     application.include_router(video_writing_router)
+    application.include_router(video_auto_writing_router)
     application.include_router(credit_router)
     application.include_router(processing_consent_router)
     application.include_router(creation_summary_router)

@@ -276,6 +276,8 @@ class WritingTaskRequest(StrictVideoModel):
     analysis_document_id: UUID | None = None
     # ref_compare only: the 2–3 saved analyses to compare.
     analysis_document_ids: list[UUID] = Field(default_factory=list, max_length=3)
+    # fact_draft only: 1+ asks for a different opening hook than version 0.
+    variant: int = Field(default=0, ge=0, le=3)
     facts_document_id: UUID | None = None
     draft_mode: WritingDraftMode | None = None
     target_duration_seconds: int | None = Field(default=None, ge=5, le=300)

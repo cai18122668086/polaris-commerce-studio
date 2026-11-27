@@ -1696,6 +1696,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/auto-writing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start */
+        post: operations["start_api_v1_video_studio_workspaces__workspace_id__auto_writing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/auto-writing/{run_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume */
+        post: operations["resume_api_v1_video_studio_workspaces__workspace_id__auto_writing__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/avatar-clones": {
         parameters: {
             query?: never;
@@ -4838,6 +4872,35 @@ export interface components {
             pain_points?: string[];
             /** Who */
             who: string;
+        };
+        /** AutoWritingRequest */
+        AutoWritingRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Facts Text */
+            facts_text: string;
+            /** Forbidden Terms */
+            forbidden_terms?: string[];
+            /**
+             * Platform
+             * @default douyin
+             * @enum {string}
+             */
+            platform: "douyin" | "xiaohongshu";
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Query */
+            query: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Restricted Claims */
+            restricted_claims?: ("price" | "net_quantity" | "health_effect")[];
         };
         /** AvatarResponse */
         AvatarResponse: {
@@ -10042,6 +10105,11 @@ export interface components {
             request_id: string;
             /** Target Duration Seconds */
             target_duration_seconds?: number | null;
+            /**
+             * Variant
+             * @default 0
+             */
+            variant: number;
         };
         /** WritingVersionSources */
         WritingVersionSources: {
@@ -13646,6 +13714,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_v1_video_studio_workspaces__workspace_id__auto_writing_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutoWritingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_v1_video_studio_workspaces__workspace_id__auto_writing__run_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistanceResponse"];
                 };
             };
             /** @description Validation Error */

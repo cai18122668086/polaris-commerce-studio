@@ -1,19 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import type { VideoContent, VideoDraft } from "@/features/video-studio/projects";
 import type { useProjectSession } from "@/features/video-studio/use-project-session";
 import type { ScriptReference } from "@/features/video-studio/use-script-reference";
 import type { ToastTone } from "./studio-toast";
 import page from "./writing-studio.module.css";
+import { AutoWriting } from "./auto-writing";
 import { PageHero } from "./page-hero";
 import { ViralWriting } from "./viral-writing";
 
 type ProjectSession = ReturnType<typeof useProjectSession>["session"];
 
 /**
- * 爆款文案: find benchmarks by likes (or paste links) → confirm → expert
- * teardown → the user's own facts → one-click shadow rewrite → adopt and go
- * on to 口播. The older assistant tools stay available inside the editor.
+ * 爆款文案: by default the user gives a platform, a keyword or links and their
+ * own facts once, and the AI does the rest (pick benchmarks, teardown, several
+ * versions). The step-by-step flow stays available for choosing by hand.
  */
 export function WritingStudio({ workspaceId, projectId, session, content, notify, copyText, onUseForVoice }: {
   workspaceId: string;
@@ -29,13 +31,18 @@ export function WritingStudio({ workspaceId, projectId, session, content, notify
   onSaveToLibrary?: () => void;
   onUseForVoice: () => void;
 }) {
+  const [manual, setManual] = useState(false);
+  const onAdopted = async () => { await session.select(projectId); notify("文案已放进口播编辑器", "success"); onUseForVoice(); };
   return <div className={page.writing}>
     <PageHero eyebrow="爆款文案" title="照着爆款写，" accent="说的是你自己的事"
-      description="按点赞找到同类爆款，拆出它的钩子、结构和表达，再换成你的身份、产品和经历，一键仿写成口播稿。"
-      facts={[{ label: "对标平台", value: "抖音 · 小红书" }, { label: "每次对标", value: "最多 3 条" }]}
+      description="告诉 AI 去哪找、找什么，再写下你自己的产品和经历。AI 按点赞挑爆款、拆解，写好几版口播稿给你挑。"
+      facts={[{ label: "对标平台", value: "抖音 · 小红书" }, { label: "你要做的", value: "填一次，挑一版" }]}
       motif="script" />
-    <ViralWriting key={projectId} workspaceId={workspaceId} projectId={projectId} session={session} productFacts={content.product_facts}
-      copyText={copyText}
-      onAdopted={async () => { await session.select(projectId); notify("文案已放进口播编辑器", "success"); onUseForVoice(); }} />
+    {manual
+      ? <>
+          <button type="button" className={page.switch} onClick={() => setManual(false)}>← 回到 AI 全自动</button>
+          <ViralWriting key={projectId} workspaceId={workspaceId} projectId={projectId} session={session} productFacts={content.product_facts} copyText={copyText} onAdopted={onAdopted} />
+        </>
+      : <AutoWriting key={projectId} workspaceId={workspaceId} projectId={projectId} session={session} productFacts={content.product_facts} copyText={copyText} onAdopted={onAdopted} onManual={() => setManual(true)} />}
   </div>;
 }

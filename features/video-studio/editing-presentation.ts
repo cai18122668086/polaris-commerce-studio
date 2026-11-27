@@ -53,6 +53,12 @@ const hidden = new Set<string>([
   "bihuo-11-v1", // = 暖白圆窗 (bihuo-48)
   "bihuo-27-v1", // = 深青标题 (bihuo-24), colour only
   "bihuo-29-v1", // = 青绿光窗 (bihuo-14), colour only
+  // 11-28 v3 评估：与居中字幕 (bihuo-36) 底层版式相同（全屏人物 + 底部居中字幕 + 黄色重点），
+  // 8 帧里 7 帧一致，只多一次图卡；示例差异度 32.3 为人物出镜组最低。换示例也拉不开差距，按去重口径隐藏。
+  "bihuo-47-v1", // = 居中字幕 (bihuo-36)
+  // 11-28 v3 评估：后半段字幕深色字压深青底几乎看不清。字幕色在模板不可变清单内（计入身份哈希），
+  // 修法待总控定；修好前临时隐藏，已有项目仍可渲染。
+  "bihuo-24-v1", // 临时：字幕对比度不足
   // No male presenter example yet: the style needs real operation footage.
   "chenxi-broll-v1",
 ]);

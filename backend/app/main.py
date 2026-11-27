@@ -72,8 +72,10 @@ from .task_runner import build_task_runner, validate_task_runner_settings
 from .thumbnails import ThumbnailCache
 from .video_assistance import router as video_assistance_router
 from .video_auto_writing import router as video_auto_writing_router
+from .video_avatar_polish import router as video_avatar_polish_router
 from .video_avatar_uploads import router as video_avatar_uploads_router
 from .video_benchmark_routes import router as video_benchmark_router
+from .video_cover_routes import router as video_cover_router
 from .video_editing_library_note_routes import (
     router as video_editing_library_note_router,
 )
@@ -88,8 +90,13 @@ from .video_editing_supplement_routes import router as video_editing_supplement_
 from .video_editing_task_routes import router as video_editing_task_router
 from .video_editing_transcript_routes import router as video_editing_transcript_router
 from .video_generation import router as video_generation_router
+from .video_personas import router as video_personas_router
+from .video_script_library import router as video_script_library_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router
+from .video_work_editing import router as video_work_editing_router
+from .video_work_routes import router as video_work_router
+from .video_work_talking import router as video_work_talking_router
 from .video_writing_routes import router as video_writing_router
 
 logger = logging.getLogger(__name__)
@@ -247,7 +254,34 @@ def create_app(
         membership_task = asyncio.create_task(maintenance_loop(session_factory))
         from .video_generation_recovery import VideoRecoveryService
         from .video_providers import VideoProviders
+        from .video_work_talking import TalkingSweeper
 
+        talking_sweeper = None
+        if (
+            app_settings.video_talking_sweep_enabled
+            and app_settings.video_providers_enabled
+        ):
+            talking_sweeper = TalkingSweeper(
+                session_factory,
+                app_settings,
+                getattr(application.state, "video_providers", None)
+                or VideoProviders(app_settings),
+            )
+            application.state.talking_sweeper = talking_sweeper
+            talking_sweeper.start()
+        from .video_work_editing import EditingSweeper
+
+        editing_sweeper = None
+        if (
+            app_settings.video_editing_sweep_enabled
+            and app_settings.video_editing_enabled
+        ):
+            editing_sweeper = EditingSweeper(session_factory, app_settings)
+            application.state.editing_sweeper = editing_sweeper
+            editing_sweeper.start()
+        from .video_cover_routes import start_recovery as start_cover_recovery
+
+        start_cover_recovery(application)
         video_recovery = None
         if (
             app_settings.video_background_recovery_enabled
@@ -266,6 +300,10 @@ def create_app(
         finally:
             if video_recovery:
                 video_recovery.stop()
+            if talking_sweeper:
+                talking_sweeper.stop()
+            if editing_sweeper:
+                editing_sweeper.stop()
             membership_task.cancel()
             with suppress(asyncio.CancelledError):
                 await membership_task
@@ -574,7 +612,13 @@ def create_app(
     application.include_router(video_studio_router)
     application.include_router(video_voice_cloning_router)
     application.include_router(video_generation_router)
+    application.include_router(video_work_router)
+    application.include_router(video_work_talking_router)
+    application.include_router(video_work_editing_router)
     application.include_router(video_avatar_uploads_router)
+    application.include_router(video_personas_router)
+    application.include_router(video_avatar_polish_router)
+    application.include_router(video_cover_router)
     application.include_router(video_editing_router)
     application.include_router(video_editing_native_plan_router)
     application.include_router(video_editing_planning_router)
@@ -588,6 +632,7 @@ def create_app(
     application.include_router(video_benchmark_router)
     application.include_router(video_writing_router)
     application.include_router(video_auto_writing_router)
+    application.include_router(video_script_library_router)
     application.include_router(credit_router)
     application.include_router(processing_consent_router)
     application.include_router(creation_summary_router)

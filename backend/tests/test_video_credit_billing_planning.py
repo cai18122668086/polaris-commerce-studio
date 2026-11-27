@@ -72,7 +72,8 @@ def test_paid_planning_holds_settles_and_cancel_releases(
 
     # A second paid plan cancelled while queued returns its hold at once.
     second = prepare(client, ws, settings, task)
-    queued = create(client, ws, task["id"], "generate", second["id"])
+    # Same request again on purpose: the user confirmed a paid re-plan.
+    queued = create(client, ws, task["id"], "generate", second["id"], replan=True)
     assert queued.status_code == 200, queued.text
     url = base(ws) + "/editing-planning-tasks/" + queued.json()["id"]
     assert client.post(url + "/cancel").json()["status"] == "cancelled"

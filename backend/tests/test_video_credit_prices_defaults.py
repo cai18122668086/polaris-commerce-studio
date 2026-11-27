@@ -14,7 +14,10 @@ EXPECTED = {
     "editing_render": 10,
     "benchmark_search": 5,
     "writing_generate": 10,
+    "cover_generate": 7,
     "editing_auto_image": 7,
+    "avatar_polish": 7,
+    "writing_publish_fill": 2,
 }
 
 

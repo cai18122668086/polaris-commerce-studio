@@ -19,6 +19,7 @@ from .video_editing_pipeline import EditingFailure, run
 from .video_writing_provenance import script_digest
 
 VERSION = "confirmed-script-force-align/1"
+NATIVE_INPUT = "alignment-native-input.utf8"
 EVIDENCE = (
     "confirmed-script.json",
     "alignment-input.txt",
@@ -137,13 +138,23 @@ def align_confirmed(root: Path, config: dict) -> Transcript:
     model_root = Path(config["model"])
     if root.resolve().is_relative_to(model_root.resolve()):
         raise ValueError("Alignment output must remain outside the model bundle")
-    if any((root / name).exists() for name in (*EVIDENCE, "transcript.json")):
+    if any(
+        (root / name).exists() for name in (*EVIDENCE, NATIVE_INPUT, "transcript.json")
+    ):
         raise FileExistsError("Preserve previous alignment in its own attempt")
     identity = bundle_identity(model_root, manifest_path=ALIGNMENT_MANIFEST)
     binding = config["confirmed_script"]
     atomic_json(root / "confirmed-script.json", binding)
     text_file = root / "alignment-input.txt"
     text_file.write_text(binding["text"], encoding="utf-8")
+    # FunASR treats a .txt input as a Kaldi key/value manifest: only the first
+    # line is read, and the phrase before the first space becomes the record
+    # key. A multi-line confirmed script was therefore aligned as its first
+    # line only and failed (EDITING_ALIGNMENT_TEXT_TIMESTAMPS_MISMATCH). Other
+    # suffixes are read as one literal UTF-8 document, as the correction path
+    # (video_editing_alignment.align_transcript) already does.
+    native_text_file = root / NATIVE_INPUT
+    native_text_file.write_bytes(text_file.read_bytes())
     from funasr import AutoModel
 
     model = AutoModel(
@@ -154,7 +165,7 @@ def align_confirmed(root: Path, config: dict) -> Transcript:
         trust_remote_code=False,
     )
     result = model.generate(
-        input=(str(audio), str(text_file)),
+        input=(str(audio), str(native_text_file)),
         data_type=("sound", "text"),
         batch_size=1,
     )

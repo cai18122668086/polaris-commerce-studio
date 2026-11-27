@@ -23,7 +23,10 @@ VideoPricedAction = Literal[
     "editing_render",
     "benchmark_search",
     "writing_generate",
+    "cover_generate",
     "editing_auto_image",
+    "avatar_polish",
+    "writing_publish_fill",
 ]
 ACTIONS: tuple[str, ...] = VideoPricedAction.__args__  # type: ignore[attr-defined]
 PRICING_VERSION = "video-credits-config-v1"
@@ -40,8 +43,15 @@ DEFAULT_PRICES: dict[str, int] = {
     "editing_render": 10,
     "benchmark_search": 5,
     "writing_generate": 10,
+    # Image actions are a flat 7 credits per image (approved 2026-11-28).
+    "cover_generate": 7,
     # AI 补充配图：¥0.1/张 ×1.25 失败余量 ×3 ÷ ¥0.06 → 7（负责人定价）
     "editing_auto_image": 7,
+    # AI 润色形象照：图片类统一 7 积分 / 张（2026-11-28 批准），失败不扣
+    "avatar_polish": 7,
+    # 旧文案补写标题和正文：一次小文本调用（约千 token），远小于整篇写稿（10），
+    # 按 2 积分；失败不扣（W1，2026-11-28，待负责人确认）。
+    "writing_publish_fill": 2,
 }
 
 

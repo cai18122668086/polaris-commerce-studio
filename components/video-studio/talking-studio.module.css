@@ -95,9 +95,19 @@
 .issues { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; }
 .page .issues button { border: 0; background: transparent; color: var(--t-warn); font-size: 12px; padding: 0; text-decoration: underline; text-underline-offset: 3px; text-align: left; }
 .generate { min-width: 210px; }
+.page .generate.generate:disabled { opacity: 1; background: var(--t-soft); border-color: var(--t-line); color: var(--t-dim); }
+/* 站点主题里禁用按钮的规则优先级更高（html + .studio + :disabled），这里叠一层类名压过它。 */
+.page .generate.generate[aria-busy="true"]:disabled { background: var(--t-ink); border-color: var(--t-ink); color: var(--t-on-ink); cursor: progress; opacity: 1; transition: none; }
+.spinner { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: talkingSpin .8s linear infinite; flex: none; }
+@keyframes talkingSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+.batchLine { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border: 1px solid var(--t-line); border-radius: 12px; background: var(--t-card); margin-bottom: 6px; }
+.batchLine p { font-size: 13px; color: var(--t-muted); min-width: 0; }
+.batchLine b { color: var(--t-ink); font-weight: 500; }
+.batchLine .stepNo { background: var(--t-soft); color: var(--t-ink); border-color: var(--t-line); }
 
 /* 结果区 */
-.results { margin-top: 30px; scroll-margin-top: 16px; }
+.results { margin-top: 18px; scroll-margin-top: 16px; }
 .resultsHead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
 .resultsHead h2 { font-size: 17px; font-weight: 500; }
 .resultsHead p { font-size: 12px; color: var(--t-muted); margin-top: 4px; }
@@ -148,6 +158,10 @@
 .pickerTools { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; flex-wrap: wrap; }
 .pickerTools > label { flex: 1; min-width: 180px; }
 .pickerTools .quietButton { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 6px 8px; font-size: 13px; color: inherit; }
+.pickerBlocked img { opacity: .42; filter: grayscale(.6); }
+.pickerBlocked b { opacity: .6; }
+.pickerBlocked button { cursor: not-allowed; }
+.blockedTag { position: absolute; top: 8px; left: 8px; z-index: 2; font-size: 11px; padding: 2px 7px; border-radius: 5px; background: rgb(26 26 25 / 78%); color: #fff; }
 .pickerHint { font-size: 12px; opacity: .66; margin: 4px 0 10px; }
 
 @media (max-width: 760px) {

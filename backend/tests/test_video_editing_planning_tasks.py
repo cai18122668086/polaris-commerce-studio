@@ -1836,3 +1836,26 @@ def test_default_replan_flag_leaves_request_bytes_unchanged():
         {**payload, "replan": True}
     ).model_dump(mode="json")
     assert forced == {**payload, "replan": True}
+
+
+def test_adding_mg_to_the_same_request_is_not_a_duplicate(video, tmp_path, monkeypatch):
+    """MG（supplement）不进模型请求：同视频同模板同素材、只多开了 MG，不算重复。"""
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    first = prepare(client, ws, settings, task)
+    with_mg = prepare(client, ws, settings, task)
+    same_mg = prepare(client, ws, settings, task)
+    assert first["request_sha256"] == with_mg["request_sha256"]
+    factory = client.app.state.session_factory
+    with factory() as session:
+        for prepared_id in (with_mg["id"], same_mg["id"]):
+            row = session.get(EditingPlanningTaskRecord, prepared_id)
+            row.snapshot = {**row.snapshot, "supplement": {"mg": {"style": "paper"}}}
+        session.commit()
+    enable_fixture(settings)
+    plain = create(client, ws, task["id"], "generate", first["id"])
+    assert plain.status_code == 200, plain.text
+    mg = create(client, ws, task["id"], "generate", with_mg["id"])
+    assert mg.status_code == 200, mg.text  # MG differs: allowed
+    again = create(client, ws, task["id"], "generate", same_mg["id"])
+    assert again.status_code == 409  # same request and same MG: joined, not paid
+    assert again.json()["error"]["code"] == "EDITING_PLAN_ALREADY_GENERATED"

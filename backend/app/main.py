@@ -94,6 +94,7 @@ from .video_avatar_polish import router as video_avatar_polish_router
 from .video_script_library import router as video_script_library_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router
+from .video_work_editing import router as video_work_editing_router
 from .video_work_routes import router as video_work_router
 from .video_work_talking import router as video_work_talking_router
 from .video_writing_routes import router as video_writing_router
@@ -268,6 +269,16 @@ def create_app(
             )
             application.state.talking_sweeper = talking_sweeper
             talking_sweeper.start()
+        from .video_work_editing import EditingSweeper
+
+        editing_sweeper = None
+        if (
+            app_settings.video_editing_sweep_enabled
+            and app_settings.video_editing_enabled
+        ):
+            editing_sweeper = EditingSweeper(session_factory, app_settings)
+            application.state.editing_sweeper = editing_sweeper
+            editing_sweeper.start()
         video_recovery = None
         if (
             app_settings.video_background_recovery_enabled
@@ -288,6 +299,8 @@ def create_app(
                 video_recovery.stop()
             if talking_sweeper:
                 talking_sweeper.stop()
+            if editing_sweeper:
+                editing_sweeper.stop()
             membership_task.cancel()
             with suppress(asyncio.CancelledError):
                 await membership_task
@@ -598,6 +611,7 @@ def create_app(
     application.include_router(video_generation_router)
     application.include_router(video_work_router)
     application.include_router(video_work_talking_router)
+    application.include_router(video_work_editing_router)
     application.include_router(video_avatar_uploads_router)
     application.include_router(video_personas_router)
     application.include_router(video_avatar_polish_router)

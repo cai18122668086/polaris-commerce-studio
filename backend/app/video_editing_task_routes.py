@@ -1476,9 +1476,34 @@ def confirm_export(
     settings = enabled(request)
     row = own_task(session, workspace, str(task_id))
     own_project(session, workspace, row.project_id)
+    return response(
+        confirm_export_task(
+            session,
+            settings,
+            workspace,
+            row,
+            str(body.preview_artifact_id),
+            body.preview_sha256,
+        ),
+        session,
+    )
+
+
+def confirm_export_task(
+    session: Session,
+    settings: Settings,
+    workspace: WorkspaceContext,
+    row: EditingTaskRecord,
+    preview_artifact_id: str,
+    preview_sha256: str,
+) -> EditingTaskRecord:
+    """Deliver the confirmed preview's master as the final (free, idempotent).
+
+    Shared by the review button and batch editing's automatic confirmation.
+    """
     confirmation = {
-        "preview_id": str(body.preview_artifact_id),
-        "preview_sha256": body.preview_sha256,
+        "preview_id": str(preview_artifact_id),
+        "preview_sha256": preview_sha256,
     }
 
     def confirmed(current: EditingTaskRecord) -> bool:
@@ -1492,14 +1517,14 @@ def confirm_export(
             409, "EDITING_EXPORT_REVIEW_STATE", "请选择需要预览确认的剪辑任务。"
         )
     if confirmed(row):
-        return response(row, session)
+        return row
     if row.status != "awaiting_review" or row.cancel_requested:
         raise ApiError(409, "EDITING_EXPORT_REVIEW_STATE", "当前任务未等待高清确认。")
     preview = session.get(EditingArtifactRecord, confirmation["preview_id"])
     if not preview or (preview.task_id, preview.role, preview.sha256) != (
         row.id,
         "preview",
-        body.preview_sha256,
+        preview_sha256,
     ):
         raise ApiError(
             409, "EDITING_PREVIEW_CHANGED", "预览版本不一致，请重新读取并查看。"
@@ -1513,7 +1538,7 @@ def confirm_export(
     if not master:
         session.refresh(row)
         if confirmed(row):
-            return response(row, session)
+            return row
     root = (settings.video_editing_tasks_dir / row.id).resolve()
     if (
         not master
@@ -1554,16 +1579,16 @@ def confirm_export(
     )
     if not cast(CursorResult, result).rowcount:
         session.rollback()
-        current = own_task(session, workspace, str(task_id))
+        current = own_task(session, workspace, row.id)
         if confirmed(current):
-            return response(current, session)
+            return current
         raise ApiError(
             409, "EDITING_EXPORT_REVIEW_STATE", "任务状态已变化，请刷新后核对。"
         )
     master.role = "final"
     session.commit()
     session.refresh(row)
-    return response(row, session)
+    return row
 
 
 @router.put("/editing-tasks/{task_id}/review", response_model=EditingTaskResponse)

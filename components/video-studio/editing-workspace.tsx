@@ -26,7 +26,7 @@ import { TranscriptEditor } from "./transcript-editor";
 import { EditingFilmReview } from "./editing-film-review";
 import { EditingSoundReview } from "./editing-sound-review";
 import { EditingMusicPicker } from "./editing-music-picker";
-import { EditingCoverPicker, defaultAppleOptions, type AppleCreativeOptions } from "./editing-creative-options";
+import { defaultAppleOptions, type AppleCreativeOptions } from "./editing-creative-options";
 import { EditingLibrary } from "./editing-library";
 import { EditingNativePlans, type EditingRevisionSelection } from "./editing-native-plans";
 import { EditingPlanning, type CarrySelection, type EditingPrimaryAction, type EditingPrimaryState } from "./editing-planning";
@@ -76,7 +76,7 @@ const errorLabel: Record<string, string> = {
   EDITING_NORMALIZE_VIDEO_FRAME_CLOCK_FAILED: "原片的变帧率取帧轨未能生成，请联系管理员。",
   EDITING_GENERATION_SCRIPT_CHANGED: "这条原口播的确认稿无法核对，请检查原生成任务。", EDITING_IMAGE_EDIT_INVALID: "这次选择的配图无法用于原图槽，请核对图片是否重复及透明图要求。", EDITING_MATERIAL_CHANGED: "配图原件已缺失或变化，请回到本期素材核对。", EDITING_HIGHLIGHT_INVALID: "这次选择的实录短语无法用于原动效，请返回编排重新选择。", EDITING_NO_SPEECH_RECOGNIZED: "没有识别到清晰口播，请检查原片声音。", EDITING_SOURCE_CHANGED: "原片已变化，请重新选择视频。", EDITING_CLOCK_REVIEW_REQUIRED: "原片音画起点需要校正，请更换原片或联系管理员。", EDITING_SOURCE_AUDIO_TAIL_REVIEW_REQUIRED: "请核对原片末尾的音画。画面结束后仍有声音，或音画时长差超出自动处理范围。", EDITING_ROTATION_REVIEW_REQUIRED: "此视频的旋转信息需要校正，请联系管理员。", EDITING_ORIGINAL_BROWSER_ASSETS_REQUIRED: "所选动效缺少会进入画面的原库图片，请联系管理员补齐原件。", EDITING_ORIGINAL_BROWSER_FONTS_REQUIRED: "所选动效需要原库启动字体，请在原库目录核对缺件。", EDITING_NATIVE_INPUTS_REQUIRED: "当前编排所需的原生参数或素材尚未备齐，请先补全编排。", EDITING_PLAN_SOURCE_CHANGED: "编排绑定的原片或转录已变化，请恢复原产物或保存新编排。", EDITING_NATIVE_PLAN_NOT_FOUND: "编排暂不可用，请联系管理员核对版本与运行配置。", EDITING_CAPTION_CAPACITY_REVIEW_REQUIRED: "当前识别词组超出字幕容量，请核对文字或联系管理员调整排版。", EDITING_CAPTION_DICTIONARY_MISSING: "剪辑服务缺少中文分词依赖，请联系管理员。", EDITING_CAPTION_DICTIONARY_CHANGED: "剪辑分词词典版本不匹配，请联系管理员核对。", EDITING_CAPTION_FONT_MISSING: "剪辑服务缺少已选定的原字幕字体，请联系管理员。", EDITING_CAPTION_FONT_CHANGED: "字幕字体与原库记录不一致，请联系管理员核对。", EDITING_CAPTION_LAYOUT_MISMATCH: "字幕换行与原生检查不一致，请先核对编排。" };
 
-export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact = false, onSaveProject, cost, renderCredits }: { workspaceId: string; projectId: string; saved: boolean; jobs: GenerationJob[]; compact?: boolean; onSaveProject?: () => Promise<void>; /** 编排 + 出片的价格，例如「预计 40 积分」；未定价时只说明按用量计费 */ cost?: CostNote; /** 单独出片（生成预览）的积分；null = 未定价 */ renderCredits?: number | null }) {
+export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact = false, onSaveProject, cost, renderCredits, workItemId }: { workspaceId: string; projectId: string; saved: boolean; jobs: GenerationJob[]; compact?: boolean; onSaveProject?: () => Promise<void>; /** 从批次「精修这一条」进入：确认高清后把这条作品更新为最终版 */ workItemId?: string; /** 编排 + 出片的价格，例如「预计 40 积分」；未定价时只说明按用量计费 */ cost?: CostNote; /** 单独出片（生成预览）的积分；null = 未定价 */ renderCredits?: number | null }) {
   const internalTools = useInternalTools();
   const [tasks, setTasks] = useState<EditingTask[]>([]);
   const [sourceDialog, setSourceDialog] = useState(false);
@@ -328,6 +328,17 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     } catch { setError("操作暂未确认，请刷新任务后重试。"); }
     finally { setBusy(false); }
   };
+  // 精修后的最终版写回作品条目（契约 C2：editing_task_id 归剪辑），成片页就用这一版。
+  const adoptForWorkItem = async (taskId: string) => {
+    const path = { workspace_id: workspaceId, item_id: workItemId as string };
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const item = unwrapApiResponse(await apiClient.GET(`${root}/work-items/{item_id}`, { ...options(), params: { path } }));
+      if (item.editing_task_id === taskId) return;
+      const result = await apiClient.PATCH(`${root}/work-items/{item_id}`, { ...options(), params: { path }, body: { expected_version: item.version, editing_task_id: taskId, ...(item.stage === "editing" ? { stage: "finishing" as const, status: "pending" as const } : {}) } });
+      if (!result.error) return;
+    }
+    setError("高清已生成，但没能同步到这一批的作品里，请回到批次结果刷新。");
+  };
   const markPreviewFailure = (id: string) => setPreviewFailures(ids => ids.includes(id) ? ids : [...ids, id]);
   const previewAction = async (task: EditingTask, preview: components["schemas"]["EditingArtifactResponse"], action: "confirm" | "repair") => {
     setBusy(true); setError("");
@@ -339,6 +350,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         ...options(), params: { path: { workspace_id: workspaceId, task_id: task.id } },
         body: { preview_artifact_id: preview.id, preview_sha256: preview.sha256 },
       }));
+      if (action === "confirm" && workItemId) await adoptForWorkItem(task.id);
       applyTasks(await reload());
     } catch (caught) {
       if (action === "confirm" && caught instanceof ApiError && caught.code === "EDITING_EXPORT_CHANGED") markPreviewFailure(preview.id);
@@ -503,7 +515,6 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       <button type="button" onClick={() => void submit("subtitles")} disabled={busy || !canSubmit}>生成基础字幕片</button>
     </div></details>
     <EditingMusicPicker value={music} onChange={value => { cancelAutomatic(); setMusic(value); }} disabled={busy || recognizing} voiceOnly={isEditingSuite(template?.engine) && !template?.capabilities?.includes("music")} templateSound={template?.engine === "bihuo-full-suite"} />
-    {isEditingSuite(template?.engine) && <EditingCoverPicker value={creativeOptions.cover || "auto"} onChange={cover => { cancelAutomatic(); setCreativeOptions(current => ({ ...current, cover })); }} disabled={busy || recognizing} />}
     </section>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError}</p>}

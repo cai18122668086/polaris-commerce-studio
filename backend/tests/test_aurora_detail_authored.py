@@ -189,6 +189,60 @@ def test_sizes_outside_the_3_4_platform_set_are_refused(client):
     assert response.json()["error"]["code"] == "DETAIL_SIZE_UNSUPPORTED"
 
 
+def test_extra_selling_point_slips_are_tidied_not_fatal():
+    from types import SimpleNamespace
+
+    request = SimpleNamespace(product_name="离线测试商品", page_count=2, sources=())
+    strategy = aurora_detail_authored.fake_strategy(request)
+    strategy["analysis"]["extra_selling_points"] = [
+        {"point": "0% 谷物", "source": "包装原图2", "reason": "包装正面印有 0% 谷物", "pages": [2], "note": "x"}
+    ]
+    normalized = aurora_detail_authored.normalize_strategy(strategy)
+    assert normalized["analysis"]["extra_selling_points"] == [
+        {"point": "0% 谷物", "source": "包装原图2", "basis": "包装正面印有 0% 谷物", "pages": [2]}
+    ]
+
+
+def test_an_empty_screen_plan_is_replanned_once(client, monkeypatch):
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+    calls = {"count": 0}
+
+    async def plan(request):
+        result = await original_plan(request)
+        calls["count"] += 1
+        if calls["count"] == 1:
+            payload = dict(result.payload)
+            payload["plan"] = {**payload["plan"], "screens": []}
+            return replace(result, payload=payload)
+        return result
+
+    monkeypatch.setattr(gateway, "plan", plan)
+    job = planned(client, count=3)
+    assert calls["count"] == 2
+    assert len(job["plan"]["payload"]["pages"]) == 3
+
+
+def test_a_second_empty_screen_plan_fails_the_job(client, monkeypatch):
+    gateway = _gateway(client)
+    original_plan = gateway.plan
+    calls = {"count": 0}
+
+    async def plan(request):
+        result = await original_plan(request)
+        calls["count"] += 1
+        payload = dict(result.payload)
+        payload["plan"] = {**payload["plan"], "screens": []}
+        return replace(result, payload=payload)
+
+    monkeypatch.setattr(gateway, "plan", plan)
+    job = create(client, count=3)
+    dispatch_pending(client)
+    job = client.get(f"{BASE}/jobs/{job['id']}").json()
+    assert calls["count"] == 2
+    assert job["status"] == "failed" and job["error_code"] == "AURORA_DETAIL_PLAN_INVALID"
+
+
 def test_flag_off_keeps_the_historical_xinghe_pipeline(client, monkeypatch):
     monkeypatch.setenv("POLARIS_DETAIL_AURORA_AUTHORED", "false")
     job = create(client)

@@ -4028,6 +4028,31 @@ class XinghePlanningCoordinator:
                 supplemental_results=(*result.supplemental_results, *intake_calls),
             )
             results.append(result)
+            if (
+                result.error_code is None
+                and detail_fast_runtime.independent_skill(self.skill_id)
+                and _empty_screen_plan(result.payload)
+            ):
+                # A relay route occasionally returns the analysis with an empty
+                # screen list. Re-plan once before failing the job.
+                retry_started = time.perf_counter()
+                try:
+                    result = await self.gateway.plan(request)
+                except Exception as exc:
+                    result = PlannerCallResult(
+                        payload=None,
+                        provider_request_id=None,
+                        raw_usage=None,
+                        normalized_usage=normalize_usage(None),
+                        api_latency_seconds=time.perf_counter() - retry_started,
+                        actual_cost_micros=None,
+                        error_code="PLANNER_PROVIDER_FAILED",
+                        error_message=(
+                            f"Planner provider failed ({type(exc).__name__})."
+                        ),
+                    )
+                result = _with_planner_observability(result)
+                results.append(result)
             if result.error_code is not None:
                 return self._fail_planning(
                     job_id,
@@ -9364,6 +9389,21 @@ def _provider_rejection(
         model_name=gateway.image_model,
         pricing_version=gateway.pricing_version,
     )
+
+
+def _empty_screen_plan(payload: object) -> bool:
+    """True when a complete-plan response carries no screens at all."""
+    if not isinstance(payload, Mapping):
+        return False
+    if set(payload) == {"type", "properties"} and isinstance(
+        payload.get("properties"), Mapping
+    ):
+        payload = payload["properties"]
+    plan = payload.get("plan")
+    if not isinstance(plan, Mapping):
+        return "analysis" in payload
+    screens = plan.get("screens")
+    return not isinstance(screens, list) or not screens
 
 
 def _planner_call_results(

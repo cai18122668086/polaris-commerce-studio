@@ -258,17 +258,27 @@ def strategy_schema(page_count: int) -> dict[str, Any]:
             "reason": _string(),
         }
     )
+    extra_point = _object(
+        {
+            "point": _string(),
+            "source": _string(),
+            "basis": _string(),
+            "pages": {"type": "array", "items": {"type": "integer", "minimum": 1}, "maxItems": 12},
+        }
+    )
     return _object(
         {
             "analysis": _object(
                 {
                     "source_copy_lines": _strings(max_items=24),
-                    "confirmed_facts": _strings(min_items=1, max_items=40),
+                    "package_facts": _strings(max_items=24),
+                    "confirmed_facts": _strings(min_items=1, max_items=60),
                     "target_buyer": _string(),
                     "primary_pain": _string(),
                     "positioning": _string(),
                     "primary_selling_points": _strings(min_items=1, max_items=4),
                     "selling_point_ledger": {"type": "array", "items": ledger_entry, "maxItems": 40},
+                    "extra_selling_points": {"type": "array", "items": extra_point, "maxItems": 16},
                 }
             ),
             "plan": _object(
@@ -321,12 +331,26 @@ def planner_prompt(request: PlannerRequest) -> str:
         "屏数由用户确定为 "
         + str(count)
         + " 屏：按 selling-point-depth-and-count 的方法在这个屏数内分配卖点深度，不要另行增减屏数。\n\n"
+        "这是网站上的一次性生成：不能暂停、不能向用户提问、不能返回空方案，plan.screens 必须正好 "
+        + str(count)
+        + " 屏。原版 Skill 中“先解决资料冲突再策划”的要求在这里这样执行：用户资料之间、包装不同面之间或不同原图之间的数字或说法不一致时，"
+        "冲突的那几项不上图、不当卖点，在 package_facts 里照写并在末尾注明“与原图N不一致，不使用”；其余不冲突的事实照常使用，继续完成全部屏。\n\n"
         "必须遵守（来自原版 Skill 的硬性规则）：\n"
         "1. 只写已确认事实；绝不编造或加强价格、功效、检测、认证、成分、数量、配件、服务、对比结果。"
-        "把原图上非商品本身印刷的可读文字块逐块原样转写进 analysis.source_copy_lines；商品本身印的文字写进 product_identity_physics_lock.label_text。"
-        "analysis.confirmed_facts = 用户资料 + source_copy_lines，去掉“•”“1.”或小标题等列表符号，不改含义、数字与条件。\n"
+        "把原图上非商品本身印刷的可读文字块逐块原样转写进 analysis.source_copy_lines。"
+        "商品包装（正面、背面、侧面）上清晰可读的宣称同样是用户提供的事实：把成分与原料占比、营养或参数数值、工艺、口味/规格/净含量、适用对象、"
+        "认证或检测（仅限包装原文）等逐条原样转写进 analysis.package_facts，每条末尾用“（原图N）”注明出处；读不清的数字不要写。"
+        "商品展示面的主要印刷文字另写进 product_identity_physics_lock.label_text 用于还原外观。"
+        "analysis.confirmed_facts = 用户资料 + source_copy_lines + package_facts，去掉“•”“1.”或小标题等列表符号，不改含义、数字与条件。\n"
         "2. 用户给的卖点全部入账：selling_point_ledger 为每一条用户卖点记录 ACTIVE/MERGED/QUALIFIED/DEFERRED、落在哪几屏（页码从 1 开始）和原因；不能悄悄丢掉。"
         "primary_selling_points 是必须被记住的 1–4 个一级卖点：每个一级卖点要有总览出现、一屏作为主结论的独立表达、一屏使用或结果、收尾回忆。\n"
+        "2b. 卖点来源与不重复：每屏要讲一个不同的卖点。先用用户卖点，不够时用 package_facts，再不够时用这个类目买家常关心的角度"
+        "（例如猫粮：原料与配方、蛋白等营养含量、适用阶段、口味与颗粒、喂食与保存、规格与包装；其他类目按同样思路自行判断）。"
+        "类目角度只能用已确认事实来填（例如把包装上的成分占比做成信息图、把规格与口味做成选购屏），不能凭类目常识编造本商品的功效、数值或认证；"
+        "没有事实支撑的角度就不用。用户卖点以外实际用到的每个卖点写进 analysis.extra_selling_points："
+        "point 为卖点短语，source 写“包装原图N”或“类目常见关注”，basis 写所依据的已确认事实原文，pages 为所在屏。"
+        "同一个卖点最多做一屏的主标题（lead_conclusion / visible_copy 第一条）；除首屏和收尾外，作为副文案最多再出现在一屏。"
+        "相邻屏的主结论必须是不同的卖点。\n"
         "3. 首屏 role 为 FIRST_SCREEN_HOOK，最后一屏为 PURCHASE_CLOSURE（屏数 ≥3 时）；屏数 ≥4 时必须有一屏 PAIN_SCENE 或 PAIN_TO_SOLUTION_BRIDGE，"
         "痛点要画出受影响的对象/人/环境、不想要的状态和后果，不能只是标题、词云、图标或泛泛的愁容；痛点要可识别但不令人反感（commercial-aversion-control）。\n"
         "4. 视觉优先、文字辅助：每屏 visible_copy 为 1–4 条要印在画面上的完整短文案（含主标题），逐条绑定可见的物体、动作、结果或证据区；"
@@ -413,6 +437,9 @@ def _validate_raw(value: Mapping[str, Any], page_count: int) -> None:
         raise _plan_error(error.message, "/" + "/".join(str(part) for part in error.absolute_path))
 
 
+_EXTRA_POINT_KEYS = ("point", "source", "basis", "pages")
+
+
 def normalize_strategy(value: Mapping[str, Any]) -> dict[str, Any]:
     """Unwrap a schema-shaped relay envelope, loosen fixable slips, freeze prompts."""
 
@@ -426,6 +453,19 @@ def normalize_strategy(value: Mapping[str, Any]) -> dict[str, Any]:
             raise _plan_error("The strategy instance envelope is ambiguous.")
         value = properties
     result = deepcopy(dict(value))
+    analysis = result.get("analysis")
+    extras = analysis.get("extra_selling_points") if isinstance(analysis, dict) else None
+    if isinstance(extras, list):
+        # A bookkeeping list: tolerate the ledger's "reason" key and stray keys.
+        tidy = []
+        for entry in extras:
+            if isinstance(entry, Mapping):
+                entry = dict(entry)
+                if "basis" not in entry and "reason" in entry:
+                    entry["basis"] = entry["reason"]
+                entry = {k: v for k, v in entry.items() if k in _EXTRA_POINT_KEYS}
+            tidy.append(entry)
+        analysis["extra_selling_points"] = tidy
     plan = result.get("plan")
     screens = plan.get("screens") if isinstance(plan, Mapping) else None
     count = len(screens) if isinstance(screens, list) else 0
@@ -510,6 +550,8 @@ _LABELS = {
     "positioning": "定位",
     "primary_selling_points": "一级卖点",
     "selling_point_ledger": "用户卖点去向",
+    "package_facts": "包装上的事实",
+    "extra_selling_points": "补充卖点（包装与类目）",
     "story_spine": "故事线",
     "product_identity_physics_lock": "商品身份与物理关系",
     "role": "页面职责",
@@ -628,12 +670,14 @@ def fake_strategy(request: PlannerRequest) -> dict[str, Any]:
     return {
         "analysis": {
             "source_copy_lines": [],
+            "package_facts": [],
             "confirmed_facts": [request.product_name],
             "target_buyer": "离线测试",
             "primary_pain": "离线测试",
             "positioning": "离线测试",
             "primary_selling_points": ["卖点1"],
             "selling_point_ledger": [],
+            "extra_selling_points": [],
         },
         "plan": {
             "story_spine": "首屏建立价值 → 痛点 → 证明 → 收尾",

@@ -3485,6 +3485,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/talking-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Talking
+         * @description 查询结果: query the provider for an unknown outcome. Never re-submits.
+         */
+        post: operations["check_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/talking-retry": {
         parameters: {
             query?: never;
@@ -10221,6 +10241,8 @@ export interface components {
         /** TalkingBatchResponse */
         TalkingBatchResponse: {
             batch: components["schemas"]["WorkBatchResponse"];
+            /** Notice */
+            notice?: string | null;
             /**
              * Parallel Limit
              * @default 4
@@ -10231,6 +10253,11 @@ export interface components {
         };
         /** TalkingItemView */
         TalkingItemView: {
+            /**
+             * Awaiting Check
+             * @default false
+             */
+            awaiting_check: boolean;
             /**
              * Can Retry
              * @default false
@@ -19030,6 +19057,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalkingBatchResponse"];
                 };
             };
             /** @description Validation Error */

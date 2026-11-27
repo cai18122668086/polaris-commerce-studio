@@ -39,6 +39,10 @@ export function talkingApi(workspaceId: string) {
     async retry(itemId: string): Promise<TalkingBatch> {
       return unwrapApiResponse(await withAuthTimeout(apiClient.POST(`${root}/work-items/{item_id}/talking-retry`, { ...options(20000), params: { path: { ...path, item_id: itemId } } }), 20000)) as TalkingBatch;
     },
+    /** 查询结果：只查询原任务，不会重新生成。 */
+    async check(itemId: string): Promise<TalkingBatch> {
+      return unwrapApiResponse(await withAuthTimeout(apiClient.POST(`${root}/work-items/{item_id}/talking-check`, { ...options(20000), params: { path: { ...path, item_id: itemId } } }), 20000)) as TalkingBatch;
+    },
     /** 换浏览器/刷新后找回：最近一个还有未完成条目的口播批次（从后端读，不靠本机存储）。 */
     async latestOpenBatch(): Promise<string | null> {
       const batches = unwrapApiResponse(await apiClient.GET(`${root}/work-batches`, { ...options(), params: { path, query: { source: "talking", limit: 5 } } }));

@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, AudioLines, BookOpenText, Check, Download, FileText, Flame, Pause, Play, Plus, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, AudioLines, BookOpenText, Check, CopyCheck, Download, FileText, Flame, Pause, Play, Plus, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import type { VideoAvatar, VideoVoice } from "@/features/video-studio/library";
 import { generationProgress } from "@/features/video-studio/generation-progress";
 import { editingHref, parseFlowParams } from "@/features/video-studio/flow-params";
 import { scriptFromLibrary, talkingApi, type LibraryEntry, type PersonaEntry } from "@/features/video-studio/talking-api";
 import {
-  addScripts, assign, assignmentFor, batchSettled, decodeDraft, displayTitle, draftKey, durationLabel, emptyDraft, encodeDraft,
+  addScripts, assign, assignmentFor, batchItems, batchSettled, editingCta, decodeDraft, displayTitle, draftKey, durationLabel, emptyDraft, encodeDraft,
   MAX_SCRIPTS, PARALLEL_LIMIT, problems, removeScript, resultBoxes, scriptSeconds, spokenChars, summary, switchDrive, switchMode,
   voiceFromPersona, withAvatar, withPersona, withVoice, type Assignment, type TalkingBatch, type TalkingDraft, type TalkingScript,
 } from "@/features/video-studio/talking-batch";
@@ -152,23 +152,31 @@ export function TalkingStudio(props: Props) {
     }
   };
 
+  // 连点两次时第二次点击在重新渲染之前就到了：用 ref 同步加锁；提交编号按「同一份内容」复用，
+  // 内容不变就永远是同一个编号（后端据此只建一个批次），内容变了才换新编号。
+  const inFlight = useRef(false);
+  const pending = useRef<{ id: string; content: string } | undefined>(undefined);
   const generate = async () => {
-    if (submitting || issues.length) return;
-    const requestId = draft.requestId ?? uid();
+    if (inFlight.current || issues.length) return;
+    inFlight.current = true;
+    const content = JSON.stringify(batchItems(draft));
+    const requestId = pending.current?.content === content ? pending.current.id : draft.requestId ?? uid();
+    pending.current = { id: requestId, content };
     const pinned = { ...draft, requestId };
     setDraft(pinned);
     setSubmitting(true); setSubmitError("");
     try {
       const view = await api.submit(pinned);
       setBatch(view);
+      pending.current = undefined;
       setDraft(current => ({ ...current, requestId: undefined }));
       router.replace(`/video-studio/create?batch=${encodeURIComponent(view.batch.id)}`, { scroll: false });
       requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
     } catch (error) {
       // 4xx 是确定的拒绝（例如积分不足），说明原因；其他情况结果未知，同一个提交编号再点一次只会找回原批次。
-      if (error instanceof ApiError && error.status && error.status < 500) { setSubmitError(error.message); setDraft(current => ({ ...current, requestId: undefined })); }
+      if (error instanceof ApiError && error.status && error.status < 500) { pending.current = undefined; setSubmitError(error.message); setDraft(current => ({ ...current, requestId: undefined })); }
       else setSubmitError("网络不稳定，提交结果还没确认。再点一次「确认生成」会找回刚才的批次，不会重复扣积分。");
-    } finally { setSubmitting(false); }
+    } finally { inFlight.current = false; setSubmitting(false); }
   };
 
   const retry = async (itemId: string) => {
@@ -176,6 +184,14 @@ export function TalkingStudio(props: Props) {
     setRetrying(ids => [...ids, itemId]);
     try { setBatch(await api.retry(itemId)); }
     catch (error) { notify(error instanceof Error && error.message ? error.message : "重试没有提交成功，请稍后再试", "error"); }
+    finally { setRetrying(ids => ids.filter(id => id !== itemId)); }
+  };
+
+  const check = async (itemId: string) => {
+    if (!batch || retrying.includes(itemId)) return;
+    setRetrying(ids => [...ids, itemId]);
+    try { const view = await api.check(itemId); setBatch(view); notify(view.notice || "已重新查询这条的结果", view.notice ? "info" : "success"); }
+    catch { notify("查询没有成功，请稍后再试", "error"); }
     finally { setRetrying(ids => ids.filter(id => id !== itemId)); }
   };
 
@@ -275,7 +291,7 @@ export function TalkingStudio(props: Props) {
       {draft.mode === "same" || draft.scripts.length <= 1 ? <div className={styles.sharedPick}>
         {presenterCell("all", draft.mode === "same" ? shared : assignmentFor(draft, draft.scripts[0]?.key ?? ""))}
         <p className={styles.muted}>{draft.scripts.length > 1 ? `一次设置，${draft.scripts.length} 条稿都用这个数字人。` : "选固定形象会同时带上它的声音。"}</p>
-      </div> : <>{assignTable(false)}<button type="button" className={styles.quietButton} onClick={() => { const first = assignmentFor(draft, draft.scripts[0].key); setDraft(current => assign(current, "all", () => ({ ...first }))); }}>把第 1 条的设置用到全部</button></>}
+      </div> : <>{assignTable(false)}<button type="button" className={styles.linkButton} onClick={() => { const first = assignmentFor(draft, draft.scripts[0].key); setDraft(current => assign(current, "all", () => ({ ...first }))); notify(`已把第 1 条的数字人${textDrive ? "和音色" : ""}用到全部 ${draft.scripts.length} 条`, "success"); }}><CopyCheck size={14} />把第 1 条的设置用到全部</button></>}
       {props.libraryError && <p className={styles.warn}>{props.libraryError}<button type="button" className={styles.quietButton} onClick={props.onReloadLibrary}>重新读取</button></p>}
       <footer className={styles.stepFoot}><small /><button type="button" className={baseStyles.primaryButton} disabled={!stepDone(2)} onClick={() => goStep(textDrive ? 3 : 4)}>{textDrive ? "下一步：选音色" : "下一步：确认生成"}</button></footer>
     </div>}
@@ -310,26 +326,31 @@ export function TalkingStudio(props: Props) {
 
   const boxes = batch ? resultBoxes(batch, stage => generationProgress({ status: "running", stage, kind: "lipsync" }).title) : [];
   const doneCount = boxes.filter(box => box.state === "done").length;
+  const cta = editingCta(boxes, !!batch && batchSettled(batch));
   const results = batch && <section ref={resultsRef} className={styles.results} aria-label="生成结果">
     <header className={styles.resultsHead}>
       <div><h2>生成结果</h2><p>{batchSettled(batch) ? `${doneCount} 条完成${boxes.length - doneCount ? `，${boxes.length - doneCount} 条失败` : ""}` : `共 ${boxes.length} 条 · 已完成 ${doneCount} 条 · 关掉页面也会继续生成`}</p></div>
       <div className={styles.resultsActions}>
         <button type="button" className={baseStyles.outlineButton} onClick={startOver}>再做一批</button>
-        <button type="button" className={baseStyles.primaryButton} disabled={!doneCount} onClick={() => router.push(editingHref(batch.batch.id))}>去剪辑这 {doneCount || boxes.length} 条</button>
+        <button type="button" className={baseStyles.primaryButton} disabled={cta.disabled} onClick={() => router.push(editingHref(batch.batch.id))}>{cta.label}</button>
+        {cta.note && <small className={styles.ctaNote}>{cta.note}</small>}
       </div>
     </header>
     <ol className={`${styles.resultGrid} ${boxes.length === 1 ? styles.resultSingle : ""}`}>{boxes.map((box, index) => {
       const item = batch.batch.items[index];
       const cover = avatarOf(item?.avatar_id ?? undefined)?.cover_url;
+      const who = [personaOf(item?.persona_id ?? undefined)?.name ?? (avatarOf(item?.avatar_id ?? undefined) ? avatarLabel(avatarOf(item?.avatar_id ?? undefined)!) : ""), item?.drive_mode === "audio" ? "上传音频" : voiceOf(item?.voice_id ?? undefined)?.name ?? ""].filter(Boolean).join(" · ");
       return <li key={box.id} className={styles.resultBox} data-state={box.state}>
         <div className={styles.resultMedia}>
-          {box.state === "done" && box.videoUrl ? <video controls playsInline preload="metadata" poster={cover ? mediaUrl(cover) : undefined} src={mediaUrl(box.videoUrl)} aria-label={`${box.title} 口播视频`} /> : <>{cover && <img src={mediaUrl(cover)} alt="" aria-hidden="true" />}<span className={styles.resultStatus}>{box.state === "failed" ? <X size={16} /> : null}{box.label}</span>{box.state === "running" && <span className={styles.progressLine} aria-hidden="true" />}</>}
+          {box.state === "done" && box.videoUrl ? <ResultVideo src={mediaUrl(box.videoUrl) ?? box.videoUrl} poster={cover ? mediaUrl(cover) : undefined} label={`${box.title} 口播视频`} /> : <>{cover && <img src={mediaUrl(cover)} alt="" aria-hidden="true" />}<span className={styles.resultStatus}>{box.state === "failed" ? <X size={16} /> : null}{box.label}</span>{box.state === "running" && <span className={styles.progressLine} aria-hidden="true" />}</>}
         </div>
         <div className={styles.resultMeta}>
           <b><span>{index + 1}</span>{box.title}</b>
+          {who && <small className={styles.who}>{who}</small>}
           {box.state === "failed" && box.error && <small className={styles.failText}>{box.error}</small>}
           <div>
             {box.state === "done" && box.videoUrl && <a className={styles.quietButton} href={mediaUrl(box.videoUrl)} download><Download size={14} />下载</a>}
+            {box.canCheck && <button type="button" className={styles.quietButton} disabled={retrying.includes(box.id)} onClick={() => void check(box.id)}><Search size={14} />{retrying.includes(box.id) ? "正在查询" : "查询结果"}</button>}
             {box.state === "failed" && box.canRetry && <button type="button" className={styles.quietButton} disabled={retrying.includes(box.id)} onClick={() => void retry(box.id)}><RotateCcw size={14} />{retrying.includes(box.id) ? "正在重试" : "重试这一条"}</button>}
           </div>
         </div>
@@ -358,6 +379,16 @@ export function TalkingStudio(props: Props) {
       onCreatePersona={() => gotoLibrary("/video-studio/avatars")} onCreateAvatar={() => gotoLibrary("/video-studio/avatars")} />}
     {picker?.kind === "voice" && <VoicePickerFor voices={usableVoices} row={pickerRow} playing={playing} onPreview={previewVoice} onClose={() => setPicker(null)} onApply={voiceId => { applyPresenter(pickerTarget, current => withVoice(current, voiceId)); setPicker(null); }} notify={notify} />}
   </main>;
+}
+
+/** 完成的口播：先显示首帧（海报兜底），点播放后才出现原生控件。 */
+function ResultVideo({ src, poster, label }: { src: string; poster?: string; label: string }) {
+  const [started, setStarted] = useState(false);
+  const ref = useRef<HTMLVideoElement>(null);
+  return <>
+    <video ref={ref} controls={started} playsInline preload="metadata" poster={poster} src={`${src}#t=0.1`} aria-label={label} onEnded={() => setStarted(false)} />
+    {!started && <button type="button" className={styles.playOverlay} aria-label={`播放${label}`} onClick={() => { setStarted(true); void ref.current?.play().catch(() => undefined); }}><span><Play size={18} fill="currentColor" /></span></button>}
+  </>;
 }
 
 function VoicePickerFor({ voices, row, playing, onPreview, onApply, onClose, notify }: { voices: VideoVoice[]; row: Assignment; playing: string; onPreview: (voice: VideoVoice) => void; onApply: (voiceId: string) => void; onClose: () => void; notify: Props["notify"] }) {

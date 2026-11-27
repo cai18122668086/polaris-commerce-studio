@@ -498,3 +498,107 @@ def test_failed_item_releases_its_hold_and_others_are_charged(priced):
     assert (
         client.post(root + f"/work-batches/{batch2['id']}/talking").status_code == 402
     )
+
+
+def _stuck(client, root, ws, user, provider, **job_fields):
+    """A batch task left 'running' by a process that died mid-way."""
+    batch = new_batch(client, root, item("稿一"))
+    factory, settings = client.app.state.session_factory, client.app.state.settings
+    with factory() as session:
+        talking.confirm(
+            session, settings, ws, talking.batch_items(session, batch["id"])
+        )
+        (job_id,) = talking.dispatch(
+            session, settings, _owner(ws, user), batch["id"], lambda: provider
+        )
+        job = session.get(VideoGenerationRecord, job_id)
+        old = job.created_at.replace(year=job.created_at.year - 1)
+        for key, value in {"status": "running", **job_fields}.items():
+            setattr(job, key, value)
+        job.created_at = old
+        session.flush()
+        session.execute(
+            VideoGenerationRecord.__table__.update()
+            .where(VideoGenerationRecord.id == job_id)
+            .values(updated_at=old)
+        )
+        session.commit()
+    return batch, job_id
+
+
+def test_stale_task_with_provider_id_only_resumes_querying(studio, monkeypatch):
+    client, _, provider, root, ws, user = studio
+    batch, job_id = _stuck(
+        client,
+        root,
+        ws,
+        user,
+        provider,
+        stage="lipsync_generating",
+        provider_task_id="lip-known",
+        details={
+            "stage_history": [{"stage": "lipsync_submitting"}],
+            "audio_url": "https://sowa.oss-cn-beijing.aliyuncs.com/audio.mp3",
+        },
+    )
+    runs = []
+    monkeypatch.setattr(
+        talking, "process_generation", lambda *a, **k: runs.append((a[2], k))
+    )
+    factory, settings = client.app.state.session_factory, client.app.state.settings
+    assert talking.sweep_once(factory, settings, provider) == [job_id]
+    assert [r[0] for r in runs] == [job_id] and "lease" in runs[0][1]
+    with factory() as session:
+        assert session.get(VideoGenerationRecord, job_id).status == "queued"
+    assert submits(provider) == []  # continued, never re-submitted
+
+
+def test_stale_task_without_provider_id_waits_for_a_check(studio, monkeypatch):
+    client, _, provider, root, ws, user = studio
+    batch, job_id = _stuck(
+        client,
+        root,
+        ws,
+        user,
+        provider,
+        stage="lipsync_submitting",
+        provider_task_id=None,
+        details={"stage_history": [{"stage": "lipsync_submitting"}]},
+    )
+    runs = []
+    monkeypatch.setattr(talking, "process_generation", lambda *a, **k: runs.append(a))
+    factory, settings = client.app.state.session_factory, client.app.state.settings
+    assert talking.sweep_once(factory, settings, provider) == []
+    view = client.get(root + f"/work-batches/{batch['id']}/talking").json()
+    assert view["talking"][0]["awaiting_check"] is True
+    assert view["batch"]["items"][0]["status"] == "running"
+    checked = client.post(root + f"/work-items/{batch['item_ids'][0]}/talking-check")
+    assert checked.status_code == 200
+    assert "不会重新生成" in checked.json()["notice"]
+    assert runs == [] and submits(provider) == []
+    # Retry is refused while the outcome is unknown: it is not a failure.
+    retry = client.post(root + f"/work-items/{batch['item_ids'][0]}/talking-retry")
+    assert retry.json()["batch"]["items"][0]["generation_task_id"] == job_id
+    assert submits(provider) == [] and jobs(client) == 1
+
+
+def test_recently_active_running_task_is_left_alone(studio, monkeypatch):
+    client, _, provider, root, ws, user = studio
+    batch = new_batch(client, root, item("稿一"))
+    factory, settings = client.app.state.session_factory, client.app.state.settings
+    with factory() as session:
+        talking.confirm(
+            session, settings, ws, talking.batch_items(session, batch["id"])
+        )
+        (job_id,) = talking.dispatch(
+            session, settings, _owner(ws, user), batch["id"], lambda: provider
+        )
+        job = session.get(VideoGenerationRecord, job_id)
+        job.status, job.stage = "running", "lipsync_generating"
+        session.commit()
+    runs = []
+    monkeypatch.setattr(talking, "process_generation", lambda *a, **k: runs.append(a))
+    assert talking.sweep_once(factory, settings, provider) == []
+    with factory() as session:
+        assert session.get(VideoGenerationRecord, job_id).status == "running"
+    assert runs == []

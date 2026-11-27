@@ -213,16 +213,16 @@ export type WorkItemView = {
   persona_id: string | null; generation_task_id: string | null; drive_mode: string; stage: string;
 };
 export type TalkingView = { item_id: string; queue_position: number | null; stage: string | null; video_url: string | null; can_retry: boolean; awaiting_check?: boolean };
-export type TalkingBatch = { batch: { id: string; created_at: string; item_ids: string[]; items: WorkItemView[]; status_counts: Record<string, number> }; talking: TalkingView[]; parallel_limit: number };
+export type TalkingBatch = { batch: { id: string; created_at: string; item_ids: string[]; items: WorkItemView[]; status_counts: Record<string, number> }; talking: TalkingView[]; parallel_limit: number; notice?: string | null };
 
-export type ResultBox = { id: string; title: string; state: "queued" | "running" | "done" | "failed" | "checking"; label: string; videoUrl: string | null; canRetry: boolean; error: string | null; position: number };
+export type ResultBox = { id: string; title: string; state: "queued" | "running" | "done" | "failed" | "checking"; label: string; videoUrl: string | null; canRetry: boolean; canCheck: boolean; error: string | null; position: number };
 
 export function resultBoxes(view: TalkingBatch, stageLabel: (stage: string) => string): ResultBox[] {
   const talking = new Map(view.talking.map(item => [item.item_id, item]));
   return view.batch.items.map(item => {
     const extra = talking.get(item.id);
     const title = item.publish_title || (item.script_text.trim().split(/[。！？!?\n]/)[0] || "口播").slice(0, 18);
-    const base = { id: item.id, title, videoUrl: extra?.video_url ?? null, canRetry: !!extra?.can_retry, error: item.error, position: item.position };
+    const base = { id: item.id, title, videoUrl: extra?.video_url ?? null, canRetry: !!extra?.can_retry, canCheck: !!extra?.awaiting_check, error: item.error, position: item.position };
     if (extra?.awaiting_check) return { ...base, state: "checking", label: "结果待确认" };
     if (item.status === "succeeded") return { ...base, state: "done", label: "已完成" };
     if (item.status === "failed" || item.status === "canceled") return { ...base, state: "failed", label: "生成失败" };
@@ -235,3 +235,12 @@ export function batchSettled(view: TalkingBatch): boolean {
   return view.batch.items.every(item => ["succeeded", "failed", "canceled"].includes(item.status)) && !view.talking.some(item => item.awaiting_check);
 }
 
+
+/** 主按钮：全部结束前只剪已完成的，并说明其余条完成后还能加入。 */
+export function editingCta(boxes: Pick<ResultBox, "state">[], settled: boolean) {
+  const done = boxes.filter(box => box.state === "done").length;
+  const open = boxes.filter(box => box.state === "queued" || box.state === "running" || box.state === "checking").length;
+  if (!settled && open && done) return { label: `先剪已完成的 ${done} 条`, note: `其余 ${open} 条完成后可继续加入`, disabled: false };
+  if (!done) return { label: `去剪辑这 ${boxes.length} 条`, note: open ? "完成后就能去剪辑" : "", disabled: true };
+  return { label: `去剪辑这 ${done} 条`, note: "", disabled: false };
+}

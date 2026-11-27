@@ -117,6 +117,13 @@
 .resultMeta { padding: 10px 12px 12px; min-width: 0; }
 .resultMeta b { display: flex; gap: 8px; font-size: 13px; font-weight: 500; overflow: hidden; white-space: nowrap; }
 .resultMeta b span { color: var(--t-dim); font-variant-numeric: tabular-nums; font-weight: 400; }
+.who { display: block; font-size: 11px; color: var(--t-dim); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page .linkButton { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 4px 0; color: var(--t-ink); font-size: 13px; text-decoration: underline; text-decoration-color: var(--t-line-strong); text-underline-offset: 4px; }
+.page .linkButton:hover { text-decoration-color: var(--t-ink); }
+.ctaNote { flex-basis: 100%; text-align: right; font-size: 12px; color: var(--t-muted); }
+.page .playOverlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border: 0; background: linear-gradient(to top, rgb(0 0 0 / 28%), transparent 40%); padding: 0; }
+.playOverlay span { width: 48px; height: 48px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgb(255 255 255 / 92%); color: #1a1a19; padding-left: 3px; transition: transform .18s; }
+.page .playOverlay:hover span { transform: scale(1.06); }
 .failText { display: block; color: var(--t-warn); font-size: 12px; line-height: 1.55; margin-top: 4px; }
 .resultMeta > div { display: flex; gap: 4px; margin: 6px 0 0 -8px; min-height: 30px; }
 
@@ -165,4 +172,5 @@
   .resultSingle { grid-template-columns: minmax(0, 1fr); }
   .resultsActions { width: 100%; }
   .resultsActions > button { flex: 1; }
+  .ctaNote { text-align: left; }
 }

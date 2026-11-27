@@ -666,6 +666,18 @@ class EditingNativePlanResponse(StrictVideoModel):
     created_at: datetime
 
 
+class EditingSupplementMg(StrictVideoModel):
+    style: Literal["paper", "ink", "ember"] = "paper"
+
+
+class EditingSupplementOptions(StrictVideoModel):
+    """Frozen supplement choices (C5). Absent = no MG; old requests unchanged."""
+
+    mg: EditingSupplementMg | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
 class EditingPlanningTaskCreate(StrictVideoModel):
     request_id: UUID
     mode: Literal["prepare", "generate"] = "prepare"
@@ -691,10 +703,26 @@ class EditingPlanningTaskCreate(StrictVideoModel):
     creative_options: EditingAppleCreativeOptions | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    supplement: EditingSupplementOptions | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    replan: bool = Field(
+        default=False,
+        exclude_if=lambda value: not value,
+        description=(
+            "Explicitly pay for a new planning of a request that already has a "
+            "live or finished planning (the user confirmed the extra charge)."
+        ),
+    )
 
     @model_validator(mode="after")
     def prepared_execution(self) -> Self:
         from .bihuo_suite.registry import is_template as bihuo_template
+
+        if self.supplement is not None and (
+            self.mode != "prepare" or not bihuo_template(self.template_id)
+        ):
+            raise ValueError("Supplement MG requires a full-suite template preparation")
 
         if self.creative_options is not None and (
             self.mode != "prepare"
@@ -807,6 +835,11 @@ class EditingMaterialResponse(StrictVideoModel):
     source_asset_id: str | None
     feedback_observation: EditingFeedbackObservation | None = None
     url: str
+    # W4 补充素材：来源（stock | ai_generated；上传为空）与公开的来源授权信息。
+    origin: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    provenance: dict[str, Any] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class EditingMaterialsResponse(StrictVideoModel):

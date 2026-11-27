@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowRight, Check, Copy, LoaderCircle, PencilLine, RotateCcw } from "lucide-react";
 import { AUTO_STAGES, useAutoWriting, type AutoDraft, type AutoRun, type AutoStart } from "@/features/video-studio/use-auto-writing";
-import { PLATFORM_LABEL, type AnalysisDoc, type DraftDoc, type DraftLine, type Platform, type ReferenceDoc } from "@/features/video-studio/use-viral-writing";
+import { PLATFORM_LABEL, type AnalysisDoc, type DraftDoc, type Platform, type ReferenceDoc } from "@/features/video-studio/use-viral-writing";
+import { editChanged, editOf, fullText, toggle, type LibraryEdit, type LibraryEntry, type LibraryPlatform } from "@/features/video-studio/script-library-format";
+import { scriptLibraryApi } from "@/features/video-studio/use-script-library";
+import { ScriptParts } from "./script-library-parts";
+import type { ToastTone } from "./studio-toast";
+import lib from "./script-library.module.css";
 import type { useProjectSession } from "@/features/video-studio/use-project-session";
 import { coverSrc } from "./benchmark-cover";
 import { ComparisonPanel, TeardownReport } from "./teardown-report";
@@ -12,7 +17,6 @@ import studio from "./video-studio.module.css";
 import css from "./auto-writing.module.css";
 
 type ProjectSession = ReturnType<typeof useProjectSession>["session"];
-const spoken = (text: string) => Math.max(1, Math.round(text.replace(/[^\p{L}\p{N}]/gu, "").length / 4.8));
 const LIMITS = [["price", "不写价格"], ["net_quantity", "不写净含量"], ["health_effect", "不写功效疗效"]] as const;
 
 /* ------------------------------------------------------------------ start */
@@ -57,8 +61,8 @@ function StartForm({ initial, busy, onStart, onCancel }: { initial: Partial<Auto
     </div>
     <div className={css.actions}>
       {onCancel && <button type="button" className={studio.outlineButton} onClick={onCancel}>取消</button>}
-      <small>大约 3–5 分钟，期间可以离开这个页面。会调用搜索和写稿模型（计费）。</small>
-      <button type="submit" className={studio.primaryButton} disabled={busy || !query.trim() || facts.trim().length < 4}>{busy ? "提交中…" : "让 AI 写 3 版口播稿"}<ArrowRight size={15} /></button>
+      <small>大约 3–5 分钟，期间可以离开这个页面。每版都有标题、发布正文和口播稿，写好自动存进文案库。会调用搜索和写稿模型（计费）。</small>
+      <button type="submit" className={studio.primaryButton} disabled={busy || !query.trim() || facts.trim().length < 4}>{busy ? "提交中…" : "让 AI 写 3 版文案"}<ArrowRight size={15} /></button>
     </div>
   </form>;
 }
@@ -89,11 +93,15 @@ function Progress({ run, picks }: { run: AutoRun; picks: { title: string; reason
 
 /* ---------------------------------------------------------------- results */
 
-function VersionCard({ entry, draft, reference, busy, onUse, onSave, copyText }: {
-  entry: AutoDraft; draft: DraftDoc | undefined; reference: ReferenceDoc | undefined; busy: boolean;
-  onUse: (draft: DraftDoc) => void; onSave: (draft: DraftDoc, lines: DraftLine[]) => Promise<void>; copyText: (text: string) => void;
+type Parts = { publish_title: string; publish_body: string; script: string; platform: LibraryPlatform | "" };
+
+function VersionCard({ entry, draft, reference, item, platform, selecting, checked, onToggle, onUse, onSave, copyText }: {
+  entry: AutoDraft; draft: DraftDoc | undefined; reference: ReferenceDoc | undefined; item: LibraryEntry | undefined; platform: LibraryPlatform | "";
+  selecting: boolean; checked: boolean; onToggle: () => void; onUse: (id: string) => void;
+  onSave: (item: LibraryEntry, edit: LibraryEdit) => Promise<void>; copyText: (text: string) => void;
 }) {
-  const [editing, setEditing] = useState<DraftLine[] | null>(null);
+  const [edit, setEdit] = useState<LibraryEdit | null>(null);
+  const [saving, setSaving] = useState(false);
   if (!draft) return <div className={css.version} data-empty>
     <header><b>{entry.label}</b></header>
     <p className={css.muted}>这版没有通过事实检查，没写出来。其他几版可以直接用。</p>
@@ -102,55 +110,104 @@ function VersionCard({ entry, draft, reference, busy, onUse, onSave, copyText }:
   // One line for the user's own facts this version left out, then the rest.
   const unused = d.warnings.flatMap(t => /你填的「(.+?)」这版没用上/.exec(t)?.[1] ?? []);
   const notes = [
-    ...(unused.length ? [`这版没用上：${unused.join("、")}。可以点「改一改」加进去，或挑别的版本。`] : []),
-    ...[...d.missing_facts, ...d.warnings].filter(t => !/你填的「/.test(t) && /已删去|缺少|未提供/.test(t)),
+    ...(unused.length ? [`这版没用上：${unused.join("、")}。可以点「编辑」加进去，或挑别的版本。`] : []),
+    ...[...d.missing_facts, ...d.warnings].filter(t => !/你填的「/.test(t) && /已删去|缺少|未提供|话题标签/.test(t)),
   ];
-  const blocked = draft.body.shape_check.verdict === "FAIL" || /【[^】]*】|[XＸ]{2,}|待补|待填/.test(draft.body.text);
-  return <div className={css.version} data-editing={editing ? true : undefined}>
+  const parts: Parts = item ?? { publish_title: d.publish_title || "", publish_body: d.publish_body || "", script: draft.body.text, platform };
+  const blocked = draft.body.shape_check.verdict === "FAIL" || /【[^】]*】|[XＸ]{2,}|待补|待填/.test(parts.script);
+  const save = async () => {
+    if (!item || !edit) return;
+    setSaving(true);
+    try { await onSave(item, edit); setEdit(null); } finally { setSaving(false); }
+  };
+  return <div className={css.version} data-editing={edit ? true : undefined} data-checked={checked || undefined}>
     <header>
-      <b>{entry.label}</b>
-      <small>参考：{reference?.body.source_metrics?.title || "对标"} · {draft.body.text.length} 字 · 约 {spoken(draft.body.text)} 秒{draft.body.revision ? " · 已修改" : ""}</small>
+      <div className={css.versionTitle}>
+        {selecting && item && <input type="checkbox" className={css.check} checked={checked} onChange={onToggle} aria-label={`选择${entry.label}`} />}
+        <b>{entry.label}</b>
+        {item ? <span className={css.saved}><Check size={12} />已存入文案库</span> : null}
+      </div>
+      <small>参考：{reference?.body.source_metrics?.title || "对标"}{item && item.revision > 1 ? " · 已修改" : ""}</small>
     </header>
-    {editing ? <div className={css.editLines}>{editing.map((line, i) => <textarea key={i} rows={2} value={line.text} maxLength={1500} onChange={event => setEditing(editing.map((row, j) => j === i ? { ...row, text: event.target.value } : row))} />)}</div>
-      : <p className={css.script}>{d.sentences.map(line => line.text).join("\n")}</p>}
-    {!editing && notes.length > 0 && <details className={css.notes}><summary>提示（{notes.length}）</summary><ul>{notes.map((t, i) => <li key={i}>{t}</li>)}</ul></details>}
+    <ScriptParts parts={parts} edit={edit} onChange={setEdit} onCopy={copyText} scriptMaxHeight={360} />
+    {!edit && !item && <p className={css.muted}>这版是改版前写的，没有存进文案库。</p>}
+    {!edit && notes.length > 0 && <details className={css.notes}><summary>提示（{notes.length}）</summary><ul>{notes.map((t, i) => <li key={i}>{t}</li>)}</ul></details>}
     <footer>
-      {editing ? <>
-        <button type="button" className={studio.outlineButton} onClick={() => setEditing(null)}>取消</button>
-        <button type="button" className={studio.primaryButton} disabled={busy || editing.some(line => !line.text.trim())} onClick={() => void onSave(draft, editing).then(() => setEditing(null))}>保存修改</button>
+      {edit ? <>
+        <button type="button" className={studio.outlineButton} onClick={() => setEdit(null)}>取消</button>
+        <button type="button" className={studio.primaryButton} disabled={saving || !edit.script.trim() || !item || !editChanged(item, edit)} onClick={() => void save()}>{saving ? "正在保存…" : "保存"}</button>
       </> : <>
-        <button type="button" className={css.iconButton} aria-label="复制全文" onClick={() => copyText(draft.body.text)}><Copy size={14} /></button>
-        <button type="button" className={studio.outlineButton} onClick={() => setEditing(d.sentences.map(line => ({ ...line })))}><PencilLine size={14} />改一改</button>
-        <button type="button" className={studio.primaryButton} disabled={busy || blocked} onClick={() => onUse(draft)}>用这版<ArrowRight size={14} /></button>
+        <button type="button" className={css.iconButton} aria-label="复制三项" title="复制标题、正文和口播稿" onClick={() => copyText(fullText(parts))}><Copy size={14} /></button>
+        {item && <button type="button" className={studio.outlineButton} onClick={() => setEdit(editOf(item))}><PencilLine size={14} />编辑</button>}
+        {item && <button type="button" className={studio.primaryButton} disabled={blocked} onClick={() => onUse(item.id)}>用这条去做口播<ArrowRight size={14} /></button>}
       </>}
     </footer>
   </div>;
 }
 
-function Results({ flow, run, copyText, onAdopted, onRestart, onManual }: {
-  flow: ReturnType<typeof useAutoWriting>; run: AutoRun; copyText: (text: string) => void; onAdopted: () => Promise<void>; onRestart: () => void; onManual?: () => void;
+function Results({ flow, run, copyText, notify, onUseScripts, onRestart, onManual }: {
+  flow: ReturnType<typeof useAutoWriting>; run: AutoRun; copyText: (text: string) => void; notify?: (text: string, tone?: ToastTone) => void;
+  onUseScripts: (ids: string[]) => void; onRestart: () => void; onManual?: () => void;
 }) {
   const r = run.result;
   const benchmarks = (r.benchmarks || []).filter(b => b.analysis_id);
   const [tab, setTab] = useState(r.main_reference_id || benchmarks[0]?.reference_id || "");
   const current = benchmarks.find(b => b.reference_id === tab) || benchmarks[0];
   const drafts = r.drafts || [];
+  const platform: LibraryPlatform | "" = r.request?.platform === "xiaohongshu" || r.request?.platform === "douyin" ? r.request.platform : "";
+  const [items, setItems] = useState<Map<string, LibraryEntry>>(new Map());
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const entryIds = drafts.map(d => d.library_entry_id).filter((id): id is string => !!id);
+  const docIds = drafts.filter(d => !d.library_entry_id && d.document_id).map(d => d.document_id as string);
+  const key = [...entryIds, "|", ...docIds].join(",");
+  useEffect(() => {
+    let live = true;
+    const library = scriptLibraryApi(flow.workspaceId);
+    void Promise.all([library.byIds(entryIds), library.byDocuments(docIds)]).then(([a, b]) => {
+      if (live) setItems(new Map([...a.items, ...b.items].map(item => [item.id, item])));
+    }).catch(() => undefined);
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow.workspaceId, key]);
+  const itemOf = (d: AutoDraft) => (d.library_entry_id && items.get(d.library_entry_id)) || [...items.values()].find(item => item.writing_document_id === d.document_id);
+  const ready = drafts.map(itemOf).filter((item): item is LibraryEntry => !!item);
+  const save = async (item: LibraryEntry, edit: LibraryEdit) => {
+    try {
+      const next = await scriptLibraryApi(flow.workspaceId).update(item, edit);
+      setItems(map => new Map(map).set(next.id, next));
+      notify?.("已保存到文案库", "success");
+    } catch (caught) {
+      notify?.(caught instanceof Error && caught.message ? caught.message : "没有保存成功，请重试。", "error");
+      throw caught;
+    }
+  };
   return <div className={css.results}>
     <section>
       <div className={css.sectionHead}>
-        <h3>{drafts.filter(d => d.document_id).length} 版口播稿，挑一版用</h3>
+        <div className={css.headText}>
+          <h3>{drafts.filter(d => d.document_id).length} 版文案，挑一版用</h3>
+          {ready.length > 0 && <small>标题、发布正文和口播稿已自动存进文案库。</small>}
+        </div>
         <div className={css.headActions}>
           {onManual && <button type="button" className={css.textButton} onClick={onManual}>自己挑对标、逐步来</button>}
           <button type="button" className={studio.outlineButton} onClick={onRestart}><RotateCcw size={14} />换个方向重来</button>
+          {ready.length > 1 && <button type="button" className={studio.outlineButton} aria-pressed={selecting} onClick={() => { setSelecting(!selecting); setSelected([]); }}>{selecting ? "取消多选" : "选几条去做口播"}</button>}
         </div>
       </div>
       <div className={css.versions}>{drafts.map(entry => {
-        const draft = flow.latest(flow.doc<DraftDoc>(entry.document_id));
-        return <VersionCard key={entry.key} entry={entry} draft={draft} reference={flow.doc<ReferenceDoc>(entry.reference_id)} busy={!!flow.busy}
-          copyText={copyText} onUse={doc => void flow.adopt(doc, onAdopted)}
-          onSave={(doc, lines) => flow.revise(doc, doc.body.draft.title, lines)} />;
+        const item = itemOf(entry);
+        const doc = flow.latest(flow.doc<DraftDoc>(entry.document_id));
+        return <VersionCard key={entry.key} entry={entry} draft={doc} reference={flow.doc<ReferenceDoc>(entry.reference_id)} item={item} platform={platform}
+          selecting={selecting} checked={!!item && selected.includes(item.id)} onToggle={() => item && setSelected(ids => toggle(ids, item.id))}
+          onUse={id => onUseScripts([id])} onSave={save} copyText={copyText} />;
       })}</div>
     </section>
+    {selecting && <div className={lib.bar} role="region" aria-label="已选文案">
+      <span>已选 <b>{selected.length}</b> 条</span>
+      <button type="button" className={lib.link} onClick={() => setSelected(ready.map(item => item.id))}>全选</button>
+      <button type="button" className={studio.primaryButton} disabled={!selected.length} onClick={() => onUseScripts(selected)}>用这 {selected.length} 条去做口播<ArrowRight size={15} /></button>
+    </div>}
     {benchmarks.length > 0 && <section>
       <div className={css.sectionHead}><h3>拆解报告</h3></div>
       {r.comparison && benchmarks.length > 1 && <ComparisonPanel comparison={r.comparison} count={benchmarks.length} />}
@@ -170,9 +227,10 @@ function Results({ flow, run, copyText, onAdopted, onRestart, onManual }: {
 
 /* ------------------------------------------------------------------- page */
 
-export function AutoWriting({ workspaceId, projectId, session, productFacts, copyText, onAdopted, onManual }: {
+export function AutoWriting({ workspaceId, projectId, session, productFacts, copyText, notify, onUseScripts, onManual }: {
   workspaceId: string; projectId: string; session: ProjectSession; productFacts: string;
-  copyText: (text: string) => void; onAdopted: () => Promise<void>; onManual?: () => void;
+  copyText: (text: string) => void; notify?: (text: string, tone?: ToastTone) => void;
+  onUseScripts: (ids: string[]) => void; onManual?: () => void;
 }) {
   const flow = useAutoWriting({ workspaceId, projectId, session });
   const [form, setForm] = useState(false);
@@ -187,7 +245,7 @@ export function AutoWriting({ workspaceId, projectId, session, productFacts, cop
       onCancel={run ? () => setForm(false) : undefined}
       onStart={input => void flow.start(input).then(() => setForm(false))} />
       : flow.running ? <Progress run={run} picks={picks} />
-      : run.status === "completed" ? <Results flow={flow} run={run} copyText={copyText} onAdopted={onAdopted} onRestart={() => setForm(true)} onManual={onManual} />
+      : run.status === "completed" ? <Results flow={flow} run={run} copyText={copyText} notify={notify} onUseScripts={onUseScripts} onRestart={() => setForm(true)} onManual={onManual} />
       : <div className={css.problem}>
           <b>{run.status === "awaiting_resume" ? "处理中断了" : "这次没有写完"}</b>
           <p>{run.result.message || "可以点「继续」从断点接着做，已经完成的步骤不会重新扣费。"}</p>

@@ -62,6 +62,42 @@ DRAFT_RULES = {
 }
 
 
+PLATFORM_NAME = {"douyin": "抖音", "xiaohongshu": "小红书"}
+# 平台标题上限（字，含标点和emoji）与正文上限；抖音正文更短。
+TITLE_LIMIT = {"douyin": 30, "xiaohongshu": 20}
+BODY_LIMIT = {"douyin": 300, "xiaohongshu": 600}
+TAGS_MIN, TAGS_MAX = 3, 6
+
+
+def publish_rules(platform: str) -> list[str]:
+    """Rules for the publish title and body written in the same call."""
+    name = PLATFORM_NAME.get(platform, "抖音")
+    title_limit = TITLE_LIMIT.get(platform, 30)
+    body_limit = BODY_LIMIT.get(platform, 300)
+    style = (
+        "小红书风格：正文分2到4小段，像朋友分享经验，可以带少量emoji（全文不超过5个）。"
+        if platform == "xiaohongshu"
+        else "抖音风格：正文更短，1到2句话说清看点，再接话题标签，少用或不用emoji。"
+    )
+    return [
+        f"除口播稿外，同一份JSON里还要写这条视频发到{name}用的publish_title和publish_body；"
+        "title仍是这版口播稿的内部名称。",
+        f"publish_title：{name}发布标题，口语化、有钩子（提问、结果前置、数字、反差、身份代入等），"
+        f"不超过{title_limit}个字（标点和emoji都算），不加书名号，不放话题标签。",
+        f"publish_body：可以直接粘贴发布的正文，全文不超过{body_limit}字，"
+        f"末尾放{TAGS_MIN}到{TAGS_MAX}个话题标签，每个写成「#话题」、标签之间用空格隔开，"
+        "话题用品类、场景、人群等通用词。" + style,
+        "benchmark_brands：逐字列出参考原文和对标标题里出现的所有品牌、店名、商品名（含昵称外号）"
+        "和作者名，没有就给空列表；这些词不能出现在口播稿、publish_title和publish_body里，"
+        "除非事实卡里用户自己写了。",
+        "publish_title和publish_body与口播稿遵守同样的事实规则：只用事实卡里user_declared的信息；"
+        "不得出现对标视频里的品牌、店名、作者名、价格、规格和效果承诺；"
+        "不写事实卡里没有的数字、成分、销量、排名或背书；"
+        "用户没写价格就不说平价、便宜、性价比、白菜价，没写排名就不说第一、卖爆、断货，"
+        "话题标签也一样（例如不要#平价好物）。",
+    ]
+
+
 def verify_writing_package(package: Path) -> dict:
     manifest = read_json(MANIFEST)
     if manifest["archive_sha256"] != WRITING_SHA256:

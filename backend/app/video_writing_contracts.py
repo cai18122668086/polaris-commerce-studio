@@ -204,8 +204,28 @@ class FactReplacement(StrictVideoModel):
     fact_id: str
 
 
+PublishPlatform = Literal["douyin", "xiaohongshu"]
+
+
 class DraftContent(StrictVideoModel):
     title: str = Field(min_length=1, max_length=80)
+    # 发布用的标题和正文（v3）。旧稿没有这两项，读取时为空字符串；新写的稿由
+    # validate_publish 检查平台字数、话题标签和事实约束。
+    publish_title: str = Field(
+        default="",
+        max_length=80,
+        description="发布标题：口语、有钩子，按平台字数上限，不含话题标签",
+    )
+    publish_body: str = Field(
+        default="",
+        max_length=2000,
+        description="发布正文：可直接粘贴发布，末尾带3到6个#话题标签",
+    )
+    benchmark_brands: list[str] = Field(
+        default_factory=list,
+        max_length=30,
+        description="参考原文和对标标题里出现的品牌、店名、商品名、作者名，逐字照抄",
+    )
     replacements: list[FactReplacement] = Field(default_factory=list, max_length=100)
     missing_facts: list[str] = Field(default_factory=list, max_length=60)
     warnings: list[str] = Field(default_factory=list, max_length=30)
@@ -282,6 +302,10 @@ class WritingTaskRequest(StrictVideoModel):
     draft_mode: WritingDraftMode | None = None
     target_duration_seconds: int | None = Field(default=None, ge=5, le=300)
     presentation: Literal["on_camera", "hands_only", "unspecified"] = "unspecified"
+    # fact_draft only: where the title and body will be published. Omitted
+    # keeps the idempotency key of older requests; the reference's platform
+    # (else 抖音) is used then.
+    platform: PublishPlatform | None = None
 
     @model_validator(mode="after")
     def duration_basis(self) -> Self:
@@ -315,6 +339,9 @@ class SaveWritingResult(StrictVideoModel):
 class ReviseWritingDraft(StrictVideoModel):
     request_id: UUID
     title: str = Field(min_length=1, max_length=80)
+    # Omitted: keep the previous version's publish title/body.
+    publish_title: str | None = Field(default=None, max_length=80)
+    publish_body: str | None = Field(default=None, max_length=2000)
     sentences: list[DraftSentence | StructureDraftLine] = Field(
         min_length=1, max_length=100
     )

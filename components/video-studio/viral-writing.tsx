@@ -16,6 +16,9 @@ import studio from "./video-studio.module.css";
 import { BenchmarkCover, coverSrc } from "./benchmark-cover";
 import { TeardownReport } from "./teardown-report";
 import css from "./viral-writing.module.css";
+import { scriptLibraryApi } from "@/features/video-studio/use-script-library";
+import type { LibraryEntry } from "@/features/video-studio/script-library-format";
+import { ScriptParts } from "./script-library-parts";
 
 type ProjectSession = ReturnType<typeof useProjectSession>["session"];
 type Flow = ReturnType<typeof useViralWriting>;
@@ -270,11 +273,21 @@ function marked(text: string, replacements: string[]) {
   return parts.map((part, i) => words.includes(part) ? <mark key={i}>{part}</mark> : part);
 }
 
-function DraftStep({ flow, main, onRewrite, onAdopted, copyText, writingCredits }: { flow: Flow; main: ReferenceDoc | undefined; onRewrite: () => void; onAdopted: () => Promise<void>; copyText: (text: string) => void; writingCredits: number | null | undefined }) {
+function DraftStep({ flow, main, onRewrite, onAdopted, onUseScripts, copyText, writingCredits }: { flow: Flow; main: ReferenceDoc | undefined; onRewrite: () => void; onAdopted: () => Promise<void>; onUseScripts?: (ids: string[]) => void; copyText: (text: string) => void; writingCredits: number | null | undefined }) {
   const drafts = flow.draftsOf(main);
   const [chosen, setChosen] = useState("");
   const [editing, setEditing] = useState<DraftLine[] | null>(null);
   const draft: DraftDoc | undefined = drafts.find(doc => doc.id === chosen) || drafts[0];
+  const [entry, setEntry] = useState<LibraryEntry | null>(null);
+  const draftId = draft?.id;
+  useEffect(() => {
+    let live = true;
+    if (!draftId) return;
+    // Saved drafts are in the library already; a revised one moves its entry along.
+    void scriptLibraryApi(flow.workspaceId).byDocuments([draftId]).then(page => { if (live) setEntry(page.items[0] || null); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [flow.workspaceId, draftId]);
+  const libraryEntry = entry && entry.writing_document_id === draft?.id ? entry : null;
   const job = flow.latestTask("fact_draft");
   const writing = ["queued", "running"].includes(job?.status || "") && job?.reference_document_id === main?.id;
   const failed = job?.status === "failed" && job.reference_document_id === main?.id;
@@ -301,6 +314,10 @@ function DraftStep({ flow, main, onRewrite, onAdopted, copyText, writingCredits 
           <td className={css.quote}>{line.reference_sentence_id ? source.get(line.reference_sentence_id) : sectionName.get(line.analysis_section_id || "")}</td>
           <td>{editing ? <textarea rows={2} value={line.text} maxLength={1500} onChange={event => setEditing(editing.map((row, j) => j === i ? { ...row, text: event.target.value } : row))} /> : <span className={css.line}>{marked(line.text, d.replacements.map(r => r.replacement))}</span>}</td>
         </tr>)}</tbody></table>
+      {(d.publish_title || d.publish_body) && <div className={css.publishParts}>
+        <ScriptParts parts={{ publish_title: d.publish_title || "", publish_body: d.publish_body || "", script: draft.body.text, platform: libraryEntry?.platform || "" }} onCopy={copyText} hideScript />
+        {libraryEntry && <small className={css.savedNote}><Check size={12} />标题、正文和口播稿已存入文案库</small>}
+      </div>}
       {d.missing_facts.length > 0 && <details className={css.notes}><summary>可以补充的信息（{d.missing_facts.length}）</summary><ul className={css.plain}>{d.missing_facts.map((t, i) => <li key={i}>{t}</li>)}</ul></details>}
       {d.warnings.length + (draft.body.shape_check.warnings?.length || 0) > 0 && <details className={css.notes}><summary>核对提示（{d.warnings.length + (draft.body.shape_check.warnings?.length || 0)}）</summary><ul className={css.plain}>{[...d.warnings, ...(draft.body.shape_check.warnings || [])].map((t, i) => <li key={i}>{t}</li>)}</ul></details>}
       {blockers.map((t, i) => <p key={i} className={css.warn}>{t}</p>)}
@@ -312,7 +329,9 @@ function DraftStep({ flow, main, onRewrite, onAdopted, copyText, writingCredits 
           <button type="button" className={studio.outlineButton} onClick={() => copyText(draft.body.text)}><Copy size={14} />复制全文</button>
           <button type="button" className={studio.outlineButton} onClick={() => setEditing(d.sentences.map(line => ({ ...line })))}>逐句修改</button>
           <button type="button" className={studio.outlineButton} disabled={!!flow.busy} onClick={onRewrite}><RotateCcw size={14} />{billableLabel("换个说法重写", writingCredits)}</button>
-          <button type="button" className={studio.primaryButton} disabled={!!flow.busy || blockers.length > 0} onClick={() => void flow.adopt(draft, onAdopted)}>{flow.busy === "adopt" ? "正在保存…" : "确认文案，去做口播"}<ArrowRight size={15} /></button>
+          {libraryEntry && onUseScripts
+            ? <button type="button" className={studio.primaryButton} disabled={!!flow.busy || blockers.length > 0} onClick={() => onUseScripts([libraryEntry.id])}>用这条去做口播<ArrowRight size={15} /></button>
+            : <button type="button" className={studio.primaryButton} disabled={!!flow.busy || blockers.length > 0} onClick={() => void flow.adopt(draft, onAdopted)}>{flow.busy === "adopt" ? "正在保存…" : "确认文案，去做口播"}<ArrowRight size={15} /></button>}
         </>}
       </div>
     </>}
@@ -321,9 +340,9 @@ function DraftStep({ flow, main, onRewrite, onAdopted, copyText, writingCredits 
 
 /* ------------------------------------------------------------------- page */
 
-export function ViralWriting({ workspaceId, projectId, session, productFacts, copyText, onAdopted, onStep }: {
+export function ViralWriting({ workspaceId, projectId, session, productFacts, copyText, onAdopted, onUseScripts, onStep }: {
   workspaceId: string; projectId: string; session: ProjectSession; productFacts: string;
-  copyText: (text: string) => void; onAdopted: () => Promise<void>; onStep?: (step: ViralStep) => void;
+  copyText: (text: string) => void; onAdopted: () => Promise<void>; onUseScripts?: (ids: string[]) => void; onStep?: (step: ViralStep) => void;
 }) {
   const flow = useViralWriting({ workspaceId, projectId, session });
   const credits = useVideoCredits(workspaceId);
@@ -357,7 +376,7 @@ export function ViralWriting({ workspaceId, projectId, session, productFacts, co
       {current === "confirm" && <ConfirmStep flow={flow} picks={picks} setPicks={setPicks} onNext={() => go("teardown")} writingCredits={writingNote.credits} short={writingNote.insufficient} />}
       {current === "teardown" && <TeardownStep flow={flow} main={mainRef?.id || ""} setMain={setMain} onNext={() => go("facts")} writingCredits={writingNote.credits} short={writingNote.insufficient} />}
       {current === "facts" && <FactsStep flow={flow} main={mainRef} answers={answers} setAnswers={setAnswers} forbidden={forbidden} setForbidden={setForbidden} limits={limits} setLimits={setLimits} mode={mode} setMode={setMode} productFacts={productFacts} onNext={() => go("draft")} writingCredits={writingNote.credits} short={writingNote.insufficient} />}
-      {current === "draft" && <DraftStep flow={flow} main={mainRef} onRewrite={() => go("facts")} onAdopted={onAdopted} copyText={copyText} writingCredits={writingNote.credits} />}
+      {current === "draft" && <DraftStep flow={flow} main={mainRef} onRewrite={() => go("facts")} onAdopted={onAdopted} onUseScripts={onUseScripts} copyText={copyText} writingCredits={writingNote.credits} />}
       {flow.error && <p className={css.error} role="alert">{flow.error}</p>}
     </section>
     {current === "find" && picks.length > 0 && <div className={css.tray}>

@@ -57,6 +57,8 @@ OwnerType = Literal[
     "video_voice",
     "video_editing",
     "video_planning",
+    "video_cover",
+    "video_editing_image",
 ]
 Outcome = Literal["settle", "release"] | None
 
@@ -73,6 +75,8 @@ LABELS = {
     "editing_render": "剪辑预览渲染",
     "benchmark_search": "对标搜索",
     "writing_generate": "文案生成",
+    "cover_generate": "AI 封面",
+    "editing_auto_image": "AI 补充配图",
 }
 
 
@@ -413,12 +417,33 @@ def _planning(session: Session, hold_: CreditReservationRecord) -> Outcome:
     return None
 
 
+def _cover(session: Session, hold_: CreditReservationRecord) -> Outcome:
+    """Settle only an AI-background cover that passed every check."""
+
+    from .video_cover_models import VideoCoverCandidateRecord
+
+    row = _fresh(session, VideoCoverCandidateRecord, hold_.owner_id)
+    if row is None:
+        return "release"
+    if row.status == "ready":
+        return "settle" if row.background == "ai" else "release"
+    return _by_status(row.status, set(), {"failed"})
+
+
+def _editing_image(session: Session, hold_: CreditReservationRecord) -> Outcome:
+    from .video_editing_supplement_images import classify
+
+    return cast(Outcome, classify(session, hold_.owner_id or ""))
+
+
 CLASSIFIERS: dict[str, Callable[[Session, CreditReservationRecord], Outcome]] = {
     "video_generation": _generation,
     "video_assistance": _assistance,
     "video_voice": _voice,
     "video_editing": _editing,
     "video_planning": _planning,
+    "video_cover": _cover,
+    "video_editing_image": _editing_image,
 }
 
 

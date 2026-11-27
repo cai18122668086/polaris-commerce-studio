@@ -61,6 +61,41 @@ class EditingMaterialRecord(TimestampMixin, Base):
     source_job_id: Mapped[str | None] = mapped_column(String(40))
     source_asset_id: Mapped[str | None] = mapped_column(String(40))
     feedback_observation: Mapped[dict | None] = mapped_column(json_type())
+    # W4 supplement sources (0057). NULL origin = owner upload (legacy rows).
+    origin: Mapped[str | None] = mapped_column(String(24))
+    provenance: Mapped[dict | None] = mapped_column(json_type())
+
+
+class EditingImageRequestRecord(TimestampMixin, Base):
+    """One AI supplement image: one credit hold, settled only on success."""
+
+    __tablename__ = "video_editing_image_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "owner_user_id",
+            "request_id",
+            name="uq_editing_image_request",
+        ),
+        Index("ix_editing_image_request_status", "status", "updated_at"),
+        Index("ix_editing_image_request_cache", "workspace_id", "cache_key"),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(40))
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("video_projects.id"))
+    work_item_ref: Mapped[str | None] = mapped_column(String(64))
+    sentence_index: Mapped[int] = mapped_column()
+    sentence: Mapped[str] = mapped_column(String(400))
+    subject: Mapped[str] = mapped_column(String(200))
+    purpose: Mapped[str] = mapped_column(String(24))
+    style: Mapped[str] = mapped_column(String(24))
+    cache_key: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    material_id: Mapped[str | None] = mapped_column(String(40))
+    reused: Mapped[bool] = mapped_column(default=False)
 
 
 class EditingTaskRecord(TimestampMixin, Base):

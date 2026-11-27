@@ -35,6 +35,7 @@ import styles from "./editing-workspace.module.css";
 import flow from "./editing-flow.module.css";
 import { EditingTemplateGallery, type TemplateCard } from "./editing-template-gallery";
 import { mediaUrl } from "@/lib/api/base-url";
+import { billableLabel } from "@/features/video-studio/credit-notes";
 import { TopUpLink } from "./studio-content";
 
 type EditingTask = components["schemas"]["EditingTaskResponse"];
@@ -49,7 +50,8 @@ const readTaskHash = () => taskHash.exec(window.location.hash)?.[1].toLowerCase(
 const stageLabel: Record<string, string> = { queued: "排队中", preparing: "读取原片", preparing_source: "准备口播画面", preparing_foreground: "准备人物前景", transcribing: "识别口播", aligning: "校准字幕", compiling: "编排画面", rendering: "生成视频", validating: "检查视频", building_preview: "准备预览", storing: "保存视频", transcript_ready: "口播已识别", preview_ready: "预览已就绪", completed: "可下载" };
 const errorLabel: Record<string, string> = {
   EDITING_ALIGNMENT_DISABLED: "字幕对齐服务尚未开启，请联系管理员。",
-  EDITING_ALIGNMENT_TEXT_TIMESTAMPS_MISMATCH: "确认稿与声音暂时无法对齐，请检查这条口播。",
+  EDITING_ALIGNMENT_TEXT_TIMESTAMPS_MISMATCH: "口播稿和实际声音没能逐字对上。点「重试剪辑」会改用识别到的实际声音生成字幕。",
+  EDITING_ALIGNMENT_FAILED: "口播稿和实际声音没能逐字对上。点「重试剪辑」会改用识别到的实际声音生成字幕。",
   EDITING_ALIGNMENT_TIMESTAMPS_REQUIRED: "未能取得字幕时间，请检查原片声音后重试。",
   EDITING_UPLOAD_SCRIPT_CHANGED: "这条原片的参考确认稿无法核对，请重新选择确认稿并上传。",
   EDITING_HYPIT_INTERNAL_ONLY: "Hypit 原生出片仅在已配置的内部联调工作区开放。",
@@ -133,6 +135,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
   const [plansVersion, setPlansVersion] = useState(0);
   const [revisionSelection, setRevisionSelection] = useState<EditingRevisionSelection>();
   const [carrySelection, setCarrySelection] = useState<CarrySelection>();
+  const [replanOpen, setReplanOpen] = useState(false);
   const cancelAutomatic = () => { resumeAfterSave.current = false; setContinueAfterRecognition(false); primaryAction.current?.cancel(); };
   const chooseTemplate = (card: TemplateCard) => { cancelAutomatic(); setTemplate(card); };
   useEffect(() => {
@@ -396,7 +399,20 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     });
     return () => { live = false; };
   }, [continueAfterRecognition, transcriptReady, primaryState]);
+  // 当前这次编排生成的剪辑任务：主按钮直接确认导出或打开成片，不让用户去折叠卡片里找小按钮。
+  const planTask = primaryState?.previewTaskId ? tasks.find(task => task.id === primaryState.previewTaskId) : undefined;
+  const planPreview = planTask?.status === "awaiting_review" ? planTask.artifacts.find(a => a.role === "preview") : undefined;
+  const planFinal = planTask?.status === "completed" ? planTask.artifacts.find(a => a.role === "final") : undefined;
+  const planResult = planPreview ? "awaiting_review" as const : planFinal ? "completed" as const : undefined;
+  const showTask = (id: string) => {
+    const card = document.getElementById(`editing-task-${id}`);
+    const details = card?.closest("details");
+    if (details) details.open = true;
+    card?.scrollIntoView({ block: "start" });
+  };
   const begin = () => {
+    if (planTask && planPreview) { void previewAction(planTask, planPreview, "confirm").then(() => showTask(planTask.id)); return; }
+    if (planTask && planFinal) { showTask(planTask.id); return; }
     // A restored page may still be recognizing: the click only arms the continuation.
     if (recognizing && template) { setContinueAfterRecognition(true); return; }
     if (!saved) {
@@ -443,10 +459,11 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     hasSource: Boolean(selectedGeneration || restoredSource || (selected === "upload" ? file : selected)),
     hasTemplate: Boolean(template),
     working: recognizing || renderTasks.some(task => task.status === "queued" || task.status === "running") || primaryState?.phase === "rendering" || primaryState?.phase === "waiting",
-    previewReady: renderTasks.some(task => task.status === "awaiting_review"),
-    finalReady: renderTasks.some(task => task.status === "completed" && task.artifacts.some(artifact => artifact.role === "final")),
+    // 只看当前这一条剪辑；项目里别的历史成片不代表这一次已经完成。
+    previewReady: !!planPreview,
+    finalReady: !!planFinal,
   });
-  const actionLabel = workspaceActionLabel({ busy, recognizing: recognizing && continueAfterRecognition, phase: primaryState?.phase, waitingLabel: primaryState?.label, transcriptReady, credits: cost ? cost.credits : undefined });
+  const actionLabel = workspaceActionLabel({ busy, recognizing: recognizing && continueAfterRecognition, phase: primaryState?.phase, waitingLabel: primaryState?.label, transcriptReady, credits: cost ? cost.credits : undefined, result: planResult });
   return <section className={`${styles.panel} ${flow.workbench} ${compact ? flow.compact : ""}`} aria-label="口播剪辑">
     <ol className={flow.flowSteps} aria-label="剪辑步骤">{flowSteps.map(step => <li key={step.key} data-state={step.state}>
       <button type="button" aria-current={step.state === "current" ? "step" : undefined} onClick={() => document.getElementById(step.anchor)?.scrollIntoView({ block: "start" })}>
@@ -504,7 +521,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       subtitleTask={revisingTask(tasks, revisionSelection)}
       onCreated={async () => { applyTasks(await reload()); }} /></details>}
     <details hidden className={flow.library} onToggle={event => { if (event.currentTarget.open) setLibraryOpened(true); }}><summary>帮助与技术详情</summary><p>排查素材、字体或服务问题时使用。</p><button type="button" onClick={() => setNativeOpened(true)}>查看历史编排</button>{libraryOpened && <EditingLibrary key={`${workspaceId}:${projectId}`} workspaceId={workspaceId} projectId={projectId} saved={saved} />}</details>
-    <section id="editing-results" className={`${flow.step} ${flow.history}`} aria-label="预览与下载"><h2>预览与下载 <small>{historyTasks.length} 个版本</small></h2><input type="search" className={flow.templateSearch} aria-label="搜索历史视频" placeholder="搜索历史视频" value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} />
+    <section id="editing-results" className={`${flow.step} ${flow.history}`} aria-label="预览与下载"><h2>预览与下载 <small>{historyTasks.length} 个版本</small></h2>{planResult && <p className={styles.note}>对这一版不满意？<button type="button" className={flow.secondaryAction} disabled={busy || !!cost?.insufficient || primaryState?.phase === "waiting"} onClick={() => setReplanOpen(true)}>{billableLabel("用同样设置重新编排", cost ? cost.credits : undefined)}</button></p>}<input type="search" className={flow.templateSearch} aria-label="搜索历史视频" placeholder="搜索历史视频" value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} />
     {!historyTasks.length && <GuidedEmpty title="成片会出现在这里" description="每次剪辑都会保留一个版本，可以对比、调整后再出新版。" steps={["选视频", "选模板", "开始智能剪辑，预览后确认"]} motif="edit" />}
     <div className={styles.tasks}>{historyTasks.filter((task, index) => showTaskHistory || index < 3 || task.id === focusedTaskId || ["queued", "running", "awaiting_review"].includes(task.status)).map(task => {
       const final = task.artifacts.find(a => a.role === "final");
@@ -520,7 +537,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       const planId = task.options.native_plan_id;
       const layoutFailed = task.status === "failed" && (task.error_code === "EDITING_EFFECT_LAYOUT_FAILED" || task.error_code === "EDITING_NATIVE_LAYOUT_FAILED");
       const progress = editingTaskProgress({ status: task.status, stage: task.stage, mode: task.options.mode });
-      return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id)}><summary><b>{taskTemplateName(task) && `${taskTemplateName(task)} · `}{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
+      return <details key={task.id} className={flow.taskCard} open={task.id === (focusedTaskId || tasks[0]?.id) || task.id === planTask?.id || ["queued", "running", "awaiting_review"].includes(task.status)}><summary><b>{taskTemplateName(task) && `${taskTemplateName(task)} · `}{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></summary><article id={`editing-task-${task.id}`} tabIndex={-1}><div className={styles.taskHeading}><b>{progress.label}</b><time>{new Date(task.created_at).toLocaleString("zh-CN")}</time></div>
         {task.status !== "completed" && task.status !== "cancelled" && <EditingProgressSteps progress={progress} />}
         {task.planning_origin === "operator_candidate" && <p className={styles.note}>人工调整版</p>}
         {final ? <video id={`editing-film-${task.id}`} controls playsInline preload="metadata" src={mediaUrl(final.url)} poster={mediaUrl(poster?.url)} aria-label="剪辑成片预览" /> : task.status === "awaiting_review" && preview && <video key={preview.id} id={`editing-preview-${task.id}`} controls playsInline preload="metadata" src={mediaUrl(preview.url)} poster={mediaUrl(poster?.url)} aria-label="剪辑视频预览" onError={() => markPreviewFailure(preview.id)} />}
@@ -592,6 +609,10 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
         {["failed", "cancelled"].includes(task.status) && !layoutFailed && <button type="button" disabled={busy} onClick={() => void action(task, "retry")}>重试剪辑</button>}
       </article></details>;
     })}</div>{historyTasks.length > 3 && <button type="button" onClick={() => setShowTaskHistory(value => !value)}>{showTaskHistory ? "收起历史版本" : `查看全部 ${historyTasks.length} 个版本`}</button>}</section>
-    <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || !!cost?.insufficient || (!saved && !onSaveProject) || (recognizing && continueAfterRecognition) || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))} onClick={begin}>{actionLabel}</button><small className={flow.feeHint} role="status">{recognizing ? continueAfterRecognition ? "识别完成后自动继续编排，请保持页面打开；若中途离开，回来后点一次即可接着做，不会重新识别。" : "口播仍在识别，点击后识别完成会自动继续编排。" : transcriptReady && primaryState ? primaryState.hint : "识别 → 编排 → 渲染 → 全片预览，确认后下载高清"}{cost && <> · {cost.text}</>}{cost?.insufficient && <> · <TopUpLink /></>}</small></>}</div>
+    {replanOpen && <Dialog title="用同样设置重新编排" onClose={() => setReplanOpen(false)}>
+      <p>会用同一条口播、同一个模板和素材重新编排一次，{cost && typeof cost.credits === "number" ? `再扣 ${cost.credits.toLocaleString("zh-CN")} 积分` : "按实际用量再次计费"}。当前这一版会保留，可以对比后再决定用哪一版。</p>
+      <footer className={flow.modalFooter}><button type="button" onClick={() => setReplanOpen(false)}>取消</button><button type="button" disabled={busy} onClick={() => { setReplanOpen(false); primaryAction.current?.replan(); }}>确认重新编排</button></footer>
+    </Dialog>}
+    <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || (!planResult && (!!cost?.insufficient || (!saved && !onSaveProject) || (recognizing && continueAfterRecognition) || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))))} onClick={begin}>{actionLabel}</button><small className={flow.feeHint} role="status">{planResult === "awaiting_review" ? "确认后生成高清版，不会重新剪辑，也不再扣费" : planResult === "completed" ? "高清成片已生成，可下载，也会出现在我的作品里" : recognizing ? continueAfterRecognition ? "识别完成后自动继续编排，请保持页面打开；若中途离开，回来后点一次即可接着做，不会重新识别。" : "口播仍在识别，点击后识别完成会自动继续编排。" : transcriptReady && primaryState ? primaryState.hint : "识别 → 编排 → 渲染 → 全片预览，确认后下载高清"}{!planResult && cost && <> · {cost.text}</>}{!planResult && cost?.insufficient && <> · <TopUpLink /></>}</small></>}</div>
   </section>;
 }

@@ -443,14 +443,14 @@ def validate_publish(
                 f"标题或正文照搬了对标视频标题里的「{shared[:30]}」，换成自己的说法",
             )
     if not numeric_claims(both).issubset(numeric_claims(declared)):
-        extra = sorted(
+        invented = sorted(
             f"{n}{u}" for n, u in numeric_claims(both) - numeric_claims(declared)
         )
         raise PublishIssue(
             "Publish text contains a numeric claim absent from the facts",
             "publish_numeric",
-            "、".join(extra)[:120],
-            f"标题或正文里的「{'、'.join(extra)[:60]}」事实卡里没有，删掉这些数字",
+            "、".join(invented)[:120],
+            f"标题或正文里的「{'、'.join(invented)[:60]}」事实卡里没有，删掉这些数字",
         )
     kind = restricted_claim(both, facts)
     if kind:

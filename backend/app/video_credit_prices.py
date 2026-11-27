@@ -23,6 +23,7 @@ VideoPricedAction = Literal[
     "editing_render",
     "benchmark_search",
     "writing_generate",
+    "editing_auto_image",
 ]
 ACTIONS: tuple[str, ...] = VideoPricedAction.__args__  # type: ignore[attr-defined]
 PRICING_VERSION = "video-credits-config-v1"
@@ -39,6 +40,8 @@ DEFAULT_PRICES: dict[str, int] = {
     "editing_render": 10,
     "benchmark_search": 5,
     "writing_generate": 10,
+    # AI 补充配图：¥0.1/张 ×1.25 失败余量 ×3 ÷ ¥0.06 → 7（负责人定价）
+    "editing_auto_image": 7,
 }
 
 

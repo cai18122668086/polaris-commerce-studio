@@ -57,6 +57,7 @@ OwnerType = Literal[
     "video_voice",
     "video_editing",
     "video_planning",
+    "video_editing_image",
 ]
 Outcome = Literal["settle", "release"] | None
 
@@ -73,6 +74,7 @@ LABELS = {
     "editing_render": "剪辑预览渲染",
     "benchmark_search": "对标搜索",
     "writing_generate": "文案生成",
+    "editing_auto_image": "AI 补充配图",
 }
 
 
@@ -413,12 +415,19 @@ def _planning(session: Session, hold_: CreditReservationRecord) -> Outcome:
     return None
 
 
+def _editing_image(session: Session, hold_: CreditReservationRecord) -> Outcome:
+    from .video_editing_supplement_images import classify
+
+    return cast(Outcome, classify(session, hold_.owner_id or ""))
+
+
 CLASSIFIERS: dict[str, Callable[[Session, CreditReservationRecord], Outcome]] = {
     "video_generation": _generation,
     "video_assistance": _assistance,
     "video_voice": _voice,
     "video_editing": _editing,
     "video_planning": _planning,
+    "video_editing_image": _editing_image,
 }
 
 

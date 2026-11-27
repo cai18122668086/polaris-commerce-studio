@@ -14,6 +14,7 @@ EXPECTED = {
     "editing_render": 10,
     "benchmark_search": 5,
     "writing_generate": 10,
+    "editing_auto_image": 7,
 }
 
 

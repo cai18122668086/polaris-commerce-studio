@@ -1,6 +1,6 @@
 # 底图提示词模板
 
-代码只读取下面两条分隔线 `<!-- prompt -->` 之间的内容，用 `{占位符}` 填充。
+代码只读取下面两条 prompt 注释分隔线之间的内容，用 `{占位符}` 填充。
 结构参考 baoyu-cover-image base-prompt（MIT）与 autocrew identity-lock（MIT），按本项目改写。
 
 <!-- prompt -->

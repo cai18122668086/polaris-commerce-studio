@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .errors import ApiError
+from .free_edits import is_free
 from .models import (
     AssetRecord,
     AuditEventRecord,
@@ -22,6 +23,16 @@ _ORIGINAL_RELATION = "replica_original_relation_id"
 _ORIGINAL_VALIDATION = "replica_original_validation"
 _CURRENT = "replica_current_edit_job_id"
 _SNAPSHOTS = "replica_edit_snapshots"
+# An edit of a page inside a delivered detail set can be adopted back into the
+# set, replacing that page. Pricing follows free_edits like any other edit.
+
+
+def is_detail_set(job: JobRecord) -> bool:
+    from . import detail_fast_runtime
+
+    return job.type == "detail_pack" and detail_fast_runtime.is_independent(
+        job.configuration
+    )
 
 
 @dataclass
@@ -59,7 +70,7 @@ def frame(
         if isinstance(document_id, str)
         else None
     )
-    if (
+    if not is_detail_set(job) and (
         job.type != "reference_remix"
         or document is None
         or document.workspace_id != workspace_id
@@ -127,7 +138,10 @@ def _ensure_selected(session: Session, target: Frame) -> JobAssetRecord:
             asset_id=target.original.id,
             direction="output",
             role=SELECTED_ROLE,
-            ordinal=0,
+            # Detail sets are ordered by page; keep the page's place in the set.
+            ordinal=(
+                target.original_relation.ordinal if is_detail_set(target.job) else 0
+            ),
             is_deliverable=False,
             validation={
                 _ORIGINAL: target.original.id,
@@ -356,7 +370,9 @@ def history(session: Session, target: Frame) -> dict:
             ),
             None,
         )
-        if result is None and (job.actual_credits or 0) > 0:
+        if result is None and (
+            (job.actual_credits or 0) > 0 or is_free(job.configuration)
+        ):
             result = next(
                 (row for row in relations if row.role == "locked_candidate"), None
             )

@@ -180,6 +180,14 @@ class AccessUrlResponse(BaseModel):
     original_url: str | None = None
 
 
+class FreeEditAllowance(BaseModel):
+    asset_id: str
+    eligible: bool
+    limit: int = Field(ge=0)
+    used: int = Field(ge=0)
+    remaining: int = Field(ge=0)
+
+
 class ReplicaOutputBinding(BaseModel):
     job_id: str = Field(min_length=1, max_length=40)
     job_item_id: str = Field(min_length=1, max_length=40)

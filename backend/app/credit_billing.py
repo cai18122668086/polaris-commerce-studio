@@ -40,6 +40,11 @@ def image_unit_credits(
         return SINGLE_IMAGE_CREDITS
     if kind == JobType.DOMESTIC_DETAIL_REVIEW:
         return 0  # Review/export/reconciliation produces no new customer image.
+    if kind == JobType.LOCAL_EDIT and isinstance(
+        config.get("_local_edit_free_of_asset_id"), str
+    ):
+        # Server-owned (free_edits.apply): one of a generated image's free edits.
+        return 0
     # This provenance is written only after the published case is validated.
     # A user-supplied field inside settings must never activate this tariff.
     if config.get("inspiration_case_id") and config.get("inspiration_workflow"):

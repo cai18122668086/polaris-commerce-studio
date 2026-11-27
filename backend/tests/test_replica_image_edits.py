@@ -200,7 +200,8 @@ def test_accept_updates_the_exact_replica_frame_and_keeps_original(
                 CreditLedgerEntryRecord.entry_type == "settle",
             )
         ).all()
-        assert len(entries) == 1 and entries[0].delta_balance_credits == -5
+        # The first edit of a generated replica image uses a free edit.
+        assert len(entries) == 1 and entries[0].delta_balance_credits == 0
         events = session.scalars(
             select(AuditEventRecord).where(
                 AuditEventRecord.action == "replica.output_selected"

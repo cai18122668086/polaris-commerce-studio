@@ -64,6 +64,29 @@ export function useAsset(
   });
 }
 
+/** Free local edits left for an image: 3 per image the site generated. */
+export function useFreeEdits(
+  workspaceId: string | undefined,
+  assetId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["free-edits", workspaceId, assetId],
+    enabled: Boolean(workspaceId && assetId),
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.GET(
+        "/api/v1/workspaces/{workspace_id}/assets/{asset_id}/free-edits",
+        {
+          params: { path: { workspace_id: workspaceId!, asset_id: assetId! } },
+          signal,
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+}
+
 export function useUploadAsset(workspaceId: string | undefined) {
   const queryClient = useQueryClient();
   const registry = useRef<IdempotencyIntentRegistry | null>(null);

@@ -32,6 +32,7 @@ import { DomesticDetailFinalReview, isCurrentFinalReview, NATIVE_DETAIL_FINAL_RE
 import { DomesticDetailLocalRevision } from "@/components/domestic-detail-local-revision";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
+import { LocalEditDialog } from "@/components/local-edit-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
@@ -216,6 +217,10 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const automaticReady = !automaticRequested || Boolean(automaticConsent && automaticQuote.data && !automaticQuote.isError && !automaticQuote.isFetching && automaticConsent.sha256 === automaticQuote.data.sha256 && automaticQuote.data.native_approval_document_sha256 === nativeApproval?.document_sha256 && automaticQuote.data.plan_revision === job.data?.plan?.revision);
   const originalAutomaticAuthority = automaticAuthorityForJob(job.data);
   const resultAssets = selectJobResultAssets(job.data);
+  const [pageEdit, setPageEdit] = useState<{ jobId: string; itemId: string; assetId: string; title: string }>();
+  // 精致版/快速版套图里的每一页都可以修改（每张 3 次免费）；采用的修改版替换套图里的这一页。
+  const pagesEditable = Boolean(workspace?.id && job.data?.type === "detail_pack" && savedDetailSkill(job.data.configuration) === "refined"
+    && ["completed", "partial"].includes(job.data.status));
   const requestError = handoff.error ?? createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
 
   const productSources = marketRegion === "domestic" ? sources.filter(source => source.role === "product_reference") : sources;
@@ -415,9 +420,15 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
 
           {resultAssets.length > 0 && <section className="detail-form-card">
             <div className="form-section-head"><span className="number-chip number-chip--violet">5</span><div><h2>生成结果</h2><p>{isRefinedDetail ? "保留图片原始分辨率，实际尺寸显示在每张图片下方，可单张或整套下载。" : "所有已完成的图片会展示在这里，并支持后续下载。"}</p></div><span className="validation-chip"><CheckCircle2 size={15} />共 {resultAssets.length} 张</span></div>
-            <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} width={typeof asset.validation.actual_width === "number" ? asset.validation.actual_width : undefined} height={typeof asset.validation.actual_height === "number" ? asset.validation.actual_height : undefined} />)}</div>
+            <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} width={typeof asset.validation.actual_width === "number" ? asset.validation.actual_width : undefined} height={typeof asset.validation.actual_height === "number" ? asset.validation.actual_height : undefined}
+              edited={asset.role === "replica_selected_result" && Boolean(asset.validation.replica_current_edit_job_id)}
+              onEdit={pagesEditable && asset.job_item_id ? () => setPageEdit({ jobId: job.data!.id, itemId: asset.job_item_id!, assetId: asset.asset_id, title: `详情页 ${asset.ordinal + 1}` }) : undefined} />)}</div>
+            {pagesEditable && <p className="detail-free-edit-note">每一张都可以单独修改，每张前 3 次免费；采用修改版后，整套下载会使用新版。</p>}
             {job.data?.status === "completed" && resultAssets.length === job.data.expected_item_count ? <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} /> : null}
           </section>}
+          {pageEdit && workspace?.id && <LocalEditDialog key={`${pageEdit.jobId}:${pageEdit.itemId}:${pageEdit.assetId}`} workspaceId={workspace.id}
+            source={{ assetId: pageEdit.assetId, title: pageEdit.title }} replicaOutput={{ job_id: pageEdit.jobId, job_item_id: pageEdit.itemId }}
+            open onClose={() => { setPageEdit(undefined); void job.refetch(); }} onAdopted={() => { setPageEdit(undefined); void job.refetch(); }} />}
           {isNativeDetail && ["awaiting_final_review", "completed"].includes(job.data?.status ?? "") && <>
             {finalReview.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在核对当前成图和审核记录…</p></div>}
             {finalReview.error && <div className="api-state api-state--error" role="alert"><p>{errorMessage(finalReview.error)}</p><button onClick={() => void finalReview.refetch()}>重新核对审阅内容</button></div>}

@@ -127,6 +127,7 @@ from .schemas_v1 import (
     DraftJobUpdate,
     ErrorResponse,
     FinalizeJobRequest,
+    FreeEditAllowance,
     JobCreate,
     JobDetailResponse,
     JobListResponse,
@@ -1200,6 +1201,25 @@ def get_asset(
     )
 
 
+@router.get(
+    "/workspaces/{workspace_id}/assets/{asset_id}/free-edits",
+    response_model=FreeEditAllowance,
+    tags=["assets"],
+)
+def get_free_edit_allowance(
+    asset_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> FreeEditAllowance:
+    """How many free local edits remain for this image (3 per generated image)."""
+    from .free_edits import allowance
+
+    get_ready_assets(session, workspace.workspace_id, [asset_id])
+    return FreeEditAllowance.model_validate(
+        allowance(session, workspace.workspace_id, asset_id)
+    )
+
+
 @router.post(
     "/workspaces/{workspace_id}/assets/{asset_id}/access-url",
     response_model=AccessUrlResponse,
@@ -1651,9 +1671,11 @@ def create_job(
     session.flush()
     _add_items_and_inputs(session, job, asset_roles)
     if isinstance(payload, LocalEditJobCreate):
+        from . import free_edits
         from .replica_image_edits import register_edit
 
         register_edit(session, job)
+        free_edits.apply(session, job)
     if payload.intent == "submit":
         _reserve_real_provider_job_if_enabled(
             session,
@@ -2582,9 +2604,11 @@ def retry_job(
     _copy_job_relations_for_retry(session, source, retried, selected)
     session.flush()
     if retried.type == JobType.LOCAL_EDIT.value:
+        from . import free_edits
         from .replica_image_edits import register_edit
 
         register_edit(session, retried)
+        free_edits.apply(session, retried)
     if replica_authority is not None:
         bind_retry(session, source, retried, replica_authority)
     if manual_refined_revision:

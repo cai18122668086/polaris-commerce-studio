@@ -9,9 +9,15 @@ import { allowsJobAction } from "@/lib/jobs/actions";
 import { isChineseUserCopy, jobFailureMessage, localEditReviewReasons } from "@/lib/jobs/presentation";
 import { BeforeAfterResult } from "./before-after-result";
 import styles from "./local-edit-review.module.css";
+import { useNextEditIsFree } from "./free-edit-cost";
 
 type Variant = "locked" | "original";
 type Candidate = { owner: JobDetail; variant: Variant; asset: JobDetail["assets"][number] };
+
+/** This edit spent one of its image's free edits: it settles no credits. */
+export function isFreeEdit(job: Pick<JobDetail, "configuration">): boolean {
+  return typeof job.configuration._local_edit_free_of_asset_id === "string";
+}
 
 function candidates(job: JobDetail): Candidate[] {
   const delivered = job.assets.find(asset => asset.is_deliverable && asset.direction === "output");
@@ -22,6 +28,7 @@ function candidates(job: JobDetail): Candidate[] {
   const originalAvailable = original && (
     lockedCandidate?.validation.strict_lock_success === true || delivered?.asset_id === original.asset_id
     || (job.cost.actual_credits ?? 0) > 0 || job.configuration._local_edit_generation_already_paid === true
+    || isFreeEdit(job)
   );
   return [
     ...(locked ? [{ owner: job, variant: "locked" as const, asset: locked }] : []),
@@ -128,7 +135,10 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
   const charged = job.cost.actual_credits;
   const reusedPaidGeneration = job.configuration._local_edit_generation_already_paid === true;
   const selectedPaid = selected?.owner.cost.actual_credits;
-  const canDownload = Boolean(alreadyAdopted || (typeof selectedPaid === "number" && selectedPaid > 0) || selected?.owner.configuration._local_edit_generation_already_paid === true);
+  const free = isFreeEdit(job);
+  const editSource = (job.configuration.input as Record<string, unknown> | undefined)?.source_asset_id;
+  const nextFree = useNextEditIsFree(workspaceId, typeof editSource === "string" ? editSource : undefined);
+  const canDownload = Boolean(alreadyAdopted || (typeof selectedPaid === "number" && selectedPaid > 0) || selected?.owner.configuration._local_edit_generation_already_paid === true || (selected && isFreeEdit(selected.owner)));
   const instruction = ((selected?.owner ?? job).configuration.settings as Record<string, unknown> | undefined)?.instruction;
   const canAdopt = (pending || completed) && job.allowed_actions.includes("accept_local_edit") && image && !alreadyAdopted;
 
@@ -170,7 +180,7 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
         <div className={styles.regenerationActions}>
           <button type="button" disabled={busy} onClick={() => setRegeneration(undefined)}>取消</button>
           <button type="submit" className={styles.primary} disabled={busy || !regeneration.instruction.trim()}>
-            {regenerate.isPending ? <LoaderCircle className="spin" size={15} /> : <RotateCcw size={15} />}生成新版本{typeof credits === "number" && <small> · {credits} 积分</small>}
+            {regenerate.isPending ? <LoaderCircle className="spin" size={15} /> : <RotateCcw size={15} />}生成新版本{nextFree ? <small> · 免费</small> : typeof credits === "number" && credits > 0 && <small> · {credits} 积分</small>}
           </button>
         </div>
       </form>}
@@ -180,7 +190,7 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
           {job.allowed_actions.includes("review_local_edit") && selectedLatest && !originalSelected && <button type="button" disabled={busy || !latest} onClick={() => void act("review")}><ScanLine size={15} />复核这版</button>}
           {allowsJobAction(job.allowed_actions, "retry") && <button type="button" disabled={busy} onClick={() => setRegeneration({ jobId: job.id, instruction: typeof instruction === "string" ? instruction : "" })}><RotateCcw size={15} />调整要求再生成</button>}
         </div>}
-        <div className={styles.price}><span>{reusedPaidGeneration ? "已付费版本" : "已结算"}</span><strong>{reusedPaidGeneration ? "未重复收费" : typeof charged === "number" ? `${charged} 积分` : "按生成计费"}</strong></div>
+        <div className={styles.price}><span>{free ? "免费修改" : reusedPaidGeneration ? "已付费版本" : "已结算"}</span><strong>{free ? "未扣积分" : reusedPaidGeneration ? "未重复收费" : typeof charged === "number" ? `${charged} 积分` : "按生成计费"}</strong></div>
         {pending && job.allowed_actions.includes("cancel") && <button className={styles.abandon} type="button" disabled={busy} onClick={() => void act("cancel")}>放弃本次修改</button>}
       </div>}
       {completed && alreadyAdopted && onContinueEditing && <button className={styles.primary} type="button" onClick={onContinueEditing}>继续修改这张图</button>}

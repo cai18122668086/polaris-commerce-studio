@@ -1,5 +1,5 @@
 "use client";
-import { CreationSettings, SettingField, ChoiceControl, GenerationVersionField, QuantityControl } from "@/components/creation-settings";
+import { CreationSettings, SettingField, ChoiceControl, QuantityControl } from "@/components/creation-settings";
 import { splitProductFacts } from "@/lib/product-facts";
 
 import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
@@ -32,17 +32,18 @@ import { DomesticDetailFinalReview, isCurrentFinalReview, NATIVE_DETAIL_FINAL_RE
 import { DomesticDetailLocalRevision } from "@/components/domestic-detail-local-revision";
 import { JobDeliverablesDownload } from "@/components/job-deliverables-download";
 import { JobResultImage } from "@/components/job-result-image";
+import { LocalEditDialog } from "@/components/local-edit-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
-import { useConfirmPlan, useCreateJob, useDomesticDetailFinalReview, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
+import { useConfirmPlan, useCreateJob, useDetailMissingPages, useDomesticDetailFinalReview, useFinalizeJob, useJob, useRedoMissingPages, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus, type WorkflowPresentation } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
 import { validateImageUpload } from "@/lib/image-upload";
 import { detailSkillSettings, savedDetailSkill } from "@/lib/detail-skills";
-import { detailSpeedSettings, savedDetailSpeed, type DetailSpeed } from "@/lib/detail-speed";
+import { savedDetailSpeed } from "@/lib/detail-speed";
 import type { Asset } from "@/lib/api/types";
 import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobNote } from "@/lib/jobs/presentation";
@@ -133,7 +134,6 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const [uploadingSources, setUploadingSources] = useState(false);
   const draftTool = initialRegion === "domestic" ? "detail-pack" : "crossborder-detail";
   const [draftPageCount, setPageCount] = useDraftState(workspace?.id, draftTool, "draftPageCount", 8);
-  const [draftDetailSpeed, setDetailSpeed] = useDraftState<DetailSpeed>(workspace?.id, draftTool, "draftDetailSpeed", "standard");
   const draftMarketRegion = initialRegion;
   const [draftMarketplaceId, setMarketplaceId] = useDraftState(workspace?.id, draftTool, "draftMarketplaceId", initialRegion === "domestic" ? "tmall" : "shopify");
   const [draftImageSize, setImageSize] = useDraftState<MarketplaceImageSize>(workspace?.id, draftTool, "draftImageSize", initialRegion === "domestic" ? DOMESTIC_DETAIL_SIZE : "2048x2048");
@@ -167,10 +167,11 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const marketRegion: MarketRegion = jobId ? saved?.market_region === "international" ? "international" : "domestic" : draftMarketRegion;
   const detailSkill = jobId ? savedDetailSkill(job.data?.configuration) : "refined";
   const isRefinedDetail = marketRegion === "domestic" && detailSkill === "refined";
-  const detailSpeed = jobId ? savedDetailSpeed(job.data?.configuration) : draftDetailSpeed;
+  // 国内详情只保留精致版；历史快速版任务仍按原版本显示。
+  const detailSpeed = jobId ? savedDetailSpeed(job.data?.configuration) : "standard";
   const isFastDetail = isRefinedDetail && detailSpeed === "fast";
   const marketplaceId = savedString("platform_code", draftMarketplaceId);
-  const imageSize = (savedString("size", draftImageSize ?? "1440x1920") || DOMESTIC_DETAIL_SIZE) as MarketplaceImageSize;
+  const savedImageSize = (savedString("size", draftImageSize ?? "1440x1920") || DOMESTIC_DETAIL_SIZE) as MarketplaceImageSize;
   const language = jobId ? saved?.language === "en-US" ? "en-US" : "zh-CN" : draftLanguage;
   const pageCount = jobId ? typeof saved?.page_count === "number" ? saved.page_count : 8 : draftPageCount;
   const productName = savedString("product_name", draftProductName);
@@ -196,6 +197,9 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   );
   const workflowAvailable = workflow.mode === "mock" || workflow.mode === "provider";
   const selectedMarketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId) ?? marketplaceGroups[marketRegion][0];
+  const sizeOptions = (selectedMarketplace.sizePresets ?? []).filter(preset => preset.value).map(preset => ({ value: preset.value!, label: preset.label }));
+  // 尺寸跟着所选平台走：草稿里留下的尺寸不属于当前平台时，用该平台的第一个规格。
+  const imageSize = (jobId || !sizeOptions.length || sizeOptions.some(option => option.value === savedImageSize) ? savedImageSize : sizeOptions[0].value) as MarketplaceImageSize;
   const planPages = readPlanPages(job.data?.plan?.payload);
   const automaticPlan = saved?.auto_start_after_plan === true && Boolean(job.data?.configuration.automatic_detail_submission || job.data?.configuration.automatic_crossborder_submission) && job.data?.retry_scope !== "selected";
   const auroraApproval = job.data?.plan?.payload.aurora_v4_3 as Record<string, unknown> | undefined;
@@ -216,6 +220,31 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const automaticReady = !automaticRequested || Boolean(automaticConsent && automaticQuote.data && !automaticQuote.isError && !automaticQuote.isFetching && automaticConsent.sha256 === automaticQuote.data.sha256 && automaticQuote.data.native_approval_document_sha256 === nativeApproval?.document_sha256 && automaticQuote.data.plan_revision === job.data?.plan?.revision);
   const originalAutomaticAuthority = automaticAuthorityForJob(job.data);
   const resultAssets = selectJobResultAssets(job.data);
+  const [pageEdit, setPageEdit] = useState<{ jobId: string; itemId: string; assetId: string; title: string }>();
+  // 精致版/快速版：没交付的屏（含结果未确认的）由用户确认后只重做这几屏，已交付的屏不动。
+  const missingCapable = ["aurora-domestic-detail-v2.3-authored", "xinghe-domestic-detail-v4.0-fast"].includes(String(job.data?.configuration.domestic_detail_pipeline));
+  const missingPages = useDetailMissingPages(workspace?.id, job.data?.id, Boolean(missingCapable && ["partial", "failed"].includes(job.data?.status ?? "")));
+  const missingList = missingPages.data?.missing_pages ?? [];
+  const redoJobId = missingPages.data?.redo_job_id ?? undefined;
+  const redoDone = missingPages.data?.redo_job_status === "completed";
+  const redoMissing = useRedoMissingPages(workspace?.id);
+  const [redoConfirming, setRedoConfirming] = useState(false);
+  const [redoError, setRedoError] = useState<string>();
+  const redoMissingPages = async () => {
+    if (!job.data || !missingList.length) return;
+    setRedoError(undefined);
+    try {
+      const redone = await redoMissing.mutateAsync({ jobId: job.data.id, pages: missingList.map(page => page.page_index) });
+      setRedoConfirming(false);
+      setJobId(redone.id);
+    } catch (error) {
+      setRedoError(errorMessage(error));
+      void missingPages.refetch();
+    }
+  };
+  // 精致版/快速版套图里的每一页都可以修改（每张 3 次免费）；采用的修改版替换套图里的这一页。
+  const pagesEditable = Boolean(workspace?.id && job.data?.type === "detail_pack" && savedDetailSkill(job.data.configuration) === "refined"
+    && ["completed", "partial"].includes(job.data.status));
   const requestError = handoff.error ?? createJob.error ?? confirmPlan.error ?? retryJob.error ?? finalizeJob.error ?? job.error;
 
   const productSources = marketRegion === "domestic" ? sources.filter(source => source.role === "product_reference") : sources;
@@ -229,9 +258,8 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
     const marketplace = marketplaceGroups[marketRegion].find((item) => item.id === marketplaceId);
     setMarketplaceId(marketplaceId);
     setImageSize(
-      marketRegion === "international"
-        ? marketplace?.sizePresets?.[0]?.value ?? INTERNATIONAL_FALLBACK_SIZE
-        : DOMESTIC_DETAIL_SIZE,
+      marketplace?.sizePresets?.[0]?.value
+        ?? (marketRegion === "international" ? INTERNATIONAL_FALLBACK_SIZE : DOMESTIC_DETAIL_SIZE),
     );
   };
 
@@ -282,7 +310,6 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
       language,
       market_region: marketRegion,
       ...detailSkillSettings(marketRegion, detailSkill),
-      ...detailSpeedSettings(marketRegion, detailSpeed),
       category: category.trim() || undefined,
       target_buyer: targetBuyer.trim() || undefined,
       auto_start_after_plan: true,
@@ -335,7 +362,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
           />
 
           <section className="marketplace-selector">
-            <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>所选渠道会影响图片尺寸、构图和文案规范。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name} · {isRefinedDetail ? "3:4 原图交付" : `严格交付 ${imageSize}`}</span></div>
+            <div className="marketplace-selector__head"><span className="number-chip">0</span><div><h2>选择目标电商渠道</h2><p>所选渠道会影响图片尺寸、构图和文案规范。</p></div><span className="platform-selected-state"><CheckCircle2 size={15} />{selectedMarketplace.name} · {imageSize?.replace("x", " × ")}</span></div>
             <p className="commerce-context">{marketRegion === "domestic" ? "国内电商 · 商品详情" : "跨境电商 · 商品详情"} · <Link href="/create">重新选择创作目标</Link></p>
             {marketRegion === "international" && <p>需要亚马逊主图、副图和 A+？<Link href="/workspace/amazon-visual-suite">制作亚马逊完整套图（21 张）</Link>。当前页面制作可选页数的商品详情图。</p>}
             <div className="marketplace-grid">
@@ -368,19 +395,21 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
               <label><span>商品名称 <i>*</i></span><input disabled={Boolean(jobId)} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="例如：鎏金焕亮精华液" /></label>
               <label><span>商品类目</span><input disabled={Boolean(jobId)} value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：护肤 / 家居 / 3C" /></label>
               <label><span>目标买家</span><input disabled={Boolean(jobId)} value={targetBuyer} onChange={(event) => setTargetBuyer(event.target.value)} placeholder="例如：关注成分与肤感的通勤人群" /></label>
-              <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {isRefinedDetail ? "3:4 · 实际尺寸见结果" : imageSize}</strong></div></label>
+              <label><span>平台规格</span><div className="selected-output-platform"><Store size={16} /><strong>{selectedMarketplace.name} · {imageSize?.replace("x", " × ")}</strong></div></label>
               <label className="full"><span>真实卖点与商品资料</span><ProductFactsGuidance /><AutoGrowTextarea disabled={Boolean(jobId)} value={sellingPoints} onChange={(event) => setSellingPoints(event.target.value)} placeholder="可直接粘贴完整商品介绍，或逐行填写真实卖点和规格" /></label>
             </div>
           <CreationSettings balanced={isRefinedDetail} summary={`${selectedMarketplace.name} · ${language === "zh-CN" ? "简体中文" : "英文"} · ${pageCount} 页`}>
-            {isRefinedDetail && <GenerationVersionField name="detail-speed" span="half" value={detailSpeed} onChange={setDetailSpeed} disabled={Boolean(jobId) || createJob.isPending} />}
+            {isRefinedDetail && <SettingField label="生成版本" icon={<Sparkles size={15} />} span="half">
+              <div className="selected-output-platform"><strong>{detailSpeed === "fast" ? "快速版（历史任务）" : "精致版 · 约 5 分钟 · 15 积分/张"}</strong></div>
+            </SettingField>}
             <SettingField label="内容语言" icon={<Languages size={15} />} span={isRefinedDetail ? "quarter" : "half"}>
               <ChoiceControl name="detail-language" label="内容语言" value={language} onChange={setLanguage} disabled={Boolean(jobId)} options={[{ value:"zh-CN", label:"简体中文" }, { value:"en-US", label:"英文" }]} />
             </SettingField>
             <SettingField label="详情页数" icon={<FileCheck2 size={15} />} span={isRefinedDetail ? "quarter" : "half"}>
               <QuantityControl label="详情页数" unit="页" value={pageCount} onChange={setPageCount} allowedValues={isRefinedDetail ? Array.from({ length:12 }, (_, i) => i + 1) : [8,10,12]} disabled={Boolean(jobId)} />
             </SettingField>
-            {marketRegion === "international" && <SettingField label="图片尺寸" icon={<Globe2 size={15} />} span="full">
-              <ChoiceControl label="图片尺寸" name="detail-image-size" value={imageSize ?? ""} onChange={value => setImageSize(value as MarketplaceImageSize)} disabled={Boolean(jobId)} options={(selectedMarketplace.sizePresets ?? []).filter(preset => preset.value).map(preset => ({value:preset.value!,label:preset.label}))} />
+            {sizeOptions.length > 0 && <SettingField label="图片尺寸" icon={<Globe2 size={15} />} span="full" hint={marketRegion === "domestic" ? `按${selectedMarketplace.name}规格，每屏 3:4 竖版` : undefined}>
+              <ChoiceControl label="图片尺寸" name="detail-image-size" value={imageSize ?? ""} onChange={value => setImageSize(value as MarketplaceImageSize)} disabled={Boolean(jobId)} options={sizeOptions} />
             </SettingField>}
           </CreationSettings>
           </section>
@@ -414,9 +443,26 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
           {job.data?.id === jobId && auroraApproval && job.data.plan?.validation_status === "invalid" && <div className="api-state api-state--error" role="alert"><p>当前方案尚未通过校验。请修正后重新审阅完整方案；旧审批内容不能用于此次修改。</p></div>}
 
           {resultAssets.length > 0 && <section className="detail-form-card">
-            <div className="form-section-head"><span className="number-chip number-chip--violet">5</span><div><h2>生成结果</h2><p>{isRefinedDetail ? "保留图片原始分辨率，实际尺寸显示在每张图片下方，可单张或整套下载。" : "所有已完成的图片会展示在这里，并支持后续下载。"}</p></div><span className="validation-chip"><CheckCircle2 size={15} />共 {resultAssets.length} 张</span></div>
-            <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} width={typeof asset.validation.actual_width === "number" ? asset.validation.actual_width : undefined} height={typeof asset.validation.actual_height === "number" ? asset.validation.actual_height : undefined} />)}</div>
+            <div className="form-section-head"><span className="number-chip number-chip--violet">5</span><div><h2>生成结果</h2><p>{isRefinedDetail ? "按所选平台尺寸交付，实际尺寸显示在每张图片下方，可单张或整套下载。" : "所有已完成的图片会展示在这里，并支持后续下载。"}</p></div><span className="validation-chip"><CheckCircle2 size={15} />共 {resultAssets.length} 张</span></div>
+            <div className="job-results-grid">{resultAssets.map((asset, index) => <JobResultImage key={`${asset.asset_id}-${asset.ordinal}`} workspaceId={workspace?.id} assetId={asset.asset_id} alt={`详情页生成结果 ${index + 1}`} label={`详情页 ${asset.ordinal + 1}`} width={typeof asset.validation.actual_width === "number" ? asset.validation.actual_width : undefined} height={typeof asset.validation.actual_height === "number" ? asset.validation.actual_height : undefined}
+              edited={asset.role === "replica_selected_result" && Boolean(asset.validation.replica_current_edit_job_id)}
+              onEdit={pagesEditable && asset.job_item_id ? () => setPageEdit({ jobId: job.data!.id, itemId: asset.job_item_id!, assetId: asset.asset_id, title: `详情页 ${asset.ordinal + 1}` }) : undefined} />)}</div>
+            {pagesEditable && <p className="detail-free-edit-note">每一张都可以单独修改，每张前 3 次免费；采用修改版后，整套下载会使用新版。</p>}
             {job.data?.status === "completed" && resultAssets.length === job.data.expected_item_count ? <JobDeliverablesDownload workspaceId={workspace?.id} jobId={job.data.id} /> : null}
+          </section>}
+          {pageEdit && workspace?.id && <LocalEditDialog key={`${pageEdit.jobId}:${pageEdit.itemId}:${pageEdit.assetId}`} workspaceId={workspace.id}
+            source={{ assetId: pageEdit.assetId, title: pageEdit.title }} replicaOutput={{ job_id: pageEdit.jobId, job_item_id: pageEdit.itemId }}
+            open onClose={() => { setPageEdit(undefined); void job.refetch(); }} onAdopted={() => { setPageEdit(undefined); void job.refetch(); }} />}
+          {missingCapable && missingList.length > 0 && <section className="detail-form-card" aria-label="补齐缺页">
+            <div className="form-section-head"><span className="number-chip number-chip--violet">6</span><div><h2>{redoJobId ? (redoDone ? "缺页已补齐" : "正在补齐缺页") : "补齐缺页"}</h2><p>以下几屏在这一单里没有交付{redoJobId ? "" : "，可以只重做这几屏；已交付的屏不会重做、不会再扣费"}。</p></div></div>
+            <ul className="detail-missing-list">{missingList.map(page => <li key={page.page_index}>第 {page.page_number} 屏 · {page.page_name}：{page.reason}{page.recover_from_local_result ? "（已找到结果，直接恢复，不重新生成）" : ""}</li>)}</ul>
+            {!redoJobId && <p className="detail-free-edit-note">{missingPages.data?.charge_rule} 每屏 {missingPages.data?.credits_per_page} 积分，最多 {missingPages.data?.max_credits} 积分。</p>}
+            {redoJobId
+              ? <div className="detail-missing-confirm"><p className="detail-free-edit-note">{redoDone ? "这几屏已经补齐，完整的一套在新任务里。" : "这几屏正在新任务里补齐，请稍候。"}</p><button className="primary-button" onClick={() => setJobId(redoJobId)}>{redoDone ? "查看补齐后的整套" : "查看补齐进度"}<ArrowRight size={17} /></button></div>
+              : !redoConfirming
+              ? <button className="primary-button" disabled={redoMissing.isPending} onClick={() => setRedoConfirming(true)}><RotateCcw size={17} />补齐这 {missingList.length} 屏</button>
+              : <div className="detail-missing-confirm"><button className="primary-button" disabled={redoMissing.isPending} onClick={() => void redoMissingPages()}>{redoMissing.isPending ? <LoaderCircle className="spin" size={17} /> : null}确认补齐（第 {missingList.map(page => page.page_number).join("、")} 屏）</button><button className="secondary-button" disabled={redoMissing.isPending} onClick={() => setRedoConfirming(false)}>取消</button></div>}
+            {redoError && <p className="generation-feedback error" role="alert">{redoError}</p>}
           </section>}
           {isNativeDetail && ["awaiting_final_review", "completed"].includes(job.data?.status ?? "") && <>
             {finalReview.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在核对当前成图和审核记录…</p></div>}
@@ -439,7 +485,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
             <div className="generation-actions">
               {!jobId && <CreditCostHint jobType="detail_pack" count={pageCount} variant={isFastDetail ? "fast" : undefined} />}
               <p><Info size={14} />{workflow.mode === "provider" ? marketRegion === "domestic" ? "提交后自动完成规划、生成和交付。" : "确认后将开始整套图片生成。" : workflow.mode === "mock" ? "确认后将保存任务计划，当前暂不生成图片。" : "生成服务状态确认中，确认入口暂时关闭。"}</p>
-              {job.data && allowsJobAction(job.data.allowed_actions, "retry") ? (
+              {job.data && allowsJobAction(job.data.allowed_actions, "retry") && !missingCapable ? (
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
                 <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending || uploadingSources}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? marketRegion === "domestic" ? "生成整套详情图" : "生成整套详情图" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>

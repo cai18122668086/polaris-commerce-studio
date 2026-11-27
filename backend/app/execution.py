@@ -3534,6 +3534,24 @@ def _expected_delivery_dimensions(
     if isinstance(size, str) and re.fullmatch(r"[1-9]\d*x[1-9]\d*", size):
         width_text, height_text = size.split("x", maxsplit=1)
         expected = (int(width_text), int(height_text))
+        if job is not None and job.type == JobType.DETAIL_PACK.value:
+            from . import aurora_detail_authored
+            from .new_detail_skill_provider import AdapterValidationError
+
+            if (
+                job.configuration.get("domestic_detail_pipeline")
+                == aurora_detail_authored.PIPELINE_VERSION
+            ):
+                # 精致版 generates at 1440x1920 and delivers the platform size.
+                try:
+                    chosen = aurora_detail_authored.delivery_size(
+                        job.configuration.get("settings") or {}
+                    )
+                except AdapterValidationError:
+                    chosen = None
+                if chosen is not None:
+                    width_text, height_text = chosen.split("x", maxsplit=1)
+                    return int(width_text), int(height_text)
         if (
             job is not None
             and job.type == JobType.DETAIL_PACK.value
@@ -3763,6 +3781,40 @@ def build_fake_coordinator(
         max_concurrency=min(xinghe_concurrency, detail_fast.CONCURRENCY),
         budget_limit_micros=budget_limit_micros, skill_id=detail_fast.SKILL_ID,
     ))
+    # 精致版 authored from the aurora detail Skill v2.3.0: one plan, parallel
+    # independent screens through the same durable gateway, no pixel review.
+    from . import aurora_detail_authored
+
+    aurora_detail_skill_root = default_skill_root(aurora_detail_authored.SKILL_ID)
+    aurora_detail_planner = XinghePlanningCoordinator(
+        session_factory, gateway, storage=storage, skill_root=aurora_detail_skill_root,
+        base_url_signature=base_url_signature, medium_price_micros=medium_price_micros,
+        high_price_micros=high_price_micros, budget_limit_micros=budget_limit_micros,
+        skill_id=aurora_detail_authored.SKILL_ID,
+    )
+    aurora_detail_hash = BundledSkillManifestValidator().validate(
+        aurora_detail_authored.SKILL_ID
+    )
+    aurora_detail_gateway = DurableFastDetailGateway(
+        session_factory,
+        gateway,
+        storage,
+        skill_id=aurora_detail_authored.SKILL_ID,
+        skill_content_hash=aurora_detail_hash,
+        stage_root=aurora_work_root,
+        pipeline=aurora_detail_authored.PIPELINE_VERSION,
+    )
+    aurora_detail_provider = aurora_detail_authored.AuroraDetailProvider(
+        XingheImageProvider(
+            session_factory,
+            aurora_detail_gateway,
+            storage=storage,
+            skill_root=aurora_detail_skill_root,
+            max_concurrency=min(xinghe_concurrency, aurora_detail_authored.CONCURRENCY),
+            budget_limit_micros=budget_limit_micros,
+            skill_id=aurora_detail_authored.SKILL_ID,
+        )
+    )
     amazon_skill_root = default_skill_root(AMAZON_VISUAL_SUITE_SKILL_ID)
     amazon_planner = XinghePlanningCoordinator(
         session_factory,
@@ -3798,6 +3850,7 @@ def build_fake_coordinator(
         routed_amazon_planner,
         refined=refined_planner,
         fast=fast_planner,
+        aurora=aurora_detail_planner,
     )
     default_provider = build_fake_skill_runtime_provider(
         session_factory,
@@ -3989,6 +4042,7 @@ def build_fake_coordinator(
         domestic_detail_provider=domestic_detail_provider,
         refined_detail_provider=refined_detail_provider,
         fast_detail_provider=fast_detail_provider,
+        aurora_detail_provider=aurora_detail_provider,
     )
     amazon_suite_reviewer = None
     if storage is not None:

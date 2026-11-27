@@ -52,7 +52,7 @@ function LocalEditReviewNotice({ job }: { job: JobDetail }) {
     {rejected
       ? <p>{reasons.length ? `系统检查认为：${reasons.join("、")}。` : "系统检查认为这次修改效果有明显问题。"}这只是提醒，修改版已经保留，你可以预览后仍然采用，或调整要求再生成。</p>
       : <p>请预览修改效果，满意就采用；不满意可以调整要求再生成。</p>}
-    <p className="job-review-notice__credits">{typeof charged === "number" && charged > 0 ? `本次生成已结算 ${charged} 积分，采用这版不会再次扣费。` : "采用这版不会额外扣费。"}{typeof unit === "number" && unit > 0 ? `调整要求再生成会新建一次生成，另计 ${unit} 积分。` : "调整要求再生成会新建一次生成，另行计费。"}</p>
+    <p className="job-review-notice__credits">{typeof job.configuration._local_edit_free_of_asset_id === "string" ? "这次修改用的是免费次数，没有扣积分。每张生成图有 3 次免费修改，再次生成会先用剩余次数。" : typeof charged === "number" && charged > 0 ? `本次生成已结算 ${charged} 积分，采用这版不会再次扣费。` : "采用这版不会额外扣费。"}{typeof unit === "number" && unit > 0 ? `调整要求再生成会新建一次生成，另计 ${unit} 积分。` : "调整要求再生成会新建一次生成，另行计费。"}</p>
     <TaskWorkspaceLink className="primary-button" href={jobWorkspaceHref(job)}>去确认修改效果</TaskWorkspaceLink>
   </section>;
 }

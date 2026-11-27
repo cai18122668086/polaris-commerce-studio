@@ -8371,6 +8371,42 @@
         "title": "FinalizeJobRequest",
         "type": "object"
       },
+      "FreeEditAllowance": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "limit": {
+            "minimum": 0.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "remaining": {
+            "minimum": 0.0,
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "used": {
+            "minimum": 0.0,
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_id",
+          "eligible",
+          "limit",
+          "used",
+          "remaining"
+        ],
+        "title": "FreeEditAllowance",
+        "type": "object"
+      },
       "GenerationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -10405,6 +10441,28 @@
             },
             "title": "Missing Pages",
             "type": "array"
+          },
+          "redo_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redo Job Id"
+          },
+          "redo_job_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redo Job Status"
           }
         },
         "required": [
@@ -12196,7 +12254,7 @@
                 "items": {
                   "type": "integer"
                 },
-                "maxItems": 6,
+                "maxItems": 12,
                 "minItems": 1,
                 "type": "array"
               },
@@ -29085,6 +29143,63 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/assets/{asset_id}/free-edits": {
+      "get": {
+        "description": "How many free local edits remain for this image (3 per generated image).",
+        "operationId": "get_free_edit_allowance_api_v1_workspaces__workspace_id__assets__asset_id__free_edits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreeEditAllowance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Free Edit Allowance",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/creation-summary": {
       "get": {
         "operationId": "creation_summary_api_v1_workspaces__workspace_id__creation_summary_get",
@@ -31149,6 +31264,63 @@
           }
         ],
         "summary": "Prepare Domestic Detail Final Review",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail/missing-pages": {
+      "get": {
+        "description": "Detail 精致版: missing screens and the charge rule shown before a redo.",
+        "operationId": "get_detail_missing_pages_api_v1_workspaces__workspace_id__jobs__job_id__detail_missing_pages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MainImageMissingPagesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Detail Missing Pages",
         "tags": [
           "jobs"
         ]

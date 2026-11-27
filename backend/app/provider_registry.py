@@ -12,6 +12,9 @@ from .models import JobRecord
 from .provider import Provider, ProviderOutcome, ProviderRequest, ProviderResult
 from .xinghe_agent import OperationRoutingProvider
 
+# Literal kept here to avoid importing the contract module at registry import.
+AURORA_DETAIL_PIPELINE = "aurora-domestic-detail-v2.3-authored"
+
 
 class DetailPlanner(Protocol):
     async def plan(self, job_id: str) -> JobStatus | None: ...
@@ -23,6 +26,12 @@ def _job_settings(configuration: Mapping[str, Any]) -> Mapping[str, Any]:
         return {}
     settings = job.get("settings")
     return settings if isinstance(settings, Mapping) else {}
+
+
+def _job_pipeline(configuration: Mapping[str, Any]) -> str | None:
+    job = configuration.get("job")
+    value = job.get("domestic_detail_pipeline") if isinstance(job, Mapping) else None
+    return value if isinstance(value, str) else None
 
 
 def _market_region(configuration: Mapping[str, Any]) -> str:
@@ -43,12 +52,14 @@ class RegisteredOperationRoutingProvider(OperationRoutingProvider):
         domestic_detail_provider: Provider,
         refined_detail_provider: Provider | None = None,
         fast_detail_provider: Provider | None = None,
+        aurora_detail_provider: Provider | None = None,
     ) -> None:
         super().__init__(default_provider, detail_provider, local_provider)
         self.routes = dict(routes)
         self.domestic_detail_provider = domestic_detail_provider
         self.refined_detail_provider = refined_detail_provider
         self.fast_detail_provider = fast_detail_provider
+        self.aurora_detail_provider = aurora_detail_provider
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if (
@@ -56,6 +67,10 @@ class RegisteredOperationRoutingProvider(OperationRoutingProvider):
             and _market_region(request.configuration) == "domestic"
         ):
             if _job_settings(request.configuration).get("detail_skill") == "refined":
+                if _job_pipeline(request.configuration) == AURORA_DETAIL_PIPELINE:
+                    return await (
+                        self.aurora_detail_provider or UnavailableProvider()
+                    ).execute(request)
                 if _job_settings(request.configuration).get("detail_speed") == "fast":
                     return await (
                         self.fast_detail_provider or UnavailableProvider()
@@ -122,6 +137,7 @@ class DetailMarketRoutingPlanner:
         amazon: DetailPlanner | None = None,
         refined: DetailPlanner | None = None,
         fast: DetailPlanner | None = None,
+        aurora: DetailPlanner | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.international = international
@@ -129,6 +145,7 @@ class DetailMarketRoutingPlanner:
         self.amazon = amazon
         self.refined = refined
         self.fast = fast
+        self.aurora = aurora
 
     def __getattr__(self, name: str) -> object:
         return getattr(self.international, name)
@@ -154,12 +171,23 @@ class DetailMarketRoutingPlanner:
                 and isinstance(settings, Mapping)
                 and settings.get("detail_speed") == "fast"
             )
+            aurora = (
+                refined
+                and job.configuration.get("domestic_detail_pipeline")
+                == AURORA_DETAIL_PIPELINE
+            )
         if is_amazon:
             if self.amazon is None:
                 return JobStatus.FAILED
             return await self.amazon.plan(job_id)
         planner = self.domestic if market_region == "domestic" else self.international
         if market_region == "domestic" and refined:
+            if aurora:
+                return (
+                    await self.aurora.plan(job_id)
+                    if self.aurora is not None
+                    else JobStatus.FAILED
+                )
             if fast:
                 return (
                     await self.fast.plan(job_id)

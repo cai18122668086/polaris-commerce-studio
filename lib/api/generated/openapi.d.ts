@@ -3327,6 +3327,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/assets/{asset_id}/free-edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Free Edit Allowance
+         * @description How many free local edits remain for this image (3 per generated image).
+         */
+        get: operations["get_free_edit_allowance_api_v1_workspaces__workspace_id__assets__asset_id__free_edits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/creation-summary": {
         parameters: {
             query?: never;
@@ -3750,6 +3770,26 @@ export interface paths {
         put?: never;
         /** Prepare Domestic Detail Final Review */
         post: operations["prepare_domestic_detail_final_review_api_v1_workspaces__workspace_id__jobs__job_id__detail_final_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail/missing-pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Detail Missing Pages
+         * @description Detail 精致版: missing screens and the charge rule shown before a redo.
+         */
+        get: operations["get_detail_missing_pages_api_v1_workspaces__workspace_id__jobs__job_id__detail_missing_pages_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7463,6 +7503,19 @@ export interface components {
             /** Final Review Sha256 */
             final_review_sha256?: string | null;
         };
+        /** FreeEditAllowance */
+        FreeEditAllowance: {
+            /** Asset Id */
+            asset_id: string;
+            /** Eligible */
+            eligible: boolean;
+            /** Limit */
+            limit: number;
+            /** Remaining */
+            remaining: number;
+            /** Used */
+            used: number;
+        };
         /** GenerationRequest */
         GenerationRequest: {
             /** Audio Id */
@@ -8221,6 +8274,10 @@ export interface components {
             max_credits: number;
             /** Missing Pages */
             missing_pages: components["schemas"]["MissingMainImagePage"][];
+            /** Redo Job Id */
+            redo_job_id?: string | null;
+            /** Redo Job Status */
+            redo_job_status?: string | null;
         };
         /**
          * MembershipRole
@@ -17234,6 +17291,38 @@ export interface operations {
             };
         };
     };
+    get_free_edit_allowance_api_v1_workspaces__workspace_id__assets__asset_id__free_edits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeEditAllowance"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     creation_summary_api_v1_workspaces__workspace_id__creation_summary_get: {
         parameters: {
             query?: never;
@@ -18218,6 +18307,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomesticDetailFinalReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_detail_missing_pages_api_v1_workspaces__workspace_id__jobs__job_id__detail_missing_pages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MainImageMissingPagesResponse"];
                 };
             };
             /** @description Validation Error */

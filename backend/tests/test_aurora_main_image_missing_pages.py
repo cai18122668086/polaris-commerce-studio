@@ -120,6 +120,7 @@ def test_lost_pages_are_redone_after_confirmation_and_each_page_billed_once(
     assert state["delivered_pages"] == [3, 4]
     assert state["credits_per_page"] == 8 and state["max_credits"] == 32
     assert "只对成功交付的页扣费" in state["charge_rule"]
+    assert state["redo_job_id"] is None and state["redo_job_status"] is None
 
     # Without explicit confirmation an unknown result is never re-sent.
     blocked = client.post(
@@ -136,6 +137,9 @@ def test_lost_pages_are_redone_after_confirmation_and_each_page_billed_once(
     redo = detail(client, redo_id)
     assert redo["status"] == "completed"
     assert _deliverables(client, redo_id) == set(range(6))
+    # The original job now points to its completed redo instead of offering another.
+    after = _missing(client, job_id)
+    assert after["redo_job_id"] == redo_id and after["redo_job_status"] == "completed"
     # Only the missing pages were generated again; delivered pages were not.
     new_pages = sorted(c.page_number - 1 for c in gateway.image_calls[calls_before:])
     assert new_pages == sorted(LOST)

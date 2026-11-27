@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, LoaderCircle, Sparkles, X } from "lucide-react";
 import { useAsset, useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
 import { useCreateJob, useJob } from "@/features/jobs/api/jobs";
-import { CreditCostHint } from "@/features/billing/components/credit-account";
+import { FreeEditCost } from "./free-edit-cost";
 import { presentWorkflow, useRuntimeStatus } from "@/features/runtime/api/runtime";
 import { errorMessage } from "@/lib/api/request";
 import type { LocalEditJobCreate, ReplicaOutputBinding } from "@/lib/api/types";
@@ -168,7 +168,7 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
             <textarea id="local-edit-dialog-instruction" value={instruction} onChange={event => setInstruction(event.target.value)} maxLength={500} rows={5} placeholder="例如：把选区里的标题改为“清爽保湿”，保持字体和位置。" />
             <span className={styles.count}>{instruction.length} / 500</span>
           </fieldset>
-          <div className={styles.cost}><span>本次生成</span><CreditCostHint jobType="local_edit" count={1} fallback={<span>与一句话改图同价</span>} /></div>
+          <div className={styles.cost}><span>本次生成</span><FreeEditCost workspaceId={workspaceId} assetId={source.assetId} fallback={<span>与一句话改图同价</span>} /></div>
           {error && <p className={styles.error} role="alert">{error}</p>}
           <button type="button" className={styles.primary} disabled={busy || !sourceReady || !available || (!prepared && (!hasSelection || !instruction.trim()))} onClick={() => void submit()} aria-busy={busy}>
                 {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}{busy ? "正在提交" : prepared ? "重试提交" : workflow.mode === "mock" ? "保存修改任务" : "生成修改版"}
@@ -177,7 +177,7 @@ export function LocalEditDialog({ workspaceId, source: initialSource, open, onCl
           {!jobId && workflow.mode === "mock" && <p className={styles.hint}>当前支持保存任务，暂不生成图片。</p>}
         </aside>}
       </div>
-      <footer className={styles.footer}>{jobId ? <TaskWorkspaceLink className={styles.taskLink} href={`/workspace/local-edit?jobId=${encodeURIComponent(jobId)}`}>完整记录<ArrowUpRight size={14} /></TaskWorkspaceLink> : <span>成功出图即计费，采用不另收费。</span>}<button type="button" onClick={close} disabled={busy}>关闭</button></footer>
+      <footer className={styles.footer}>{jobId ? <TaskWorkspaceLink className={styles.taskLink} href={`/workspace/local-edit?jobId=${encodeURIComponent(jobId)}`}>完整记录<ArrowUpRight size={14} /></TaskWorkspaceLink> : <span>生成的每张图有 3 次免费修改，用完后成功出图即计费；采用不另收费。</span>}<button type="button" onClick={close} disabled={busy}>关闭</button></footer>
     </div>
   </dialog>;
 }

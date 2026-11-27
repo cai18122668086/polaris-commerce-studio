@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
-from . import detail_fast, detail_fast_runtime, refined_detail
+from . import aurora_detail_authored, detail_fast, detail_fast_runtime, refined_detail
 from .admin_auth import is_admin
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
 from .archive_response import ArchiveResponse, close_archive, open_archive
@@ -127,6 +127,7 @@ from .schemas_v1 import (
     DraftJobUpdate,
     ErrorResponse,
     FinalizeJobRequest,
+    FreeEditAllowance,
     JobCreate,
     JobDetailResponse,
     JobListResponse,
@@ -1200,6 +1201,25 @@ def get_asset(
     )
 
 
+@router.get(
+    "/workspaces/{workspace_id}/assets/{asset_id}/free-edits",
+    response_model=FreeEditAllowance,
+    tags=["assets"],
+)
+def get_free_edit_allowance(
+    asset_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> FreeEditAllowance:
+    """How many free local edits remain for this image (3 per generated image)."""
+    from .free_edits import allowance
+
+    get_ready_assets(session, workspace.workspace_id, [asset_id])
+    return FreeEditAllowance.model_validate(
+        allowance(session, workspace.workspace_id, asset_id)
+    )
+
+
 @router.post(
     "/workspaces/{workspace_id}/assets/{asset_id}/access-url",
     response_model=AccessUrlResponse,
@@ -1651,9 +1671,11 @@ def create_job(
     session.flush()
     _add_items_and_inputs(session, job, asset_roles)
     if isinstance(payload, LocalEditJobCreate):
+        from . import free_edits
         from .replica_image_edits import register_edit
 
         register_edit(session, job)
+        free_edits.apply(session, job)
     if payload.intent == "submit":
         _reserve_real_provider_job_if_enabled(
             session,
@@ -1844,6 +1866,30 @@ def get_main_image_missing_pages(
         get_workspace_job(session, workspace.workspace_id, job_id),
         request.app.state.settings.aurora_work_root,
     ))
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/detail/missing-pages",
+    response_model=MainImageMissingPagesResponse,
+    tags=["jobs"],
+)
+def get_detail_missing_pages(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> MainImageMissingPagesResponse:
+    """Detail 精致版: missing screens and the charge rule shown before a redo."""
+
+    from .detail_missing_pages import reconcile
+
+    return MainImageMissingPagesResponse.model_validate(
+        reconcile(
+            session,
+            get_workspace_job(session, workspace.workspace_id, job_id),
+            request.app.state.settings.aurora_work_root,
+        )
+    )
 
 
 def _is_preserved_amazon_review_infrastructure_failure(
@@ -2126,6 +2172,7 @@ def update_draft_job(
                 PIPELINE_VERSION,
                 refined_detail.PIPELINE_VERSION,
                 detail_fast.PIPELINE_VERSION,
+                aurora_detail_authored.PIPELINE_VERSION,
             }:
                 updated_configuration["domestic_detail_pipeline"] = pipeline
                 # Skill selection is immutable once the job has been created.
@@ -2527,8 +2574,11 @@ def retry_job(
             )
 
     if payload.confirm_missing_pages is not None:
+        from . import detail_missing_pages
         from .aurora_main_image_missing_pages import confirm_and_release
 
+        if detail_missing_pages.applicable(source):
+            confirm_and_release = detail_missing_pages.confirm_and_release
         if payload.scope != RetryScope.FAILED:
             raise ApiError(422, "VALIDATION_ERROR", "补齐缺页只能重做失败的页。")
         confirm_and_release(
@@ -2581,9 +2631,11 @@ def retry_job(
     _copy_job_relations_for_retry(session, source, retried, selected)
     session.flush()
     if retried.type == JobType.LOCAL_EDIT.value:
+        from . import free_edits
         from .replica_image_edits import register_edit
 
         register_edit(session, retried)
+        free_edits.apply(session, retried)
     if replica_authority is not None:
         bind_retry(session, source, retried, replica_authority)
     if manual_refined_revision:
@@ -4784,6 +4836,9 @@ def _new_job_from_payload(
                     "domestic_detail_pipeline": (
                         detail_fast.PIPELINE_VERSION
                         if payload.configuration.detail_speed == "fast"
+                        else aurora_detail_authored.PIPELINE_VERSION
+                        if payload.configuration.detail_skill == "refined"
+                        and aurora_detail_authored.enabled()
                         else refined_detail.PIPELINE_VERSION
                         if payload.configuration.detail_skill == "refined"
                         else PIPELINE_VERSION
@@ -4802,6 +4857,16 @@ def _new_job_from_payload(
         queued_at=utc_now() if is_submit else None,
         history_expires_at=None if is_submit else utc_now() + timedelta(days=30),
     )
+    if (
+        job.configuration.get("domestic_detail_pipeline")
+        == aurora_detail_authored.PIPELINE_VERSION
+    ):
+        from .new_detail_skill_provider import AdapterValidationError
+
+        try:
+            aurora_detail_authored.delivery_size(job.configuration["settings"])
+        except AdapterValidationError as exc:
+            raise ApiError(422, exc.code, str(exc)) from exc
     return job, asset_roles
 
 
@@ -5221,18 +5286,18 @@ def _validate_domestic_detail_retry(
     ):
         return
     if detail_fast_runtime.is_independent(source.configuration):
-        uncertain_item_id = session.scalar(
-            select(JobItemRecord.id)
-            .where(
+        from .detail_missing_pages import released
+
+        uncertain_ids = session.scalars(
+            select(JobItemRecord.id).where(
                 JobItemRecord.job_id == source.id,
                 JobItemRecord.id.in_(selected),
                 JobItemRecord.error_code.in_(
                     ("PROVIDER_OUTCOME_UNKNOWN", "IMAGE_RESULT_DOWNLOAD_UNCONFIRMED")
                 ),
             )
-            .limit(1)
-        )
-        if uncertain_item_id is not None:
+        ).all()
+        if uncertain_ids and not released(source, list(uncertain_ids)):
             raise ApiError(
                 409,
                 "PROVIDER_OUTCOME_UNKNOWN",

@@ -52,6 +52,22 @@ def _is_fast_main_image(job: JobRecord) -> bool:
     )
 
 
+def existing_redo(session: Session, job: JobRecord) -> JobRecord | None:
+    """The redo already started from this job (not failed or cancelled), if any."""
+    return session.scalar(
+        select(JobRecord)
+        .where(
+            JobRecord.retry_of_job_id == job.id,
+            JobRecord.workspace_id == job.workspace_id,
+            JobRecord.status.not_in(
+                [JobStatus.FAILED.value, JobStatus.CANCELLED.value]
+            ),
+        )
+        .order_by(JobRecord.created_at.desc())
+        .limit(1)
+    )
+
+
 def reconcile(
     session: Session, job: JobRecord, stage_root: Path | None
 ) -> dict[str, Any]:
@@ -108,6 +124,15 @@ def reconcile(
         "credits_per_page": unit,
         "max_credits": unit * len(missing),
         "charge_rule": CHARGE_RULE,
+        **_redo_fields(session, job),
+    }
+
+
+def _redo_fields(session: Session, job: JobRecord) -> dict[str, Any]:
+    redo = existing_redo(session, job)
+    return {
+        "redo_job_id": redo.id if redo else None,
+        "redo_job_status": redo.status if redo else None,
     }
 
 
@@ -128,14 +153,8 @@ def confirm_and_release(
         raise ApiError(
             409, "JOB_NOT_RETRYABLE", "只有部分成功或失败的任务可以补齐缺页。"
         )
-    existing = session.scalar(
-        select(JobRecord.id).where(
-            JobRecord.retry_of_job_id == job.id,
-            JobRecord.status.not_in(
-                [JobStatus.FAILED.value, JobStatus.CANCELLED.value]
-            ),
-        )
-    )
+    redo = existing_redo(session, job)
+    existing = redo.id if redo is not None else None
     if existing is not None:
         raise ApiError(
             409,

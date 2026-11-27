@@ -7027,6 +7027,12 @@ export interface components {
             /** Prepared Task Id */
             prepared_task_id?: string | null;
             /**
+             * Replan
+             * @description Explicitly pay for a new planning of a request that already has a live or finished planning (the user confirmed the extra charge).
+             * @default false
+             */
+            replan: boolean;
+            /**
              * Request Id
              * Format: uuid
              */

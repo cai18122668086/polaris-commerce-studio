@@ -139,8 +139,7 @@ def align_confirmed(root: Path, config: dict) -> Transcript:
     if root.resolve().is_relative_to(model_root.resolve()):
         raise ValueError("Alignment output must remain outside the model bundle")
     if any(
-        (root / name).exists()
-        for name in (*EVIDENCE, NATIVE_INPUT, "transcript.json")
+        (root / name).exists() for name in (*EVIDENCE, NATIVE_INPUT, "transcript.json")
     ):
         raise FileExistsError("Preserve previous alignment in its own attempt")
     identity = bundle_identity(model_root, manifest_path=ALIGNMENT_MANIFEST)

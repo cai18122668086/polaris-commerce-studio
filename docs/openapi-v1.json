@@ -6924,6 +6924,12 @@
             ],
             "title": "Prepared Task Id"
           },
+          "replan": {
+            "default": false,
+            "description": "Explicitly pay for a new planning of a request that already has a live or finished planning (the user confirmed the extra charge).",
+            "title": "Replan",
+            "type": "boolean"
+          },
           "request_id": {
             "format": "uuid",
             "title": "Request Id",

@@ -474,20 +474,25 @@ def create_planning_task(
         # The same request (same speech, template, materials and settings gives
         # the same request hash) already has a live or finished paid planning in
         # this project. A refreshed page or a second check must join that result
-        # instead of paying again; a failed run may still be retried.
+        # instead of paying again; a failed run may still be retried, and the
+        # user may confirm a deliberate re-plan (replan=true, charged again).
         duplicate = session.scalar(
             select(EditingPlanningTaskRecord.id)
             .where(
                 *scope,
                 EditingPlanningTaskRecord.project_id == base.project_id,
                 EditingPlanningTaskRecord.mode == "generate",
-                EditingPlanningTaskRecord.status.in_(("queued", "running", "completed")),
-                EditingPlanningTaskRecord.snapshot["expected_request_sha256"].as_string()
+                EditingPlanningTaskRecord.status.in_(
+                    ("queued", "running", "completed")
+                ),
+                EditingPlanningTaskRecord.snapshot[
+                    "expected_request_sha256"
+                ].as_string()
                 == prepared.result.get("request_sha256"),
             )
             .limit(1)
         )
-        if duplicate and prepared.result.get("request_sha256"):
+        if duplicate and prepared.result.get("request_sha256") and not body.replan:
             raise ApiError(
                 409,
                 "EDITING_PLAN_ALREADY_GENERATED",

@@ -29,7 +29,9 @@ type BaseTask = Pick<PreviewTask, "id" | "status" | "stage" | "created_at" | "ar
 export type EditingPrimaryState = { label: string; hint: string; disabled: boolean; phase: "prepare" | "generate" | "recover" | "waiting" | "rendering" | "preview";
   /** 当前这次编排生成的剪辑任务（预览/成片）；外层主按钮据此直接确认导出或查看成片。 */
   previewTaskId?: string };
-export type EditingPrimaryAction = { run: () => void; cancel: () => void };
+export type EditingPrimaryAction = { run: () => void; cancel: () => void;
+  /** 用户二次确认后，用同样设置重新编排一次（再次计费）；当前版本保留。 */
+  replan: () => void };
 export type CarrySelection = {
   projectId: string;
   sourceId: string;
@@ -145,6 +147,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
   const [batchErrors, setBatchErrors] = useState<Record<string, string>>({});
   const [batchCount, setBatchCount] = useState(0);
+  // 用户确认过「重新编排」的准备记录：只认自己的提交，并带 replan 放行服务端的防重复计费。仅存于内存，刷新不会自动再扣费。
+  const [replanIds, setReplanIds] = useState<string[]>([]);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const automatic = useRef(new EditingAutomaticRun());
   const candidates = tasks.filter(task => task.status === "completed" && task.source_frame?.supports_native_portrait !== false && task.artifacts.some(a => a.role === "transcript"));
@@ -190,7 +194,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     if (id) setActivePreparation({ id, signature: formSignature });
   }, [formSignature, jobs, jobsLoaded, materialPreferenceLoaded, preparation, preparationLoaded, selectedCandidate, templateId]);
   const prepared = preparation?.status === "prepared" ? preparation : undefined;
-  const submitted = planSubmission(jobs, prepared);
+  const submitted = prepared && replanIds.includes(prepared.id) ? jobs.find(job => job.prepared_task_id === prepared.id) : planSubmission(jobs, prepared);
   const rendered = tasks.find(task => task.id === submitted?.preview_task_id);
   const rendering = !!rendered && ["queued", "running"].includes(rendered.status);
   const renderStages: Record<string, string> = { queued: "排队等待渲染", preparing_source: "准备口播画面", preparing_foreground: "准备人物前景", rendering: "渲染视频画面", validating: "检查音视频", building_preview: "准备全片预览", storing: "保存视频" };
@@ -208,7 +212,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const previewTaskId = submitted?.status === "completed" ? submitted.preview_task_id ?? undefined : undefined;
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase, previewTaskId }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase, previewTaskId]);
 
-  const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
+  const submit = async (mode: "prepare" | "generate", prepared?: Job, replan = false) => {
     const taskId = prepared?.base_task_id || selectedCandidate;
     if (!taskId || (mode === "prepare" && !templateId)) return;
     setBusy(true); setError("");
@@ -217,13 +221,15 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       const currentMaterials = mode === "prepare" ? [...effectiveMaterialIds].sort() : [];
       const selectedTemplate = mode === "prepare" ? templateId : undefined;
       const shouldPreview = Boolean(prepared?.auto_preview_available && !manualPreviewIds.includes(prepared.id));
-      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials, selectedTemplate, shouldPreview, mode === "prepare" ? [music, selectedCreative] : undefined]);
+      const confirmedReplan = mode === "generate" && !!prepared && replanIds.includes(prepared.id);
+      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials, selectedTemplate, shouldPreview, mode === "prepare" ? [music, selectedCreative] : undefined, replan, confirmedReplan]);
       if (!intent.current || intent.current.key !== key) intent.current = { key, id: crypto.randomUUID() };
       const created = unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/planning-tasks`, {
         params: { path: { workspace_id: workspaceId, task_id: taskId } }, signal: AbortSignal.timeout(12000),
-        body: { request_id: intent.current.id, mode, template_id: selectedTemplate, auto_preview: shouldPreview, ...(prepared ? { prepared_task_id: prepared.id } : { music, ...(selectedCreative ? { creative_options: selectedCreative } : {}) }), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
+        body: { request_id: intent.current.id, mode, template_id: selectedTemplate, auto_preview: shouldPreview, replan: confirmedReplan, ...(prepared ? { prepared_task_id: prepared.id } : { music, ...(selectedCreative ? { creative_options: selectedCreative } : {}) }), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
       }));
       if (mode === "prepare") {
+        if (replan) setReplanIds(ids => ids.includes(created.id) ? ids : [...ids, created.id]);
         setActivePreparation({ id: created.id, signature: formSignature });
         automatic.current.prepared(automaticIntent, created.id);
       }
@@ -296,7 +302,11 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     } catch (caught) { setError(editingMessage(caught, "预览提交尚未确认，再次点击会查询同一任务。")); }
     finally { setBusy(false); }
   };
-  useImperativeHandle(actionRef, () => ({ cancel: () => { automatic.current.cancel(); }, run: () => {
+  useImperativeHandle(actionRef, () => ({ cancel: () => { automatic.current.cancel(); }, replan: () => {
+    if (busy || waiting || submissionPending || !selectedCandidate || !templateId) return;
+    automatic.current.start(formSignature);
+    void submit("prepare", undefined, true);
+  }, run: () => {
     if (primaryDisabled) return;
     if (nextAction === "recover" && submitted) { automatic.current.cancel(); void action(submitted, "retry"); }
     else if (nextAction === "preview" && submitted) void preview(submitted);

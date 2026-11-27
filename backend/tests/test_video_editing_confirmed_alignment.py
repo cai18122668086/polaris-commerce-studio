@@ -207,9 +207,13 @@ def test_disabled_fa_does_not_present_recognition_as_forced_alignment(tmp_path):
 # FunASR 把 .txt 文本输入当作 Kaldi「键 文本」清单：只读第一行，第一个空格前
 # 被当成键。线上 29 行口播稿只对齐了第一行 18 个字 → TEXT_TIMESTAMPS_MISMATCH。
 
-MULTILINE = "\n".join(
-    f"第{'一二三四五六七八九十'[i % 10]}条，iPhone 15 Pro 的主图要清楚。" for i in range(24)
-) + "\n"
+MULTILINE = (
+    "\n".join(
+        f"第{'一二三四五六七八九十'[i % 10]}条，iPhone 15 Pro 的主图要清楚。"
+        for i in range(24)
+    )
+    + "\n"
+)
 
 
 def test_multiline_script_reaches_fa_as_one_literal_document(tmp_path, monkeypatch):
@@ -246,8 +250,12 @@ def test_multiline_script_reaches_fa_as_one_literal_document(tmp_path, monkeypat
             stamps = [[i * 100 + 10, i * 100 + 90] for i in range(len(words))]
             return [{"text": " ".join(words), "timestamp": stamps}]
 
-    monkeypatch.setitem(sys.modules, "funasr", types.SimpleNamespace(AutoModel=FakeModel))
-    monkeypatch.setattr(module, "sys", types.SimpleNamespace(flags=types.SimpleNamespace(utf8_mode=1)))
+    monkeypatch.setitem(
+        sys.modules, "funasr", types.SimpleNamespace(AutoModel=FakeModel)
+    )
+    monkeypatch.setattr(
+        module, "sys", types.SimpleNamespace(flags=types.SimpleNamespace(utf8_mode=1))
+    )
     monkeypatch.setattr(module, "bundle_identity", lambda *a, **k: "c" * 64)
     installed_version = module.importlib.metadata.version
     monkeypatch.setattr(
@@ -264,7 +272,12 @@ def test_multiline_script_reaches_fa_as_one_literal_document(tmp_path, monkeypat
         "duration_ms": prepared["duration_ms"],
     }
     transcript = module.align_confirmed(
-        root, {"model": str(tmp_path / "model"), "device": "cpu", "confirmed_script": binding}
+        root,
+        {
+            "model": str(tmp_path / "model"),
+            "device": "cpu",
+            "confirmed_script": binding,
+        },
     )
     assert seen["suffix"] != ".txt"  # never the key/value manifest loader
     assert seen["text"] == MULTILINE  # all 24 lines, newlines and spaces intact
@@ -344,7 +357,9 @@ def test_alignment_mismatch_falls_back_to_recognizing_the_real_speech(
     def asr(command, root, *_):
         asr_calls.append(command)
         config = read_json(root / "asr-config.json")
-        assert config["reference"] == snapshot["reference"]  # script still guides recognition
+        assert (
+            config["reference"] == snapshot["reference"]
+        )  # script still guides recognition
         atomic_json(root / "transcript.json", recognized.model_dump(mode="json"))
 
     monkeypatch.setattr(confirmed, "run", failing_fa)
@@ -390,5 +405,11 @@ def test_provenance_failures_still_never_fall_back(tmp_path, monkeypatch):
     monkeypatch.setattr(confirmed, "run", audio_changed)
     with pytest.raises(EditingFailure, match="EDITING_ALIGNMENT_AUDIO_CHANGED"):
         load_transcript(
-            "task", tmp_path, prepared, snapshot, settings, lambda: None, lambda *a, **k: None
+            "task",
+            tmp_path,
+            prepared,
+            snapshot,
+            settings,
+            lambda: None,
+            lambda *a, **k: None,
         )

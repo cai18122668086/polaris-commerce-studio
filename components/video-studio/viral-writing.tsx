@@ -115,7 +115,7 @@ function FindStep({ flow, picks, setPicks, searchCredits, short }: { flow: Flow;
         <small className={css.note}>结果一律按点赞从高到低排列。{platform === "xiaohongshu" ? "小红书只搜视频笔记；口播原文由我们自己识别，每条约 1–2 分钟。" : ""}</small>
       </> : <>
         <textarea className={css.linkInput} aria-label="对标链接" rows={4} maxLength={4000} value={links} onChange={event => setLinks(event.target.value)}
-          placeholder={"直接粘贴分享内容或链接，最多 3 条，支持抖音、小红书\n例如：7.12 复制打开抖音，看看【xxx的作品】… https://v.douyin.com/xxxx/"} />
+          placeholder={"直接粘贴分享内容或链接，最多 3 条，支持抖音、小红书\n例如抖音或小红书 App 里「分享 → 复制链接」得到的整段文字"} />
         <div className={css.searchRow}><small className={css.note}>读取作品信息不扣积分。</small><button type="submit" className={studio.primaryButton} disabled={!links.trim() || !!flow.busy || pending}>{flow.busy === "links" ? "读取中…" : "读取链接"}</button></div>
       </>}
     </form>

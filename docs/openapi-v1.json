@@ -5912,6 +5912,98 @@
         "title": "EditingArtifactResponse",
         "type": "object"
       },
+      "EditingBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/WorkBatchResponse"
+          },
+          "editing": {
+            "items": {
+              "$ref": "#/components/schemas/EditingItemView"
+            },
+            "title": "Editing",
+            "type": "array"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          },
+          "parallel_limit": {
+            "default": 2,
+            "title": "Parallel Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch",
+          "editing"
+        ],
+        "title": "EditingBatchResponse",
+        "type": "object"
+      },
+      "EditingBatchSubmit": {
+        "additionalProperties": false,
+        "properties": {
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids"
+          },
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditingItemChoice"
+            },
+            "title": "Items",
+            "type": "object"
+          },
+          "music": {
+            "default": "template",
+            "enum": [
+              "template",
+              "lower",
+              "raise",
+              "off"
+            ],
+            "title": "Music",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "template_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "template_id"
+        ],
+        "title": "EditingBatchSubmit",
+        "type": "object"
+      },
       "EditingCarriedRevision": {
         "additionalProperties": false,
         "properties": {
@@ -6398,6 +6490,184 @@
           "requires_transparency"
         ],
         "title": "EditingImageTarget",
+        "type": "object"
+      },
+      "EditingItemChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "material_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Material Ids",
+            "type": "array"
+          },
+          "supplement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingSupplementOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "title": "EditingItemChoice",
+        "type": "object"
+      },
+      "EditingItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "can_retry": {
+            "default": false,
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "estimate_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Minutes"
+          },
+          "final_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Url"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "poster_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Url"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "queue_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
+          "render_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Render Task Id"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "waiting_for_source": {
+            "default": false,
+            "title": "Waiting For Source",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_id",
+          "position"
+        ],
+        "title": "EditingItemView",
         "type": "object"
       },
       "EditingLayoutFinding": {
@@ -8129,6 +8399,78 @@
           "bytes"
         ],
         "title": "EditingSourceUploadResponse",
+        "type": "object"
+      },
+      "EditingSourceView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "video_url": {
+            "title": "Video Url",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "created_at",
+          "video_url"
+        ],
+        "title": "EditingSourceView",
         "type": "object"
       },
       "EditingSupplementMg": {
@@ -26519,6 +26861,66 @@
       }
     },
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-sources": {
+      "get": {
+        "description": "The user's uploaded videos (视频库 · 已上传), newest first.",
+        "operationId": "list_sources_api_v1_video_studio_workspaces__workspace_id__editing_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingSourceView"
+                  },
+                  "title": "Response List Sources Api V1 Video Studio Workspaces  Workspace Id  Editing Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Sources",
+        "tags": [
+          "video-work"
+        ]
+      },
       "post": {
         "operationId": "upload_source_api_v1_video_studio_workspaces__workspace_id__editing_sources_post",
         "parameters": [
@@ -32137,6 +32539,128 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/editing": {
+      "get": {
+        "description": "Poll/restore: advances the batch, never starts anything unconfirmed.",
+        "operationId": "editing_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Editing Status",
+        "tags": [
+          "video-work"
+        ]
+      },
+      "post": {
+        "description": "The user confirmed: freeze each item's choices and queue the batch.",
+        "operationId": "submit_editing_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingBatchSubmit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Submit Editing",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/talking": {
       "get": {
         "description": "Polling view; also starts queued items whose turn has come.",
@@ -32525,6 +33049,63 @@
           }
         ],
         "summary": "Patch Item",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/editing-retry": {
+      "post": {
+        "description": "Retry one failed item; the others are not touched.\n\nA failed render or a planning whose answer was saved is retried for free\non the same task. Anything earlier starts a new attempt from that step,\nkeeping finished earlier steps (a finished recognition is reused).",
+        "operationId": "retry_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__editing_retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Retry Editing",
         "tags": [
           "video-work"
         ]

@@ -2175,7 +2175,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Sources
+         * @description The user's uploaded videos (视频库 · 已上传), newest first.
+         */
+        get: operations["list_sources_api_v1_video_studio_workspaces__workspace_id__editing_sources_get"];
         put?: never;
         /** Upload Source */
         post: operations["upload_source_api_v1_video_studio_workspaces__workspace_id__editing_sources_post"];
@@ -3426,6 +3430,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/editing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Editing Status
+         * @description Poll/restore: advances the batch, never starts anything unconfirmed.
+         */
+        get: operations["editing_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_get"];
+        put?: never;
+        /**
+         * Submit Editing
+         * @description The user confirmed: freeze each item's choices and queue the batch.
+         */
+        post: operations["submit_editing_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/talking": {
         parameters: {
             query?: never;
@@ -3483,6 +3511,30 @@ export interface paths {
         head?: never;
         /** Patch Item */
         patch: operations["patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/editing-retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Editing
+         * @description Retry one failed item; the others are not touched.
+         *
+         *     A failed render or a planning whose answer was saved is retried for free
+         *     on the same task. Anything earlier starts a new attempt from that step,
+         *     keeping finished earlier steps (a finished recognition is reused).
+         */
+        post: operations["retry_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__editing_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/finish": {
@@ -7121,6 +7173,41 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** EditingBatchResponse */
+        EditingBatchResponse: {
+            batch: components["schemas"]["WorkBatchResponse"];
+            /** Editing */
+            editing: components["schemas"]["EditingItemView"][];
+            /** Notice */
+            notice?: string | null;
+            /**
+             * Parallel Limit
+             * @default 2
+             */
+            parallel_limit: number;
+        };
+        /** EditingBatchSubmit */
+        EditingBatchSubmit: {
+            /** Item Ids */
+            item_ids?: string[] | null;
+            /** Items */
+            items?: {
+                [key: string]: components["schemas"]["EditingItemChoice"];
+            };
+            /**
+             * Music
+             * @default template
+             * @enum {string}
+             */
+            music: "template" | "lower" | "raise" | "off";
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Template Id */
+            template_id: string;
+        };
         /** EditingCarriedRevision */
         EditingCarriedRevision: {
             /**
@@ -7314,6 +7401,51 @@ export interface components {
             path: string;
             /** Requires Transparency */
             requires_transparency: boolean;
+        };
+        /** EditingItemChoice */
+        EditingItemChoice: {
+            /** Material Ids */
+            material_ids?: string[];
+            supplement?: components["schemas"]["EditingSupplementOptions"] | null;
+            /** Template Id */
+            template_id?: string | null;
+        };
+        /** EditingItemView */
+        EditingItemView: {
+            /**
+             * Can Retry
+             * @default false
+             */
+            can_retry: boolean;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Estimate Minutes */
+            estimate_minutes?: number | null;
+            /** Final Url */
+            final_url?: string | null;
+            /** Item Id */
+            item_id: string;
+            /** Phase */
+            phase?: string | null;
+            /** Position */
+            position: number;
+            /** Poster Url */
+            poster_url?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Queue Position */
+            queue_position?: number | null;
+            /** Render Task Id */
+            render_task_id?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /**
+             * Waiting For Source
+             * @default false
+             */
+            waiting_for_source: boolean;
         };
         /** EditingLayoutFinding */
         EditingLayoutFinding: {
@@ -7901,6 +8033,25 @@ export interface components {
             project_id: string;
             /** Sha256 */
             sha256: string;
+        };
+        /** EditingSourceView */
+        EditingSourceView: {
+            /** Created At */
+            created_at: unknown;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** File Name */
+            file_name?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Video Url */
+            video_url: string;
+            /** Width */
+            width?: number | null;
         };
         /** EditingSupplementMg */
         EditingSupplementMg: {
@@ -15937,6 +16088,39 @@ export interface operations {
             };
         };
     };
+    list_sources_api_v1_video_studio_workspaces__workspace_id__editing_sources_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingSourceView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_source_api_v1_video_studio_workspaces__workspace_id__editing_sources_post: {
         parameters: {
             query?: never;
@@ -18935,6 +19119,74 @@ export interface operations {
             };
         };
     };
+    editing_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_editing_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingBatchSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     talking_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_get: {
         parameters: {
             query?: never;
@@ -19093,6 +19345,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__editing_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingBatchResponse"];
                 };
             };
             /** @description Validation Error */

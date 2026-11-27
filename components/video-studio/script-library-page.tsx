@@ -97,7 +97,7 @@ export function ScriptLibraryPage({ workspaceId, notify, copyText, onUseScripts,
       facts={[{ label: "已存文案", value: lib.page ? total : "—" }]}
       actions={<button type="button" className={studio.primaryButton} onClick={onWrite}><Plus size={16} />写爆款文案</button>} motif="library" />
     <div className={css.toolbar}>
-      <label className={css.search}><Search size={15} /><input aria-label="搜索文案" placeholder="搜索标题或正文" value={lib.query} onChange={event => lib.search(event.target.value)} /></label>
+      <label className={css.search}><Search size={15} /><input data-bare type="search" aria-label="搜索文案" placeholder="搜索标题或正文" value={lib.query} onChange={event => lib.search(event.target.value)} /></label>
       <div className={css.filters} role="radiogroup" aria-label="按平台筛选">
         {FILTERS.map(item => <button key={item.key || "all"} type="button" role="radio" aria-checked={lib.platform === item.key} onClick={() => lib.filter(item.key)}>{item.label}</button>)}
       </div>
@@ -121,8 +121,8 @@ export function ScriptLibraryPage({ workspaceId, notify, copyText, onUseScripts,
             <b className={css.rowTitle}>{displayTitle(item)}</b>
             {summary && <span className={css.rowSummary}>{summary}</span>}
             <span className={css.rowMeta}>
-              {item.platform ? <span>{LIBRARY_PLATFORM_LABEL[item.platform]}</span> : null}
-              <span>口播 {stats.label}</span>
+              <span className={css.metaPlatform}>{item.platform ? LIBRARY_PLATFORM_LABEL[item.platform] : "未标注"}</span>
+              <span className={css.metaStats}>口播 {stats.label}</span>
               <time dateTime={item.created_at}>{when(item.created_at)}</time>
             </span>
           </button>

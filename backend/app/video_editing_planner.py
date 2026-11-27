@@ -385,6 +385,46 @@ def _request_bytes(value: dict[str, Any]) -> bytes:
     return json.dumps(value, sort_keys=True, ensure_ascii=False).encode()
 
 
+def normalize_response_plan(
+    raw: Any,
+    transcript: Transcript,
+    settings: Settings,
+    template: dict | None,
+    runtime: dict | None,
+    asset_cards: list[dict],
+) -> tuple[SemanticPlan, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Deterministic repairs of a saved full-library response.
+
+    Planning records these repairs in its receipt and the preview-time
+    provenance check replays this same function, so both always agree.
+    Returns (plan, native asset repairs, native window/scene repairs).
+    """
+    normalized, window_repairs = normalize_azl_windows(raw, transcript, runtime)
+    normalized, asset_repairs = bind_selected_native_assets(normalized, asset_cards)
+    normalized, chapter_repairs = normalize_chapter_starts(normalized, template)
+    window_repairs.extend(chapter_repairs)
+    normalized, relation_repairs = normalize_beat_relations(normalized)
+    window_repairs.extend(relation_repairs)
+    plan = SemanticPlan.model_validate(normalized)
+    if template is not None:
+        from .video_editing_unified_repair import repair_unified_beats
+
+        style = (runtime or {}).get("template_style", {})
+        normalized, scene_repairs = repair_unified_beats(
+            normalized,
+            plan,
+            settings.video_editing_library_dir,
+            transcript,
+            asset_cards,
+            set(style.get("signature_group_ids", [])),
+            int(style.get("minimum_signature_occurrences", 1)),
+        )
+        if scene_repairs:
+            plan = SemanticPlan.model_validate(normalized)
+            window_repairs.extend(scene_repairs)
+    return plan, asset_repairs, window_repairs
+
+
 def _with_frozen_request(
     body: dict[str, Any], payload: dict[str, Any], frozen: dict[str, Any]
 ) -> dict[str, Any]:
@@ -1291,40 +1331,14 @@ def generate(
             runtime,
         )
     else:
-        normalized, native_window_repairs = normalize_azl_windows(
-            json.loads(content), transcript, runtime
+        plan, native_asset_repairs, native_window_repairs = normalize_response_plan(
+            json.loads(content),
+            transcript,
+            settings,
+            template,
+            runtime,
+            asset_cards or [],
         )
-        normalized, native_asset_repairs = bind_selected_native_assets(
-            normalized, asset_cards or []
-        )
-        normalized, chapter_repairs = normalize_chapter_starts(normalized, template)
-        native_window_repairs.extend(chapter_repairs)
-        normalized, relation_repairs = normalize_beat_relations(normalized)
-        native_window_repairs.extend(relation_repairs)
-        plan = SemanticPlan.model_validate(normalized)
-        if template is not None:
-            from .video_editing_unified_repair import repair_unified_beats
-
-            normalized, scene_repairs = repair_unified_beats(
-                normalized,
-                plan,
-                settings.video_editing_library_dir,
-                transcript,
-                asset_cards or [],
-                set(
-                    (runtime or {})
-                    .get("template_style", {})
-                    .get("signature_group_ids", [])
-                ),
-                int(
-                    (runtime or {})
-                    .get("template_style", {})
-                    .get("minimum_signature_occurrences", 1)
-                ),
-            )
-            if scene_repairs:
-                plan = SemanticPlan.model_validate(normalized)
-                native_window_repairs.extend(scene_repairs)
         if native_asset_repairs:
             atomic_json(
                 root / "native-asset-adaptation.json",

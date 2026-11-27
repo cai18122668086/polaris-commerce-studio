@@ -17,6 +17,7 @@ import httpx
 from PIL import Image
 
 from .config import Settings
+from .video_image_routes import ImageRoute, image_routes  # noqa: F401  (re-exported)
 
 
 class CoverImageError(Exception):
@@ -40,36 +41,8 @@ class CoverImageClient(Protocol):
     ) -> CoverImageResult: ...
 
 
-@dataclass(frozen=True)
-class ImageRoute:
-    name: str
-    base_url: str
-    api_key: str
-    model: str
-
-
-def image_routes(settings: Settings) -> list[ImageRoute]:
-    """The site's image route, then the tengli image route the replica uses."""
-
-    routes = [
-        ImageRoute(
-            "primary",
-            settings.image_base_url.rstrip("/"),
-            settings.image_api_key.get_secret_value(),
-            settings.image_model,
-        ),
-        ImageRoute(
-            "tengli",
-            settings.tengli_base_url.rstrip("/"),
-            settings.tengli_api_key.get_secret_value(),
-            settings.tengli_image_model,
-        ),
-    ]
-    return [route for route in routes if route.api_key and route.base_url]
-
-
 class HttpCoverImageClient:
-    """Tries each configured route in order; only unavailable/timeout moves on."""
+    """Tries the site's image routes in order; only unavailable/timeout moves on."""
 
     def __init__(self, settings: Settings, timeout_seconds: float = 240):
         self.routes = image_routes(settings)

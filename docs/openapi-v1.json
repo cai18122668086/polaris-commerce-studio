@@ -174,6 +174,152 @@
         "title": "AdminUpdateRequest",
         "type": "object"
       },
+      "AiEstimateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "max_images": {
+            "default": 4,
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Max Images",
+            "type": "integer"
+          },
+          "script_text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Script Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "script_text"
+        ],
+        "title": "AiEstimateBody",
+        "type": "object"
+      },
+      "AiImageItem": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "default": "scene",
+            "enum": [
+              "scene",
+              "usage",
+              "texture",
+              "concept",
+              "comparison"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "sentence": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Sentence",
+            "type": "string"
+          },
+          "sentence_index": {
+            "maximum": 60.0,
+            "minimum": 0.0,
+            "title": "Sentence Index",
+            "type": "integer"
+          },
+          "subject": {
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "sentence_index",
+          "sentence",
+          "subject"
+        ],
+        "title": "AiImageItem",
+        "type": "object"
+      },
+      "AiImagesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AiImageItem"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "style": {
+            "default": "bright",
+            "enum": [
+              "bright",
+              "warm",
+              "minimal"
+            ],
+            "title": "Style",
+            "type": "string"
+          },
+          "work_item_ref": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Ref"
+          }
+        },
+        "required": [
+          "project_id",
+          "items"
+        ],
+        "title": "AiImagesBody",
+        "type": "object"
+      },
+      "AiRegenerateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "title": "AiRegenerateBody",
+        "type": "object"
+      },
       "AmazonVisualSuiteConfiguration": {
         "properties": {
           "a_plus_copy": {
@@ -2435,6 +2581,411 @@
           "usage_completeness"
         ],
         "title": "CostSummary",
+        "type": "object"
+      },
+      "CoverCandidateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "background": {
+            "enum": [
+              "frame",
+              "ai"
+            ],
+            "title": "Background",
+            "type": "string"
+          },
+          "background_label": {
+            "title": "Background Label",
+            "type": "string"
+          },
+          "checks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoverChecks"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cover_text": {
+            "title": "Cover Text",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "highlight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highlight"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "layout": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "platform": {
+            "enum": [
+              "douyin",
+              "xiaohongshu"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_kind": {
+            "enum": [
+              "editing",
+              "generation"
+            ],
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "work_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Id"
+          }
+        },
+        "required": [
+          "id",
+          "request_id",
+          "slot",
+          "round",
+          "parent_id",
+          "work_item_id",
+          "source_kind",
+          "source_id",
+          "platform",
+          "cover_text",
+          "highlight",
+          "background",
+          "background_label",
+          "layout",
+          "status",
+          "error_code",
+          "message",
+          "checks",
+          "credits",
+          "image_url",
+          "thumb_url",
+          "created_at"
+        ],
+        "title": "CoverCandidateResponse",
+        "type": "object"
+      },
+      "CoverChecks": {
+        "additionalProperties": false,
+        "properties": {
+          "design_colors_ok": {
+            "title": "Design Colors Ok",
+            "type": "boolean"
+          },
+          "face_clear": {
+            "title": "Face Clear",
+            "type": "boolean"
+          },
+          "face_detected": {
+            "title": "Face Detected",
+            "type": "boolean"
+          },
+          "glyphs_ok": {
+            "title": "Glyphs Ok",
+            "type": "boolean"
+          },
+          "picture_cool_hint": {
+            "title": "Picture Cool Hint",
+            "type": "boolean"
+          },
+          "size_ok": {
+            "title": "Size Ok",
+            "type": "boolean"
+          },
+          "text_exact": {
+            "title": "Text Exact",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text_exact",
+          "glyphs_ok",
+          "face_clear",
+          "design_colors_ok",
+          "size_ok",
+          "face_detected",
+          "picture_cool_hint"
+        ],
+        "title": "CoverChecks",
+        "type": "object"
+      },
+      "CoverFinishRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_candidate_id": {
+            "maxLength": 40,
+            "title": "Cover Candidate Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "publish_body": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Publish Body",
+            "type": "string"
+          },
+          "publish_title": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Publish Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "cover_candidate_id",
+          "publish_title"
+        ],
+        "title": "CoverFinishRequest",
+        "type": "object"
+      },
+      "CoverGenerateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_text": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Cover Text",
+            "type": "string"
+          },
+          "editing_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Editing Task Id"
+          },
+          "generation_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Task Id"
+          },
+          "highlight": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highlight"
+          },
+          "platform": {
+            "default": "douyin",
+            "enum": [
+              "douyin",
+              "xiaohongshu"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "round": {
+            "default": 0,
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Round",
+            "type": "integer"
+          },
+          "work_item_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Id"
+          }
+        },
+        "required": [
+          "request_id",
+          "cover_text"
+        ],
+        "title": "CoverGenerateRequest",
+        "type": "object"
+      },
+      "CoverRetextRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_text": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Cover Text",
+            "type": "string"
+          },
+          "highlight": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highlight"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "cover_text"
+        ],
+        "title": "CoverRetextRequest",
         "type": "object"
       },
       "CrawlTaskActionRequest": {
@@ -6135,6 +6686,29 @@
             "title": "Mime",
             "type": "string"
           },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provenance"
+          },
           "sha256": {
             "title": "Sha256",
             "type": "string"
@@ -6929,6 +7503,16 @@
             "title": "Request Id",
             "type": "string"
           },
+          "supplement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingSupplementOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "template_id": {
             "anyOf": [
               {
@@ -7539,6 +8123,41 @@
           "bytes"
         ],
         "title": "EditingSourceUploadResponse",
+        "type": "object"
+      },
+      "EditingSupplementMg": {
+        "additionalProperties": false,
+        "properties": {
+          "style": {
+            "default": "paper",
+            "enum": [
+              "paper",
+              "ink",
+              "ember"
+            ],
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "title": "EditingSupplementMg",
+        "type": "object"
+      },
+      "EditingSupplementOptions": {
+        "additionalProperties": false,
+        "description": "Frozen supplement choices (C5). Absent = no MG; old requests unchanged.",
+        "properties": {
+          "mg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingSupplementMg"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "EditingSupplementOptions",
         "type": "object"
       },
       "EditingTaskCreate": {
@@ -13188,6 +13807,22 @@
         "title": "SaveWritingResult",
         "type": "object"
       },
+      "ScriptBody": {
+        "additionalProperties": false,
+        "properties": {
+          "script_text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Script Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "script_text"
+        ],
+        "title": "ScriptBody",
+        "type": "object"
+      },
       "SemanticBeat": {
         "additionalProperties": false,
         "description": "No time values, file paths or executable template; allowlisted pointers only.",
@@ -13901,6 +14536,97 @@
         "title": "SourceVideoRef",
         "type": "object"
       },
+      "StockImportBody": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "sentence": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Sentence",
+            "type": "string"
+          },
+          "sentence_index": {
+            "maximum": 60.0,
+            "minimum": 0.0,
+            "title": "Sentence Index",
+            "type": "integer"
+          },
+          "token": {
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Token",
+            "type": "string"
+          },
+          "work_item_ref": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Ref"
+          }
+        },
+        "required": [
+          "project_id",
+          "request_id",
+          "token",
+          "sentence_index",
+          "sentence"
+        ],
+        "title": "StockImportBody",
+        "type": "object"
+      },
+      "StockSearchBody": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 3,
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "script_text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Script Text",
+            "type": "string"
+          },
+          "sentence_indexes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 12,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence Indexes"
+          }
+        },
+        "required": [
+          "script_text"
+        ],
+        "title": "StockSearchBody",
+        "type": "object"
+      },
       "StructureDraftLine": {
         "additionalProperties": false,
         "properties": {
@@ -14464,7 +15190,9 @@
               "editing_planning",
               "editing_render",
               "benchmark_search",
-              "writing_generate"
+              "writing_generate",
+              "cover_generate",
+              "editing_auto_image"
             ],
             "title": "Action",
             "type": "string"
@@ -24575,6 +25303,398 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates": {
+      "get": {
+        "operationId": "list_candidates_api_v1_video_studio_workspaces__workspace_id__cover_candidates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_item_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Item Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "editing_task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Editing Task Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "generation_task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Generation Task Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 8200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ids"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 40,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CoverCandidateResponse"
+                  },
+                  "title": "Response List Candidates Api V1 Video Studio Workspaces  Workspace Id  Cover Candidates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Candidates",
+        "tags": [
+          "video-covers"
+        ]
+      },
+      "post": {
+        "operationId": "generate_api_v1_video_studio_workspaces__workspace_id__cover_candidates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CoverCandidateResponse"
+                  },
+                  "title": "Response Generate Api V1 Video Studio Workspaces  Workspace Id  Cover Candidates Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Generate",
+        "tags": [
+          "video-covers"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}": {
+      "get": {
+        "operationId": "get_candidate_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverCandidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Candidate",
+        "tags": [
+          "video-covers"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}/image": {
+      "get": {
+        "operationId": "candidate_image_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "cover",
+              "enum": [
+                "cover",
+                "thumb",
+                "face"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "download",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Download",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Candidate Image",
+        "tags": [
+          "video-covers"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}/retext": {
+      "post": {
+        "description": "Same background, new cover text: free, synchronous (well under a second).",
+        "operationId": "retext_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__retext_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverRetextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverCandidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Retext",
+        "tags": [
+          "video-covers"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/credit-prices": {
       "get": {
         "description": "Configured credit price for each paid video action; unpriced ones are null.",
@@ -25452,6 +26572,543 @@
         "summary": "Source Video",
         "tags": [
           "video-editing-tasks"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images": {
+      "get": {
+        "operationId": "ai_image_status_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 24,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ai Image Status Api V1 Video Studio Workspaces  Workspace Id  Editing Supplement Ai Images Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Ai Image Status",
+        "tags": [
+          "video-editing-supplement"
+        ]
+      },
+      "post": {
+        "operationId": "ai_images_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiImagesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ai Images Api V1 Video Studio Workspaces  Workspace Id  Editing Supplement Ai Images Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Ai Images",
+        "tags": [
+          "video-editing-supplement"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images/estimate": {
+      "post": {
+        "operationId": "ai_estimate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_estimate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiEstimateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ai Estimate Api V1 Video Studio Workspaces  Workspace Id  Editing Supplement Ai Images Estimate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Ai Estimate",
+        "tags": [
+          "video-editing-supplement"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images/{image_id}/regenerate": {
+      "post": {
+        "operationId": "ai_regenerate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images__image_id__regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiRegenerateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ai Regenerate Api V1 Video Studio Workspaces  Workspace Id  Editing Supplement Ai Images  Image Id  Regenerate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Ai Regenerate",
+        "tags": [
+          "video-editing-supplement"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/analyze": {
+      "post": {
+        "operationId": "analyze_api_v1_video_studio_workspaces__workspace_id__editing_supplement_analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScriptBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Analyze Api V1 Video Studio Workspaces  Workspace Id  Editing Supplement Analyze Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Analyze",
+        "tags": [
+          "video-editing-supplement"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/sources": {
+      "get": {
+        "operationId": "sources_api_v1_video_studio_workspaces__workspace_id__editing_supplement_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sources Api V1 Video Studio Workspaces  Workspace Id  Editing Supplement Sources Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Sources",
+        "tags": [
+          "video-editing-supplement"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/import": {
+      "post": {
+        "operationId": "stock_import_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockImportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Stock Import Api V1 Video Studio Workspaces  Workspace Id  Editing Supplement Stock Import Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Stock Import",
+        "tags": [
+          "video-editing-supplement"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/search": {
+      "post": {
+        "operationId": "stock_search_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_search_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockSearchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Stock Search Api V1 Video Studio Workspaces  Workspace Id  Editing Supplement Stock Search Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Stock Search",
+        "tags": [
+          "video-editing-supplement"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/thumb/{token}": {
+      "get": {
+        "operationId": "stock_thumb_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_thumb__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Stock Thumb",
+        "tags": [
+          "video-editing-supplement"
         ]
       }
     },
@@ -28385,6 +30042,66 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}": {
+      "delete": {
+        "operationId": "delete_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Material Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Delete Material",
+        "tags": [
+          "video-editing-materials"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/file": {
       "get": {
         "operationId": "original_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__file_get",
@@ -29097,6 +30814,17 @@
               "default": "",
               "maxLength": 2100,
               "title": "Ids",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "documents",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 2100,
+              "title": "Documents",
               "type": "string"
             }
           },
@@ -30664,6 +32392,73 @@
         "summary": "Patch Item",
         "tags": [
           "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/finish": {
+      "post": {
+        "description": "Save the chosen cover and the final title/body; the work becomes 已完成.",
+        "operationId": "finish_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__finish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverFinishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Finish Item",
+        "tags": [
+          "video-covers"
         ]
       }
     },

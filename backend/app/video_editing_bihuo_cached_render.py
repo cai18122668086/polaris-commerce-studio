@@ -47,6 +47,10 @@ def render(payload: dict, output: Path) -> Path:
     ):
         final = native_render(payload, output)
     timeline_receipt = timeline.write(output)
+    # W4 MG: post-process only when this task froze supplement MG (else None).
+    from .mg.overlay import apply_supplement_mg
+
+    supplement_mg = apply_supplement_mg(payload, output, final)
     framing_receipt = (
         framing.write(output)
         if framing is not None
@@ -74,6 +78,10 @@ def render(payload: dict, output: Path) -> Path:
             ).hexdigest(),
         },
     )
+    if supplement_mg is not None:
+        value["supplement_mg"] = supplement_mg
+        if supplement_mg.get("status") == "applied":
+            value["final_sha256"] = supplement_mg["final_sha256"]
     receipt.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", "utf-8")
     return final
 

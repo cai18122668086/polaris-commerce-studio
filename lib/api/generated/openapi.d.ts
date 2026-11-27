@@ -1889,6 +1889,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidates */
+        get: operations["list_candidates_api_v1_video_studio_workspaces__workspace_id__cover_candidates_get"];
+        put?: never;
+        /** Generate */
+        post: operations["generate_api_v1_video_studio_workspaces__workspace_id__cover_candidates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate */
+        get: operations["get_candidate_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Candidate Image */
+        get: operations["candidate_image_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}/retext": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retext
+         * @description Same background, new cover text: free, synchronous (well under a second).
+         */
+        post: operations["retext_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__retext_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/credit-prices": {
         parameters: {
             query?: never;
@@ -2122,6 +2194,143 @@ export interface paths {
         };
         /** Source Video */
         get: operations["source_video_api_v1_video_studio_workspaces__workspace_id__editing_sources__source_id__video_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Image Status */
+        get: operations["ai_image_status_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_get"];
+        put?: never;
+        /** Ai Images */
+        post: operations["ai_images_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Estimate */
+        post: operations["ai_estimate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images/{image_id}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Regenerate */
+        post: operations["ai_regenerate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images__image_id__regenerate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/analyze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analyze */
+        post: operations["analyze_api_v1_video_studio_workspaces__workspace_id__editing_supplement_analyze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sources */
+        get: operations["sources_api_v1_video_studio_workspaces__workspace_id__editing_supplement_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock Import */
+        post: operations["stock_import_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock Search */
+        post: operations["stock_search_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/thumb/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock Thumb */
+        get: operations["stock_thumb_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_thumb__token__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2783,6 +2992,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Material */
+        delete: operations["delete_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/file": {
         parameters: {
             query?: never;
@@ -3237,6 +3463,26 @@ export interface paths {
         head?: never;
         /** Patch Item */
         patch: operations["patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish Item
+         * @description Save the chosen cover and the final title/body; the work becomes 已完成.
+         */
+        post: operations["finish_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/talking-retry": {
@@ -4686,6 +4932,64 @@ export interface components {
             /** Status */
             status?: ("active" | "disabled") | null;
         };
+        /** AiEstimateBody */
+        AiEstimateBody: {
+            /**
+             * Max Images
+             * @default 4
+             */
+            max_images: number;
+            /** Script Text */
+            script_text: string;
+        };
+        /** AiImageItem */
+        AiImageItem: {
+            /**
+             * Purpose
+             * @default scene
+             * @enum {string}
+             */
+            purpose: "scene" | "usage" | "texture" | "concept" | "comparison";
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Sentence */
+            sentence: string;
+            /** Sentence Index */
+            sentence_index: number;
+            /** Subject */
+            subject: string;
+        };
+        /** AiImagesBody */
+        AiImagesBody: {
+            /** Items */
+            items: components["schemas"]["AiImageItem"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Style
+             * @default bright
+             * @enum {string}
+             */
+            style: "bright" | "warm" | "minimal";
+            /** Work Item Ref */
+            work_item_ref?: string | null;
+        };
+        /** AiRegenerateBody */
+        AiRegenerateBody: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Subject */
+            subject?: string | null;
+        };
         /** AmazonVisualSuiteConfiguration */
         AmazonVisualSuiteConfiguration: {
             /**
@@ -5503,6 +5807,139 @@ export interface components {
             estimated_max: components["schemas"]["MoneyAmount"] | null;
             estimated_min: components["schemas"]["MoneyAmount"] | null;
             usage_completeness: components["schemas"]["UsageCompleteness"];
+        };
+        /** CoverCandidateResponse */
+        CoverCandidateResponse: {
+            /**
+             * Background
+             * @enum {string}
+             */
+            background: "frame" | "ai";
+            /** Background Label */
+            background_label: string;
+            checks: components["schemas"]["CoverChecks"] | null;
+            /** Cover Text */
+            cover_text: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Credits */
+            credits: number | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Highlight */
+            highlight: string | null;
+            /** Id */
+            id: string;
+            /** Image Url */
+            image_url: string | null;
+            /** Layout */
+            layout: string | null;
+            /** Message */
+            message: string | null;
+            /** Parent Id */
+            parent_id: string | null;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "douyin" | "xiaohongshu";
+            /** Request Id */
+            request_id: string;
+            /** Round */
+            round: number;
+            /** Slot */
+            slot: number;
+            /** Source Id */
+            source_id: string;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "editing" | "generation";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "ready" | "failed";
+            /** Thumb Url */
+            thumb_url: string | null;
+            /** Work Item Id */
+            work_item_id: string | null;
+        };
+        /** CoverChecks */
+        CoverChecks: {
+            /** Design Colors Ok */
+            design_colors_ok: boolean;
+            /** Face Clear */
+            face_clear: boolean;
+            /** Face Detected */
+            face_detected: boolean;
+            /** Glyphs Ok */
+            glyphs_ok: boolean;
+            /** Picture Cool Hint */
+            picture_cool_hint: boolean;
+            /** Size Ok */
+            size_ok: boolean;
+            /** Text Exact */
+            text_exact: boolean;
+        };
+        /** CoverFinishRequest */
+        CoverFinishRequest: {
+            /** Cover Candidate Id */
+            cover_candidate_id: string;
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Publish Body
+             * @default
+             */
+            publish_body: string;
+            /** Publish Title */
+            publish_title: string;
+        };
+        /** CoverGenerateRequest */
+        CoverGenerateRequest: {
+            /** Cover Text */
+            cover_text: string;
+            /** Editing Task Id */
+            editing_task_id?: string | null;
+            /** Generation Task Id */
+            generation_task_id?: string | null;
+            /** Highlight */
+            highlight?: string | null;
+            /**
+             * Platform
+             * @default douyin
+             * @enum {string}
+             */
+            platform: "douyin" | "xiaohongshu";
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Round
+             * @default 0
+             */
+            round: number;
+            /** Work Item Id */
+            work_item_id?: string | null;
+        };
+        /** CoverRetextRequest */
+        CoverRetextRequest: {
+            /** Cover Text */
+            cover_text: string;
+            /** Highlight */
+            highlight?: string | null;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
         };
         /** CrawlTaskActionRequest */
         CrawlTaskActionRequest: {
@@ -6948,6 +7385,12 @@ export interface components {
             label: string;
             /** Mime */
             mime: string;
+            /** Origin */
+            origin?: string | null;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            } | null;
             /** Sha256 */
             sha256: string;
             /** Source Asset Id */
@@ -7222,6 +7665,7 @@ export interface components {
              * Format: uuid
              */
             request_id: string;
+            supplement?: components["schemas"]["EditingSupplementOptions"] | null;
             /** Template Id */
             template_id?: string | null;
         };
@@ -7411,6 +7855,22 @@ export interface components {
             project_id: string;
             /** Sha256 */
             sha256: string;
+        };
+        /** EditingSupplementMg */
+        EditingSupplementMg: {
+            /**
+             * Style
+             * @default paper
+             * @enum {string}
+             */
+            style: "paper" | "ink" | "ember";
+        };
+        /**
+         * EditingSupplementOptions
+         * @description Frozen supplement choices (C5). Absent = no MG; old requests unchanged.
+         */
+        EditingSupplementOptions: {
+            mg?: components["schemas"]["EditingSupplementMg"] | null;
         };
         /** EditingTaskCreate */
         EditingTaskCreate: {
@@ -9478,6 +9938,11 @@ export interface components {
              */
             task_id: string;
         };
+        /** ScriptBody */
+        ScriptBody: {
+            /** Script Text */
+            script_text: string;
+        };
         /**
          * SemanticBeat
          * @description No time values, file paths or executable template; allowlisted pointers only.
@@ -9682,6 +10147,39 @@ export interface components {
              */
             kind: "talking" | "library" | "upload";
         };
+        /** StockImportBody */
+        StockImportBody: {
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Sentence */
+            sentence: string;
+            /** Sentence Index */
+            sentence_index: number;
+            /** Token */
+            token: string;
+            /** Work Item Ref */
+            work_item_ref?: string | null;
+        };
+        /** StockSearchBody */
+        StockSearchBody: {
+            /**
+             * Limit
+             * @default 3
+             */
+            limit: number;
+            /** Script Text */
+            script_text: string;
+            /** Sentence Indexes */
+            sentence_indexes?: number[] | null;
+        };
         /** StructureDraftLine */
         StructureDraftLine: {
             /** Analysis Section Id */
@@ -9876,7 +10374,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate";
+            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate" | "cover_generate" | "editing_auto_image";
             /** Credits */
             credits: number | null;
         };
@@ -14801,6 +15299,181 @@ export interface operations {
             };
         };
     };
+    list_candidates_api_v1_video_studio_workspaces__workspace_id__cover_candidates_get: {
+        parameters: {
+            query?: {
+                work_item_id?: string | null;
+                editing_task_id?: string | null;
+                generation_task_id?: string | null;
+                ids?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverCandidateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_api_v1_video_studio_workspaces__workspace_id__cover_candidates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverCandidateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_candidate_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverCandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidate_image_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__image_get: {
+        parameters: {
+            query?: {
+                view?: "cover" | "thumb" | "face";
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                candidate_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retext_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__retext_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverRetextRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverCandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     credit_prices_api_v1_video_studio_workspaces__workspace_id__credit_prices_get: {
         parameters: {
             query?: never;
@@ -15245,6 +15918,330 @@ export interface operations {
             header?: never;
             path: {
                 source_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_image_status_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                ids: string[];
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_images_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiImagesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_estimate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiEstimateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_regenerate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images__image_id__regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiRegenerateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyze_api_v1_video_studio_workspaces__workspace_id__editing_supplement_analyze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScriptBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sources_api_v1_video_studio_workspaces__workspace_id__editing_supplement_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_import_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StockImportBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_search_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StockSearchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_thumb_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_thumb__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
                 workspace_id: string;
             };
             cookie?: never;
@@ -16839,6 +17836,37 @@ export interface operations {
             };
         };
     };
+    delete_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                material_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     original_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__file_get: {
         parameters: {
             query?: never;
@@ -17175,6 +18203,7 @@ export interface operations {
         parameters: {
             query?: {
                 ids?: string;
+                documents?: string;
                 q?: string;
                 platform?: "" | "douyin" | "xiaohongshu";
                 limit?: number;
@@ -17955,6 +18984,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["WorkItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverFinishRequest"];
             };
         };
         responses: {

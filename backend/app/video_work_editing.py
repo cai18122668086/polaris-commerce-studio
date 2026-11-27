@@ -71,6 +71,11 @@ router = APIRouter(
 )
 
 EDITING_PARALLEL = 2
+# A saved answer that is empty or broke the template contract would fail the same
+# way again: retrying these plans afresh (a new paid planning, said so in the UI).
+FRESH_PLAN_CODES = frozenset(
+    {"EDITING_PLAN_EMPTY_RESPONSE", "EDITING_PLAN_CONTRACT_INVALID"}
+)
 # One item through recognition, planning, render and export on the shared
 # worker, measured on dev (8 cores, worker concurrency 1): about 6 minutes.
 MINUTES_PER_ITEM = 6
@@ -85,8 +90,10 @@ FAILURE_COPY = {
     "EDITING_TEMPLATE_GROUPS_INSUFFICIENT": (
         "这条口播配这个模板可用的动效太少，换一个模板试试。"
     ),
-    "EDITING_PLAN_EMPTY_RESPONSE": "画面编排这次没有返回内容，未扣编排费，可以重试。",
-    "EDITING_PLAN_CONTRACT_INVALID": "画面编排没有通过检查，可以免费重试。",
+    "EDITING_PLAN_EMPTY_RESPONSE": "画面编排这次没有返回内容，重试会重新编排一次。",
+    "EDITING_PLAN_CONTRACT_INVALID": (
+        "这次的画面编排没有通过检查，重试会重新编排一次（按次计费）。"
+    ),
     "EDITING_TRANSCRIPT_REVIEW_REQUIRED": (
         "识别出的字幕和口播稿差别较大，请到「精修这一条」里校对字幕后再剪。"
     ),
@@ -754,7 +761,7 @@ def retry_editing(
         generated is not None
         and generated.status in {"failed", "cancelled"}
         and planning_response(generated, settings).get("call_state") == "response_saved"
-        and run.error_code != "EDITING_PLAN_EMPTY_RESPONSE"
+        and run.error_code not in FRESH_PLAN_CODES
     ):
         retry_planning(UUID(generated.id), request, workspace, session)
         run.phase = "planning"

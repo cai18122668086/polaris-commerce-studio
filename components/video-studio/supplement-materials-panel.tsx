@@ -351,10 +351,12 @@ function StockSection({ workspaceId, item, value, update, report, sources }: Sec
     }
   }, [workspaceId, item.id, item.project_id, setRows, update]);
 
+  const pinned = useMemo(() => Object.values(value.items[item.id]?.pins ?? {}), [value.items, item.id]);
   const search = useCallback(async () => {
     setSearching(true); setError("");
     try {
-      const data = await searchStock(workspaceId, item.script_text);
+      // 每句最多一个补充素材：我指定过的句子不再找免费素材。
+      const data = await searchStock(workspaceId, item.script_text, undefined, pinned);
       setResult(data);
       if (!data.providers.length) setError("免费素材库暂时无法访问，可以先用其他方式补充。");
       // 默认自动挑每句最合适的一个（已经选过的不动）。
@@ -367,7 +369,7 @@ function StockSection({ workspaceId, item, value, update, report, sources }: Sec
     } finally {
       setSearching(false);
     }
-  }, [workspaceId, item.script_text, choose]);
+  }, [workspaceId, item.script_text, choose, pinned]);
   const started = useRef(false);
   useEffect(() => {
     if (started.current || !item.script_text.trim()) return;
@@ -468,14 +470,24 @@ function AiSection({ workspaceId, item, value, update, report }: SectionProps) {
     return [...restored, ...rows];
   }, [materials, chosen, rows, item.id]);
 
+  const stockPicks = value.items[item.id]?.by_source?.stock;
+  const pinsMap = value.items[item.id]?.pins;
+  const covered = useMemo(() => {
+    const fromStock = materials
+      .filter(row => stockPicks?.includes(row.id) && typeof row.provenance?.sentence_index === "number")
+      .map(row => row.provenance?.sentence_index as number);
+    return [...new Set([...fromStock, ...Object.values(pinsMap ?? {})])].sort((a, b) => a - b);
+  }, [materials, stockPicks, pinsMap]);
+  const coveredKey = covered.join(",");
   useEffect(() => {
     if (!item.script_text.trim()) return;
     let live = true;
-    estimateAiImages(workspaceId, item.script_text, max)
+    // 已有我的素材 / 免费素材的句子不再配 AI 图。
+    estimateAiImages(workspaceId, item.script_text, max, coveredKey ? coveredKey.split(",").map(Number) : [])
       .then(data => { if (live) setEstimate(data); })
       .catch(failure => { if (live) setError(message(failure, "暂时无法估算配图张数。")); });
     return () => { live = false; };
-  }, [workspaceId, item.script_text, max]);
+  }, [workspaceId, item.script_text, max, coveredKey]);
 
   useEffect(() => {
     if (!running.length) return;

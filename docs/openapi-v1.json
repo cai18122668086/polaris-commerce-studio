@@ -177,6 +177,14 @@
       "AiEstimateBody": {
         "additionalProperties": false,
         "properties": {
+          "exclude_sentences": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 60,
+            "title": "Exclude Sentences",
+            "type": "array"
+          },
           "max_images": {
             "default": 4,
             "maximum": 6.0,
@@ -13649,6 +13657,14 @@
       "StockSearchBody": {
         "additionalProperties": false,
         "properties": {
+          "exclude_sentences": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 60,
+            "title": "Exclude Sentences",
+            "type": "array"
+          },
           "limit": {
             "default": 3,
             "maximum": 3.0,

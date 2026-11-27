@@ -1049,3 +1049,21 @@ def test_rank_prefers_candidates_whose_tags_match_the_query():
     ear = cand("2", "headphones, ear cushion, music")
     assert rank([cat, ear], ["white headphones ear cushion"])[0].provider_ref == "2"
     assert rank([cat, ear])[0].provider_ref == "1"  # no query: original order rules
+
+
+def test_search_language_follows_the_query(tmp_path, video):
+    settings = video[4]
+    settings.video_stock_cache_dir = tmp_path / "cache"
+    key = tmp_path / "pixabay.key"
+    key.write_text("abcDEF123456789")
+    settings.video_stock_pixabay_key_file = key
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params["lang"])
+        return httpx.Response(200, json={"hits": []})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    search_provider(settings, "pixabay", "white headphones", "image", client=client)
+    search_provider(settings, "pixabay", "白色耳机", "image", client=client)
+    assert seen == ["en", "zh"]

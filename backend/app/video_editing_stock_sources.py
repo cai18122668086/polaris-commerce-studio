@@ -529,12 +529,15 @@ def search_provider(
         return []
     if kind == "video" and provider in ("openverse", "commons"):
         return []
-    name = hashlib.sha256(f"{provider}|{kind}|{per_page}|{query}".encode()).hexdigest()[
-        :32
-    ]
+    name = hashlib.sha256(
+        f"search/2|{provider}|{kind}|{per_page}|{query}".encode()
+    ).hexdigest()[:32]
     if (hit := _cached(settings, name)) is not None:
         return hit
     secret = keys(settings).get(provider, "")
+    # The query language decides the search language (English keywords
+    # searched as Chinese matched almost nothing relevant).
+    chinese = bool(re.search(r"[\u4e00-\u9fff]", query))
     own = client is None
     client = client or httpx.Client()
     try:
@@ -552,7 +555,7 @@ def search_provider(
                     "query": query,
                     "per_page": per_page,
                     "orientation": "portrait",
-                    "locale": "zh-CN",
+                    "locale": "zh-CN" if chinese else "en-US",
                 },
                 {"Authorization": secret},
             )
@@ -570,7 +573,7 @@ def search_provider(
             params = {
                 "key": secret,
                 "q": query,
-                "lang": "zh",
+                "lang": "zh" if chinese else "en",
                 "safesearch": "true",
                 "per_page": max(3, per_page),
             }

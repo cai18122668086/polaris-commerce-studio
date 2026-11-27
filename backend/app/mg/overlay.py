@@ -34,7 +34,8 @@ from .catalog import CATALOG_VERSION, COMPONENTS, STYLES, box_size, cue_window
 
 VERSION = "mg-overlay/1"
 SAFE_TOP, SAFE_BOTTOM, MARGIN = 200, 240, 24
-SLOTS_Y = (220, 360, 520, 680, 860, 1040, 1220, 1380)
+SCALES = (1.0, 0.9, 0.8, 0.72, 0.68)
+EDGE = 48
 IGNORED_ROLES = ("background", "presenter", "stage", "raw")
 CAPTION_ROLES = ("caption", "subtitle")
 Box = tuple[int, int, int, int]
@@ -183,17 +184,25 @@ def place(
     blocked: list[Box],
     size: tuple[int, int],
     params: dict[str, Any] | None = None,
-) -> tuple[int, int] | None:
+) -> tuple[int, int, float] | None:
+    """Free spot (x, y, scale), preferring full size and the upper centre.
+
+    Cards may shrink to the last of ``SCALES`` (smallest card text stays
+    ≥30 px at 1080 wide); never over the face, captions or template cards.
+    """
     if COMPONENTS[component].get("fullscreen"):
-        return (0, 0)
-    width, height = box_size(component, params or {})
-    x = (size[0] - width) // 2
-    for y in SLOTS_Y:
-        rect = (x, y, x + width, y + height)
-        if y < SAFE_TOP or rect[3] > size[1] - SAFE_BOTTOM:
-            continue
-        if not any(overlaps(rect, box, MARGIN) for box in blocked):
-            return (x, y)
+        return (0, 0, 1.0)
+    base_w, base_h = box_size(component, params or {})
+    for scale in SCALES:
+        width, height = round(base_w * scale), round(base_h * scale)
+        xs = dict.fromkeys(((size[0] - width) // 2, EDGE, size[0] - EDGE - width))
+        for y in range(SAFE_TOP, size[1] - SAFE_BOTTOM - height + 1, 20):
+            for x in xs:
+                if x < EDGE // 2 or x + width > size[0] - EDGE // 2:
+                    continue
+                rect = (x, y, x + width, y + height)
+                if not any(overlaps(rect, box, MARGIN) for box in blocked):
+                    return (x, y, scale)
     return None
 
 
@@ -247,6 +256,7 @@ def schedule(
                 "last_frame": last,
                 "x": spot[0],
                 "y": spot[1],
+                "scale": spot[2],
                 "avoided": len(blocked),
             }
         )
@@ -271,8 +281,11 @@ def composite(
             str(Path(cue["frames_dir"]) / "%05d.png"),
         ]
         offset = f"{cue['first_frame']}*{rate.denominator}/{rate.numerator}"
+        scale = cue.get("scale", 1.0)
+        resize = f",scale=iw*{scale}:ih*{scale}:flags=lanczos" if scale < 1 else ""
         graph.append(
-            f"[{index}:v]format=rgba,setpts=PTS-STARTPTS+({offset})/TB[m{index}]"
+            f"[{index}:v]format=rgba{resize},"
+            f"setpts=PTS-STARTPTS+({offset})/TB[m{index}]"
         )
         graph.append(
             f"[{label}][m{index}]overlay=x={cue['x']}:y={cue['y']}:eof_action=pass:"
@@ -403,6 +416,7 @@ def apply_supplement_mg(
                     "last_frame",
                     "x",
                     "y",
+                    "scale",
                     "brand_ratio",
                 )
             }

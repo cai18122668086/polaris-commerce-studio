@@ -487,6 +487,9 @@ class DetailPackConfiguration(BaseModel):
             self.auto_start_after_plan = False
         allowed_sizes = {
             "750x1000",
+            "990x1320",
+            "1080x1440",
+            "1242x1656",
             "1200x1600",
             "1440x1920",
             "900x1200",

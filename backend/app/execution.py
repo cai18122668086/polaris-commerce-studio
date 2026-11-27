@@ -3534,6 +3534,24 @@ def _expected_delivery_dimensions(
     if isinstance(size, str) and re.fullmatch(r"[1-9]\d*x[1-9]\d*", size):
         width_text, height_text = size.split("x", maxsplit=1)
         expected = (int(width_text), int(height_text))
+        if job is not None and job.type == JobType.DETAIL_PACK.value:
+            from . import aurora_detail_authored
+            from .new_detail_skill_provider import AdapterValidationError
+
+            if (
+                job.configuration.get("domestic_detail_pipeline")
+                == aurora_detail_authored.PIPELINE_VERSION
+            ):
+                # 精致版 generates at 1440x1920 and delivers the platform size.
+                try:
+                    chosen = aurora_detail_authored.delivery_size(
+                        job.configuration.get("settings") or {}
+                    )
+                except AdapterValidationError:
+                    chosen = None
+                if chosen is not None:
+                    width_text, height_text = chosen.split("x", maxsplit=1)
+                    return int(width_text), int(height_text)
         if (
             job is not None
             and job.type == JobType.DETAIL_PACK.value

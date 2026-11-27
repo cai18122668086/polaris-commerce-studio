@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """精致版 detail authored from the aurora detail Skill v2.3.0 in one plan."""
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from tests.test_domestic_detail_execution import _gateway
 BASE = f"/api/v1/workspaces/{WORKSPACE_ID}"
 
 
-def create(client, *, count=8, auto_start=False):
+def create(client, *, count=8, auto_start=False, size=None):
     source = upload_asset(client)
     response = client.post(
         BASE + "/jobs",
@@ -38,6 +39,7 @@ def create(client, *, count=8, auto_start=False):
                 "page_count": count,
                 "selling_points": ["合成测试输入"],
                 "auto_start_after_plan": auto_start,
+                **({"size": size} if size else {}),
             },
         },
     )
@@ -145,6 +147,46 @@ def test_auto_start_runs_without_a_confirmation(client, monkeypatch):
     current = client.get(f"{BASE}/jobs/{job['id']}").json()
     assert current["status"] == "completed", current
     assert len(gateway.image_calls) == 4
+
+
+@pytest.mark.parametrize("size", ["750x1000", "990x1320", "1242x1656"])
+def test_screens_are_generated_hd_and_delivered_at_the_chosen_platform_size(
+    client, monkeypatch, size
+):
+    gateway = _gateway(client)
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    synthetic_edit(gateway, monkeypatch)
+    job = create(client, count=2, auto_start=True, size=size)
+    dispatch_pending(client)
+    current = client.get(f"{BASE}/jobs/{job['id']}").json()
+    assert current["status"] == "completed", current
+    assert {call.size for call in gateway.image_calls} == {"1440x1920"}
+    width, height = (int(value) for value in size.split("x"))
+    outputs = [a for a in current["assets"] if a["is_deliverable"] and a["direction"] == "output"]
+    assert len(outputs) == 2
+    for asset in outputs:
+        assert (asset["validation"]["actual_width"], asset["validation"]["actual_height"]) == (width, height)
+
+
+def test_sizes_outside_the_3_4_platform_set_are_refused(client):
+    source = upload_asset(client)
+    response = client.post(
+        BASE + "/jobs",
+        headers=idem(),
+        json={
+            "type": "detail_pack",
+            "intent": "submit",
+            "display_name": "精致测试",
+            "input": {"product_groups": [{"group_key": "primary", "asset_ids": [source["id"]]}]},
+            "configuration": {
+                "detail_skill": "refined", "product_name": "离线测试商品", "platform_code": "tmall",
+                "market_region": "domestic", "page_count": 2, "selling_points": ["合成测试输入"],
+                "size": "1600x1600",
+            },
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "DETAIL_SIZE_UNSUPPORTED"
 
 
 def test_flag_off_keeps_the_historical_xinghe_pipeline(client, monkeypatch):

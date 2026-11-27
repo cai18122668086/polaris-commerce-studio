@@ -4830,6 +4830,16 @@ def _new_job_from_payload(
         queued_at=utc_now() if is_submit else None,
         history_expires_at=None if is_submit else utc_now() + timedelta(days=30),
     )
+    if (
+        job.configuration.get("domestic_detail_pipeline")
+        == aurora_detail_authored.PIPELINE_VERSION
+    ):
+        from .new_detail_skill_provider import AdapterValidationError
+
+        try:
+            aurora_detail_authored.delivery_size(job.configuration["settings"])
+        except AdapterValidationError as exc:
+            raise ApiError(422, exc.code, str(exc)) from exc
     return job, asset_roles
 
 

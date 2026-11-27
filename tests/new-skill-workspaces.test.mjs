@@ -373,8 +373,12 @@ test("public navigation uses registry route matching instead of local-edit fallb
 test("detail workspace automatically starts submitted suite plans and retains historical confirmation", async () => {
   const detail = await utf8("components/detail-pack-workspace.tsx");
   assert.match(detail, /DOMESTIC_DETAIL_SIZE: MarketplaceImageSize = "1440x1920"/);
-  assert.match(detail, /isRefinedDetail \? "3:4 原图交付" : `严格交付 \$\{imageSize\}`/);
-  assert.match(detail, /\{selectedMarketplace\.name\} · \{isRefinedDetail \? "3:4 · 实际尺寸见结果" : imageSize\}/);
+  // The size follows the selected platform's presets for both regions.
+  assert.match(detail, /\{selectedMarketplace\.name\} · \{imageSize\?\.replace\("x", " × "\)\}/);
+  assert.match(detail, /sizeOptions\.length > 0 && <SettingField label="图片尺寸"/);
+  const markets = await utf8("lib/marketplaces.ts");
+  assert.match(markets, /value: "990x1320", label: "990 × 1320 · 电脑端"/);
+  assert.match(markets, /value: "1242x1656"/);
   assert.match(detail, /market_region: marketRegion/);
   assert.match(detail, /auto_start_after_plan: true/);
   assert.match(detail, /!automaticPlan && job\.data\?\.plan && workflowAvailable/);

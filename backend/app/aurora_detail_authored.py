@@ -21,15 +21,29 @@ import json
 import os
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from dataclasses import replace
+from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
 from jsonschema import Draft202012Validator
+from PIL import Image
 
 from . import refined_detail
-from .new_detail_skill_provider import DetailSkillRoute, NewDetailSkillProvider
+from .new_detail_skill_provider import (
+    AdapterValidationError,
+    DetailSkillRoute,
+    NewDetailSkillProvider,
+    job_configuration_from,
+)
+from .provider import ProviderArtifact, ProviderOutcome
 
 if TYPE_CHECKING:
-    from .provider import PersistedProviderArtifact, Provider, ProviderArtifact
+    from .provider import (
+        PersistedProviderArtifact,
+        Provider,
+        ProviderRequest,
+        ProviderResult,
+    )
     from .xinghe_agent import PlannerRequest
 
 SKILL_ID = "aurora-domestic-ecommerce-detail-page-v23"
@@ -105,11 +119,70 @@ def is_authored(configuration: Mapping[str, Any]) -> bool:
     return configuration.get("domestic_detail_pipeline") == PIPELINE_VERSION
 
 
+# Each screen is a 3:4 composition. It is generated at the model's native
+# 1440x1920 and then resized exactly to the size the user picked for the
+# platform (no crop: every delivery size is exactly 3:4).
+GENERATION_SIZE = "1440x1920"
+DELIVERY_SIZES = frozenset(
+    {"750x1000", "990x1320", "1080x1440", "1242x1656", GENERATION_SIZE}
+)
+
+
+def delivery_size(settings: Mapping[str, Any]) -> str:
+    size = str(settings.get("size") or GENERATION_SIZE).strip().lower()
+    if size not in DELIVERY_SIZES:
+        raise AdapterValidationError(
+            "DETAIL_SIZE_UNSUPPORTED", "请选择所选平台提供的 3:4 详情图尺寸。"
+        )
+    return size
+
+
 def prompt_configuration(settings: Mapping[str, Any]) -> dict[str, Any]:
-    return refined_detail.prompt_configuration(settings) | {
+    size = delivery_size(settings)
+    width, height = (int(value) for value in size.split("x"))
+    return refined_detail.prompt_configuration(
+        {**settings, "size": GENERATION_SIZE}
+    ) | {
         "profile_id": PROFILE,
         "delivery": {"qa_mode": "not_reviewed", "qa_status_required": False},
+        "delivery_size": size,
+        "delivery_dimensions": {"width": width, "height": height},
     }
+
+
+def fit_to_delivery(artifact: ProviderArtifact, size: str) -> ProviderArtifact:
+    """Resize one generated screen to the chosen platform size."""
+    width, height = (int(value) for value in size.split("x"))
+    if (artifact.width, artifact.height) == (width, height):
+        return artifact
+    with Image.open(BytesIO(artifact.payload)) as source:
+        image = source.convert("RGB")
+    # A provider canvas a few pixels off 3:4 is centre-cropped to 3:4 first.
+    scale = min(image.width / width, image.height / height)
+    crop_w, crop_h = round(width * scale), round(height * scale)
+    left, top = (image.width - crop_w) // 2, (image.height - crop_h) // 2
+    image = image.crop((left, top, left + crop_w, top + crop_h)).resize(
+        (width, height), Image.Resampling.LANCZOS
+    )
+    buffer = BytesIO()
+    if artifact.content_type == "image/jpeg":
+        image.save(buffer, "JPEG", quality=92, optimize=True)
+    elif artifact.content_type == "image/webp":
+        image.save(buffer, "WEBP", quality=92)
+    else:
+        image.save(buffer, "PNG", optimize=True)
+    payload = buffer.getvalue()
+    return ProviderArtifact(
+        payload=payload,
+        filename=artifact.filename,
+        content_type=artifact.content_type,
+        width=width,
+        height=height,
+        sha256=hashlib.sha256(payload).hexdigest(),
+        locally_resampled=True,
+        provider_width=artifact.provider_width or artifact.width,
+        provider_height=artifact.provider_height or artifact.height,
+    )
 
 
 class AuroraDetailProvider(NewDetailSkillProvider):
@@ -117,6 +190,16 @@ class AuroraDetailProvider(NewDetailSkillProvider):
         super().__init__(
             delegate, DetailSkillRoute(SKILL_ID, "domestic", prompt_configuration)
         )
+
+    async def execute(self, request: ProviderRequest) -> ProviderResult:
+        result = await super().execute(request)
+        if result.outcome != ProviderOutcome.SUCCEEDED or result.artifact is None:
+            return result
+        try:
+            size = delivery_size(job_configuration_from(request.configuration))
+        except AdapterValidationError:
+            return result
+        return replace(result, artifact=fit_to_delivery(result.artifact, size))
 
     def _native_delivery_receipt(
         self,

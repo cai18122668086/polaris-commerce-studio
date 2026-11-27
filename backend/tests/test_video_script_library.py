@@ -472,6 +472,10 @@ def test_batch_by_ids_keeps_order_and_names_what_is_missing(flow):
     page = listed(flow, ids=f"{third},{first},{unknown},{second}")
     assert [i["id"] for i in page["items"]] == [third, first, second]
     assert page["missing_ids"] == [unknown]
+    with flow.client.app.state.session_factory() as session:
+        doc = session.get(VideoScriptLibraryEntry, second).writing_document_id
+    by_doc = listed(flow, documents=f"{doc},{uuid4()}")
+    assert [i["id"] for i in by_doc["items"]] == [second]
     assert (
         flow.client.get(
             f"{flow.url}/script-library",

@@ -44,6 +44,8 @@
 .ghost { height: 34px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; color: var(--fw-muted); }
 .ghost:hover:not(:disabled) { color: var(--fw-ink); background: var(--fw-sunken); }
 .linkButton { border: 0; background: none; padding: 0; color: var(--fw-ink) !important; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--fw-line-strong); font-size: 13px; }
+.activeBelow { margin-top: 44px; }
+.activeBelow:empty { display: none; }
 .more { margin: 28px auto 0; display: flex; height: 36px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--fw-line-strong); background: var(--fw-surface); color: var(--fw-ink); }
 
 .segment { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--fw-sunken); border: 1px solid var(--fw-line); }

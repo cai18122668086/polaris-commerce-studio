@@ -73,8 +73,6 @@ export function WorksHome({ userId, workspaceId, jobs, initialBatch, notify }: {
       </dl>
     </header>
 
-    <ActiveEditingWorks userId={userId} workspaceId={workspaceId} keyword="" />
-
     <div className={styles.filters}>
       <div className={styles.segment} role="radiogroup" aria-label="时间">
         {RANGES.map(entry => <button key={entry.key} type="button" role="radio" aria-checked={range === entry.key} onClick={() => setRange(entry.key)}>{entry.label}</button>)}
@@ -97,6 +95,7 @@ export function WorksHome({ userId, workspaceId, jobs, initialBatch, notify }: {
     {shown.length > 0 && <ul className={styles.grid}>
       {shown.map(card => <li key={card.key}><WorkTile workspaceId={workspaceId} card={card} onOpen={() => setOpen(card.key)} /></li>)}
     </ul>}
+    <div className={styles.activeBelow}><ActiveEditingWorks userId={userId} workspaceId={workspaceId} keyword="" /></div>
     {edits.hasNextPage && <button type="button" className={styles.more} disabled={edits.isFetchingNextPage} onClick={() => void edits.fetchNextPage()}>{edits.isFetchingNextPage ? "正在加载…" : "加载更早的作品"}</button>}
 
     {opened && <PhonePreview workspaceId={workspaceId} cards={shown.filter(card => card.finished)} current={opened} onMove={key => setOpen(key)} onClose={() => setOpen(null)} notify={notify} />}

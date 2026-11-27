@@ -172,3 +172,29 @@ def test_line_breaks_keep_particles_with_their_word():
     for count in (2, 3):
         lines = cc.break_lines("夏天必备的冰丝凉席", count)
         assert lines and not any(line[0] in cc.PARTICLES for line in lines)
+
+
+def test_face_detection_is_serialised_across_threads(monkeypatch):
+    """Two covers in parallel must never run the detector at the same time."""
+
+    import threading
+    import time
+
+    active, peak = [0], [0]
+
+    class Slow:
+        def detect(self, image):
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+            time.sleep(0.02)
+            active[0] -= 1
+            return None
+
+    monkeypatch.setattr(cc, "_detector", lambda size: Slow())
+    threads = [
+        threading.Thread(target=lambda: [cc.detect_face(plain()) for _ in range(5)])
+        for _ in range(4)
+    ]
+    [thread.start() for thread in threads]
+    [thread.join() for thread in threads]
+    assert peak[0] == 1

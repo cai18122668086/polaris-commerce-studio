@@ -279,6 +279,9 @@ def create_app(
             editing_sweeper = EditingSweeper(session_factory, app_settings)
             application.state.editing_sweeper = editing_sweeper
             editing_sweeper.start()
+        from .video_cover_routes import start_recovery as start_cover_recovery
+
+        start_cover_recovery(application)
         video_recovery = None
         if (
             app_settings.video_background_recovery_enabled

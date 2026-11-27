@@ -23,6 +23,7 @@ VideoPricedAction = Literal[
     "editing_render",
     "benchmark_search",
     "writing_generate",
+    "cover_generate",
 ]
 ACTIONS: tuple[str, ...] = VideoPricedAction.__args__  # type: ignore[attr-defined]
 PRICING_VERSION = "video-credits-config-v1"
@@ -39,6 +40,8 @@ DEFAULT_PRICES: dict[str, int] = {
     "editing_render": 10,
     "benchmark_search": 5,
     "writing_generate": 10,
+    # Image actions are a flat 7 credits per image (approved 2026-11-28).
+    "cover_generate": 7,
 }
 
 

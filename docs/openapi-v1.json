@@ -33883,6 +33883,75 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-posters/{kind}/{task_id}": {
+      "get": {
+        "description": "3:4 grid thumbnail of a work's video (cached; 404 while there is none).",
+        "operationId": "work_poster_api_v1_video_studio_workspaces__workspace_id__work_posters__kind___task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "editing",
+                "generation"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Work Poster",
+        "tags": [
+          "video-covers"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/writing-config": {
       "get": {
         "operationId": "config_api_v1_video_studio_workspaces__workspace_id__writing_config_get",

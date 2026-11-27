@@ -3686,6 +3686,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-posters/{kind}/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Work Poster
+         * @description 3:4 grid thumbnail of a work's video (cached; 404 while there is none).
+         */
+        get: operations["work_poster_api_v1_video_studio_workspaces__workspace_id__work_posters__kind___task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/writing-config": {
         parameters: {
             query?: never;
@@ -19849,6 +19869,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TalkingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    work_poster_api_v1_video_studio_workspaces__workspace_id__work_posters__kind___task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "editing" | "generation";
+                task_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

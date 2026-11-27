@@ -86,8 +86,11 @@ def project_material_files(
             "width": row.width,
             "height": row.height,
             "duration_ms": row.duration_ms,
-            "source": "project_upload",
-            "license": "project owner supplied; rights and facts unreviewed",
+            "source": "project_upload" if not row.origin else row.origin,
+            "license": "project owner supplied; rights and facts unreviewed"
+            if not row.origin
+            else str((row.provenance or {}).get("license") or row.origin),
+            **({"origin": row.origin} if row.origin else {}),
             **(
                 {"feedback_observation": row.feedback_observation}
                 if row.feedback_observation
@@ -145,6 +148,9 @@ def material_cards(
                     "scope": (
                         "generated illustration; not product or factual evidence"
                         if asset.get("source_image_result")
+                        or asset.get("origin") == "ai_generated"
+                        else "free stock illustration; not product or factual evidence"
+                        if asset.get("origin") == "stock"
                         else "owner description; visual evidence and facts unreviewed"
                     )
                 }

@@ -6,12 +6,19 @@ import hashlib
 import json
 import math
 import re
+import subprocess
+import sys
+import tempfile
+import time
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from pydantic import Field
 
+from . import video_benchmark_platforms as platforms
 from .config import Settings
 from .errors import ApiError
 from .video_planner_policy import json_planning_options
@@ -249,7 +256,7 @@ class VideoAssistanceProvider:
     def plan(
         self, kind: str, inputs: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        if kind in {"ref_analysis", "fact_draft"}:
+        if kind in {"ref_analysis", "fact_draft", "ref_compare"}:
             from .video_writing_provider import plan_writing
 
             return plan_writing(self, kind, inputs)
@@ -314,17 +321,70 @@ class VideoAssistanceProvider:
         except (ValueError, TypeError, KeyError, IndexError):
             return {"validation_error": "VIDEO_SCRIPT_INVALID"}, receipt
 
-    def benchmark_search(self, params: dict[str, Any]) -> dict[str, Any]:
+    def benchmark_search(
+        self, params: dict[str, Any], platform: str = "douyin"
+    ) -> dict[str, Any]:
         if not benchmark_search_configured(self.settings):
             raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "对标搜索尚未配置。")
         return self.request(
             "extract",
             "POST",
             "/api/v1/social",
-            json={"platform": "douyin", "action": "search", "params": params},
+            json=platforms.search_body(
+                platform,
+                params["keyword"],
+                params.get("page_token", ""),
+                params.get("publish_time", "unlimited"),
+            ),
         )
 
-    def extract(self, inputs: dict[str, Any]) -> dict[str, Any]:
+    def benchmark_links(self, links: list[dict[str, str]]) -> dict[str, Any]:
+        """One detail call per pasted link; a page of rows like a search page."""
+        if not benchmark_search_configured(self.settings):
+            raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "对标搜索尚未配置。")
+        rows: list[Any] = []
+        failures: list[str] = []
+        for link in links:
+            try:
+                data = self.request(
+                    "extract",
+                    "POST",
+                    "/api/v1/social",
+                    read_timeout=90,
+                    json=platforms.detail_body(link["platform"], link["url"]),
+                )
+            except ApiError as error:
+                failures.append(error.code)
+                continue
+            found = data.get("results")
+            row = found[0] if isinstance(found, list) and found else found
+            if isinstance(row, dict) and row:
+                if link["platform"] == "bilibili" and "id" not in row:
+                    row = {**row, "id": row.get("video_id") or row.get("bvid")}
+                rows.append(row)
+            else:
+                failures.append(str(data.get("empty_reason") or "empty"))
+        if not rows and failures:
+            raise ApiError(
+                422,
+                "VIDEO_BENCHMARK_LINK_UNAVAILABLE",
+                "链接里的作品读取不到，可能已删除、私密或链接不完整。",
+            )
+        return {"results": rows, "link_failures": failures}
+
+    def extract(
+        self, inputs: dict[str, Any], heartbeat: Callable[[], None] | None = None
+    ) -> dict[str, Any]:
+        platform = inputs.get("platform", "douyin")
+        if platform == "xiaohongshu":
+            return self.local_transcript(inputs, heartbeat)
+        if platform == "bilibili":
+            return self.request(
+                "extract",
+                "POST",
+                "/api/v1/social",
+                json=platforms.transcript_body("bilibili", inputs["source_url"]),
+            )
         return self.request(
             "extract",
             "POST",
@@ -336,6 +396,89 @@ class VideoAssistanceProvider:
                 "mode": "async",
             },
         )
+
+    def local_transcript(
+        self, inputs: dict[str, Any], heartbeat: Callable[[], None] | None
+    ) -> dict[str, Any]:
+        """小红书 has no supplier transcript: fetch the video and run our own ASR."""
+        media = inputs.get("media_url")
+        if not media:
+            data = self.request(
+                "extract",
+                "POST",
+                "/api/v1/social",
+                json={
+                    "platform": "xiaohongshu",
+                    "action": "video",
+                    "params": {"url": inputs["source_url"]},
+                },
+            )
+            found = data.get("results")
+            row = found[0] if isinstance(found, list) and found else found
+            media = (
+                platforms.https_url(row.get("video_url"))
+                if isinstance(row, dict)
+                else None
+            )
+        if not media:
+            raise ApiError(
+                422,
+                "VIDEO_TRANSCRIPT_EMPTY",
+                "这条笔记读取不到视频，可能是图文笔记；可以手动粘贴口播原文。",
+            )
+        with tempfile.TemporaryDirectory(prefix="benchmark-asr-") as work:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "app.video_benchmark_asr",
+                    media,
+                    str(Path(work) / "asr"),
+                ],
+                cwd=str(Path(__file__).resolve().parent.parent),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            started = time.monotonic()
+            while process.poll() is None:
+                if time.monotonic() - started > 600:
+                    process.kill()
+                    raise ApiError(
+                        502,
+                        "VIDEO_LOCAL_ASR_FAILED",
+                        "语音识别超时，请稍后重试或手动粘贴原文。",
+                    )
+                if heartbeat:
+                    heartbeat()
+                time.sleep(5)
+            output = (
+                (process.stdout.read() if process.stdout else "").strip().splitlines()
+            )
+        try:
+            payload = json.loads(output[-1]) if output else {}
+        except ValueError:
+            payload = {}
+        if (
+            not isinstance(payload, dict)
+            or payload.get("error")
+            or not payload.get("text")
+        ):
+            if payload.get("text") == "" and not payload.get("error"):
+                raise ApiError(
+                    422,
+                    "VIDEO_TRANSCRIPT_EMPTY",
+                    "视频里没有识别到人声；可以手动粘贴口播原文。",
+                )
+            raise ApiError(
+                502,
+                "VIDEO_LOCAL_ASR_FAILED",
+                "视频语音识别失败，请稍后重试或手动粘贴原文。",
+            )
+        return {
+            "results": {**payload, "title": inputs.get("title", "")},
+            "billing": {"local_asr": True},
+        }
 
     def extract_status(self, task_id: str) -> dict[str, Any]:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", task_id):

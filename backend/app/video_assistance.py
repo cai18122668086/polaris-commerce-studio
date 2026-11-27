@@ -49,6 +49,7 @@ class AssistanceRequest(StrictVideoModel):
 
 class BenchmarkExtractionSource(StrictVideoModel):
     search_task_id: UUID
+    platform: str = "douyin"
     platform_id: str
     source_url: str
     keyword: str
@@ -68,6 +69,8 @@ class AssistanceResponse(StrictVideoModel):
     can_resume: bool
     benchmark_source: BenchmarkExtractionSource | None = None
     writing_document_saved: bool | None = None
+    # Writing tasks only: which saved reference the task works on.
+    reference_document_id: UUID | None = None
     stage_history: list[dict] = Field(default_factory=list)
     receipt: dict = Field(default_factory=dict)
 
@@ -94,6 +97,7 @@ def response(
         can_resume=row.status in {"queued", "awaiting_resume"},
         benchmark_source=row.inputs.get("benchmark_source"),
         writing_document_saved=writing_document_saved,
+        reference_document_id=row.inputs.get("reference_document_id"),
         stage_history=row.receipt.get("stage_history", []),
         receipt={},  # Supplier receipts remain server-side.
     )
@@ -178,7 +182,15 @@ def process(
             if row.kind == BENCHMARK_KIND:
                 checkpoint(session, row, "submitting")
                 captured_at = utc_now()
-                data = service.benchmark_search(row.inputs["search_params"])
+                platform = row.inputs.get("platform", "douyin")
+                if row.inputs.get("mode") == "links":
+                    data = service.benchmark_links(row.inputs["links"])
+                elif platform != "douyin":
+                    data = service.benchmark_search(
+                        row.inputs["search_params"], platform=platform
+                    )
+                else:
+                    data = service.benchmark_search(row.inputs["search_params"])
                 result, receipt = benchmark_page(data, row.id, row.inputs, captured_at)
                 row.status = "completed"
                 checkpoint(session, row, "completed", result=result, receipt=receipt)
@@ -193,6 +205,19 @@ def process(
                         "VIDEO_SCRIPT_INVALID",
                         "文案未通过格式或事实检查，请核对产品事实。",
                     )
+            elif row.inputs.get("platform", "douyin") != "douyin":
+                # 小红书 (our ASR) and B站 (subtitles) answer synchronously.
+                checkpoint(session, row, "extracting")
+                data = service.extract(
+                    row.inputs, heartbeat=lambda: _heartbeat(factory, task_id)
+                )
+                checkpoint(
+                    session,
+                    row,
+                    "received",
+                    result=transcript_result(data, row.inputs["source_url"]),
+                    receipt={**row.receipt, "billing": data.get("billing")},
+                )
             else:
                 if not row.provider_task_id:
                     checkpoint(session, row, "submitting")

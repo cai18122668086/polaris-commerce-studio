@@ -68,7 +68,8 @@ def test_single_counts_are_spoken_measure_words_not_quantity_claims():
 def test_real_violations_are_still_rejected(bad):
     draft = variant()
     if bad == "price":
-        draft["sentences"][0]["text"] = "56块钱买这个牌子的护手霜，真的好香。"
+        # Inside a clause the copied price cannot be cut out cleanly: rejected.
+        draft["sentences"][0]["text"] = "这个牌子56块钱就能买到，真的好香。"
     elif bad == "quantity":
         draft["sentences"][0]["text"] = "一次买两瓶更划算。"
     elif bad == "leftover":
@@ -161,7 +162,11 @@ def test_invented_or_paraphrased_replacements_stay_rejected_with_their_index(
     replacement, kind
 ):
     draft = WritingStructureDraft.model_validate_json(REAL["rejected_content"])
+    spoken = draft.replacements[1].replacement
     draft.replacements[1].replacement = replacement
+    # The invented wording is also spoken; an unspoken registration is a no-op.
+    for line in draft.sentences:
+        line.text = line.text.replace(spoken, replacement)
     with pytest.raises(provider.DraftIssue) as caught:
         check_real(draft)
     assert caught.value.issue["kind"] == kind
@@ -179,3 +184,16 @@ def test_sentence_issue_names_the_line():
         "index": 2,
         "text": "一次买两瓶更划算。",
     }
+
+
+def test_a_copied_whole_clause_is_deleted_with_a_visible_note():
+    draft = WritingStructureDraft.model_validate(variant())
+    draft.sentences[0].text = "56块钱买这个牌子的护手霜，真的好香。"
+    text = provider.validate_draft(
+        draft,
+        WritingReference.model_validate(DATA["reference"]),
+        WritingFacts.model_validate(DATA["facts"]),
+        WritingAnalysis.model_validate(DATA["analysis"]),
+    )
+    assert "56" not in text and draft.sentences[0].text == "真的好香。"
+    assert any("已删去原稿" in note for note in draft.warnings)

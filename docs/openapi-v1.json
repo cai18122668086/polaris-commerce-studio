@@ -544,6 +544,12 @@
       "AnalysisSection": {
         "additionalProperties": false,
         "properties": {
+          "emotion": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Emotion",
+            "type": "string"
+          },
           "explanation": {
             "maxLength": 1200,
             "minLength": 1,
@@ -568,6 +574,12 @@
           },
           "last_sentence_id": {
             "title": "Last Sentence Id",
+            "type": "string"
+          },
+          "technique": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Technique",
             "type": "string"
           }
         },
@@ -1318,6 +1330,18 @@
             "title": "Receipt",
             "type": "object"
           },
+          "reference_document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Document Id"
+          },
           "request_id": {
             "format": "uuid",
             "title": "Request Id",
@@ -1373,6 +1397,36 @@
           "can_resume"
         ],
         "title": "AssistanceResponse",
+        "type": "object"
+      },
+      "AudienceInsight": {
+        "additionalProperties": false,
+        "properties": {
+          "desire": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Desire",
+            "type": "string"
+          },
+          "pain_points": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Pain Points",
+            "type": "array"
+          },
+          "who": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Who",
+            "type": "string"
+          }
+        },
+        "required": [
+          "who"
+        ],
+        "title": "AudienceInsight",
         "type": "object"
       },
       "AvatarResponse": {
@@ -1438,7 +1492,7 @@
         "additionalProperties": false,
         "properties": {
           "platform_id": {
-            "pattern": "^[0-9]{6,25}$",
+            "pattern": "^[0-9A-Za-z]{6,32}$",
             "title": "Platform Id",
             "type": "string"
           },
@@ -1467,7 +1521,7 @@
             "items": {
               "$ref": "#/components/schemas/BenchmarkExtractionPick"
             },
-            "maxItems": 10,
+            "maxItems": 3,
             "minItems": 1,
             "title": "Items",
             "type": "array"
@@ -1498,6 +1552,11 @@
             "title": "Keyword",
             "type": "string"
           },
+          "platform": {
+            "default": "douyin",
+            "title": "Platform",
+            "type": "string"
+          },
           "platform_id": {
             "title": "Platform Id",
             "type": "string"
@@ -1520,6 +1579,40 @@
           "captured_at"
         ],
         "title": "BenchmarkExtractionSource",
+        "type": "object"
+      },
+      "BenchmarkLinksRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 8,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "project_id",
+          "expected_revision",
+          "text"
+        ],
+        "title": "BenchmarkLinksRequest",
         "type": "object"
       },
       "BenchmarkSearchConfig": {
@@ -1560,6 +1653,16 @@
             "title": "Keyword",
             "type": "string"
           },
+          "platform": {
+            "default": "douyin",
+            "enum": [
+              "douyin",
+              "xiaohongshu",
+              "bilibili"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
@@ -1582,7 +1685,7 @@
             "type": "string"
           },
           "sort": {
-            "default": "relevance",
+            "default": "most_liked",
             "enum": [
               "relevance",
               "newest",
@@ -2157,6 +2260,42 @@
           "notice"
         ],
         "title": "ConsentStatus",
+        "type": "object"
+      },
+      "ConversionCue": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "关注",
+              "点赞",
+              "收藏",
+              "评论",
+              "转发",
+              "下单",
+              "私信",
+              "其他"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          },
+          "sentence_id": {
+            "title": "Sentence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentence_id",
+          "kind",
+          "note"
+        ],
+        "title": "ConversionCue",
         "type": "object"
       },
       "CostSummary": {
@@ -7960,6 +8099,48 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "ExpressionTechnique": {
+        "additionalProperties": false,
+        "properties": {
+          "effect": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Effect",
+            "type": "string"
+          },
+          "how_to_reuse": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "How To Reuse",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "quote": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Quote",
+            "type": "string"
+          },
+          "sentence_id": {
+            "title": "Sentence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sentence_id",
+          "quote",
+          "effect",
+          "how_to_reuse"
+        ],
+        "title": "ExpressionTechnique",
+        "type": "object"
+      },
       "FactItem": {
         "additionalProperties": false,
         "properties": {
@@ -8261,6 +8442,57 @@
           "checks"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HookAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "sentence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Sentence Ids",
+            "type": "array"
+          },
+          "technique": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Technique",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "痛点提问",
+              "反常识",
+              "结果前置",
+              "身份代入",
+              "悬念设问",
+              "数字清单",
+              "冲突对比",
+              "利益承诺",
+              "情绪共鸣",
+              "场景代入",
+              "其他"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "why": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentence_ids",
+          "type",
+          "technique",
+          "why"
+        ],
+        "title": "HookAnalysis",
         "type": "object"
       },
       "ImageRetryRequest": {
@@ -11551,6 +11783,60 @@
         "title": "RefundResult",
         "type": "object"
       },
+      "ReplaceSlot": {
+        "additionalProperties": false,
+        "description": "A place in the source the user must fill with their own fact.",
+        "properties": {
+          "category": {
+            "enum": [
+              "identity",
+              "product",
+              "story"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "sentence_id": {
+            "title": "Sentence Id",
+            "type": "string"
+          },
+          "source_quote": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Source Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "sentence_id",
+          "source_quote",
+          "label",
+          "question"
+        ],
+        "title": "ReplaceSlot",
+        "type": "object"
+      },
       "ReplicaCreationRecordResponse": {
         "properties": {
           "actual_credits": {
@@ -12772,6 +13058,148 @@
           "reason"
         ],
         "title": "SourceClaim",
+        "type": "object"
+      },
+      "SourceMetrics": {
+        "additionalProperties": false,
+        "description": "Public counts captured with the post; never a play-through rate.",
+        "properties": {
+          "author_follower_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Follower Count"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "collect_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collect Count"
+          },
+          "comment_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Count"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "like_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Like Count"
+          },
+          "platform": {
+            "enum": [
+              "douyin",
+              "xiaohongshu",
+              "bilibili"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "posted_at": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted At"
+          },
+          "readings": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Readings",
+            "type": "array"
+          },
+          "share_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Count"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          },
+          "view_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Count"
+          }
+        },
+        "required": [
+          "platform"
+        ],
+        "title": "SourceMetrics",
         "type": "object"
       },
       "StructureDraftLine": {
@@ -14504,11 +14932,47 @@
       "WritingAnalysis": {
         "additionalProperties": false,
         "properties": {
+          "audience": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AudienceInsight"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "conversion": {
+            "items": {
+              "$ref": "#/components/schemas/ConversionCue"
+            },
+            "maxItems": 8,
+            "title": "Conversion",
+            "type": "array"
+          },
           "cross_account_comparison": {
             "const": "not_provided",
             "default": "not_provided",
             "title": "Cross Account Comparison",
             "type": "string"
+          },
+          "expressions": {
+            "items": {
+              "$ref": "#/components/schemas/ExpressionTechnique"
+            },
+            "maxItems": 10,
+            "title": "Expressions",
+            "type": "array"
+          },
+          "hook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HookAnalysis"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "hook_sentence_ids": {
             "items": {
@@ -14520,8 +14984,11 @@
             "type": "array"
           },
           "interaction_analysis": {
-            "const": "not_provided",
             "default": "not_provided",
+            "enum": [
+              "not_provided",
+              "public_counts"
+            ],
             "title": "Interaction Analysis",
             "type": "string"
           },
@@ -14534,6 +15001,14 @@
             "title": "Limitations",
             "type": "array"
           },
+          "replace_slots": {
+            "items": {
+              "$ref": "#/components/schemas/ReplaceSlot"
+            },
+            "maxItems": 20,
+            "title": "Replace Slots",
+            "type": "array"
+          },
           "reusable_structure": {
             "items": {
               "type": "string"
@@ -14544,8 +15019,11 @@
             "type": "array"
           },
           "schema_version": {
-            "const": "tengli.writing-analysis/1",
-            "default": "tengli.writing-analysis/1",
+            "default": "tengli.writing-analysis/2",
+            "enum": [
+              "tengli.writing-analysis/1",
+              "tengli.writing-analysis/2"
+            ],
             "title": "Schema Version",
             "type": "string"
           },
@@ -14566,6 +15044,12 @@
             "title": "Source Claims",
             "type": "array"
           },
+          "title_formula": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Title Formula",
+            "type": "string"
+          },
           "topic": {
             "maxLength": 300,
             "minLength": 1,
@@ -14577,6 +15061,14 @@
             "default": "not_provided",
             "title": "Visual Review",
             "type": "string"
+          },
+          "why_hot": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Why Hot",
+            "type": "array"
           }
         },
         "required": [
@@ -14838,8 +15330,11 @@
         "additionalProperties": false,
         "properties": {
           "interaction_evidence": {
-            "const": "not_provided",
             "default": "not_provided",
+            "enum": [
+              "not_provided",
+              "public_counts"
+            ],
             "title": "Interaction Evidence",
             "type": "string"
           },
@@ -14860,6 +15355,16 @@
             },
             "title": "Sentences",
             "type": "array"
+          },
+          "source_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source_note": {
             "default": "",
@@ -14969,6 +15474,15 @@
             ],
             "title": "Analysis Document Id"
           },
+          "analysis_document_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Analysis Document Ids",
+            "type": "array"
+          },
           "draft_mode": {
             "anyOf": [
               {
@@ -15004,7 +15518,8 @@
           "kind": {
             "enum": [
               "ref_analysis",
-              "fact_draft"
+              "fact_draft",
+              "ref_compare"
             ],
             "title": "Kind",
             "type": "string"
@@ -22241,6 +22756,64 @@
           }
         ],
         "summary": "Extract Candidates",
+        "tags": [
+          "video-assistance"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-links": {
+      "post": {
+        "description": "Pasted share text with up to three post links; free detail lookups.",
+        "operationId": "submit_links_api_v1_video_studio_workspaces__workspace_id__benchmark_links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkLinksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Submit Links",
         "tags": [
           "video-assistance"
         ]

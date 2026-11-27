@@ -1,4 +1,4 @@
-"""Normalize one public Douyin search page without storing media URLs."""
+"""Normalize one public search page (抖音/小红书/B站) without exposing media URLs."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from . import video_benchmark_platforms as platforms
 from .errors import ApiError
 from .video_assistance_provider import video_source_url
 
@@ -150,15 +151,41 @@ def candidate(row: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def page_identity(task_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    params = inputs["search_params"]
     return {
         "page": inputs["page"],
         "root_task_id": inputs["root_task_id"] or task_id,
         "previous_task_id": inputs["previous_task_id"],
-        **{
-            key: inputs["search_params"][key]
-            for key in ("keyword", "sort", "publish_time")
-        },
+        "platform": inputs.get("platform", "douyin"),
+        "mode": inputs.get("mode", "search"),
+        "keyword": params["keyword"],
+        "sort": params.get("sort", "most_liked"),
+        "publish_time": params.get("publish_time", "unlimited"),
     }
+
+
+def normalized(
+    platform: str, row: Any, rank: int | None = None
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    """(public item, drop reason, server-only media URL) for one supplier row."""
+    reason = (
+        drop_reason(row)
+        if platform == "douyin"
+        else platforms.drop_reason(platform, row)
+    )
+    if reason is not None:
+        return None, reason, None
+    item, media = platforms.candidate(platform, row, rank)
+    if platform == "douyin":
+        legacy = candidate(row)
+        assert legacy is not None
+        item = {
+            **item,
+            **legacy,
+            "title": item["title"],
+            "cover_url": item["cover_url"],
+        }
+    return item, None, media
 
 
 def benchmark_page(
@@ -177,9 +204,19 @@ def benchmark_page(
     skipped_rows: list[dict[str, Any]] = []
     duplicates = skipped = 0
     reasons: Counter[str] = Counter()
-    for row in rows:
-        reason = drop_reason(row)
-        item = candidate(row) if reason is None else None
+    platform = inputs.get("platform", "douyin")
+    media_urls: dict[str, str] = {}
+    for position, row in enumerate(rows):
+        row_platform = (
+            row["platform"]
+            if inputs.get("mode") == "links"
+            and isinstance(row, dict)
+            and row.get("platform") in platforms.PLATFORMS
+            else platform
+        )
+        if row_platform not in platforms.PLATFORMS:
+            row_platform = "douyin"
+        item, reason, media = normalized(row_platform, row, position + 1)
         if item is None:
             skipped += 1
             reason = reason or "invalid"
@@ -192,6 +229,8 @@ def benchmark_page(
             continue
         seen.add(item["platform_id"])
         items.append(item)
+        if media:
+            media_urls[item["platform_id"]] = media
         original_rows.append(
             {
                 "source_url": item["source_url"],
@@ -200,11 +239,7 @@ def benchmark_page(
                     for key in SOURCE_FIELDS
                     if key in row and (row[key] is None or type(row[key]) in {int, str})
                 },
-                "duration_sec": (
-                    row["duration_sec"]
-                    if item["duration_seconds"] is not None
-                    else None
-                ),
+                "duration_sec": item["duration_seconds"],
             }
         )
 
@@ -225,7 +260,7 @@ def benchmark_page(
     authors = Counter(item["author_id"] for item in items if item["author_id"])
     billing = data.get("billing")
     return {
-        "items": items,
+        "items": platforms.by_likes(items),
         **page_identity(task_id, inputs),
         "captured_at": captured_at.isoformat(),
         "has_more": token is not None,
@@ -251,4 +286,5 @@ def benchmark_page(
         "skipped_rows": skipped_rows,
         "seen_ids": sorted(seen),
         "next_page_token": token,
+        "media_urls": media_urls,
     }

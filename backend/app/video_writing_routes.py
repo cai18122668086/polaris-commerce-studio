@@ -1,6 +1,7 @@
 """Owned immutable writing documents; explicit draft adoption uses existing history."""
 
 import copy
+import re
 import subprocess
 from datetime import UTC
 from pathlib import Path
@@ -14,6 +15,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import video_benchmark_platforms as benchmark_platforms
 from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
@@ -49,6 +51,7 @@ from .video_writing_contracts import (
     SaveWritingFacts,
     SaveWritingReference,
     SaveWritingResult,
+    SourceMetrics,
     WritingAnalysis,
     WritingDocumentPage,
     WritingDraft,
@@ -73,6 +76,18 @@ router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}",
     tags=["video-writing-workflow"],
 )
+
+
+PLACEHOLDER = re.compile(r"【[^】]*】|\[[^\]]*\]|[XＸxｘ]{2,}|＿{2,}|_{2,}|待补|待填")
+
+
+def ratio(item: dict[str, Any], key: str) -> float | None:
+    likes, part = item.get("like_count"), item.get(key)
+    return (
+        part / likes
+        if isinstance(likes, int) and likes and isinstance(part, int)
+        else None
+    )
 
 
 def enabled(request: Request) -> Settings:
@@ -348,6 +363,10 @@ def save_benchmark_reference(
         raise ApiError(404, "VIDEO_ASSISTANCE_NOT_FOUND", "未找到该对标提取任务。")
     own_project(session, workspace, task.project_id)
     source = BenchmarkExtractionSource.model_validate(task.inputs["benchmark_source"])
+    item = task.inputs.get("benchmark_item") or {}
+    platform_name = {"douyin": "抖音", "xiaohongshu": "小红书", "bilibili": "B站"}.get(
+        source.platform, "抖音"
+    )
     if task.status != "completed" or task.result.get("source_url") != source.source_url:
         raise ApiError(409, "VIDEO_TRANSCRIPT_NOT_READY", "本次提取原文尚未就绪。")
     try:
@@ -357,7 +376,8 @@ def save_benchmark_reference(
                 "original_text": task.result.get("text", ""),
                 "url": source.source_url,
                 "note": (
-                    f"抖音对标「{source.keyword}」作品 {source.platform_id}。"
+                    f"{platform_name}对标「{source.keyword}」"
+                    f"作品 {source.platform_id}。"
                     f"搜索页 {source.search_task_id}，"
                     f"采集于 {source.captured_at.isoformat()}。"
                     "语音转写，正文待核对。"
@@ -365,6 +385,27 @@ def save_benchmark_reference(
             }
         )
         reference.source_project_revision = task.inputs["revision"]
+        if item:
+            metrics = SourceMetrics.model_validate(
+                {
+                    "platform": source.platform,
+                    **{
+                        key: item.get(key)
+                        for key in SourceMetrics.model_fields
+                        if key not in {"platform", "readings"} and key in item
+                    },
+                    "title": (item.get("title") or "")[:200],
+                    "readings": benchmark_platforms.performance(
+                        {
+                            "collect_like_ratio": ratio(item, "collect_count"),
+                            "share_like_ratio": ratio(item, "share_count"),
+                            "comment_like_ratio": ratio(item, "comment_count"),
+                        }
+                    ),
+                }
+            )
+            reference.source_metrics = metrics
+            reference.interaction_evidence = "public_counts"
     except ValueError:
         raise ApiError(
             422, "VIDEO_REFERENCE_REQUIRED", "本次提取无可拆解原文。"
@@ -471,6 +512,30 @@ def create_task(
             facts=facts.body,
             draft_mode=body.draft_mode or "shadow",
         )
+    if body.kind == "ref_compare":
+        benchmarks: list[dict[str, Any]] = []
+        for ident in body.analysis_document_ids:
+            analysis = own_document(session, workspace, str(ident), "analysis")
+            source = own_document(
+                session, workspace, str(analysis.reference_document_id), "reference"
+            )
+            parents += [analysis, source]
+            benchmarks.append(
+                {
+                    "label": f"对标{len(benchmarks) + 1}",
+                    "reference_document_id": source.id,
+                    "analysis_document_id": analysis.id,
+                    "opening_text": source.body["original_text"][:600],
+                    "source_metrics": source.body.get("source_metrics"),
+                    "analysis": analysis.body,
+                }
+            )
+        if ref.id not in {row["reference_document_id"] for row in benchmarks}:
+            raise ApiError(
+                409, "VIDEO_WRITING_REFERENCE_CHANGED", "对比的对标里不含所选原文。"
+            )
+        inputs["benchmarks"] = benchmarks
+        parents = list({p.id: p for p in parents}.values())
     if any(p.project_id != project.id for p in parents):
         raise ApiError(404, "VIDEO_WRITING_DOCUMENT_NOT_FOUND", "资料属于另一项目。")
     task_id = str(uuid4())
@@ -838,9 +903,15 @@ def apply_draft(
         else WritingDraft
     )
     draft = draft_model.model_validate(stored)
-    if draft.missing_facts or document.body["shape_check"]["verdict"] == "FAIL":
+    # Missing facts are notes once the text holds no gap: the validator already
+    # guarantees every spoken fact is the user's. A placeholder still blocks.
+    if document.body["shape_check"]["verdict"] == "FAIL" or PLACEHOLDER.search(
+        document.body["text"]
+    ):
         raise ApiError(
-            409, "VIDEO_WRITING_REVIEW_REQUIRED", "请先补齐缺失事实并处理结构问题。"
+            409,
+            "VIDEO_WRITING_REVIEW_REQUIRED",
+            "稿子里还有待补的空位或结构问题，请先修改。",
         )
     content = copy.deepcopy(project.content)
     content["draft"].update(name=draft.title, text=document.body["text"], drive="text")

@@ -14,7 +14,7 @@ import type { AnalysisDoc, Candidate, Comparison, DraftDoc, DraftLine, Job, Plat
  */
 
 export type AutoBenchmark = { platform_id: string; reason: string; extraction_id: string; reference_id: string; analysis_id?: string; analysis_failed?: boolean; no_speech_note?: boolean };
-export type AutoDraft = { key: string; label: string; mode: "shadow" | "structure"; reference_id: string; task_id: string; document_id: string | null; error?: unknown };
+export type AutoDraft = { key: string; label: string; mode: "shadow" | "structure"; reference_id: string; task_id: string; document_id: string | null; library_entry_id?: string | null; error?: unknown };
 export type AutoResult = {
   stage?: string; stage_label?: string; message?: string; started_at?: string;
   search_task_id?: string; mode?: "search" | "links"; candidate_count?: number;

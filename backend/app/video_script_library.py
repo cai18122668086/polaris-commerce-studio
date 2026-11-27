@@ -404,6 +404,8 @@ def list_entries(
     workspace: VideoWorkspace,
     session: SessionDependency,
     ids: str = Query("", max_length=2100),
+    # Entries made from these writing documents (result pages find theirs).
+    documents: str = Query("", max_length=2100),
     q: str = Query("", max_length=100),
     platform: Literal["", "douyin", "xiaohongshu"] = "",
     limit: int = Query(50, ge=1, le=100),
@@ -413,19 +415,30 @@ def list_entries(
     live = owned_query(workspace).where(VideoScriptLibraryEntry.deleted_at.is_(None))
     wanted = parse_ids(ids)
     if wanted:
-        rows = {
+        by_id = {
             row.id: row
             for row in session.scalars(
                 live.where(VideoScriptLibraryEntry.id.in_(wanted))
             ).all()
         }
-        items = [entry_response(rows[i]) for i in wanted if i in rows]
+        items = [entry_response(by_id[i]) for i in wanted if i in by_id]
         return LibraryPage(
             items=items,
             total=len(items),
             limit=len(wanted),
             offset=0,
-            missing_ids=[i for i in wanted if i not in rows],
+            missing_ids=[i for i in wanted if i not in by_id],
+        )
+    docs = parse_ids(documents)
+    if docs:
+        found = session.scalars(
+            live.where(VideoScriptLibraryEntry.writing_document_id.in_(docs))
+        ).all()
+        return LibraryPage(
+            items=[entry_response(row) for row in found],
+            total=len(found),
+            limit=len(docs),
+            offset=0,
         )
     if q.strip():
         pattern = (

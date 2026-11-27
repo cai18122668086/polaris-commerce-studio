@@ -6,12 +6,17 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app import services
 from app import video_work_talking as talking
 from app.auth import Principal, WorkspaceContext
 from app.domain import MembershipRole
 from app.errors import ApiError
 from app.main import create_app
-from app.models import WorkspaceMemberRecord
+from app.models import (
+    CreditReservationRecord,
+    WorkspaceCreditAccountRecord,
+    WorkspaceMemberRecord,
+)
 from app.video_generation_models import VideoGenerationRecord
 from app.video_studio_models import VideoProjectRecord
 from tests.test_auth_external import (
@@ -68,6 +73,7 @@ def studio(tmp_path):
             "video_providers_enabled": True,
             "video_media_dir": tmp_path / "video",
             "task_dispatcher": "inline",
+            "video_talking_sweep_enabled": False,
         }
     )
     app = create_app(settings, auth)
@@ -209,7 +215,9 @@ def test_parallel_limit_queues_the_rest_with_positions(studio, monkeypatch):
             )
             == []
         )
-        talking.confirm(session, talking.batch_items(session, batch["id"]))
+        talking.confirm(
+            session, settings, ws, talking.batch_items(session, batch["id"])
+        )
         started = talking.dispatch(
             session, settings, workspace, batch["id"], lambda: provider
         )
@@ -354,3 +362,139 @@ def test_polling_never_starts_an_unconfirmed_batch(studio):
         view = client.get(root + f"/work-batches/{batch['id']}/talking").json()
     assert [i["status"] for i in view["batch"]["items"]] == ["pending", "pending"]
     assert submits(provider) == [] and jobs(client) == 0
+
+
+def _owner(ws, user):
+    return WorkspaceContext(Principal(user_id=user), ws, MembershipRole.OWNER)
+
+
+def test_restart_sweep_finishes_a_queue_left_behind(studio, monkeypatch):
+    """An api restart drops the in-process chain; the sweep picks it up."""
+    client, _, provider, root, ws, user = studio
+    monkeypatch.setattr(talking, "TALKING_PARALLEL", 1)
+    batch = new_batch(client, root, item("稿一"), item("稿二"))
+    factory, settings = client.app.state.session_factory, client.app.state.settings
+    with factory() as session:
+        talking.confirm(
+            session, settings, ws, talking.batch_items(session, batch["id"])
+        )
+        first = talking.dispatch(
+            session, settings, _owner(ws, user), batch["id"], lambda: provider
+        )
+        # The process died: the first task finished, but nobody started the next.
+        job = session.get(VideoGenerationRecord, first[0])
+        job.status = "completed"
+        session.commit()
+    assert submits(provider) == []
+    started = talking.sweep_once(factory, settings, provider)
+    assert len(started) == 1
+    items = client.get(root + f"/work-batches/{batch['id']}").json()["items"]
+    assert [i["status"] for i in items] == ["succeeded", "succeeded"]
+    assert len(submits(provider)) == 1
+    assert talking.sweep_once(factory, settings, provider) == []
+    assert len(submits(provider)) == 1
+
+
+def test_restart_sweep_runs_a_created_task_whose_run_was_lost(studio):
+    client, _, provider, root, ws, user = studio
+    batch = new_batch(client, root, item("稿一"))
+    factory, settings = client.app.state.session_factory, client.app.state.settings
+    with factory() as session:
+        talking.confirm(
+            session, settings, ws, talking.batch_items(session, batch["id"])
+        )
+        (job_id,) = talking.dispatch(
+            session, settings, _owner(ws, user), batch["id"], lambda: provider
+        )
+    # Young queued tasks belong to their request's background run: left alone.
+    assert talking.sweep_once(factory, settings, provider) == []
+    with factory() as session:
+        job = session.get(VideoGenerationRecord, job_id)
+        job.created_at = job.created_at.replace(year=job.created_at.year - 1)
+        session.commit()
+    assert talking.sweep_once(factory, settings, provider) == [job_id]
+    items = client.get(root + f"/work-batches/{batch['id']}").json()["items"]
+    assert items[0]["status"] == "succeeded"
+    assert len(submits(provider)) == 1
+    assert talking.sweep_once(factory, settings, provider) == []
+    assert len(submits(provider)) == 1
+
+
+@pytest.fixture
+def priced(studio):
+    client = studio[0]
+    client.app.state.settings.video_credit_prices = {"lipsync": 50}
+    services.set_quota_enabled(True)
+    services.set_credit_enforcement_enabled(True)
+    try:
+        yield studio
+    finally:
+        services.set_quota_enabled(True)
+        services.set_credit_enforcement_enabled(
+            client.app.state.settings.workspace_credit_enforcement_enabled
+        )
+
+
+def _balance(client, ws, credits=None):
+    with client.app.state.session_factory() as session:
+        account = session.get(WorkspaceCreditAccountRecord, ws)
+        if credits is not None:
+            account.balance_credits = credits
+            session.commit()
+        return account.balance_credits, account.reserved_credits
+
+
+def _holds(client):
+    with client.app.state.session_factory() as session:
+        rows = session.scalars(
+            select(CreditReservationRecord).where(
+                CreditReservationRecord.owner_type == "video_generation"
+            )
+        ).all()
+        return {r.owner_id: (r.status, r.settled_credits) for r in rows}
+
+
+def test_whole_batch_is_refused_when_credits_cannot_cover_it(priced):
+    client, _, provider, root, ws, _ = priced
+    _balance(client, ws, 100)
+    batch = new_batch(client, root, item("稿一"), item("稿二"), item("稿三"))
+    refused = client.post(root + f"/work-batches/{batch['id']}/talking")
+    assert refused.status_code == 402
+    error = refused.json()["error"]
+    assert "150" in error["message"] and "100" in error["message"]
+    items = client.get(root + f"/work-batches/{batch['id']}").json()["items"]
+    assert [i["status"] for i in items] == ["pending"] * 3
+    assert submits(provider) == [] and jobs(client) == 0 and _holds(client) == {}
+
+
+def test_failed_item_releases_its_hold_and_others_are_charged(priced):
+    client, _, provider, root, ws, _ = priced
+    _balance(client, ws, 150)
+    provider.reject_model = 13
+    batch = new_batch(
+        client,
+        root,
+        item("稿一"),
+        item("稿二", avatar="qy-model-13", voice="qy-voice-2"),
+        item("稿三"),
+    )
+    assert client.post(root + f"/work-batches/{batch['id']}/talking").status_code == 200
+    items = client.get(root + f"/work-batches/{batch['id']}").json()["items"]
+    assert [i["status"] for i in items] == ["succeeded", "failed", "succeeded"]
+    holds = _holds(client)
+    assert holds[items[0]["generation_task_id"]] == ("settled", 50)
+    assert holds[items[2]["generation_task_id"]] == ("settled", 50)
+    assert holds[items[1]["generation_task_id"]][0] == "released"
+    assert _balance(client, ws) == (50, 0)
+    # Retrying the failed one needs 50 more: exactly what is left.
+    provider.reject_model = None
+    assert (
+        client.post(root + f"/work-items/{items[1]['id']}/talking-retry").status_code
+        == 200
+    )
+    assert _balance(client, ws) == (0, 0)
+    # Nothing left: the next retry-worthy batch is refused up front.
+    batch2 = new_batch(client, root, item("稿四"))
+    assert (
+        client.post(root + f"/work-batches/{batch2['id']}/talking").status_code == 402
+    )

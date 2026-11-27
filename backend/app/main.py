@@ -248,7 +248,21 @@ def create_app(
         membership_task = asyncio.create_task(maintenance_loop(session_factory))
         from .video_generation_recovery import VideoRecoveryService
         from .video_providers import VideoProviders
+        from .video_work_talking import TalkingSweeper
 
+        talking_sweeper = None
+        if (
+            app_settings.video_talking_sweep_enabled
+            and app_settings.video_providers_enabled
+        ):
+            talking_sweeper = TalkingSweeper(
+                session_factory,
+                app_settings,
+                getattr(application.state, "video_providers", None)
+                or VideoProviders(app_settings),
+            )
+            application.state.talking_sweeper = talking_sweeper
+            talking_sweeper.start()
         video_recovery = None
         if (
             app_settings.video_background_recovery_enabled
@@ -267,6 +281,8 @@ def create_app(
         finally:
             if video_recovery:
                 video_recovery.stop()
+            if talking_sweeper:
+                talking_sweeper.stop()
             membership_task.cancel()
             with suppress(asyncio.CancelledError):
                 await membership_task

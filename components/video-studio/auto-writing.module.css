@@ -67,6 +67,19 @@
   .form, .progress, .problem, .results > section { padding: 16px; }
 }
 
+.versionTitle { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.check { width: 16px; height: 16px; margin: 0; accent-color: var(--ink); cursor: pointer; }
+.saved { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.version[data-checked] { border-color: var(--ink); }
+.headText { display: grid; gap: 4px; min-width: 0; }
+.headText small { font-size: 12.5px; color: var(--muted); }
+.headActions { flex-wrap: wrap; }
+@media (max-width: 720px) {
+  .versions { grid-template-columns: minmax(0, 1fr); }
+  .version footer { flex-wrap: wrap; }
+  .headActions { width: 100%; }
+}
+
 /* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
 :global(.theme-plaster) .page{--aw-warm:#c74110;--aw-surface:#ffffff}
 :global(.theme-plaster) .label{font-weight:500}

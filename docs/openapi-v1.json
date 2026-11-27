@@ -13468,6 +13468,84 @@
         "title": "SupportResponse",
         "type": "object"
       },
+      "TalkingBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/WorkBatchResponse"
+          },
+          "parallel_limit": {
+            "default": 4,
+            "title": "Parallel Limit",
+            "type": "integer"
+          },
+          "talking": {
+            "items": {
+              "$ref": "#/components/schemas/TalkingItemView"
+            },
+            "title": "Talking",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "talking"
+        ],
+        "title": "TalkingBatchResponse",
+        "type": "object"
+      },
+      "TalkingItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "can_retry": {
+            "default": false,
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "queue_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "video_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Url"
+          }
+        },
+        "required": [
+          "item_id"
+        ],
+        "title": "TalkingItemView",
+        "type": "object"
+      },
       "TemplateCatalogCard": {
         "additionalProperties": false,
         "properties": {
@@ -28980,6 +29058,118 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/talking": {
+      "get": {
+        "description": "Polling view; also starts queued items whose turn has come.",
+        "operationId": "talking_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalkingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Talking Status",
+        "tags": [
+          "video-work"
+        ]
+      },
+      "post": {
+        "description": "Submit (or keep submitting) every waiting item. Safe to call repeatedly.",
+        "operationId": "submit_talking_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalkingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Submit Talking",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items": {
       "get": {
         "operationId": "list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get",
@@ -29256,6 +29446,63 @@
           }
         ],
         "summary": "Patch Item",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/talking-retry": {
+      "post": {
+        "description": "Give one failed item a fresh attempt; the other items are untouched.\n\nRepeating the call is harmless: once the item is no longer failed the\ncurrent view is returned and nothing new is submitted.",
+        "operationId": "retry_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalkingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Retry Talking",
         "tags": [
           "video-work"
         ]

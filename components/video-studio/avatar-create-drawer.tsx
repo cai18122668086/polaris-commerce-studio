@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, LoaderCircle, Upload } from "lucide-react";
+import { Check, LoaderCircle, Sparkles, Upload } from "lucide-react";
 import { ApiError } from "@/lib/api/api-error";
 import { mediaUrl } from "@/lib/api/base-url";
 import type { UploadProgress } from "@/lib/api/upload";
 import { billableLabel, useVideoCredits } from "@/features/video-studio/credits";
 import type { GenerationJob, useVideoLibrary } from "@/features/video-studio/library";
 import { AVATAR_PHASE_COPY, avatarPhase, type AvatarPhase } from "@/features/video-studio/persona-rules";
+import { POLISH_DESCRIPTION_MAX, POLISH_PRESETS, polishDescriptionError, useAvatarPolish } from "@/features/video-studio/avatar-polish";
 import { SideDrawer } from "./side-drawer";
 import base from "./video-studio.module.css";
 import styles from "./library-drawers.module.css";
@@ -36,6 +37,18 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
   const [jobId, setJobId] = useState("");
   const [acting, setActing] = useState(false);
   const requestId = useRef("");
+  // AI 润色（可选，仅照片）：生成 2 张候选，选一张或继续用原图
+  const polish = useAvatarPolish(workspaceId);
+  const [polishOn, setPolishOn] = useState(false);
+  const [polishText, setPolishText] = useState("");
+  const [polishTouched, setPolishTouched] = useState(false);
+  const [chosen, setChosen] = useState("original");
+  const polishError = polishDescriptionError(polishText);
+  const polishCost = credits.note(["avatar_polish"]);
+  const polishTotal = polishCost.credits === null ? null : polishCost.credits * 2;
+  const chosenCandidate = polish.candidates.find(item => item.id === chosen && item.status === "ready");
+  type CandidateView = { id: string; slot: number; status: string; image_url?: string | null; message?: string | null };
+  const shownCandidates: CandidateView[] = polish.candidates.length ? polish.candidates : [{ id: "pending-1", slot: 1, status: "queued" }, { id: "pending-2", slot: 2, status: "queued" }];
   const pendingKey = `polaris-avatar-creation:${userId}:${workspaceId}`;
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
   const job = library.jobs.find(item => item.id === jobId);
@@ -46,7 +59,7 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
   const registerCost = credits.note(["avatar_register"]);
   const motionCredits = credits.note(["avatar_motion"]).credits;
 
-  const reset = () => { setJobId(""); setFile(undefined); setPreview(""); setConsent(false); setAttempted(false); setUpload(undefined); setError(""); requestId.current = ""; };
+  const reset = () => { setJobId(""); setFile(undefined); setPreview(""); setConsent(false); setAttempted(false); setUpload(undefined); setError(""); requestId.current = ""; polish.reset(); setChosen("original"); };
   const submit = async () => {
     if (busy || !file || !name.trim() || !consent) return;
     if (!requestId.current) {
@@ -56,7 +69,8 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
     if (original) { try { sessionStorage.removeItem(pendingKey); } catch {} setJobId(original.id); onCreated?.(created(original, avatarPhase(original))); return; }
     setBusy(true); setAttempted(true); setError("");
     try {
-      const result = await library.createAvatar(file, name.trim(), requestId.current, setUpload);
+      const source = kind === "image" && chosenCandidate ? await polish.toFile(chosenCandidate) : file;
+      const result = await library.createAvatar(source, name.trim(), requestId.current, setUpload);
       try { sessionStorage.removeItem(pendingKey); } catch {}
       setJobId(result.id);
       onCreated?.(created(result, avatarPhase(result)));
@@ -87,7 +101,7 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
   </> : <>
     <span className={`${styles.footerNote} ${cost.insufficient ? styles.short : ""}`}>{cost.text}</span>
     <button type="button" className={base.outlineButton} onClick={onClose}>取消</button>
-    <button type="button" className={base.primaryButton} disabled={!file || !name.trim() || !consent || (kind === "image" && cost.insufficient)} onClick={() => void submit()}>{attempted ? "再次确认（不会重复扣费）" : kind === "image" ? billableLabel("生成形象动作", motionCredits) : "上传并预览"}</button>
+    <button type="button" className={base.primaryButton} disabled={!file || !name.trim() || !consent || (kind === "image" && cost.insufficient) || polish.busy || polish.running} onClick={() => void submit()}>{attempted ? "再次确认（不会重复扣费）" : kind === "image" ? billableLabel("生成形象动作", motionCredits) : "上传并预览"}</button>
   </>;
 
   return <SideDrawer open={open} title="定制我的形象" description="一张清晰照片或一段自然出镜视频，生成你的专属数字人。" onClose={onClose} closeDisabled={busy} footer={footer}>
@@ -110,12 +124,36 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
           const value = event.target.files?.[0]; if (!value) return;
           const valid = kind === "image" ? /\.(jpe?g|png|webp)$/i.test(value.name) : /\.(mp4|mov|webm)$/i.test(value.name);
           if (!valid || value.size > (kind === "image" ? 10 : 50) * 1024 * 1024) { setError(kind === "image" ? "请选择 10 MB 以内的 JPG、PNG 或 WebP 图片。" : "请选择 50 MB 以内的 MP4、MOV 或 WebM 视频。"); return; }
-          setFile(value); setPreview(URL.createObjectURL(value)); setError("");
+          setFile(value); setPreview(URL.createObjectURL(value)); setError(""); polish.reset(); setChosen("original");
         }} />
       </label>
       <p className={styles.hint}>{kind === "image" ? "JPG、PNG、WebP · 最大 10 MB · 边长至少 256 像素" : "MP4、MOV、WebM · 2～120 秒 · 最大 50 MB"}</p>
       <ol className={styles.steps} aria-label="定制流程">{[kind === "image" ? "上传照片" : "上传视频", kind === "image" ? "生成动作" : "检查素材", "预览确认", "加入形象库"].map((step, index) => <li key={step}><b>{index + 1}</b>{step}</li>)}</ol>
       <label className={styles.consent}><input type="checkbox" checked={consent} disabled={attempted} onChange={event => setConsent(event.target.checked)} /><span>这是我本人或已获授权的形象，我同意平台处理该素材并创建专属数字人。</span></label>
+      {kind === "image" && <section className={styles.polish} aria-label="AI 润色">
+        <label className={styles.polishToggle}><input type="checkbox" role="switch" checked={polishOn} disabled={attempted} onChange={event => { setPolishOn(event.target.checked); if (!event.target.checked) setChosen("original"); }} /><span><b><Sparkles size={14} />AI 润色（可选）</b><small>保持你本人的五官，只换穿着、场景和光线；生成 2 张候选，选一张再创建形象。</small></span></label>
+        {polishOn && <>
+          <label className={styles.field}><span>想要的样子</span><textarea aria-label="AI 润色描述" value={polishText} maxLength={POLISH_DESCRIPTION_MAX} disabled={attempted || polish.busy || polish.running} placeholder="例如：把我变成穿西装、站在门店里的店长，暖色自然光" onChange={event => setPolishText(event.target.value)} onBlur={() => setPolishTouched(true)} /></label>
+          <div className={styles.presets} aria-label="示例描述">{POLISH_PRESETS.map(item => <button key={item.label} type="button" aria-pressed={polishText === item.description} disabled={attempted || polish.busy || polish.running} onClick={() => { setPolishText(item.description); setPolishTouched(true); }}>{item.label}</button>)}</div>
+          {polishTouched && polishError && <p className={styles.error} role="alert">{polishError}</p>}
+          <div className={styles.polishAction}>
+            <span className={styles.footerNote}>{polishTotal === null ? polishCost.text : `每张 ${polishCost.credits} 积分，按实际生成张数扣，失败不扣`}</span>
+            <button type="button" className={base.outlineButton} disabled={!file || !consent || !!polishError || polish.busy || polish.running || attempted} onClick={() => { setPolishTouched(true); setChosen("original"); void polish.generate(file!, polishText); }}>{polish.busy || polish.running ? <><LoaderCircle size={14} className={styles.spin} />正在润色…</> : billableLabel(polish.candidates.length ? "重新生成 2 张" : "生成 2 张候选", polishTotal)}</button>
+          </div>
+          {!consent && file && <p className={styles.hint}>先勾选上面的授权确认，再生成候选。</p>}
+          {polish.error && <p className={styles.error} role="alert">{polish.error}</p>}
+          {(polish.candidates.length > 0 || polish.busy) && <div className={styles.candidates} role="radiogroup" aria-label="选择用于创建形象的照片">
+            <button type="button" role="radio" aria-checked={chosen === "original"} className={styles.candidate} disabled={attempted} onClick={() => setChosen("original")}>
+              <span>{preview && <img src={preview} alt="原图" />}</span><b>原图</b>
+            </button>
+            {shownCandidates.map(item => <button key={item.id} type="button" role="radio" aria-checked={chosen === item.id} className={styles.candidate} disabled={attempted || item.status !== "ready"} onClick={() => setChosen(item.id)}>
+              <span>{item.status === "ready" && item.image_url ? <img src={mediaUrl(item.image_url)} alt={`候选 ${item.slot}`} /> : <i className={styles.candidateState}>{item.status === "failed" ? (item.message || "没有生成成功，不扣费") : <><LoaderCircle size={16} className={styles.spin} />生成中，约 1 分钟</>}</i>}</span>
+              <b>候选 {item.slot}</b>
+            </button>)}
+          </div>}
+          {chosenCandidate && <p className={styles.hint}>将用「候选 {chosenCandidate.slot}」创建形象。不满意可以重新生成，或选回原图。</p>}
+        </>}
+      </section>}
     </>}
     {error && <p className={styles.error} role="alert">{error}</p>}
   </SideDrawer>;

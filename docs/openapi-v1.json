@@ -2015,6 +2015,50 @@
         "title": "Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post",
         "type": "object"
       },
+      "Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post": {
+        "properties": {
+          "consent": {
+            "title": "Consent",
+            "type": "boolean"
+          },
+          "consent_version": {
+            "title": "Consent Version",
+            "type": "string"
+          },
+          "count": {
+            "default": 2,
+            "maximum": 2.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "description": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "description",
+          "consent",
+          "consent_version",
+          "file"
+        ],
+        "title": "Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post",
+        "type": "object"
+      },
       "Body_upload_asset_api_v1_workspaces__workspace_id__assets_post": {
         "properties": {
           "file": {
@@ -12462,6 +12506,100 @@
         "title": "PlanUpdateRequest",
         "type": "object"
       },
+      "PolishCandidateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "request_id",
+          "slot",
+          "status",
+          "description",
+          "error_code",
+          "message",
+          "image_url",
+          "credits",
+          "created_at"
+        ],
+        "title": "PolishCandidateResponse",
+        "type": "object"
+      },
       "ProcessingConsentChoice": {
         "additionalProperties": false,
         "properties": {
@@ -15252,7 +15390,8 @@
               "benchmark_search",
               "writing_generate",
               "cover_generate",
-              "editing_auto_image"
+              "editing_auto_image",
+              "avatar_polish"
             ],
             "title": "Action",
             "type": "string"
@@ -24885,6 +25024,234 @@
           }
         ],
         "summary": "Create Avatar",
+        "tags": [
+          "video-avatars"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polish-presets": {
+      "get": {
+        "operationId": "presets_api_v1_video_studio_workspaces__workspace_id__avatar_polish_presets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response Presets Api V1 Video Studio Workspaces  Workspace Id  Avatar Polish Presets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Presets",
+        "tags": [
+          "video-avatars"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polishes": {
+      "get": {
+        "operationId": "list_polishes_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PolishCandidateResponse"
+                  },
+                  "title": "Response List Polishes Api V1 Video Studio Workspaces  Workspace Id  Avatar Polishes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Polishes",
+        "tags": [
+          "video-avatars"
+        ]
+      },
+      "post": {
+        "operationId": "create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PolishCandidateResponse"
+                  },
+                  "title": "Response Create Polish Api V1 Video Studio Workspaces  Workspace Id  Avatar Polishes Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Polish",
+        "tags": [
+          "video-avatars"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polishes/{polish_id}/image": {
+      "get": {
+        "operationId": "polish_image_api_v1_video_studio_workspaces__workspace_id__avatar_polishes__polish_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "polish_id",
+            "required": true,
+            "schema": {
+              "title": "Polish Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Polish Image",
         "tags": [
           "video-avatars"
         ]

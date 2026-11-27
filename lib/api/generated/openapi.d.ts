@@ -1747,6 +1747,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polish-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Presets */
+        get: operations["presets_api_v1_video_studio_workspaces__workspace_id__avatar_polish_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polishes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Polishes */
+        get: operations["list_polishes_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_get"];
+        put?: never;
+        /** Create Polish */
+        post: operations["create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polishes/{polish_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Polish Image */
+        get: operations["polish_image_api_v1_video_studio_workspaces__workspace_id__avatar_polishes__polish_id__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/avatars": {
         parameters: {
             query?: never;
@@ -5666,6 +5718,27 @@ export interface components {
              */
             request_id: string;
         };
+        /** Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post */
+        Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post: {
+            /** Consent */
+            consent: boolean;
+            /** Consent Version */
+            consent_version: string;
+            /**
+             * Count
+             * @default 2
+             */
+            count: number;
+            /** Description */
+            description: string;
+            /** File */
+            file: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
         /** Body_upload_asset_api_v1_workspaces__workspace_id__assets_post */
         Body_upload_asset_api_v1_workspaces__workspace_id__assets_post: {
             /** File */
@@ -9430,6 +9503,35 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** PolishCandidateResponse */
+        PolishCandidateResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Credits */
+            credits: number | null;
+            /** Description */
+            description: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Id */
+            id: string;
+            /** Image Url */
+            image_url: string | null;
+            /** Message */
+            message: string | null;
+            /** Request Id */
+            request_id: string;
+            /** Slot */
+            slot: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "ready" | "failed";
+        };
         /** ProcessingConsentChoice */
         ProcessingConsentChoice: {
             /** Aitraining */
@@ -10439,7 +10541,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate" | "cover_generate" | "editing_auto_image";
+            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate" | "cover_generate" | "editing_auto_image" | "avatar_polish";
             /** Credits */
             credits: number | null;
         };
@@ -15084,6 +15186,139 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    presets_api_v1_video_studio_workspaces__workspace_id__avatar_polish_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_polishes_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_get: {
+        parameters: {
+            query: {
+                request_id: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolishCandidateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolishCandidateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    polish_image_api_v1_video_studio_workspaces__workspace_id__avatar_polishes__polish_id__image_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                polish_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

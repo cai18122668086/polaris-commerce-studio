@@ -25,6 +25,7 @@ VideoPricedAction = Literal[
     "writing_generate",
     "cover_generate",
     "editing_auto_image",
+    "avatar_polish",
 ]
 ACTIONS: tuple[str, ...] = VideoPricedAction.__args__  # type: ignore[attr-defined]
 PRICING_VERSION = "video-credits-config-v1"
@@ -45,6 +46,8 @@ DEFAULT_PRICES: dict[str, int] = {
     "cover_generate": 7,
     # AI 补充配图：¥0.1/张 ×1.25 失败余量 ×3 ÷ ¥0.06 → 7（负责人定价）
     "editing_auto_image": 7,
+    # AI 润色形象照：图片类统一 7 积分 / 张（2026-11-28 批准），失败不扣
+    "avatar_polish": 7,
 }
 
 

@@ -87,6 +87,13 @@ export async function uploadMaterial(workspaceId: string, projectId: string, fil
   })) as unknown as MaterialRow;
 }
 
+export async function placeMaterial(workspaceId: string, projectId: string, materialId: string, sentence: { index: number; text: string } | null): Promise<MaterialRow> {
+  return unwrapApiResponse(await apiClient.PUT(`${materials}/{material_id}/placement`, {
+    params: { path: { workspace_id: workspaceId, project_id: projectId, material_id: materialId } },
+    body: sentence ? { sentence_index: sentence.index, sentence: sentence.text } : {},
+  })) as unknown as MaterialRow;
+}
+
 export async function deleteMaterial(workspaceId: string, projectId: string, materialId: string): Promise<void> {
   unwrapApiResponse(await apiClient.DELETE(`${materials}/{material_id}`, {
     params: { path: { workspace_id: workspaceId, project_id: projectId, material_id: materialId } },

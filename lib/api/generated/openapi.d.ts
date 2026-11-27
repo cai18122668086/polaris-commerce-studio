@@ -2917,6 +2917,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/placement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Place Material
+         * @description 「我来指定句子」：把素材说明改成那一句原文，规划按它放置；空 = 自动。
+         */
+        put: operations["place_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__placement_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans": {
         parameters: {
             query?: never;
@@ -8513,6 +8533,13 @@ export interface components {
             redo_job_id?: string | null;
             /** Redo Job Status */
             redo_job_status?: string | null;
+        };
+        /** MaterialPlacementBody */
+        MaterialPlacementBody: {
+            /** Sentence */
+            sentence?: string | null;
+            /** Sentence Index */
+            sentence_index?: number | null;
         };
         /**
          * MembershipRole
@@ -16697,6 +16724,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__placement_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                material_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialPlacementBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

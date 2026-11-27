@@ -40,31 +40,73 @@ class CoverImageClient(Protocol):
     ) -> CoverImageResult: ...
 
 
+@dataclass(frozen=True)
+class ImageRoute:
+    name: str
+    base_url: str
+    api_key: str
+    model: str
+
+
+def image_routes(settings: Settings) -> list[ImageRoute]:
+    """The site's image route, then the tengli image route the replica uses."""
+
+    routes = [
+        ImageRoute(
+            "primary",
+            settings.image_base_url.rstrip("/"),
+            settings.image_api_key.get_secret_value(),
+            settings.image_model,
+        ),
+        ImageRoute(
+            "tengli",
+            settings.tengli_base_url.rstrip("/"),
+            settings.tengli_api_key.get_secret_value(),
+            settings.tengli_image_model,
+        ),
+    ]
+    return [route for route in routes if route.api_key and route.base_url]
+
+
 class HttpCoverImageClient:
+    """Tries each configured route in order; only unavailable/timeout moves on."""
+
     def __init__(self, settings: Settings, timeout_seconds: float = 240):
-        self.base_url = settings.image_base_url.rstrip("/")
-        self.api_key = settings.image_api_key.get_secret_value()
-        self.model = settings.image_model
+        self.routes = image_routes(settings)
         self.timeout = timeout_seconds
 
     @property
     def configured(self) -> bool:
-        return bool(self.api_key and self.base_url)
+        return bool(self.routes)
 
     def edit(
         self, reference_png: bytes, prompt: str, *, idempotency_key: str
     ) -> CoverImageResult:
-        if not self.configured:
+        if not self.routes:
             raise CoverImageError("COVER_IMAGE_NOT_CONFIGURED", "AI 封面服务尚未配置。")
+        last: CoverImageError | None = None
+        for route in self.routes:
+            try:
+                return self._edit(route, reference_png, prompt, idempotency_key)
+            except CoverImageError as exc:
+                last = exc
+                if not exc.retryable:
+                    raise
+        assert last is not None
+        raise last
+
+    def _edit(
+        self, route: ImageRoute, reference_png: bytes, prompt: str, idempotency_key: str
+    ) -> CoverImageResult:
         try:
             response = httpx.post(
-                self.base_url + "/v1/images/edits",
+                route.base_url + "/v1/images/edits",
                 headers={
-                    "Authorization": f"Bearer {self.api_key}",
+                    "Authorization": f"Bearer {route.api_key}",
                     "Idempotency-Key": idempotency_key,
                 },
                 data={
-                    "model": self.model,
+                    "model": route.model,
                     "prompt": prompt,
                     "n": "1",
                     "size": "1200x1600",  # 3:4 the relay accepts; resized
@@ -84,22 +126,23 @@ class HttpCoverImageClient:
                 "COVER_IMAGE_UNAVAILABLE", "AI 封面服务暂时连不上。", retryable=True
             ) from None
         if response.status_code >= 400:
+            retryable = response.status_code >= 500 or response.status_code in {
+                401,
+                403,
+                429,
+            }
             raise CoverImageError(
-                "COVER_IMAGE_REJECTED"
-                if response.status_code < 500
-                else "COVER_IMAGE_UNAVAILABLE",
+                "COVER_IMAGE_UNAVAILABLE" if retryable else "COVER_IMAGE_REJECTED",
                 "AI 封面服务没有返回图片。",
-                retryable=response.status_code >= 500,
+                retryable=retryable,
             )
         try:
             body = response.json()
-            item = body["data"][0]
-            raw = base64.b64decode(item["b64_json"])
+            raw = base64.b64decode(body["data"][0]["b64_json"])
             image = Image.open(io.BytesIO(raw)).convert("RGB")
         except Exception:
             raise CoverImageError(
                 "COVER_IMAGE_INVALID", "AI 封面服务返回的图片无法读取。"
             ) from None
-        return CoverImageResult(
-            image, self.model, body.get("model") if isinstance(body, dict) else None
-        )
+        reported = body.get("model") if isinstance(body, dict) else None
+        return CoverImageResult(image, f"{route.name}:{route.model}", reported)

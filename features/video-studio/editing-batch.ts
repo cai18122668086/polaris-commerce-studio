@@ -42,12 +42,20 @@ export function durationLabel(ms?: number | null): string {
 export function batchPlan(selected: EditingCandidate[]):
   | { kind: "existing"; batchId: string; itemIds: string[] }
   | { kind: "create"; items: { drive_mode: "uploaded_video"; source_video_ref: { kind: "library" | "upload"; id: string }; publish_title: string; publish_body: string; script_text: string }[] }
+  | { kind: "conflict"; reason: string }
   | { kind: "empty" } {
   const usable = selected.filter(row => row.ready);
   if (!usable.length) return { kind: "empty" };
-  const batches = new Set(usable.map(row => row.batchId));
-  if (batches.size === 1 && usable.every(row => row.kind === "talking" && row.batchId && row.itemId)) {
+  const talking = usable.filter(row => row.kind === "talking" && row.batchId && row.itemId);
+  const batches = new Set(talking.map(row => row.batchId));
+  if (talking.length === usable.length && batches.size === 1) {
     return { kind: "existing", batchId: usable[0].batchId as string, itemIds: usable.map(row => row.itemId as string) };
+  }
+  // 口播批次里的视频必须沿用原条目（标题、正文、口播稿在条目上），不能和别的视频混成新批次。
+  if (talking.length) {
+    return { kind: "conflict", reason: batches.size > 1
+      ? "选中的视频来自不同的口播批次。一次剪一批，请只保留同一批的视频。"
+      : "口播批次里的视频要和本批一起剪，才能带上标题和正文。请把视频库或上传的视频分开另剪一批。" };
   }
   return {
     kind: "create",

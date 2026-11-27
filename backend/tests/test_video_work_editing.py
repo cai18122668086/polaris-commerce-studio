@@ -338,3 +338,52 @@ def test_awaiting_preview_is_confirmed_automatically(video, tmp_path, monkeypatc
     assert phases(view) == ["done"] and confirmed == [(render, "p" * 64)]
     poll(client, ws, batch)
     assert len(confirmed) == 1  # done items are never confirmed again
+
+
+def test_a_talking_result_is_never_edited_as_a_copy(video, tmp_path, monkeypatch):
+    """视频库里选到的口播结果若属于口播批次的条目，必须沿用那条条目（文案不丢）。"""
+    client, ws, settings, factory, semantic, _ = prepare_world(
+        video, tmp_path, monkeypatch, count=1
+    )
+    from app.video_generation_models import VideoGenerationRecord
+    from app.video_work_models import VideoWorkBatchRecord
+    from tests.test_video_work_items import generation
+
+    with factory() as session:
+        owner = session.scalars(select(VideoWorkBatchRecord)).first().owner_user_id
+    job_id = generation(client, ws, owner)
+    with factory() as session:
+        job = session.get(VideoGenerationRecord, job_id)
+        job.status = "completed"
+        session.commit()
+    talking = client.post(
+        base(ws) + "/work-batches",
+        json={
+            "request_id": str(uuid4()),
+            "source": "talking",
+            "items": [{"script_text": "口播稿", "avatar_id": "a", "voice_id": "v"}],
+        },
+    ).json()
+    with factory() as session:
+        item = session.get(VideoWorkItemRecord, talking["item_ids"][0])
+        item.generation_task_id = job_id
+        item.source_video_ref = {"kind": "talking", "id": job_id}
+        session.commit()
+    copy = client.post(
+        base(ws) + "/work-batches",
+        json={
+            "request_id": str(uuid4()),
+            "source": "editing_upload",
+            "items": [
+                {
+                    "drive_mode": "uploaded_video",
+                    "source_video_ref": {"kind": "library", "id": job_id},
+                }
+            ],
+        },
+    ).json()
+    refused = submit(client, ws, copy)
+    assert refused.status_code == 409
+    error = refused.json()["error"]
+    assert error["code"] == "VIDEO_WORK_SOURCE_HAS_ITEM"
+    assert error["details"]["batch_id"] == talking["id"]

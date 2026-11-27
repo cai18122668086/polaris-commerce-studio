@@ -155,6 +155,9 @@ class Settings(BaseSettings):
     video_editing_lease_seconds: int = Field(default=120, ge=30, le=600)
     video_editing_subprocess_timeout: int = Field(default=3600, ge=30, le=14400)
     video_cosyvoice_enabled: bool = False
+    # 「新建声音克隆」单独的开关（用户 11-28 决定保持关闭）。只管新建；已有克隆声音的
+    # 列表、试听与口播合成仍只看 video_cosyvoice_enabled。
+    video_voice_clone_enabled: bool = False
     video_cosyvoice_api_key: SecretStr = SecretStr("")
     video_cosyvoice_platform: Literal["qianwen", "bailian_beijing", "dashscope"] = (
         "qianwen"
@@ -312,9 +315,7 @@ class Settings(BaseSettings):
     credit_epay_active_key_id: str = ""
     credit_epay_keys: dict[str, SecretStr] = Field(default_factory=dict)
     credit_epay_base_url: str = "https://pay.jgshai.cn"
-    credit_epay_notify_url: str = (
-        "https://www.jgshai.cn/api/v1/payments/epay/notify"
-    )
+    credit_epay_notify_url: str = "https://www.jgshai.cn/api/v1/payments/epay/notify"
     credit_epay_return_url: str = "https://www.jgshai.cn/account"
 
     @field_validator("workspace_credit_pilot_ids")

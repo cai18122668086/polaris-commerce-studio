@@ -43,6 +43,7 @@ def clone_env(video_gen, tmp_path):
     client, auth, provider, root, pid, user = video_gen
     settings = client.app.state.settings
     settings.video_cosyvoice_enabled = True
+    settings.video_voice_clone_enabled = True
     settings.video_cosyvoice_api_key = SecretStr("fixture-private-key")
     state = {"created": [], "synthesis": [], "query": [], "mode": "ok", "status": "OK"}
     mp3 = tmp_path / "fixture.mp3"

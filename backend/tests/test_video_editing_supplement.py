@@ -1123,3 +1123,40 @@ def test_mg_plan_uses_short_ids_and_maps_back(tmp_path, video):
     plan = plan_mg(settings, rows, prompt_catalog(), validate_params, ask=ask)
     assert seen == [["u1", "u2"]]
     assert plan["cues"][0]["utterance_ids"] == ["fb45384b60578-u000002"]
+
+
+def test_ai_image_tries_each_failover_key_in_order(video):
+    from app import video_editing_supplement_images as images
+
+    settings = video[4]
+    secret = type(settings.image_api_key)
+    settings.image_api_key = secret("primary-key")
+    settings.image_base_url = "https://primary.example"
+    settings.provider_failover_enabled = True
+    settings.provider_failover_base_url = "https://failover.example"
+    settings.provider_failover_api_key = secret("k-one, k-two")
+    tried = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        key = request.headers["Authorization"].removeprefix("Bearer ")
+        tried.append((request.url.host, key))
+        if key == "primary-key":
+            return httpx.Response(502, text="bad gateway")
+        if key == "k-one":
+            return httpx.Response(401, text="invalid key")
+        import base64
+
+        return httpx.Response(
+            200, json={"data": [{"b64_json": base64.b64encode(b"img").decode()}]}
+        )
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await images.call_provider(settings, "prompt", "idem", client=client)
+
+    assert asyncio.run(run()) == b"img"
+    assert tried == [
+        ("primary.example", "primary-key"),
+        ("failover.example", "k-one"),
+        ("failover.example", "k-two"),
+    ]

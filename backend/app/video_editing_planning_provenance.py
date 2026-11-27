@@ -19,7 +19,7 @@ from .video_editing_contracts import SemanticPlan, Transcript
 from .video_editing_first_groups import FIRST_MOTION_GROUPS, expand_group_plan
 from .video_editing_materials import verify_material_cards
 from .video_editing_native_plans import content_digest, source_assets
-from .video_editing_planner import validate_plan
+from .video_editing_planner import normalize_response_plan, validate_plan
 from .video_editing_planning_store import FILES, planning_root
 from .video_editing_task_models import (
     EditingArtifactRecord,
@@ -34,7 +34,6 @@ from .video_editing_template_styles import (
     validate_template_style,
 )
 from .video_editing_transcript_store import read_transcript_artifact
-from .video_planner_policy import bind_selected_native_assets, normalize_azl_windows
 
 
 @dataclass(frozen=True)
@@ -324,13 +323,15 @@ def _verify(
             runtime,
         )
     else:
-        normalized, native_window_repairs = normalize_azl_windows(
-            json.loads(content), transcript, runtime
+        # Same repairs, in the same order, as planning recorded in its receipt.
+        semantic, native_asset_repairs, native_window_repairs = normalize_response_plan(
+            json.loads(content),
+            transcript,
+            settings,
+            template,
+            runtime,
+            row.snapshot["asset_cards"],
         )
-        normalized, native_asset_repairs = bind_selected_native_assets(
-            normalized, row.snapshot["asset_cards"]
-        )
-        semantic = SemanticPlan.model_validate(normalized)
     if data["receipt"].get("native_asset_adaptation", []) != native_asset_repairs:
         raise ValueError(
             "Captured native asset binding receipt differs from selected project assets"

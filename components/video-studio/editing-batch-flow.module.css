@@ -51,7 +51,7 @@
 .gallery :global([class*=templateScroll]){max-height:none}
 .gallery :global([class*=templateScroll]) :global([class*=grid]){grid-template-columns:repeat(auto-fill,minmax(150px,1fr))!important;gap:14px!important}
 .gallery :global([class*=sectionHeading]) h2,.gallery :global([class*=eyebrow]){display:none}
-@media(max-width:620px){.gallery :global([class*=templateScroll]) :global([class*=grid]){grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:620px){.gallery :global([class*=templateScroll]) :global([class*=grid]){grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important}}
 .needs{margin:0;font-size:12px;color:var(--muted);line-height:1.7}
 .switch{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;width:fit-content}
 .switch input{accent-color:var(--ink)}

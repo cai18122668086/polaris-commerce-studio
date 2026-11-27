@@ -9,10 +9,13 @@ test("a talking batch is edited as it is; anything else becomes a direct-editing
   assert.deepEqual(batchPlan([talking("i1"), talking("i2")]), { kind: "existing", batchId: "b1", itemIds: ["i1", "i2"] });
   // Unfinished talking items are never sent.
   assert.deepEqual(batchPlan([talking("i1"), talking("i2", { ready: false })]), { kind: "existing", batchId: "b1", itemIds: ["i1"] });
-  const mixed = batchPlan([talking("i1"), library("s1"), { ...library("u1"), kind: "upload", key: "upload:u1" }]);
-  assert.equal(mixed.kind, "create");
-  assert.deepEqual(mixed.items.map(item => item.source_video_ref), [{ kind: "library", id: "gen-i1" }, { kind: "library", id: "s1" }, { kind: "upload", id: "u1" }]);
-  assert.ok(mixed.items.every(item => item.drive_mode === "uploaded_video"));
+  const direct = batchPlan([library("s1"), { ...library("u1"), kind: "upload", key: "upload:u1" }]);
+  assert.equal(direct.kind, "create");
+  assert.deepEqual(direct.items.map(item => item.source_video_ref), [{ kind: "library", id: "s1" }, { kind: "upload", id: "u1" }]);
+  assert.ok(direct.items.every(item => item.drive_mode === "uploaded_video"));
+  // A talking result keeps its own work item (title, body, script): never mixed into a copy batch.
+  assert.equal(batchPlan([talking("i1"), library("s1")]).kind, "conflict");
+  assert.equal(batchPlan([talking("i1"), talking("i9", { batchId: "b2" })]).kind, "conflict");
   assert.deepEqual(batchPlan([]), { kind: "empty" });
   assert.deepEqual(batchPlan([talking("i1", { ready: false })]), { kind: "empty" });
 });

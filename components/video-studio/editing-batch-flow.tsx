@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Download, Film, RotateCcw, Upload, X } from "lucide-react";
+import { ApiError } from "@/lib/api/api-error";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import { mediaUrl } from "@/lib/api/base-url";
@@ -48,6 +49,9 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
   const [batch, setBatch] = useState<Batch>();
   const [view, setView] = useState<BatchView>();
   const [sources, setSources] = useState<SourceRow[]>([]);
+  const [talkingBatches, setTalkingBatches] = useState<Batch[]>([]);
+  /** 视频库里选中的口播结果所属批次（与 URL 上的批次不同时单独加载） */
+  const [planBatch, setPlanBatch] = useState<Batch>();
   const [selected, setSelected] = useState<EditingCandidate[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [templates, setTemplates] = useState<TemplateCard[]>([]);
@@ -68,6 +72,8 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
       .then(result => setTemplates(unwrapApiResponse(result))).catch(() => undefined);
     void apiClient.GET(`${root}/editing-sources`, { params: { path: { workspace_id: workspaceId }, query: { limit: 50 } }, signal: controller.signal })
       .then(result => setSources(unwrapApiResponse(result))).catch(() => undefined);
+    void apiClient.GET(`${root}/work-batches`, { params: { path: { workspace_id: workspaceId }, query: { source: "talking", limit: 20 } }, signal: controller.signal })
+      .then(result => setTalkingBatches(unwrapApiResponse(result))).catch(() => undefined);
     return () => controller.abort();
   }, [workspaceId]);
 
@@ -111,17 +117,29 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
       note: ready ? undefined : item.status === "failed" ? "口播没有生成成功" : "口播还在生成",
     };
   }), [batch, jobsById, sources]);
+  // A talking result that belongs to a talking batch is that batch's work item (its title,
+  // body and script live there): pick it as the item, never as a copy.
+  const talkingItemByJob = useMemo(() => {
+    const map = new Map<string, { item: Batch["items"][number]; batch: Batch }>();
+    for (const row of talkingBatches) for (const item of row.items) {
+      const job = item.generation_task_id ?? (item.source_video_ref?.kind === "talking" ? item.source_video_ref.id : null);
+      if (job) map.set(job, { item, batch: row });
+    }
+    return map;
+  }, [talkingBatches]);
   const libraryCandidates: EditingCandidate[] = useMemo(() => [
-    ...jobs.filter(job => job.kind === "lipsync" && job.status === "completed" && job.video_url).map(job => ({
-      key: candidateKey("library", job.id), kind: "library" as const, refId: job.id, projectId: job.project_id,
-      title: job.snapshot?.draft.name || "口播视频", videoUrl: mediaUrl(job.video_url) ?? null, durationMs: job.audio_duration_seconds ? job.audio_duration_seconds * 1000 : null,
-      createdAt: job.created_at, ready: true, note: "我的口播",
-    })),
+    ...jobs.filter(job => job.kind === "lipsync" && job.status === "completed" && job.video_url).map(job => {
+      const owner = talkingItemByJob.get(job.id);
+      const base = { projectId: job.project_id, videoUrl: mediaUrl(job.video_url) ?? null, durationMs: job.audio_duration_seconds ? job.audio_duration_seconds * 1000 : null, createdAt: job.created_at, ready: true };
+      return owner
+        ? { ...base, key: candidateKey("talking", owner.item.id), kind: "talking" as const, refId: job.id, itemId: owner.item.id, batchId: owner.batch.id, title: owner.item.publish_title || job.snapshot?.draft.name || "口播视频", note: `口播批次 ${new Date(owner.batch.created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}` }
+        : { ...base, key: candidateKey("library", job.id), kind: "library" as const, refId: job.id, title: job.snapshot?.draft.name || "口播视频", note: "我的口播" };
+    }),
     ...sources.map(row => ({
       key: candidateKey("library", row.id), kind: "library" as const, refId: row.id, projectId: row.project_id,
       title: row.file_name || "上传的视频", videoUrl: mediaUrl(row.video_url) ?? null, durationMs: row.duration_ms, createdAt: String(row.created_at), ready: true, note: "已上传",
     })),
-  ], [jobs, sources]);
+  ], [jobs, sources, talkingItemByJob]);
 
   // Coming from 口播: every finished video of the batch is selected automatically.
   const autoPicked = useRef("");
@@ -169,6 +187,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
   const plan = batchPlan(selected);
   const ensureBatch = async (): Promise<{ id: string; itemIds: string[] } | undefined> => {
     if (plan.kind === "empty") { setError("请先选择要剪的视频。"); return undefined; }
+    if (plan.kind === "conflict") { setError(plan.reason); return undefined; }
     if (plan.kind === "existing") return { id: plan.batchId, itemIds: plan.itemIds };
     const key = JSON.stringify(plan.items);
     if (createRequest.current?.key !== key) createRequest.current = { key, id: crypto.randomUUID() };
@@ -180,20 +199,33 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
     return { id: created.id, itemIds: created.item_ids };
   };
 
+  const planBatchId = plan.kind === "existing" && plan.batchId !== batch?.id ? plan.batchId : null;
+  useEffect(() => {
+    if (!planBatchId) return;
+    let live = true;
+    void Promise.resolve().then(async () => {
+      const row = unwrapApiResponse(await apiClient.GET(`${root}/work-batches/{batch_id}`, { params: { path: { workspace_id: workspaceId, batch_id: planBatchId } }, signal: AbortSignal.timeout(15000) }));
+      if (live) setPlanBatch(row);
+    }).catch(() => undefined);
+    return () => { live = false; };
+  }, [planBatchId, workspaceId]);
+  const itemsBatch = planBatchId && planBatch?.id === planBatchId ? planBatch : batch;
+
   // --- ③ work items for the supplement panel ------------------------------------------------
   const chosenIds = useMemo(() => {
     if (plan.kind === "existing") return plan.itemIds;
     if (batch && batch.source === "editing_upload") return batch.item_ids;
     return [];
   }, [plan, batch]);
+  const conflict = plan.kind === "conflict" ? plan.reason : "";
   // Per-item templates are keyed by the candidate; batch items map back to it.
   const keyOfItem = useCallback((itemId: string) => {
-    const item = batch?.items.find(entry => entry.id === itemId);
+    const item = (itemsBatch ?? batch)?.items.find(entry => entry.id === itemId);
     const match = selected.find(row => row.itemId === itemId) ?? selected.find(row => !!item?.source_video_ref && row.refId === item.source_video_ref.id);
     return match?.key ?? candidateKey("talking", itemId);
-  }, [batch, selected]);
+  }, [itemsBatch, batch, selected]);
   const templateOf = useCallback((itemId: string) => templates.find(card => card.id === (perItem ? itemTemplates[keyOfItem(itemId)] : undefined)) ?? template, [templates, perItem, itemTemplates, keyOfItem, template]);
-  const workItems: SupplementWorkItem[] = useMemo(() => (batch?.items ?? []).filter(item => chosenIds.includes(item.id)).map(item => {
+  const workItems: SupplementWorkItem[] = useMemo(() => (itemsBatch?.items ?? []).filter(item => chosenIds.includes(item.id)).map(item => {
     const card = templateOf(item.id);
     const candidate = [...batchCandidates, ...selected].find(row => row.itemId === item.id || row.refId === item.source_video_ref?.id);
     return {
@@ -202,10 +234,10 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
       supports_images: !!card && ((card.capabilities ?? []).includes("images") || card.material_mode === "images"),
       supports_mg: card?.engine === "bihuo-full-suite",
     };
-  }), [batch, chosenIds, templateOf, batchCandidates, selected, uploadProjectId]);
+  }), [itemsBatch, chosenIds, templateOf, batchCandidates, selected, uploadProjectId]);
 
   // --- ④ submit -----------------------------------------------------------------------------
-  const count = plan.kind === "empty" ? 0 : plan.kind === "existing" ? plan.itemIds.length : plan.items.length;
+  const count = plan.kind === "existing" ? plan.itemIds.length : plan.kind === "create" ? plan.items.length : 0;
   const summary = generationSummary(count, cost?.credits);
   const missingTemplate = !template;
   const generate = async () => {
@@ -228,9 +260,12 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
         body: { request_id: submitRequest.current.id, ...body },
       }));
       setView(result); setBatch(result.batch);
+      if (target.id !== batchId) router.replace(editingHref(target.id));
       if (result.notice) setNotice(result.notice);
       requestAnimationFrame(() => document.getElementById("editing-batch-results")?.scrollIntoView({ block: "start" }));
     } catch (caught) {
+      const owner = caught instanceof ApiError && caught.code === "VIDEO_WORK_SOURCE_HAS_ITEM" ? (caught.details as { batch_id?: string } | undefined)?.batch_id : undefined;
+      if (owner) { router.replace(editingHref(owner)); return; }
       setError(editingMessage(caught, "提交还在确认中，不会重复扣费；稍后刷新查看。"));
     } finally { setBusy(false); }
   };
@@ -266,7 +301,10 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
             {key === "batch" ? (batch?.source === "editing_upload" ? "本批视频" : "来自口播批次") : key === "library" ? "视频库" : "上传"}
           </button>)}
         </div>
-        {tab === "batch" && !batch && <p className={styles.empty}>还没有口播批次。在口播页生成后点「去剪辑」，这一批会自动带过来。</p>}
+        {tab === "batch" && !batch && (talkingBatches.length ? <ul className={styles.batches}>{talkingBatches.slice(0, 8).map(row => {
+          const done = row.items.filter(item => item.status === "succeeded" || item.stage !== "talking").length;
+          return <li key={row.id}><a href={editingHref(row.id)}><b>{row.items[0]?.publish_title || row.items[0]?.script_text.slice(0, 16) || "口播批次"}{row.items.length > 1 ? ` 等 ${row.items.length} 条` : ""}</b><small>{new Date(row.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · 已生成 {done}/{row.items.length}</small></a></li>;
+        })}</ul> : <p className={styles.empty}>还没有口播批次。在口播页生成后点「去剪辑」，这一批会自动带过来。</p>)}
         {tab === "upload" && <label className={styles.drop}><Upload size={20} /><b>选择视频文件</b><small>可以一次选多个；建议竖屏 9:16 的口播视频，MP4 / MOV</small>
           <input type="file" multiple accept="video/mp4,video/quicktime,video/webm" aria-label="上传视频" disabled={busy} onChange={event => { void uploadFiles(event.target.files); event.target.value = ""; }} /></label>}
         {tab === "upload" && uploads.length > 0 && <ul className={styles.uploads}>{uploads.map((row, index) => <li key={`${row.name}-${index}`}>
@@ -322,6 +360,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
       </section>
     </>}
 
+    {!started && conflict && <p role="alert" className={styles.error}>{conflict}</p>}
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {notice && <p role="status" className={styles.fine}>{notice}</p>}
 

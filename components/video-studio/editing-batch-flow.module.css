@@ -16,6 +16,10 @@
 .tabs{display:flex;gap:2px;width:fit-content;max-width:100%;padding:3px;border-radius:9px;background:#f1f0ee;overflow-x:auto;scrollbar-width:none}
 .tabs button{flex:none;padding:7px 14px;border:0;border-radius:7px;background:transparent;color:#7d7a73;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .tabs button[aria-selected=true]{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px #0000000f}
+.batches{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.batches a{display:grid;gap:3px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none}
+.batches b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.batches small{font-size:11px;color:var(--muted)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px;min-width:0}
 .card{display:grid;gap:6px;align-content:start;min-width:0;padding:0 0 8px;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .card:disabled{cursor:default}
@@ -46,12 +50,6 @@
 .selected li button{display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:6px;background:none;color:var(--muted);cursor:pointer}
 .mini{display:grid;place-items:center;width:28px;height:40px;overflow:hidden;border-radius:5px;background:var(--soft);color:#b9b6af}
 .mini video{width:100%;height:100%;object-fit:cover}
-.gallery{display:block;min-width:0}
-.gallery>section{grid-area:auto;padding:0;border:0;background:none}
-.gallery :global([class*=templateScroll]){max-height:none}
-.gallery :global([class*=templateScroll]) :global([class*=grid]){grid-template-columns:repeat(auto-fill,minmax(150px,1fr))!important;gap:14px!important}
-.gallery :global([class*=sectionHeading]) h2,.gallery :global([class*=eyebrow]){display:none}
-@media(max-width:620px){.gallery :global([class*=templateScroll]) :global([class*=grid]){grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important}}
 .needs{margin:0;font-size:12px;color:var(--muted);line-height:1.7}
 .switch{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;width:fit-content}
 .switch input{accent-color:var(--ink)}

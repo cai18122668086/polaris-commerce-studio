@@ -29,9 +29,15 @@ from .video_writing_contracts import (
 )
 from .video_writing_rules import (
     ANALYSIS_RULES,
+    BODY_LIMIT,
     COMPARE_RULES,
     DRAFT_RULES,
+    PLATFORM_NAME,
     RULES,
+    TAGS_MAX,
+    TAGS_MIN,
+    TITLE_LIMIT,
+    publish_rules,
     verify_writing_package,
 )
 
@@ -246,6 +252,216 @@ def known_fields(data: Any, model: type[BaseModel]) -> Any:
     return kept
 
 
+class PublishIssue(DraftIssue):
+    """A publish title/body rejection; ``hint`` is the correction for the model."""
+
+    def __init__(self, message: str, kind: str, text: str, hint: str) -> None:
+        super().__init__(message, kind, 0, text)
+        self.hint = hint
+
+
+HASHTAG = re.compile(r"#[^\s#，,。！？!?、；;：:（）()【】\[\]「」]+")
+# Joiners and variation selectors are not visible characters of a title.
+INVISIBLE = re.compile(r"[\u200b-\u200d\ufe0e\ufe0f]")
+
+
+def visible_length(text: str) -> int:
+    return len(INVISIBLE.sub("", text))
+
+
+def publish_platform(inputs: dict[str, Any], reference: WritingReference) -> str:
+    chosen = inputs.get("publish_platform")
+    if chosen in TITLE_LIMIT:
+        return chosen
+    metrics = reference.source_metrics
+    if metrics is not None and metrics.platform in TITLE_LIMIT:
+        return metrics.platform
+    return "douyin"
+
+
+def restricted_claim(text: str, facts: WritingFacts) -> str | None:
+    """The restricted claim (price / net quantity / health effect) found, if any."""
+    if "price" in facts.restricted_claims and re.search(
+        r"[\d零一二三四五六七八九十百两]+\s*(?:元|块)", text
+    ):
+        return "price"
+    if "net_quantity" in facts.restricted_claims and re.search(
+        r"[\d零一二三四五六七八九十百千万两]+\s*(?:克|公斤|斤|毫升|ml|kg|升)",
+        text,
+        re.I,
+    ):
+        return "net_quantity"
+    if "health_effect" in facts.restricted_claims and re.search(
+        r"疗效|治愈|治疗|降血糖|降血压|抗癌|减肥|瘦身", text
+    ):
+        return "health_effect"
+    return None
+
+
+def validate_publish(
+    draft: WritingDraft | WritingStructureDraft,
+    platform: str,
+    reference: WritingReference,
+    facts: WritingFacts,
+    analysis: WritingAnalysis,
+    script: str = "",
+) -> None:
+    """标题和发布正文：平台字数、话题标签、不搬对标的品牌和数字、不编事实.
+
+    Only removing text is ever done here (extra hashtags beyond the limit);
+    everything else is rejected so the corrective retry can fix it.
+    """
+    name = PLATFORM_NAME.get(platform, "抖音")
+    title = re.sub(r"\s+", " ", draft.publish_title).strip()
+    body = draft.publish_body.strip()
+    draft.publish_title, draft.publish_body = title, body
+    if not title:
+        raise PublishIssue(
+            "Publish title is missing",
+            "publish_title_missing",
+            "",
+            "publish_title为空：写一个口语化、有钩子的发布标题",
+        )
+    limit = TITLE_LIMIT.get(platform, 30)
+    if visible_length(title) > limit:
+        raise PublishIssue(
+            "Publish title exceeds the platform limit",
+            "publish_title_length",
+            title,
+            f"publish_title「{title}」有{visible_length(title)}个字，"
+            f"{name}标题最多{limit}个字，缩短后重写",
+        )
+    if HASHTAG.search(title):
+        raise PublishIssue(
+            "Publish title carries a hashtag",
+            "publish_title_tag",
+            title,
+            "publish_title里不要放#话题标签，标签只放在publish_body末尾",
+        )
+    tags: list[str] = []
+    for tag in HASHTAG.findall(body):
+        if tag not in tags:
+            tags.append(tag)
+    if len(tags) > TAGS_MAX:
+        for extra in tags[TAGS_MAX:]:
+            body = re.sub(re.escape(extra) + r"(?![^\s#])", "", body)
+        body = re.sub(r"[ \t]{2,}", " ", body).strip()
+        tags = tags[:TAGS_MAX]
+        draft.publish_body = body
+        note = f"发布正文的话题标签超过{TAGS_MAX}个，已保留前{TAGS_MAX}个。"
+        if note not in draft.warnings and len(draft.warnings) < 30:
+            draft.warnings.append(note)
+    if len(tags) < TAGS_MIN:
+        raise PublishIssue(
+            "Publish body needs hashtags",
+            "publish_tags",
+            body,
+            f"publish_body只有{len(tags)}个话题标签，末尾要有{TAGS_MIN}到{TAGS_MAX}个"
+            "「#话题」，标签之间用空格隔开",
+        )
+    prose = HASHTAG.sub("", body).strip()
+    if len(re.sub(r"[^\w\u4e00-\u9fff]", "", prose)) < 6:
+        raise PublishIssue(
+            "Publish body has no text besides hashtags",
+            "publish_body_empty",
+            body,
+            "publish_body除了话题标签还要有正文，用1到3句话说清这条视频讲什么",
+        )
+    body_limit = BODY_LIMIT.get(platform, 300)
+    if visible_length(body) > body_limit:
+        raise PublishIssue(
+            "Publish body exceeds the platform limit",
+            "publish_body_length",
+            body[:60],
+            f"publish_body有{visible_length(body)}字，{name}正文最多{body_limit}字，删减后重写",
+        )
+    both = f"{title}\n{body}"
+    declared = "\n".join(
+        f.value or "" for f in facts.facts if f.status == "user_declared"
+    )
+    for term in facts.forbidden_terms:
+        if term in both:
+            raise PublishIssue(
+                "Publish text contains a user forbidden term",
+                "publish_forbidden",
+                term,
+                f"标题或正文出现了用户禁用词「{term}」，删掉",
+            )
+    # Brands, shops, authors and promises of the benchmark: the flagged source
+    # wording, the author's name and the benchmark's own title may not travel
+    # into what the user publishes — unless the user's facts say the same.
+    flagged = [
+        claim.quote.strip(EDGE)
+        for claim in analysis.source_claims
+        if claim.handling in {"must_replace", "do_not_copy"}
+        or claim.category in {"identity", "product", "rights"}
+    ]
+    metrics = reference.source_metrics
+    if metrics is not None and metrics.author_name:
+        flagged.append(metrics.author_name.strip(EDGE))
+    # Brands the model itself listed, kept only when they are really in the
+    # benchmark (so the user's own product name is never blocked). They may
+    # not appear in the script either.
+    source_text = reference.original_text + "\n" + (metrics.title if metrics else "")
+    brands = []
+    for raw in draft.benchmark_brands:
+        brand = raw.strip(EDGE)
+        if (
+            len(brand) >= 2
+            and squash(brand) in squash(source_text)
+            and brand not in declared
+            and brand not in brands
+        ):
+            brands.append(brand)
+    draft.benchmark_brands = brands
+    for brand in brands:
+        if squash(brand) in squash(f"{both}\n{script}"):
+            raise PublishIssue(
+                "Publish text or script retained a benchmark brand",
+                "publish_brand",
+                brand,
+                f"口播稿、标题或正文出现了对标视频里的「{brand[:30]}」（别家品牌、店名或作者），删掉",
+            )
+    for quote in flagged:
+        if len(quote) >= 2 and quote not in declared and squash(quote) in squash(both):
+            raise PublishIssue(
+                "Publish text retained benchmark wording",
+                "publish_source_claim",
+                quote,
+                f"标题或正文出现了对标视频里的「{quote[:30]}」（别家品牌、作者或原稿承诺），"
+                "删掉或换成用户事实卡里的内容",
+            )
+    if metrics is not None and metrics.title:
+        source_title = squash(HASHTAG.sub("", metrics.title))
+        shared = longest_shared(squash(HASHTAG.sub("", both)), source_title)
+        if len(shared) >= 10 and shared not in squash(declared):
+            raise PublishIssue(
+                "Publish text copies the benchmark title",
+                "publish_source_title",
+                shared,
+                f"标题或正文照搬了对标视频标题里的「{shared[:30]}」，换成自己的说法",
+            )
+    if not numeric_claims(both).issubset(numeric_claims(declared)):
+        extra = sorted(
+            f"{n}{u}" for n, u in numeric_claims(both) - numeric_claims(declared)
+        )
+        raise PublishIssue(
+            "Publish text contains a numeric claim absent from the facts",
+            "publish_numeric",
+            "、".join(extra)[:120],
+            f"标题或正文里的「{'、'.join(extra)[:60]}」事实卡里没有，删掉这些数字",
+        )
+    kind = restricted_claim(both, facts)
+    if kind:
+        words = {"price": "价格", "net_quantity": "净含量", "health_effect": "功效疗效"}
+        raise PublishIssue(
+            "Publish text contains a restricted claim",
+            "publish_restricted",
+            words[kind],
+            f"用户要求不写{words[kind]}，标题和正文里删掉相关说法",
+        )
+
+
 def strip_flagged(
     draft: WritingDraft | WritingStructureDraft, analysis: WritingAnalysis
 ) -> None:
@@ -458,19 +674,12 @@ def validate_draft(
             )
     if any(term in text for term in facts.forbidden_terms):
         raise ValueError("Draft contains a user forbidden term")
-    if "price" in facts.restricted_claims and re.search(
-        r"[\d零一二三四五六七八九十百两]+\s*(?:元|块)", text
-    ):
+    restricted = restricted_claim(text, facts)
+    if restricted == "price":
         raise ValueError("Price claim is forbidden by this fact card")
-    if "net_quantity" in facts.restricted_claims and re.search(
-        r"[\d零一二三四五六七八九十百千万两]+\s*(?:克|公斤|斤|毫升|ml|kg|升)",
-        text,
-        re.I,
-    ):
+    if restricted == "net_quantity":
         raise ValueError("Net quantity is forbidden by this fact card")
-    if "health_effect" in facts.restricted_claims and re.search(
-        r"疗效|治愈|治疗|降血糖|降血压|抗癌|减肥|瘦身", text
-    ):
+    if restricted == "health_effect":
         raise ValueError("Health-effect claim requires explicit review")
     source_claims = [
         c
@@ -509,6 +718,16 @@ def revised_draft(
             "title": change.title,
             "sentences": [line.model_dump(mode="json") for line in change.sentences],
             "replacements": [],
+            **(
+                {"publish_title": change.publish_title}
+                if change.publish_title is not None
+                else {}
+            ),
+            **(
+                {"publish_body": change.publish_body}
+                if change.publish_body is not None
+                else {}
+            ),
         }
     )
     for replacement in replacements:
@@ -663,6 +882,12 @@ def plan_writing(
             draft_mode=mode,
             rules=[*RULES, *DRAFT_RULES[mode]],
         )
+        if "publish_platform" in inputs:
+            payload["rules"] = [
+                *payload["rules"],
+                *publish_rules(publish_platform(inputs, reference)),
+            ]
+            payload["publish_platform"] = publish_platform(inputs, reference)
         if inputs.get("variant"):
             payload["rules"] = [
                 *payload["rules"],
@@ -771,6 +996,9 @@ def plan_writing(
 
 def correction(error: Exception) -> str:
     """The failed rule, in the words the model was given."""
+    hint = getattr(error, "hint", None)
+    if isinstance(hint, str) and hint:
+        return hint
     issue = getattr(error, "issue", None) or {}
     where = f"第{issue['index'] + 1}句" if "index" in issue else ""
     said = issue.get("text", "")
@@ -828,6 +1056,15 @@ def writing_result(
         return {"analysis": parsed.model_dump(mode="json"), "review": "unreviewed"}
     assert facts is not None and analysis is not None
     text = validate_draft(parsed, reference, facts, analysis)
+    if "publish_platform" in inputs:
+        validate_publish(
+            parsed,
+            publish_platform(inputs, reference),
+            reference,
+            facts,
+            analysis,
+            text,
+        )
     unused_facts(parsed, facts)
     shape = (
         shape_check(

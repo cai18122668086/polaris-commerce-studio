@@ -59,7 +59,9 @@ router = APIRouter(
 
 Platform = Literal["douyin", "xiaohongshu"]
 TITLE_LIMITS = {"douyin": 30, "xiaohongshu": 20}
-STALE_SECONDS = 15 * 60
+# A run interrupted by an API restart is resumed at startup (recover_interrupted);
+# this only catches rows nothing resumed.
+STALE_SECONDS = 30 * 60
 
 MESSAGES = {
     "COVER_SOURCE_UNREADABLE": "视频读不出来，换一条视频试试。",
@@ -597,7 +599,11 @@ def generate(
                 background=kind_,
                 round=body.round,
                 status="queued",
-                params={"topic": topic, "previous_layouts": [p for p in previous if p]},
+                params={
+                    "topic": topic,
+                    "previous_layouts": [p for p in previous if p],
+                    "video": str(video),
+                },
                 checks={},
                 files={},
                 receipt={},
@@ -852,3 +858,80 @@ def finish_item(
         status="succeeded",
     )
     return patch_item(item_id, patch, workspace, session)
+
+
+def recover_interrupted(
+    factory: sessionmaker[Session],
+    settings: Any,
+    client: CoverImageClient,
+    started: datetime,
+) -> int:
+    """Resume generate requests an API restart cut off (rows not touched since).
+
+    The AI slot reuses its idempotency key and its credit hold, so a resumed
+    request is still charged at most once.
+    """
+
+    with factory() as session:
+        rows = session.scalars(
+            select(VideoCoverCandidateRecord)
+            .where(
+                VideoCoverCandidateRecord.status.in_(("queued", "running")),
+                VideoCoverCandidateRecord.parent_id.is_(None),
+                VideoCoverCandidateRecord.updated_at < started,
+            )
+            .order_by(
+                VideoCoverCandidateRecord.created_at, VideoCoverCandidateRecord.slot
+            )
+            .limit(200)
+        ).all()
+        groups: dict[tuple[str, str, str], list[VideoCoverCandidateRecord]] = {}
+        for row in rows:
+            groups.setdefault(
+                (row.workspace_id, row.owner_user_id, row.request_id), []
+            ).append(row)
+        jobs = []
+        for group in groups.values():
+            video = group[0].params.get("video")
+            if not video or not Path(video).is_file():
+                for row in group:
+                    row.status, row.error_code = "failed", "COVER_INTERRUPTED"
+                continue
+            for row in group:
+                row.status = "queued"
+            jobs.append(([row.id for row in group], video))
+        session.commit()
+        for group in groups.values():
+            for row in group:
+                if row.status == "failed":
+                    video_credits.reconcile_owner(session, "video_cover", row.id)
+        session.commit()
+    for ids, video in jobs:
+        process_request(factory, settings, client, ids, video)
+    return len(jobs)
+
+
+def start_recovery(application: Any) -> None:
+    """Called from the API lifespan: resume interrupted covers in the background."""
+
+    import threading
+
+    started = datetime.now(UTC)
+
+    def run() -> None:
+        try:
+            client = getattr(
+                application.state, "video_cover_image_client", None
+            ) or HttpCoverImageClient(application.state.settings)
+            count = recover_interrupted(
+                application.state.session_factory,
+                application.state.settings,
+                client,
+                started,
+            )
+            if count:
+                logger.info("video_cover_recovered requests=%s", count)
+        except Exception:
+            logger.exception("video_cover_recovery_failed")
+
+    threading.Thread(target=run, name="video-cover-recovery", daemon=True).start()

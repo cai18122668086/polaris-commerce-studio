@@ -565,3 +565,46 @@ def test_image_client_moves_to_the_next_route_only_when_unavailable(
     with pytest.raises(CoverImageError) as error:
         client.edit(png.getvalue(), "p", idempotency_key="y")
     assert error.value.code == "COVER_IMAGE_REJECTED" and len(calls) == 1
+
+
+def test_restart_resumes_interrupted_covers_and_charges_once(priced, clip, monkeypatch):
+    """An API restart mid-run: startup recovery finishes the same request."""
+
+    from datetime import UTC, datetime, timedelta
+
+    from app import video_cover_routes
+
+    client, ws, user, images = priced
+    fund(client, ws, 100)
+    real = video_cover_routes.process_request
+    monkeypatch.setattr(video_cover_routes, "process_request", lambda *a, **k: None)
+    talk = finished_talk(client, ws, user, clip)
+    rows = generate(client, ws, generation_task_id=talk).json()
+    with client.app.state.session_factory() as session:
+        for row in session.scalars(select(VideoCoverCandidateRecord)):
+            row.status = "running"
+            row.updated_at = datetime.now(UTC) - timedelta(minutes=2)
+        session.commit()
+    monkeypatch.setattr(video_cover_routes, "process_request", real)
+    resumed = video_cover_routes.recover_interrupted(
+        client.app.state.session_factory,
+        client.app.state.settings,
+        images,
+        datetime.now(UTC),
+    )
+    assert resumed == 1
+    after = {r["id"]: r for r in listed(client, ws, generation_task_id=talk)}
+    assert [after[r["id"]]["status"] for r in rows] == ["ready", "ready"]
+    assert after[rows[1]["id"]]["background"] == "ai"
+    assert len(images.calls) == 1
+    assert balance_and_holds(client, ws) == ((93, 0), [("cover_generate", "settled")])
+    # Nothing left to resume on the next start.
+    assert (
+        video_cover_routes.recover_interrupted(
+            client.app.state.session_factory,
+            client.app.state.settings,
+            images,
+            datetime.now(UTC),
+        )
+        == 0
+    )

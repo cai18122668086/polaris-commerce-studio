@@ -267,6 +267,9 @@ def create_app(
             )
             application.state.talking_sweeper = talking_sweeper
             talking_sweeper.start()
+        from .video_cover_routes import start_recovery as start_cover_recovery
+
+        start_cover_recovery(application)
         video_recovery = None
         if (
             app_settings.video_background_recovery_enabled

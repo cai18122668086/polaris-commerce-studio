@@ -119,3 +119,10 @@ test("result boxes: queue positions, stage labels and retry", () => {
   assert.equal(boxes[2].canRetry, true);
   assert.equal(t.batchSettled(view), false);
 });
+
+test("editing CTA: partial batches edit the finished ones first and say the rest can join later", () => {
+  assert.deepEqual(t.editingCta([{ state: "done" }, { state: "running" }, { state: "queued" }], false), { label: "先剪已完成的 1 条", note: "其余 2 条完成后可继续加入", disabled: false });
+  assert.deepEqual(t.editingCta([{ state: "done" }, { state: "failed" }, { state: "done" }], true), { label: "去剪辑这 2 条", note: "", disabled: false });
+  assert.equal(t.editingCta([{ state: "running" }, { state: "queued" }], false).disabled, true);
+  assert.equal(t.editingCta([{ state: "done" }, { state: "checking" }], false).label, "先剪已完成的 1 条");
+});

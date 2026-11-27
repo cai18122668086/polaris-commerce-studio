@@ -2641,6 +2641,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/personas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Personas */
+        get: operations["list_personas_api_v1_video_studio_workspaces__workspace_id__personas_get"];
+        put?: never;
+        /** Create Persona */
+        post: operations["create_persona_api_v1_video_studio_workspaces__workspace_id__personas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/personas/{persona_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Persona */
+        get: operations["get_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Persona */
+        delete: operations["delete_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Persona */
+        patch: operations["update_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__patch"];
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects": {
         parameters: {
             query?: never;
@@ -2911,6 +2948,43 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entries */
+        get: operations["list_entries_api_v1_video_studio_workspaces__workspace_id__script_library_get"];
+        put?: never;
+        /** Create Entry */
+        post: operations["create_entry_api_v1_video_studio_workspaces__workspace_id__script_library_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Entry */
+        get: operations["get_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__get"];
+        /** Update Entry */
+        put: operations["update_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__put"];
+        post?: never;
+        /** Delete Entry */
+        delete: operations["delete_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8287,6 +8361,110 @@ export interface components {
             /** Sha256 */
             sha256: string;
         };
+        /** LibraryCreate */
+        LibraryCreate: {
+            /**
+             * Platform
+             * @default
+             */
+            platform: ("douyin" | "xiaohongshu") | "";
+            /**
+             * Publish Body
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @default
+             */
+            publish_title: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Script */
+            script: string;
+        };
+        /** LibraryEntry */
+        LibraryEntry: {
+            /** Benchmark Refs */
+            benchmark_refs: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Title */
+            display_title: string;
+            /** Id */
+            id: string;
+            /** Platform */
+            platform: ("douyin" | "xiaohongshu") | "";
+            /** Project Id */
+            project_id: string | null;
+            /** Publish Body */
+            publish_body: string;
+            /** Publish Title */
+            publish_title: string;
+            /** Revision */
+            revision: number;
+            /** Script */
+            script: string;
+            /** Script Chars */
+            script_chars: number;
+            /** Script Seconds */
+            script_seconds: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "auto_writing" | "manual" | "imported";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Writing Document Id */
+            writing_document_id: string | null;
+        };
+        /** LibraryPage */
+        LibraryPage: {
+            /** Items */
+            items: components["schemas"]["LibraryEntry"][];
+            /** Limit */
+            limit: number;
+            /** Missing Ids */
+            missing_ids?: string[];
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** LibraryUpdate */
+        LibraryUpdate: {
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Platform
+             * @default
+             */
+            platform: ("douyin" | "xiaohongshu") | "";
+            /**
+             * Publish Body
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @default
+             */
+            publish_title: string;
+            /** Script */
+            script: string;
+        };
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /**
@@ -8610,6 +8788,76 @@ export interface components {
         NoteBody: {
             /** Note */
             note: string;
+        };
+        /** PersonaCreate */
+        PersonaCreate: {
+            /** Avatar Id */
+            avatar_id: string;
+            /** Emotion */
+            emotion?: string | null;
+            /** Language */
+            language?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Voice Id */
+            voice_id: string;
+        };
+        /** PersonaResponse */
+        PersonaResponse: {
+            /** Available */
+            available: boolean;
+            /** Avatar Id */
+            avatar_id: string;
+            /** Avatar Name */
+            avatar_name: string;
+            /** Avatar Preview Url */
+            avatar_preview_url: string | null;
+            /** Cover Url */
+            cover_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Emotion */
+            emotion: string | null;
+            /** Id */
+            id: string;
+            /** Language */
+            language: string | null;
+            /** Name */
+            name: string;
+            /** Unavailable Reason */
+            unavailable_reason: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Voice Id */
+            voice_id: string;
+            /** Voice Name */
+            voice_name: string;
+            /** Voice Preview Url */
+            voice_preview_url: string | null;
+        };
+        /** PersonaUpdate */
+        PersonaUpdate: {
+            /** Avatar Id */
+            avatar_id?: string | null;
+            /** Emotion */
+            emotion?: string | null;
+            /** Language */
+            language?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Voice Id */
+            voice_id?: string | null;
         };
         /** PlanConfirmRequest */
         PlanConfirmRequest: {
@@ -9079,6 +9327,10 @@ export interface components {
         RetryScope: "full" | "failed" | "missing" | "selected";
         /** ReviseWritingDraft */
         ReviseWritingDraft: {
+            /** Publish Body */
+            publish_body?: string | null;
+            /** Publish Title */
+            publish_title?: string | null;
             /**
              * Request Id
              * Format: uuid
@@ -10398,8 +10650,25 @@ export interface components {
         };
         /** WritingDraft */
         WritingDraft: {
+            /**
+             * Benchmark Brands
+             * @description 参考原文和对标标题里出现的品牌、店名、商品名、作者名，逐字照抄
+             */
+            benchmark_brands?: string[];
             /** Missing Facts */
             missing_facts?: string[];
+            /**
+             * Publish Body
+             * @description 发布正文：可直接粘贴发布，末尾带3到6个#话题标签
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @description 发布标题：口语、有钩子，按平台字数上限，不含话题标签
+             * @default
+             */
+            publish_title: string;
             /** Replacements */
             replacements?: components["schemas"]["FactReplacement"][];
             /**
@@ -10463,8 +10732,25 @@ export interface components {
         };
         /** WritingStructureDraft */
         WritingStructureDraft: {
+            /**
+             * Benchmark Brands
+             * @description 参考原文和对标标题里出现的品牌、店名、商品名、作者名，逐字照抄
+             */
+            benchmark_brands?: string[];
             /** Missing Facts */
             missing_facts?: string[];
+            /**
+             * Publish Body
+             * @description 发布正文：可直接粘贴发布，末尾带3到6个#话题标签
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @description 发布标题：口语、有钩子，按平台字数上限，不含话题标签
+             * @default
+             */
+            publish_title: string;
             /** Replacements */
             replacements?: components["schemas"]["FactReplacement"][];
             /**
@@ -10497,6 +10783,8 @@ export interface components {
              * @enum {string}
              */
             kind: "ref_analysis" | "fact_draft" | "ref_compare";
+            /** Platform */
+            platform?: ("douyin" | "xiaohongshu") | null;
             /**
              * Presentation
              * @default unspecified
@@ -16071,6 +16359,170 @@ export interface operations {
             };
         };
     };
+    list_personas_api_v1_video_studio_workspaces__workspace_id__personas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_persona_api_v1_video_studio_workspaces__workspace_id__personas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonaCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                persona_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                persona_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                persona_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonaUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     projects_api_v1_video_studio_workspaces__workspace_id__projects_get: {
         parameters: {
             query?: {
@@ -16706,6 +17158,180 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WritingVersionSources"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entries_api_v1_video_studio_workspaces__workspace_id__script_library_get: {
+        parameters: {
+            query?: {
+                ids?: string;
+                q?: string;
+                platform?: "" | "douyin" | "xiaohongshu";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_entry_api_v1_video_studio_workspaces__workspace_id__script_library_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

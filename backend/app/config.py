@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     video_providers_enabled: bool = False
     video_background_recovery_enabled: bool = False
     video_recovery_interval_seconds: float = Field(default=15, ge=1, le=300)
+    # Batch talking safety net (restart-safe queue); independent of the flag above.
+    video_talking_sweep_enabled: bool = True
     video_recovery_lease_seconds: float = Field(default=120, ge=30, le=600)
     video_recovery_workers: int = Field(default=2, ge=1, le=4)
     video_script_planning_enabled: bool = False

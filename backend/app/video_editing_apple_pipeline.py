@@ -645,6 +645,16 @@ def render_suite(
     session.rollback()
     if source_reframe is not None and isinstance(config.get("config"), dict):
         config["config"]["source_reframe"] = source_reframe
+    if frozen.get("engine") == "bihuo-full-suite" and (
+        frozen.get("supplement") or {}
+    ).get("mg"):
+        # W4: MG cues from the actual transcript, overlaid after the suite render.
+        from .mg.plan import supplement_mg_payload
+
+        if mg := supplement_mg_payload(
+            settings, frozen["supplement"]["mg"], transcript
+        ):
+            config["supplement_mg"] = mg
     config_path = root / "suite-input.json"
     atomic_json(config_path, config)
     atomic_json(root / "suite-plan.json", plan)

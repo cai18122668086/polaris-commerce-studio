@@ -6,6 +6,7 @@ import hashlib
 import re
 import subprocess
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
@@ -271,6 +272,10 @@ def process_generation(
     # Every run path (request, resume, startup recovery) settles or releases
     # the task's credit hold from the status it just recorded.
     video_credits.settle_after(factory, "video_generation", str(job_id))
+    # A finished task frees a slot: start the next waiting item of its batch.
+    from .video_work_talking import continue_after  # noqa: PLC0415 (import cycle)
+
+    continue_after(factory, settings, str(job_id), provider)
 
 
 def _process_generation(
@@ -1031,6 +1036,34 @@ def submit_generation(
     session: SessionDependency,
 ) -> dict[str, Any]:
     require_workspace_write(workspace)
+    settings = request.app.state.settings
+    row, created = create_generation(
+        session, settings, workspace, body, lambda: providers(request)
+    )
+    if created:
+        background.add_task(
+            process_generation,
+            request.app.state.session_factory,
+            settings,
+            row.id,
+            providers(request),
+        )
+    return job_response(row)
+
+
+def create_generation(
+    session: Session,
+    settings: Settings,
+    workspace: WorkspaceContext,
+    body: GenerationRequest,
+    provider: Callable[[], VideoProviders],
+) -> tuple[VideoGenerationRecord, bool]:
+    """Create one paid task, or return the task this request_id already made.
+
+    Shared by single submissions and work batches so both keep the same
+    idempotency, credit hold and active-task checks. The caller schedules
+    ``process_generation`` when the second value is True.
+    """
     fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
     accepted_fingerprints = {fingerprint}
     if "prompt" not in body.model_fields_set:
@@ -1049,13 +1082,13 @@ def submit_generation(
     if old:
         if old.request_hash not in accepted_fingerprints:
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求标识已用于其他内容。")
-        return job_response(old)
-    if not request.app.state.settings.video_providers_enabled:
+        return old, False
+    if not settings.video_providers_enabled:
         raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
     enforce_active_video_limit(
         session,
         workspace.principal.user_id,
-        request.app.state.settings.user_active_video_job_limit,
+        settings.user_active_video_job_limit,
     )
     avatar = session.scalar(
         select(VideoAvatarRecord).where(
@@ -1165,15 +1198,15 @@ def submit_generation(
             if not draft["text"].strip():
                 raise ApiError(422, "VIDEO_SCRIPT_EMPTY", "请输入文案。")
             if draft["voiceId"] in VOICES:
-                details["tts"] = select_tao_voice(request.app.state.settings, draft)
+                details["tts"] = select_tao_voice(settings, draft)
             elif draft["voiceId"].startswith("cv-voice-"):
                 details["tts"] = select_cloned_voice(
-                    request.app.state.settings, session, workspace, draft
+                    settings, session, workspace, draft
                 )
             else:
                 voice_id = draft["voiceId"].removeprefix("qy-voice-")
                 session.commit()
-                if voice_id not in {str(v["id"]) for v in providers(request).voices()}:
+                if voice_id not in {str(v["id"]) for v in provider().voices()}:
                     raise ApiError(422, "VIDEO_VOICE_INVALID", "请选择正式公共音色。")
                 if (
                     draft.get("emotion", "自然") != "自然"
@@ -1204,7 +1237,7 @@ def submit_generation(
     reserve_video_slot(
         session,
         workspace.principal.user_id,
-        request.app.state.settings.user_active_video_job_limit,
+        settings.user_active_video_job_limit,
     )
     row = VideoGenerationRecord(
         id=str(uuid4()),
@@ -1223,7 +1256,7 @@ def submit_generation(
     try:
         video_credits.hold(
             session,
-            request.app.state.settings,
+            settings,
             workspace.workspace_id,
             "lipsync" if body.kind == "lipsync" else "avatar_motion",
             "video_generation",
@@ -1241,15 +1274,8 @@ def submit_generation(
         )
         if not old or old.request_hash not in accepted_fingerprints:
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求冲突。") from None
-        return job_response(old)
-    background.add_task(
-        process_generation,
-        request.app.state.session_factory,
-        request.app.state.settings,
-        row.id,
-        providers(request),
-    )
-    return job_response(row)
+        return old, False
+    return row, True
 
 
 @router.get("/audio-files/{audio_id}")

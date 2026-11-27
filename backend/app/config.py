@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     video_providers_enabled: bool = False
     video_background_recovery_enabled: bool = False
     video_recovery_interval_seconds: float = Field(default=15, ge=1, le=300)
+    # Batch talking safety net (restart-safe queue); independent of the flag above.
+    video_talking_sweep_enabled: bool = True
     video_recovery_lease_seconds: float = Field(default=120, ge=30, le=600)
     video_recovery_workers: int = Field(default=2, ge=1, le=4)
     video_script_planning_enabled: bool = False
@@ -152,6 +154,22 @@ class Settings(BaseSettings):
     video_editing_plan_model: str = "gpt-6.1-sol"
     video_writing_workflow_enabled: bool = False
     video_writing_library_dir: Path = Path(".data/motion-library/3b4d100ebf6c/writing")
+    # W4 补充素材（v3）。免费素材库 key 只从服务器文件读（不进仓库/日志）；
+    # 文件不存在或为空时该来源自动关闭，界面显示「暂未开通」。
+    video_stock_pexels_key_file: Path | None = None
+    video_stock_pixabay_key_file: Path | None = None
+    # 无 key 兜底（CC0 / CC BY）。默认开；服务器访问被拒时按「暂不可用」处理。
+    video_stock_openverse_enabled: bool = True
+    video_stock_commons_enabled: bool = True
+    # 素材下载缓存目录（默认 <video_editing_tasks_dir>/stock-cache），
+    # 超上限按最久未用清理。
+    video_stock_cache_dir: Path | None = None
+    video_stock_cache_max_bytes: int = Field(default=1_073_741_824, ge=0)
+    # AI 配图（7 积分/张）。默认关，dev/灰度显式开启。
+    video_supplement_ai_image_enabled: bool = False
+    video_supplement_ai_image_max_per_video: int = Field(default=6, ge=1, le=6)
+    # MG 动效成片后叠加（只对选了 MG 的 bihuo 成套模板任务生效）。默认关。
+    video_supplement_mg_enabled: bool = False
     video_editing_lease_seconds: int = Field(default=120, ge=30, le=600)
     video_editing_subprocess_timeout: int = Field(default=3600, ge=30, le=14400)
     video_cosyvoice_enabled: bool = False

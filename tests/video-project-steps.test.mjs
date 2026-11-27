@@ -36,3 +36,21 @@ test("transcript preparation is not an edit; a final artifact means 成片", () 
   assert.equal(editingStage([{ status: "awaiting_review", options: { mode: "suite_plan" }, artifacts: [{ role: "preview" }] }]), "review");
   assert.equal(editingStage([{ status: "completed", options: { mode: "native_plan" }, artifacts: [{ role: "final" }] }]), "done");
 });
+
+const { batchSteps } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
+
+test("a batch shows how many of its items are past each step", () => {
+  const items = [
+    { stage: "finishing", status: "pending" },
+    { stage: "editing", status: "running" },
+    { stage: "editing", status: "succeeded" },
+  ];
+  assert.equal(states(batchSteps({ screen: "editing", items })), "文案:done 口播:done 剪辑:current/2/3 成片:todo/待成片");
+  assert.equal(states(batchSteps({ screen: "finish", items: items.map(() => ({ stage: "done", status: "succeeded" })) })), "文案:done 口播:done 剪辑:done 成片:current");
+  assert.equal(states(batchSteps({ screen: "create", items: [{ stage: "talking", status: "failed" }, { stage: "talking", status: "running" }] })), "文案:done 口播:current/1 条未完成 剪辑:todo 成片:todo");
+});
+
+test("the 成片 step opens the finish page", () => {
+  const final = projectSteps({ screen: "editing", hasScript: true, voice: "done", editing: "done" }).at(-1);
+  assert.equal(final.screen, "finish");
+});

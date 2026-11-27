@@ -126,6 +126,39 @@ def asr_profile(settings: Settings, language: str, reference: str | None) -> str
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
+# Confirmed-script alignment failures that recognition of the real audio can
+# replace. Disabled alignment and environment/provenance failures (audio or
+# script changed, UTF-8 mode, timeouts, lease loss) still fail the task.
+ALIGNMENT_FALLBACK_CODES = frozenset(
+    {
+        "EDITING_ALIGNMENT_FAILED",
+        "EDITING_ALIGNMENT_TEXT_REQUIRED",
+        "EDITING_ALIGNMENT_TEXT_TIMESTAMPS_MISMATCH",
+        "EDITING_ALIGNMENT_TIMESTAMPS_REQUIRED",
+        "EDITING_ALIGNMENT_SOURCE_MISMATCH",
+        "EDITING_ASR_TIMING_INVALID",
+    }
+)
+_ALIGNMENT_FILES = (
+    "alignment-config.json",
+    "confirmed-script.json",
+    "alignment-input.txt",
+    "alignment-native-input.utf8",
+    "alignment-raw.json",
+    "alignment-receipt.json",
+    "transcript.json",
+)
+
+
+def set_aside_alignment(root: Path) -> None:
+    """Keep the failed alignment for diagnosis, out of the recognition outputs."""
+    kept = root / "alignment-fallback"
+    kept.mkdir(exist_ok=True)
+    for name in _ALIGNMENT_FILES:
+        if (root / name).exists():
+            (root / name).replace(kept / name)
+
+
 def load_transcript(
     task_id: str,
     root: Path,
@@ -142,22 +175,31 @@ def load_transcript(
 
         binding = confirmed_input(snapshot, prepared)
         if binding:
-            previous = snapshot.get("prior_confirmed_transcript")
-            if previous and not snapshot["checkpoint"].get("transcript"):
-                cached_id, cached = previous
+            try:
+                previous = snapshot.get("prior_confirmed_transcript")
+                if previous and not snapshot["checkpoint"].get("transcript"):
+                    cached_id, cached = previous
+                    return load_confirmed(
+                        cached_id,
+                        root,
+                        prepared,
+                        {**snapshot, "checkpoint": {"transcript": cached}},
+                        binding,
+                        settings,
+                        guard,
+                        stage,
+                    )
                 return load_confirmed(
-                    cached_id,
-                    root,
-                    prepared,
-                    {**snapshot, "checkpoint": {"transcript": cached}},
-                    binding,
-                    settings,
-                    guard,
-                    stage,
+                    task_id, root, prepared, snapshot, binding, settings, guard, stage
                 )
-            return load_confirmed(
-                task_id, root, prepared, snapshot, binding, settings, guard, stage
-            )
+            except EditingFailure as failure:
+                if failure.code not in ALIGNMENT_FALLBACK_CODES:
+                    raise
+                # The confirmed script could not be force-aligned to this audio.
+                # Recognize the actual speech instead (the script stays the
+                # recognition reference) rather than failing the whole edit.
+                set_aside_alignment(root)
+                stage("transcribing", alignment_fallback={"code": failure.code})
     # A user reference helps comparison, while confirmed provenance retains its
     # own immutable reference in snapshot["reference"]. Include this choice in
     # the ASR profile so a changed reference cannot reuse an old transcript.

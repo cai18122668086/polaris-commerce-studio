@@ -103,8 +103,22 @@ _BOUNDARIES = (
     "为本屏重新搭建场景和版式。画面上新增的文字只能来自本屏可见文字清单，逐字使用，简体中文、清晰锐利、层级分明；"
     "不得编造功效、数字、认证、检测、价格、评价或对比结果，不画实验室、显微镜或检测图冒充证据。"
     "内部策划用语（屏号、职责、证据来源、风险说明、以包装为准等）绝不出现在画面上。"
-    "独立品牌标识：只有首屏可以出现一个与商品原图一致的独立品牌标识，其余屏不出现独立、悬浮或角标式标识；商品包装上印的标识照常保留。"
     "接触、透视、阴影和遮挡符合物理常识。无水印、无界面元素、无占位文字。"
+)
+# Plans frozen before the logo lock (2026-11-27 release) keep their prompts.
+_LEGACY_BOUNDARIES = _BOUNDARIES.replace(
+    "内部策划用语（屏号、职责、证据来源、风险说明、以包装为准等）绝不出现在画面上。",
+    "内部策划用语（屏号、职责、证据来源、风险说明、以包装为准等）绝不出现在画面上。"
+    + "独立品牌标识：只有首屏可以出现一个与商品原图一致的独立品牌标识，其余屏不出现独立、悬浮或角标式标识；商品包装上印的标识照常保留。",
+)
+_FIRST_SCREEN_LOGO = (
+    "品牌标识：本屏是首屏，可以按商品身份锁的 brand_logo 出现一个与商品原图一致的独立品牌标识；"
+    "商品实物上原本印刷或压印的标识照常保留。"
+)
+_OTHER_SCREEN_LOGO = (
+    "品牌标识：本屏不是首屏。画面上不要新增任何独立的品牌标识、品牌字标、品牌名文字、角标或水印，"
+    "也不要把商品上的标识、吊牌或带标识的五金单独放大或特写；"
+    "只有商品实物上原本印刷或压印的标识随商品正常出现时照常保留，保持原图中的大小和位置。"
 )
 
 
@@ -360,7 +374,9 @@ def planner_prompt(request: PlannerRequest) -> str:
         "6. 空间结构是契约：structure 写清可观察的分区、几何与主次；相邻两屏结构、镜头、场景不能相同；不能连续两屏都是满版单场景；"
         "首屏只传递色彩、光线、字体气质与商品质感，不传递版式骨架。continuity 写本屏从上一屏接过哪个可见元素并如何延续或转折（首屏写进入方式）。\n"
         "7. product_identity_physics_lock 只描述商品本身的可见几何：形状、位置、数量、颜色；不要用商品“像什么”的动物或角色来命名，除非该词印在商品上。"
-        "primary_product_source 为最清晰完整商品图的编号。brand_logo 写首屏使用的、原图上可读的品牌标识及其所在原图编号；读不到就写“无可读品牌标识，首屏不画独立标识”。\n"
+        "primary_product_source 为最清晰完整商品图的编号。brand_logo 写首屏使用的、原图上可读的品牌标识及其所在原图编号；读不到就写“无可读品牌标识，首屏不画独立标识”。"
+        "品牌标识只在首屏出现：第 2 屏起的 visible_copy、page_prompt、scene 和 typography 都不写品牌名、品牌标识或 logo，"
+        "也不安排品牌标识、吊牌或带标识五金的特写；商品实物上原本印着的标识随商品出现即可，不单独强调。\n"
         "8. 每屏的 label 是这屏卖点的内部摘要（不单独印刷，要印的字只写在 visible_copy）；device 是本屏的视觉手法（如前后对比、剖面、流程、大小双尺度、使用瞬间）；"
         "subject_scale 是主体尺度（整体/局部微距/场景/信息）；difference 写本屏与前一屏在结构、镜头、场景上的可见区别（首屏写与常见首屏的区别）。\n"
         "9. page_prompt：只写本屏独有的画面中文描述——镜头与取景、场景与道具、主体位置与大小、每条文字的位置与相对大小、光线与质感、卖点的视觉证明。"
@@ -394,28 +410,58 @@ _PAGE_FIELDS = (
 )
 
 
-def _compiled(structured_plan: Mapping[str, Any], screen: Mapping[str, Any]) -> str:
-    """Shared locks and the current screen's own fields, joined verbatim."""
+def _compiled(
+    structured_plan: Mapping[str, Any],
+    screen: Mapping[str, Any],
+    index: int,
+    *,
+    legacy: bool = False,
+) -> str:
+    """Shared locks and the current screen's own fields, joined verbatim.
+
+    Only the first screen (index 0) sees the brand_logo lock; every later
+    screen gets an explicit no-new-logo line instead. ``legacy`` rebuilds the
+    prompt of a plan frozen before that rule, so its retries still verify.
+    """
 
     # Facts stay in the approved plan; the per-screen visible_copy is the
     # only text whitelist the image model needs.
     plan = structured_plan["plan"]
+    first = legacy or index == 0
     shared = {
         "商品身份锁": {
             ("商品身份主图（原图编号）" if key == "primary_product_source" else key): value
             for key, value in plan["product_identity_physics_lock"].items()
+            if first or key != "brand_logo"
         },
         "系列风格锁": plan["campaign_style_lock"],
     }
     current = {key: screen[key] for key in _PAGE_FIELDS}
-    return "\n".join(
-        (
+    head = (
+        (_PREFIX, _LEGACY_BOUNDARIES)
+        if legacy
+        else (
             _PREFIX,
             _BOUNDARIES,
+            _FIRST_SCREEN_LOGO if index == 0 else _OTHER_SCREEN_LOGO,
+        )
+    )
+    return "\n".join(
+        (
+            *head,
             "共享锁：" + _json(shared),
             "本屏：" + _json(current),
             "画面描述：" + str(screen["page_prompt"]).strip(),
         )
+    )
+
+
+def _frozen_ok(
+    structured_plan: Mapping[str, Any], screen: Mapping[str, Any], index: int
+) -> bool:
+    prompt = screen.get("image_prompt")
+    return prompt == _compiled(structured_plan, screen, index) or prompt == _compiled(
+        structured_plan, screen, index, legacy=True
     )
 
 
@@ -470,8 +516,8 @@ def normalize_strategy(value: Mapping[str, Any]) -> dict[str, Any]:
     screens = plan.get("screens") if isinstance(plan, Mapping) else None
     count = len(screens) if isinstance(screens, list) else 0
     _validate_raw(result, count)
-    for screen in result["plan"]["screens"]:
-        screen["image_prompt"] = _compiled(result, screen)
+    for index, screen in enumerate(result["plan"]["screens"]):
+        screen["image_prompt"] = _compiled(result, screen, index)
     return result
 
 
@@ -479,8 +525,8 @@ def validate_strategy(value: Mapping[str, Any], page_count: int) -> None:
     from .xinghe_agent import XingheAgentError
 
     _validate_raw(_without_prompts(value), page_count)
-    for screen in value["plan"]["screens"]:
-        if screen.get("image_prompt") != _compiled(value, screen):
+    for index, screen in enumerate(value["plan"]["screens"]):
+        if not _frozen_ok(value, screen, index):
             raise XingheAgentError(
                 "AURORA_DETAIL_PROMPT_MISMATCH", "A frozen page prompt or shared lock was changed."
             )
@@ -512,8 +558,8 @@ def validate_source_selection(structured_plan: Mapping[str, Any], source_roles: 
     lock = structured_plan["plan"]["product_identity_physics_lock"]
     if lock["primary_product_source"] not in products:
         lock["primary_product_source"] = products[0]
-        for screen in structured_plan["plan"]["screens"]:
-            screen["image_prompt"] = _compiled(structured_plan, screen)
+        for index, screen in enumerate(structured_plan["plan"]["screens"]):
+            screen["image_prompt"] = _compiled(structured_plan, screen, index)
 
 
 def compile_prompt(
@@ -530,12 +576,11 @@ def compile_prompt(
 ) -> str:
     from .xinghe_agent import XingheAgentError
 
-    prompt = _compiled(structured_plan, screen)
-    if screen.get("image_prompt") != prompt:
+    if not _frozen_ok(structured_plan, screen, page_number - 1):
         raise XingheAgentError(
             "AURORA_DETAIL_PROMPT_MISMATCH", "Frozen prompt does not match authored locks."
         )
-    return prompt
+    return str(screen["image_prompt"])
 
 
 _LABELS = {

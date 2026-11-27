@@ -1889,6 +1889,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidates */
+        get: operations["list_candidates_api_v1_video_studio_workspaces__workspace_id__cover_candidates_get"];
+        put?: never;
+        /** Generate */
+        post: operations["generate_api_v1_video_studio_workspaces__workspace_id__cover_candidates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate */
+        get: operations["get_candidate_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Candidate Image */
+        get: operations["candidate_image_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/cover-candidates/{candidate_id}/retext": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retext
+         * @description Same background, new cover text: free, synchronous (well under a second).
+         */
+        post: operations["retext_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__retext_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/credit-prices": {
         parameters: {
             query?: never;
@@ -2122,6 +2194,143 @@ export interface paths {
         };
         /** Source Video */
         get: operations["source_video_api_v1_video_studio_workspaces__workspace_id__editing_sources__source_id__video_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Image Status */
+        get: operations["ai_image_status_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_get"];
+        put?: never;
+        /** Ai Images */
+        post: operations["ai_images_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Estimate */
+        post: operations["ai_estimate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/ai-images/{image_id}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Regenerate */
+        post: operations["ai_regenerate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images__image_id__regenerate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/analyze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analyze */
+        post: operations["analyze_api_v1_video_studio_workspaces__workspace_id__editing_supplement_analyze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sources */
+        get: operations["sources_api_v1_video_studio_workspaces__workspace_id__editing_supplement_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock Import */
+        post: operations["stock_import_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock Search */
+        post: operations["stock_search_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-supplement/stock/thumb/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock Thumb */
+        get: operations["stock_thumb_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_thumb__token__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2641,6 +2850,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/personas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Personas */
+        get: operations["list_personas_api_v1_video_studio_workspaces__workspace_id__personas_get"];
+        put?: never;
+        /** Create Persona */
+        post: operations["create_persona_api_v1_video_studio_workspaces__workspace_id__personas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/personas/{persona_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Persona */
+        get: operations["get_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Persona */
+        delete: operations["delete_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Persona */
+        patch: operations["update_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__patch"];
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects": {
         parameters: {
             query?: never;
@@ -2746,6 +2992,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Material */
+        delete: operations["delete_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/file": {
         parameters: {
             query?: never;
@@ -2756,6 +3019,26 @@ export interface paths {
         /** Original */
         get: operations["original_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__file_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/placement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Place Material
+         * @description 「我来指定句子」：把素材说明改成那一句原文，规划按它放置；空 = 自动。
+         */
+        put: operations["place_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__placement_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2916,6 +3199,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entries */
+        get: operations["list_entries_api_v1_video_studio_workspaces__workspace_id__script_library_get"];
+        put?: never;
+        /** Create Entry */
+        post: operations["create_entry_api_v1_video_studio_workspaces__workspace_id__script_library_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Entry */
+        get: operations["get_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__get"];
+        /** Update Entry */
+        put: operations["update_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__put"];
+        post?: never;
+        /** Delete Entry */
+        delete: operations["delete_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/tasks": {
         parameters: {
             query?: never;
@@ -3065,6 +3385,163 @@ export interface paths {
         get: operations["voice_preview_api_v1_video_studio_workspaces__workspace_id__voices__voice_id__preview_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Batches */
+        get: operations["list_batches_api_v1_video_studio_workspaces__workspace_id__work_batches_get"];
+        put?: never;
+        /** Create Batch */
+        post: operations["create_batch_api_v1_video_studio_workspaces__workspace_id__work_batches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch */
+        get: operations["get_batch_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/talking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Talking Status
+         * @description Polling view; also starts queued items whose turn has come.
+         */
+        get: operations["talking_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_get"];
+        put?: never;
+        /**
+         * Submit Talking
+         * @description Submit (or keep submitting) every waiting item. Safe to call repeatedly.
+         */
+        post: operations["submit_talking_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Items */
+        get: operations["list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Item */
+        get: operations["get_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Item */
+        patch: operations["patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish Item
+         * @description Save the chosen cover and the final title/body; the work becomes 已完成.
+         */
+        post: operations["finish_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/talking-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Talking
+         * @description 查询结果: query the provider for an unknown outcome. Never re-submits.
+         */
+        post: operations["check_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/talking-retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Talking
+         * @description Give one failed item a fresh attempt; the other items are untouched.
+         *
+         *     Repeating the call is harmless: once the item is no longer failed the
+         *     current view is returned and nothing new is submitted.
+         */
+        post: operations["retry_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_retry_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4495,6 +4972,64 @@ export interface components {
             /** Status */
             status?: ("active" | "disabled") | null;
         };
+        /** AiEstimateBody */
+        AiEstimateBody: {
+            /**
+             * Max Images
+             * @default 4
+             */
+            max_images: number;
+            /** Script Text */
+            script_text: string;
+        };
+        /** AiImageItem */
+        AiImageItem: {
+            /**
+             * Purpose
+             * @default scene
+             * @enum {string}
+             */
+            purpose: "scene" | "usage" | "texture" | "concept" | "comparison";
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Sentence */
+            sentence: string;
+            /** Sentence Index */
+            sentence_index: number;
+            /** Subject */
+            subject: string;
+        };
+        /** AiImagesBody */
+        AiImagesBody: {
+            /** Items */
+            items: components["schemas"]["AiImageItem"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Style
+             * @default bright
+             * @enum {string}
+             */
+            style: "bright" | "warm" | "minimal";
+            /** Work Item Ref */
+            work_item_ref?: string | null;
+        };
+        /** AiRegenerateBody */
+        AiRegenerateBody: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Subject */
+            subject?: string | null;
+        };
         /** AmazonVisualSuiteConfiguration */
         AmazonVisualSuiteConfiguration: {
             /**
@@ -5312,6 +5847,139 @@ export interface components {
             estimated_max: components["schemas"]["MoneyAmount"] | null;
             estimated_min: components["schemas"]["MoneyAmount"] | null;
             usage_completeness: components["schemas"]["UsageCompleteness"];
+        };
+        /** CoverCandidateResponse */
+        CoverCandidateResponse: {
+            /**
+             * Background
+             * @enum {string}
+             */
+            background: "frame" | "ai";
+            /** Background Label */
+            background_label: string;
+            checks: components["schemas"]["CoverChecks"] | null;
+            /** Cover Text */
+            cover_text: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Credits */
+            credits: number | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Highlight */
+            highlight: string | null;
+            /** Id */
+            id: string;
+            /** Image Url */
+            image_url: string | null;
+            /** Layout */
+            layout: string | null;
+            /** Message */
+            message: string | null;
+            /** Parent Id */
+            parent_id: string | null;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "douyin" | "xiaohongshu";
+            /** Request Id */
+            request_id: string;
+            /** Round */
+            round: number;
+            /** Slot */
+            slot: number;
+            /** Source Id */
+            source_id: string;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "editing" | "generation";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "ready" | "failed";
+            /** Thumb Url */
+            thumb_url: string | null;
+            /** Work Item Id */
+            work_item_id: string | null;
+        };
+        /** CoverChecks */
+        CoverChecks: {
+            /** Design Colors Ok */
+            design_colors_ok: boolean;
+            /** Face Clear */
+            face_clear: boolean;
+            /** Face Detected */
+            face_detected: boolean;
+            /** Glyphs Ok */
+            glyphs_ok: boolean;
+            /** Picture Cool Hint */
+            picture_cool_hint: boolean;
+            /** Size Ok */
+            size_ok: boolean;
+            /** Text Exact */
+            text_exact: boolean;
+        };
+        /** CoverFinishRequest */
+        CoverFinishRequest: {
+            /** Cover Candidate Id */
+            cover_candidate_id: string;
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Publish Body
+             * @default
+             */
+            publish_body: string;
+            /** Publish Title */
+            publish_title: string;
+        };
+        /** CoverGenerateRequest */
+        CoverGenerateRequest: {
+            /** Cover Text */
+            cover_text: string;
+            /** Editing Task Id */
+            editing_task_id?: string | null;
+            /** Generation Task Id */
+            generation_task_id?: string | null;
+            /** Highlight */
+            highlight?: string | null;
+            /**
+             * Platform
+             * @default douyin
+             * @enum {string}
+             */
+            platform: "douyin" | "xiaohongshu";
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Round
+             * @default 0
+             */
+            round: number;
+            /** Work Item Id */
+            work_item_id?: string | null;
+        };
+        /** CoverRetextRequest */
+        CoverRetextRequest: {
+            /** Cover Text */
+            cover_text: string;
+            /** Highlight */
+            highlight?: string | null;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
         };
         /** CrawlTaskActionRequest */
         CrawlTaskActionRequest: {
@@ -6757,6 +7425,12 @@ export interface components {
             label: string;
             /** Mime */
             mime: string;
+            /** Origin */
+            origin?: string | null;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            } | null;
             /** Sha256 */
             sha256: string;
             /** Source Asset Id */
@@ -7027,10 +7701,17 @@ export interface components {
             /** Prepared Task Id */
             prepared_task_id?: string | null;
             /**
+             * Replan
+             * @description Explicitly pay for a new planning of a request that already has a live or finished planning (the user confirmed the extra charge).
+             * @default false
+             */
+            replan: boolean;
+            /**
              * Request Id
              * Format: uuid
              */
             request_id: string;
+            supplement?: components["schemas"]["EditingSupplementOptions"] | null;
             /** Template Id */
             template_id?: string | null;
         };
@@ -7220,6 +7901,22 @@ export interface components {
             project_id: string;
             /** Sha256 */
             sha256: string;
+        };
+        /** EditingSupplementMg */
+        EditingSupplementMg: {
+            /**
+             * Style
+             * @default paper
+             * @enum {string}
+             */
+            style: "paper" | "ink" | "ember";
+        };
+        /**
+         * EditingSupplementOptions
+         * @description Frozen supplement choices (C5). Absent = no MG; old requests unchanged.
+         */
+        EditingSupplementOptions: {
+            mg?: components["schemas"]["EditingSupplementMg"] | null;
         };
         /** EditingTaskCreate */
         EditingTaskCreate: {
@@ -8170,6 +8867,110 @@ export interface components {
             /** Sha256 */
             sha256: string;
         };
+        /** LibraryCreate */
+        LibraryCreate: {
+            /**
+             * Platform
+             * @default
+             */
+            platform: ("douyin" | "xiaohongshu") | "";
+            /**
+             * Publish Body
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @default
+             */
+            publish_title: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Script */
+            script: string;
+        };
+        /** LibraryEntry */
+        LibraryEntry: {
+            /** Benchmark Refs */
+            benchmark_refs: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Title */
+            display_title: string;
+            /** Id */
+            id: string;
+            /** Platform */
+            platform: ("douyin" | "xiaohongshu") | "";
+            /** Project Id */
+            project_id: string | null;
+            /** Publish Body */
+            publish_body: string;
+            /** Publish Title */
+            publish_title: string;
+            /** Revision */
+            revision: number;
+            /** Script */
+            script: string;
+            /** Script Chars */
+            script_chars: number;
+            /** Script Seconds */
+            script_seconds: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "auto_writing" | "manual" | "imported";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Writing Document Id */
+            writing_document_id: string | null;
+        };
+        /** LibraryPage */
+        LibraryPage: {
+            /** Items */
+            items: components["schemas"]["LibraryEntry"][];
+            /** Limit */
+            limit: number;
+            /** Missing Ids */
+            missing_ids?: string[];
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** LibraryUpdate */
+        LibraryUpdate: {
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Platform
+             * @default
+             */
+            platform: ("douyin" | "xiaohongshu") | "";
+            /**
+             * Publish Body
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @default
+             */
+            publish_title: string;
+            /** Script */
+            script: string;
+        };
         /** LocalEditConfiguration */
         LocalEditConfiguration: {
             /**
@@ -8278,6 +9079,13 @@ export interface components {
             redo_job_id?: string | null;
             /** Redo Job Status */
             redo_job_status?: string | null;
+        };
+        /** MaterialPlacementBody */
+        MaterialPlacementBody: {
+            /** Sentence */
+            sentence?: string | null;
+            /** Sentence Index */
+            sentence_index?: number | null;
         };
         /**
          * MembershipRole
@@ -8493,6 +9301,76 @@ export interface components {
         NoteBody: {
             /** Note */
             note: string;
+        };
+        /** PersonaCreate */
+        PersonaCreate: {
+            /** Avatar Id */
+            avatar_id: string;
+            /** Emotion */
+            emotion?: string | null;
+            /** Language */
+            language?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Voice Id */
+            voice_id: string;
+        };
+        /** PersonaResponse */
+        PersonaResponse: {
+            /** Available */
+            available: boolean;
+            /** Avatar Id */
+            avatar_id: string;
+            /** Avatar Name */
+            avatar_name: string;
+            /** Avatar Preview Url */
+            avatar_preview_url: string | null;
+            /** Cover Url */
+            cover_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Emotion */
+            emotion: string | null;
+            /** Id */
+            id: string;
+            /** Language */
+            language: string | null;
+            /** Name */
+            name: string;
+            /** Unavailable Reason */
+            unavailable_reason: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Voice Id */
+            voice_id: string;
+            /** Voice Name */
+            voice_name: string;
+            /** Voice Preview Url */
+            voice_preview_url: string | null;
+        };
+        /** PersonaUpdate */
+        PersonaUpdate: {
+            /** Avatar Id */
+            avatar_id?: string | null;
+            /** Emotion */
+            emotion?: string | null;
+            /** Language */
+            language?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Voice Id */
+            voice_id?: string | null;
         };
         /** PlanConfirmRequest */
         PlanConfirmRequest: {
@@ -8962,6 +9840,10 @@ export interface components {
         RetryScope: "full" | "failed" | "missing" | "selected";
         /** ReviseWritingDraft */
         ReviseWritingDraft: {
+            /** Publish Body */
+            publish_body?: string | null;
+            /** Publish Title */
+            publish_title?: string | null;
             /**
              * Request Id
              * Format: uuid
@@ -9108,6 +9990,11 @@ export interface components {
              * Format: uuid
              */
             task_id: string;
+        };
+        /** ScriptBody */
+        ScriptBody: {
+            /** Script Text */
+            script_text: string;
         };
         /**
          * SemanticBeat
@@ -9300,6 +10187,52 @@ export interface components {
             /** View Count */
             view_count?: number | null;
         };
+        /**
+         * SourceVideoRef
+         * @description Editing input: a talking result, a library video or an upload.
+         */
+        SourceVideoRef: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "talking" | "library" | "upload";
+        };
+        /** StockImportBody */
+        StockImportBody: {
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Sentence */
+            sentence: string;
+            /** Sentence Index */
+            sentence_index: number;
+            /** Token */
+            token: string;
+            /** Work Item Ref */
+            work_item_ref?: string | null;
+        };
+        /** StockSearchBody */
+        StockSearchBody: {
+            /**
+             * Limit
+             * @default 3
+             */
+            limit: number;
+            /** Script Text */
+            script_text: string;
+            /** Sentence Indexes */
+            sentence_indexes?: number[] | null;
+        };
         /** StructureDraftLine */
         StructureDraftLine: {
             /** Analysis Section Id */
@@ -9337,6 +10270,40 @@ export interface components {
             welcome_bonus: boolean;
             /** Workspace Id */
             workspace_id: string;
+        };
+        /** TalkingBatchResponse */
+        TalkingBatchResponse: {
+            batch: components["schemas"]["WorkBatchResponse"];
+            /** Notice */
+            notice?: string | null;
+            /**
+             * Parallel Limit
+             * @default 4
+             */
+            parallel_limit: number;
+            /** Talking */
+            talking: components["schemas"]["TalkingItemView"][];
+        };
+        /** TalkingItemView */
+        TalkingItemView: {
+            /**
+             * Awaiting Check
+             * @default false
+             */
+            awaiting_check: boolean;
+            /**
+             * Can Retry
+             * @default false
+             */
+            can_retry: boolean;
+            /** Item Id */
+            item_id: string;
+            /** Queue Position */
+            queue_position?: number | null;
+            /** Stage */
+            stage?: string | null;
+            /** Video Url */
+            video_url?: string | null;
         };
         /** TemplateCatalogCard */
         TemplateCatalogCard: {
@@ -9467,7 +10434,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate";
+            action: "lipsync" | "avatar_motion" | "avatar_register" | "voice_clone" | "editing_planning" | "editing_render" | "benchmark_search" | "writing_generate" | "cover_generate" | "editing_auto_image";
             /** Credits */
             credits: number | null;
         };
@@ -9766,6 +10733,187 @@ export interface components {
             /** Script Sha256 */
             script_sha256: string;
         };
+        /** WorkBatchCreate */
+        WorkBatchCreate: {
+            /** Items */
+            items: components["schemas"]["WorkItemCreate"][];
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Source
+             * @default talking
+             * @enum {string}
+             */
+            source: "talking" | "editing_upload";
+        };
+        /** WorkBatchResponse */
+        WorkBatchResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Item Ids */
+            item_ids: string[];
+            /** Items */
+            items: components["schemas"]["WorkItemResponse"][];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "talking" | "editing_upload";
+            /** Status Counts */
+            status_counts: {
+                [key: string]: number;
+            };
+        };
+        /** WorkItemCreate */
+        WorkItemCreate: {
+            /** Audio File Id */
+            audio_file_id?: string | null;
+            /** Avatar Id */
+            avatar_id?: string | null;
+            /**
+             * Drive Mode
+             * @default text
+             * @enum {string}
+             */
+            drive_mode: "text" | "audio" | "uploaded_video";
+            /** Persona Id */
+            persona_id?: string | null;
+            /**
+             * Publish Body
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @default
+             */
+            publish_title: string;
+            /** Script Document Id */
+            script_document_id?: string | null;
+            /**
+             * Script Text
+             * @default
+             */
+            script_text: string;
+            source_video_ref?: components["schemas"]["SourceVideoRef"] | null;
+            /** Voice Id */
+            voice_id?: string | null;
+        };
+        /**
+         * WorkItemPatch
+         * @description Partial update; only fields that are sent are written.
+         *
+         *     Ownership by line (not enforced by the server): W2 writes persona/avatar/
+         *     voice/audio/generation_task_id; W3 writes source_video_ref/editing_task_id;
+         *     W5 writes cover_asset_id and the final publish_title/publish_body. Each line
+         *     moves ``stage``/``status``/``error`` while the item is in its stage.
+         */
+        WorkItemPatch: {
+            /** Audio File Id */
+            audio_file_id?: string | null;
+            /** Avatar Id */
+            avatar_id?: string | null;
+            /** Cover Asset Id */
+            cover_asset_id?: string | null;
+            /** Editing Task Id */
+            editing_task_id?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Expected Version */
+            expected_version: number;
+            /** Generation Task Id */
+            generation_task_id?: string | null;
+            /** Persona Id */
+            persona_id?: string | null;
+            /** Publish Body */
+            publish_body?: string | null;
+            /** Publish Title */
+            publish_title?: string | null;
+            /** Script Document Id */
+            script_document_id?: string | null;
+            /** Script Text */
+            script_text?: string | null;
+            source_video_ref?: components["schemas"]["SourceVideoRef"] | null;
+            /** Stage */
+            stage?: ("talking" | "editing" | "finishing" | "done") | null;
+            /** Status */
+            status?: ("pending" | "queued" | "running" | "succeeded" | "failed" | "canceled") | null;
+            /** Voice Id */
+            voice_id?: string | null;
+        };
+        /** WorkItemResponse */
+        WorkItemResponse: {
+            /** Audio File Id */
+            audio_file_id: string | null;
+            /** Avatar Id */
+            avatar_id: string | null;
+            /** Batch Id */
+            batch_id: string;
+            /** Cover Asset Id */
+            cover_asset_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Drive Mode
+             * @enum {string}
+             */
+            drive_mode: "text" | "audio" | "uploaded_video";
+            /** Editing Task Id */
+            editing_task_id: string | null;
+            /** Error */
+            error: string | null;
+            /** Generation Task Id */
+            generation_task_id: string | null;
+            /** History */
+            history: {
+                [key: string]: string[];
+            };
+            /** Id */
+            id: string;
+            /** Persona Id */
+            persona_id: string | null;
+            /** Position */
+            position: number;
+            /** Publish Body */
+            publish_body: string;
+            /** Publish Title */
+            publish_title: string;
+            /** Script Document Id */
+            script_document_id: string | null;
+            /** Script Text */
+            script_text: string;
+            source_video_ref: components["schemas"]["SourceVideoRef"] | null;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "talking" | "editing" | "finishing" | "done";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "queued" | "running" | "succeeded" | "failed" | "canceled";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /** Voice Id */
+            voice_id: string | null;
+        };
         /** WorkerAccountSessionRequest */
         WorkerAccountSessionRequest: {
             login_state: components["schemas"]["EcommerceLoginState"];
@@ -10060,8 +11208,25 @@ export interface components {
         };
         /** WritingDraft */
         WritingDraft: {
+            /**
+             * Benchmark Brands
+             * @description 参考原文和对标标题里出现的品牌、店名、商品名、作者名，逐字照抄
+             */
+            benchmark_brands?: string[];
             /** Missing Facts */
             missing_facts?: string[];
+            /**
+             * Publish Body
+             * @description 发布正文：可直接粘贴发布，末尾带3到6个#话题标签
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @description 发布标题：口语、有钩子，按平台字数上限，不含话题标签
+             * @default
+             */
+            publish_title: string;
             /** Replacements */
             replacements?: components["schemas"]["FactReplacement"][];
             /**
@@ -10125,8 +11290,25 @@ export interface components {
         };
         /** WritingStructureDraft */
         WritingStructureDraft: {
+            /**
+             * Benchmark Brands
+             * @description 参考原文和对标标题里出现的品牌、店名、商品名、作者名，逐字照抄
+             */
+            benchmark_brands?: string[];
             /** Missing Facts */
             missing_facts?: string[];
+            /**
+             * Publish Body
+             * @description 发布正文：可直接粘贴发布，末尾带3到6个#话题标签
+             * @default
+             */
+            publish_body: string;
+            /**
+             * Publish Title
+             * @description 发布标题：口语、有钩子，按平台字数上限，不含话题标签
+             * @default
+             */
+            publish_title: string;
             /** Replacements */
             replacements?: components["schemas"]["FactReplacement"][];
             /**
@@ -10159,6 +11341,8 @@ export interface components {
              * @enum {string}
              */
             kind: "ref_analysis" | "fact_draft" | "ref_compare";
+            /** Platform */
+            platform?: ("douyin" | "xiaohongshu") | null;
             /**
              * Presentation
              * @default unspecified
@@ -14175,6 +15359,181 @@ export interface operations {
             };
         };
     };
+    list_candidates_api_v1_video_studio_workspaces__workspace_id__cover_candidates_get: {
+        parameters: {
+            query?: {
+                work_item_id?: string | null;
+                editing_task_id?: string | null;
+                generation_task_id?: string | null;
+                ids?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverCandidateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_api_v1_video_studio_workspaces__workspace_id__cover_candidates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverCandidateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_candidate_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverCandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidate_image_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__image_get: {
+        parameters: {
+            query?: {
+                view?: "cover" | "thumb" | "face";
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                candidate_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retext_api_v1_video_studio_workspaces__workspace_id__cover_candidates__candidate_id__retext_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverRetextRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverCandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     credit_prices_api_v1_video_studio_workspaces__workspace_id__credit_prices_get: {
         parameters: {
             query?: never;
@@ -14619,6 +15978,330 @@ export interface operations {
             header?: never;
             path: {
                 source_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_image_status_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                ids: string[];
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_images_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiImagesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_estimate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiEstimateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_regenerate_api_v1_video_studio_workspaces__workspace_id__editing_supplement_ai_images__image_id__regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiRegenerateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyze_api_v1_video_studio_workspaces__workspace_id__editing_supplement_analyze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScriptBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sources_api_v1_video_studio_workspaces__workspace_id__editing_supplement_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_import_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StockImportBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_search_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StockSearchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_thumb_api_v1_video_studio_workspaces__workspace_id__editing_supplement_stock_thumb__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
                 workspace_id: string;
             };
             cookie?: never;
@@ -15733,6 +17416,170 @@ export interface operations {
             };
         };
     };
+    list_personas_api_v1_video_studio_workspaces__workspace_id__personas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_persona_api_v1_video_studio_workspaces__workspace_id__personas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonaCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                persona_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                persona_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                persona_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonaUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     projects_api_v1_video_studio_workspaces__workspace_id__projects_get: {
         parameters: {
             query?: {
@@ -16049,6 +17896,37 @@ export interface operations {
             };
         };
     };
+    delete_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                material_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     original_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__file_get: {
         parameters: {
             query?: never;
@@ -16069,6 +17947,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__placement_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                material_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialPlacementBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -16368,6 +18285,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WritingVersionSources"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entries_api_v1_video_studio_workspaces__workspace_id__script_library_get: {
+        parameters: {
+            query?: {
+                ids?: string;
+                documents?: string;
+                q?: string;
+                platform?: "" | "douyin" | "xiaohongshu";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_entry_api_v1_video_studio_workspaces__workspace_id__script_library_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -16728,6 +18820,379 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_batches_api_v1_video_studio_workspaces__workspace_id__work_batches_get: {
+        parameters: {
+            query?: {
+                source?: ("talking" | "editing_upload") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkBatchResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_batch_api_v1_video_studio_workspaces__workspace_id__work_batches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    talking_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalkingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_talking_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalkingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+                /** @description 逗号分隔的条目 id */
+                ids?: string | null;
+                stage?: ("talking" | "editing" | "finishing" | "done")[] | null;
+                status?: ("pending" | "queued" | "running" | "succeeded" | "failed" | "canceled")[] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverFinishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalkingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalkingBatchResponse"];
                 };
             };
             /** @description Validation Error */

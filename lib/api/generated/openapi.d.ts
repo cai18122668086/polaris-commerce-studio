@@ -3106,6 +3106,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/talking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Talking Status
+         * @description Polling view; also starts queued items whose turn has come.
+         */
+        get: operations["talking_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_get"];
+        put?: never;
+        /**
+         * Submit Talking
+         * @description Submit (or keep submitting) every waiting item. Safe to call repeatedly.
+         */
+        post: operations["submit_talking_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items": {
         parameters: {
             query?: never;
@@ -3139,6 +3163,29 @@ export interface paths {
         head?: never;
         /** Patch Item */
         patch: operations["patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/talking-retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Talking
+         * @description Give one failed item a fresh attempt; the other items are untouched.
+         *
+         *     Repeating the call is harmless: once the item is no longer failed the
+         *     current view is returned and nothing new is submitted.
+         */
+        post: operations["retry_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/video-studio/workspaces/{workspace_id}/writing-config": {
@@ -9420,6 +9467,33 @@ export interface components {
             welcome_bonus: boolean;
             /** Workspace Id */
             workspace_id: string;
+        };
+        /** TalkingBatchResponse */
+        TalkingBatchResponse: {
+            batch: components["schemas"]["WorkBatchResponse"];
+            /**
+             * Parallel Limit
+             * @default 4
+             */
+            parallel_limit: number;
+            /** Talking */
+            talking: components["schemas"]["TalkingItemView"][];
+        };
+        /** TalkingItemView */
+        TalkingItemView: {
+            /**
+             * Can Retry
+             * @default false
+             */
+            can_retry: boolean;
+            /** Item Id */
+            item_id: string;
+            /** Queue Position */
+            queue_position?: number | null;
+            /** Stage */
+            stage?: string | null;
+            /** Video Url */
+            video_url?: string | null;
         };
         /** TemplateCatalogCard */
         TemplateCatalogCard: {
@@ -17107,6 +17181,70 @@ export interface operations {
             };
         };
     };
+    talking_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalkingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_talking_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalkingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get: {
         parameters: {
             query?: {
@@ -17201,6 +17339,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_talking_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__talking_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalkingBatchResponse"];
                 };
             };
             /** @description Validation Error */

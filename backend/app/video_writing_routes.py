@@ -6,7 +6,7 @@ import subprocess
 from datetime import UTC
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from . import video_benchmark_platforms as benchmark_platforms
 from . import video_credit_billing as video_credits
+from . import video_script_library as library
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -465,6 +466,8 @@ def create_task(
         parameters.pop("draft_mode")
     if not body.variant:
         parameters.pop("variant")
+    if body.platform is None:
+        parameters.pop("platform")
     fingerprint = digest({"workflow": "writing", **parameters})
     query = select(VideoAssistanceRecord).where(
         VideoAssistanceRecord.workspace_id == workspace.workspace_id,
@@ -518,6 +521,14 @@ def create_task(
             facts=facts.body,
             draft_mode=body.draft_mode or "shadow",
             variant=body.variant,
+            # v3: every new draft also writes the publish title and body.
+            publish_platform=body.platform
+            or (
+                (ref.body.get("source_metrics") or {}).get("platform")
+                if (ref.body.get("source_metrics") or {}).get("platform")
+                in {"douyin", "xiaohongshu"}
+                else "douyin"
+            ),
         )
     if body.kind == "ref_compare":
         benchmarks: list[dict[str, Any]] = []
@@ -594,6 +605,27 @@ def save_result(
     workspace: VideoWorkspace,
     session: SessionDependency,
 ) -> dict:
+    # The library entry is found by its document id (writing_document_id);
+    # the document response itself stays exactly what it was.
+    result = store_result(body, request, workspace, session)
+    result.pop("library_entry_id", None)
+    return result
+
+
+def store_result(
+    body: SaveWritingResult,
+    request: Request,
+    workspace: WorkspaceContext,
+    session: Session,
+    *,
+    library_source: Literal["auto_writing", "manual"] = "manual",
+    library_key: str | None = None,
+) -> dict:
+    """Save a checked result; a draft also lands in the script library once.
+
+    The manual flow's key is its task (one task = one version); the auto
+    flow passes 「run id + version」.
+    """
     require_workspace_write(workspace)
     enabled(request)
     task = session.get(VideoAssistanceRecord, str(body.task_id))
@@ -643,29 +675,37 @@ def save_result(
             else WritingDraft
         )
         parsed_draft = draft_model.model_validate(task.result["draft"])
-        text = validate_draft(
-            parsed_draft,
-            WritingReference.model_validate(task.inputs["reference"]),
-            WritingFacts.model_validate(task.inputs["facts"]),
-            WritingAnalysis.model_validate(task.inputs["analysis"]),
-        )
+        source = WritingReference.model_validate(task.inputs["reference"])
+        card = WritingFacts.model_validate(task.inputs["facts"])
+        teardown = WritingAnalysis.model_validate(task.inputs["analysis"])
+        text = validate_draft(parsed_draft, source, card, teardown)
         content = {
             "draft": parsed_draft.model_dump(mode="json"),
             "text": text,
             "shape_check": task.result["shape_check"],
         }
-    return document_response(
-        create_document(
+    row = create_document(
+        session,
+        workspace,
+        task.project_id,
+        body.request_id,
+        kind,
+        content,
+        assistance_task_id=task.id,
+        **parents,
+    )
+    result = document_response(row)
+    if kind == "draft":
+        entry = library.ingest_draft(
             session,
             workspace,
-            task.project_id,
-            body.request_id,
-            kind,
-            content,
-            assistance_task_id=task.id,
-            **parents,
+            row,
+            source=library_source,
+            dedupe_key=library_key or f"manual:{task.id}",
+            platform=str(task.inputs.get("publish_platform") or ""),
         )
-    )
+        result["library_entry_id"] = entry.id
+    return result
 
 
 def revision_basis(
@@ -849,30 +889,30 @@ def revise_draft(
             "VIDEO_WRITING_SHAPE_INVALID",
             "修订未通过原逐句结构检查，请核对句数和对应原句。",
         )
-    return document_response(
-        create_document(
-            session,
-            workspace,
-            parent.project_id,
-            body.request_id,
-            "draft",
-            {
-                "draft": draft.model_dump(mode="json"),
-                "text": text,
-                "shape_check": check,
-                "revision": {
-                    "parent_document_id": parent.id,
-                    "parent_document_sha256": parent.body_sha256,
-                    "document_hashes": basis["document_hashes"],
-                    "source_replacements": [
-                        row.model_dump(mode="json") for row in replacements
-                    ],
-                    **budget,
-                },
+    revised = create_document(
+        session,
+        workspace,
+        parent.project_id,
+        body.request_id,
+        "draft",
+        {
+            "draft": draft.model_dump(mode="json"),
+            "text": text,
+            "shape_check": check,
+            "revision": {
+                "parent_document_id": parent.id,
+                "parent_document_sha256": parent.body_sha256,
+                "document_hashes": basis["document_hashes"],
+                "source_replacements": [
+                    row.model_dump(mode="json") for row in replacements
+                ],
+                **budget,
             },
-            **{kind + "_document_id": source.id for kind, source in sources.items()},
-        )
+        },
+        **{kind + "_document_id": source.id for kind, source in sources.items()},
     )
+    library.follow_revision(session, workspace, parent.id, revised)
+    return document_response(revised)
 
 
 @router.post(

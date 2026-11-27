@@ -85,6 +85,7 @@ from .video_editing_routes import router as video_editing_router
 from .video_editing_task_routes import router as video_editing_task_router
 from .video_editing_transcript_routes import router as video_editing_transcript_router
 from .video_generation import router as video_generation_router
+from .video_script_library import router as video_script_library_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router
 from .video_work_routes import router as video_work_router
@@ -588,6 +589,7 @@ def create_app(
     application.include_router(video_benchmark_router)
     application.include_router(video_writing_router)
     application.include_router(video_auto_writing_router)
+    application.include_router(video_script_library_router)
     application.include_router(credit_router)
     application.include_router(processing_consent_router)
     application.include_router(creation_summary_router)

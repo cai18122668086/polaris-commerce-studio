@@ -514,8 +514,10 @@ def versions(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    from functools import partial
+
     from .video_writing_contracts import SaveWritingResult, WritingTaskRequest
-    from .video_writing_routes import create_task, save_result
+    from .video_writing_routes import create_task, store_result
 
     project = inputs["project_id"]
     existing = {d["key"]: d for d in state.get("drafts") or []}
@@ -551,6 +553,7 @@ def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
                 facts_document_id=UUID(state["facts_document_id"]),
                 draft_mode=version["mode"],
                 variant=version["variant"],
+                platform=inputs.get("platform") or "douyin",
             ),
         )
         done = run.wait([str(task.id)], timeout=600)[0]
@@ -563,11 +566,18 @@ def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
             "document_id": None,
         }
         if done.status == "completed" and not done.result.get("validation_error"):
+            # Saved and put into the script library at once (文案库), keyed by
+            # run + version so a resumed or re-read run never adds it twice.
             saved = run.plain(
-                save_result,
+                partial(
+                    store_result,
+                    library_source="auto_writing",
+                    library_key=f"auto:{run.id}:{version['key']}",
+                ),
                 SaveWritingResult(request_id=UUID(done.id), task_id=UUID(done.id)),
             )
             entry["document_id"] = saved["id"]
+            entry["library_entry_id"] = saved.get("library_entry_id")
         else:
             entry["error"] = done.result.get("validation_issue") or done.error_code
         return entry

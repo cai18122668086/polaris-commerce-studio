@@ -22,11 +22,11 @@ export async function fetchSources(workspaceId: string): Promise<SourcesResponse
   return unwrapApiResponse(await apiClient.GET(`${root}/sources`, ws(workspaceId))) as unknown as SourcesResponse;
 }
 
-export async function searchStock(workspaceId: string, scriptText: string, sentenceIndexes?: number[]): Promise<StockSearchResponse> {
+export async function searchStock(workspaceId: string, scriptText: string, sentenceIndexes?: number[], exclude: number[] = []): Promise<StockSearchResponse> {
   return unwrapApiResponse(await apiClient.POST(`${root}/stock/search`, {
     ...ws(workspaceId),
     signal: AbortSignal.timeout(120000),
-    body: { script_text: scriptText, limit: 3, ...(sentenceIndexes ? { sentence_indexes: sentenceIndexes } : {}) },
+    body: { script_text: scriptText, limit: 3, exclude_sentences: exclude, ...(sentenceIndexes ? { sentence_indexes: sentenceIndexes } : {}) },
   })) as unknown as StockSearchResponse;
 }
 
@@ -38,9 +38,9 @@ export async function importStock(workspaceId: string, body: {
   })) as unknown as MaterialRow;
 }
 
-export async function estimateAiImages(workspaceId: string, scriptText: string, maxImages: number): Promise<AiEstimateResponse> {
+export async function estimateAiImages(workspaceId: string, scriptText: string, maxImages: number, exclude: number[] = []): Promise<AiEstimateResponse> {
   return unwrapApiResponse(await apiClient.POST(`${root}/ai-images/estimate`, {
-    ...ws(workspaceId), signal: AbortSignal.timeout(120000), body: { script_text: scriptText, max_images: maxImages },
+    ...ws(workspaceId), signal: AbortSignal.timeout(120000), body: { script_text: scriptText, max_images: maxImages, exclude_sentences: exclude },
   })) as unknown as AiEstimateResponse;
 }
 

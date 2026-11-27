@@ -4974,6 +4974,8 @@ export interface components {
         };
         /** AiEstimateBody */
         AiEstimateBody: {
+            /** Exclude Sentences */
+            exclude_sentences?: number[];
             /**
              * Max Images
              * @default 4
@@ -10228,6 +10230,8 @@ export interface components {
         };
         /** StockSearchBody */
         StockSearchBody: {
+            /** Exclude Sentences */
+            exclude_sentences?: number[];
             /**
              * Limit
              * @default 3

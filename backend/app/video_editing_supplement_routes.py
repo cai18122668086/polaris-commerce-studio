@@ -68,6 +68,8 @@ class ScriptBody(StrictVideoModel):
 
 class StockSearchBody(ScriptBody):
     sentence_indexes: list[int] | None = Field(default=None, max_length=12)
+    # 已被「我的素材」占用的句子：每句最多一个补充素材。
+    exclude_sentences: list[int] = Field(default_factory=list, max_length=60)
     limit: int = Field(default=3, ge=1, le=3)
 
 
@@ -82,6 +84,8 @@ class StockImportBody(StrictVideoModel):
 
 class AiEstimateBody(ScriptBody):
     max_images: int = Field(default=4, ge=1, le=6)
+    # 已有我的素材 / 免费素材的句子不再配 AI 图（方案 4.1：只补没素材的段落）。
+    exclude_sentences: list[int] = Field(default_factory=list, max_length=60)
 
 
 class AiImageItem(StrictVideoModel):
@@ -151,8 +155,10 @@ def price(settings: Settings) -> int | None:
     return price_for(settings, "editing_auto_image")
 
 
-def pick_paintable(analysis: ScriptAnalysis, max_images: int) -> list[dict[str, Any]]:
-    """Plan §4.1: drawable sentences only, ≤2 per 30 s, never adjacent."""
+def pick_paintable(
+    analysis: ScriptAnalysis, max_images: int, exclude: Sequence[int] = ()
+) -> list[dict[str, Any]]:
+    """Plan §4.1: drawable, uncovered sentences only, ≤2 per 30 s, not adjacent."""
     seconds = sum(len(row.text) for row in analysis.sentences) / CHARS_PER_SECOND
     cap = min(max_images, 6, max(1, math.ceil(seconds / 30)) * 2)
     chosen: list[dict[str, Any]] = []
@@ -160,7 +166,7 @@ def pick_paintable(analysis: ScriptAnalysis, max_images: int) -> list[dict[str, 
     for row in analysis.sentences:
         if len(chosen) >= cap:
             break
-        if row.paintable and row.index > last + 1:
+        if row.paintable and row.index > last + 1 and row.index not in exclude:
             chosen.append(
                 {
                     "sentence_index": row.index,
@@ -173,9 +179,13 @@ def pick_paintable(analysis: ScriptAnalysis, max_images: int) -> list[dict[str, 
     return chosen
 
 
-def pick_stock_sentences(analysis: ScriptAnalysis) -> list[int]:
+def pick_stock_sentences(
+    analysis: ScriptAnalysis, exclude: Sequence[int] = ()
+) -> list[int]:
     preferred = {"scene": 0, "selling": 1, "data": 2, "compare": 2, "steps": 3}
-    rows = [row for row in analysis.sentences if row.queries]
+    rows = [
+        row for row in analysis.sentences if row.queries and row.index not in exclude
+    ]
     rows.sort(key=lambda row: (preferred.get(row.type, 4), row.index))
     chosen: list[int] = []
     for row in rows:
@@ -264,7 +274,7 @@ async def stock_search(
     indexes = (
         [i for i in body.sentence_indexes if 0 <= i < len(analysis.sentences)]
         if body.sentence_indexes is not None
-        else pick_stock_sentences(analysis)
+        else pick_stock_sentences(analysis, body.exclude_sentences)
     )
 
     def one(index: int) -> dict[str, Any]:
@@ -373,7 +383,8 @@ async def stock_import(
         mime=mime,
         sha256=data_sha,
         bytes=target.stat().st_size,
-        label=f"{LABELS[candidate.provider]} · 第 {body.sentence_index + 1} 句",
+        # 规划按「名称与说明」匹配整句：名称写清是什么、配哪句话。
+        label=f"免费图库配图：{body.sentence.strip()}"[:120],
         description=body.sentence[:400],
         width=width,
         height=height,
@@ -408,7 +419,7 @@ async def ai_estimate(
 ) -> dict[str, Any]:
     settings = _settings(request)
     analysis = await asyncio.to_thread(analyze_script, settings, body.script_text)
-    chosen = pick_paintable(analysis, body.max_images)
+    chosen = pick_paintable(analysis, body.max_images, body.exclude_sentences)
     credits = price(settings)
     return {
         "analysis_source": analysis.source,

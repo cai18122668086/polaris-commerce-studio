@@ -1000,3 +1000,27 @@ def test_manual_sentence_placement_rewrites_description_until_used(api):
     auto = client.put(placement, json={}).json()
     assert auto["description"] == "商家上传的补充素材，放在画面最贴合的句子"
     assert client.put(placement, json={"sentence_index": 1}).status_code == 422
+
+
+def test_one_supplement_per_sentence_excludes_covered_sentences():
+    from app.video_editing_supplement_plan import ScriptAnalysis, SentencePlan
+    from app.video_editing_supplement_routes import pick_paintable, pick_stock_sentences
+
+    rows = [
+        SentencePlan(
+            index=i,
+            text="一句可以画出来的口播内容" * 3,
+            paintable=True,
+            subject="画面",
+            queries=["q"],
+        )
+        for i in range(6)
+    ]
+    analysis = ScriptAnalysis("v", "d", "model", rows)
+    assert [r["sentence_index"] for r in pick_paintable(analysis, 6, exclude=[0, 2])][
+        :1
+    ] == [1]
+    assert 0 not in [
+        r["sentence_index"] for r in pick_paintable(analysis, 6, exclude=[0])
+    ]
+    assert 3 not in pick_stock_sentences(analysis, exclude=[3])

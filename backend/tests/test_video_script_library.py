@@ -165,6 +165,26 @@ def test_numbers_and_restricted_claims_need_the_users_facts():
     assert caught.value.issue["kind"] == "publish_restricted"
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "樱花香护手霜，清爽不黏腻。#护手霜 #平价好物 #冬季护手",  # 真实运行里出现过
+        "销量第一的樱花香护手霜。#护手霜 #好物 #冬季护手",
+        "樱花香护手霜，清爽不黏腻。#护手霜 #冬季护手 #医生推荐",
+    ],
+)
+def test_price_ranking_and_endorsement_words_need_the_users_facts(body):
+    with pytest.raises(provider.PublishIssue) as caught:
+        publish(draft(publish_body=body))
+    assert caught.value.issue["kind"] == "publish_unbacked"
+    assert "没有依据" in caught.value.hint
+    card = facts().model_copy(deep=True)
+    card.facts[2].value = "清爽不黏腻，吸收快，平价"  # the user said it: allowed
+    d = draft(publish_body="樱花香护手霜，平价好用。#护手霜 #平价好物 #冬季护手")
+    text = validate_draft(d, reference(), card, analysis())
+    provider.validate_publish(d, "xiaohongshu", reference(), card, analysis(), text)
+
+
 def test_old_drafts_without_title_or_body_still_load():
     old = WritingStructureDraft.model_validate(DATA["accepted_draft"])
     assert old.publish_title == "" and old.publish_body == ""

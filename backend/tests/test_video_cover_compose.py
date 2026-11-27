@@ -145,9 +145,30 @@ def test_sample_times_skip_the_edges():
 
 
 def test_layouts_that_cannot_hold_the_title_are_skipped():
-    big_face = (345, 377, 708, 832)  # a close-up: the space above the head is too small
+    big_face = (300, 150, 780, 900)  # a close-up: no room above the head
     text = "3个方法让皮肤状态翻倍，学生党也能做到"
     layouts = cc.choose_layouts(big_face, text=text)
-    assert layouts and "top" not in layouts and "side" not in layouts
+    assert layouts and "top" not in layouts
+    for layout in ("top", "bottom", "side"):
+        fits = cc.fit_text(text, cc.text_zone(layout, big_face), layout) is not None
+        assert fits == (layout in layouts)
     for layout in layouts:
         assert cc.compose(plain(), text, [layout], big_face)[1].passed
+
+
+def test_crop_slides_for_title_room_but_never_cuts_the_face():
+    frame = Image.new("RGB", (1080, 1920), (200, 190, 180))
+    face = (140, 270, 680, 1030)  # close-up near the top of a 9:16 frame
+    text = "3个方法让皮肤状态翻倍，学生党也能做到"
+    cropped, moved = cc.crop_to_canvas(frame, face, text)
+    assert cropped.size == cc.CANVAS and moved is not None
+    assert moved[1] > 0 and moved[3] < cc.CANVAS[1]  # whole face kept
+    assert any(
+        cc.fit_text(text, cc.text_zone(x, moved), x) for x in cc.choose_layouts(moved)
+    )
+
+
+def test_line_breaks_keep_particles_with_their_word():
+    for count in (2, 3):
+        lines = cc.break_lines("夏天必备的冰丝凉席", count)
+        assert lines and not any(line[0] in cc.PARTICLES for line in lines)

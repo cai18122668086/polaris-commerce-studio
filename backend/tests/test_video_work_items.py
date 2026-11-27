@@ -285,7 +285,7 @@ def test_list_filters_by_batch_stage_status_and_ids(video):
     both = client.get(
         base(ws) + "/work-items", params=[("stage", "talking"), ("stage", "finishing")]
     ).json()
-    assert len(both) == 3
+    assert [i["script_text"] for i in both] == ["丙", "甲", "乙"]
     picked = client.get(
         base(ws) + "/work-items",
         params={"ids": f"{first['item_ids'][0]},{second['item_ids'][0]}"},

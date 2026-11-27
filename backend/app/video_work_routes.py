@@ -307,6 +307,8 @@ def create_batch(
     for fields in items:
         _check_refs(session, owner, fields)
     stage = "editing" if body.source == "editing_upload" else "talking"
+    # One timestamp for the batch and its items keeps newest-first lists in order.
+    now = utc_now()
     batch = VideoWorkBatchRecord(
         id=str(uuid4()),
         workspace_id=owner[0],
@@ -314,6 +316,8 @@ def create_batch(
         source=body.source,
         request_id=request_id,
         request_hash=fingerprint,
+        created_at=now,
+        updated_at=now,
     )
     rows = [
         VideoWorkItemRecord(
@@ -326,6 +330,8 @@ def create_batch(
             stage=stage,
             status="pending",
             history={},
+            created_at=now,
+            updated_at=now,
             **fields,
         )
         for position, fields in enumerate(items)
@@ -405,7 +411,11 @@ def list_items(
     order = (
         (VideoWorkItemRecord.position,)
         if batch_id
-        else (VideoWorkItemRecord.created_at.desc(), VideoWorkItemRecord.position)
+        else (
+            VideoWorkItemRecord.created_at.desc(),
+            VideoWorkItemRecord.batch_id,
+            VideoWorkItemRecord.position,
+        )
     )
     rows = session.scalars(query.order_by(*order).limit(limit).offset(offset)).all()
     return [item_response(row) for row in rows]

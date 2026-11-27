@@ -455,7 +455,7 @@ def normalize_strategy(value: Mapping[str, Any]) -> dict[str, Any]:
     result = deepcopy(dict(value))
     analysis = result.get("analysis")
     extras = analysis.get("extra_selling_points") if isinstance(analysis, dict) else None
-    if isinstance(extras, list):
+    if isinstance(analysis, dict) and isinstance(extras, list):
         # A bookkeeping list: tolerate the ledger's "reason" key and stray keys.
         tidy = []
         for entry in extras:

@@ -9395,13 +9395,13 @@ def _empty_screen_plan(payload: object) -> bool:
     """True when a complete-plan response carries no screens at all."""
     if not isinstance(payload, Mapping):
         return False
-    if set(payload) == {"type", "properties"} and isinstance(
-        payload.get("properties"), Mapping
-    ):
-        payload = payload["properties"]
-    plan = payload.get("plan")
+    body: Mapping[str, Any] = payload
+    properties = body.get("properties")
+    if set(body) == {"type", "properties"} and isinstance(properties, Mapping):
+        body = properties
+    plan = body.get("plan")
     if not isinstance(plan, Mapping):
-        return "analysis" in payload
+        return "analysis" in body
     screens = plan.get("screens")
     return not isinstance(screens, list) or not screens
 

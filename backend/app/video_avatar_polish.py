@@ -154,27 +154,101 @@ _SAFETY_HINTS = (
 )
 
 
+@dataclass(frozen=True)
+class ImageRoute:
+    name: str
+    base_url: str
+    api_key: str
+    model: str
+
+
+def image_routes(settings: Settings) -> list[ImageRoute]:
+    """与站内生图同一套路由：主通道，再按 POLARIS_PROVIDER_FAILOVER_* 的备用通道（多 key 各成一条）。
+
+    与 W5 的 video_image_routes 规则一致；该模块进集成分支后可改为直接复用。
+    """
+
+    routes: list[ImageRoute] = []
+    primary_key = settings.image_api_key.get_secret_value().strip()
+    if primary_key and settings.image_base_url.startswith("https://"):
+        routes.append(
+            ImageRoute(
+                "primary",
+                settings.image_base_url.rstrip("/"),
+                primary_key,
+                settings.image_model,
+            )
+        )
+    keys = [
+        part.strip()
+        for part in re.split(
+            r"[\s,]+", settings.provider_failover_api_key.get_secret_value()
+        )
+        if part.strip()
+    ]
+    if (
+        settings.provider_failover_enabled
+        and keys
+        and settings.provider_failover_base_url.startswith("https://")
+    ):
+        for index, key in enumerate(keys, start=1):
+            routes.append(
+                ImageRoute(
+                    "failover" if len(keys) == 1 else f"failover-{index}",
+                    settings.provider_failover_base_url.rstrip("/"),
+                    key,
+                    settings.provider_failover_image_model,
+                )
+            )
+    return routes
+
+
+class _RouteUnavailable(Exception):
+    pass
+
+
 class HttpPolishImageClient:
+    """逐条通道尝试；只有连不上、超时、5xx、401/403、429 才换下一条，被拒（其余 4xx）不重试。"""
+
     def __init__(self, settings: Settings, timeout_seconds: float = 300):
-        self.base_url = settings.image_base_url.rstrip("/")
-        self.api_key = settings.image_api_key.get_secret_value()
-        self.model = settings.image_model
+        self.routes = image_routes(settings)
         self.timeout = timeout_seconds
 
     def edit(
         self, reference_png: bytes, prompt: str, *, idempotency_key: str
     ) -> PolishImageResult:
-        if not (self.api_key and self.base_url):
+        if not self.routes:
             raise PolishImageError("AVATAR_POLISH_NOT_CONFIGURED", "AI 润色暂不可用。")
+        last = PolishImageError("AVATAR_POLISH_UNAVAILABLE", "AI 润色服务暂时连不上。")
+        for route in self.routes:
+            try:
+                return self._call(route, reference_png, prompt, idempotency_key)
+            except _RouteUnavailable as exc:
+                logger.warning(
+                    "avatar_polish_route_unavailable route=%s reason=%s",
+                    route.name,
+                    exc,
+                )
+                last = PolishImageError(
+                    "AVATAR_POLISH_TIMEOUT"
+                    if str(exc) == "timeout"
+                    else "AVATAR_POLISH_UNAVAILABLE",
+                    "AI 润色服务暂时连不上。",
+                )
+        raise last
+
+    def _call(
+        self, route: ImageRoute, reference_png: bytes, prompt: str, key: str
+    ) -> PolishImageResult:
         try:
             response = httpx.post(
-                self.base_url + "/v1/images/edits",
+                route.base_url + "/v1/images/edits",
                 headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Idempotency-Key": idempotency_key,
+                    "Authorization": f"Bearer {route.api_key}",
+                    "Idempotency-Key": key,
                 },
                 data={
-                    "model": self.model,
+                    "model": route.model,
                     "prompt": prompt,
                     "n": "1",
                     "size": OUTPUT_SIZE,
@@ -186,36 +260,39 @@ class HttpPolishImageClient:
                 timeout=self.timeout,
             )
         except httpx.TimeoutException:
-            raise PolishImageError("AVATAR_POLISH_TIMEOUT", "AI 润色超时了。") from None
+            raise _RouteUnavailable("timeout") from None
         except httpx.HTTPError:
-            raise PolishImageError(
-                "AVATAR_POLISH_UNAVAILABLE", "AI 润色服务暂时连不上。"
-            ) from None
-        if response.status_code >= 400:
+            raise _RouteUnavailable("transport") from None
+        status = response.status_code
+        if status >= 500 or status in {401, 403, 429}:
+            raise _RouteUnavailable(str(status))
+        if status >= 400:
             text = response.text[:2000].lower()
-            if response.status_code < 500 and any(h in text for h in _SAFETY_HINTS):
+            if any(h in text for h in _SAFETY_HINTS):
                 raise PolishImageError(
                     "AVATAR_POLISH_UNSAFE", "这张照片或描述没有通过内容安全检查。"
                 )
             raise PolishImageError(
-                "AVATAR_POLISH_REJECTED"
-                if response.status_code < 500
-                else "AVATAR_POLISH_UNAVAILABLE",
-                "AI 润色服务没有返回图片。",
+                "AVATAR_POLISH_REJECTED", "AI 润色服务没有返回图片。"
             )
         try:
             body = response.json()
-            raw = base64.b64decode(body["data"][0]["b64_json"])
+            item = body["data"][0]
+            if item.get("b64_json"):
+                raw = base64.b64decode(item["b64_json"])
+            else:
+                fetched = httpx.get(item["url"], timeout=120)
+                fetched.raise_for_status()
+                raw = fetched.content
             image = Image.open(io.BytesIO(raw))
             image.load()
         except Exception:
             raise PolishImageError(
                 "AVATAR_POLISH_INVALID", "AI 润色返回的图片无法读取。"
             ) from None
+        reported = body.get("model") if isinstance(body, dict) else None
         return PolishImageResult(
-            image.convert("RGB"),
-            self.model,
-            body.get("model") if isinstance(body, dict) else None,
+            image.convert("RGB"), f"{route.name}:{route.model}", reported
         )
 
 

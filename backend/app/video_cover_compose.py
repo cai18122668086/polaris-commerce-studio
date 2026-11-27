@@ -125,7 +125,7 @@ def intersection(a: Box, b: Box) -> int:
 
 
 @lru_cache(maxsize=4)
-def _detector(size: tuple[int, int]):  # pragma: no cover - needs OpenCV model
+def _detector(size: tuple[int, int]) -> Any:  # pragma: no cover - needs OpenCV
     from .bihuo_suite.subject import FaceDetector, model_available
 
     if not model_available():
@@ -151,13 +151,27 @@ def detect_face(image: Image.Image) -> tuple[Box, float] | None:
 
 def probe_duration(video: Path) -> float:
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(video)],
-        capture_output=True, text=True, timeout=60, check=False,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            str(video),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
     )
     try:
         return float(json.loads(out.stdout)["format"]["duration"])
     except (KeyError, ValueError, json.JSONDecodeError):
-        raise CoverComposeError("COVER_SOURCE_UNREADABLE", "视频读不出来，换一条视频试试。") from None
+        raise CoverComposeError(
+            "COVER_SOURCE_UNREADABLE", "视频读不出来，换一条视频试试。"
+        ) from None
 
 
 def sample_times(duration: float, count: int = 12) -> list[float]:
@@ -174,9 +188,25 @@ def sample_times(duration: float, count: int = 12) -> list[float]:
 
 def extract_frame(video: Path, at: float, target: Path) -> Path:
     subprocess.run(
-        ["ffmpeg", "-nostdin", "-v", "error", "-y", "-ss", f"{at:.3f}", "-i", str(video),
-         "-frames:v", "1", "-q:v", "2", str(target)],
-        capture_output=True, timeout=60, check=False,
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-v",
+            "error",
+            "-y",
+            "-ss",
+            f"{at:.3f}",
+            "-i",
+            str(video),
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
+            str(target),
+        ],
+        capture_output=True,
+        timeout=60,
+        check=False,
     )
     if not target.exists() or target.stat().st_size == 0:
         raise CoverComposeError("COVER_SOURCE_UNREADABLE", "没能从视频里取到画面。")
@@ -233,7 +263,9 @@ def pick_keyframe(video: Path, workdir: Path, count: int = 12) -> Keyframe:
     return best
 
 
-def crop_to_canvas(image: Image.Image, face: Box | None) -> tuple[Image.Image, Box | None]:
+def crop_to_canvas(
+    image: Image.Image, face: Box | None
+) -> tuple[Image.Image, Box | None]:
     """Largest 3:4 window around the face, scaled to 1080x1440."""
 
     w, h = image.size
@@ -249,20 +281,31 @@ def crop_to_canvas(image: Image.Image, face: Box | None) -> tuple[Image.Image, B
         top = min(max(0, round(cy - ch * 0.42)), h - ch)
     else:
         left, top = (w - cw) // 2, (h - ch) // 2
-    cropped = image.crop((left, top, left + cw, top + ch)).resize(CANVAS, Image.Resampling.LANCZOS)
+    cropped = image.crop((left, top, left + cw, top + ch)).resize(
+        CANVAS, Image.Resampling.LANCZOS
+    )
     if not face:
         return cropped, None
     sx, sy = CANVAS[0] / cw, CANVAS[1] / ch
     moved = (
-        round((face[0] - left) * sx), round((face[1] - top) * sy),
-        round((face[2] - left) * sx), round((face[3] - top) * sy),
+        round((face[0] - left) * sx),
+        round((face[1] - top) * sy),
+        round((face[2] - left) * sx),
+        round((face[3] - top) * sy),
     )
-    clipped = (max(0, moved[0]), max(0, moved[1]), min(CANVAS[0], moved[2]), min(CANVAS[1], moved[3]))
-    return cropped, clipped if clipped[2] > clipped[0] and clipped[3] > clipped[1] else None
+    clipped = (
+        max(0, moved[0]),
+        max(0, moved[1]),
+        min(CANVAS[0], moved[2]),
+        min(CANVAS[1], moved[3]),
+    )
+    return cropped, clipped if clipped[2] > clipped[0] and clipped[3] > clipped[
+        1
+    ] else None
 
 
 def warm_grade(image: Image.Image) -> Image.Image:
-    """Gentle warm tone and lift for the real-frame background; the face is not redrawn."""
+    """Gentle warm tone and lift for the real-frame background; no face redraw."""
 
     rgb = image.convert("RGB")
     r, g, b = rgb.split()
@@ -281,7 +324,7 @@ def warm_grade(image: Image.Image) -> Image.Image:
 
 
 def choose_layouts(face: Box | None, previous: tuple[str, ...] = ()) -> list[Layout]:
-    """Two structurally different layouts for a face position (references/layouts.md)."""
+    """Two structurally different layouts for a face (references/layouts.md)."""
 
     if face is None:
         order: list[Layout] = ["center", "top", "bottom"]
@@ -333,7 +376,12 @@ def _units(text: str) -> list[str]:
 
     units: list[str] = []
     for ch in text:
-        if units and (ch.isascii() and (ch.isalnum() or ch in ".%")) and units[-1][-1:].isascii() and (units[-1][-1].isalnum() or units[-1][-1] in ".%"):
+        if (
+            units
+            and (ch.isascii() and (ch.isalnum() or ch in ".%"))
+            and units[-1][-1:].isascii()
+            and (units[-1][-1].isalnum() or units[-1][-1] in ".%")
+        ):
             units[-1] += ch
         else:
             units.append(ch)
@@ -417,7 +465,7 @@ def default_cover_text(title: str) -> str:
 
 def line_width(text: str, size: int) -> int:
     left, _, right, _ = font(size).getbbox(text)
-    return right - left
+    return round(right - left)
 
 
 @dataclass
@@ -434,7 +482,9 @@ def fit_text(text: str, zone: Box, layout: Layout) -> Fit | None:
         if not lines:
             continue
         size = min(round(height / (count * LINE_GAP)), 168)
-        while size >= MIN_FONT and max(line_width(line, size) for line in lines) > width:
+        while (
+            size >= MIN_FONT and max(line_width(line, size) for line in lines) > width
+        ):
             size -= 4
         if size < MIN_FONT:
             continue
@@ -482,7 +532,9 @@ def typeset(
     zone = text_zone(layout, face)
     fit = fit_text(text, zone, layout)
     if fit is None:
-        raise CoverComposeError("COVER_TEXT_DOES_NOT_FIT", "封面大字太长，放不下，请删减几个字。")
+        raise CoverComposeError(
+            "COVER_TEXT_DOES_NOT_FIT", "封面大字太长，放不下，请删减几个字。"
+        )
     size = fit.size
     face_ = font(size)
     line_height = round(size * LINE_GAP)
@@ -505,21 +557,25 @@ def typeset(
         width = line_width(line, size)
         x = zone[0] if align_left else zone[0] + (zone[2] - zone[0] - width) // 2
         y = top + index * line_height
-        l, t, r, b = face_.getbbox(line)
-        positions.append((x - l, y, line))
-        boxes.append((x, y + t, x + (r - l), y + b))
+        left, top_, right, bottom = (round(v) for v in face_.getbbox(line))
+        positions.append((x - left, y, line))
+        boxes.append((x, y + top_, x + (right - left), y + bottom))
 
     canvas = background.convert("RGBA")
     plate: Box | None = None
     if busy:
         pad = round(size * 0.32)
         plate = (
-            max(0, min(b[0] for b in boxes) - pad), max(0, min(b[1] for b in boxes) - pad),
-            min(CANVAS[0], max(b[2] for b in boxes) + pad), min(CANVAS[1], max(b[3] for b in boxes) + pad),
+            max(0, min(b[0] for b in boxes) - pad),
+            max(0, min(b[1] for b in boxes) - pad),
+            min(CANVAS[0], max(b[2] for b in boxes) + pad),
+            min(CANVAS[1], max(b[3] for b in boxes) + pad),
         )
         fill = PLATE_LIGHT if tone == "dark" else PLATE_DARK
         layer = Image.new("RGBA", CANVAS, (0, 0, 0, 0))
-        ImageDraw.Draw(layer).rounded_rectangle(plate, radius=round(size * 0.28), fill=fill)
+        ImageDraw.Draw(layer).rounded_rectangle(
+            plate, radius=round(size * 0.28), fill=fill
+        )
         canvas = Image.alpha_composite(canvas, layer)
         used.append("#{:02X}{:02X}{:02X}".format(*fill[:3]))
 
@@ -528,7 +584,12 @@ def typeset(
         draw = ImageDraw.Draw(shadow)
         offset = max(2, size // 28)
         for x, y, line in positions:
-            draw.text((x + offset, y + offset), line, font=face_, fill=hex_rgb(SHADOW) + (170,))
+            draw.text(
+                (x + offset, y + offset),
+                line,
+                font=face_,
+                fill=hex_rgb(SHADOW) + (170,),
+            )
         shadow = shadow.filter(ImageFilter.GaussianBlur(max(2, size // 18)))
         canvas = Image.alpha_composite(canvas, shadow)
         used.append(SHADOW)
@@ -543,13 +604,23 @@ def typeset(
     for (x, y, line), flags in zip(positions, marked, strict=True):
         cursor = x
         for ch, on in zip(line, flags, strict=True):
-            draw.text((cursor, y), ch, font=face_, fill=accent if on else text_color,
-                      stroke_width=stroke, stroke_fill=OUTLINE_LIGHT if stroke else None)
+            draw.text(
+                (cursor, y),
+                ch,
+                font=face_,
+                fill=accent if on else text_color,
+                stroke_width=stroke,
+                stroke_fill=OUTLINE_LIGHT if stroke else None,
+            )
             cursor += round(face_.getlength(ch))
-    return Typeset(canvas.convert("RGB"), layout, zone, fit.lines, size, boxes, used, plate, tone)
+    return Typeset(
+        canvas.convert("RGB"), layout, zone, fit.lines, size, boxes, used, plate, tone
+    )
 
 
-def _highlight_mask(text: str, lines: list[str], highlight: str | None) -> list[list[bool]]:
+def _highlight_mask(
+    text: str, lines: list[str], highlight: str | None
+) -> list[list[bool]]:
     flat = "".join(lines)
     flags = [False] * len(flat)
     if highlight and highlight in flat:
@@ -558,7 +629,7 @@ def _highlight_mask(text: str, lines: list[str], highlight: str | None) -> list[
             flags[i] = True
     out, index = [], 0
     for line in lines:
-        out.append(flags[index:index + len(line)])
+        out.append(flags[index : index + len(line)])
         index += len(line)
     return out
 
@@ -572,16 +643,15 @@ def picture_cool_share(image: Image.Image, face: Box | None) -> float:
     small = image.convert("RGB").resize((108, 144))
     ignore = presenter_zone(face)
     scale = 108 / CANVAS[0]
-    if ignore:
-        ignore = tuple(round(v * scale) for v in ignore)  # type: ignore[assignment]
+    skip = tuple(round(v * scale) for v in ignore) if ignore else None
     counted = cool = 0
-    pixels = small.load()
+    data = list(small.getdata())
     for y in range(144):
         for x in range(108):
-            if ignore and ignore[0] <= x < ignore[2] and ignore[1] <= y < ignore[3]:
+            if skip and skip[0] <= x < skip[2] and skip[1] <= y < skip[3]:
                 continue
             counted += 1
-            if is_blue_purple(pixels[x, y], 0.35):
+            if is_blue_purple(data[y * 108 + x], 0.35):
                 cool += 1
     return round(cool / counted, 4) if counted else 0.0
 
@@ -601,7 +671,15 @@ class Checks:
     passed: bool = field(init=False)
 
     def __post_init__(self) -> None:
-        self.passed = all((self.text_exact, self.glyphs_ok, self.face_clear, self.design_colors_ok, self.size_ok))
+        self.passed = all(
+            (
+                self.text_exact,
+                self.glyphs_ok,
+                self.face_clear,
+                self.design_colors_ok,
+                self.size_ok,
+            )
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -621,7 +699,9 @@ def verify(result: Typeset, text: str, face: Box | None) -> Checks:
         missing_glyphs=missing,
         face_clear=overlap == 0,
         face_overlap_px=overlap,
-        design_colors_ok=not any(is_blue_purple(hex_rgb(c)) for c in result.design_colors),
+        design_colors_ok=not any(
+            is_blue_purple(hex_rgb(c)) for c in result.design_colors
+        ),
         size_ok=result.image.size == CANVAS,
         picture_cool_share=share,
         picture_cool_hint=share > PICTURE_COOL_HINT,
@@ -630,7 +710,10 @@ def verify(result: Typeset, text: str, face: Box | None) -> Checks:
 
 
 def compose(
-    background: Image.Image, text: str, layouts: list[Layout], face: Box | None,
+    background: Image.Image,
+    text: str,
+    layouts: list[Layout],
+    face: Box | None,
     highlight: str | None = None,
 ) -> tuple[Typeset, Checks]:
     """First layout whose typeset passes every check; raises when none does."""
@@ -655,7 +738,9 @@ def save_views(result: Image.Image, face: Box | None, root: Path) -> dict[str, s
     root.mkdir(parents=True, exist_ok=True)
     paths = {"cover": root / "cover.jpg", "thumb": root / "thumb.jpg"}
     result.save(paths["cover"], "JPEG", quality=92, optimize=True)
-    result.resize((360, 480), Image.Resampling.LANCZOS).save(paths["thumb"], "JPEG", quality=88)
+    result.resize((360, 480), Image.Resampling.LANCZOS).save(
+        paths["thumb"], "JPEG", quality=88
+    )
     if face:
         block = forbidden_zone(face) or face
         paths["face"] = root / "face.jpg"

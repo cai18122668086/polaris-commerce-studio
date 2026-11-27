@@ -33,3 +33,8 @@ Strictly no text of any kind: no letters, no Chinese characters, no numbers, no 
 | mood.bold | Slightly higher contrast and saturation, energetic. |
 | mood.balanced | Normal contrast and saturation. |
 | mood.subtle | Low contrast, muted colors, generous negative space. |
+| layout.top | Place the person in the middle and lower part of the frame and keep roughly the top third above the head clean and empty. |
+| layout.bottom | Place the person in the upper and middle part of the frame; below the chest keep a clean, even area. |
+| layout.side_left | Place the person towards the right side and keep the left half of the frame clean and empty from top to bottom. |
+| layout.side_right | Place the person towards the left side and keep the right half of the frame clean and empty from top to bottom. |
+| layout.center | Keep the centre of the frame clean and empty, with the setting or objects around the edges. |

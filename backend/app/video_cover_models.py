@@ -18,15 +18,34 @@ class VideoCoverCandidateRecord(TimestampMixin, Base):
     __tablename__ = "video_cover_candidates"
     __table_args__ = (
         UniqueConstraint(
-            "workspace_id", "owner_user_id", "request_id", "slot",
+            "workspace_id",
+            "owner_user_id",
+            "request_id",
+            "slot",
             name="uq_video_cover_request_slot",
         ),
-        Index("ix_video_cover_item", "workspace_id", "owner_user_id", "work_item_id", "created_at"),
-        Index("ix_video_cover_source", "workspace_id", "owner_user_id", "source_kind", "source_id"),
+        Index(
+            "ix_video_cover_item",
+            "workspace_id",
+            "owner_user_id",
+            "work_item_id",
+            "created_at",
+        ),
+        Index(
+            "ix_video_cover_source",
+            "workspace_id",
+            "owner_user_id",
+            "source_kind",
+            "source_id",
+        ),
     )
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="RESTRICT"))
-    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT")
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
     request_id: Mapped[str] = mapped_column(String(40))
     request_hash: Mapped[str] = mapped_column(String(64))
     slot: Mapped[int] = mapped_column(Integer, default=0)

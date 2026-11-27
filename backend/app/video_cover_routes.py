@@ -38,7 +38,11 @@ from . import video_cover_skill as skill
 from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .errors import ApiError
-from .video_cover_image_client import CoverImageClient, CoverImageError, HttpCoverImageClient
+from .video_cover_image_client import (
+    CoverImageClient,
+    CoverImageError,
+    HttpCoverImageClient,
+)
 from .video_cover_models import VideoCoverCandidateRecord
 from .video_editing_task_models import EditingSourceRecord, EditingTaskRecord
 from .video_generation_models import VideoGenerationRecord
@@ -49,7 +53,9 @@ from .video_work_routes import WorkItemPatch, WorkItemResponse, patch_item
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/video-studio/workspaces/{workspace_id}", tags=["video-covers"])
+router = APIRouter(
+    prefix="/api/v1/video-studio/workspaces/{workspace_id}", tags=["video-covers"]
+)
 
 Platform = Literal["douyin", "xiaohongshu"]
 TITLE_LIMITS = {"douyin": 30, "xiaohongshu": 20}
@@ -160,22 +166,37 @@ def _held_credits(session: Session, row: VideoCoverCandidateRecord) -> int | Non
     return 0
 
 
-def response(session: Session, row: VideoCoverCandidateRecord) -> CoverCandidateResponse:
-    base = f"/api/v1/video-studio/workspaces/{row.workspace_id}/cover-candidates/{row.id}/image"
+def response(
+    session: Session, row: VideoCoverCandidateRecord
+) -> CoverCandidateResponse:
+    root = f"/api/v1/video-studio/workspaces/{row.workspace_id}"
+    base = f"{root}/cover-candidates/{row.id}/image"
     ready = row.status == "ready"
     checks = None
     if row.checks:
-        checks = CoverChecks(**{k: bool(row.checks.get(k)) for k in CoverChecks.model_fields})
+        checks = CoverChecks(
+            **{k: bool(row.checks.get(k)) for k in CoverChecks.model_fields}
+        )
     message = MESSAGES.get(row.error_code or "") if row.error_code else None
     return CoverCandidateResponse(
-        id=row.id, request_id=row.request_id, slot=row.slot, round=row.round, parent_id=row.parent_id,
-        work_item_id=row.work_item_id, source_kind=row.source_kind,  # type: ignore[arg-type]
-        source_id=row.source_id, platform=row.platform,  # type: ignore[arg-type]
-        cover_text=row.cover_text, highlight=row.highlight,
+        id=row.id,
+        request_id=row.request_id,
+        slot=row.slot,
+        round=row.round,
+        parent_id=row.parent_id,
+        work_item_id=row.work_item_id,
+        source_kind=row.source_kind,  # type: ignore[arg-type]
+        source_id=row.source_id,
+        platform=row.platform,  # type: ignore[arg-type]
+        cover_text=row.cover_text,
+        highlight=row.highlight,
         background=row.background,  # type: ignore[arg-type]
         background_label="AI 重绘" if row.background == "ai" else "视频画面",
-        layout=row.layout, status=row.status,  # type: ignore[arg-type]
-        error_code=row.error_code, message=message, checks=checks,
+        layout=row.layout,
+        status=row.status,  # type: ignore[arg-type]
+        error_code=row.error_code,
+        message=message,
+        checks=checks,
         credits=_held_credits(session, row),
         image_url=base if ready else None,
         thumb_url=base + "?view=thumb" if ready else None,
@@ -190,17 +211,24 @@ def _validate_text(text: str, highlight: str | None) -> tuple[str, str | None]:
     missing = compose.missing_glyphs(text)
     if missing:
         raise ApiError(
-            422, "COVER_TEXT_GLYPHS",
-            "封面大字里有字体显示不了的字符：" + " ".join(missing) + "，请删掉后再生成。",
+            422,
+            "COVER_TEXT_GLYPHS",
+            "封面大字里有字体显示不了的字符："
+            + " ".join(missing)
+            + "，请删掉后再生成。",
             {"characters": missing},
         )
     highlight = compose.normalise_cover_text(highlight or "") or None
     if highlight and highlight.replace(" ", "") not in text.replace(" ", ""):
-        raise ApiError(422, "COVER_HIGHLIGHT_INVALID", "加强的词必须是封面大字里连续的一段。")
+        raise ApiError(
+            422, "COVER_HIGHLIGHT_INVALID", "加强的词必须是封面大字里连续的一段。"
+        )
     return text, highlight
 
 
-def _own_item(session: Session, workspace: WorkspaceContext, item_id: str) -> VideoWorkItemRecord:
+def _own_item(
+    session: Session, workspace: WorkspaceContext, item_id: str
+) -> VideoWorkItemRecord:
     row = session.get(VideoWorkItemRecord, item_id)
     if not row or (row.workspace_id, row.owner_user_id) != _owner(workspace):
         raise ApiError(404, "VIDEO_WORK_ITEM_NOT_FOUND", "未找到这条作品。")
@@ -218,18 +246,27 @@ def resolve_source(
         item = _own_item(session, workspace, body.work_item_id)
         editing_id = editing_id or item.editing_task_id
         generation_id = generation_id or item.generation_task_id
-        if not generation_id and (item.source_video_ref or {}).get("kind") == "talking":
-            generation_id = item.source_video_ref.get("id")
+        ref = item.source_video_ref or {}
+        if not generation_id and ref.get("kind") == "talking":
+            generation_id = ref.get("id")
     owner = _owner(workspace)
     if editing_id:
         task = session.get(EditingTaskRecord, editing_id)
-        if task and (task.workspace_id, task.owner_user_id) == owner and task.status == "completed":
+        if (
+            task
+            and (task.workspace_id, task.owner_user_id) == owner
+            and task.status == "completed"
+        ):
             source = session.get(EditingSourceRecord, task.source_id)
             candidates = [Path(source.media_path)] if source else []
             from .video_editing_task_models import EditingArtifactRecord
 
-            final = session.scalar(select(EditingArtifactRecord).where(
-                EditingArtifactRecord.task_id == task.id, EditingArtifactRecord.role == "final"))
+            final = session.scalar(
+                select(EditingArtifactRecord).where(
+                    EditingArtifactRecord.task_id == task.id,
+                    EditingArtifactRecord.role == "final",
+                )
+            )
             if final:
                 candidates.append(Path(final.path))
             for path in candidates:
@@ -237,17 +274,27 @@ def resolve_source(
                     return "editing", task.id, path
     if generation_id:
         job = session.get(VideoGenerationRecord, generation_id)
-        if job and (job.workspace_id, job.owner_user_id) == owner and job.status == "completed":
+        if (
+            job
+            and (job.workspace_id, job.owner_user_id) == owner
+            and job.status == "completed"
+        ):
             path = Path((job.details or {}).get("result_path") or "")
             if path.is_file():
                 return "generation", job.id, path
-    raise ApiError(422, "COVER_SOURCE_NOT_READY", "这条视频还没有完成，完成剪辑或口播后再生成封面。")
+    raise ApiError(
+        422,
+        "COVER_SOURCE_NOT_READY",
+        "这条视频还没有完成，完成剪辑或口播后再生成封面。",
+    )
 
 
 def _fingerprint(payload: dict[str, Any]) -> str:
     import json
 
-    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
 
 
 # --------------------------------------------------------------- processing
@@ -273,11 +320,18 @@ def _to_canvas(image: Image.Image) -> Image.Image:
 
 
 def _finish(
-    root: Path, row: VideoCoverCandidateRecord, background: Image.Image, face: compose.Box | None,
-    layouts: list[compose.Layout], kind: str, extra: dict[str, Any],
+    root: Path,
+    row: VideoCoverCandidateRecord,
+    background: Image.Image,
+    face: compose.Box | None,
+    layouts: list[compose.Layout],
+    kind: str,
+    extra: dict[str, Any],
 ) -> None:
     root = root / row.id
-    result, checks = compose.compose(background, row.cover_text, layouts, face, row.highlight)
+    result, checks = compose.compose(
+        background, row.cover_text, layouts, face, row.highlight
+    )
     files = {"background": _save(background, root / "background.jpg")}
     files.update(compose.save_views(result.image, face, root))
     row.background = kind
@@ -285,17 +339,25 @@ def _finish(
     row.files = files
     row.checks = checks.as_dict()
     row.params = {
-        **row.params, **extra, "face": list(face) if face else None,
-        "lines": result.lines, "font_size": result.font_size, "tone": result.tone,
-        "design_colors": result.design_colors, "zone": list(result.zone),
+        **row.params,
+        **extra,
+        "face": list(face) if face else None,
+        "lines": result.lines,
+        "font_size": result.font_size,
+        "tone": result.tone,
+        "design_colors": result.design_colors,
+        "zone": list(result.zone),
     }
     row.status = "ready"
     row.error_code = None
 
 
 def process_request(
-    factory: sessionmaker[Session], settings: Any, client: CoverImageClient,
-    row_ids: list[str], video: str,
+    factory: sessionmaker[Session],
+    settings: Any,
+    client: CoverImageClient,
+    row_ids: list[str],
+    video: str,
 ) -> None:
     """Keyframe once, then the real-frame candidate, then the AI candidate."""
 
@@ -304,8 +366,10 @@ def process_request(
     work.mkdir(parents=True, exist_ok=True)
     try:
         with factory() as session:
-            rows = [session.get(VideoCoverCandidateRecord, rid) for rid in row_ids]
-            rows = [r for r in rows if r is not None and r.status in {"queued", "running"}]
+            found = [session.get(VideoCoverCandidateRecord, rid) for rid in row_ids]
+            rows = [
+                r for r in found if r is not None and r.status in {"queued", "running"}
+            ]
             if not rows:
                 return
             for row in rows:
@@ -322,22 +386,46 @@ def process_request(
             previous = tuple(rows[0].params.get("previous_layouts") or ())
             layouts = compose.choose_layouts(face, previous)
             frame_bg = compose.warm_grade(frame)
-            keyframe_info = {"keyframe_at": key.at, "keyframe_score": round(key.score, 4)}
+            keyframe_info = {
+                "keyframe_at": key.at,
+                "keyframe_score": round(key.score, 4),
+            }
             for row in rows:
                 started = time.monotonic()
-                own_layouts = layouts[row.slot % 2:] + layouts[: row.slot % 2]
+                own_layouts = layouts[row.slot % 2 :] + layouts[: row.slot % 2]
                 try:
                     if row.background == "frame":
-                        _finish(root, row, frame_bg, face, own_layouts, "frame", keyframe_info)
+                        _finish(
+                            root,
+                            row,
+                            frame_bg,
+                            face,
+                            own_layouts,
+                            "frame",
+                            keyframe_info,
+                        )
                     else:
-                        _ai_candidate(root, row, client, frame, face, own_layouts, frame_bg, keyframe_info)
+                        _ai_candidate(
+                            root,
+                            row,
+                            client,
+                            frame,
+                            face,
+                            own_layouts,
+                            frame_bg,
+                            keyframe_info,
+                        )
                 except compose.CoverComposeError as exc:
                     row.status, row.error_code = "failed", exc.code
                 except Exception:
                     logger.exception("video_cover_failed id=%s", row.id)
                     row.status, row.error_code = "failed", "COVER_FAILED"
-                row.receipt = {**row.receipt, "seconds": round(time.monotonic() - started, 2),
-                               "skill": skill.SKILL_ID, "skill_version": skill.skill_version()}
+                row.receipt = {
+                    **row.receipt,
+                    "seconds": round(time.monotonic() - started, 2),
+                    "skill": skill.SKILL_ID,
+                    "skill_version": skill.skill_version(),
+                }
                 session.commit()
                 video_credits.reconcile_owner(session, "video_cover", row.id)
                 session.commit()
@@ -346,57 +434,100 @@ def process_request(
 
 
 def _ai_candidate(
-    root: Path, row: VideoCoverCandidateRecord, client: CoverImageClient, frame: Image.Image,
-    face: compose.Box | None, layouts: list[compose.Layout], frame_bg: Image.Image,
+    root: Path,
+    row: VideoCoverCandidateRecord,
+    client: CoverImageClient,
+    frame: Image.Image,
+    face: compose.Box | None,
+    layouts: list[compose.Layout],
+    frame_bg: Image.Image,
     keyframe_info: dict[str, Any],
 ) -> None:
     face_on_right = bool(face) and (face[0] + face[2]) / 2 > compose.CANVAS[0] / 2  # type: ignore[index]
     zone_key = skill.zone_key(layouts[0], face_on_right)
-    dims = skill.choose_dimensions(row.params.get("topic") or row.cover_text, rotate=row.round)
-    prompt = skill.build_prompt(row.params.get("topic") or row.cover_text, zone_key, dims)
+    dims = skill.choose_dimensions(
+        row.params.get("topic") or row.cover_text, rotate=row.round
+    )
+    prompt = skill.build_prompt(
+        row.params.get("topic") or row.cover_text, zone_key, dims
+    )
     buffer = io.BytesIO()
     frame.save(buffer, "PNG")
     try:
-        result = client.edit(buffer.getvalue(), prompt, idempotency_key=f"cover-{row.id}")
+        result = client.edit(
+            buffer.getvalue(), prompt, idempotency_key=f"cover-{row.id}"
+        )
     except CoverImageError as exc:
         # Fall back to the real frame in this slot's own layout; nothing is charged.
         row.receipt = {**row.receipt, "ai_error_code": exc.code}
-        _finish(root, row, frame_bg, face, layouts, "frame", {**keyframe_info, "fallback_from": "ai"})
+        _finish(
+            root,
+            row,
+            frame_bg,
+            face,
+            layouts,
+            "frame",
+            {**keyframe_info, "fallback_from": "ai"},
+        )
         row.error_code = exc.code  # shown as a note; the candidate itself is ready
         return
     background = _to_canvas(result.image)
     redetected = compose.detect_face(background)
     new_face = redetected[0] if redetected else face
     row.receipt = {
-        **row.receipt, "model_requested": result.model_requested, "model_reported": result.model_reported,
+        **row.receipt,
+        "model_requested": result.model_requested,
+        "model_reported": result.model_reported,
         "prompt_sha256": skill.prompt_hash(prompt),
     }
-    _finish(root, row, background, new_face, layouts, "ai", {
-        **keyframe_info, "dimensions": dims.__dict__, "face_redetected": bool(redetected),
-    })
+    _finish(
+        root,
+        row,
+        background,
+        new_face,
+        layouts,
+        "ai",
+        {
+            **keyframe_info,
+            "dimensions": dims.__dict__,
+            "face_redetected": bool(redetected),
+        },
+    )
 
 
 # ------------------------------------------------------------------- routes
 
 
-def _rows_for_request(session: Session, workspace: WorkspaceContext, request_id: str) -> list[VideoCoverCandidateRecord]:
-    return list(session.scalars(
-        select(VideoCoverCandidateRecord).where(
-            VideoCoverCandidateRecord.workspace_id == workspace.workspace_id,
-            VideoCoverCandidateRecord.owner_user_id == workspace.principal.user_id,
-            VideoCoverCandidateRecord.request_id == request_id,
-        ).order_by(VideoCoverCandidateRecord.slot)
-    ))
+def _rows_for_request(
+    session: Session, workspace: WorkspaceContext, request_id: str
+) -> list[VideoCoverCandidateRecord]:
+    return list(
+        session.scalars(
+            select(VideoCoverCandidateRecord)
+            .where(
+                VideoCoverCandidateRecord.workspace_id == workspace.workspace_id,
+                VideoCoverCandidateRecord.owner_user_id == workspace.principal.user_id,
+                VideoCoverCandidateRecord.request_id == request_id,
+            )
+            .order_by(VideoCoverCandidateRecord.slot)
+        )
+    )
 
 
 @router.post("/cover-candidates", response_model=list[CoverCandidateResponse])
 def generate(
-    body: CoverGenerateRequest, request: Request, background: BackgroundTasks,
-    workspace: VideoWorkspace, session: SessionDependency,
+    body: CoverGenerateRequest,
+    request: Request,
+    background: BackgroundTasks,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
 ) -> list[CoverCandidateResponse]:
     require_workspace_write(workspace)
     text, highlight = _validate_text(body.cover_text, body.highlight)
-    payload = body.model_dump(mode="json") | {"cover_text": text, "highlight": highlight}
+    payload = body.model_dump(mode="json") | {
+        "cover_text": text,
+        "highlight": highlight,
+    }
     fingerprint = _fingerprint(payload)
     existing = _rows_for_request(session, workspace, str(body.request_id))
     if existing:
@@ -404,33 +535,71 @@ def generate(
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求标识已用于其他内容。")
         return [response(session, row) for row in existing]
     kind, source_id, video = resolve_source(session, workspace, body)
-    item = _own_item(session, workspace, body.work_item_id) if body.work_item_id else None
-    previous = session.scalars(
-        select(VideoCoverCandidateRecord.layout).where(
-            VideoCoverCandidateRecord.workspace_id == workspace.workspace_id,
-            VideoCoverCandidateRecord.owner_user_id == workspace.principal.user_id,
-            VideoCoverCandidateRecord.source_kind == kind,
-            VideoCoverCandidateRecord.source_id == source_id,
-            VideoCoverCandidateRecord.status == "ready",
-        ).order_by(VideoCoverCandidateRecord.created_at.desc()).limit(2)
-    ).all() if body.round else []
-    topic = " ".join(filter(None, [item.publish_title if item else "", (item.script_text or "")[:120] if item else "", text]))
+    item = (
+        _own_item(session, workspace, body.work_item_id) if body.work_item_id else None
+    )
+    previous = (
+        session.scalars(
+            select(VideoCoverCandidateRecord.layout)
+            .where(
+                VideoCoverCandidateRecord.workspace_id == workspace.workspace_id,
+                VideoCoverCandidateRecord.owner_user_id == workspace.principal.user_id,
+                VideoCoverCandidateRecord.source_kind == kind,
+                VideoCoverCandidateRecord.source_id == source_id,
+                VideoCoverCandidateRecord.status == "ready",
+            )
+            .order_by(VideoCoverCandidateRecord.created_at.desc())
+            .limit(2)
+        ).all()
+        if body.round
+        else []
+    )
+    topic = " ".join(
+        filter(
+            None,
+            [
+                item.publish_title if item else "",
+                (item.script_text or "")[:120] if item else "",
+                text,
+            ],
+        )
+    )
     rows = []
     for slot, kind_ in ((0, "frame"), (1, "ai")):
-        rows.append(VideoCoverCandidateRecord(
-            id=str(uuid4()), workspace_id=workspace.workspace_id, owner_user_id=workspace.principal.user_id,
-            request_id=str(body.request_id), request_hash=fingerprint, slot=slot,
-            work_item_id=body.work_item_id, source_kind=kind, source_id=source_id,
-            platform=body.platform, cover_text=text, highlight=highlight, background=kind_,
-            round=body.round, status="queued",
-            params={"topic": topic, "previous_layouts": [p for p in previous if p]},
-            checks={}, files={}, receipt={},
-        ))
+        rows.append(
+            VideoCoverCandidateRecord(
+                id=str(uuid4()),
+                workspace_id=workspace.workspace_id,
+                owner_user_id=workspace.principal.user_id,
+                request_id=str(body.request_id),
+                request_hash=fingerprint,
+                slot=slot,
+                work_item_id=body.work_item_id,
+                source_kind=kind,
+                source_id=source_id,
+                platform=body.platform,
+                cover_text=text,
+                highlight=highlight,
+                background=kind_,
+                round=body.round,
+                status="queued",
+                params={"topic": topic, "previous_layouts": [p for p in previous if p]},
+                checks={},
+                files={},
+                receipt={},
+            )
+        )
     session.add_all(rows)
     try:
         session.flush()
-        video_credits.hold(session, request.app.state.settings, workspace.workspace_id,
-                           "cover_generate", "video_cover", rows[1].id)
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            workspace.workspace_id,
+            "cover_generate",
+            "video_cover",
+            rows[1].id,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -439,13 +608,19 @@ def generate(
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求冲突。") from None
         return [response(session, row) for row in existing]
     background.add_task(
-        process_request, request.app.state.session_factory, request.app.state.settings,
-        image_client(request), [row.id for row in rows], str(video),
+        process_request,
+        request.app.state.session_factory,
+        request.app.state.settings,
+        image_client(request),
+        [row.id for row in rows],
+        str(video),
     )
     return [response(session, row) for row in rows]
 
 
-def _own_candidate(session: Session, workspace: WorkspaceContext, candidate_id: str) -> VideoCoverCandidateRecord:
+def _own_candidate(
+    session: Session, workspace: WorkspaceContext, candidate_id: str
+) -> VideoCoverCandidateRecord:
     row = session.get(VideoCoverCandidateRecord, candidate_id)
     if not row or (row.workspace_id, row.owner_user_id) != _owner(workspace):
         raise ApiError(404, "COVER_NOT_FOUND", "未找到这张封面。")
@@ -458,7 +633,10 @@ def _expire_stale(session: Session, rows: list[VideoCoverCandidateRecord]) -> No
     now = datetime.now(UTC)
     changed = False
     for row in rows:
-        if row.status in {"queued", "running"} and (now - _aware(row.updated_at)).total_seconds() > STALE_SECONDS:
+        if (
+            row.status in {"queued", "running"}
+            and (now - _aware(row.updated_at)).total_seconds() > STALE_SECONDS
+        ):
             row.status, row.error_code = "failed", "COVER_INTERRUPTED"
             changed = True
     if changed:
@@ -471,7 +649,8 @@ def _expire_stale(session: Session, rows: list[VideoCoverCandidateRecord]) -> No
 
 @router.get("/cover-candidates", response_model=list[CoverCandidateResponse])
 def list_candidates(
-    workspace: VideoWorkspace, session: SessionDependency,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
     work_item_id: Annotated[str | None, Query(max_length=40)] = None,
     editing_task_id: UUID | None = None,
     generation_task_id: UUID | None = None,
@@ -486,25 +665,38 @@ def list_candidates(
     if work_item_id:
         filters.append(VideoCoverCandidateRecord.work_item_id == work_item_id)
     if editing_task_id:
-        filters.append((VideoCoverCandidateRecord.source_kind == "editing") & (VideoCoverCandidateRecord.source_id == str(editing_task_id)))
+        filters.append(
+            (VideoCoverCandidateRecord.source_kind == "editing")
+            & (VideoCoverCandidateRecord.source_id == str(editing_task_id))
+        )
     if generation_task_id:
-        filters.append((VideoCoverCandidateRecord.source_kind == "generation") & (VideoCoverCandidateRecord.source_id == str(generation_task_id)))
+        filters.append(
+            (VideoCoverCandidateRecord.source_kind == "generation")
+            & (VideoCoverCandidateRecord.source_id == str(generation_task_id))
+        )
     if ids:
         wanted = [value for value in ids.split(",") if value][:200]
         filters.append(VideoCoverCandidateRecord.id.in_(wanted))
     if not filters:
         raise ApiError(422, "COVER_FILTER_REQUIRED", "请指定作品或视频。")
-    rows = list(session.scalars(
-        query.where(or_(*filters)).order_by(
-            VideoCoverCandidateRecord.created_at.desc(), VideoCoverCandidateRecord.slot
-        ).limit(limit)
-    ))
+    rows = list(
+        session.scalars(
+            query.where(or_(*filters))
+            .order_by(
+                VideoCoverCandidateRecord.created_at.desc(),
+                VideoCoverCandidateRecord.slot,
+            )
+            .limit(limit)
+        )
+    )
     _expire_stale(session, rows)
     return [response(session, row) for row in rows]
 
 
 @router.get("/cover-candidates/{candidate_id}", response_model=CoverCandidateResponse)
-def get_candidate(candidate_id: str, workspace: VideoWorkspace, session: SessionDependency) -> CoverCandidateResponse:
+def get_candidate(
+    candidate_id: str, workspace: VideoWorkspace, session: SessionDependency
+) -> CoverCandidateResponse:
     row = _own_candidate(session, workspace, candidate_id)
     _expire_stale(session, [row])
     return response(session, row)
@@ -512,8 +704,12 @@ def get_candidate(candidate_id: str, workspace: VideoWorkspace, session: Session
 
 @router.get("/cover-candidates/{candidate_id}/image")
 def candidate_image(
-    candidate_id: str, request: Request, workspace: VideoWorkspace, session: SessionDependency,
-    view: Literal["cover", "thumb", "face"] = "cover", download: bool = False,
+    candidate_id: str,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+    view: Literal["cover", "thumb", "face"] = "cover",
+    download: bool = False,
 ) -> FileResponse:
     row = _own_candidate(session, workspace, candidate_id)
     stored = row.files.get(view) if row.status == "ready" else None
@@ -522,24 +718,32 @@ def candidate_image(
     if not path or root not in path.parents or not path.is_file():
         raise ApiError(404, "COVER_IMAGE_NOT_FOUND", "封面图片暂不可用。")
     return FileResponse(
-        path, media_type="image/jpeg",
+        path,
+        media_type="image/jpeg",
         filename=f"封面-{row.cover_text[:12]}.jpg" if download else None,
         content_disposition_type="attachment" if download else "inline",
         headers={"Cache-Control": "private, max-age=3600"},
     )
 
 
-@router.post("/cover-candidates/{candidate_id}/retext", response_model=CoverCandidateResponse)
+@router.post(
+    "/cover-candidates/{candidate_id}/retext", response_model=CoverCandidateResponse
+)
 def retext(
-    candidate_id: str, body: CoverRetextRequest, request: Request,
-    workspace: VideoWorkspace, session: SessionDependency,
+    candidate_id: str,
+    body: CoverRetextRequest,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
 ) -> CoverCandidateResponse:
     """Same background, new cover text: free, synchronous (well under a second)."""
 
     require_workspace_write(workspace)
     parent = _own_candidate(session, workspace, candidate_id)
     text, highlight = _validate_text(body.cover_text, body.highlight)
-    fingerprint = _fingerprint({"parent": parent.id, "cover_text": text, "highlight": highlight})
+    fingerprint = _fingerprint(
+        {"parent": parent.id, "cover_text": text, "highlight": highlight}
+    )
     existing = _rows_for_request(session, workspace, str(body.request_id))
     if existing:
         if existing[0].request_hash != fingerprint:
@@ -549,22 +753,51 @@ def retext(
     if parent.status != "ready" or not source.is_file():
         raise ApiError(409, "COVER_NOT_READY", "这张封面还没有生成好。")
     row = VideoCoverCandidateRecord(
-        id=str(uuid4()), workspace_id=parent.workspace_id, owner_user_id=parent.owner_user_id,
-        request_id=str(body.request_id), request_hash=fingerprint, slot=0,
-        work_item_id=parent.work_item_id, source_kind=parent.source_kind, source_id=parent.source_id,
-        platform=parent.platform, cover_text=text, highlight=highlight, background=parent.background,
-        round=parent.round, parent_id=parent.id, status="running",
-        params={"topic": parent.params.get("topic")}, checks={}, files={}, receipt={},
+        id=str(uuid4()),
+        workspace_id=parent.workspace_id,
+        owner_user_id=parent.owner_user_id,
+        request_id=str(body.request_id),
+        request_hash=fingerprint,
+        slot=0,
+        work_item_id=parent.work_item_id,
+        source_kind=parent.source_kind,
+        source_id=parent.source_id,
+        platform=parent.platform,
+        cover_text=text,
+        highlight=highlight,
+        background=parent.background,
+        round=parent.round,
+        parent_id=parent.id,
+        status="running",
+        params={"topic": parent.params.get("topic")},
+        checks={},
+        files={},
+        receipt={},
     )
     session.add(row)
     session.flush()
     with Image.open(source) as opened:
         background_image = opened.convert("RGB")
-    face = tuple(parent.params["face"]) if parent.params.get("face") else None
-    layouts = [parent.layout] if parent.layout else []
-    layouts += [layout for layout in compose.choose_layouts(face) if layout not in layouts]  # type: ignore[arg-type]
+    stored_face = parent.params.get("face")
+    face: compose.Box | None = (
+        (stored_face[0], stored_face[1], stored_face[2], stored_face[3])
+        if stored_face
+        else None
+    )
+    # Same layout as the parent first, then the usual pair for this face.
+    known: list[compose.Layout] = ["top", "bottom", "side", "center"]
+    layouts = [layout for layout in known if layout == parent.layout]
+    layouts += [x for x in compose.choose_layouts(face) if x not in layouts]
     try:
-        _finish(covers_root(request.app.state.settings), row, background_image, face, layouts, parent.background, {"retext_of": parent.id})  # type: ignore[arg-type]
+        _finish(
+            covers_root(request.app.state.settings),
+            row,
+            background_image,
+            face,
+            layouts,
+            parent.background,
+            {"retext_of": parent.id},
+        )
     except compose.CoverComposeError as exc:
         session.rollback()
         raise ApiError(422, exc.code, MESSAGES.get(exc.code, exc.message)) from None
@@ -574,7 +807,10 @@ def retext(
 
 @router.post("/work-items/{item_id}/finish", response_model=WorkItemResponse)
 def finish_item(
-    item_id: str, body: CoverFinishRequest, workspace: VideoWorkspace, session: SessionDependency,
+    item_id: str,
+    body: CoverFinishRequest,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
 ) -> WorkItemResponse:
     """Save the chosen cover and the final title/body; the work becomes 已完成."""
 
@@ -585,7 +821,10 @@ def finish_item(
         raise ApiError(409, "COVER_NOT_READY", "这张封面还没有生成好。")
     matches = cover.work_item_id == item.id or (
         (cover.source_kind == "editing" and cover.source_id == item.editing_task_id)
-        or (cover.source_kind == "generation" and cover.source_id == item.generation_task_id)
+        or (
+            cover.source_kind == "generation"
+            and cover.source_id == item.generation_task_id
+        )
     )
     if not matches:
         raise ApiError(422, "COVER_ITEM_MISMATCH", "这张封面不是这条视频的。")

@@ -1,4 +1,4 @@
-"""Offline rules of the cover skill: exact title, face kept clear, warm design colours."""
+"""Offline cover rules: exact title, face kept clear, warm design colours."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def test_two_candidates_use_structurally_different_layouts():
     assert cc.choose_layouts(FACE_HIGH)[0] == "bottom"
     assert cc.choose_layouts(FACE_RIGHT)[0] == "side"
     # 换一批: unused layouts first.
-    assert cc.choose_layouts(FACE_LOW, previous=("top", "bottom")) [0] == "side"
+    assert cc.choose_layouts(FACE_LOW, previous=("top", "bottom"))[0] == "side"
 
 
 def test_line_breaks_follow_cjk_punctuation_rules():
@@ -63,13 +63,18 @@ def test_line_breaks_follow_cjk_punctuation_rules():
         assert all(line[-1] not in cc.NO_LINE_END for line in lines)
     # Latin words and numbers are never split.
     lines = cc.break_lines("iPhone17Pro续航实测", 2)
-    assert lines and all("iPhone17Pro" in line or "iPhone" not in line for line in lines)
+    assert lines and all(
+        "iPhone17Pro" in line or "iPhone" not in line for line in lines
+    )
 
 
 def test_glyph_check_catches_characters_the_font_cannot_draw():
     assert cc.missing_glyphs("冰丝凉席，夏天必备！") == []
     assert cc.missing_glyphs("好物😀") == ["😀"]
-    assert cc.default_cover_text("夏天必备😀 冰丝凉席 #好物推荐 #夏天") == "夏天必备 冰丝凉席"
+    assert (
+        cc.default_cover_text("夏天必备😀 冰丝凉席 #好物推荐 #夏天")
+        == "夏天必备 冰丝凉席"
+    )
 
 
 def test_text_check_fails_when_lines_do_not_match():
@@ -80,14 +85,25 @@ def test_text_check_fails_when_lines_do_not_match():
 
 def test_face_check_fails_when_text_touches_the_face():
     result, _ = cc.compose(plain(), "夏天必备的冰丝凉席", ["top"], FACE_LOW)
-    moved = (FACE_LOW[0], result.text_boxes[0][1], FACE_LOW[2], result.text_boxes[0][3] + 80)
+    moved = (
+        FACE_LOW[0],
+        result.text_boxes[0][1],
+        FACE_LOW[2],
+        result.text_boxes[0][3] + 80,
+    )
     checks = cc.verify(result, "夏天必备的冰丝凉席", moved)
     assert not checks.face_clear and not checks.passed
 
 
 def test_design_colours_are_never_blue_or_purple():
     for background in (plain(), plain((20, 20, 24)), busy()):
-        result, checks = cc.compose(background, "夏天必备的冰丝凉席", ["top", "bottom"], FACE_LOW, highlight="冰丝")
+        result, checks = cc.compose(
+            background,
+            "夏天必备的冰丝凉席",
+            ["top", "bottom"],
+            FACE_LOW,
+            highlight="冰丝",
+        )
         assert checks.design_colors_ok
         assert not any(cc.is_blue_purple(cc.hex_rgb(c)) for c in result.design_colors)
     assert cc.is_blue_purple((40, 80, 220)) and cc.is_blue_purple((140, 60, 220))

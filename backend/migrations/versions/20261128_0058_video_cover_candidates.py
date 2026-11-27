@@ -5,12 +5,12 @@ Revision ID: 20261128_0058
 
 import sqlalchemy as sa
 from alembic import op
-
 from sqlalchemy.dialects import postgresql
 
 
 def json_type() -> sa.types.TypeEngine:
     return sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
+
 
 revision = "20261128_0058"
 down_revision = "20261125_0053"
@@ -22,8 +22,18 @@ def upgrade() -> None:
     op.create_table(
         "video_cover_candidates",
         sa.Column("id", sa.String(40), primary_key=True),
-        sa.Column("workspace_id", sa.String(40), sa.ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False),
-        sa.Column("owner_user_id", sa.String(40), sa.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column(
+            "workspace_id",
+            sa.String(40),
+            sa.ForeignKey("workspaces.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
+        sa.Column(
+            "owner_user_id",
+            sa.String(40),
+            sa.ForeignKey("users.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
         sa.Column("request_id", sa.String(40), nullable=False),
         sa.Column("request_hash", sa.String(64), nullable=False),
         sa.Column("slot", sa.Integer(), nullable=False),
@@ -43,16 +53,34 @@ def upgrade() -> None:
         sa.Column("checks", json_type(), nullable=False),
         sa.Column("files", json_type(), nullable=False),
         sa.Column("receipt", json_type(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-        sa.UniqueConstraint("workspace_id", "owner_user_id", "request_id", "slot", name="uq_video_cover_request_slot"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.UniqueConstraint(
+            "workspace_id",
+            "owner_user_id",
+            "request_id",
+            "slot",
+            name="uq_video_cover_request_slot",
+        ),
     )
     op.create_index(
-        "ix_video_cover_item", "video_cover_candidates",
+        "ix_video_cover_item",
+        "video_cover_candidates",
         ["workspace_id", "owner_user_id", "work_item_id", "created_at"],
     )
     op.create_index(
-        "ix_video_cover_source", "video_cover_candidates",
+        "ix_video_cover_source",
+        "video_cover_candidates",
         ["workspace_id", "owner_user_id", "source_kind", "source_id"],
     )
 

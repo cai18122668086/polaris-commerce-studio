@@ -35,7 +35,9 @@ class CoverImageResult:
 
 
 class CoverImageClient(Protocol):
-    def edit(self, reference_png: bytes, prompt: str, *, idempotency_key: str) -> CoverImageResult: ...
+    def edit(
+        self, reference_png: bytes, prompt: str, *, idempotency_key: str
+    ) -> CoverImageResult: ...
 
 
 class HttpCoverImageClient:
@@ -49,28 +51,45 @@ class HttpCoverImageClient:
     def configured(self) -> bool:
         return bool(self.api_key and self.base_url)
 
-    def edit(self, reference_png: bytes, prompt: str, *, idempotency_key: str) -> CoverImageResult:
+    def edit(
+        self, reference_png: bytes, prompt: str, *, idempotency_key: str
+    ) -> CoverImageResult:
         if not self.configured:
             raise CoverImageError("COVER_IMAGE_NOT_CONFIGURED", "AI 封面服务尚未配置。")
         try:
             response = httpx.post(
                 self.base_url + "/v1/images/edits",
-                headers={"Authorization": f"Bearer {self.api_key}", "Idempotency-Key": idempotency_key},
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Idempotency-Key": idempotency_key,
+                },
                 data={
-                    "model": self.model, "prompt": prompt, "n": "1", "size": "1200x1600",  # 3:4 canvas the relay accepts; resized to 1080x1440
-                    "quality": "medium", "output_format": "png", "response_format": "b64_json",
+                    "model": self.model,
+                    "prompt": prompt,
+                    "n": "1",
+                    "size": "1200x1600",  # 3:4 the relay accepts; resized
+                    "quality": "medium",
+                    "output_format": "png",
+                    "response_format": "b64_json",
                 },
                 files=[("image", ("frame.png", reference_png, "image/png"))],
                 timeout=self.timeout,
             )
         except httpx.TimeoutException:
-            raise CoverImageError("COVER_IMAGE_TIMEOUT", "AI 封面生成超时。", retryable=True) from None
+            raise CoverImageError(
+                "COVER_IMAGE_TIMEOUT", "AI 封面生成超时。", retryable=True
+            ) from None
         except httpx.HTTPError:
-            raise CoverImageError("COVER_IMAGE_UNAVAILABLE", "AI 封面服务暂时连不上。", retryable=True) from None
+            raise CoverImageError(
+                "COVER_IMAGE_UNAVAILABLE", "AI 封面服务暂时连不上。", retryable=True
+            ) from None
         if response.status_code >= 400:
             raise CoverImageError(
-                "COVER_IMAGE_REJECTED" if response.status_code < 500 else "COVER_IMAGE_UNAVAILABLE",
-                "AI 封面服务没有返回图片。", retryable=response.status_code >= 500,
+                "COVER_IMAGE_REJECTED"
+                if response.status_code < 500
+                else "COVER_IMAGE_UNAVAILABLE",
+                "AI 封面服务没有返回图片。",
+                retryable=response.status_code >= 500,
             )
         try:
             body = response.json()
@@ -78,5 +97,9 @@ class HttpCoverImageClient:
             raw = base64.b64decode(item["b64_json"])
             image = Image.open(io.BytesIO(raw)).convert("RGB")
         except Exception:
-            raise CoverImageError("COVER_IMAGE_INVALID", "AI 封面服务返回的图片无法读取。") from None
-        return CoverImageResult(image, self.model, body.get("model") if isinstance(body, dict) else None)
+            raise CoverImageError(
+                "COVER_IMAGE_INVALID", "AI 封面服务返回的图片无法读取。"
+            ) from None
+        return CoverImageResult(
+            image, self.model, body.get("model") if isinstance(body, dict) else None
+        )

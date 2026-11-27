@@ -216,7 +216,13 @@ class DurableFastDetailGateway:
                         recovery = self._accepted_recovery(old)
                         if recovery:
                             break
-                    if old.get("state") != "failed" or current.id == job.id:
+                    # "abandoned_unknown": the user confirmed redoing this
+                    # missing page (detail_missing_pages); like a known failure
+                    # it may dispatch again only from the explicit retry job.
+                    if (
+                        old.get("state") not in {"failed", "abandoned_unknown"}
+                        or current.id == job.id
+                    ):
                         raise ApiError(
                             409,
                             "PROVIDER_OUTCOME_UNKNOWN",

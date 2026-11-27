@@ -1868,6 +1868,30 @@ def get_main_image_missing_pages(
     ))
 
 
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/detail/missing-pages",
+    response_model=MainImageMissingPagesResponse,
+    tags=["jobs"],
+)
+def get_detail_missing_pages(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> MainImageMissingPagesResponse:
+    """Detail 精致版: missing screens and the charge rule shown before a redo."""
+
+    from .detail_missing_pages import reconcile
+
+    return MainImageMissingPagesResponse.model_validate(
+        reconcile(
+            session,
+            get_workspace_job(session, workspace.workspace_id, job_id),
+            request.app.state.settings.aurora_work_root,
+        )
+    )
+
+
 def _is_preserved_amazon_review_infrastructure_failure(
     item: JobItemRecord,
 ) -> bool:
@@ -2550,8 +2574,11 @@ def retry_job(
             )
 
     if payload.confirm_missing_pages is not None:
+        from . import detail_missing_pages
         from .aurora_main_image_missing_pages import confirm_and_release
 
+        if detail_missing_pages.applicable(source):
+            confirm_and_release = detail_missing_pages.confirm_and_release
         if payload.scope != RetryScope.FAILED:
             raise ApiError(422, "VALIDATION_ERROR", "补齐缺页只能重做失败的页。")
         confirm_and_release(
@@ -5259,18 +5286,18 @@ def _validate_domestic_detail_retry(
     ):
         return
     if detail_fast_runtime.is_independent(source.configuration):
-        uncertain_item_id = session.scalar(
-            select(JobItemRecord.id)
-            .where(
+        from .detail_missing_pages import released
+
+        uncertain_ids = session.scalars(
+            select(JobItemRecord.id).where(
                 JobItemRecord.job_id == source.id,
                 JobItemRecord.id.in_(selected),
                 JobItemRecord.error_code.in_(
                     ("PROVIDER_OUTCOME_UNKNOWN", "IMAGE_RESULT_DOWNLOAD_UNCONFIRMED")
                 ),
             )
-            .limit(1)
-        )
-        if uncertain_item_id is not None:
+        ).all()
+        if uncertain_ids and not released(source, list(uncertain_ids)):
             raise ApiError(
                 409,
                 "PROVIDER_OUTCOME_UNKNOWN",

@@ -11876,7 +11876,7 @@
                 "items": {
                   "type": "integer"
                 },
-                "maxItems": 6,
+                "maxItems": 12,
                 "minItems": 1,
                 "type": "array"
               },
@@ -30413,6 +30413,63 @@
           }
         ],
         "summary": "Prepare Domestic Detail Final Review",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail/missing-pages": {
+      "get": {
+        "description": "Detail 精致版: missing screens and the charge rule shown before a redo.",
+        "operationId": "get_detail_missing_pages_api_v1_workspaces__workspace_id__jobs__job_id__detail_missing_pages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MainImageMissingPagesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Detail Missing Pages",
         "tags": [
           "jobs"
         ]

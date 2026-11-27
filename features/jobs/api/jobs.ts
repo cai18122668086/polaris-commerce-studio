@@ -297,6 +297,25 @@ export function useMainImageMissingPages(
   });
 }
 
+/** Detail 精致版: reconciled missing screens and the charge rule (read-only). */
+export function useDetailMissingPages(
+  workspaceId: string | undefined,
+  jobId: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: [...jobKeys.detail(workspaceId ?? "pending", jobId ?? "pending"), "detail-missing-pages"],
+    enabled: Boolean(workspaceId && jobId && enabled),
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.GET(
+        "/api/v1/workspaces/{workspace_id}/jobs/{job_id}/detail/missing-pages",
+        { params: { path: { workspace_id: workspaceId!, job_id: jobId! } }, signal },
+      );
+      return unwrapApiResponse(result);
+    },
+  });
+}
+
 /** Redo only the confirmed missing pages; the server re-checks the list. */
 export function useRedoMissingPages(workspaceId: string | undefined) {
   return useJobMutation<JobDetail, { jobId: string; pages: number[] }>(

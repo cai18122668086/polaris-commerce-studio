@@ -243,6 +243,52 @@ def test_a_second_empty_screen_plan_fails_the_job(client, monkeypatch):
     assert job["status"] == "failed" and job["error_code"] == "AURORA_DETAIL_PLAN_INVALID"
 
 
+def test_missing_screens_are_redone_only_after_the_user_confirms_them(client, monkeypatch):
+    from app.provider import ProviderOutcome
+
+    gateway = _gateway(client)
+    client.app.state.storage.validator.max_image_pixels = 6_000_000
+    synthetic_edit(gateway, monkeypatch)
+    edit = gateway.edit
+    calls = []
+
+    async def unknown_once(request):
+        calls.append(request.page_number)
+        result = await edit(request)
+        if request.page_number == 2 and calls.count(2) == 1:
+            return replace(result, outcome=ProviderOutcome.OUTCOME_UNKNOWN, artifact=None,
+                           error_code="PROVIDER_OUTCOME_UNKNOWN")
+        return result
+
+    monkeypatch.setattr(gateway, "edit", unknown_once)
+    job = create(client, count=3, auto_start=True)
+    dispatch_pending(client)
+    source = client.get(f"{BASE}/jobs/{job['id']}").json()
+    assert source["status"] == "partial", source
+    # An ordinary retry still refuses a page whose outcome is unknown.
+    blocked = client.post(f"{BASE}/jobs/{job['id']}/retry", headers=idem(), json={"scope": "failed"})
+    assert blocked.status_code == 409 and blocked.json()["error"]["code"] == "PROVIDER_OUTCOME_UNKNOWN"
+    missing = client.get(f"{BASE}/jobs/{job['id']}/detail/missing-pages").json()
+    assert missing["delivered_pages"] == [0, 2]
+    assert [(p["page_index"], p["reason"]) for p in missing["missing_pages"]] == [(1, "结果未确认")]
+    assert missing["credits_per_page"] == 15 and missing["max_credits"] == 15
+    wrong = client.post(f"{BASE}/jobs/{job['id']}/retry", headers=idem(),
+                        json={"scope": "failed", "confirm_missing_pages": [0, 1]})
+    assert wrong.status_code == 409 and wrong.json()["error"]["code"] == "MISSING_PAGES_CHANGED"
+    redo = client.post(f"{BASE}/jobs/{job['id']}/retry", headers=idem(),
+                       json={"scope": "failed", "confirm_missing_pages": [1]})
+    assert redo.status_code == 201, redo.text
+    child = redo.json()
+    assert child["cost"]["estimated_credits"] == 15
+    dispatch_pending(client)
+    final = client.get(f"{BASE}/jobs/{child['id']}").json()
+    assert final["status"] == "completed", final
+    assert sorted(calls) == [1, 2, 2, 3]
+    again = client.post(f"{BASE}/jobs/{job['id']}/retry", headers=idem(),
+                        json={"scope": "failed", "confirm_missing_pages": [1]})
+    assert again.status_code == 409
+
+
 def test_flag_off_keeps_the_historical_xinghe_pipeline(client, monkeypatch):
     monkeypatch.setenv("POLARIS_DETAIL_AURORA_AUTHORED", "false")
     job = create(client)

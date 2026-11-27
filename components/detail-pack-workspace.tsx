@@ -37,7 +37,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { WorkspaceHeader } from "@/components/workspace-header";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 import { useAssetAccessUrl, useUploadAsset } from "@/features/assets/api/assets";
-import { useConfirmPlan, useCreateJob, useDomesticDetailFinalReview, useFinalizeJob, useJob, useRetryJob } from "@/features/jobs/api/jobs";
+import { useConfirmPlan, useCreateJob, useDetailMissingPages, useDomesticDetailFinalReview, useFinalizeJob, useJob, useRedoMissingPages, useRetryJob } from "@/features/jobs/api/jobs";
 import { presentWorkflow, resolveRuntimeCapability, useRuntimeStatus, type WorkflowPresentation } from "@/features/runtime/api/runtime";
 import { useWorkspace } from "@/features/workspaces/api/workspaces";
 import { errorMessage } from "@/lib/api/request";
@@ -221,6 +221,25 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const originalAutomaticAuthority = automaticAuthorityForJob(job.data);
   const resultAssets = selectJobResultAssets(job.data);
   const [pageEdit, setPageEdit] = useState<{ jobId: string; itemId: string; assetId: string; title: string }>();
+  // 精致版/快速版：没交付的屏（含结果未确认的）由用户确认后只重做这几屏，已交付的屏不动。
+  const missingCapable = ["aurora-domestic-detail-v2.3-authored", "xinghe-domestic-detail-v4.0-fast"].includes(String(job.data?.configuration.domestic_detail_pipeline));
+  const missingPages = useDetailMissingPages(workspace?.id, job.data?.id, Boolean(missingCapable && ["partial", "failed"].includes(job.data?.status ?? "")));
+  const missingList = missingPages.data?.missing_pages ?? [];
+  const redoMissing = useRedoMissingPages(workspace?.id);
+  const [redoConfirming, setRedoConfirming] = useState(false);
+  const [redoError, setRedoError] = useState<string>();
+  const redoMissingPages = async () => {
+    if (!job.data || !missingList.length) return;
+    setRedoError(undefined);
+    try {
+      const redone = await redoMissing.mutateAsync({ jobId: job.data.id, pages: missingList.map(page => page.page_index) });
+      setRedoConfirming(false);
+      setJobId(redone.id);
+    } catch (error) {
+      setRedoError(errorMessage(error));
+      void missingPages.refetch();
+    }
+  };
   // 精致版/快速版套图里的每一页都可以修改（每张 3 次免费）；采用的修改版替换套图里的这一页。
   const pagesEditable = Boolean(workspace?.id && job.data?.type === "detail_pack" && savedDetailSkill(job.data.configuration) === "refined"
     && ["completed", "partial"].includes(job.data.status));
@@ -432,6 +451,15 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
           {pageEdit && workspace?.id && <LocalEditDialog key={`${pageEdit.jobId}:${pageEdit.itemId}:${pageEdit.assetId}`} workspaceId={workspace.id}
             source={{ assetId: pageEdit.assetId, title: pageEdit.title }} replicaOutput={{ job_id: pageEdit.jobId, job_item_id: pageEdit.itemId }}
             open onClose={() => { setPageEdit(undefined); void job.refetch(); }} onAdopted={() => { setPageEdit(undefined); void job.refetch(); }} />}
+          {missingCapable && missingList.length > 0 && <section className="detail-form-card" aria-label="补齐缺页">
+            <div className="form-section-head"><span className="number-chip number-chip--violet">6</span><div><h2>补齐缺页</h2><p>以下几屏没有交付，可以只重做这几屏；已交付的屏不会重做、不会再扣费。</p></div></div>
+            <ul className="detail-missing-list">{missingList.map(page => <li key={page.page_index}>第 {page.page_number} 屏 · {page.page_name}：{page.reason}{page.recover_from_local_result ? "（已找到结果，直接恢复，不重新生成）" : ""}</li>)}</ul>
+            <p className="detail-free-edit-note">{missingPages.data?.charge_rule} 每屏 {missingPages.data?.credits_per_page} 积分，最多 {missingPages.data?.max_credits} 积分。</p>
+            {!redoConfirming
+              ? <button className="primary-button" disabled={redoMissing.isPending} onClick={() => setRedoConfirming(true)}><RotateCcw size={17} />补齐这 {missingList.length} 屏</button>
+              : <div className="detail-missing-confirm"><button className="primary-button" disabled={redoMissing.isPending} onClick={() => void redoMissingPages()}>{redoMissing.isPending ? <LoaderCircle className="spin" size={17} /> : null}确认补齐（第 {missingList.map(page => page.page_number).join("、")} 屏）</button><button className="secondary-button" disabled={redoMissing.isPending} onClick={() => setRedoConfirming(false)}>取消</button></div>}
+            {redoError && <p className="generation-feedback error" role="alert">{redoError}</p>}
+          </section>}
           {isNativeDetail && ["awaiting_final_review", "completed"].includes(job.data?.status ?? "") && <>
             {finalReview.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>正在核对当前成图和审核记录…</p></div>}
             {finalReview.error && <div className="api-state api-state--error" role="alert"><p>{errorMessage(finalReview.error)}</p><button onClick={() => void finalReview.refetch()}>重新核对审阅内容</button></div>}
@@ -453,7 +481,7 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
             <div className="generation-actions">
               {!jobId && <CreditCostHint jobType="detail_pack" count={pageCount} variant={isFastDetail ? "fast" : undefined} />}
               <p><Info size={14} />{workflow.mode === "provider" ? marketRegion === "domestic" ? "提交后自动完成规划、生成和交付。" : "确认后将开始整套图片生成。" : workflow.mode === "mock" ? "确认后将保存任务计划，当前暂不生成图片。" : "生成服务状态确认中，确认入口暂时关闭。"}</p>
-              {job.data && allowsJobAction(job.data.allowed_actions, "retry") ? (
+              {job.data && allowsJobAction(job.data.allowed_actions, "retry") && !missingCapable ? (
                 <button className="primary-button" onClick={() => void retry()} disabled={retryJob.isPending}>{retryJob.isPending ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}重试失败项目</button>
               ) : !jobId ? (
                 <button className="primary-button" onClick={() => void createPlanningJob()} disabled={!workflowAvailable || !productSources.length || !productName.trim() || createJob.isPending || uploadingSources}>{createJob.isPending ? <LoaderCircle className="spin" size={17} /> : <Upload size={17} />}{workflowAvailable ? workflow.mode === "provider" ? marketRegion === "domestic" ? "生成整套详情图" : "生成整套详情图" : "保存套图规划" : "服务状态确认中，暂不可创建"}<ArrowRight size={17} /></button>

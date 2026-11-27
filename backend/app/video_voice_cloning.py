@@ -66,7 +66,10 @@ class CloneResponse(BaseModel):
 
 
 class CloneConfigResponse(BaseModel):
+    # 能否新建克隆（服务就绪且新建开关打开）
     available: bool
+    # 已有克隆声音能否试听 / 用于口播（不受新建开关影响）
+    synthesis_available: bool = False
     max_bytes: int
     min_seconds: int
     max_seconds: int
@@ -311,10 +314,15 @@ def make_preview(
         session.commit()
 
 
+def clone_creation_enabled(settings: Settings) -> bool:
+    return bool(ready(settings) and settings.video_voice_clone_enabled)
+
+
 @router.get("/voice-clone-config", response_model=CloneConfigResponse)
 def clone_config(request: Request, workspace: VideoWorkspace) -> CloneConfigResponse:
     return CloneConfigResponse(
-        available=ready(request.app.state.settings),
+        available=clone_creation_enabled(request.app.state.settings),
+        synthesis_available=ready(request.app.state.settings),
         max_bytes=10 * 1024 * 1024,
         min_seconds=5,
         max_seconds=60,
@@ -350,6 +358,13 @@ def create_clone(
 ) -> CloneResponse:
     require_workspace_write(workspace)
     settings = request.app.state.settings
+    if not settings.video_voice_clone_enabled:
+        # 关闭时在读取录音、冻结积分、调用供应商之前就拒绝。
+        raise ApiError(
+            403,
+            "VIDEO_CLONE_DISABLED",
+            "声音克隆暂未开通，现在可以先使用系统声音。",
+        )
     if not ready(settings):
         raise ApiError(
             503, "VIDEO_CLONE_NOT_CONFIGURED", "专属声音服务尚未配置，请联系管理员。"

@@ -5783,6 +5783,11 @@ export interface components {
             min_seconds: number;
             /** Preview Text */
             preview_text: string;
+            /**
+             * Synthesis Available
+             * @default false
+             */
+            synthesis_available: boolean;
         };
         /** CloneResponse */
         CloneResponse: {

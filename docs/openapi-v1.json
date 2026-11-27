@@ -2324,6 +2324,11 @@
           "preview_text": {
             "title": "Preview Text",
             "type": "string"
+          },
+          "synthesis_available": {
+            "default": false,
+            "title": "Synthesis Available",
+            "type": "boolean"
           }
         },
         "required": [

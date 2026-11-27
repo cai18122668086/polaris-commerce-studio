@@ -976,3 +976,27 @@ def test_stock_import_records_licence_and_delete_guard(api, monkeypatch, tmp_pat
         == []
     )
     assert re.fullmatch(r"[0-9a-f]{32}", token)
+
+
+def test_manual_sentence_placement_rewrites_description_until_used(api):
+    client, ws, settings, project = api
+    url = base(ws) + f"/projects/{project}/editing-materials"
+    upload = client.post(
+        url,
+        data={
+            "request_id": str(uuid4()),
+            "label": "耳机实拍",
+            "description": "商家上传的补充素材，放在画面最贴合的句子",
+        },
+        files={"file": ("a.png", _png(), "image/png")},
+    )
+    assert upload.status_code == 201, upload.text
+    row = upload.json()
+    placement = f"{url}/{row['id']}/placement"
+    placed = client.put(placement, json={"sentence_index": 2, "sentence": "耳罩很软。"})
+    assert placed.status_code == 200, placed.text
+    assert placed.json()["description"] == "用于第 3 句：耳罩很软。"
+    assert "origin" not in placed.json()  # still an owner upload
+    auto = client.put(placement, json={}).json()
+    assert auto["description"] == "商家上传的补充素材，放在画面最贴合的句子"
+    assert client.put(placement, json={"sentence_index": 1}).status_code == 422

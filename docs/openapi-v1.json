@@ -11357,6 +11357,39 @@
         "title": "MainImageMissingPagesResponse",
         "type": "object"
       },
+      "MaterialPlacementBody": {
+        "additionalProperties": false,
+        "properties": {
+          "sentence": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence"
+          },
+          "sentence_index": {
+            "anyOf": [
+              {
+                "maximum": 60.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence Index"
+          }
+        },
+        "title": "MaterialPlacementBody",
+        "type": "object"
+      },
       "MembershipRole": {
         "enum": [
           "owner",
@@ -30178,6 +30211,86 @@
           }
         ],
         "summary": "Original",
+        "tags": [
+          "video-editing-materials"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/placement": {
+      "put": {
+        "description": "「我来指定句子」：把素材说明改成那一句原文，规划按它放置；空 = 自动。",
+        "operationId": "place_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__placement_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Material Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialPlacementBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Place Material Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Materials  Material Id  Placement Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Place Material",
         "tags": [
           "video-editing-materials"
         ]

@@ -73,6 +73,7 @@ from .thumbnails import ThumbnailCache
 from .video_assistance import router as video_assistance_router
 from .video_auto_writing import router as video_auto_writing_router
 from .video_avatar_uploads import router as video_avatar_uploads_router
+from .video_personas import router as video_personas_router
 from .video_benchmark_routes import router as video_benchmark_router
 from .video_editing_library_note_routes import (
     router as video_editing_library_note_router,
@@ -86,6 +87,7 @@ from .video_editing_transcript_routes import router as video_editing_transcript_
 from .video_generation import router as video_generation_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router
+from .video_work_routes import router as video_work_router
 from .video_writing_routes import router as video_writing_router
 
 logger = logging.getLogger(__name__)
@@ -570,7 +572,9 @@ def create_app(
     application.include_router(video_studio_router)
     application.include_router(video_voice_cloning_router)
     application.include_router(video_generation_router)
+    application.include_router(video_work_router)
     application.include_router(video_avatar_uploads_router)
+    application.include_router(video_personas_router)
     application.include_router(video_editing_router)
     application.include_router(video_editing_native_plan_router)
     application.include_router(video_editing_planning_router)

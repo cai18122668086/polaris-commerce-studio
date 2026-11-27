@@ -9,8 +9,10 @@ from app import (
     video_editing_models,  # noqa: F401
     video_editing_task_models,  # noqa: F401
     video_generation_models,  # noqa: F401
+    video_persona_models,  # noqa: F401
     video_studio_models,  # noqa: F401
     video_voice_models,  # noqa: F401
+    video_work_models,  # noqa: F401
     video_writing_models,  # noqa: F401
 )
 from app.config import Settings

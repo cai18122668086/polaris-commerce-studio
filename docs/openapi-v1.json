@@ -13330,6 +13330,33 @@
         "title": "SourceMetrics",
         "type": "object"
       },
+      "SourceVideoRef": {
+        "additionalProperties": false,
+        "description": "Editing input: a talking result, a library video or an upload.",
+        "properties": {
+          "id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "talking",
+              "library",
+              "upload"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "SourceVideoRef",
+        "type": "object"
+      },
       "StructureDraftLine": {
         "additionalProperties": false,
         "properties": {
@@ -14472,6 +14499,624 @@
           "script_sha256"
         ],
         "title": "VideoWritingOrigin",
+        "type": "object"
+      },
+      "WorkBatchCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkItemCreate"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "source": {
+            "default": "talking",
+            "enum": [
+              "talking",
+              "editing_upload"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "items"
+        ],
+        "title": "WorkBatchCreate",
+        "type": "object"
+      },
+      "WorkBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "talking",
+              "editing_upload"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Status Counts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "created_at",
+          "item_ids",
+          "items",
+          "status_counts"
+        ],
+        "title": "WorkBatchResponse",
+        "type": "object"
+      },
+      "WorkItemCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "audio_file_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio File Id"
+          },
+          "avatar_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Id"
+          },
+          "drive_mode": {
+            "default": "text",
+            "enum": [
+              "text",
+              "audio",
+              "uploaded_video"
+            ],
+            "title": "Drive Mode",
+            "type": "string"
+          },
+          "persona_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persona Id"
+          },
+          "publish_body": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Publish Body",
+            "type": "string"
+          },
+          "publish_title": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Publish Title",
+            "type": "string"
+          },
+          "script_document_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Document Id"
+          },
+          "script_text": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Script Text",
+            "type": "string"
+          },
+          "source_video_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceVideoRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          }
+        },
+        "title": "WorkItemCreate",
+        "type": "object"
+      },
+      "WorkItemPatch": {
+        "additionalProperties": false,
+        "description": "Partial update; only fields that are sent are written.\n\nOwnership by line (not enforced by the server): W2 writes persona/avatar/\nvoice/audio/generation_task_id; W3 writes source_video_ref/editing_task_id;\nW5 writes cover_asset_id and the final publish_title/publish_body. Each line\nmoves ``stage``/``status``/``error`` while the item is in its stage.",
+        "properties": {
+          "audio_file_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio File Id"
+          },
+          "avatar_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Id"
+          },
+          "cover_asset_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Asset Id"
+          },
+          "editing_task_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Editing Task Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "generation_task_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Task Id"
+          },
+          "persona_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persona Id"
+          },
+          "publish_body": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Body"
+          },
+          "publish_title": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Title"
+          },
+          "script_document_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Document Id"
+          },
+          "script_text": {
+            "anyOf": [
+              {
+                "maxLength": 3000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Text"
+          },
+          "source_video_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceVideoRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "talking",
+                  "editing",
+                  "finishing",
+                  "done"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "queued",
+                  "running",
+                  "succeeded",
+                  "failed",
+                  "canceled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "WorkItemPatch",
+        "type": "object"
+      },
+      "WorkItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "audio_file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio File Id"
+          },
+          "avatar_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Id"
+          },
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "cover_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Asset Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "drive_mode": {
+            "enum": [
+              "text",
+              "audio",
+              "uploaded_video"
+            ],
+            "title": "Drive Mode",
+            "type": "string"
+          },
+          "editing_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Editing Task Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "generation_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Task Id"
+          },
+          "history": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "History",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "persona_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persona Id"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "publish_body": {
+            "title": "Publish Body",
+            "type": "string"
+          },
+          "publish_title": {
+            "title": "Publish Title",
+            "type": "string"
+          },
+          "script_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Document Id"
+          },
+          "script_text": {
+            "title": "Script Text",
+            "type": "string"
+          },
+          "source_video_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceVideoRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "enum": [
+              "talking",
+              "editing",
+              "finishing",
+              "done"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "canceled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          }
+        },
+        "required": [
+          "id",
+          "batch_id",
+          "position",
+          "version",
+          "created_at",
+          "updated_at",
+          "script_document_id",
+          "publish_title",
+          "publish_body",
+          "script_text",
+          "persona_id",
+          "avatar_id",
+          "voice_id",
+          "drive_mode",
+          "audio_file_id",
+          "generation_task_id",
+          "source_video_ref",
+          "editing_task_id",
+          "cover_asset_id",
+          "stage",
+          "status",
+          "error",
+          "history"
+        ],
+        "title": "WorkItemResponse",
         "type": "object"
       },
       "WorkerAccountSessionRequest": {
@@ -28127,6 +28772,492 @@
         "summary": "Voice Preview",
         "tags": [
           "video-generation"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches": {
+      "get": {
+        "operationId": "list_batches_api_v1_video_studio_workspaces__workspace_id__work_batches_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "talking",
+                    "editing_upload"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkBatchResponse"
+                  },
+                  "title": "Response List Batches Api V1 Video Studio Workspaces  Workspace Id  Work Batches Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Batches",
+        "tags": [
+          "video-work"
+        ]
+      },
+      "post": {
+        "operationId": "create_batch_api_v1_video_studio_workspaces__workspace_id__work_batches_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkBatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Batch",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}": {
+      "get": {
+        "operationId": "get_batch_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Batch",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items": {
+      "get": {
+        "operationId": "list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batch_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Batch Id"
+            }
+          },
+          {
+            "description": "逗号分隔的条目 id",
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "逗号分隔的条目 id",
+              "title": "Ids"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stage",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "talking",
+                      "editing",
+                      "finishing",
+                      "done"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "pending",
+                      "queued",
+                      "running",
+                      "succeeded",
+                      "failed",
+                      "canceled"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkItemResponse"
+                  },
+                  "title": "Response List Items Api V1 Video Studio Workspaces  Workspace Id  Work Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Items",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}": {
+      "get": {
+        "operationId": "get_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Item",
+        "tags": [
+          "video-work"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkItemPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Patch Item",
+        "tags": [
+          "video-work"
         ]
       }
     },

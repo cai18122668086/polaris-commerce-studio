@@ -194,7 +194,7 @@ def store_image(
         mime="image/jpeg",
         sha256=hashlib.sha256(data).hexdigest(),
         bytes=len(data),
-        label=f"AI 配图：{row.subject}"[:120],
+        label=row.subject.strip()[:16] or "配图",
         description=f"{row.sentence[:200]}（画面：{row.subject[:120]}）",
         width=width,
         height=height,

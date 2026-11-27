@@ -1095,3 +1095,31 @@ def test_tagged_candidates_must_contain_a_whole_query():
     assert relevant(cand("cream, tube, oil, hands, lotion"), ["hand cream"])
     assert not relevant(cand("ice cream, dessert, waffle"), ["hand cream"])
     assert relevant(cand(None), ["headphones"])  # untagged: provider relevance
+
+
+def test_mg_plan_uses_short_ids_and_maps_back(tmp_path, video):
+    settings = video[4]
+    settings.video_stock_cache_dir = tmp_path / "cache"
+    from app.mg.catalog import prompt_catalog
+
+    seen = []
+
+    def ask(system, payload, max_tokens):
+        seen.append([row["id"] for row in payload["utterances"]])
+        return {
+            "cues": [
+                {
+                    "component": "data_callout",
+                    "utterance_ids": ["u2"],
+                    "params": {"value": "3", "unit": "倍"},
+                }
+            ]
+        }
+
+    rows = [
+        {"id": "fb45384b60578-u000001", "text": "你好"},
+        {"id": "fb45384b60578-u000002", "text": "吸收快3倍"},
+    ]
+    plan = plan_mg(settings, rows, prompt_catalog(), validate_params, ask=ask)
+    assert seen == [["u1", "u2"]]
+    assert plan["cues"][0]["utterance_ids"] == ["fb45384b60578-u000002"]

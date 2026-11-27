@@ -163,6 +163,9 @@ class Settings(BaseSettings):
     # 超上限按最久未用清理。
     video_stock_cache_dir: Path | None = None
     video_stock_cache_max_bytes: int = Field(default=1_073_741_824, ge=0)
+    # 免费视频空镜：现有剪辑流水线把任何视频素材都按「录屏」整段播放，
+    # 空镜会盖住人物，所以默认只取图片；剪辑线支持视频进图片槽后再打开。
+    video_stock_include_video: bool = False
     # AI 配图（7 积分/张）。默认关，dev/灰度显式开启。
     video_supplement_ai_image_enabled: bool = False
     video_supplement_ai_image_max_per_video: int = Field(default=6, ge=1, le=6)

@@ -28,7 +28,7 @@ from .mg.text import is_quote, plain  # noqa: F401  (re-exported)
 logger = logging.getLogger(__name__)
 
 ANALYSIS_VERSION = "supplement-analysis/3"
-MG_PLAN_VERSION = "mg-plan/1"
+MG_PLAN_VERSION = "mg-plan/2"
 PURPOSES = ("scene", "usage", "texture", "concept", "comparison")
 SENTENCE_TYPES = ("data", "compare", "steps", "selling", "quote", "scene", "other")
 MAX_SENTENCES = 40
@@ -431,16 +431,22 @@ def plan_mg(
     cached = _load(path)
     if isinstance(cached, dict) and cached.get("version") == MG_PLAN_VERSION:
         return cached
+    # The model sees short ids (u1, u2 …): real transcript ids are long and
+    # were copied wrongly (dev run hc3: every cue dropped as mg_cue_anchor).
+    short = [{"id": f"u{i + 1}", "text": row["text"]} for i, row in enumerate(rows)]
+    real = {item["id"]: row["id"] for item, row in zip(short, rows, strict=True)}
     raw, source = None, "rules"
     ask = ask or (model_ask(settings) if use_model else None)
-    if ask is not None and rows:
+    if ask is not None and short:
         try:
-            raw, source = ask(mg_system(catalog), {"utterances": rows}, 2500), "model"
+            raw, source = ask(mg_system(catalog), {"utterances": short}, 2500), "model"
         except Exception:  # noqa: BLE001
             logger.warning("mg_plan_model_failed", exc_info=True)
     if raw is None:
-        raw = rule_cues(rows)
-    cues, warnings = validate_cues(raw, rows, catalog, validate_params)
+        raw = rule_cues(short)
+    cues, warnings = validate_cues(raw, short, catalog, validate_params)
+    for cue in cues:
+        cue.utterance_ids = [real[i] for i in cue.utterance_ids]
     result = {
         "version": MG_PLAN_VERSION,
         "digest": digest,

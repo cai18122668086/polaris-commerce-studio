@@ -1049,3 +1049,77 @@ def test_rank_prefers_candidates_whose_tags_match_the_query():
     ear = cand("2", "headphones, ear cushion, music")
     assert rank([cat, ear], ["white headphones ear cushion"])[0].provider_ref == "2"
     assert rank([cat, ear])[0].provider_ref == "1"  # no query: original order rules
+
+
+def test_search_language_follows_the_query(tmp_path, video):
+    settings = video[4]
+    settings.video_stock_cache_dir = tmp_path / "cache"
+    key = tmp_path / "pixabay.key"
+    key.write_text("abcDEF123456789")
+    settings.video_stock_pixabay_key_file = key
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params["lang"])
+        return httpx.Response(200, json={"hits": []})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    search_provider(settings, "pixabay", "white headphones", "image", client=client)
+    search_provider(settings, "pixabay", "白色耳机", "image", client=client)
+    assert seen == ["en", "zh"]
+
+
+def test_tagged_candidates_must_contain_a_whole_query():
+    from app.video_editing_stock_sources import relevant
+
+    def cand(title):
+        return Candidate(
+            provider="pixabay",
+            provider_ref="1",
+            kind="image",
+            width=1,
+            height=2,
+            duration_ms=None,
+            thumb_url="https://pixabay.com/t.jpg",
+            download_url="https://pixabay.com/d.jpg",
+            page_url="https://pixabay.com/p",
+            author="a",
+            author_url=None,
+            license="l",
+            license_url="https://pixabay.com/l",
+            title=title,
+        )
+
+    assert relevant(cand("woman, dj, music, headphones"), ["headphones"])
+    assert not relevant(cand("animal, cat, soft, pet"), ["headphones", "ear cushion"])
+    assert relevant(cand("cream, tube, oil, hands, lotion"), ["hand cream"])
+    assert not relevant(cand("ice cream, dessert, waffle"), ["hand cream"])
+    assert relevant(cand(None), ["headphones"])  # untagged: provider relevance
+
+
+def test_mg_plan_uses_short_ids_and_maps_back(tmp_path, video):
+    settings = video[4]
+    settings.video_stock_cache_dir = tmp_path / "cache"
+    from app.mg.catalog import prompt_catalog
+
+    seen = []
+
+    def ask(system, payload, max_tokens):
+        seen.append([row["id"] for row in payload["utterances"]])
+        return {
+            "cues": [
+                {
+                    "component": "data_callout",
+                    "utterance_ids": ["u2"],
+                    "params": {"value": "3", "unit": "倍"},
+                }
+            ]
+        }
+
+    rows = [
+        {"id": "fb45384b60578-u000001", "text": "你好"},
+        {"id": "fb45384b60578-u000002", "text": "吸收快3倍"},
+    ]
+    plan = plan_mg(settings, rows, prompt_catalog(), validate_params, ask=ask)
+    assert seen == [["u1", "u2"]]
+    assert plan["cues"][0]["utterance_ids"] == ["fb45384b60578-u000002"]

@@ -373,6 +373,7 @@ def parse_pixabay_videos(data: dict) -> list[Candidate]:
                 author_url=None,
                 license="Pixabay Content License（可免费商用，无需署名）",
                 license_url="https://pixabay.com/service/license-summary/",
+                title=item.get("tags") or None,
             )
         )
     return rows
@@ -529,12 +530,15 @@ def search_provider(
         return []
     if kind == "video" and provider in ("openverse", "commons"):
         return []
-    name = hashlib.sha256(f"{provider}|{kind}|{per_page}|{query}".encode()).hexdigest()[
-        :32
-    ]
+    name = hashlib.sha256(
+        f"search/2|{provider}|{kind}|{per_page}|{query}".encode()
+    ).hexdigest()[:32]
     if (hit := _cached(settings, name)) is not None:
         return hit
     secret = keys(settings).get(provider, "")
+    # The query language decides the search language (English keywords
+    # searched as Chinese matched almost nothing relevant).
+    chinese = bool(re.search(r"[\u4e00-\u9fff]", query))
     own = client is None
     client = client or httpx.Client()
     try:
@@ -552,7 +556,7 @@ def search_provider(
                     "query": query,
                     "per_page": per_page,
                     "orientation": "portrait",
-                    "locale": "zh-CN",
+                    "locale": "zh-CN" if chinese else "en-US",
                 },
                 {"Authorization": secret},
             )
@@ -570,7 +574,7 @@ def search_provider(
             params = {
                 "key": secret,
                 "q": query,
-                "lang": "zh",
+                "lang": "zh" if chinese else "en",
                 "safesearch": "true",
                 "per_page": max(3, per_page),
             }
@@ -663,6 +667,21 @@ def rank(rows: list[Candidate], queries: list[str] | None = None) -> list[Candid
     return ordered
 
 
+def _stem(word: str) -> str:
+    return word[:-1] if len(word) > 3 and word.endswith("s") else word
+
+
+def relevant(row: Candidate, queries: list[str]) -> bool:
+    if not row.title:
+        return True
+    tags = {_stem(w) for w in _words(row.title)}
+    for query in queries:
+        words = {_stem(w) for w in _words(query)}
+        if words and words <= tags:
+            return True
+    return False
+
+
 def search_sentence(
     settings: Settings,
     queries: list[str],
@@ -671,17 +690,24 @@ def search_sentence(
     limit: int = 3,
     client: httpx.Client | None = None,
 ) -> list[Candidate]:
-    """Up to ``limit`` candidates for one sentence across active providers."""
+    """Up to ``limit`` relevant candidates for one sentence across providers.
+
+    A tagged candidate is kept only when its tags contain every word of one of
+    the queries (light plural folding): no candidate is better than a cat for
+    「耳罩很软」. Untagged results (provider relevance only) are kept.
+    """
     found: list[Candidate] = []
     providers = active(settings)
-    for query in queries[:3]:
+    for query in queries[:2]:
         for provider in providers:
             kinds: tuple[Kind, ...] = ("video", "image") if want_video else ("image",)
             for kind in kinds:
                 found.extend(
-                    search_provider(
-                        settings, provider, query, kind, per_page=4, client=client
+                    row
+                    for row in search_provider(
+                        settings, provider, query, kind, per_page=12, client=client
                     )
+                    if relevant(row, queries)
                 )
             if len(found) >= limit * 3:
                 break

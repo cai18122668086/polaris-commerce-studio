@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import math
+import re
 import shutil
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -149,6 +150,10 @@ def _recall(settings: Settings, token: str) -> Candidate:
         ) from None
 
 
+def _short_label(text: str) -> str:
+    return re.sub(r"[，。！？!?；;、,.\s]+$", "", text.strip())[:16] or "配图"
+
+
 def price(settings: Settings) -> int | None:
     from .video_credit_billing import price_for
 
@@ -279,7 +284,12 @@ async def stock_search(
 
     def one(index: int) -> dict[str, Any]:
         row = analysis.sentences[index]
-        found = search_sentence(settings, row.queries, limit=body.limit)
+        found = search_sentence(
+            settings,
+            row.queries,
+            limit=body.limit,
+            want_video=settings.video_stock_include_video,
+        )
         return {
             "index": index,
             "text": row.text,
@@ -384,7 +394,8 @@ async def stock_import(
         sha256=data_sha,
         bytes=target.stat().st_size,
         # 规划按「名称与说明」匹配整句：名称写清是什么、配哪句话。
-        label=f"免费图库配图：{body.sentence.strip()}"[:120],
+        # 模板可能把名称显示在画面上：短而有意义（说明里保留整句）。
+        label=_short_label(body.sentence),
         description=body.sentence[:400],
         width=width,
         height=height,

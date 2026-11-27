@@ -251,3 +251,77 @@
 :global(.theme-ember) .voiceAvatarFemale{background:#746e67}
 :global(.theme-ember) .pickerResultMeta small,:global(.theme-ember) .avatarPickerCaption small{color:#9c9790}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .voicePreviewButton{background:#1a1a19;color:#ffffff}
+:global(.theme-plaster) .voicePreviewButton:hover:not(:disabled),:global(.theme-plaster) .voicePreviewButton[aria-pressed=true]{background:#1a1a19;box-shadow:0 0 0 4px #ffffff}
+:global(.theme-plaster) .pickerLoadStatus{color:#69665f}
+:global(.theme-plaster) .voiceDialog.voiceDialog,:global(.theme-plaster) .avatarPickerDialog.avatarPickerDialog{border-color:#e0dfdc}
+:global(.theme-plaster) .voiceDialog > div,:global(.theme-plaster) .avatarPickerDialog > div{background:radial-gradient(ellipse at 100% 0, rgb(236 235 234 / 0.439), transparent 45%), #ffffff}
+:global(.theme-plaster) .voiceDialog > div > header h2,:global(.theme-plaster) .avatarPickerDialog > div > header h2{color:#232320}
+:global(.theme-plaster) .pickerTabs{border-bottom:1px solid #e5e4e2}
+:global(.theme-plaster) .pickerTabs button{color:#65625b}
+:global(.theme-plaster) .pickerTabs button:hover{background:#efeeed;color:#32302d}
+:global(.theme-plaster) .pickerTabs button[aria-selected=true]{color:#292825;font-weight:500}
+:global(.theme-plaster) .pickerTabs button::after{background:#d4d3d0;border-radius:999px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .pickerSegments{background:#ececea;border-radius:999px}
+:global(.theme-plaster) .pickerSegments button{color:#726f67;border-radius:999px}
+:global(.theme-plaster) .pickerSegments button[aria-pressed=true]{color:#353430;background:#ffffff;box-shadow:0 1px 5px rgb(30 27 22 / 0.078);font-weight:500}
+:global(.theme-plaster) .pickerSegments button:hover:not([aria-pressed=true]){background:#e2e1df;color:#3b3a36}
+:global(.theme-plaster) .pickerSearch{background:#f0efee;color:#65625b;border-radius:11px}
+:global(.theme-plaster) .pickerSearch:focus-within{border-color:#1a1a19;background:#ffffff;box-shadow:0 0 0 3px rgb(255 255 255 / 0.302)}
+:global(.theme-plaster) .pickerSearch input{color:#383733}
+:global(.theme-plaster) .pickerSearch button{color:#65625b;background:#e3e2e0}
+:global(.theme-plaster) .pickerResultMeta{color:#76736b}
+:global(.theme-plaster) .pickerResultMeta b{background:#eae9e7;color:#66645d}
+:global(.theme-plaster) .pickerResultMeta small{color:#65625b}
+:global(.theme-plaster) .pickerFooter{border-top:1px solid #e6e6e4;background:linear-gradient(110deg, #f4f4f3, #ffffff 70%)}
+:global(.theme-plaster) .pickerSelection{color:#65625b}
+:global(.theme-plaster) .pickerSelection > b{color:#41403b}
+:global(.theme-plaster) .pickerSelection > small{color:#65625b}
+:global(.theme-plaster) .selectedPill{background:#eaeae8;color:#1a1a19}
+:global(.theme-plaster) .avatarPickerResults{scrollbar-color:#cbc9c5 transparent}
+:global(.theme-plaster) .avatarPickerCard{border:1px solid #e4e4e2;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .avatarPickerCard:hover{border-color:#b7b6b0;box-shadow:0 5px 16px rgb(30 27 22 / 0.071)}
+:global(.theme-plaster) .avatarPickerCard.avatarPickerSelected{border-color:#1a1a19;box-shadow:0 0 0 1px #ffffff;background:#f6f6f5}
+:global(.theme-plaster) .avatarPickerStage{background:#e2e1df}
+:global(.theme-plaster) .avatarPickerStage::after{background:linear-gradient(140deg, rgb(235 234 233 / 0.22), rgb(244 244 243 / 0.102));-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .avatarPickerCaption b{color:#3a3935}
+:global(.theme-plaster) .avatarPickerCaption small{color:#65625b}
+:global(.theme-plaster) .avatarPickerCheck{background:#e3e2e0;color:#41403b;box-shadow:0 2px 8px rgb(30 27 22 / 0.063);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .avatarPickerPreview{border:1px solid rgb(255 255 255 / 0.678);background:rgb(35 34 32 / 0.667);color:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .avatarPickerPreview:hover{background:#232220}
+:global(.theme-plaster) .pickerPagination > span{color:#65625b}
+:global(.theme-plaster) .pickerPagination button{color:#65625b;border-radius:999px}
+:global(.theme-plaster) .pickerPagination button:hover:not(:disabled){background:#e8e7e5;color:#3c3a36}
+:global(.theme-plaster) .pickerPagination button[aria-current=page]{color:#353430;background:#ebebe9}
+:global(.theme-plaster) .avatarSkeleton{background:linear-gradient(100deg, #ecebea 30%, #f4f4f3 50%, #ecebea 70%);background-size:250% 100%;border-radius:14px}
+:global(.theme-plaster) .pickerPreviewMedia{background:#ecebea;border-radius:12px}
+:global(.theme-plaster) .pickerPreviewNote{color:#65625b}
+:global(.theme-plaster) .voiceGenderFilter > span,:global(.theme-plaster) .voiceLanguageFilter > span{color:#65625b}
+:global(.theme-plaster) .voiceSearchButton{background:#252421;color:#ffffff;border:1px solid #252421;border-radius:999px}
+:global(.theme-plaster) .voiceSearchButton:hover{background:#e3e2e0;color:#292825;border-color:#e3e2e0}
+:global(.theme-plaster) .voiceLanguageFilter select{background:#ffffff;color:#68665e}
+:global(.theme-plaster) .voiceBrowserDialog .voiceResults{scrollbar-color:#cbc9c5 transparent}
+:global(.theme-plaster) .voiceRow{border:1px solid #e4e4e2;background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .voiceRow:hover{border-color:#b2b0aa;box-shadow:0 4px 13px rgb(30 27 22 / 0.047)}
+:global(.theme-plaster) .voiceRow.voiceRowSelected{border-color:#1a1a19;background:linear-gradient(110deg, #f5f5f4, #f3f3f2);box-shadow:0 0 0 1px #ffffff}
+:global(.theme-plaster) .voiceRow[data-playing]{border-color:#1a1a19;background:#f0f0ef}
+:global(.theme-plaster) .voiceAvatar{background:linear-gradient(140deg, #d2d0cd, #1a1a19);color:#ffffff}
+:global(.theme-plaster) .voiceAvatarMale{background:linear-gradient(140deg, #d4d3d0, #97948c)}
+:global(.theme-plaster) .voiceAvatarFemale{background:linear-gradient(140deg, #d4d3cf, #a09d96)}
+:global(.theme-plaster) .voiceRowText b{color:#4c4a45}
+:global(.theme-plaster) .voiceRowText small{color:#65625b;background:#ecebea}
+:global(.theme-plaster) .voiceRowText .maleVoiceTag{color:#79766e;background:#e5e4e2}
+:global(.theme-plaster) .voiceRowText .femaleVoiceTag{color:#65625b;background:#edeceb}
+:global(.theme-plaster) .voiceRowCheck{color:#1a1a19}
+:global(.theme-plaster) .voiceRowSelected .voiceRowCheck{background:#e6e5e3}
+:global(.theme-plaster) .voicePreviewOverlay{background:rgb(39 38 35 / 0.267);border:1px solid rgb(255 255 255 / 0.69);color:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .voicePreviewOverlay:hover:not(:disabled),:global(.theme-plaster) .voicePreviewOverlay[aria-pressed=true]{background:rgb(64 63 58 / 0.902);box-shadow:0 0 0 4px rgb(255 255 255 / 0.4)}
+:global(.theme-plaster) .playingDot{background:#1a1a19}
+:global(.theme-plaster) .voiceRowText b{color:#33322e}
+:global(.theme-plaster) .voiceRowText small{color:#65635c}
+:global(.theme-plaster) .voiceAvatarMale{background:#1a1a19}
+:global(.theme-plaster) .voiceAvatarFemale{background:#908d84}
+:global(.theme-plaster) .pickerResultMeta small,:global(.theme-plaster) .avatarPickerCaption small{color:#6d6a62}
+/* plaster:end */

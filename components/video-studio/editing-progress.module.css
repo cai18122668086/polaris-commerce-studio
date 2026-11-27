@@ -20,3 +20,15 @@
 :global(.theme-ember) .steps[data-outcome="cancelled"] li[data-state="current"]::before{background:#4c4946}
 :global(.theme-ember) .status{color:#9c968f}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .steps{color:#8b887f}
+:global(.theme-plaster) .steps li::before{background:#e3e2e0}
+:global(.theme-plaster) .steps li[data-state="done"]::before{background:#2c2b28}
+:global(.theme-plaster) .steps li[data-state="current"]::before{background:var(--edit-accent,#b23a0e)}
+:global(.theme-plaster) .steps li[data-state="current"]{color:#2c2b28;font-weight:500}
+:global(.theme-plaster) .steps li[data-state="done"]{color:#4c4b45}
+:global(.theme-plaster) .steps[data-outcome="failed"] li[data-state="current"]::before{background:#c34010}
+:global(.theme-plaster) .steps[data-outcome="cancelled"] li[data-state="current"]::before{background:#b4b2ac}
+:global(.theme-plaster) .status{color:#6d6a63}
+/* plaster:end */

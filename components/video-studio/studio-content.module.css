@@ -34,6 +34,12 @@
 .costLine { margin: 10px 0 0; font-size: 12px; line-height: 1.6; color: #6f6879; font-variant-numeric: tabular-nums; text-align: right; }
 .costLine[data-short] { color: #b3541e; }
 
+
+/* 余额不足：原因 + 充值入口（熔光暗色下仍用暖色强调） */
+.topUpLink { color: inherit; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+:global(html.theme-ember) .costLine[data-short] { color: #f08a4b; }
+:global(html.theme-ember) .topUpLink { color: #f4f1eb; }
+
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .disclosure{border:1px solid var(--border,#242320);background:#0f0e0d}
 :global(.theme-ember) .disclosure > summary{color:var(--ink,#e9e8e6)}
@@ -58,7 +64,27 @@
 :global(.theme-ember) .costLine[data-short]{color:#fa682a}
 /* ember-dark:end */
 
-/* 余额不足：原因 + 充值入口（熔光暗色下仍用暖色强调） */
-.topUpLink { color: inherit; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
-:global(html.theme-ember) .costLine[data-short] { color: #f08a4b; }
-:global(html.theme-ember) .topUpLink { color: #f4f1eb; }
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .disclosure{border:1px solid var(--border,#e2e1df);background:#ffffff;border-radius:16px}
+:global(.theme-plaster) .disclosure > summary{color:var(--ink,#262522)}
+:global(.theme-plaster) .disclosure > summary:hover{background:#f3f3f2}
+:global(.theme-plaster) .disclosure > summary:focus-visible{outline:2px solid #1a1a19}
+:global(.theme-plaster) .sectionIcon{background:#ececea;color:#1a1a19;border-radius:12px}
+:global(.theme-plaster) .sectionHeading b{font-weight:500}
+:global(.theme-plaster) .sectionHeading small{color:#78756d}
+:global(.theme-plaster) .sectionMeta{color:#79766d}
+:global(.theme-plaster) .chevron{color:#8b887f}
+:global(.theme-plaster) .disclosure[open] > summary{border-bottom:1px solid #e8e7e5}
+:global(.theme-plaster) .document{border:1px solid #e4e4e2;background:#f3f3f2;border-radius:14px}
+:global(.theme-plaster) .document > header{border-bottom:1px solid #e4e4e2;color:#68665e}
+:global(.theme-plaster) .document header > small{color:#838076}
+:global(.theme-plaster) .document header > button,:global(.theme-plaster) .expandText{color:#1a1a19}
+:global(.theme-plaster) .documentText{color:#4a4843}
+:global(.theme-plaster) .document .expandText{border-top:1px solid #e6e6e4;background:#ffffff}
+:global(.theme-plaster) .metadata dt{color:#827e75}
+:global(.theme-plaster) .metadata dd{color:#403f3a}
+:global(.theme-plaster) .notice{border:1px solid #e3e2e0;background:#f0f0ef;color:#716f67;border-radius:14px}
+:global(.theme-plaster) .notice[data-tone=warning]{background:#f3f3f2;border-color:#dad9d6;color:#aa5c0e}
+:global(.theme-plaster) .costLine{color:#6a6760}
+:global(.theme-plaster) .costLine[data-short]{color:#c74110}
+/* plaster:end */

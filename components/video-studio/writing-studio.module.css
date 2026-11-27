@@ -36,3 +36,11 @@
 :global(.theme-ember) .steps button[aria-current="step"] .stepIndex{color:#0f0e0d}
 :global(.theme-ember) .stage{background:#0f0e0d}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .steps button[aria-current="step"]{background:#ffffff}
+:global(.theme-plaster) .steps b{font-weight:500}
+:global(.theme-plaster) .steps button[aria-current="step"] .stepIndex{color:#ffffff}
+:global(.theme-plaster) .stage{background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .facts label,:global(.theme-plaster) .final label{font-weight:500}
+/* plaster:end */

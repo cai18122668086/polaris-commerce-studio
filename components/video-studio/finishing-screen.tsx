@@ -128,7 +128,9 @@ function FinishRow({ index, workspaceId, entry, draft, platform, onChange, onGen
   const round = latestRound(all);
   const rounds = new Set(all.filter(cover => !cover.parent_id).map(cover => cover.request_id)).size;
   const retexts = all.filter(cover => cover.parent_id && cover.status === "ready").slice(0, 2);
-  const shown = [...retexts, ...round];
+  // The saved (or picked) cover stays in view while a new round is generating.
+  const kept = all.find(cover => cover.id === (draft.coverId ?? entry.cover_asset_id) && cover.status === "ready");
+  const shown = [...(kept && !retexts.includes(kept) && !round.includes(kept) ? [kept] : []), ...retexts, ...round];
   // Until the user picks one, the first ready cover of the newest round is chosen.
   const chosenId = draft.coverId ?? round.find(cover => cover.status === "ready")?.id ?? null;
   const selected = all.find(cover => cover.id === chosenId && cover.status === "ready") ?? null;

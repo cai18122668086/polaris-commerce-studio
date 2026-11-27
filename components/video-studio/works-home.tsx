@@ -109,7 +109,7 @@ function WorkTile({ workspaceId, card, onOpen }: { workspaceId: string; card: Wo
   const media = card.coverId
     ? <img src={mediaUrl(coverImageUrl(workspaceId, card.coverId, "thumb"))} alt="" loading="lazy" />
     : videoUrl ? <video muted playsInline preload="metadata" src={`${mediaUrl(videoUrl)}#t=0.5`} aria-hidden="true" tabIndex={-1} />
-      : <div className={styles.tileBlank} aria-hidden="true"><Clapperboard size={22} /><span>{card.hasVideo ? "画面读取中" : "视频还在路上"}</span></div>;
+      : <div className={styles.tileBlank} aria-hidden="true"><Clapperboard size={22} /><span>{card.hasVideo ? "暂无封面" : "视频还在路上"}</span></div>;
   const body = <>
     <div className={styles.tileMedia}>
       {media}

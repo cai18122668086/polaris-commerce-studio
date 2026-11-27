@@ -415,19 +415,19 @@ def list_entries(
     live = owned_query(workspace).where(VideoScriptLibraryEntry.deleted_at.is_(None))
     wanted = parse_ids(ids)
     if wanted:
-        rows = {
+        by_id = {
             row.id: row
             for row in session.scalars(
                 live.where(VideoScriptLibraryEntry.id.in_(wanted))
             ).all()
         }
-        items = [entry_response(rows[i]) for i in wanted if i in rows]
+        items = [entry_response(by_id[i]) for i in wanted if i in by_id]
         return LibraryPage(
             items=items,
             total=len(items),
             limit=len(wanted),
             offset=0,
-            missing_ids=[i for i in wanted if i not in rows],
+            missing_ids=[i for i in wanted if i not in by_id],
         )
     docs = parse_ids(documents)
     if docs:

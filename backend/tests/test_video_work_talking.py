@@ -602,3 +602,47 @@ def test_recently_active_running_task_is_left_alone(studio, monkeypatch):
     with factory() as session:
         assert session.get(VideoGenerationRecord, job_id).status == "running"
     assert runs == []
+
+
+def test_long_wait_task_is_queried_again_when_its_backoff_is_due(studio, monkeypatch):
+    from datetime import timedelta
+
+    from app.models import utc_now
+    from app.video_generation_models import VideoGenerationRunRecord
+
+    client, _, provider, root, ws, user = studio
+    batch, job_id = _stuck(
+        client,
+        root,
+        ws,
+        user,
+        provider,
+        status="awaiting_resume",
+        stage="lipsync_generating",
+        provider_task_id="lip-long",
+        details={
+            "stage_history": [{"stage": "lipsync_submitting"}],
+            "audio_url": "https://sowa.oss-cn-beijing.aliyuncs.com/audio.mp3",
+        },
+    )
+    factory, settings = client.app.state.session_factory, client.app.state.settings
+    with factory() as session:
+        session.merge(
+            VideoGenerationRunRecord(
+                job_id=job_id, attempts=1, retry_at=utc_now() + timedelta(minutes=5)
+            )
+        )
+        session.commit()
+    runs = []
+    monkeypatch.setattr(
+        talking, "process_generation", lambda *a, **k: runs.append((a[2], k))
+    )
+    assert talking.sweep_once(factory, settings, provider) == []  # not due yet
+    with factory() as session:
+        session.get(VideoGenerationRunRecord, job_id).retry_at = utc_now() - timedelta(
+            seconds=1
+        )
+        session.commit()
+    assert talking.sweep_once(factory, settings, provider) == [job_id]
+    assert [r[0] for r in runs] == [job_id] and "lease" in runs[0][1]
+    assert submits(provider) == []

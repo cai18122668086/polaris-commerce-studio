@@ -17,7 +17,7 @@ from typing import Any, cast
 from uuid import UUID, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -40,7 +40,7 @@ from .video_generation import (
     process_generation,
     providers,
 )
-from .video_generation_models import VideoGenerationRecord
+from .video_generation_models import VideoGenerationRecord, VideoGenerationRunRecord
 from .video_generation_runtime import VideoRunLease, acquire_run
 from .video_providers import VideoProviders
 from .video_studio_access import require_video_studio_access
@@ -697,7 +697,7 @@ def _take_over(
                 updated = updated.replace(tzinfo=UTC)
             if (
                 job is None
-                or job.status not in {"running", "unknown"}
+                or job.status not in {"running", "unknown", "awaiting_resume"}
                 or (
                     stale_only
                     and job.status == "running"
@@ -740,7 +740,8 @@ def _take_over(
 def recover_stale_running(
     factory: sessionmaker[Session], settings: Settings
 ) -> list[tuple[str, VideoRunLease]]:
-    """Batch tasks still ``running`` 3+ minutes after their last heartbeat.
+    """Batch tasks still ``running`` 3+ minutes after their last heartbeat, and
+    ``awaiting_resume`` ones whose retry time has come.
 
     The general recovery scanner is off in production, so a deploy restart
     would otherwise leave these items spinning forever.
@@ -757,6 +758,31 @@ def recover_stale_running(
                 VideoWorkItemRecord.stage == "talking",
                 VideoGenerationRecord.status == "running",
                 VideoGenerationRecord.updated_at <= cutoff,
+            )
+            .limit(20)
+        ).all()
+        ids = list(ids)
+    # Long provider waits park as awaiting_resume with a durable backoff; the
+    # general scanner (off in production) would query again when it is due.
+    now = utc_now()
+    with factory() as session:
+        ids += session.scalars(
+            select(VideoGenerationRecord.id)
+            .join(
+                VideoWorkItemRecord,
+                VideoWorkItemRecord.generation_task_id == VideoGenerationRecord.id,
+            )
+            .outerjoin(
+                VideoGenerationRunRecord,
+                VideoGenerationRunRecord.job_id == VideoGenerationRecord.id,
+            )
+            .where(
+                VideoWorkItemRecord.stage == "talking",
+                VideoGenerationRecord.status == "awaiting_resume",
+                or_(
+                    VideoGenerationRunRecord.retry_at.is_(None),
+                    VideoGenerationRunRecord.retry_at <= now,
+                ),
             )
             .limit(20)
         ).all()

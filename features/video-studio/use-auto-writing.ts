@@ -122,5 +122,5 @@ export function useAutoWriting({ workspaceId, projectId, session }: { workspaceI
     return new Map((page?.result.items || []).map(item => [item.platform_id, item]));
   };
 
-  return { run, runs, running, busy, error, setError, reload, start, resume, revise, adopt, doc, latest, candidates };
+  return { workspaceId, run, runs, running, busy, error, setError, reload, start, resume, revise, adopt, doc, latest, candidates };
 }

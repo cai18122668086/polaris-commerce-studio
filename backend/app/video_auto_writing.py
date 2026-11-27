@@ -493,48 +493,24 @@ def step_facts(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
 
 
 def versions(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Three structure rewrites: they use free-text facts best and fail least.
+
+    (Line-by-line shadow rewriting stays in the manual flow; with facts typed
+    freely it rarely finds the slots to swap and often keeps source claims.)
+    """
     ready = [b for b in state["benchmarks"] if b.get("analysis_id")]
     main = next(
         (b for b in ready if b["reference_id"] == state["main_reference_id"]), ready[0]
     )
     other = next((b for b in ready if b is not main), None)
     plan = [
-        {
-            "key": "v1",
-            "label": "逐句影子仿写",
-            "mode": "shadow",
-            "benchmark": main,
-            "variant": 0,
-        },
-        {
-            "key": "v2",
-            "label": "结构仿写",
-            "mode": "structure",
-            "benchmark": main,
-            "variant": 0,
-        },
+        {"key": "v1", "label": "照主对标的结构写", "benchmark": main, "variant": 0},
+        {"key": "v2", "label": "换个开头钩子", "benchmark": main, "variant": 1},
+        {"key": "v3", "label": "照另一条对标写", "benchmark": other, "variant": 0}
+        if other
+        else {"key": "v3", "label": "再换一种开头", "benchmark": main, "variant": 2},
     ]
-    if other:
-        plan.append(
-            {
-                "key": "v3",
-                "label": "换一条对标的结构仿写",
-                "mode": "structure",
-                "benchmark": other,
-                "variant": 0,
-            }
-        )
-    else:
-        plan.append(
-            {
-                "key": "v3",
-                "label": "换个开头的结构仿写",
-                "mode": "structure",
-                "benchmark": main,
-                "variant": 1,
-            }
-        )
-    return plan
+    return [{**version, "mode": "structure"} for version in plan]
 
 
 def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
@@ -549,8 +525,12 @@ def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
         if done_before and done_before.get("document_id"):
             return done_before
         entry: dict[str, Any] = {}
-        for attempt in range(2):  # a rejected version is written once more
-            entry = write_once(version, attempt)
+        # A rejected version is written once more; after that it falls back
+        # to a different opening on the main benchmark, so three versions come
+        # back whenever the facts allow it.
+        tries = [version, version, {**version, "variant": version["variant"] + 3}]
+        for attempt, plan in enumerate(tries):
+            entry = write_once(plan, attempt)
             if entry.get("document_id"):
                 break
         return entry

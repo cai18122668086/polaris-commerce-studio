@@ -194,3 +194,22 @@ def test_ai_picks_are_kept_only_when_real_and_backed_up_by_likes(monkeypatch):
         "b",
     ]  # 600s video left out
     assert saved["ranked"][0]["reason"] == "最相关"
+
+
+def test_three_structure_versions_with_a_second_benchmark_or_a_new_opening():
+    one = {
+        "benchmarks": [{"reference_id": "m", "analysis_id": "a"}],
+        "main_reference_id": "m",
+    }
+    plan = auto.versions(one)
+    assert [v["mode"] for v in plan] == ["structure"] * 3
+    assert [v["variant"] for v in plan] == [0, 1, 2]
+    two = {
+        "benchmarks": [
+            {"reference_id": "x", "analysis_id": "b"},
+            {"reference_id": "m", "analysis_id": "a"},
+        ],
+        "main_reference_id": "m",
+    }
+    plan = auto.versions(two)
+    assert [v["benchmark"]["reference_id"] for v in plan] == ["m", "m", "x"]

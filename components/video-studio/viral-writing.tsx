@@ -13,6 +13,7 @@ import {
 import type { useProjectSession } from "@/features/video-studio/use-project-session";
 import { BASE, asked, buildFacts, slotKey } from "@/features/video-studio/viral-facts";
 import studio from "./video-studio.module.css";
+import { BenchmarkCover, coverSrc } from "./benchmark-cover";
 import { TeardownReport } from "./teardown-report";
 import css from "./viral-writing.module.css";
 
@@ -43,12 +44,12 @@ function Busy({ children }: { children: ReactNode }) {
 
 /* ---------------------------------------------------------------- 1 找对标 */
 
-function CandidateCard({ item, checked, disabled, onToggle }: { item: Candidate; checked: boolean; disabled: boolean; onToggle: () => void }) {
+function CandidateCard({ item, cover, checked, disabled, onToggle }: { item: Candidate; cover?: string; checked: boolean; disabled: boolean; onToggle: () => void }) {
   const dry = (item.collect_like_ratio ?? 0) >= 0.4;
   return <li className={css.card} data-checked={checked || undefined}>
     <button type="button" className={css.cardHit} aria-pressed={checked} disabled={disabled && !checked} onClick={onToggle}>
       <span className={css.cover}>
-        {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className={css.coverEmpty}>{PLATFORM_LABEL[item.platform]}</span>}
+        <BenchmarkCover src={cover} label={PLATFORM_LABEL[item.platform]} emptyClassName={css.coverEmpty} />
         {item.duration_seconds ? <span className={css.duration}>{clock(item.duration_seconds)}</span> : null}
         <span className={css.check} aria-hidden>{checked && <Check size={14} />}</span>
       </span>
@@ -131,7 +132,7 @@ function FindStep({ flow, picks, setPicks, searchCredits, short }: { flow: Flow;
     {pages.some(page => page.status === "failed" || page.status === "unknown") && <p className={css.warn}>{pages.find(page => page.status === "unknown") ? "这次搜索的结果还没确认，不会重复扣费，稍后刷新看看。" : "这次没有搜到，换个关键词或平台试试。"}</p>}
     {items.length > 0 && <>
       <div className={css.resultHead}><b>{root?.result.mode === "links" ? "链接里的作品" : `「${root?.result.keyword}」点赞最高的作品`}</b><small>勾选 1–{MAX_PICKS} 条作为对标</small></div>
-      <ol className={css.grid}>{items.map(({ item, page }) => <CandidateCard key={item.platform_id} item={item} checked={picks.some(pick => pick.item.platform_id === item.platform_id)} disabled={picks.length >= MAX_PICKS} onToggle={() => toggle(item, page)} />)}</ol>
+      <ol className={css.grid}>{items.map(({ item, page }) => <CandidateCard key={item.platform_id} item={item} cover={coverSrc(flow.workspaceId, page, item.platform_id)} checked={picks.some(pick => pick.item.platform_id === item.platform_id)} disabled={picks.length >= MAX_PICKS} onToggle={() => toggle(item, page)} />)}</ol>
       {last?.result.has_more && <button type="button" className={studio.outlineButton} disabled={!!flow.busy || pending || short} onClick={() => void flow.nextPage(last.id)}>{billableLabel("再看一页", searchCredits)}</button>}
     </>}
     {root && !pending && pages.every(page => page.status === "completed") && !items.length && <div className={css.emptyState}><b>没有找到可用的视频</b><p>可能都是图文或超过 5 分钟的视频。换个关键词，或直接粘贴链接。</p></div>}
@@ -153,11 +154,11 @@ function ConfirmStep({ flow, picks, setPicks, onNext, writingCredits, short }: {
   const extracting = flow.runJobs.some(job => ["queued", "running"].includes(job.status));
   if (picks.length) return <div className={css.stack}>
     <p className={css.lead}>确认后会提取这 {picks.length} 条的口播原文，用来拆解和仿写。提取不扣积分。</p>
-    <ol className={css.pickList}>{picks.map(({ item }) => <li key={item.platform_id}>
-      {item.cover_url ? <img src={item.cover_url} alt="" referrerPolicy="no-referrer" /> : <span className={css.coverEmpty}>{PLATFORM_LABEL[item.platform]}</span>}
+    <ol className={css.pickList}>{picks.map(pick => { const item = pick.item; return <li key={item.platform_id}>
+      <BenchmarkCover src={coverSrc(flow.workspaceId, pick.search_task_id, item.platform_id)} label={PLATFORM_LABEL[item.platform]} emptyClassName={css.coverEmpty} />
       <div><b>{item.title || item.description}</b><small>{PLATFORM_LABEL[item.platform]} · {item.author_name || "作者未知"} · 赞 {wan(item.like_count)} · 藏 {wan(item.collect_count)}</small></div>
-      <button type="button" className={css.textButton} onClick={() => setPicks(picks.filter(pick => pick.item.platform_id !== item.platform_id))}>移除</button>
-    </li>)}</ol>
+      <button type="button" className={css.textButton} onClick={() => setPicks(picks.filter(other => other.item.platform_id !== item.platform_id))}>移除</button>
+    </li>; })}</ol>
     <div className={css.actions}><button type="button" className={studio.primaryButton} disabled={!!flow.busy} onClick={() => void flow.confirm(picks.map(pick => ({ search_task_id: pick.search_task_id, platform_id: pick.item.platform_id }))).then(() => setPicks([]))}>
       {flow.busy === "confirm" ? "提交中…" : `确认这 ${picks.length} 条对标`}<ArrowRight size={15} /></button></div>
   </div>;

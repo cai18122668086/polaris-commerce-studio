@@ -6,6 +6,7 @@ import { ArrowRight, Check, Copy, LoaderCircle, PencilLine, RotateCcw } from "lu
 import { AUTO_STAGES, useAutoWriting, type AutoDraft, type AutoRun, type AutoStart } from "@/features/video-studio/use-auto-writing";
 import { PLATFORM_LABEL, type AnalysisDoc, type DraftDoc, type DraftLine, type Platform, type ReferenceDoc } from "@/features/video-studio/use-viral-writing";
 import type { useProjectSession } from "@/features/video-studio/use-project-session";
+import { coverSrc } from "./benchmark-cover";
 import { ComparisonPanel, TeardownReport } from "./teardown-report";
 import studio from "./video-studio.module.css";
 import css from "./auto-writing.module.css";
@@ -46,7 +47,9 @@ function StartForm({ initial, busy, onStart, onCancel }: { initial: Partial<Auto
       <span className={css.label}>你的产品和事实</span>
       <textarea rows={7} maxLength={3000} value={facts} onChange={event => setFacts(event.target.value)}
         placeholder={"想到什么写什么，AI 只会用你写的内容：\n· 你是谁（身份、从业年限、店铺）\n· 产品叫什么，卖点、规格、价格\n· 真实的使用经历、客户反馈"} />
-      <small>没写的信息不会出现在稿子里；原视频里的品牌、价格、功效也不会被搬过来。</small>
+      <small>{facts.trim().length > 0 && facts.trim().length < 60
+        ? "写得越具体越好：只有一两句的话，稿子会反复说同样几句。可以再补卖点、规格价格、真实的客户反馈。"
+        : "没写的信息不会出现在稿子里；原视频里的品牌、价格、功效也不会被搬过来。"}</small>
     </label>
     <div className={css.limits}>
       {LIMITS.map(([key, text]) => <label key={key}><input type="checkbox" checked={limits.includes(key)} onChange={event => setLimits(event.target.checked ? [...limits, key] : limits.filter(v => v !== key))} />{text}</label>)}
@@ -130,7 +133,6 @@ function Results({ flow, run, copyText, onAdopted, onRestart, onManual }: {
   const r = run.result;
   const benchmarks = (r.benchmarks || []).filter(b => b.analysis_id);
   const [tab, setTab] = useState(r.main_reference_id || benchmarks[0]?.reference_id || "");
-  const candidates = flow.candidates();
   const current = benchmarks.find(b => b.reference_id === tab) || benchmarks[0];
   const drafts = r.drafts || [];
   return <div className={css.results}>
@@ -160,7 +162,7 @@ function Results({ flow, run, copyText, onAdopted, onRestart, onManual }: {
       })}</div>}
       {current && (() => {
         const ref = flow.doc<ReferenceDoc>(current.reference_id); const analysis = flow.doc<AnalysisDoc>(current.analysis_id);
-        return ref && analysis ? <TeardownReport reference={ref} analysis={analysis} cover={candidates.get(current.platform_id)?.cover_url} reason={current.reason} /> : null;
+        return ref && analysis ? <TeardownReport reference={ref} analysis={analysis} cover={coverSrc(flow.workspaceId, r.search_task_id, current.platform_id)} reason={current.reason} /> : null;
       })()}
     </section>}
   </div>;

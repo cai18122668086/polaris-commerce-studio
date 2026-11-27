@@ -194,6 +194,10 @@ def process(
                 result, receipt = benchmark_page(data, row.id, row.inputs, captured_at)
                 row.status = "completed"
                 checkpoint(session, row, "completed", result=result, receipt=receipt)
+                # Signed cover links expire; keep a copy while they still work.
+                from .video_benchmark_covers import prefetch
+
+                prefetch(service.settings, row.id, result.get("items") or [])
                 return
             elif row.kind != "extract":
                 checkpoint(session, row, "submitting")

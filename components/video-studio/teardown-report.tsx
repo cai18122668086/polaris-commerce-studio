@@ -2,6 +2,7 @@
 
 import type { AnalysisDoc, Comparison, ReferenceDoc } from "@/features/video-studio/use-viral-writing";
 import { PLATFORM_LABEL } from "@/features/video-studio/use-viral-writing";
+import { BenchmarkCover } from "./benchmark-cover";
 import css from "./teardown-report.module.css";
 
 /**
@@ -30,7 +31,7 @@ export function TeardownReport({ reference, analysis, cover, reason }: { referen
 
   return <article className={css.report}>
     <header className={css.head}>
-      {cover ? <img src={cover} alt="" referrerPolicy="no-referrer" className={css.cover} /> : <span />}
+      <BenchmarkCover src={cover ?? undefined} label="" className={css.cover} emptyClassName={css.coverEmpty} />
       <div className={css.headText}>
         <small>{m ? PLATFORM_LABEL[m.platform] : "对标"}{m?.author_name ? ` · ${m.author_name}` : ""}</small>
         <h3>{m?.title || a.topic}</h3>

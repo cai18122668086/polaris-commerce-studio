@@ -387,3 +387,33 @@ def test_a_talking_result_is_never_edited_as_a_copy(video, tmp_path, monkeypatch
     error = refused.json()["error"]
     assert error["code"] == "VIDEO_WORK_SOURCE_HAS_ITEM"
     assert error["details"]["batch_id"] == talking["id"]
+
+
+def test_a_broken_plan_is_retried_afresh_not_revalidated(video, tmp_path, monkeypatch):
+    """模型输出不合规时，免费重核同一份响应只会再失败：重试走新一轮编排。"""
+    client, ws, settings, factory, semantic, batch = prepare_world(
+        video, tmp_path, monkeypatch, count=1
+    )
+    submit(client, ws, batch)
+    poll(client, ws, batch)
+    run_planning(factory, settings, semantic, "prepare")
+    poll(client, ws, batch)
+    with factory() as session:
+        run = session.scalars(select(VideoWorkEditingRunRecord)).one()
+        generated = session.get(EditingPlanningTaskRecord, run.generate_task_id)
+        generated.status, generated.error_code = (
+            "failed",
+            "EDITING_PLAN_CONTRACT_INVALID",
+        )
+        session.commit()
+        item_id, first_generate = run.item_id, run.generate_task_id
+    view = poll(client, ws, batch)
+    assert "重新编排" in view["editing"][0]["error"]
+    retried = client.post(base(ws) + f"/work-items/{item_id}/editing-retry").json()
+    assert retried["editing"][0]["phase"] in {"transcribing", "preparing"}
+    poll(client, ws, batch)
+    run_planning(factory, settings, semantic, "prepare")
+    poll(client, ws, batch)
+    with factory() as session:
+        run = session.get(VideoWorkEditingRunRecord, item_id)
+        assert run.attempt == 2 and run.generate_task_id not in (None, first_generate)

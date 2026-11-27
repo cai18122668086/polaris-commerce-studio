@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, AudioLines, BookOpenText, Check, CopyCheck, Download, FileText, Flame, Pause, Play, Plus, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, AudioLines, BookOpenText, Check, CopyCheck, Download, FileText, Flame, Pause, Play, Plus, RotateCcw, Search, Trash2, Upload, UsersRound, X } from "lucide-react";
 import type { useVideoLibrary, VideoAvatar, VideoVoice } from "@/features/video-studio/library";
 import type { useVoiceClones } from "@/features/video-studio/voice-clones";
 import { usePersonas, type VideoPersona } from "@/features/video-studio/personas";
@@ -24,7 +24,7 @@ import { ApiError } from "@/lib/api/api-error";
 import { Dialog, Empty } from "./studio-primitives";
 import { ShortOfCredits } from "./studio-content";
 import { VoicePicker } from "./voice-picker";
-import { avatarLabel, PresenterPicker } from "./presenter-picker";
+import { avatarLabel, PresenterPicker, type PresenterChoice } from "./presenter-picker";
 import baseStyles from "./video-studio.module.css";
 import styles from "./talking-studio.module.css";
 
@@ -195,6 +195,20 @@ export function TalkingStudio(props: Props) {
     finally { setRetrying(ids => ids.filter(id => id !== itemId)); }
   };
 
+  const [swapItem, setSwapItem] = useState<string>();
+  const swap = async (itemId: string, choice: PresenterChoice) => {
+    const item = batch?.batch.items.find(row => row.id === itemId);
+    if (!item) return;
+    setSwapItem(undefined);
+    setRetrying(ids => [...ids, itemId]);
+    const change = choice.kind === "persona"
+      ? { avatar_id: choice.persona.avatar_id, persona_id: choice.persona.id, ...(item.drive_mode === "text" ? { voice_id: choice.persona.voice_id } : {}) }
+      : { avatar_id: choice.avatar.id, persona_id: null };
+    try { setBatch(await api.swapAndRetry(itemId, item.version, change)); notify("已换数字人，这一条重新生成中", "success"); }
+    catch (error) { notify(error instanceof Error && error.message ? error.message : "没有换成功，请刷新后再试", "error"); void api.status(batch!.batch.id).then(setBatch).catch(() => undefined); }
+    finally { setRetrying(ids => ids.filter(id => id !== itemId)); }
+  };
+
   const check = async (itemId: string) => {
     if (!batch || retrying.includes(itemId)) return;
     setRetrying(ids => [...ids, itemId]);
@@ -353,6 +367,7 @@ export function TalkingStudio(props: Props) {
           <div>
             {box.state === "done" && box.videoUrl && <a className={styles.quietButton} href={mediaUrl(box.videoUrl)} download><Download size={14} />下载</a>}
             {box.canCheck && <button type="button" className={styles.quietButton} disabled={retrying.includes(box.id)} onClick={() => void check(box.id)}><Search size={14} />{retrying.includes(box.id) ? "正在查询" : "查询结果"}</button>}
+            {box.state === "failed" && box.canRetry && <button type="button" className={styles.quietButton} disabled={retrying.includes(box.id)} onClick={() => setSwapItem(box.id)}><UsersRound size={14} />换数字人</button>}
             {box.state === "failed" && box.canRetry && <button type="button" className={styles.quietButton} disabled={retrying.includes(box.id)} onClick={() => void retry(box.id)}><RotateCcw size={14} />{retrying.includes(box.id) ? "正在重试" : "重试这一条"}</button>}
           </div>
         </div>
@@ -386,6 +401,7 @@ export function TalkingStudio(props: Props) {
       onClose={() => setPicker(null)}
       onApply={choice => { applyPresenter(pickerTarget, current => choice.kind === "persona" ? withPersona(choice.persona) : withAvatar(current, choice.avatar.id)); setPicker(null); }}
       onCreatePersona={() => setDrawer({ kind: "persona", target: pickerTarget })} onCreateAvatar={() => setDrawer({ kind: "avatar", target: pickerTarget })} jobs={props.library.jobs} />}
+    {swapItem && batch && (() => { const item = batch.batch.items.find(row => row.id === swapItem); return item ? <PresenterPicker title={`换第 ${item.position + 1} 条的数字人`} personas={personas} avatars={avatars} voices={voices} jobs={props.library.jobs} selected={{ personaId: item.persona_id ?? undefined, avatarId: item.avatar_id ?? undefined }} onClose={() => setSwapItem(undefined)} onApply={choice => void swap(swapItem, choice)} onCreatePersona={() => setDrawer({ kind: "persona", target: "all" })} onCreateAvatar={() => setDrawer({ kind: "avatar", target: "all" })} /> : null; })()}
     {picker?.kind === "voice" && <VoicePickerFor voices={usableVoices} row={pickerRow} playing={playing} onPreview={previewVoice} onClose={() => setPicker(null)} onApply={voiceId => { applyPresenter(pickerTarget, current => withVoice(current, voiceId)); setPicker(null); }} onClone={() => setDrawer({ kind: "voice", target: pickerTarget })} />}
     <AvatarCreateDrawer open={drawer?.kind === "avatar"} onClose={() => setDrawer(null)} workspaceId={workspaceId} userId={userId} library={props.library}
       onCreated={() => notify("形象开始定制了，完成后会出现在「我的形象」里。可以先给其他稿选别的数字人。", "success")}

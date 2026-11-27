@@ -35,6 +35,11 @@ export function talkingApi(workspaceId: string) {
     async retry(itemId: string): Promise<TalkingBatch> {
       return unwrapApiResponse(await withAuthTimeout(apiClient.POST(`${root}/work-items/{item_id}/talking-retry`, { ...options(20000), params: { path: { ...path, item_id: itemId } } }), 20000)) as TalkingBatch;
     },
+    /** 换数字人（和音色）后只重试这一条：先按版本号改条目，再提交重试。 */
+    async swapAndRetry(itemId: string, version: number, change: { avatar_id: string; persona_id: string | null; voice_id?: string | null }): Promise<TalkingBatch> {
+      unwrapApiResponse(await withAuthTimeout(apiClient.PATCH(`${root}/work-items/{item_id}`, { ...options(15000), params: { path: { ...path, item_id: itemId } }, body: { expected_version: version, ...change } }), 15000));
+      return this.retry(itemId);
+    },
     /** 查询结果：只查询原任务，不会重新生成。 */
     async check(itemId: string): Promise<TalkingBatch> {
       return unwrapApiResponse(await withAuthTimeout(apiClient.POST(`${root}/work-items/{item_id}/talking-check`, { ...options(20000), params: { path: { ...path, item_id: itemId } } }), 20000)) as TalkingBatch;

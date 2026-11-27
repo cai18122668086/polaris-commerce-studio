@@ -215,7 +215,7 @@ export function decodeDraft(raw: string | null): TalkingDraft | undefined {
 export type WorkItemView = {
   id: string; position: number; status: "pending" | "queued" | "running" | "succeeded" | "failed" | "canceled";
   error: string | null; publish_title: string; script_text: string; avatar_id: string | null; voice_id: string | null;
-  persona_id: string | null; generation_task_id: string | null; drive_mode: string; stage: string;
+  persona_id: string | null; generation_task_id: string | null; drive_mode: string; stage: string; version: number;
 };
 export type TalkingView = { item_id: string; queue_position: number | null; stage: string | null; video_url: string | null; can_retry: boolean; awaiting_check?: boolean };
 export type TalkingBatch = { batch: { id: string; created_at: string; item_ids: string[]; items: WorkItemView[]; status_counts: Record<string, number> }; talking: TalkingView[]; parallel_limit: number; notice?: string | null };

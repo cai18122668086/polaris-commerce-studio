@@ -12,3 +12,8 @@ test("人物出镜 keeps one of each look-alike pair", () => {
   // Hidden templates stay renderable and named for projects that already use them.
   assert.equal(templateEntry("bihuo-47-v1")?.[1], "星光商务");
 });
+
+test("深青标题 stays hidden until its caption contrast is fixed", () => {
+  assert.equal(isTemplateListed("bihuo-24-v1"), false);
+  assert.equal(templateEntry("bihuo-24-v1")?.[1], "深青标题");
+});

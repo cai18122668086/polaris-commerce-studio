@@ -1067,3 +1067,31 @@ def test_search_language_follows_the_query(tmp_path, video):
     search_provider(settings, "pixabay", "white headphones", "image", client=client)
     search_provider(settings, "pixabay", "白色耳机", "image", client=client)
     assert seen == ["en", "zh"]
+
+
+def test_tagged_candidates_must_contain_a_whole_query():
+    from app.video_editing_stock_sources import relevant
+
+    def cand(title):
+        return Candidate(
+            provider="pixabay",
+            provider_ref="1",
+            kind="image",
+            width=1,
+            height=2,
+            duration_ms=None,
+            thumb_url="https://pixabay.com/t.jpg",
+            download_url="https://pixabay.com/d.jpg",
+            page_url="https://pixabay.com/p",
+            author="a",
+            author_url=None,
+            license="l",
+            license_url="https://pixabay.com/l",
+            title=title,
+        )
+
+    assert relevant(cand("woman, dj, music, headphones"), ["headphones"])
+    assert not relevant(cand("animal, cat, soft, pet"), ["headphones", "ear cushion"])
+    assert relevant(cand("cream, tube, oil, hands, lotion"), ["hand cream"])
+    assert not relevant(cand("ice cream, dessert, waffle"), ["hand cream"])
+    assert relevant(cand(None), ["headphones"])  # untagged: provider relevance

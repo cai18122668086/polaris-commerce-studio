@@ -373,6 +373,7 @@ def parse_pixabay_videos(data: dict) -> list[Candidate]:
                 author_url=None,
                 license="Pixabay Content License（可免费商用，无需署名）",
                 license_url="https://pixabay.com/service/license-summary/",
+                title=item.get("tags") or None,
             )
         )
     return rows
@@ -666,6 +667,21 @@ def rank(rows: list[Candidate], queries: list[str] | None = None) -> list[Candid
     return ordered
 
 
+def _stem(word: str) -> str:
+    return word[:-1] if len(word) > 3 and word.endswith("s") else word
+
+
+def relevant(row: Candidate, queries: list[str]) -> bool:
+    if not row.title:
+        return True
+    tags = {_stem(w) for w in _words(row.title)}
+    for query in queries:
+        words = {_stem(w) for w in _words(query)}
+        if words and words <= tags:
+            return True
+    return False
+
+
 def search_sentence(
     settings: Settings,
     queries: list[str],
@@ -674,17 +690,24 @@ def search_sentence(
     limit: int = 3,
     client: httpx.Client | None = None,
 ) -> list[Candidate]:
-    """Up to ``limit`` candidates for one sentence across active providers."""
+    """Up to ``limit`` relevant candidates for one sentence across providers.
+
+    A tagged candidate is kept only when its tags contain every word of one of
+    the queries (light plural folding): no candidate is better than a cat for
+    「耳罩很软」. Untagged results (provider relevance only) are kept.
+    """
     found: list[Candidate] = []
     providers = active(settings)
-    for query in queries[:3]:
+    for query in queries[:2]:
         for provider in providers:
             kinds: tuple[Kind, ...] = ("video", "image") if want_video else ("image",)
             for kind in kinds:
                 found.extend(
-                    search_provider(
-                        settings, provider, query, kind, per_page=4, client=client
+                    row
+                    for row in search_provider(
+                        settings, provider, query, kind, per_page=12, client=client
                     )
+                    if relevant(row, queries)
                 )
             if len(found) >= limit * 3:
                 break

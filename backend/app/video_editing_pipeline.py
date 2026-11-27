@@ -127,6 +127,27 @@ def environment(settings: Settings) -> dict[str, str]:
     return env
 
 
+# Recognition/alignment subprocesses end with an uncaught EditingFailure; its
+# own code says what went wrong (e.g. text/timestamp mismatch). Other steps keep
+# their step-level codes, which callers and the UI already depend on.
+SUBPROCESS_CODE_STEPS = frozenset({"alignment", "asr"})
+_FAILURE_LINE = re.compile(rb"EditingFailure: (EDITING_[A-Z0-9_]{3,72})\s*$", re.M)
+
+
+def subprocess_failure_code(log: Path, name: str) -> str | None:
+    if name not in SUBPROCESS_CODE_STEPS:
+        return None
+    try:
+        with log.open("rb") as handle:
+            handle.seek(0, 2)
+            handle.seek(max(0, handle.tell() - 8192))
+            tail = handle.read()
+    except OSError:
+        return None
+    found = _FAILURE_LINE.findall(tail)
+    return found[-1].decode() if found else None
+
+
 def run(
     arguments: list[str],
     root: Path,
@@ -160,7 +181,10 @@ def run(
                     raise EditingFailure("EDITING_PROCESS_TIMEOUT")
                 time.sleep(0.25)
             if process.returncode:
-                raise EditingFailure("EDITING_" + name.upper() + "_FAILED")
+                raise EditingFailure(
+                    subprocess_failure_code(output, name)
+                    or "EDITING_" + name.upper() + "_FAILED"
+                )
         except BaseException:
             if sys.platform == "win32":
                 subprocess.run(

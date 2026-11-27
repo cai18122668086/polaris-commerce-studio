@@ -177,6 +177,14 @@
       "AiEstimateBody": {
         "additionalProperties": false,
         "properties": {
+          "exclude_sentences": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 60,
+            "title": "Exclude Sentences",
+            "type": "array"
+          },
           "max_images": {
             "default": 4,
             "maximum": 6.0,
@@ -2015,6 +2023,50 @@
         "title": "Body_create_clone_api_v1_video_studio_workspaces__workspace_id__voice_clones_post",
         "type": "object"
       },
+      "Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post": {
+        "properties": {
+          "consent": {
+            "title": "Consent",
+            "type": "boolean"
+          },
+          "consent_version": {
+            "title": "Consent Version",
+            "type": "string"
+          },
+          "count": {
+            "default": 2,
+            "maximum": 2.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "description": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "description",
+          "consent",
+          "consent_version",
+          "file"
+        ],
+        "title": "Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post",
+        "type": "object"
+      },
       "Body_upload_asset_api_v1_workspaces__workspace_id__assets_post": {
         "properties": {
           "file": {
@@ -2324,6 +2376,11 @@
           "preview_text": {
             "title": "Preview Text",
             "type": "string"
+          },
+          "synthesis_available": {
+            "default": false,
+            "title": "Synthesis Available",
+            "type": "boolean"
           }
         },
         "required": [
@@ -5912,6 +5969,98 @@
         "title": "EditingArtifactResponse",
         "type": "object"
       },
+      "EditingBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/WorkBatchResponse"
+          },
+          "editing": {
+            "items": {
+              "$ref": "#/components/schemas/EditingItemView"
+            },
+            "title": "Editing",
+            "type": "array"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          },
+          "parallel_limit": {
+            "default": 2,
+            "title": "Parallel Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch",
+          "editing"
+        ],
+        "title": "EditingBatchResponse",
+        "type": "object"
+      },
+      "EditingBatchSubmit": {
+        "additionalProperties": false,
+        "properties": {
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids"
+          },
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditingItemChoice"
+            },
+            "title": "Items",
+            "type": "object"
+          },
+          "music": {
+            "default": "template",
+            "enum": [
+              "template",
+              "lower",
+              "raise",
+              "off"
+            ],
+            "title": "Music",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "template_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "template_id"
+        ],
+        "title": "EditingBatchSubmit",
+        "type": "object"
+      },
       "EditingCarriedRevision": {
         "additionalProperties": false,
         "properties": {
@@ -6398,6 +6547,184 @@
           "requires_transparency"
         ],
         "title": "EditingImageTarget",
+        "type": "object"
+      },
+      "EditingItemChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "material_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Material Ids",
+            "type": "array"
+          },
+          "supplement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditingSupplementOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "title": "EditingItemChoice",
+        "type": "object"
+      },
+      "EditingItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "can_retry": {
+            "default": false,
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "estimate_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Minutes"
+          },
+          "final_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Url"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "poster_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Url"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "queue_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
+          "render_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Render Task Id"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "waiting_for_source": {
+            "default": false,
+            "title": "Waiting For Source",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_id",
+          "position"
+        ],
+        "title": "EditingItemView",
         "type": "object"
       },
       "EditingLayoutFinding": {
@@ -7498,6 +7825,12 @@
             ],
             "title": "Prepared Task Id"
           },
+          "replan": {
+            "default": false,
+            "description": "Explicitly pay for a new planning of a request that already has a live or finished planning (the user confirmed the extra charge).",
+            "title": "Replan",
+            "type": "boolean"
+          },
           "request_id": {
             "format": "uuid",
             "title": "Request Id",
@@ -8123,6 +8456,78 @@
           "bytes"
         ],
         "title": "EditingSourceUploadResponse",
+        "type": "object"
+      },
+      "EditingSourceView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "video_url": {
+            "title": "Video Url",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "created_at",
+          "video_url"
+        ],
+        "title": "EditingSourceView",
         "type": "object"
       },
       "EditingSupplementMg": {
@@ -11357,6 +11762,39 @@
         "title": "MainImageMissingPagesResponse",
         "type": "object"
       },
+      "MaterialPlacementBody": {
+        "additionalProperties": false,
+        "properties": {
+          "sentence": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence"
+          },
+          "sentence_index": {
+            "anyOf": [
+              {
+                "maximum": 60.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence Index"
+          }
+        },
+        "title": "MaterialPlacementBody",
+        "type": "object"
+      },
       "MembershipRole": {
         "enum": [
           "owner",
@@ -12416,6 +12854,100 @@
           "payload"
         ],
         "title": "PlanUpdateRequest",
+        "type": "object"
+      },
+      "PolishCandidateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "request_id",
+          "slot",
+          "status",
+          "description",
+          "error_code",
+          "message",
+          "image_url",
+          "credits",
+          "created_at"
+        ],
+        "title": "PolishCandidateResponse",
         "type": "object"
       },
       "ProcessingConsentChoice": {
@@ -14592,6 +15124,14 @@
       "StockSearchBody": {
         "additionalProperties": false,
         "properties": {
+          "exclude_sentences": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 60,
+            "title": "Exclude Sentences",
+            "type": "array"
+          },
           "limit": {
             "default": 3,
             "maximum": 3.0,
@@ -15208,7 +15748,8 @@
               "benchmark_search",
               "writing_generate",
               "cover_generate",
-              "editing_auto_image"
+              "editing_auto_image",
+              "avatar_polish"
             ],
             "title": "Action",
             "type": "string"
@@ -24846,6 +25387,234 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polish-presets": {
+      "get": {
+        "operationId": "presets_api_v1_video_studio_workspaces__workspace_id__avatar_polish_presets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response Presets Api V1 Video Studio Workspaces  Workspace Id  Avatar Polish Presets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Presets",
+        "tags": [
+          "video-avatars"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polishes": {
+      "get": {
+        "operationId": "list_polishes_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PolishCandidateResponse"
+                  },
+                  "title": "Response List Polishes Api V1 Video Studio Workspaces  Workspace Id  Avatar Polishes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Polishes",
+        "tags": [
+          "video-avatars"
+        ]
+      },
+      "post": {
+        "operationId": "create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_polish_api_v1_video_studio_workspaces__workspace_id__avatar_polishes_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PolishCandidateResponse"
+                  },
+                  "title": "Response Create Polish Api V1 Video Studio Workspaces  Workspace Id  Avatar Polishes Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Polish",
+        "tags": [
+          "video-avatars"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/avatar-polishes/{polish_id}/image": {
+      "get": {
+        "operationId": "polish_image_api_v1_video_studio_workspaces__workspace_id__avatar_polishes__polish_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "polish_id",
+            "required": true,
+            "schema": {
+              "title": "Polish Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Polish Image",
+        "tags": [
+          "video-avatars"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/avatars": {
       "get": {
         "operationId": "avatars_api_v1_video_studio_workspaces__workspace_id__avatars_get",
@@ -26480,6 +27249,66 @@
       }
     },
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-sources": {
+      "get": {
+        "description": "The user's uploaded videos (视频库 · 已上传), newest first.",
+        "operationId": "list_sources_api_v1_video_studio_workspaces__workspace_id__editing_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingSourceView"
+                  },
+                  "title": "Response List Sources Api V1 Video Studio Workspaces  Workspace Id  Editing Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Sources",
+        "tags": [
+          "video-work"
+        ]
+      },
       "post": {
         "operationId": "upload_source_api_v1_video_studio_workspaces__workspace_id__editing_sources_post",
         "parameters": [
@@ -30183,6 +31012,86 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-materials/{material_id}/placement": {
+      "put": {
+        "description": "「我来指定句子」：把素材说明改成那一句原文，规划按它放置；空 = 自动。",
+        "operationId": "place_material_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_materials__material_id__placement_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Material Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialPlacementBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Place Material Api V1 Video Studio Workspaces  Workspace Id  Projects  Project Id  Editing Materials  Material Id  Placement Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Place Material",
+        "tags": [
+          "video-editing-materials"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/projects/{project_id}/editing-native-plans": {
       "get": {
         "operationId": "list_native_plans_api_v1_video_studio_workspaces__workspace_id__projects__project_id__editing_native_plans_get",
@@ -32018,6 +32927,128 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/editing": {
+      "get": {
+        "description": "Poll/restore: advances the batch, never starts anything unconfirmed.",
+        "operationId": "editing_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Editing Status",
+        "tags": [
+          "video-work"
+        ]
+      },
+      "post": {
+        "description": "The user confirmed: freeze each item's choices and queue the batch.",
+        "operationId": "submit_editing_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingBatchSubmit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Submit Editing",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/talking": {
       "get": {
         "description": "Polling view; also starts queued items whose turn has come.",
@@ -32406,6 +33437,63 @@
           }
         ],
         "summary": "Patch Item",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/editing-retry": {
+      "post": {
+        "description": "Retry one failed item; the others are not touched.\n\nA failed render or a planning whose answer was saved is retried for free\non the same task. Anything earlier starts a new attempt from that step,\nkeeping finished earlier steps (a finished recognition is reused).",
+        "operationId": "retry_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__editing_retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Retry Editing",
         "tags": [
           "video-work"
         ]

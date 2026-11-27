@@ -124,13 +124,14 @@ def setup(video, tmp_path, monkeypatch):
     return client, auth, ws, settings, source, task, semantic
 
 
-def create(client, ws, tid, mode="prepare", prepared=None, request_id=None):
+def create(client, ws, tid, mode="prepare", prepared=None, request_id=None, **extra):
     return client.post(
         base(ws) + f"/editing-tasks/{tid}/planning-tasks",
         json={
             "request_id": request_id or str(uuid4()),
             "mode": mode,
             "prepared_task_id": prepared,
+            **extra,
         },
     )
 
@@ -836,7 +837,10 @@ def test_batch_previews_commit_independently_and_replay_single_ids(
     plans = []
     for _ in range(2):
         ready = prepare(client, ws, settings, task)
-        pending = create(client, ws, task["id"], "generate", ready["id"]).json()
+        # Same request planned twice on purpose: a confirmed, paid re-plan.
+        pending = create(
+            client, ws, task["id"], "generate", ready["id"], replan=True
+        ).json()
         worker.process(pending["id"], settings, factory, provider)
         plans.append(pending["id"])
 
@@ -1748,3 +1752,110 @@ def test_active_works_include_planning_waiting_for_the_user(
     assert items[0]["project_id"] == task["project_id"]
     assert items[0]["preview"] is None
 
+
+
+def test_same_request_never_bills_twice_across_preparations(
+    video, tmp_path, monkeypatch
+):
+    """P0（v3）：刷新后主按钮回到「开始」，再点会对同一份请求重新准备并再付费一次。"""
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    first = prepare(client, ws, settings, task)
+    second = prepare(client, ws, settings, task)
+    assert first["id"] != second["id"]
+    assert first["request_sha256"] == second["request_sha256"]
+    enable_fixture(settings)
+    submitted = create(client, ws, task["id"], "generate", first["id"])
+    assert submitted.status_code == 200, submitted.text
+    again = create(client, ws, task["id"], "generate", second["id"])
+    assert again.status_code == 409, again.text
+    assert again.json()["error"]["code"] == "EDITING_PLAN_ALREADY_GENERATED"
+    # A failed run of the same request may still be retried explicitly.
+    factory = client.app.state.session_factory
+    with factory() as session:
+        row = session.get(EditingPlanningTaskRecord, submitted.json()["id"])
+        row.status = "failed"
+        session.commit()
+    retried = create(client, ws, task["id"], "generate", second["id"])
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["id"] != submitted.json()["id"]
+
+
+def test_confirmed_replan_of_the_same_request_is_allowed(video, tmp_path, monkeypatch):
+    """不满意结果时，用户确认「重新编排（再扣积分）」后可用同样设置再编排一次。"""
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    first = prepare(client, ws, settings, task)
+    second = prepare(client, ws, settings, task)
+    enable_fixture(settings)
+    original = create(client, ws, task["id"], "generate", first["id"])
+    assert original.status_code == 200, original.text
+    blocked = create(client, ws, task["id"], "generate", second["id"])
+    assert blocked.status_code == 409
+    request_id = str(uuid4())
+    replanned = create(
+        client,
+        ws,
+        task["id"],
+        "generate",
+        second["id"],
+        request_id=request_id,
+        replan=True,
+    )
+    assert replanned.status_code == 200, replanned.text
+    assert replanned.json()["id"] != original.json()["id"]
+    # The same click retried replays the same paid task; it is not billed twice.
+    again = create(
+        client,
+        ws,
+        task["id"],
+        "generate",
+        second["id"],
+        request_id=request_id,
+        replan=True,
+    )
+    assert again.json()["id"] == replanned.json()["id"]
+
+
+def test_default_replan_flag_leaves_request_bytes_unchanged():
+    """replan 默认不进入序列化：旧请求的 request_hash 与快照逐字节不变。"""
+    from app.video_editing_contracts import EditingPlanningTaskCreate
+    from app.video_editing_native_plans import content_digest
+
+    payload = {
+        "request_id": str(uuid4()),
+        "mode": "generate",
+        "prepared_task_id": str(uuid4()),
+        "auto_preview": True,
+    }
+    plain = EditingPlanningTaskCreate.model_validate(payload).model_dump(mode="json")
+    explicit = EditingPlanningTaskCreate.model_validate(
+        {**payload, "replan": False}
+    ).model_dump(mode="json")
+    assert plain == payload == explicit  # no new key on the wire or in the hash
+    assert content_digest(plain) == content_digest(payload)
+    forced = EditingPlanningTaskCreate.model_validate(
+        {**payload, "replan": True}
+    ).model_dump(mode="json")
+    assert forced == {**payload, "replan": True}
+
+
+def test_adding_mg_to_the_same_request_is_not_a_duplicate(video, tmp_path, monkeypatch):
+    """MG（supplement）不进模型请求：同视频同模板同素材、只多开了 MG，不算重复。"""
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    first = prepare(client, ws, settings, task)
+    with_mg = prepare(client, ws, settings, task)
+    same_mg = prepare(client, ws, settings, task)
+    assert first["request_sha256"] == with_mg["request_sha256"]
+    factory = client.app.state.session_factory
+    with factory() as session:
+        for prepared_id in (with_mg["id"], same_mg["id"]):
+            row = session.get(EditingPlanningTaskRecord, prepared_id)
+            row.snapshot = {**row.snapshot, "supplement": {"mg": {"style": "paper"}}}
+        session.commit()
+    enable_fixture(settings)
+    plain = create(client, ws, task["id"], "generate", first["id"])
+    assert plain.status_code == 200, plain.text
+    mg = create(client, ws, task["id"], "generate", with_mg["id"])
+    assert mg.status_code == 200, mg.text  # MG differs: allowed
+    again = create(client, ws, task["id"], "generate", same_mg["id"])
+    assert again.status_code == 409  # same request and same MG: joined, not paid
+    assert again.json()["error"]["code"] == "EDITING_PLAN_ALREADY_GENERATED"

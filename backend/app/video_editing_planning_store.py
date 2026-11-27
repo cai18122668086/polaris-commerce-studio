@@ -296,6 +296,40 @@ def hold_planning(
         )
 
 
+def same_request_generate(
+    session: Session,
+    workspace: WorkspaceContext,
+    prepared: EditingPlanningTaskRecord,
+) -> EditingPlanningTaskRecord | None:
+    """The newest live/finished paid planning of exactly this prepared request.
+
+    Same request hash (speech, template, materials, settings) and the same
+    supplement choice (MG etc. is frozen in the snapshot, outside the model
+    request). Without a supplement this is the plain request-hash match.
+    """
+    request_sha = prepared.result.get("request_sha256")
+    if not request_sha:
+        return None
+    rows = session.scalars(
+        select(EditingPlanningTaskRecord)
+        .where(
+            EditingPlanningTaskRecord.workspace_id == workspace.workspace_id,
+            EditingPlanningTaskRecord.owner_user_id == workspace.principal.user_id,
+            EditingPlanningTaskRecord.project_id == prepared.project_id,
+            EditingPlanningTaskRecord.mode == "generate",
+            EditingPlanningTaskRecord.status.in_(("queued", "running", "completed")),
+            EditingPlanningTaskRecord.snapshot["expected_request_sha256"].as_string()
+            == request_sha,
+        )
+        .order_by(EditingPlanningTaskRecord.created_at.desc())
+        .limit(20)
+    )
+    supplement = prepared.snapshot.get("supplement")
+    return next(
+        (row for row in rows if row.snapshot.get("supplement") == supplement), None
+    )
+
+
 def create_planning_task(
     session: Session,
     workspace: WorkspaceContext,
@@ -477,6 +511,18 @@ def create_planning_task(
         )
         if existing:
             return existing
+        # The same request (same speech, template, materials and settings gives
+        # the same request hash, and the same supplement, which is not part of
+        # the model request) already has a live or finished paid planning in
+        # this project. A refreshed page or a second check must join that result
+        # instead of paying again; a failed run may still be retried, and the
+        # user may confirm a deliberate re-plan (replan=true, charged again).
+        if not body.replan and same_request_generate(session, workspace, prepared):
+            raise ApiError(
+                409,
+                "EDITING_PLAN_ALREADY_GENERATED",
+                "这条口播已用同样的模板和素材剪过，请在结果区确认或下载，不会重复扣费。",
+            )
         require_active_planning_template(
             prepared.snapshot.get("overlay_template", {}).get("id")
         )

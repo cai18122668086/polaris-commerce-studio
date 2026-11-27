@@ -126,3 +126,12 @@ test("editing CTA: partial batches edit the finished ones first and say the rest
   assert.equal(t.editingCta([{ state: "running" }, { state: "queued" }], false).disabled, true);
   assert.equal(t.editingCta([{ state: "done" }, { state: "checking" }], false).label, "先剪已完成的 1 条");
 });
+
+test("counts match the script library: API numbers for library scripts, scriptStats for typed ones", () => {
+  const fromLibrary = { key: "doc:x", source: "library", documentId: "x", title: "", body: "", script: "短稿 #标签", chars: 418, seconds: 87 };
+  assert.equal(t.scriptChars(fromLibrary), 418);
+  assert.equal(t.scriptSeconds(fromLibrary), 87);
+  const typed = { key: "m", source: "manual", title: "", body: "", script: "家人们，夏天睡觉最怕什么？" };
+  assert.equal(t.scriptChars(typed) > 0, true);
+  assert.equal(t.summary(t.addScripts(t.emptyDraft(), [fromLibrary]), 50).seconds, 87);
+});

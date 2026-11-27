@@ -629,13 +629,25 @@ def search_provider(
     return rows
 
 
-def rank(rows: list[Candidate]) -> list[Candidate]:
-    """Portrait first, then enough resolution, then provider order."""
+def _words(text: str | None) -> set[str]:
+    return {
+        w
+        for w in re.split(r"[^0-9a-z\u4e00-\u9fff]+", (text or "").lower())
+        if len(w) > 2
+    }
+
+
+def rank(rows: list[Candidate], queries: list[str] | None = None) -> list[Candidate]:
+    """Relevance (query words found in the item's tags/title), then portrait,
+    enough resolution, video, provider order."""
+    wanted = set().union(*(_words(q) for q in queries or [])) if queries else set()
 
     def score(row: Candidate) -> tuple:
         portrait = row.height >= row.width
         short = min(row.width, row.height)
+        hits = len(wanted & _words(row.title)) if wanted else 0
         return (
+            -hits,
             0 if portrait else 1,
             0 if short >= 720 else 1,
             0 if row.kind == "video" else 1,
@@ -675,4 +687,4 @@ def search_sentence(
                 break
         if len(found) >= limit:
             break
-    return rank(found)[:limit]
+    return rank(found, queries)[:limit]

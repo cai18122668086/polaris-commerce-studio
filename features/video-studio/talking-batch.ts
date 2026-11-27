@@ -5,6 +5,8 @@
  * 一条稿 = 一个作品条目（契约 C2 work item）。批次由后端按条目并行生成。
  */
 
+import { scriptStats } from "./script-library-format";
+
 export type TalkingDrive = "text" | "audio";
 export type AssignMode = "same" | "each";
 
@@ -19,6 +21,9 @@ export type TalkingScript = {
   audioId?: string;
   audioName?: string;
   audioSeconds?: number;
+  /** 文案库接口给的字数与时长（全站同一口径）；手动输入的稿没有，现算。 */
+  chars?: number;
+  seconds?: number;
 };
 
 /** 一条稿的出镜设置。personaId 有值时 avatarId/voiceId 来自固定形象。 */
@@ -38,7 +43,7 @@ export type TalkingDraft = {
 
 export type Persona = { id: string; name: string; avatar_id: string; voice_id: string; available?: boolean };
 
-export const CHARS_PER_SECOND = 4.8;
+export { CHARS_PER_SECOND } from "./script-library-format";
 export const MAX_SCRIPTS = 20;
 export const PARALLEL_LIMIT = 4;
 /** 一条口播从提交到出片的大致分钟数（含配音与口型驱动），用于给商家一个心理预期。 */
@@ -46,14 +51,14 @@ export const MINUTES_PER_ROUND: [number, number] = [3, 6];
 
 export const emptyDraft = (): TalkingDraft => ({ version: 1, drive: "text", scripts: [], mode: "same", shared: {}, perScript: {}, step: 1 });
 
-/** 读口播稿的可读字数（去掉空白与话题标签）。 */
-export function spokenChars(text: string): number {
-  return text.replace(/#[^\s#]+/g, "").replace(/\s+/g, "").length;
+/** 字数和时长与文案库同一口径：库里的稿用接口返回的 script_chars / script_seconds，手动输入的用 scriptStats。 */
+export function scriptChars(script: Pick<TalkingScript, "script" | "chars">): number {
+  return script.chars ?? scriptStats(script.script).chars;
 }
 
-export function scriptSeconds(script: Pick<TalkingScript, "script" | "audioSeconds">): number {
+export function scriptSeconds(script: Pick<TalkingScript, "script" | "audioSeconds" | "seconds">): number {
   if (script.audioSeconds) return Math.round(script.audioSeconds);
-  return Math.max(1, Math.round(spokenChars(script.script) / CHARS_PER_SECOND));
+  return script.seconds ?? Math.max(1, scriptStats(script.script).seconds);
 }
 
 export function durationLabel(seconds: number): string {

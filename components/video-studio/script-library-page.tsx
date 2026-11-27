@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, BookOpenText, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowRight, BookOpenText, PencilLine, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
+import { billableLabel, useVideoCredits } from "@/features/video-studio/credits";
 import { LIBRARY_PAGE_SIZE, useScriptLibrary } from "@/features/video-studio/use-script-library";
 import {
-  LIBRARY_PLATFORM_LABEL, SOURCE_LABEL, bodySummary, displayTitle, editChanged, editOf, pageState, scriptStats, toggle, togglePage,
-  type LibraryEdit, type LibraryEntry, type LibraryPlatform,
+  LIBRARY_PLATFORM_LABEL, SOURCE_LABEL, bodySummary, displayTitle, editChanged, editOf, needsFill, pageState, scriptStats, toggle, togglePage,
+  type FillStatus, type LibraryEdit, type LibraryEntry, type LibraryPlatform,
 } from "@/features/video-studio/script-library-format";
 import type { ToastTone } from "./studio-toast";
 import { PageHero } from "./page-hero";
@@ -19,9 +20,30 @@ const FILTERS: { key: LibraryPlatform | ""; label: string }[] = [{ key: "", labe
 
 /* ----------------------------------------------------------- 详情抽屉 */
 
-function Detail({ entry, busy, onClose, onSave, onDelete, onUse, onCopy }: {
-  entry: LibraryEntry; busy: string; onClose: () => void; onSave: (edit: LibraryEdit) => Promise<void>;
-  onDelete: () => Promise<void>; onUse: () => void; onCopy: (text: string) => void;
+function FillBlock({ entry, busy, credits, onFill }: { entry: LibraryEntry; busy: string; credits: number | null | undefined; onFill: (platform: LibraryPlatform) => Promise<FillStatus | undefined> }) {
+  const [platform, setPlatform] = useState<LibraryPlatform>(entry.platform || "douyin");
+  const [failed, setFailed] = useState("");
+  const running = busy === "fill";
+  const run = async () => {
+    setFailed("");
+    const status = await onFill(platform).catch(() => undefined);
+    if (!status || status.status !== "completed") setFailed(status?.message || "这次没写好，没有扣积分，可以再试一次。");
+  };
+  return <div className={css.fill}>
+    <p className={css.note}>这是改版前存的文案，只有口播稿。可以让 AI 按这段口播稿补写标题和发布正文，只用口播稿里说过的内容；没写好不扣积分。</p>
+    <div className={css.fillRow}>
+      <div className={css.filters} role="radiogroup" aria-label="发布平台">
+        {(["douyin", "xiaohongshu"] as LibraryPlatform[]).map(key => <button key={key} type="button" role="radio" aria-checked={platform === key} disabled={running} onClick={() => setPlatform(key)}>{LIBRARY_PLATFORM_LABEL[key]}</button>)}
+      </div>
+      <button type="button" className={studio.outlineButton} disabled={!!busy} onClick={() => void run()}><Sparkles size={14} />{running ? "正在补写…" : billableLabel("补写标题和正文", credits)}</button>
+    </div>
+    {failed && <p className={css.error} role="alert">{failed}</p>}
+  </div>;
+}
+
+function Detail({ entry, busy, credits, onClose, onSave, onDelete, onUse, onCopy, onFill }: {
+  entry: LibraryEntry; busy: string; credits: number | null | undefined; onClose: () => void; onSave: (edit: LibraryEdit) => Promise<void>;
+  onDelete: () => Promise<void>; onUse: () => void; onCopy: (text: string) => void; onFill: (platform: LibraryPlatform) => Promise<FillStatus | undefined>;
 }) {
   const [edit, setEdit] = useState<LibraryEdit | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -43,7 +65,7 @@ function Detail({ entry, busy, onClose, onSave, onDelete, onUse, onCopy }: {
         <button type="button" className={css.close} onClick={onClose} aria-label="关闭"><X size={18} /></button>
       </header>
       <div className={css.drawerBody}>
-        {!entry.publish_title && !entry.publish_body && !edit && <p className={css.note}>这是改版前存的文案，只有口播稿。可以点「编辑」补上标题和发布正文。</p>}
+        {needsFill(entry) && !edit && <FillBlock entry={entry} busy={busy} credits={credits} onFill={onFill} />}
         <ScriptParts parts={entry} edit={edit} onChange={setEdit} onCopy={onCopy} />
         {ref?.title && <p className={css.note}>参考的爆款：{ref.title}</p>}
       </div>
@@ -72,6 +94,7 @@ export function ScriptLibraryPage({ workspaceId, notify, copyText, onUseScripts,
   onUseScripts: (ids: string[]) => void; onWrite: () => void;
 }) {
   const lib = useScriptLibrary(workspaceId);
+  const fillNote = useVideoCredits(workspaceId).note(["writing_publish_fill"]);
   const [selected, setSelected] = useState<string[]>([]);
   const [open, setOpen] = useState<LibraryEntry | null>(null);
   const items = lib.page?.items || [];
@@ -85,6 +108,12 @@ export function ScriptLibraryPage({ workspaceId, notify, copyText, onUseScripts,
     if (!open) return;
     try { const next = await lib.save(open, edit); setOpen(next); notify("已保存到文案库", "success"); }
     catch (caught) { notify(caught instanceof Error && caught.message ? caught.message : "没有保存成功，请重试。", "error"); throw caught; }
+  };
+  const fill = async (platform: LibraryPlatform) => {
+    if (!open) return undefined;
+    const status = await lib.fill(open, platform);
+    if (status.status === "completed" && status.entry) { setOpen(status.entry); notify("已补写标题和正文", "success"); }
+    return status;
   };
   const remove = async () => {
     if (!open) return;
@@ -139,6 +168,6 @@ export function ScriptLibraryPage({ workspaceId, notify, copyText, onUseScripts,
       <button type="button" className={css.link} onClick={() => setSelected([])}>清空</button>
       <button type="button" className={studio.primaryButton} onClick={() => onUseScripts(selected)}>用这 {selected.length} 条去做口播<ArrowRight size={15} /></button>
     </div>}
-    {open && <Detail key={open.id + open.revision} entry={open} busy={lib.busy} onClose={() => setOpen(null)} onSave={save} onDelete={remove} onUse={() => onUseScripts([open.id])} onCopy={copyText} />}
+    {open && <Detail key={open.id + open.revision} entry={open} busy={lib.busy} credits={fillNote.credits} onClose={() => setOpen(null)} onSave={save} onDelete={remove} onUse={() => onUseScripts([open.id])} onCopy={copyText} onFill={fill} />}
   </div>;
 }

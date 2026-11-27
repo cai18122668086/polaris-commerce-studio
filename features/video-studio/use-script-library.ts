@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
-import type { LibraryEdit, LibraryEntry, LibraryPage, LibraryPlatform } from "./script-library-format";
+import type { FillStatus, LibraryEdit, LibraryEntry, LibraryPage, LibraryPlatform } from "./script-library-format";
 
 /**
  * 文案库接口（/script-library）。写稿结果在服务器上自动入库，这里只负责读、改、删。
@@ -26,6 +26,9 @@ export function scriptLibraryApi(workspaceId: string) {
     get: async (id: string) => unwrapApiResponse(await api.GET(`${root}/script-library/{entry_id}`, entry(id))) as LibraryEntry,
     update: async (row: LibraryEntry, edit: LibraryEdit) => unwrapApiResponse(await api.PUT(`${root}/script-library/{entry_id}`, { ...entry(row.id), body: { expected_revision: row.revision, publish_title: edit.publish_title.trim(), publish_body: edit.publish_body.trim(), script: edit.script.trim(), platform: row.platform } })) as LibraryEntry,
     remove: async (id: string) => { unwrapApiResponse(await api.DELETE(`${root}/script-library/{entry_id}`, entry(id))); },
+    /** 补写标题和正文：one small paid call; a failure is not charged. */
+    fill: async (id: string, platform: LibraryPlatform, requestId: string) => unwrapApiResponse(await api.POST(`${root}/script-library/{entry_id}/publish-fill`, { ...entry(id), body: { request_id: requestId, platform } })) as FillStatus,
+    fillStatus: async (id: string, taskId: string) => unwrapApiResponse(await api.GET(`${root}/script-library/{entry_id}/publish-fill/{task_id}`, { ...opts(), params: { path: { workspace_id: workspaceId, entry_id: id, task_id: taskId } } })) as FillStatus,
   };
 }
 
@@ -78,5 +81,19 @@ export function useScriptLibrary(workspaceId: string) {
     setBusy("remove");
     try { await client.current.remove(id); await reload(); } finally { setBusy(""); }
   };
-  return { query, platform, offset, page, loading, error, busy, search, filter, setOffset, reload, save, remove };
+  /** Puts a changed entry (e.g. after 补写) back into the current page. */
+  const replace = (next: LibraryEntry) => setPage(current => current && { ...current, items: current.items.map(item => item.id === next.id ? next : item) });
+  const fill = async (row: LibraryEntry, platform: LibraryPlatform) => {
+    setBusy("fill");
+    try {
+      let status = await client.current.fill(row.id, platform, crypto.randomUUID());
+      for (let i = 0; i < 60 && status.status === "running"; i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        status = await client.current.fillStatus(row.id, status.task_id);
+      }
+      if (status.entry) replace(status.entry);
+      return status;
+    } finally { setBusy(""); }
+  };
+  return { query, platform, offset, page, loading, error, busy, search, filter, setOffset, reload, save, remove, fill };
 }

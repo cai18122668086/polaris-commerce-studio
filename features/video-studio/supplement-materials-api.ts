@@ -22,11 +22,11 @@ export async function fetchSources(workspaceId: string): Promise<SourcesResponse
   return unwrapApiResponse(await apiClient.GET(`${root}/sources`, ws(workspaceId))) as unknown as SourcesResponse;
 }
 
-export async function searchStock(workspaceId: string, scriptText: string, sentenceIndexes?: number[]): Promise<StockSearchResponse> {
+export async function searchStock(workspaceId: string, scriptText: string, sentenceIndexes?: number[], exclude: number[] = []): Promise<StockSearchResponse> {
   return unwrapApiResponse(await apiClient.POST(`${root}/stock/search`, {
     ...ws(workspaceId),
     signal: AbortSignal.timeout(120000),
-    body: { script_text: scriptText, limit: 3, ...(sentenceIndexes ? { sentence_indexes: sentenceIndexes } : {}) },
+    body: { script_text: scriptText, limit: 3, exclude_sentences: exclude, ...(sentenceIndexes ? { sentence_indexes: sentenceIndexes } : {}) },
   })) as unknown as StockSearchResponse;
 }
 
@@ -38,9 +38,9 @@ export async function importStock(workspaceId: string, body: {
   })) as unknown as MaterialRow;
 }
 
-export async function estimateAiImages(workspaceId: string, scriptText: string, maxImages: number): Promise<AiEstimateResponse> {
+export async function estimateAiImages(workspaceId: string, scriptText: string, maxImages: number, exclude: number[] = []): Promise<AiEstimateResponse> {
   return unwrapApiResponse(await apiClient.POST(`${root}/ai-images/estimate`, {
-    ...ws(workspaceId), signal: AbortSignal.timeout(120000), body: { script_text: scriptText, max_images: maxImages },
+    ...ws(workspaceId), signal: AbortSignal.timeout(120000), body: { script_text: scriptText, max_images: maxImages, exclude_sentences: exclude },
   })) as unknown as AiEstimateResponse;
 }
 
@@ -74,16 +74,30 @@ export async function listMaterials(workspaceId: string, projectId: string): Pro
   return result.items as unknown as MaterialRow[];
 }
 
+/** 模板可能把素材名称显示在画面上：相机/截图式文件名不直接用。 */
+export function uploadLabel(fileName: string): string {
+  const stem = fileName.replace(/\.[^.]+$/, "").trim();
+  if (!stem || /^(img|dsc|dcim|vid|mov|mvimg|pxl|wx|mmexport|screenshot|photo|image|video|微信图片|屏幕截图)[\s_-]*\d/i.test(stem) || /^[\d\s_-]+$/.test(stem)) return "我的素材";
+  return stem.slice(0, 40);
+}
+
 export async function uploadMaterial(workspaceId: string, projectId: string, file: File, description: string, progress: (value: UploadProgress) => void): Promise<MaterialRow> {
   const form = new FormData();
   form.append("file", file);
   form.append("request_id", crypto.randomUUID());
-  form.append("label", file.name.replace(/\.[^.]+$/, "").slice(0, 120) || "我的素材");
+  form.append("label", uploadLabel(file.name));
   form.append("description", description.slice(0, 400));
   return unwrapApiResponse(await apiClient.POST(materials, {
     params: { path: { workspace_id: workspaceId, project_id: projectId } },
     signal: AbortSignal.timeout(600000),
     body: {} as never, bodySerializer: () => form, fetch: uploadWithProgress(form, progress),
+  })) as unknown as MaterialRow;
+}
+
+export async function placeMaterial(workspaceId: string, projectId: string, materialId: string, sentence: { index: number; text: string } | null): Promise<MaterialRow> {
+  return unwrapApiResponse(await apiClient.PUT(`${materials}/{material_id}/placement`, {
+    params: { path: { workspace_id: workspaceId, project_id: projectId, material_id: materialId } },
+    body: sentence ? { sentence_index: sentence.index, sentence: sentence.text } : {},
   })) as unknown as MaterialRow;
 }
 

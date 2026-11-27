@@ -37,6 +37,7 @@ import {
   fetchSources,
   importStock,
   listMaterials,
+  placeMaterial,
   regenerateAiImage,
   searchStock,
   stockThumbUrl,
@@ -228,11 +229,25 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
       });
     }
   };
+  const setPlacementMode = (mode: "auto" | "manual") => {
+    update(current => setPlacement(current, mode));
+    if (mode === "auto") for (const row of mine) if (pins[row.id] !== undefined) void placeMaterial(workspaceId, item.project_id, row.id, null).catch(() => undefined);
+  };
   const remove = async (row: MaterialRow) => {
     update(current => setSourceMaterials(current, item.id, "mine", (current.items[item.id]?.by_source?.mine ?? []).filter(id => id !== row.id)));
     try { await deleteMaterial(workspaceId, item.project_id, row.id); setRows(current => current.filter(other => other.id !== row.id)); } catch { /* 已被剪辑引用时保留原件，只是不再选用 */ }
   };
   const drop = (event: DragEvent<HTMLLabelElement>) => { event.preventDefault(); setDragging(false); add(event.dataTransfer.files); };
+  const pin = async (row: MaterialRow, index: number | null) => {
+    try {
+      const saved = await placeMaterial(workspaceId, item.project_id, row.id, index === null ? null : { index, text: sentences[index] });
+      setRows(current => current.map(other => other.id === saved.id ? saved : other));
+      update(current => setPin(current, item.id, row.id, index));
+      setError("");
+    } catch (failure) {
+      setError(message(failure, "没能改放置的句子，请重试。"));
+    }
+  };
 
   return (
     <section className={styles.section} aria-label="我的素材">
@@ -240,7 +255,7 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
         <h4>我的素材</h4>
         <div className={styles.segment} role="radiogroup" aria-label="素材放在哪里">
           {(["auto", "manual"] as const).map(mode => (
-            <button key={mode} type="button" role="radio" aria-checked={placement === mode} onClick={() => update(current => setPlacement(current, mode))}>
+            <button key={mode} type="button" role="radio" aria-checked={placement === mode} onClick={() => setPlacementMode(mode)}>
               {mode === "auto" ? "自动放到合适的句子" : "我来指定句子"}
             </button>
           ))}
@@ -252,6 +267,7 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
         <small>可一次选多个 · 图片 JPG/PNG/WebP · 视频 MP4/MOV/WebM，最长 5 分钟</small>
         <input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" onChange={event => { if (event.target.files) add(event.target.files); event.target.value = ""; }} />
       </label>
+      {placement === "manual" && <p className={styles.note}>第 1 句是开场标题，素材从第 2 句开始放。</p>}
       {error && <p className={styles.error}>{error}</p>}
       {uploads.length > 0 && (
         <ul className={styles.uploads}>
@@ -274,10 +290,14 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
                 <select
                   aria-label={`${row.label} 放在哪一句`}
                   value={pins[row.id] ?? ""}
-                  onChange={event => update(current => setPin(current, item.id, row.id, event.target.value === "" ? null : Number(event.target.value)))}
+                  onChange={event => void pin(row, event.target.value === "" ? null : Number(event.target.value))}
                 >
                   <option value="">自动</option>
-                  {sentences.map((text, index) => <option key={index} value={index}>第 {index + 1} 句 · {text.slice(0, 14)}</option>)}
+                  {sentences.map((text, index) => (
+                    <option key={index} value={index} disabled={index === 0}>
+                      第 {index + 1} 句 · {index === 0 ? "开场标题，不放素材" : text.slice(0, 14)}
+                    </option>
+                  ))}
                 </select>
               )}
               <button type="button" className={styles.iconButton} onClick={() => void remove(row)} aria-label={`删除 ${row.label}`}><Trash2 size={13} /></button>
@@ -336,10 +356,12 @@ function StockSection({ workspaceId, item, value, update, report, sources }: Sec
     }
   }, [workspaceId, item.id, item.project_id, setRows, update]);
 
+  const pinned = useMemo(() => Object.values(value.items[item.id]?.pins ?? {}), [value.items, item.id]);
   const search = useCallback(async () => {
     setSearching(true); setError("");
     try {
-      const data = await searchStock(workspaceId, item.script_text);
+      // 每句最多一个补充素材：我指定过的句子不再找免费素材。
+      const data = await searchStock(workspaceId, item.script_text, undefined, pinned);
       setResult(data);
       if (!data.providers.length) setError("免费素材库暂时无法访问，可以先用其他方式补充。");
       // 默认自动挑每句最合适的一个（已经选过的不动）。
@@ -352,7 +374,7 @@ function StockSection({ workspaceId, item, value, update, report, sources }: Sec
     } finally {
       setSearching(false);
     }
-  }, [workspaceId, item.script_text, choose]);
+  }, [workspaceId, item.script_text, choose, pinned]);
   const started = useRef(false);
   useEffect(() => {
     if (started.current || !item.script_text.trim()) return;
@@ -453,14 +475,24 @@ function AiSection({ workspaceId, item, value, update, report }: SectionProps) {
     return [...restored, ...rows];
   }, [materials, chosen, rows, item.id]);
 
+  const stockPicks = value.items[item.id]?.by_source?.stock;
+  const pinsMap = value.items[item.id]?.pins;
+  const covered = useMemo(() => {
+    const fromStock = materials
+      .filter(row => stockPicks?.includes(row.id) && typeof row.provenance?.sentence_index === "number")
+      .map(row => row.provenance?.sentence_index as number);
+    return [...new Set([...fromStock, ...Object.values(pinsMap ?? {})])].sort((a, b) => a - b);
+  }, [materials, stockPicks, pinsMap]);
+  const coveredKey = covered.join(",");
   useEffect(() => {
     if (!item.script_text.trim()) return;
     let live = true;
-    estimateAiImages(workspaceId, item.script_text, max)
+    // 已有我的素材 / 免费素材的句子不再配 AI 图。
+    estimateAiImages(workspaceId, item.script_text, max, coveredKey ? coveredKey.split(",").map(Number) : [])
       .then(data => { if (live) setEstimate(data); })
       .catch(failure => { if (live) setError(message(failure, "暂时无法估算配图张数。")); });
     return () => { live = false; };
-  }, [workspaceId, item.script_text, max]);
+  }, [workspaceId, item.script_text, max, coveredKey]);
 
   useEffect(() => {
     if (!running.length) return;
@@ -604,7 +636,7 @@ function MgSection({ value, update, sources, items }: { value: SupplementMateria
       <ul className={styles.mgPreview} style={MG_COLOURS[style] as CSSProperties}>
         {PREVIEWS.map(row => (
           <li key={row.key}>
-            <div className={styles.mgStage}><div className={styles.mgCard} data-kind={row.key}>{row.body}</div></div>
+            <div className={styles.mgFrame}><div className={styles.mgCard} data-kind={row.key}>{row.body}</div></div>
             <span>{row.label}</span>
           </li>
         ))}

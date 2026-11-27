@@ -4,14 +4,13 @@ import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import { withAuthTimeout } from "@/lib/auth/request-timeout";
 import type { components } from "@/lib/api/generated/openapi";
-import { batchItems, type Persona, type TalkingBatch, type TalkingDraft, type TalkingScript } from "./talking-batch";
+import { batchItems, type TalkingBatch, type TalkingDraft, type TalkingScript } from "./talking-batch";
 
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 export type LibraryEntry = components["schemas"]["LibraryEntry"];
-export type PersonaEntry = Persona & { avatar_name?: string; voice_name?: string; cover_url?: string | null; available?: boolean };
 
 export function scriptFromLibrary(entry: LibraryEntry): TalkingScript {
-  return { key: `doc:${entry.id}`, source: "library", documentId: entry.id, title: entry.publish_title || entry.display_title, body: entry.publish_body, script: entry.script };
+  return { key: `doc:${entry.id}`, source: "library", documentId: entry.id, title: entry.publish_title || entry.display_title, body: entry.publish_body, script: entry.script, chars: entry.script_chars, seconds: entry.script_seconds };
 }
 
 /** 口播面板用到的接口。每个请求都带超时；生成相关的请求可以原样重发（后端幂等）。 */
@@ -24,9 +23,6 @@ export function talkingApi(workspaceId: string) {
     },
     async libraryByIds(ids: string[]) {
       return unwrapApiResponse(await apiClient.GET(`${root}/script-library`, { ...options(), params: { path, query: { ids: ids.join(",") } } }));
-    },
-    async personas(): Promise<PersonaEntry[]> {
-      return unwrapApiResponse(await apiClient.GET(`${root}/personas`, { ...options(), params: { path } })) as PersonaEntry[];
     },
     /** 建批次 + 确认生成。两步都按 draft.requestId 幂等：重复点、断网重试都落到同一个批次。 */
     async submit(draft: TalkingDraft & { requestId: string }): Promise<TalkingBatch> {

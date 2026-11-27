@@ -976,3 +976,76 @@ def test_stock_import_records_licence_and_delete_guard(api, monkeypatch, tmp_pat
         == []
     )
     assert re.fullmatch(r"[0-9a-f]{32}", token)
+
+
+def test_manual_sentence_placement_rewrites_description_until_used(api):
+    client, ws, settings, project = api
+    url = base(ws) + f"/projects/{project}/editing-materials"
+    upload = client.post(
+        url,
+        data={
+            "request_id": str(uuid4()),
+            "label": "耳机实拍",
+            "description": "商家上传的补充素材，放在画面最贴合的句子",
+        },
+        files={"file": ("a.png", _png(), "image/png")},
+    )
+    assert upload.status_code == 201, upload.text
+    row = upload.json()
+    placement = f"{url}/{row['id']}/placement"
+    placed = client.put(placement, json={"sentence_index": 2, "sentence": "耳罩很软。"})
+    assert placed.status_code == 200, placed.text
+    assert placed.json()["description"] == "用于第 3 句：耳罩很软。"
+    assert "origin" not in placed.json()  # still an owner upload
+    auto = client.put(placement, json={}).json()
+    assert auto["description"] == "商家上传的补充素材，放在画面最贴合的句子"
+    assert client.put(placement, json={"sentence_index": 1}).status_code == 422
+
+
+def test_one_supplement_per_sentence_excludes_covered_sentences():
+    from app.video_editing_supplement_plan import ScriptAnalysis, SentencePlan
+    from app.video_editing_supplement_routes import pick_paintable, pick_stock_sentences
+
+    rows = [
+        SentencePlan(
+            index=i,
+            text="一句可以画出来的口播内容" * 3,
+            paintable=True,
+            subject="画面",
+            queries=["q"],
+        )
+        for i in range(6)
+    ]
+    analysis = ScriptAnalysis("v", "d", "model", rows)
+    assert [r["sentence_index"] for r in pick_paintable(analysis, 6, exclude=[0, 2])][
+        :1
+    ] == [1]
+    assert 0 not in [
+        r["sentence_index"] for r in pick_paintable(analysis, 6, exclude=[0])
+    ]
+    assert 3 not in pick_stock_sentences(analysis, exclude=[3])
+
+
+def test_rank_prefers_candidates_whose_tags_match_the_query():
+    def cand(ref, title, kind="image"):
+        return Candidate(
+            provider="pixabay",
+            provider_ref=ref,
+            kind=kind,
+            width=1000,
+            height=1500,
+            duration_ms=None,
+            thumb_url="https://pixabay.com/t.jpg",
+            download_url="https://pixabay.com/d.jpg",
+            page_url="https://pixabay.com/p",
+            author="a",
+            author_url=None,
+            license="l",
+            license_url="https://pixabay.com/l",
+            title=title,
+        )
+
+    cat = cand("1", "cat, soft, pet, fur")
+    ear = cand("2", "headphones, ear cushion, music")
+    assert rank([cat, ear], ["white headphones ear cushion"])[0].provider_ref == "2"
+    assert rank([cat, ear])[0].provider_ref == "1"  # no query: original order rules

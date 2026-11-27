@@ -1,4 +1,5 @@
 import copy
+import math
 
 import pytest
 
@@ -115,6 +116,43 @@ def test_adjacent_chapters_continue_presenter_without_moving_word_events():
     second["start_seconds"] = 5
     first["end_seconds"] = 3.63
     assert bridge_scene_gaps(episode) == []
+
+
+def test_bridged_scene_length_stays_within_one_frame_of_the_episode_clock():
+    # Real failing timings: chapter at 0.09s followed by a chapter at 3.15s.
+    # The export allows one output frame between rendered and scheduled length.
+    for start, following in ((0.09, 3.15), (7.59, 11.37), (3.15, 7.59), (0.21, 4.03)):
+        first = {
+            "group_id": "Z-M15",
+            "layer": "scene",
+            "start_seconds": start,
+            "end_seconds": following - 0.12,
+            "config": {
+                "timing": {"duration_seconds": 1.0, "events": {"title": 0.5}},
+                "media": {
+                    "presenter": {
+                        "kind": "video",
+                        "offset_seconds": start,
+                        "duration_seconds": 1.0,
+                    }
+                },
+            },
+        }
+        second = {
+            **copy.deepcopy(first),
+            "start_seconds": following,
+            "end_seconds": following + 3,
+        }
+        episode = {"shots": [first, second], "source": {"duration_seconds": 30}}
+        assert bridge_scene_gaps(episode)
+        rendered = first["config"]["timing"]["duration_seconds"]
+        scheduled = first["end_seconds"] - first["start_seconds"]
+        assert abs(rendered - scheduled) < 1 / 30
+        assert first["config"]["media"]["presenter"]["duration_seconds"] == rendered
+        # The native frames reach exactly the frame where the next scene starts.
+        assert round(rendered * 30) == math.floor(following * 30 + 1e-6) - math.floor(
+            start * 30 + 1e-6
+        )
 
 
 def test_real_ink_must_fit_above_platform_margin_and_below_native_scene(tmp_path):

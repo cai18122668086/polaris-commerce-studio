@@ -150,7 +150,11 @@ def bridge_scene_gaps(episode: dict, bindings: dict | None = None) -> list[dict]
             continue
         old_end = shot["end_seconds"]
         end = following["start_seconds"]
-        frames = math.ceil(end * 30 - 1e-6) - math.floor(
+        # Both scenes start at their floored output frame (setpts truncates the
+        # origin), so this one only has to reach the frame where the next begins.
+        # Ceiling the end overshot the episode interval by up to two frames and
+        # the export rejected the rendered length (adjacent chapter cards).
+        frames = math.floor(end * 30 + 1e-6) - math.floor(
             shot["start_seconds"] * 30 + 1e-6
         )
         duration = frames / 30

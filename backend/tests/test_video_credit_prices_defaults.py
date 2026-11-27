@@ -16,6 +16,7 @@ EXPECTED = {
     "writing_generate": 10,
     "cover_generate": 7,
     "editing_auto_image": 7,
+    "avatar_polish": 7,
 }
 
 

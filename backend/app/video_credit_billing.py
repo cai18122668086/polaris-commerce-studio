@@ -59,6 +59,7 @@ OwnerType = Literal[
     "video_planning",
     "video_cover",
     "video_editing_image",
+    "video_avatar_polish",
 ]
 Outcome = Literal["settle", "release"] | None
 
@@ -77,6 +78,7 @@ LABELS = {
     "writing_generate": "文案生成",
     "cover_generate": "AI 封面",
     "editing_auto_image": "AI 补充配图",
+    "avatar_polish": "AI 润色形象照",
 }
 
 
@@ -430,6 +432,17 @@ def _cover(session: Session, hold_: CreditReservationRecord) -> Outcome:
     return _by_status(row.status, set(), {"failed"})
 
 
+def _avatar_polish(session: Session, hold_: CreditReservationRecord) -> Outcome:
+    """AI 润色候选：通过规格检查（ready）才结算，失败 / 不合格释放。"""
+
+    from .video_avatar_polish_models import VideoAvatarPolishRecord
+
+    row = _fresh(session, VideoAvatarPolishRecord, hold_.owner_id)
+    if row is None:
+        return "release"
+    return _by_status(row.status, {"ready"}, {"failed"})
+
+
 def _editing_image(session: Session, hold_: CreditReservationRecord) -> Outcome:
     from .video_editing_supplement_images import classify
 
@@ -444,6 +457,7 @@ CLASSIFIERS: dict[str, Callable[[Session, CreditReservationRecord], Outcome]] = 
     "video_planning": _planning,
     "video_cover": _cover,
     "video_editing_image": _editing_image,
+    "video_avatar_polish": _avatar_polish,
 }
 
 

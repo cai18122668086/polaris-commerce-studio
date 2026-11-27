@@ -90,6 +90,7 @@ from .video_editing_task_routes import router as video_editing_task_router
 from .video_editing_transcript_routes import router as video_editing_transcript_router
 from .video_generation import router as video_generation_router
 from .video_personas import router as video_personas_router
+from .video_avatar_polish import router as video_avatar_polish_router
 from .video_script_library import router as video_script_library_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router
@@ -599,6 +600,7 @@ def create_app(
     application.include_router(video_work_talking_router)
     application.include_router(video_avatar_uploads_router)
     application.include_router(video_personas_router)
+    application.include_router(video_avatar_polish_router)
     application.include_router(video_cover_router)
     application.include_router(video_editing_router)
     application.include_router(video_editing_native_plan_router)

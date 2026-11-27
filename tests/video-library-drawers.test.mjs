@@ -27,6 +27,12 @@ const stubs = {
   "@/lib/api/api-error": { ApiError: class ApiError extends Error {} },
   "./voice-progress": { VoiceProgress: ({ status }) => createElement("span", null, `进度:${status}`) },
 };
+const apiStubs = {
+  "@/lib/api/client": { apiClient: { GET: async () => ({ data: [] }), POST: async () => { throw new Error("不应调用"); } } },
+  "@/lib/api/request": { unwrapApiResponse: result => result.data },
+};
+const polishModule = load("../features/video-studio/avatar-polish.ts", name => apiStubs[name] || stubs[name] || require(name));
+stubs["@/features/video-studio/avatar-polish"] = polishModule;
 function resolver(name) {
   if (name in stubs) return stubs[name];
   if (name.endsWith(".css")) return css;
@@ -159,4 +165,21 @@ test("我的固定形象分区：封面 + 名字 + 声音名 + 试听；不可�
   assert.match(html, /更多操作/);
   assert.doesNotMatch(html, />改名</); // 改名 / 删除收进「…」菜单
   assert.match(html, /新建固定形象/);
+});
+
+test("AI 润色描述：换脸 / 名人 / 不适宜内容在前端就拦下，正常描述放行", () => {
+  const { polishDescriptionError, POLISH_PRESETS } = polishModule;
+  for (const bad of ["把我换成刘德华的脸", "换脸成明星", "变成当红偶像", "长得像某演员", "穿比基尼", "face swap"]) assert.notEqual(polishDescriptionError(bad), "", bad);
+  for (const ok of ["把我变成一个很帅、穿西装、站在门店里的人", "枪灰色西装", "儿童服装店店长，暖光"]) assert.equal(polishDescriptionError(ok), "", ok);
+  assert.equal(POLISH_PRESETS.length, 4);
+  for (const preset of POLISH_PRESETS) assert.equal(polishDescriptionError(preset.description), "");
+  assert.match(polishDescriptionError(""), /示例/);
+  assert.match(polishDescriptionError("字".repeat(121)), /120/);
+});
+
+test("定制形象抽屉：照片模式有「AI 润色（可选）」开关，视频模式没有", () => {
+  const html = renderToStaticMarkup(createElement(AvatarCreateDrawer, { open: true, onClose() {}, workspaceId: "ws", userId: "u", library: { ...library, createAvatar: async () => { throw new Error("不应调用"); } } }));
+  assert.match(html, /AI 润色（可选）/);
+  assert.match(html, /role="switch"/);
+  assert.match(html, /保持你本人的五官/);
 });

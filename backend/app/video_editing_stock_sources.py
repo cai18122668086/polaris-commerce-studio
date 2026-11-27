@@ -113,6 +113,7 @@ class SourceState:
 @dataclass
 class _Health:
     blocked_until: dict[str, float] = field(default_factory=dict)
+    healthy_until: dict[str, float] = field(default_factory=dict)
 
 
 _health = _Health()
@@ -177,6 +178,59 @@ def allowed_url(provider: str, url: str) -> bool:
 
 def _mark_blocked(provider: str) -> None:
     _health.blocked_until[provider] = time.monotonic() + UNAVAILABLE_SECONDS
+
+
+PROBES: dict[str, tuple[str, dict[str, str | int]]] = {
+    "openverse": ("https://api.openverse.org/v1/images/", {"q": "tea", "page_size": 1}),
+    "commons": (
+        "https://commons.wikimedia.org/w/api.php",
+        {"action": "query", "format": "json", "meta": "siteinfo"},
+    ),
+}
+HEALTHY_SECONDS = 1800
+
+
+def probe_fallbacks(settings: Settings, *, client: httpx.Client | None = None) -> None:
+    """One cheap request per keyless source not checked recently (4 s cap).
+
+    A refusal (403 / bot challenge) marks the source「暂时无法访问」before the
+    user opens it, instead of failing their first search.
+    """
+    now = time.monotonic()
+    enabled = {
+        "openverse": settings.video_stock_openverse_enabled,
+        "commons": settings.video_stock_commons_enabled,
+    }
+    own = client is None
+    client = client or httpx.Client()
+    try:
+        for provider, (url, params) in PROBES.items():
+            if not enabled[provider]:
+                continue
+            if _health.healthy_until.get(provider, 0) > now:
+                continue
+            if _health.blocked_until.get(provider, 0) > now:
+                continue
+            try:
+                response = client.get(
+                    url,
+                    params=params,
+                    headers={"User-Agent": USER_AGENT},
+                    timeout=4.0,
+                    follow_redirects=False,
+                )
+                ok = response.status_code == 200 and "json" in response.headers.get(
+                    "content-type", ""
+                )
+            except httpx.HTTPError:
+                ok = False
+            if ok:
+                _health.healthy_until[provider] = now + HEALTHY_SECONDS
+            else:
+                _mark_blocked(provider)
+    finally:
+        if own:
+            client.close()
 
 
 # ---------------------------------------------------------------- parsing

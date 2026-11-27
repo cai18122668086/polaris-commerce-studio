@@ -12,7 +12,7 @@ import { mediaUrl } from "@/lib/api/base-url";
 const route = "/api/v1/video-studio/workspaces/{workspace_id}/editing-works" as const;
 const activeRoute = "/api/v1/video-studio/workspaces/{workspace_id}/editing-works/active" as const;
 
-function ActiveEditingWorks({ userId, workspaceId, keyword }: { userId: string; workspaceId: string; keyword: string }) {
+export function ActiveEditingWorks({ userId, workspaceId, keyword }: { userId: string; workspaceId: string; keyword: string }) {
   const active = useQuery({
     queryKey: ["video-studio", "editing-works-active", userId, workspaceId],
     staleTime: 0,

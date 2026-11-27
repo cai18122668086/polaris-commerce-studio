@@ -668,6 +668,78 @@ async def ai_regenerate(
 # ---------------------------------------------------------------- delete
 
 
+class MaterialPlacementBody(StrictVideoModel):
+    sentence_index: int | None = Field(default=None, ge=0, le=60)
+    sentence: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+AUTO_DESCRIPTION = "商家上传的补充素材，放在画面最贴合的句子"
+
+
+def _own_material(
+    session: Session, workspace: VideoWorkspace, project_id: UUID, material_id: UUID
+) -> EditingMaterialRecord:
+    row = session.scalar(
+        select(EditingMaterialRecord).where(
+            *material_scope(workspace, project_id),
+            EditingMaterialRecord.id == str(material_id),
+        )
+    )
+    if row is None:
+        raise ApiError(404, "EDITING_MATERIAL_NOT_FOUND", "未找到本项目的补充素材。")
+    return row
+
+
+def _require_unused(
+    session: Session, project_id: UUID, row: EditingMaterialRecord, verb: str
+) -> None:
+    """Frozen planning snapshots bind the material card: never change it."""
+    marker = f"material-{row.id}"
+    plans: Sequence[Any] = session.scalars(
+        select(EditingPlanningTaskRecord.snapshot).where(
+            EditingPlanningTaskRecord.project_id == str(project_id)
+        )
+    ).all()
+    if any(marker in json.dumps(snapshot or {}) for snapshot in plans):
+        raise ApiError(
+            409,
+            "EDITING_MATERIAL_IN_USE",
+            f"这个素材已用在剪辑里，不能{verb}；可以重新上传一份。",
+        )
+
+
+@material_router.put("/{material_id}/placement")
+def place_material(
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+    project_id: UUID,
+    material_id: UUID,
+    body: MaterialPlacementBody,
+) -> dict[str, Any]:
+    """「我来指定句子」：把素材说明改成那一句原文，规划按它放置；空 = 自动。"""
+    require_workspace_write(workspace)
+    enabled(request)
+    own_project(session, workspace, str(project_id))
+    row = _own_material(session, workspace, project_id, material_id)
+    if row.origin is not None:
+        raise ApiError(
+            422, "EDITING_MATERIAL_PLACEMENT", "只有自己上传的素材可以指定句子。"
+        )
+    if (body.sentence_index is None) != (body.sentence is None):
+        raise ApiError(422, "EDITING_MATERIAL_PLACEMENT", "请选择要放的句子。")
+    description = (
+        f"用于第 {body.sentence_index + 1} 句：{body.sentence.strip()}"[:400]
+        if body.sentence_index is not None and body.sentence
+        else AUTO_DESCRIPTION
+    )
+    if row.description != description:
+        _require_unused(session, project_id, row, "改句子")
+        row.description = description
+        session.commit()
+    return material_response(row)
+
+
 @material_router.delete("/{material_id}", status_code=204)
 def delete_material(
     request: Request,
@@ -679,26 +751,8 @@ def delete_material(
     require_workspace_write(workspace)
     settings = enabled(request)
     own_project(session, workspace, str(project_id))
-    row = session.scalar(
-        select(EditingMaterialRecord).where(
-            *material_scope(workspace, project_id),
-            EditingMaterialRecord.id == str(material_id),
-        )
-    )
-    if row is None:
-        raise ApiError(404, "EDITING_MATERIAL_NOT_FOUND", "未找到本项目的补充素材。")
-    marker = f"material-{row.id}"
-    plans: Sequence[Any] = session.scalars(
-        select(EditingPlanningTaskRecord.snapshot).where(
-            EditingPlanningTaskRecord.project_id == str(project_id)
-        )
-    ).all()
-    if any(marker in json.dumps(snapshot or {}) for snapshot in plans):
-        raise ApiError(
-            409,
-            "EDITING_MATERIAL_IN_USE",
-            "这个素材已用在剪辑里，不能删除；不选它即可。",
-        )
+    row = _own_material(session, workspace, project_id, material_id)
+    _require_unused(session, project_id, row, "删除")
     path = material_file(settings, row.id, row.mime)
     session.delete(row)
     session.commit()

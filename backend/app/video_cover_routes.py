@@ -382,9 +382,15 @@ def process_request(
                     row.status, row.error_code = "failed", exc.code
                 session.commit()
                 return
-            frame, face = compose.crop_to_canvas(key.image, key.face)
+            frame, face = compose.crop_to_canvas(
+                key.image, key.face, rows[0].cover_text
+            )
             previous = tuple(rows[0].params.get("previous_layouts") or ())
-            layouts = compose.choose_layouts(face, previous)
+            # The real frame can only use layouts that fit around the face as it
+            # is; the AI repaint is asked to re-frame for a different layout.
+            fitting = compose.choose_layouts(face, previous, rows[0].cover_text)
+            preferred = compose.choose_layouts(face, previous)
+            frame_layout: str | None = None
             frame_bg = compose.warm_grade(frame)
             keyframe_info = {
                 "keyframe_at": key.at,
@@ -392,7 +398,8 @@ def process_request(
             }
             for row in rows:
                 started = time.monotonic()
-                own_layouts = layouts[row.slot % 2 :] + layouts[: row.slot % 2]
+                shift = row.slot % len(fitting)
+                own_layouts = fitting[shift:] + fitting[:shift]
                 try:
                     if row.background == "frame":
                         _finish(
@@ -404,13 +411,17 @@ def process_request(
                             "frame",
                             keyframe_info,
                         )
+                        frame_layout = row.layout
                     else:
+                        asked = [x for x in preferred if x != frame_layout]
+                        asked += [x for x in fitting if x not in asked]
                         _ai_candidate(
                             root,
                             row,
                             client,
                             frame,
                             face,
+                            asked,
                             own_layouts,
                             frame_bg,
                             keyframe_info,
@@ -440,10 +451,13 @@ def _ai_candidate(
     frame: Image.Image,
     face: compose.Box | None,
     layouts: list[compose.Layout],
+    fallback: list[compose.Layout],
     frame_bg: Image.Image,
     keyframe_info: dict[str, Any],
 ) -> None:
-    face_on_right = bool(face) and (face[0] + face[2]) / 2 > compose.CANVAS[0] / 2  # type: ignore[index]
+    """``layouts``: what the repaint is framed for; ``fallback``: real-frame order."""
+
+    face_on_right = face is not None and (face[0] + face[2]) / 2 > compose.CANVAS[0] / 2
     zone_key = skill.zone_key(layouts[0], face_on_right)
     dims = skill.choose_dimensions(
         row.params.get("topic") or row.cover_text, rotate=row.round
@@ -465,7 +479,7 @@ def _ai_candidate(
             row,
             frame_bg,
             face,
-            layouts,
+            fallback,
             "frame",
             {**keyframe_info, "fallback_from": "ai"},
         )
@@ -787,7 +801,8 @@ def retext(
     # Same layout as the parent first, then the usual pair for this face.
     known: list[compose.Layout] = ["top", "bottom", "side", "center"]
     layouts = [layout for layout in known if layout == parent.layout]
-    layouts += [x for x in compose.choose_layouts(face) if x not in layouts]
+    fitting = compose.choose_layouts(face, text=text)
+    layouts += [x for x in fitting if x not in layouts]
     try:
         _finish(
             covers_root(request.app.state.settings),

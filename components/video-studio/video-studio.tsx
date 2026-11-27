@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { ApiError } from "@/lib/api/api-error";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowDownToLine, ArrowRight, AudioLines, BookOpenText, CircleHelp, Clapperboard, ExternalLink, FolderOpen, Play, Plus, Search,
+  ArrowDownToLine, ArrowRight, AudioLines, BookOpenText, CircleHelp, Clapperboard, ExternalLink, FolderOpen, Images, Play, Plus, Search,
   Sparkles, UserRound, Video, Volume2,
 } from "lucide-react";
 import styles from "./video-studio.module.css";
@@ -20,7 +20,6 @@ import { GuidedEmpty, PageHero } from "./page-hero";
 import { ProjectStepBar } from "./project-step-bar";
 import { TaskCenter } from "./task-center";
 import { WritingStudio } from "./writing-studio";
-import { EditingWorks } from "./editing-works";
 import { GenerationConfirmation } from "./generation-confirmation";
 import { ScriptProofread } from "./script-proofread";
 import { Disclosure, MetadataGrid, Notice, TextDocument } from "./studio-content";
@@ -28,7 +27,9 @@ import { GenerationWorkCard } from "./generation-work-card";
 import { StudioIntro } from "./studio-intro";
 import { ScriptHistory } from "./script-history";
 import { ScriptLibraryPage } from "./script-library-page";
-import { voiceHref } from "@/features/video-studio/flow-params";
+import { parseFlowParams, voiceHref } from "@/features/video-studio/flow-params";
+import { FinishingScreen } from "./finishing-screen";
+import { WorksHome } from "./works-home";
 import { StudioToast, type ToastMessage, type ToastTone } from "./studio-toast";
 import { useAutoReveal } from "@/features/video-studio/use-auto-reveal";
 import { billableLabel, useVideoCredits } from "@/features/video-studio/credits";
@@ -43,7 +44,7 @@ import { useVideoLibrary, type VideoAvatar, type GenerationJob } from "@/feature
 import type { VideoDraft, VideoContent, VideoVersion } from "@/features/video-studio/projects";
 import { mediaUrl } from "@/lib/api/base-url";
 
-export type StudioScreen = "home" | "writing" | "create" | "avatars" | "voices" | "library" | "works" | "editing";
+export type StudioScreen = "home" | "writing" | "create" | "avatars" | "voices" | "library" | "works" | "editing" | "finish";
 type Avatar = VideoAvatar;
 type Draft = VideoDraft;
 type SavedCopy = { id: string; title: string; text: string; date: string };
@@ -154,6 +155,8 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   const voice = VOICES.find(item => item.id === draft.voiceId);
   const rawReference = content.references.find(r => r.note.includes("语音转写")) || content.references.find(r => r.original_text);
   const notify = useCallback((text: string, tone: ToastTone = "info") => setToast({ id: Date.now(), text, tone }), []);
+  const searchParams = useSearchParams();
+  const flow = parseFlowParams(new URLSearchParams(searchParams?.toString() ?? ""));
   const updateDraft = (patch: Partial<Draft>) => setDraft(current => ({ ...current, ...patch }));
   const applyVoice = (voiceId: string) => updateDraft({ voiceId, emotion: "自然", language: "auto" });
   const previewVoice = (item: typeof VOICES[number]) => {
@@ -269,17 +272,14 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
   };
 
   const worksContent = <>
-    <PageHero eyebrow="我的作品" title="每一个好想法，" accent="都留下作品" description="进行中的任务、剪辑成片和数字人口播都在这里，随时回到原任务继续。" facts={[{ label: "口播任务", value: library.jobs.length }, { label: "项目", value: persisted.projects.length }]} actions={<button className={styles.primaryButton} onClick={() => go("create")}><Plus size={16} />创作视频</button>} motif="works" />
-    <div className={styles.listHeading}><b>全部作品</b><label className={styles.search}><Search size={15} /><input aria-label="搜索作品" placeholder="搜索作品" value={search} onChange={event => setSearch(event.target.value)} /></label></div>
-    <EditingWorks userId={userId} workspaceId={workspaceId} keyword={search} />
-    <section aria-label="生成作品">
-      <div className={styles.sectionHeading}><h2>生成作品</h2><span>{library.jobs.length + works.length} 项</span></div>
-      {workList()}
-    </section>
+    <WorksHome userId={userId} workspaceId={workspaceId} jobs={library.jobs} initialBatch={flow.batch ?? null} notify={notify} />
+    <Disclosure title="口播与形象任务记录" description="单条口播、形象动作的原始任务，可继续未完成的任务">
+      <section aria-label="生成记录">{workList()}</section>
+    </Disclosure>
   </>;
 
 
-  const stepBar = (step: "writing" | "create" | "editing") => <ProjectStepBar workspaceId={workspaceId} projectId={projectId} saved={Boolean(persisted.revision)} screen={step} hasScript={Boolean(draft.text.trim())} jobs={library.jobs} onGo={go} />;
+  const stepBar = (step: "writing" | "create" | "editing" | "finish") => <ProjectStepBar flow={flow} workspaceId={workspaceId} projectId={projectId} saved={Boolean(persisted.revision)} screen={step} hasScript={Boolean(draft.text.trim())} jobs={library.jobs} onGo={go} />;
   // 口播（v3）：四步面板 + 批次结果区，见 talking-studio.tsx（W2）。
   const lipsyncNote = credits.note(["lipsync"]);
   const editor = <TalkingStudio userId={userId} workspaceId={workspaceId} avatars={AVATARS} voices={VOICES}
@@ -288,15 +288,17 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     notify={notify} stepBar={stepBar("create")} onBack={() => go("home")} onWriting={() => go("writing")} />;
 
   const entries = [
-    { key: "writing", title: "写爆款文案", note: "推荐", copy: "找对标、拆结构，按产品事实改写成自己的口播稿。", step: "从文案开始", action: () => go("writing") },
-    { key: "create", title: "从文案做口播", copy: "已有文案，选好形象和声音，生成数字人口播。", step: "从口播开始", action: () => go("create") },
-    { key: "editing", title: "已有视频直接剪辑", copy: "上传口播或选择已生成的视频，套用模板出片。", step: "从剪辑开始", action: () => go("editing") },
+    { key: "writing", title: "文案", note: "推荐从这里开始", copy: "找对标写爆款，标题、发布正文、口播稿一起出，自动进文案库。", step: "第 1 步", action: () => go("writing") },
+    { key: "create", title: "口播", copy: "文案库多选几条，每条配不同的数字人和声音，并行生成。", step: "第 2 步", action: () => go("create") },
+    { key: "editing", title: "剪辑", copy: "一批口播一起剪，选模板、补素材；已有视频也能直接上传来剪。", step: "第 3 步", action: () => go("editing") },
+    { key: "finish", title: "成片", copy: "AI 出封面，定标题和正文，保存到我的作品，点开就是手机上的样子。", step: "第 4 步", action: () => go("finish") },
   ];
   const navGroups = [
     { label: "创作流程", items: [
       { key: "writing" as const, label: "爆款文案", icon: <Sparkles size={18} /> },
       { key: "create" as const, label: "创作视频", icon: <Video size={18} /> },
       { key: "editing" as const, label: "智能剪辑", icon: <Clapperboard size={18} /> },
+      { key: "finish" as const, label: "成片", icon: <Images size={18} /> },
       { key: "works" as const, label: "我的作品", icon: <ArrowDownToLine size={18} /> },
     ] },
     { label: "素材库", items: [
@@ -305,7 +307,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
       { key: "library" as const, label: "文案库", icon: <BookOpenText size={18} /> },
     ] },
   ];
-  const homeContent = <><StudioIntro avatarCount={AVATARS.filter(a => a.ready).length} voiceCount={VOICES.length} onCreate={() => go("create")} /><section className={styles.entryCards} aria-label="开始创作">{entries.map(entry => <button key={entry.key} type="button" className={`${styles.entryCard} ${entry.note ? styles.entryPrimary : ""}`} onClick={entry.action}><span className={styles.entryStep}>{entry.step}</span><h2>{entry.title}{entry.note && <small>{entry.note}</small>}</h2><p>{entry.copy}</p><span className={styles.entryGo}>开始 <ArrowRight size={14} /></span></button>)}</section><div className={styles.sectionHeading}><div><h2>素材库 · 公共数字人</h2><span>选一个形象，直接进入口播</span></div></div>{filters("搜索数字人")}{avatarGrid()}{!filteredAvatars.length && <Empty icon={<Search size={25} />} title="没有找到匹配的数字人" description="试试其他名字或筛选条件。" />}</>;
+  const homeContent = <><StudioIntro avatarCount={AVATARS.filter(a => a.ready).length} voiceCount={VOICES.length} onCreate={() => go("writing")} /><section className={styles.entryCards} aria-label="开始创作">{entries.map(entry => <button key={entry.key} type="button" className={`${styles.entryCard} ${entry.note ? styles.entryPrimary : ""}`} onClick={entry.action}><span className={styles.entryStep}>{entry.step}</span><h2>{entry.title}{entry.note && <small>{entry.note}</small>}</h2><p>{entry.copy}</p><span className={styles.entryGo}>开始 <ArrowRight size={14} /></span></button>)}</section><div className={styles.sectionHeading}><div><h2>素材库 · 公共数字人</h2><span>选一个形象，直接进入口播</span></div></div>{filters("搜索数字人")}{avatarGrid()}{!filteredAvatars.length && <Empty icon={<Search size={25} />} title="没有找到匹配的数字人" description="试试其他名字或筛选条件。" />}</>;
   const assetContent = <><PageHero eyebrow={screen === "avatars" ? "形象" : "声音"} title={screen === "avatars" ? "为每个故事，" : "一个熟悉的声音，"} accent={screen === "avatars" ? "选对讲述者" : "更有温度"} description={screen === "avatars" ? "公共模特随时可用；上传一张清晰照片或一段出镜视频，就能创建你的数字分身。" : "系统音色开箱即用；上传 10～20 秒本人录音，即可克隆专属声音。"} facts={screen === "avatars" ? [{ label: "可用形象", value: AVATARS.filter(a => a.ready).length }, { label: "我的定制", value: AVATARS.filter(a => a.source === "self_owned").length }] : [{ label: "系统音色", value: VOICES.filter(v => v.source !== "own").length }, { label: "我的声音", value: Math.max(clones.voices.length, VOICES.filter(v => v.source === "own").length) }]} actions={<button type="button" className={styles.primaryButton} onClick={() => open(screen === "avatars" ? "avatar-clone" : "voice-clone")}><Plus size={17} />{screen === "avatars" ? "克隆新形象" : "克隆新声音"}</button>} motif={screen === "avatars" ? "avatar" : "voice"} />{tabs([{ key: "own", label: screen === "avatars" ? "我的定制" : "我的声音" }, { key: "public", label: screen === "avatars" ? "公共模特" : "系统声音" }], assetTab, setAssetTab)}{assetTab === "own" && screen === "voices" ? <MyVoices clones={clones} onClone={() => open("voice-clone")} onApply={id => attempt(async () => { await library.reload(); applyVoice(id); await session.save(); router.push(hrefOf("create") + "?project=" + session.state.projectId); })} onReload={library.reload} onError={text => notify(text, "error")} /> : <>{screen === "avatars" && filters("搜索数字人")}{screen === "avatars" ? <>{avatarGrid()}{!filteredAvatars.length && (AVATARS.length ? <Empty icon={<Search size={25} />} title="没有找到匹配的数字人" description="试试其他名字或筛选条件。" /> : <GuidedEmpty title={library.error ? "形象库暂时读不到" : "还没有可用的形象"} description={library.error ? "数字人服务暂时没有响应，已保存的口播和剪辑不受影响。稍后重新读取即可。" : "公共模特会显示在这里；也可以用一张清晰照片克隆你自己的数字分身。"} steps={["上传一张正面清晰照片或一段出镜视频", "预览生成的动作，确认满意", "加入形象库，写文案时直接选用"]} action={library.error ? <button type="button" className={styles.outlineButton} onClick={() => attempt(() => library.reload())}>重新读取</button> : <button type="button" className={styles.primaryButton} onClick={() => open("avatar-clone")}><Plus size={16} />克隆新形象</button>} motif="avatar" />)}</> : <><p className={styles.inlineNote}>选择适合视频风格的声音，点击试听预览</p>{voiceGrid()}</>}</>}</>;
 
   const blocked = status === "loading" || Boolean(persisted.recovery) || (!projectId && Boolean(persisted.error));
@@ -319,7 +321,7 @@ export function VideoStudio({ screen, userId, workspaceId }: { screen: StudioScr
     {persisted.backupUnavailable && status !== "saved" && <div className={styles.persistenceNotice}>本机备份不可用，请等待保存成功后离开页面。</div>}
     {library.error && screen !== "editing" && <div role="alert" className={styles.persistenceNotice}>{library.error}<button onClick={() => attempt(() => library.reload())}>重试读取数字人库</button></div>}
     {persisted.legacyAvailable && !blocked && <div className={styles.persistenceNotice}><span>发现此浏览器的旧演示记录</span><button onClick={() => attempt(() => session.importLegacy())}>导入本机旧记录</button></div>}
-    <fieldset disabled={blocked} className={styles.persistenceBody}>{screen === "create" ? editor : <><header className={styles.header}>{screen === "editing" ? <div className={styles.editingTitle}><button type="button" onClick={() => go("home")}>返回</button><b>智能剪辑</b></div> : <Link href="/video-studio" aria-label="视频空间首页"><Brand /></Link>}<div className={styles.headerActions}>{credits.balance && <span className={styles.creditBalance} title="工作区可用积分">积分 {credits.balance.available.toLocaleString("zh-CN")}</span>}<TaskCenter userId={userId} workspaceId={workspaceId} jobs={library.jobs} notify={notify} /><span className={styles.previewBadge}>灰度测试</span><Link href="/" className={styles.returnSite}>返回极光商绘<ExternalLink size={14} /></Link><button type="button" className={styles.accountAvatar} onClick={() => open("help")} aria-label="灰度说明">极</button></div></header><div className={styles.workspace}><aside className={styles.sidebar}><Link href="/video-studio" className={`${styles.sideHome} ${screen === "home" ? styles.activeNav : ""}`}><FolderOpen size={18} />创作空间</Link>{navGroups.map(group => <div key={group.label} className={styles.navSection}><span className={styles.navGroup}>{group.label}</span><nav aria-label={group.label}>{group.items.map(item => <Link key={item.key} href={hrefOf(item.key) + (persisted.revision ? `?project=${projectId}` : "")} onClick={event => { event.preventDefault(); go(item.key); }} className={screen === item.key ? styles.activeNav : ""} aria-current={screen === item.key ? "page" : undefined}>{item.icon}<span>{item.label}</span></Link>)}</nav></div>)}<div className={styles.sidebarBottom}><div className={styles.sidePromo}><Sparkles size={20} /><b>每个好产品，都值得被看见</b><span>用数字人，讲述你的品牌故事。</span><button type="button" onClick={() => go("create")}>开始创作 <ArrowRight size={14} /></button></div><button type="button" className={styles.helpButton} onClick={() => open("help")}><CircleHelp size={17} />使用帮助<ExternalLink size={13} /></button></div></aside><main className={styles.main}>{screen === "writing" && stepBar("writing")}{screen === "editing" && stepBar("editing")}{screen === "writing" ? <WritingStudio workspaceId={workspaceId} projectId={projectId} session={session} content={content} writing={writing} savedTexts={copies.map(copy => copy.text)} notify={notify} attempt={attempt} copyText={copyText} updateDraft={updateDraft} onSaveToLibrary={saveCopy} onUseForVoice={() => go("create")} onUseScripts={openVoiceWith} /> : screen === "home" ? homeContent : screen === "avatars" || screen === "voices" ? assetContent : screen === "library" ? <ScriptLibraryPage workspaceId={workspaceId} notify={notify} copyText={copyText} onUseScripts={openVoiceWith} onWrite={() => go("writing")} /> : screen === "works" ? worksContent : <StudioEditingScreen cost={credits.note(["editing_planning", "editing_render"])} renderCredits={credits.note(["editing_render"]).credits} workspaceId={workspaceId} persisted={persisted} jobs={library.jobs} attempt={attempt} updateDraft={updateDraft} saveEditingProject={saveEditingProject} />}</main></div></>}
+    <fieldset disabled={blocked} className={styles.persistenceBody}>{screen === "create" ? editor : <><header className={styles.header}>{screen === "editing" ? <div className={styles.editingTitle}><button type="button" onClick={() => go("home")}>返回</button><b>智能剪辑</b></div> : <Link href="/video-studio" aria-label="视频空间首页"><Brand /></Link>}<div className={styles.headerActions}>{credits.balance && <span className={styles.creditBalance} title="工作区可用积分">积分 {credits.balance.available.toLocaleString("zh-CN")}</span>}<TaskCenter userId={userId} workspaceId={workspaceId} jobs={library.jobs} notify={notify} /><span className={styles.previewBadge}>灰度测试</span><Link href="/" className={styles.returnSite}>返回极光商绘<ExternalLink size={14} /></Link><button type="button" className={styles.accountAvatar} onClick={() => open("help")} aria-label="灰度说明">极</button></div></header><div className={styles.workspace}><aside className={styles.sidebar}><Link href="/video-studio" className={`${styles.sideHome} ${screen === "home" ? styles.activeNav : ""}`}><FolderOpen size={18} />创作空间</Link>{navGroups.map(group => <div key={group.label} className={styles.navSection}><span className={styles.navGroup}>{group.label}</span><nav aria-label={group.label}>{group.items.map(item => <Link key={item.key} href={hrefOf(item.key) + (persisted.revision ? `?project=${projectId}` : "")} onClick={event => { event.preventDefault(); go(item.key); }} className={screen === item.key ? styles.activeNav : ""} aria-current={screen === item.key ? "page" : undefined}>{item.icon}<span>{item.label}</span></Link>)}</nav></div>)}<div className={styles.sidebarBottom}><div className={styles.sidePromo}><Sparkles size={20} /><b>每个好产品，都值得被看见</b><span>用数字人，讲述你的品牌故事。</span><button type="button" onClick={() => go("create")}>开始创作 <ArrowRight size={14} /></button></div><button type="button" className={styles.helpButton} onClick={() => open("help")}><CircleHelp size={17} />使用帮助<ExternalLink size={13} /></button></div></aside><main className={styles.main}>{screen === "writing" && stepBar("writing")}{screen === "editing" && stepBar("editing")}{screen === "finish" && stepBar("finish")}{screen === "writing" ? <WritingStudio workspaceId={workspaceId} projectId={projectId} session={session} content={content} writing={writing} savedTexts={copies.map(copy => copy.text)} notify={notify} attempt={attempt} copyText={copyText} updateDraft={updateDraft} onSaveToLibrary={saveCopy} onUseForVoice={() => go("create")} onUseScripts={openVoiceWith} /> : screen === "home" ? homeContent : screen === "avatars" || screen === "voices" ? assetContent : screen === "library" ? <ScriptLibraryPage workspaceId={workspaceId} notify={notify} copyText={copyText} onUseScripts={openVoiceWith} onWrite={() => go("writing")} /> : screen === "works" ? worksContent : screen === "finish" ? <FinishingScreen workspaceId={workspaceId} batch={flow.batch ?? null} item={flow.item ?? null} coverCredits={credits.note(["cover_generate"]).credits ?? null} notify={notify} /> : <StudioEditingScreen cost={credits.note(["editing_planning", "editing_render"])} renderCredits={credits.note(["editing_render"]).credits} workspaceId={workspaceId} persisted={persisted} jobs={library.jobs} attempt={attempt} updateDraft={updateDraft} saveEditingProject={saveEditingProject} />}</main></div></>}
 
     </fieldset>
     {modal === "avatar-preview" && avatarPreview && <Dialog title={avatarPreview.name} onClose={() => setModal(null)}>{avatarPreview.preview_url ? <video controls playsInline preload="metadata" src={mediaUrl(avatarPreview.preview_url)} style={{ width: "100%", maxHeight: "60vh" }} /> : <img src={mediaUrl(imageOf(avatarPreview))} alt={avatarPreview.name} style={{ width: "100%", maxHeight: "60vh", objectFit: "contain" }} />}<p>{avatarPreview.source === "quanyu_public" ? "公共数字人，可直接用于口播生成" : avatarPreview.ready ? "极光原创数字人，动作模板已就绪" : "原创参考形象，生成动作模板后可用于口播"}</p><footer className={styles.dialogFooter}><button className={styles.primaryButton} onClick={() => { updateDraft({ avatarId: avatarPreview.id }); setModal(null); go("create"); }}>使用此形象</button></footer></Dialog>}

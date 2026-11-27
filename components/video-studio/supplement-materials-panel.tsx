@@ -37,6 +37,7 @@ import {
   fetchSources,
   importStock,
   listMaterials,
+  placeMaterial,
   regenerateAiImage,
   searchStock,
   stockThumbUrl,
@@ -228,11 +229,25 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
       });
     }
   };
+  const setPlacementMode = (mode: "auto" | "manual") => {
+    update(current => setPlacement(current, mode));
+    if (mode === "auto") for (const row of mine) if (pins[row.id] !== undefined) void placeMaterial(workspaceId, item.project_id, row.id, null).catch(() => undefined);
+  };
   const remove = async (row: MaterialRow) => {
     update(current => setSourceMaterials(current, item.id, "mine", (current.items[item.id]?.by_source?.mine ?? []).filter(id => id !== row.id)));
     try { await deleteMaterial(workspaceId, item.project_id, row.id); setRows(current => current.filter(other => other.id !== row.id)); } catch { /* 已被剪辑引用时保留原件，只是不再选用 */ }
   };
   const drop = (event: DragEvent<HTMLLabelElement>) => { event.preventDefault(); setDragging(false); add(event.dataTransfer.files); };
+  const pin = async (row: MaterialRow, index: number | null) => {
+    try {
+      const saved = await placeMaterial(workspaceId, item.project_id, row.id, index === null ? null : { index, text: sentences[index] });
+      setRows(current => current.map(other => other.id === saved.id ? saved : other));
+      update(current => setPin(current, item.id, row.id, index));
+      setError("");
+    } catch (failure) {
+      setError(message(failure, "没能改放置的句子，请重试。"));
+    }
+  };
 
   return (
     <section className={styles.section} aria-label="我的素材">
@@ -240,7 +255,7 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
         <h4>我的素材</h4>
         <div className={styles.segment} role="radiogroup" aria-label="素材放在哪里">
           {(["auto", "manual"] as const).map(mode => (
-            <button key={mode} type="button" role="radio" aria-checked={placement === mode} onClick={() => update(current => setPlacement(current, mode))}>
+            <button key={mode} type="button" role="radio" aria-checked={placement === mode} onClick={() => setPlacementMode(mode)}>
               {mode === "auto" ? "自动放到合适的句子" : "我来指定句子"}
             </button>
           ))}
@@ -274,7 +289,7 @@ function MineSection({ workspaceId, item, value, update, report }: SectionProps)
                 <select
                   aria-label={`${row.label} 放在哪一句`}
                   value={pins[row.id] ?? ""}
-                  onChange={event => update(current => setPin(current, item.id, row.id, event.target.value === "" ? null : Number(event.target.value)))}
+                  onChange={event => void pin(row, event.target.value === "" ? null : Number(event.target.value))}
                 >
                   <option value="">自动</option>
                   {sentences.map((text, index) => <option key={index} value={index}>第 {index + 1} 句 · {text.slice(0, 14)}</option>)}
@@ -604,7 +619,7 @@ function MgSection({ value, update, sources, items }: { value: SupplementMateria
       <ul className={styles.mgPreview} style={MG_COLOURS[style] as CSSProperties}>
         {PREVIEWS.map(row => (
           <li key={row.key}>
-            <div className={styles.mgStage}><div className={styles.mgCard} data-kind={row.key}>{row.body}</div></div>
+            <div className={styles.mgFrame}><div className={styles.mgCard} data-kind={row.key}>{row.body}</div></div>
             <span>{row.label}</span>
           </li>
         ))}

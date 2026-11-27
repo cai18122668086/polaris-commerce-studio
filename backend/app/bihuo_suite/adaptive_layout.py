@@ -65,28 +65,86 @@ def app_geometry(material: dict, bottom: bool) -> tuple[list[int], list[int]]:
     )
 
 
+SILVER_MAX_WIDTH = 1030
+_BREAK_AFTER = "，。、；：！？,.;:!? "
+
+
+def split_caption_line(
+    line: dict, pieces: int, prefer_punctuation: bool = True
+) -> list[dict] | None:
+    """Split one caption line into ``pieces`` lines without changing a word.
+
+    Cuts land near equal lengths, prefer the place right after punctuation and
+    never fall inside an emphasis span; each span moves to its own line with
+    its offsets re-based. None when no such cut exists.
+    """
+    text = line["text"]
+    spans = [list(span) for span in line.get("emphasis_spans", [])]
+    cuts: list[int] = []
+    for k in range(1, pieces):
+        target = len(text) * k / pieces
+        best: tuple[float, int] | None = None
+        for pos in range(1, len(text)):
+            if (cuts and pos <= cuts[-1]) or any(a < pos < b for a, b in spans):
+                continue
+            after_mark = prefer_punctuation and text[pos - 1] in _BREAK_AFTER
+            score = abs(pos - target) - (len(text) / pieces / 2 if after_mark else 0)
+            if best is None or score < best[0]:
+                best = (score, pos)
+        if best is None:
+            return None
+        cuts.append(best[1])
+    bounds = [0, *cuts, len(text)]
+    return [
+        {
+            **line,
+            "text": text[a:b],
+            "emphasis_spans": [[x - a, y - a] for x, y in spans if a <= x and y <= b],
+        }
+        for a, b in zip(bounds, bounds[1:], strict=False)
+    ]
+
+
 def silver_whole_line(native: Any, original: Any, cfg: dict, cue: dict) -> Any:
     lines = cue.get("lines") or [
         {"text": cue["text"], "emphasis_spans": cue.get("emphasis_spans", [])}
     ]
-    for reduction in range(7):
-        local = dict(
-            cfg,
-            white_size=cfg["white_size"] - reduction,
-            gold_size=cfg["gold_size"] - reduction,
-        )
-        widths = [
-            sum(
-                native.font(
-                    cfg["fonts"]["caption"],
-                    local["gold_size"] if active else local["white_size"],
-                ).getlength(text)
-                for text, active in native.visual.caption_parts({**cue, **line})
+
+    def fitted(rows: list[dict]) -> dict | None:
+        for reduction in range(7):
+            local = dict(
+                cfg,
+                white_size=cfg["white_size"] - reduction,
+                gold_size=cfg["gold_size"] - reduction,
             )
-            for line in lines
-        ]
-        if max(widths, default=0) <= 1030:
-            return original(local, cue)
+            widths = [
+                sum(
+                    native.font(
+                        cfg["fonts"]["caption"],
+                        local["gold_size"] if active else local["white_size"],
+                    ).getlength(text)
+                    for text, active in native.visual.caption_parts({**cue, **row})
+                )
+                for row in rows
+            ]
+            if max(widths, default=0) <= SILVER_MAX_WIDTH:
+                return local
+        return None
+
+    local = fitted(lines)
+    if local is not None:
+        return original(local, cue)
+    # A sentence too long for one line even at the smallest size (long script
+    # lines such as 「所以挑家具这件事，得先把标准想清楚」) used to fail the
+    # native single-line gate and the whole render. The engine lays out two
+    # (or three) lines itself; the words, clocks and emphasis stay the same.
+    if len(lines) == 1:
+        for pieces in (2, 3):
+            for prefer in (True, False):
+                rows = split_caption_line(lines[0], pieces, prefer)
+                local = fitted(rows) if rows else None
+                if rows and local is not None:
+                    return original(local, {**cue, "lines": rows})
     return original(cfg, cue)  # Truly overlong content still fails the native gate.
 
 

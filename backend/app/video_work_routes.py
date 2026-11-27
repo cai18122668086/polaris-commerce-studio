@@ -30,6 +30,7 @@ from .video_studio_access import require_video_studio_access
 from .video_studio_routes import VideoWorkspace
 from .video_studio_schemas import StrictVideoModel
 from .video_work_models import VideoWorkBatchRecord, VideoWorkItemRecord
+from .video_writing_models import VideoScriptLibraryEntry
 
 router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}",
@@ -58,7 +59,7 @@ class SourceVideoRef(StrictVideoModel):
 
 class WorkItemFields(StrictVideoModel):
     script_document_id: str | None = Field(default=None, max_length=40)
-    publish_title: str = Field(default="", max_length=60)
+    publish_title: str = Field(default="", max_length=80)
     publish_body: str = Field(default="", max_length=2000)
     script_text: str = Field(default="", max_length=3000)
     persona_id: str | None = Field(default=None, max_length=80)
@@ -119,7 +120,7 @@ class WorkItemPatch(WorkItemFields):
     """
 
     expected_version: int = Field(ge=1)
-    publish_title: str | None = Field(default=None, max_length=60)  # type: ignore[assignment]
+    publish_title: str | None = Field(default=None, max_length=80)  # type: ignore[assignment]
     publish_body: str | None = Field(default=None, max_length=2000)  # type: ignore[assignment]
     script_text: str | None = Field(default=None, max_length=3000)  # type: ignore[assignment]
     generation_task_id: str | None = Field(default=None, max_length=40)
@@ -249,8 +250,15 @@ def _check_refs(
     session: Session, owner: tuple[str, str], fields: dict[str, Any]
 ) -> None:
     """References must point at the caller's own rows in this workspace."""
-    # script_document_id points at W1's script library (contract C1); its
-    # table lands separately, so only the id length is checked here for now.
+    doc_id = fields.get("script_document_id")
+    if doc_id:
+        entry = session.get(VideoScriptLibraryEntry, doc_id)
+        if (
+            entry is None
+            or entry.deleted_at is not None
+            or (entry.workspace_id, entry.owner_user_id) != owner
+        ):
+            raise ApiError(422, "VIDEO_WORK_REFERENCE_INVALID", "文案不存在或已删除。")
     checks = (
         ("audio_file_id", VideoAudioRecord, "音频"),
         ("generation_task_id", VideoGenerationRecord, "口播任务"),

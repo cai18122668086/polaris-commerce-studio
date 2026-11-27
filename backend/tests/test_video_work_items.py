@@ -317,7 +317,7 @@ def test_editing_upload_batch_and_field_validation(video):
         batch_body(item("")),
         batch_body({"drive_mode": "audio"}),
         batch_body(*[item(f"稿{i}") for i in range(21)]),
-        batch_body(item(publish_title="长" * 61)),
+        batch_body(item(publish_title="长" * 81)),
         batch_body(item(), source="editing_upload"),
         batch_body(item(storage_key="x")),
         {"request_id": str(uuid4()), "items": []},
@@ -381,3 +381,47 @@ def test_routes_require_video_access(video, path):
     client, auth, ws, _, _ = video
     auth.identity = None
     assert client.get(base(ws) + path).status_code in {401, 403}
+
+
+def test_script_document_must_be_my_live_library_entry(video):
+    client, auth, ws, _, _ = video
+    entry = client.post(
+        base(ws) + "/script-library",
+        json={
+            "request_id": str(uuid4()),
+            "script": "文案库里的口播稿",
+            "publish_title": "标题",
+        },
+    )
+    assert entry.status_code == 200, entry.text
+    entry_id = entry.json()["id"]
+    ok = create(client, ws, batch_body(item(script_document_id=entry_id)))
+    assert ok["items"][0]["script_document_id"] == entry_id
+    unknown = client.post(
+        base(ws) + "/work-batches", json=batch_body(item(script_document_id="nope"))
+    )
+    assert unknown.status_code == 422
+    assert unknown.json()["error"]["code"] == "VIDEO_WORK_REFERENCE_INVALID"
+    assert client.delete(base(ws) + f"/script-library/{entry_id}").status_code == 200
+    deleted = client.post(
+        base(ws) + "/work-batches", json=batch_body(item(script_document_id=entry_id))
+    )
+    assert deleted.status_code == 422
+    auth.identity = verified_identity(primary_user_id="library-other", email=EMAIL)
+    other = client.get("/api/v1/me").json()["id"]
+    with client.app.state.session_factory() as session:
+        session.add(
+            WorkspaceMemberRecord(
+                workspace_id=ws, user_id=other, role="owner", status="active"
+            )
+        )
+        session.commit()
+    mine = client.post(
+        base(ws) + "/script-library",
+        json={"request_id": str(uuid4()), "script": "别人的稿"},
+    ).json()["id"]
+    auth.identity = verified_identity(email=EMAIL)
+    foreign = client.post(
+        base(ws) + "/work-batches", json=batch_body(item(script_document_id=mine))
+    )
+    assert foreign.status_code == 422

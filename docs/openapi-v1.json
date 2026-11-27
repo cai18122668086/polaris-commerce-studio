@@ -10195,6 +10195,268 @@
         "title": "LibraryChoiceSnapshot",
         "type": "object"
       },
+      "LibraryCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "platform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "douyin",
+                  "xiaohongshu"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "",
+                "type": "string"
+              }
+            ],
+            "default": "",
+            "title": "Platform"
+          },
+          "publish_body": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Publish Body",
+            "type": "string"
+          },
+          "publish_title": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Publish Title",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "script": {
+            "maxLength": 3000,
+            "minLength": 1,
+            "title": "Script",
+            "type": "string"
+          }
+        },
+        "required": [
+          "script",
+          "request_id"
+        ],
+        "title": "LibraryCreate",
+        "type": "object"
+      },
+      "LibraryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "benchmark_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Benchmark Refs",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_title": {
+            "title": "Display Title",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "douyin",
+                  "xiaohongshu"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "",
+                "type": "string"
+              }
+            ],
+            "title": "Platform"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "publish_body": {
+            "title": "Publish Body",
+            "type": "string"
+          },
+          "publish_title": {
+            "title": "Publish Title",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "script": {
+            "title": "Script",
+            "type": "string"
+          },
+          "script_chars": {
+            "title": "Script Chars",
+            "type": "integer"
+          },
+          "script_seconds": {
+            "title": "Script Seconds",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "auto_writing",
+              "manual",
+              "imported"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "writing_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writing Document Id"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "source",
+          "platform",
+          "publish_title",
+          "publish_body",
+          "script",
+          "benchmark_refs",
+          "revision",
+          "project_id",
+          "writing_document_id",
+          "display_title",
+          "script_chars",
+          "script_seconds"
+        ],
+        "title": "LibraryEntry",
+        "type": "object"
+      },
+      "LibraryPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "missing_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Ids",
+            "type": "array"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "LibraryPage",
+        "type": "object"
+      },
+      "LibraryUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "douyin",
+                  "xiaohongshu"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "",
+                "type": "string"
+              }
+            ],
+            "default": "",
+            "title": "Platform"
+          },
+          "publish_body": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Publish Body",
+            "type": "string"
+          },
+          "publish_title": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Publish Title",
+            "type": "string"
+          },
+          "script": {
+            "maxLength": 3000,
+            "minLength": 1,
+            "title": "Script",
+            "type": "string"
+          }
+        },
+        "required": [
+          "script",
+          "expected_revision"
+        ],
+        "title": "LibraryUpdate",
+        "type": "object"
+      },
       "LocalEditConfiguration": {
         "properties": {
           "execution_path": {
@@ -11071,6 +11333,264 @@
           "note"
         ],
         "title": "NoteBody",
+        "type": "object"
+      },
+      "PersonaCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Avatar Id",
+            "type": "string"
+          },
+          "emotion": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "name": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "voice_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Voice Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "name",
+          "avatar_id",
+          "voice_id"
+        ],
+        "title": "PersonaCreate",
+        "type": "object"
+      },
+      "PersonaResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "avatar_id": {
+            "title": "Avatar Id",
+            "type": "string"
+          },
+          "avatar_name": {
+            "title": "Avatar Name",
+            "type": "string"
+          },
+          "avatar_preview_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Preview Url"
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "emotion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "voice_id": {
+            "title": "Voice Id",
+            "type": "string"
+          },
+          "voice_name": {
+            "title": "Voice Name",
+            "type": "string"
+          },
+          "voice_preview_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Preview Url"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "avatar_id",
+          "voice_id",
+          "avatar_name",
+          "voice_name",
+          "cover_url",
+          "avatar_preview_url",
+          "voice_preview_url",
+          "emotion",
+          "language",
+          "available",
+          "unavailable_reason",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PersonaResponse",
+        "type": "object"
+      },
+      "PersonaUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Id"
+          },
+          "emotion": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          }
+        },
+        "title": "PersonaUpdate",
         "type": "object"
       },
       "PlanConfirmRequest": {
@@ -12306,6 +12826,30 @@
       "ReviseWritingDraft": {
         "additionalProperties": false,
         "properties": {
+          "publish_body": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Body"
+          },
+          "publish_title": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Title"
+          },
           "request_id": {
             "format": "uuid",
             "title": "Request Id",
@@ -14723,7 +15267,7 @@
           },
           "publish_title": {
             "default": "",
-            "maxLength": 60,
+            "maxLength": 80,
             "title": "Publish Title",
             "type": "string"
           },
@@ -14879,7 +15423,7 @@
           "publish_title": {
             "anyOf": [
               {
-                "maxLength": 60,
+                "maxLength": 80,
                 "type": "string"
               },
               {
@@ -16085,6 +16629,15 @@
       "WritingDraft": {
         "additionalProperties": false,
         "properties": {
+          "benchmark_brands": {
+            "description": "参考原文和对标标题里出现的品牌、店名、商品名、作者名，逐字照抄",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Benchmark Brands",
+            "type": "array"
+          },
           "missing_facts": {
             "items": {
               "type": "string"
@@ -16092,6 +16645,20 @@
             "maxItems": 60,
             "title": "Missing Facts",
             "type": "array"
+          },
+          "publish_body": {
+            "default": "",
+            "description": "发布正文：可直接粘贴发布，末尾带3到6个#话题标签",
+            "maxLength": 2000,
+            "title": "Publish Body",
+            "type": "string"
+          },
+          "publish_title": {
+            "default": "",
+            "description": "发布标题：口语、有钩子，按平台字数上限，不含话题标签",
+            "maxLength": 80,
+            "title": "Publish Title",
+            "type": "string"
           },
           "replacements": {
             "items": {
@@ -16257,6 +16824,15 @@
       "WritingStructureDraft": {
         "additionalProperties": false,
         "properties": {
+          "benchmark_brands": {
+            "description": "参考原文和对标标题里出现的品牌、店名、商品名、作者名，逐字照抄",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Benchmark Brands",
+            "type": "array"
+          },
           "missing_facts": {
             "items": {
               "type": "string"
@@ -16264,6 +16840,20 @@
             "maxItems": 60,
             "title": "Missing Facts",
             "type": "array"
+          },
+          "publish_body": {
+            "default": "",
+            "description": "发布正文：可直接粘贴发布，末尾带3到6个#话题标签",
+            "maxLength": 2000,
+            "title": "Publish Body",
+            "type": "string"
+          },
+          "publish_title": {
+            "default": "",
+            "description": "发布标题：口语、有钩子，按平台字数上限，不含话题标签",
+            "maxLength": 80,
+            "title": "Publish Title",
+            "type": "string"
           },
           "replacements": {
             "items": {
@@ -16374,6 +16964,21 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "douyin",
+                  "xiaohongshu"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
           },
           "presentation": {
             "default": "unspecified",
@@ -26838,6 +27443,279 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/personas": {
+      "get": {
+        "operationId": "list_personas_api_v1_video_studio_workspaces__workspace_id__personas_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonaResponse"
+                  },
+                  "title": "Response List Personas Api V1 Video Studio Workspaces  Workspace Id  Personas Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Personas",
+        "tags": [
+          "video-personas"
+        ]
+      },
+      "post": {
+        "operationId": "create_persona_api_v1_video_studio_workspaces__workspace_id__personas_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Persona",
+        "tags": [
+          "video-personas"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/personas/{persona_id}": {
+      "delete": {
+        "operationId": "delete_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "persona_id",
+            "required": true,
+            "schema": {
+              "title": "Persona Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Delete Persona",
+        "tags": [
+          "video-personas"
+        ]
+      },
+      "get": {
+        "operationId": "get_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "persona_id",
+            "required": true,
+            "schema": {
+              "title": "Persona Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Persona",
+        "tags": [
+          "video-personas"
+        ]
+      },
+      "patch": {
+        "operationId": "update_persona_api_v1_video_studio_workspaces__workspace_id__personas__persona_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "persona_id",
+            "required": true,
+            "schema": {
+              "title": "Persona Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Update Persona",
+        "tags": [
+          "video-personas"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/projects": {
       "get": {
         "operationId": "projects_api_v1_video_studio_workspaces__workspace_id__projects_get",
@@ -28195,6 +29073,344 @@
         "summary": "Version Sources",
         "tags": [
           "video-writing-workflow"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library": {
+      "get": {
+        "operationId": "list_entries_api_v1_video_studio_workspaces__workspace_id__script_library_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 2100,
+              "title": "Ids",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 100,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platform",
+            "required": false,
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "douyin",
+                "xiaohongshu"
+              ],
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "List Entries",
+        "tags": [
+          "video-script-library"
+        ]
+      },
+      "post": {
+        "operationId": "create_entry_api_v1_video_studio_workspaces__workspace_id__script_library_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryEntry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Create Entry",
+        "tags": [
+          "video-script-library"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/{entry_id}": {
+      "delete": {
+        "operationId": "delete_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Entry Api V1 Video Studio Workspaces  Workspace Id  Script Library  Entry Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Delete Entry",
+        "tags": [
+          "video-script-library"
+        ]
+      },
+      "get": {
+        "operationId": "get_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryEntry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Get Entry",
+        "tags": [
+          "video-script-library"
+        ]
+      },
+      "put": {
+        "operationId": "update_entry_api_v1_video_studio_workspaces__workspace_id__script_library__entry_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryEntry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Update Entry",
+        "tags": [
+          "video-script-library"
         ]
       }
     },

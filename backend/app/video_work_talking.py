@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterable
-from threading import Thread
+from datetime import timedelta
+from threading import Event, Thread
 from typing import Any, cast
 from uuid import UUID, uuid5
 
@@ -20,6 +21,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import video_credit_billing as video_credits
 from .auth import (
     Principal,
     SessionDependency,
@@ -29,7 +31,8 @@ from .auth import (
 from .config import Settings
 from .domain import MembershipRole, MembershipStatus
 from .errors import ApiError
-from .models import WorkspaceMemberRecord, utc_now
+from .models import WorkspaceCreditAccountRecord, WorkspaceMemberRecord, utc_now
+from .services import credit_enforcement_enabled
 from .video_generation import (
     ACTIVE_VIDEO_STATUSES,
     GenerationRequest,
@@ -38,6 +41,7 @@ from .video_generation import (
     providers,
 )
 from .video_generation_models import VideoGenerationRecord
+from .video_generation_runtime import VideoRunLease, acquire_run
 from .video_providers import VideoProviders
 from .video_studio_access import require_video_studio_access
 from .video_studio_models import VideoProjectRecord
@@ -183,14 +187,55 @@ def waiting(item: VideoWorkItemRecord) -> bool:
     )
 
 
-def confirm(session: Session, items: Iterable[VideoWorkItemRecord]) -> None:
-    for item in items:
-        if (
-            item.stage == "talking"
-            and item.status == "pending"
-            and not item.generation_task_id
-        ):
-            _write(session, item, status="queued")
+def confirm(
+    session: Session,
+    settings: Settings,
+    workspace_id: str,
+    items: Iterable[VideoWorkItemRecord],
+) -> None:
+    """The user confirmed: check the whole batch can be paid, then queue it.
+
+    Credits are held per item when its task is created (the existing
+    per-task hold), but the balance is checked here for every item about to
+    run, so a batch is either accepted as a whole or refused as a whole.
+    """
+    items = list(items)
+    fresh = [
+        item
+        for item in items
+        if item.stage == "talking"
+        and item.status == "pending"
+        and not item.generation_task_id
+    ]
+    waiting_now = [item for item in items if waiting(item)]
+    check_batch_credits(session, settings, workspace_id, len(fresh) + len(waiting_now))
+    for item in fresh:
+        _write(session, item, status="queued")
+
+
+def check_batch_credits(
+    session: Session, settings: Settings, workspace_id: str, count: int
+) -> None:
+    price = video_credits.price_for(settings, "lipsync")
+    if not count or price is None or not credit_enforcement_enabled(workspace_id):
+        return
+    account = session.get(WorkspaceCreditAccountRecord, workspace_id)
+    if account is None:
+        raise ApiError(409, "CREDIT_ACCOUNT_NOT_CONFIGURED", "工作区额度账户尚未配置。")
+    from .credit_memberships import refresh
+
+    account = refresh(session, workspace_id)
+    available = max(0, account.balance_credits - account.reserved_credits)
+    session.commit()
+    required = price * count
+    if available < required:
+        raise ApiError(
+            402,
+            "BUDGET_LIMIT_EXCEEDED",
+            f"{count} 条口播需要 {required} 积分，当前可用 {available} 积分，"
+            "请充值或减少条数后再生成。",
+            {"required_credits": required, "available_credits": available},
+        )
 
 
 def _active_count(session: Session, user_id: str) -> int:
@@ -385,8 +430,8 @@ def submit_talking(
     batch = _own_batch(session, workspace, batch_id)
     if batch.source != "talking":
         raise ApiError(422, "VIDEO_WORK_BATCH_SOURCE", "这个批次不需要口播。")
-    confirm(session, batch_items(session, batch.id))
     settings = request.app.state.settings
+    confirm(session, settings, batch.workspace_id, batch_items(session, batch.id))
     started = dispatch(
         session, settings, workspace, batch.id, lambda: providers(request)
     )
@@ -442,7 +487,9 @@ def retry_talking(
             409, "VIDEO_WORK_ITEM_STAGE", "这条已经进入下一步，不能重新口播。"
         )
     sync_items(session, [item])
+    settings = request.app.state.settings
     if item.status == "failed":
+        check_batch_credits(session, settings, item.workspace_id, 1)
         history = {key: list(value) for key, value in (item.history or {}).items()}
         # Failed before a task existed: still count the attempt, so the next
         # request id is new.
@@ -457,12 +504,66 @@ def retry_talking(
             error=None,
             history=history,
         )
-    settings = request.app.state.settings
     started = dispatch(
         session, settings, workspace, batch.id, lambda: providers(request)
     )
     _schedule(request, background, settings, started)
     return talking_view(session, batch)
+
+
+def _workspace_for(
+    session: Session, workspace_id: str, owner_user_id: str
+) -> WorkspaceContext | None:
+    member = session.scalar(
+        select(WorkspaceMemberRecord).where(
+            WorkspaceMemberRecord.workspace_id == workspace_id,
+            WorkspaceMemberRecord.user_id == owner_user_id,
+            WorkspaceMemberRecord.status == MembershipStatus.ACTIVE.value,
+        )
+    )
+    if member is None or member.role == MembershipRole.VIEWER.value:
+        return None
+    return WorkspaceContext(
+        principal=Principal(user_id=owner_user_id),
+        workspace_id=workspace_id,
+        role=MembershipRole(member.role),
+    )
+
+
+def advance(
+    factory: sessionmaker[Session],
+    settings: Settings,
+    provider: VideoProviders,
+    batch_id: str,
+) -> list[str]:
+    """Sync one batch and start its waiting items; returns new task ids."""
+    with factory() as session:
+        batch = session.get(VideoWorkBatchRecord, batch_id)
+        if batch is None:
+            return []
+        workspace = _workspace_for(session, batch.workspace_id, batch.owner_user_id)
+        if workspace is None:
+            sync_items(session, batch_items(session, batch_id))
+            return []
+        return dispatch(session, settings, workspace, batch_id, lambda: provider)
+
+
+def run_tasks(
+    factory: sessionmaker[Session],
+    settings: Settings,
+    provider: VideoProviders,
+    job_ids: Iterable[str],
+) -> None:
+    for job_id in job_ids:
+        if settings.task_dispatcher == "inline":
+            process_generation(factory, settings, job_id, provider)
+            continue
+        Thread(
+            target=process_generation,
+            args=(factory, settings, job_id, provider),
+            daemon=True,
+            name=f"video-talking-{job_id[:8]}",
+        ).start()
 
 
 def continue_after(
@@ -474,39 +575,116 @@ def continue_after(
     """After a lipsync task ends, start the next waiting item of its batch."""
     try:
         with factory() as session:
-            item = session.scalar(
-                select(VideoWorkItemRecord).where(
+            batch_id = session.scalar(
+                select(VideoWorkItemRecord.batch_id).where(
                     VideoWorkItemRecord.generation_task_id == job_id
                 )
             )
-            if item is None:
-                return
-            member = session.scalar(
-                select(WorkspaceMemberRecord).where(
-                    WorkspaceMemberRecord.workspace_id == item.workspace_id,
-                    WorkspaceMemberRecord.user_id == item.owner_user_id,
-                    WorkspaceMemberRecord.status == MembershipStatus.ACTIVE.value,
-                )
-            )
-            if member is None or member.role == MembershipRole.VIEWER.value:
-                return
-            workspace = WorkspaceContext(
-                principal=Principal(user_id=item.owner_user_id),
-                workspace_id=item.workspace_id,
-                role=MembershipRole(member.role),
-            )
-            started = dispatch(
-                session, settings, workspace, item.batch_id, lambda: provider
-            )
-        for started_id in started:
-            if settings.task_dispatcher == "inline":
-                process_generation(factory, settings, started_id, provider)
-                continue
-            Thread(
-                target=process_generation,
-                args=(factory, settings, started_id, provider),
-                daemon=True,
-                name=f"video-talking-{started_id[:8]}",
-            ).start()
-    except Exception:  # Never break the finished task; recovery picks up queued work.
+        if batch_id is None:
+            return
+        run_tasks(
+            factory, settings, provider, advance(factory, settings, provider, batch_id)
+        )
+    except Exception:  # Never break the finished task; the sweep retries later.
         logger.exception("talking batch continuation failed after %s", job_id)
+
+
+ORPHAN_AFTER_SECONDS = 30
+
+
+def sweep_once(
+    factory: sessionmaker[Session], settings: Settings, provider: VideoProviders
+) -> list[str]:
+    """Restart safety net, independent of the general video recovery scanner.
+
+    1. Batches with confirmed-but-unstarted items, or items whose task is still
+       open, are synced and dispatched (an api restart drops the in-process
+       "start the next one" chain).
+    2. Tasks this module created that are still ``queued`` with no live lease
+       (their request's background run died with the process) are started.
+       The run lease guarantees a task is never processed twice.
+    Returns the task ids it started.
+    """
+    with factory() as session:
+        batch_ids = session.scalars(
+            select(VideoWorkItemRecord.batch_id)
+            .where(
+                VideoWorkItemRecord.stage == "talking",
+                VideoWorkItemRecord.status.in_(["queued", "running"]),
+            )
+            .distinct()
+            .limit(50)
+        ).all()
+    started: list[str] = []
+    for batch_id in batch_ids:
+        try:
+            started += advance(factory, settings, provider, batch_id)
+        except Exception:
+            logger.exception("talking sweep deferred batch %s", batch_id)
+    cutoff = utc_now() - timedelta(seconds=ORPHAN_AFTER_SECONDS)
+    with factory() as session:
+        orphans = session.scalars(
+            select(VideoGenerationRecord.id)
+            .join(
+                VideoWorkItemRecord,
+                VideoWorkItemRecord.generation_task_id == VideoGenerationRecord.id,
+            )
+            .where(
+                VideoWorkItemRecord.stage == "talking",
+                VideoGenerationRecord.status == "queued",
+                VideoGenerationRecord.created_at <= cutoff,
+            )
+            .limit(20)
+        ).all()
+    leased: list[tuple[str, VideoRunLease]] = []
+    for job_id in orphans:
+        if job_id in started:
+            continue
+        lease = acquire_run(factory, settings, job_id)
+        if lease is not None:
+            leased.append((job_id, lease))
+    run_tasks(factory, settings, provider, started)
+    for job_id, lease in leased:
+        if settings.task_dispatcher == "inline":
+            process_generation(factory, settings, job_id, provider, lease=lease)
+            continue
+        Thread(
+            target=process_generation,
+            args=(factory, settings, job_id, provider),
+            kwargs={"lease": lease},
+            daemon=True,
+            name=f"video-talking-{job_id[:8]}",
+        ).start()
+    return started + [job_id for job_id, _ in leased]
+
+
+class TalkingSweeper:
+    """Runs ``sweep_once`` every few seconds inside the API process."""
+
+    def __init__(
+        self,
+        factory: sessionmaker[Session],
+        settings: Settings,
+        provider: VideoProviders,
+    ) -> None:
+        self.factory, self.settings, self.provider = factory, settings, provider
+        self.stopped = Event()
+        self.thread: Thread | None = None
+
+    def run(self) -> None:
+        # First pass right after startup: that is when a restart left work behind.
+        while not self.stopped.is_set():
+            try:
+                sweep_once(self.factory, self.settings, self.provider)
+            except Exception:
+                logger.warning("talking sweep deferred after an error", exc_info=True)
+            self.stopped.wait(self.settings.video_recovery_interval_seconds)
+
+    def start(self) -> None:
+        self.thread = Thread(target=self.run, daemon=True, name="video-talking-sweep")
+        self.thread.start()
+
+    def stop(self) -> None:
+        self.stopped.set()
+        if self.thread:
+            self.thread.join(timeout=5)

@@ -30,7 +30,6 @@ from .video_studio_access import require_video_studio_access
 from .video_studio_routes import VideoWorkspace
 from .video_studio_schemas import StrictVideoModel
 from .video_work_models import VideoWorkBatchRecord, VideoWorkItemRecord
-from .video_writing_models import VideoWritingDocument
 
 router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}",
@@ -250,8 +249,9 @@ def _check_refs(
     session: Session, owner: tuple[str, str], fields: dict[str, Any]
 ) -> None:
     """References must point at the caller's own rows in this workspace."""
+    # script_document_id points at W1's script library (contract C1); its
+    # table lands separately, so only the id length is checked here for now.
     checks = (
-        ("script_document_id", VideoWritingDocument, "文案"),
         ("audio_file_id", VideoAudioRecord, "音频"),
         ("generation_task_id", VideoGenerationRecord, "口播任务"),
         ("editing_task_id", EditingTaskRecord, "剪辑任务"),

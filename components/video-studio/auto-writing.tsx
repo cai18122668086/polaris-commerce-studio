@@ -182,7 +182,7 @@ function Results({ flow, run, copyText, notify, onUseScripts, onRestart, onManua
       throw caught;
     }
   };
-  return <div className={css.results}>
+  return <div className={css.results} data-selecting={selecting || undefined}>
     <section>
       <div className={css.sectionHead}>
         <div className={css.headText}>

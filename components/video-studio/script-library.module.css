@@ -33,7 +33,7 @@
 .pager button:disabled { opacity: .4; cursor: default; }
 
 /* fixed selection bar */
-.bar { position: fixed; z-index: 40; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(720px, calc(100vw - 32px)); display: flex; align-items: center; gap: 16px; padding: 12px 14px 12px 20px; background: var(--sl-surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--sl-shadow); font-size: 13.5px; color: var(--ink); }
+.bar { --sl-surface: #ffffff; --sl-shadow: 0 -8px 24px rgb(30 28 24 / 8%); position: fixed; z-index: 40; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(720px, calc(100vw - 32px)); display: flex; align-items: center; gap: 16px; padding: 12px 14px 12px 20px; background: var(--sl-surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--sl-shadow); font-size: 13.5px; color: var(--ink); }
 .bar b { font-variant-numeric: tabular-nums; }
 .bar > button:last-child { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
 .link { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
@@ -60,7 +60,7 @@
 .danger:disabled { opacity: .6; }
 
 /* the three parts */
-.parts { --sl-surface: #ffffff; --sl-warn: #b23a0e; display: grid; min-width: 0; }
+.parts { --sl-surface: #ffffff; --sl-warn: #b23a0e; display: grid; align-content: start; min-width: 0; }
 .part { display: grid; gap: 8px; padding: 14px 0; border-top: 1px solid var(--border); min-width: 0; }
 .part:first-child { border-top: 0; padding-top: 0; }
 .part > header { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
@@ -79,6 +79,7 @@
 .warnText { color: var(--sl-warn) !important; font-size: 12px; }
 :global(html.theme-ember) .drawer, :global(html.theme-ember) .parts { --sl-surface: #0f0e0d; --sl-warn: #f07a2b; }
 :global(html.theme-ember) .overlay { background: rgb(0 0 0 / 55%); }
+:global(html.theme-ember) .bar { --sl-surface: #0f0e0d; --sl-shadow: 0 -8px 24px rgb(0 0 0 / 40%); }
 
 @media (max-width: 720px) {
   .toolbar { gap: 10px 14px; }

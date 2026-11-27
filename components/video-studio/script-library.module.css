@@ -59,6 +59,10 @@
 .danger { border: 1px solid var(--sl-warn); background: var(--sl-warn); color: #fff; border-radius: 8px; padding: 8px 16px; font: inherit; font-size: 13px; cursor: pointer; }
 .danger:disabled { opacity: .6; }
 
+.fill { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; }
+.fillRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fillRow > button { display: inline-flex; align-items: center; gap: 6px; }
+
 /* the three parts */
 .parts { --sl-surface: #ffffff; --sl-warn: #b23a0e; display: grid; align-content: start; min-width: 0; }
 .part { display: grid; gap: 8px; padding: 14px 0; border-top: 1px solid var(--border); min-width: 0; }

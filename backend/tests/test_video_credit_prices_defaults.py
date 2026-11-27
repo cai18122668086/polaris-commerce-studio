@@ -17,6 +17,7 @@ EXPECTED = {
     "cover_generate": 7,
     "editing_auto_image": 7,
     "avatar_polish": 7,
+    "writing_publish_fill": 2,
 }
 
 

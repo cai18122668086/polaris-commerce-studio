@@ -225,6 +225,8 @@ export function DomesticMainImageWorkspace() {
     Boolean(job.data && terminalIncomplete && fastMode),
   );
   const missingList = missingPages.data?.missing_pages ?? [];
+  const redoJobId = missingPages.data?.redo_job_id ?? undefined;
+  const redoDone = missingPages.data?.redo_job_status === "completed";
   const showGeneration = Boolean(
     job.data && ["processing", "awaiting_final_review", "completed", "partial", "failed"].includes(job.data.status),
   );
@@ -492,10 +494,12 @@ export function DomesticMainImageWorkspace() {
             {runtime.data?.environment === "development" && <details className="creation-dev-options"><summary>开发服务设置</summary><DevelopmentProviderSettings /></details>}
             {handoff.error && <p className={styles.error} role="alert">{errorMessage(handoff.error)}</p>}
             {missingList.length > 0 && !allowsJobAction(job.data?.allowed_actions ?? [], "retry") && <section className={styles.card} aria-label="补齐缺页">
-              <div className={styles.heading}><span>05</span><div><h2>补齐缺页</h2><p>以下页面没有交付，可以只重做这几页；已交付的页不会重做。</p></div></div>
+              <div className={styles.heading}><span>05</span><div><h2>{redoJobId ? (redoDone ? "缺页已补齐" : "正在补齐缺页") : "补齐缺页"}</h2><p>以下页面在这一单里没有交付{redoJobId ? "" : "，可以只重做这几页；已交付的页不会重做"}。</p></div></div>
               <ul>{missingList.map(page => <li key={page.page_index}>第 {page.page_number} 页 · {page.page_name}：{page.reason}{page.recover_from_local_result ? "（已找到结果，直接恢复，不重新生成）" : ""}</li>)}</ul>
-              <p className={styles.note}>{missingPages.data?.charge_rule} 每页 {missingPages.data?.credits_per_page} 积分，最多 {missingPages.data?.max_credits} 积分。</p>
-              {!redoConfirming
+              {!redoJobId && <p className={styles.note}>{missingPages.data?.charge_rule} 每页 {missingPages.data?.credits_per_page} 积分，最多 {missingPages.data?.max_credits} 积分。</p>}
+              {redoJobId
+                ? <div><p className={styles.note}>{redoDone ? "这几页已经补齐，完整的六张在新任务里。" : "这几页正在新任务里补齐，请稍候。"}</p><button className={styles.primary} onClick={() => router.replace(`/workspace/domestic-main-image?jobId=${encodeURIComponent(redoJobId)}`)}>{redoDone ? "查看补齐后的六张" : "查看补齐进度"}<ArrowRight size={17} /></button></div>
+                : !redoConfirming
                 ? <button className={styles.primary} disabled={busy || redoMissing.isPending} onClick={() => setRedoConfirming(true)}>补齐这 {missingList.length} 页</button>
                 : <div><button className={styles.primary} disabled={redoMissing.isPending} onClick={() => void redoMissingPages()}>{redoMissing.isPending ? <LoaderCircle className="spin" size={17} /> : null}确认补齐（第 {missingList.map(page => page.page_number).join("、")} 页）</button> <button disabled={redoMissing.isPending} onClick={() => setRedoConfirming(false)}>取消</button></div>}
             </section>}

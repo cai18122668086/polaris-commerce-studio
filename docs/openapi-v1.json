@@ -10139,6 +10139,28 @@
             },
             "title": "Missing Pages",
             "type": "array"
+          },
+          "redo_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redo Job Id"
+          },
+          "redo_job_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redo Job Status"
           }
         },
         "required": [

@@ -863,6 +863,10 @@ class MainImageMissingPagesResponse(BaseModel):
     credits_per_page: int
     max_credits: int
     charge_rule: str
+    # A redo already started from this job: the page links to it instead of
+    # offering another redo.
+    redo_job_id: str | None = None
+    redo_job_status: str | None = None
 
 
 class RetryRequest(BaseModel):

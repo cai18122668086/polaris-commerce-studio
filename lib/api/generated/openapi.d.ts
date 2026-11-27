@@ -8080,6 +8080,10 @@ export interface components {
             max_credits: number;
             /** Missing Pages */
             missing_pages: components["schemas"]["MissingMainImagePage"][];
+            /** Redo Job Id */
+            redo_job_id?: string | null;
+            /** Redo Job Status */
+            redo_job_status?: string | null;
         };
         /**
          * MembershipRole

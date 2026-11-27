@@ -272,6 +272,7 @@ def test_missing_screens_are_redone_only_after_the_user_confirms_them(client, mo
     assert missing["delivered_pages"] == [0, 2]
     assert [(p["page_index"], p["reason"]) for p in missing["missing_pages"]] == [(1, "结果未确认")]
     assert missing["credits_per_page"] == 15 and missing["max_credits"] == 15
+    assert missing["redo_job_id"] is None
     wrong = client.post(f"{BASE}/jobs/{job['id']}/retry", headers=idem(),
                         json={"scope": "failed", "confirm_missing_pages": [0, 1]})
     assert wrong.status_code == 409 and wrong.json()["error"]["code"] == "MISSING_PAGES_CHANGED"
@@ -284,6 +285,8 @@ def test_missing_screens_are_redone_only_after_the_user_confirms_them(client, mo
     final = client.get(f"{BASE}/jobs/{child['id']}").json()
     assert final["status"] == "completed", final
     assert sorted(calls) == [1, 2, 2, 3]
+    after = client.get(f"{BASE}/jobs/{job['id']}/detail/missing-pages").json()
+    assert after["redo_job_id"] == child["id"] and after["redo_job_status"] == "completed"
     again = client.post(f"{BASE}/jobs/{job['id']}/retry", headers=idem(),
                         json={"scope": "failed", "confirm_missing_pages": [1]})
     assert again.status_code == 409

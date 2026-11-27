@@ -225,6 +225,8 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
   const missingCapable = ["aurora-domestic-detail-v2.3-authored", "xinghe-domestic-detail-v4.0-fast"].includes(String(job.data?.configuration.domestic_detail_pipeline));
   const missingPages = useDetailMissingPages(workspace?.id, job.data?.id, Boolean(missingCapable && ["partial", "failed"].includes(job.data?.status ?? "")));
   const missingList = missingPages.data?.missing_pages ?? [];
+  const redoJobId = missingPages.data?.redo_job_id ?? undefined;
+  const redoDone = missingPages.data?.redo_job_status === "completed";
   const redoMissing = useRedoMissingPages(workspace?.id);
   const [redoConfirming, setRedoConfirming] = useState(false);
   const [redoError, setRedoError] = useState<string>();
@@ -452,10 +454,12 @@ function DetailPackWorkspace({ initialRegion }: { initialRegion: MarketRegion })
             source={{ assetId: pageEdit.assetId, title: pageEdit.title }} replicaOutput={{ job_id: pageEdit.jobId, job_item_id: pageEdit.itemId }}
             open onClose={() => { setPageEdit(undefined); void job.refetch(); }} onAdopted={() => { setPageEdit(undefined); void job.refetch(); }} />}
           {missingCapable && missingList.length > 0 && <section className="detail-form-card" aria-label="补齐缺页">
-            <div className="form-section-head"><span className="number-chip number-chip--violet">6</span><div><h2>补齐缺页</h2><p>以下几屏没有交付，可以只重做这几屏；已交付的屏不会重做、不会再扣费。</p></div></div>
+            <div className="form-section-head"><span className="number-chip number-chip--violet">6</span><div><h2>{redoJobId ? (redoDone ? "缺页已补齐" : "正在补齐缺页") : "补齐缺页"}</h2><p>以下几屏在这一单里没有交付{redoJobId ? "" : "，可以只重做这几屏；已交付的屏不会重做、不会再扣费"}。</p></div></div>
             <ul className="detail-missing-list">{missingList.map(page => <li key={page.page_index}>第 {page.page_number} 屏 · {page.page_name}：{page.reason}{page.recover_from_local_result ? "（已找到结果，直接恢复，不重新生成）" : ""}</li>)}</ul>
-            <p className="detail-free-edit-note">{missingPages.data?.charge_rule} 每屏 {missingPages.data?.credits_per_page} 积分，最多 {missingPages.data?.max_credits} 积分。</p>
-            {!redoConfirming
+            {!redoJobId && <p className="detail-free-edit-note">{missingPages.data?.charge_rule} 每屏 {missingPages.data?.credits_per_page} 积分，最多 {missingPages.data?.max_credits} 积分。</p>}
+            {redoJobId
+              ? <div className="detail-missing-confirm"><p className="detail-free-edit-note">{redoDone ? "这几屏已经补齐，完整的一套在新任务里。" : "这几屏正在新任务里补齐，请稍候。"}</p><button className="primary-button" onClick={() => setJobId(redoJobId)}>{redoDone ? "查看补齐后的整套" : "查看补齐进度"}<ArrowRight size={17} /></button></div>
+              : !redoConfirming
               ? <button className="primary-button" disabled={redoMissing.isPending} onClick={() => setRedoConfirming(true)}><RotateCcw size={17} />补齐这 {missingList.length} 屏</button>
               : <div className="detail-missing-confirm"><button className="primary-button" disabled={redoMissing.isPending} onClick={() => void redoMissingPages()}>{redoMissing.isPending ? <LoaderCircle className="spin" size={17} /> : null}确认补齐（第 {missingList.map(page => page.page_number).join("、")} 屏）</button><button className="secondary-button" disabled={redoMissing.isPending} onClick={() => setRedoConfirming(false)}>取消</button></div>}
             {redoError && <p className="generation-feedback error" role="alert">{redoError}</p>}

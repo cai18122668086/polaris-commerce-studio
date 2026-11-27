@@ -67,8 +67,10 @@ MG_DIR = Path(__file__).resolve().parents[1] / "app" / "mg"
 @pytest.fixture(autouse=True)
 def _clean_health():
     _health.blocked_until.clear()
+    _health.healthy_until.clear()
     yield
     _health.blocked_until.clear()
+    _health.healthy_until.clear()
 
 
 # ---------------------------------------------------------------- sources
@@ -105,6 +107,31 @@ def test_blocked_fallback_marks_unavailable_without_error(tmp_path, video):
     rows = {row.provider: row for row in states(settings)}
     assert not rows["openverse"].available
     assert rows["openverse"].reason == "暂时无法访问"
+
+
+def test_fallback_probe_marks_refused_source_before_first_search(video):
+    from app.video_editing_stock_sources import probe_fallbacks
+
+    settings = video[4]
+    settings.video_stock_commons_enabled = True
+    settings.video_stock_openverse_enabled = True
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.openverse.org":
+            return httpx.Response(403, text="<html>challenge</html>")
+        return httpx.Response(200, json={"query": {}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    probe_fallbacks(settings, client=client)
+    rows = {row.provider: row for row in states(settings)}
+    assert rows["openverse"].reason == "暂时无法访问"
+    assert rows["commons"].available
+    calls = []
+    counting = httpx.Client(
+        transport=httpx.MockTransport(lambda r: calls.append(r) or httpx.Response(200))
+    )
+    probe_fallbacks(settings, client=counting)  # cached: no new requests
+    assert calls == []
 
 
 def test_allow_list_is_https_and_per_provider():

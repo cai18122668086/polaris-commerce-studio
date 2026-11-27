@@ -190,11 +190,13 @@ def pick_stock_sentences(analysis: ScriptAnalysis) -> list[int]:
 
 
 @router.get("/sources")
-def sources(request: Request, workspace: VideoWorkspace) -> dict[str, Any]:
+async def sources(request: Request, workspace: VideoWorkspace) -> dict[str, Any]:
     from .mg.catalog import COMPONENTS, STYLES
+    from .video_editing_stock_sources import probe_fallbacks
     from .video_editing_supplement_images import available as ai_available
 
     settings = _settings(request)
+    await asyncio.to_thread(probe_fallbacks, settings)
     stock = [
         {
             "provider": row.provider,

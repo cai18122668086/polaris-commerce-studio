@@ -706,6 +706,14 @@ class EditingPlanningTaskCreate(StrictVideoModel):
     supplement: EditingSupplementOptions | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    replan: bool = Field(
+        default=False,
+        exclude_if=lambda value: not value,
+        description=(
+            "Explicitly pay for a new planning of a request that already has a "
+            "live or finished planning (the user confirmed the extra charge)."
+        ),
+    )
 
     @model_validator(mode="after")
     def prepared_execution(self) -> Self:

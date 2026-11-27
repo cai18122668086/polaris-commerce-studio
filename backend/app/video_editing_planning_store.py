@@ -477,6 +477,33 @@ def create_planning_task(
         )
         if existing:
             return existing
+        # The same request (same speech, template, materials and settings gives
+        # the same request hash) already has a live or finished paid planning in
+        # this project. A refreshed page or a second check must join that result
+        # instead of paying again; a failed run may still be retried, and the
+        # user may confirm a deliberate re-plan (replan=true, charged again).
+        duplicate = session.scalar(
+            select(EditingPlanningTaskRecord.id)
+            .where(
+                *scope,
+                EditingPlanningTaskRecord.project_id == base.project_id,
+                EditingPlanningTaskRecord.mode == "generate",
+                EditingPlanningTaskRecord.status.in_(
+                    ("queued", "running", "completed")
+                ),
+                EditingPlanningTaskRecord.snapshot[
+                    "expected_request_sha256"
+                ].as_string()
+                == prepared.result.get("request_sha256"),
+            )
+            .limit(1)
+        )
+        if duplicate and prepared.result.get("request_sha256") and not body.replan:
+            raise ApiError(
+                409,
+                "EDITING_PLAN_ALREADY_GENERATED",
+                "这条口播已用同样的模板和素材剪过，请在结果区确认或下载，不会重复扣费。",
+            )
         require_active_planning_template(
             prepared.snapshot.get("overlay_template", {}).get("id")
         )

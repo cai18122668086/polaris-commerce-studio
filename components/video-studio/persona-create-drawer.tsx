@@ -54,7 +54,8 @@ export function PersonaCreateDrawer({ open, onClose, library, personas, onCreate
   const shownAvatars = (avatarTab === "own" ? own : library.avatars.filter(item => item.source === "quanyu_public"))
     .filter(item => `${item.name}${item.tag}`.toLowerCase().includes(keyword.trim().toLowerCase()));
   const usableVoices = library.voices.filter(item => item.available !== false);
-  const shownVoices = usableVoices.filter(item => (voiceTab === "own" ? item.source === "own" : item.source !== "own") && `${item.name}${item.tag}${item.description}`.toLowerCase().includes(voiceKeyword.trim().toLowerCase()));
+  const shownVoices = usableVoices.filter(item => (voiceTab === "own" ? item.source === "own" : item.source !== "own") && `${item.name}${item.tag}${item.description}`.toLowerCase().includes(voiceKeyword.trim().toLowerCase()))
+    .sort((a, b) => Number(!!b.preview_url) - Number(!!a.preview_url));
   const avatar = library.avatars.find(item => item.id === avatarId);
   const voice = library.voices.find(item => item.id === voiceId);
   const nameError = personaNameError(name, personas.personas.map(item => item.name));
@@ -96,7 +97,7 @@ export function PersonaCreateDrawer({ open, onClose, library, personas, onCreate
       <div className={styles.choiceTabs} role="tablist" aria-label="形象来源">{([["own", `我的形象 ${own.length}`], ["public", "公共形象"]] as const).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={avatarTab === key} onClick={() => setAvatarTab(key)}>{label}</button>)}</div>
       {avatarTab === "public" && <input className={styles.search} aria-label="搜索形象" placeholder="搜索形象" value={keyword} onChange={event => setKeyword(event.target.value)} />}
       {shownAvatars.length ? <div className={styles.avatarChoices}>{shownAvatars.map(item => <button key={item.id} type="button" className={styles.avatarChoice} aria-pressed={avatarId === item.id} onClick={() => setAvatarId(item.id)}>
-        <span><img src={mediaUrl(item.cover_url)} alt="" loading="lazy" />{!item.ready && <span className={styles.status} data-tone="busy">定制中</span>}</span>
+        <span><img src={mediaUrl(item.cover_url)} alt="" loading="lazy" />{!item.ready && <span className={styles.status} data-tone="busy">{item.id.startsWith("own-avatar-") ? "定制中" : "需生成动作"}</span>}</span>
         <b>{avatarLabel(item)}</b>
       </button>)}</div> : <p className={styles.notice}>{avatarTab === "own" ? "还没有定制形象。可以先选公共形象，或在形象库里定制一个。" : "没有找到匹配的形象。"}</p>}
       {avatar && !avatar.ready && <p className={styles.notice}>这个形象还在定制中。可以先保存搭配，固定形象卡会标「形象定制中」，定制完成后自动可用。</p>}
@@ -106,7 +107,7 @@ export function PersonaCreateDrawer({ open, onClose, library, personas, onCreate
       <p className={styles.sectionLabel}>声音<small>{voice ? `已选：${voice.name}` : "未选择"}</small></p>
       <div className={styles.choiceTabs} role="tablist" aria-label="声音来源">{([["system", "系统声音"], ["own", "我的声音"]] as const).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={voiceTab === key} onClick={() => setVoiceTab(key)}>{label}</button>)}</div>
       {voiceTab === "system" && <input className={styles.search} aria-label="搜索声音" placeholder="搜索声音，例如：女声、新闻、温柔" value={voiceKeyword} onChange={event => setVoiceKeyword(event.target.value)} />}
-      {shownVoices.length ? <div className={styles.voiceChoices}>{shownVoices.map(voiceRow)}</div> : <p className={styles.notice}>{voiceTab === "own" ? "还没有可用的专属声音（声音克隆暂未开通），先用系统声音吧。" : "系统声音暂时读不到，请稍后重试。"}</p>}
+      {shownVoices.length ? <div className={styles.voiceChoices}>{shownVoices.map(voiceRow)}</div> : <p className={styles.notice}>{voiceTab === "own" ? "还没有可用的专属声音（声音克隆暂未开通），先用系统声音吧。" : voiceKeyword.trim() && usableVoices.some(item => item.source !== "own") ? "没有找到匹配的声音，换个关键词试试，例如：女声、男声、温柔。" : "系统声音暂时读不到，请稍后重试。"}</p>}
     </section>
     {error && <p className={styles.error} role="alert">{error}</p>}
   </SideDrawer>;

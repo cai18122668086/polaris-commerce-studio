@@ -46,7 +46,14 @@ export type WorkCard = {
   finished: boolean;
   /** A playable video exists (口播 finished or later); otherwise do not ask for one. */
   hasVideo: boolean;
+  /** Where the server cuts a grid thumbnail from, when there is no cover. */
+  poster: { kind: "editing" | "generation"; id: string } | null;
 };
+
+/** Server-cut 3:4 thumbnail for a work without a cover (cached, lazy-loaded). */
+export function posterPath(workspaceId: string, card: Pick<WorkCard, "poster">): string | null {
+  return card.poster ? `/api/v1/video-studio/workspaces/${workspaceId}/work-posters/${card.poster.kind}/${card.poster.id}` : null;
+}
 
 const SENTENCE_END = /[。！？!?；;\n]/;
 
@@ -112,6 +119,8 @@ export function itemCard(item: WorkItemLike): WorkCard {
     coverId: item.cover_asset_id ?? null, videoUrl: null, createdAt: item.created_at,
     progress: itemProgress(item), finished: item.stage === "done",
     hasVideo: item.stage !== "talking" || item.status === "succeeded",
+    poster: item.editing_task_id ? { kind: "editing", id: item.editing_task_id }
+      : item.generation_task_id && (item.stage !== "talking" || item.status === "succeeded") ? { kind: "generation", id: item.generation_task_id } : null,
   };
 }
 
@@ -122,6 +131,7 @@ export function editCard(work: EditingWorkLike): WorkCard {
     generationTaskId: null, projectId: work.project_id,
     title: title || "未命名作品", titleIsFallback: true, body: "", script: "",
     coverId: null, videoUrl: work.final.url, createdAt: work.created_at, progress: null, finished: true, hasVideo: true,
+    poster: { kind: "editing", id: work.task_id },
   };
 }
 
@@ -138,6 +148,7 @@ export function talkCard(job: TalkJobLike): WorkCard | null {
     coverId: null, videoUrl: job.status === "completed" ? job.video_url ?? null : null, createdAt: job.created_at,
     progress: job.status === "completed" ? null : { label: "口播生成中", tone: "running" }, finished: job.status === "completed",
     hasVideo: job.status === "completed",
+    poster: job.status === "completed" ? { kind: "generation", id: job.id } : null,
   };
 }
 

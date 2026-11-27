@@ -868,3 +868,34 @@ def save_views(result: Image.Image, face: Box | None, root: Path) -> dict[str, s
         paths["face"] = root / "face.jpg"
         result.crop(block).save(paths["face"], "JPEG", quality=90)
     return {key: str(value) for key, value in paths.items()}
+
+
+POSTER_SIZE = (480, 640)
+_POSTER_SLOTS = threading.BoundedSemaphore(2)
+
+
+def make_poster(video: Path, target: Path, at: float = 0.5) -> Path:
+    """A 3:4 grid thumbnail (480x640 JPEG) from one early frame, face-centred.
+
+    At most two run at once per process, so a grid of 40 works never starts 40
+    ffmpeg processes; the result is cached by the caller at ``target``.
+    """
+
+    with _POSTER_SLOTS:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        frame_path = target.with_suffix(".frame.jpg")
+        try:
+            duration = probe_duration(video)
+            extract_frame(video, min(at, max(0.0, duration / 2)), frame_path)
+            with Image.open(frame_path) as opened:
+                image = ImageOps.exif_transpose(opened).convert("RGB")
+        finally:
+            frame_path.unlink(missing_ok=True)
+        found = detect_face(image)
+        cropped, _ = crop_to_canvas(image, found[0] if found else None)
+        partial = target.with_suffix(".part.jpg")
+        cropped.resize(POSTER_SIZE, Image.Resampling.LANCZOS).save(
+            partial, "JPEG", quality=82, optimize=True
+        )
+        partial.replace(target)
+        return target

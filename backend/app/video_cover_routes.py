@@ -826,6 +826,75 @@ def retext(
     return response(session, row)
 
 
+def _poster_source(
+    session: Session, workspace: WorkspaceContext, kind: str, task_id: str
+) -> Path | None:
+    """The video a grid poster is cut from: the visible final edit (else its
+    source clip), or a finished 口播 result. None when there is none yet."""
+
+    from .video_editing_task_models import EditingArtifactRecord
+    from .video_editing_task_routes import artifact_visible
+
+    owner = _owner(workspace)
+    if kind == "editing":
+        task = session.get(EditingTaskRecord, task_id)
+        if not task or (task.workspace_id, task.owner_user_id) != owner:
+            return None
+        final = session.scalar(
+            select(EditingArtifactRecord).where(
+                EditingArtifactRecord.task_id == task.id,
+                EditingArtifactRecord.role == "final",
+            )
+        )
+        if final and artifact_visible(task, final) and Path(final.path).is_file():
+            return Path(final.path)
+        source = session.get(EditingSourceRecord, task.source_id)
+        if source and Path(source.media_path).is_file():
+            return Path(source.media_path)
+        return None
+    job = session.get(VideoGenerationRecord, task_id)
+    if not job or (job.workspace_id, job.owner_user_id) != owner:
+        return None
+    path = Path((job.details or {}).get("result_path") or "")
+    return path if job.status == "completed" and path.is_file() else None
+
+
+@router.get("/work-posters/{kind}/{task_id}")
+def work_poster(
+    kind: Literal["editing", "generation"],
+    task_id: UUID,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> FileResponse:
+    """3:4 grid thumbnail of a work's video (cached; 404 while there is none)."""
+
+    video = _poster_source(session, workspace, kind, str(task_id))
+    if video is None:
+        raise ApiError(404, "WORK_POSTER_NOT_FOUND", "这条作品还没有可用的画面。")
+    stat = video.stat()
+    key = hashlib.sha256(
+        f"{video}:{stat.st_size}:{stat.st_mtime_ns}".encode()
+    ).hexdigest()[:20]
+    target = (
+        Path(request.app.state.settings.video_media_dir)
+        / "posters"
+        / f"{kind}-{task_id}-{key}.jpg"
+    )
+    if not target.is_file():
+        try:
+            compose.make_poster(video, target)
+        except compose.CoverComposeError:
+            raise ApiError(
+                404, "WORK_POSTER_NOT_FOUND", "这条作品还没有可用的画面。"
+            ) from None
+    return FileResponse(
+        target,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
 @router.post("/work-items/{item_id}/finish", response_model=WorkItemResponse)
 def finish_item(
     item_id: str,

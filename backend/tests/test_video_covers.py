@@ -608,3 +608,29 @@ def test_restart_resumes_interrupted_covers_and_charges_once(priced, clip, monke
         )
         == 0
     )
+
+
+def test_grid_poster_is_cut_once_cached_and_404_without_video(env, clip, monkeypatch):
+    client, ws, user, _ = env
+    cuts: list[str] = []
+
+    def fake_extract(video, at, target):
+        cuts.append(str(video))
+        presenter_frame().save(target, "JPEG")
+        return target
+
+    monkeypatch.setattr(compose, "probe_duration", lambda video: 12.0)
+    monkeypatch.setattr(compose, "extract_frame", fake_extract)
+    talk = finished_talk(client, ws, user, clip)
+    url = base(ws) + f"/work-posters/generation/{talk}"
+    first = client.get(url)
+    assert first.status_code == 200 and first.headers["content-type"] == "image/jpeg"
+    assert Image.open(io.BytesIO(first.content)).size == (480, 640)
+    assert client.get(url).status_code == 200
+    assert len(cuts) == 1  # cached
+    running = finished_talk(client, ws, user, clip, status="running")
+    assert (
+        client.get(base(ws) + f"/work-posters/generation/{running}").status_code == 404
+    )
+    assert client.get(base(ws) + f"/work-posters/editing/{uuid4()}").status_code == 404
+    assert client.get(base(ws) + "/work-posters/other/x").status_code == 422

@@ -15,8 +15,8 @@ const entries: Record<string, [TemplateCollection, string, string]> = {
   "bihuo-04-v1": ["卡片讲解", "应用窗口", "误区对照 · 阅读进度"],
   "apple-minimal-v1": ["卡片讲解", "极简留白", "双层标题 · 人物让位"],
   "unified-paper-typewriter-v1": ["卡片讲解", "方格打字", "纸感底纹 · 逐字呈现"],
-  "unified-chapter-v1": ["卡片讲解", "章节导航", "章节大字 · 模糊背景"],
-  "knowledge-talk-v1": ["卡片讲解", "分层论点", "整帧追问 · 资料板"],
+  "unified-chapter-v1": ["卡片讲解", "章节导航", "章节序号 · 模糊背景"],
+  "knowledge-talk-v1": ["卡片讲解", "要点清单", "标题要点 · 结论收束"],
 
   "bihuo-14-v1": ["新闻资讯", "青绿光窗", "网格底纹 · 荧光描边"],
   "bihuo-23-v1": ["新闻资讯", "快讯直播", "滚动快讯 · 橙色光框"],
@@ -35,7 +35,7 @@ const entries: Record<string, [TemplateCollection, string, string]> = {
   "bihuo-19-v1": ["商品图文", "圆孔转场", "柔焦背景 · 悬浮圆窗"],
   "bihuo-32-v1": ["商品图文", "柔焦叠窗", "暖色柔焦 · 纵向图文"],
   "bihuo-48-v1": ["商品图文", "暖白圆窗", "大幅配图 · 圆形人物"],
-  "product-explainer-v1": ["商品图文", "横竖分屏", "人物开场 · 手机图卡"],
+  "product-explainer-v1": ["商品图文", "竖向分屏", "三图并列 · 人物方窗"],
   "rotation-cards-v1": ["商品图文", "三图轮换", "纵深叠放 · 逐张呈现"],
   "azl-panels-v1": ["商品图文", "杂志多格", "图文分区 · 素材换位"],
 
@@ -53,16 +53,8 @@ const hidden = new Set<string>([
   "bihuo-11-v1", // = 暖白圆窗 (bihuo-48)
   "bihuo-27-v1", // = 深青标题 (bihuo-24), colour only
   "bihuo-29-v1", // = 青绿光窗 (bihuo-14), colour only
-  // No passing full example with the shared presenter: the planner cannot produce
-  // a valid plan for these native templates (2026-11-27 dev runs), so users would hit the same failure.
+  // No male presenter example yet: the style needs real operation footage.
   "chenxi-broll-v1",
-  "product-explainer-v1",
-  "knowledge-talk-v1",
-  "presenter-openings-v1",
-  "rotation-cards-v1",
-  "azl-panels-v1",
-  "unified-chapter-v1",
-  "unified-paper-typewriter-v1",
 ]);
 
 const fallbackCollection: Record<string, TemplateCollection> = {

@@ -1748,3 +1748,27 @@ def test_active_works_include_planning_waiting_for_the_user(
     assert items[0]["project_id"] == task["project_id"]
     assert items[0]["preview"] is None
 
+
+
+def test_same_request_never_bills_twice_across_preparations(video, tmp_path, monkeypatch):
+    """P0（v3）：刷新后主按钮回到「开始」，再点会对同一份请求重新准备并再付费一次。"""
+    client, _, ws, settings, _, task, _ = setup(video, tmp_path, monkeypatch)
+    first = prepare(client, ws, settings, task)
+    second = prepare(client, ws, settings, task)
+    assert first["id"] != second["id"]
+    assert first["request_sha256"] == second["request_sha256"]
+    enable_fixture(settings)
+    submitted = create(client, ws, task["id"], "generate", first["id"])
+    assert submitted.status_code == 200, submitted.text
+    again = create(client, ws, task["id"], "generate", second["id"])
+    assert again.status_code == 409, again.text
+    assert again.json()["error"]["code"] == "EDITING_PLAN_ALREADY_GENERATED"
+    # A failed run of the same request may still be retried explicitly.
+    factory = client.app.state.session_factory
+    with factory() as session:
+        row = session.get(EditingPlanningTaskRecord, submitted.json()["id"])
+        row.status = "failed"
+        session.commit()
+    retried = create(client, ws, task["id"], "generate", second["id"])
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["id"] != submitted.json()["id"]

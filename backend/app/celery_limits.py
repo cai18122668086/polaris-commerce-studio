@@ -18,6 +18,7 @@ TASK_LIMITS = {
     "polaris.process_job": "image",
     "polaris.cancel_job": "cancel",
     "polaris.process_editing_task": "editing",
+    "polaris.transcribe_benchmark": "editing",
     "polaris.process_editing_planning_task": "planning",
 }
 

@@ -82,7 +82,10 @@ def test_xhs_keeps_access_token_and_rejects_other_hosts():
 
 
 def test_links_in_share_text_and_short_link_redirects():
-    text = "3.07 复制打开抖音，看看【某某的作品】指如削葱根！ https://v.douyin.com/iAbCdEf/ 07/12 a@B.go\\n还有 https://b23.tv/xYz12。"
+    text = (
+        "3.07 复制打开抖音，看看【某某的作品】指如削葱根！ "
+        "https://v.douyin.com/iAbCdEf/ 07/12 a@B.go\n还有 https://b23.tv/xYz12。"
+    )
     assert platforms.links_in(text) == [
         "https://v.douyin.com/iAbCdEf/",
         "https://b23.tv/xYz12",
@@ -218,7 +221,10 @@ def test_performance_readings_follow_teardown_thresholds():
 
 
 def reference(metrics=True):
-    text = "这也太吓人了。经常玩手机的宝赶紧看看你的手。分享个低成本的方法。先用温水泡三分钟。关注我，下期教你按摩。"
+    text = (
+        "这也太吓人了。经常玩手机的宝赶紧看看你的手。分享个低成本的方法。"
+        "先用温水泡三分钟。关注我，下期教你按摩。"
+    )
     return WritingReference(
         reference_id=uuid4(),
         original_text=text,

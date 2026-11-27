@@ -205,8 +205,18 @@ def process(
                         "VIDEO_SCRIPT_INVALID",
                         "文案未通过格式或事实检查，请核对产品事实。",
                     )
+            elif row.inputs.get("platform") == "xiaohongshu":
+                # Our own ASR needs the editing worker's memory; it finishes
+                # the row. An unreachable broker leaves it resumable.
+                from .video_benchmark_transcribe import QUEUED, dispatch
+
+                checkpoint(session, row, QUEUED)
+                if not dispatch(row.id):
+                    row.status = "awaiting_resume"
+                    session.commit()
+                return
             elif row.inputs.get("platform", "douyin") != "douyin":
-                # 小红书 (our ASR) and B站 (subtitles) answer synchronously.
+                # B站 subtitles answer synchronously.
                 checkpoint(session, row, "extracting")
                 data = service.extract(
                     row.inputs, heartbeat=lambda: _heartbeat(factory, task_id)
@@ -461,13 +471,15 @@ def tasks(
             if row.updated_at.tzinfo is None
             else row.updated_at
         )
-        if (
-            row.status == "running"
-            and (datetime.now(UTC) - stamp).total_seconds() > 180
+        # Worker transcription waits in the editing queue behind renders and
+        # heartbeats while running; it gets a longer grace and stays resumable.
+        asr = row.stage in {"asr_queued", "asr_running"}
+        if row.status == "running" and (datetime.now(UTC) - stamp).total_seconds() > (
+            900 if asr else 180
         ):
             row.status = (
                 "awaiting_resume"
-                if row.kind == "extract" and row.provider_task_id
+                if row.kind == "extract" and (row.provider_task_id or asr)
                 else "unknown"
             )
     session.commit()

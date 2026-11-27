@@ -380,7 +380,11 @@ def save_benchmark_reference(
                     f"作品 {source.platform_id}。"
                     f"搜索页 {source.search_task_id}，"
                     f"采集于 {source.captured_at.isoformat()}。"
-                    "语音转写，正文待核对。"
+                    + (
+                        "这条视频没有口播，原文取自笔记正文。"
+                        if task.result.get("source") == "note_text"
+                        else "语音转写，正文待核对。"
+                    )
                 ),
             }
         )

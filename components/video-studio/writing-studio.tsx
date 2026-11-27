@@ -32,7 +32,7 @@ export function WritingStudio({ workspaceId, projectId, session, content, notify
   return <div className={page.writing}>
     <PageHero eyebrow="爆款文案" title="照着爆款写，" accent="说的是你自己的事"
       description="按点赞找到同类爆款，拆出它的钩子、结构和表达，再换成你的身份、产品和经历，一键仿写成口播稿。"
-      facts={[{ label: "对标平台", value: "抖音 · 小红书 · B站" }, { label: "每次对标", value: "最多 3 条" }]}
+      facts={[{ label: "对标平台", value: "抖音 · 小红书" }, { label: "每次对标", value: "最多 3 条" }]}
       motif="script" />
     <ViralWriting key={projectId} workspaceId={workspaceId} projectId={projectId} session={session} productFacts={content.product_facts}
       copyText={copyText}

@@ -8,9 +8,10 @@ import { useVideoCredits } from "@/features/video-studio/credits";
 import { writingIssueMessage } from "@/features/video-studio/writing-issue";
 import {
   MAX_PICKS, PLATFORM_LABEL, useViralWriting,
-  type AnalysisDoc, type Candidate, type DraftDoc, type DraftLine, type DraftMode, type Fact, type Facts, type Job, type Platform, type ReferenceDoc,
+  type AnalysisDoc, type Candidate, type DraftDoc, type DraftLine, type DraftMode, type Facts, type Job, type Platform, type ReferenceDoc,
 } from "@/features/video-studio/use-viral-writing";
 import type { useProjectSession } from "@/features/video-studio/use-project-session";
+import { BASE, asked, buildFacts, slotKey } from "@/features/video-studio/viral-facts";
 import studio from "./video-studio.module.css";
 import css from "./viral-writing.module.css";
 
@@ -19,8 +20,11 @@ type Flow = ReturnType<typeof useViralWriting>;
 export type ViralStep = "find" | "confirm" | "teardown" | "facts" | "draft";
 export type Pick = { search_task_id: string; item: Candidate };
 
+/** 先做抖音和小红书；B站后端已接好，界面暂不开放。 */
+const SEARCH_PLATFORMS: Platform[] = ["douyin", "xiaohongshu"];
+
 export const VIRAL_STEPS: { id: ViralStep; label: string; hint: string }[] = [
-  { id: "find", label: "找对标", hint: "关键词按点赞搜，或粘贴链接" },
+  { id: "find", label: "找对标", hint: "抖音、小红书按点赞搜，或粘贴链接" },
   { id: "confirm", label: "确认对标", hint: "最多 3 条，提取口播原文" },
   { id: "teardown", label: "拆解表", hint: "钩子、结构、表达、为什么火" },
   { id: "facts", label: "我的事实", hint: "把原稿的信息换成你的" },
@@ -97,7 +101,7 @@ function FindStep({ flow, picks, setPicks, searchCredits, short }: { flow: Flow;
       </div>
       {mode === "keyword" ? <>
         <div className={css.platforms} role="radiogroup" aria-label="对标平台">
-          {(Object.keys(PLATFORM_LABEL) as Platform[]).map(key => <label key={key} data-active={platform === key || undefined}>
+          {SEARCH_PLATFORMS.map(key => <label key={key} data-active={platform === key || undefined}>
             <input type="radio" name="platform" value={key} checked={platform === key} onChange={() => setPlatform(key)} />{PLATFORM_LABEL[key]}
           </label>)}
         </div>
@@ -108,10 +112,10 @@ function FindStep({ flow, picks, setPicks, searchCredits, short }: { flow: Flow;
           </select>}
           <button type="submit" className={studio.primaryButton} disabled={!keyword.trim() || !!flow.busy || pending || short}>{flow.busy === "search" ? "搜索中…" : billableLabel("按点赞找爆款", searchCredits)}</button>
         </div>
-        <small className={css.note}>结果一律按点赞从高到低排列。{platform === "xiaohongshu" ? "小红书只搜视频笔记，口播原文由我们自己识别，稍慢一些。" : ""}</small>
+        <small className={css.note}>结果一律按点赞从高到低排列。{platform === "xiaohongshu" ? "小红书只搜视频笔记；口播原文由我们自己识别，每条约 1–2 分钟。" : ""}</small>
       </> : <>
         <textarea className={css.linkInput} aria-label="对标链接" rows={4} maxLength={4000} value={links} onChange={event => setLinks(event.target.value)}
-          placeholder={"直接粘贴分享内容或链接，最多 3 条，支持抖音、小红书、B站\n例如：7.12 复制打开抖音，看看【xxx的作品】… https://v.douyin.com/xxxx/"} />
+          placeholder={"直接粘贴分享内容或链接，最多 3 条，支持抖音、小红书\n例如：7.12 复制打开抖音，看看【xxx的作品】… https://v.douyin.com/xxxx/"} />
         <div className={css.searchRow}><small className={css.note}>读取作品信息不扣积分。</small><button type="submit" className={studio.primaryButton} disabled={!links.trim() || !!flow.busy || pending}>{flow.busy === "links" ? "读取中…" : "读取链接"}</button></div>
       </>}
     </form>
@@ -136,7 +140,7 @@ function FindStep({ flow, picks, setPicks, searchCredits, short }: { flow: Flow;
 /* ------------------------------------------------------------- 2 确认对标 */
 
 function jobLine(job: Job, platform: string) {
-  if (["queued", "running"].includes(job.status)) return platform === "xiaohongshu" ? "正在下载视频并识别口播，约 1 分钟…" : "正在提取口播原文…";
+  if (["queued", "running"].includes(job.status)) return platform === "xiaohongshu" ? "正在识别口播，每条约 1–2 分钟…" : "正在提取口播原文…";
   if (job.status === "failed") return job.error_code === "VIDEO_TRANSCRIPT_EMPTY" ? "没识别到人声，可能是纯音乐或图文。换一条对标吧。" : "提取没有成功，可以重试一次。";
   if (job.status === "unknown") return "提取结果还没确认，请稍后刷新。";
   if (job.status === "awaiting_resume") return "提取还在排队，点「继续」查询结果。";
@@ -166,7 +170,7 @@ function ConfirmStep({ flow, picks, setPicks, onNext, writingCredits, short }: {
           <small>{PLATFORM_LABEL[platform as Platform]}{metrics ? ` · 赞 ${wan(metrics.like_count)} · 藏 ${wan(metrics.collect_count)}` : ""}</small>
           {job.benchmark_source && <a href={job.benchmark_source.source_url} target="_blank" rel="noreferrer">原视频<ExternalLink size={12} /></a>}
         </header>
-        {ref ? <details><summary>口播原文 · {ref.body.original_text.length} 字 · 约 {spoken(ref.body.original_text)} 秒</summary><p className={css.transcript}>{ref.body.sentences.map(s => s.text).join("\n")}</p></details>
+        {ref ? <details><summary>{job.result.source === "note_text" ? "这条没有口播，用的是笔记正文" : "口播原文"} · {ref.body.original_text.length} 字{job.result.source === "note_text" ? "" : ` · 约 ${spoken(ref.body.original_text)} 秒`}</summary><p className={css.transcript}>{ref.body.sentences.map(s => s.text).join("\n")}</p></details>
           : job.status === "completed" ? <Busy>正在整理原文…</Busy>
           : ["queued", "running"].includes(job.status) ? <Busy>{jobLine(job, platform)}</Busy>
           : <p className={css.warn}>{jobLine(job, platform)} {job.can_resume && <button type="button" className={css.textButton} onClick={() => void flow.resume(job.id)}>继续</button>}</p>}
@@ -254,12 +258,6 @@ function TeardownStep({ flow, main, setMain, onNext, writingCredits, short }: { 
 /* ------------------------------------------------------------ 4 我的事实 */
 
 type Answers = Record<string, string>;
-const BASE: { id: string; category: Fact["category"]; label: string; question: string; rows: number }[] = [
-  { id: "me", category: "identity", label: "我的身份", question: "你是谁？例如：做了 8 年护肤的美容师、两个孩子的妈妈", rows: 1 },
-  { id: "product", category: "product", label: "产品名称", question: "你要讲的产品叫什么？", rows: 1 },
-  { id: "points", category: "product", label: "核心卖点", question: "产品最打动人的 2–3 个卖点、规格或价格（只写真实的）", rows: 3 },
-  { id: "story", category: "story", label: "真实经历", question: "你或客户用过的真实经历、前后变化（选填）", rows: 2 },
-];
 
 function FactsStep({ flow, main, answers, setAnswers, forbidden, setForbidden, limits, setLimits, mode, setMode, productFacts, onNext, writingCredits, short }: {
   flow: Flow; main: ReferenceDoc | undefined; answers: Answers; setAnswers: (next: Answers) => void; forbidden: string; setForbidden: (v: string) => void;
@@ -293,22 +291,6 @@ function FactsStep({ flow, main, answers, setAnswers, forbidden, setForbidden, l
       <button type="button" className={studio.primaryButton} disabled={!declared || !!flow.busy || short || !flow.config?.generate} onClick={() => void flow.write(main, analysis, facts, mode).then(onNext)}>
         {flow.busy === "write" ? "提交中…" : billableLabel("一键仿写口播稿", writingCredits)}<ArrowRight size={15} /></button></div>
   </div>;
-}
-
-/** A fixed field the teardown already asks for (「我的身份」「产品名」) is not asked twice. */
-const asked = (slots: { label: string }[], item: (typeof BASE)[number]) => slots.some(slot => slot.label === item.label
-  || (item.id === "me" && /身份/.test(slot.label)) || (item.id === "product" && /产品名|品名/.test(slot.label)));
-
-/** The slot id is the fact id the model sees; only a clash with a base field gets a prefix. */
-const slotKey = (id: string) => BASE.some(item => item.id === id) ? "slot-" + id : id;
-
-function buildFacts(slots: { id: string; category: Fact["category"]; label: string; question: string }[], answers: Answers, forbidden: string, limits: Facts["restricted_claims"]): Facts {
-  const rows = [...slots.map(slot => ({ id: slotKey(slot.id), category: slot.category, label: slot.label, question: slot.question })), ...BASE.filter(item => !asked(slots, item))];
-  return {
-    facts: rows.map(row => { const value = (answers[row.id] || "").trim(); return { id: row.id, category: row.category, label: row.label, value: value || null, status: value ? "user_declared" as const : "unknown" as const, source_note: "用户填写" }; }),
-    forbidden_terms: forbidden.split("\n").map(s => s.trim()).filter(Boolean),
-    restricted_claims: limits,
-  };
 }
 
 /* ---------------------------------------------------------- 5 仿写口播稿 */

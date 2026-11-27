@@ -218,3 +218,10 @@
 :global(.theme-ember) .resultWarnings{border-top:1px solid #252321;background:#131311;color:#dc7f06}
 :global(.theme-ember) .resultWarnings li::before{background:#dc7f06}
 /* ember-dark:end */
+
+/* 文案助手：只保留原创；照着爆款写去爆款文案页。 */
+.assistantStack { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; height: 100%; min-height: 0; }
+.viralEntry { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.viralEntry:hover { border-color: var(--ink); }
+.viralEntry b { display: block; font-size: 13px; }
+.viralEntry small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }

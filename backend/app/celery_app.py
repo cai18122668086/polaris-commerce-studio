@@ -13,6 +13,7 @@ celery_app = Celery(
         "app.ecommerce_worker",
         "app.video_editing_worker",
         "app.video_editing_planning_worker",
+        "app.video_benchmark_transcribe",
     ],
 )
 celery_app.conf.update(
@@ -36,6 +37,7 @@ celery_app.conf.update(
         "polaris.cancel_job": {"queue": "default"},
         "polaris.process_crawl_task": {"queue": "crawl"},
         "polaris.process_editing_task": {"queue": "editing"},
+        "polaris.transcribe_benchmark": {"queue": "editing"},
         "polaris.process_editing_planning_task": {"queue": "editing-planning"},
     },
 )

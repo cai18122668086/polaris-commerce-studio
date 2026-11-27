@@ -6,12 +6,7 @@ import hashlib
 import json
 import math
 import re
-import subprocess
-import sys
-import tempfile
-import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -377,7 +372,7 @@ class VideoAssistanceProvider:
     ) -> dict[str, Any]:
         platform = inputs.get("platform", "douyin")
         if platform == "xiaohongshu":
-            return self.local_transcript(inputs, heartbeat)
+            raise ApiError(500, "VIDEO_ASSISTANCE_FAILED", "小红书转写由剪辑服务处理。")
         if platform == "bilibili":
             return self.request(
                 "extract",
@@ -396,89 +391,6 @@ class VideoAssistanceProvider:
                 "mode": "async",
             },
         )
-
-    def local_transcript(
-        self, inputs: dict[str, Any], heartbeat: Callable[[], None] | None
-    ) -> dict[str, Any]:
-        """小红书 has no supplier transcript: fetch the video and run our own ASR."""
-        media = inputs.get("media_url")
-        if not media:
-            data = self.request(
-                "extract",
-                "POST",
-                "/api/v1/social",
-                json={
-                    "platform": "xiaohongshu",
-                    "action": "video",
-                    "params": {"url": inputs["source_url"]},
-                },
-            )
-            found = data.get("results")
-            row = found[0] if isinstance(found, list) and found else found
-            media = (
-                platforms.https_url(row.get("video_url"))
-                if isinstance(row, dict)
-                else None
-            )
-        if not media:
-            raise ApiError(
-                422,
-                "VIDEO_TRANSCRIPT_EMPTY",
-                "这条笔记读取不到视频，可能是图文笔记；可以手动粘贴口播原文。",
-            )
-        with tempfile.TemporaryDirectory(prefix="benchmark-asr-") as work:
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "app.video_benchmark_asr",
-                    media,
-                    str(Path(work) / "asr"),
-                ],
-                cwd=str(Path(__file__).resolve().parent.parent),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-            )
-            started = time.monotonic()
-            while process.poll() is None:
-                if time.monotonic() - started > 600:
-                    process.kill()
-                    raise ApiError(
-                        502,
-                        "VIDEO_LOCAL_ASR_FAILED",
-                        "语音识别超时，请稍后重试或手动粘贴原文。",
-                    )
-                if heartbeat:
-                    heartbeat()
-                time.sleep(5)
-            output = (
-                (process.stdout.read() if process.stdout else "").strip().splitlines()
-            )
-        try:
-            payload = json.loads(output[-1]) if output else {}
-        except ValueError:
-            payload = {}
-        if (
-            not isinstance(payload, dict)
-            or payload.get("error")
-            or not payload.get("text")
-        ):
-            if payload.get("text") == "" and not payload.get("error"):
-                raise ApiError(
-                    422,
-                    "VIDEO_TRANSCRIPT_EMPTY",
-                    "视频里没有识别到人声；可以手动粘贴口播原文。",
-                )
-            raise ApiError(
-                502,
-                "VIDEO_LOCAL_ASR_FAILED",
-                "视频语音识别失败，请稍后重试或手动粘贴原文。",
-            )
-        return {
-            "results": {**payload, "title": inputs.get("title", "")},
-            "billing": {"local_asr": True},
-        }
 
     def extract_status(self, task_id: str) -> dict[str, Any]:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", task_id):

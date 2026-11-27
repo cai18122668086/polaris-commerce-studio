@@ -194,6 +194,10 @@ def process(
                 result, receipt = benchmark_page(data, row.id, row.inputs, captured_at)
                 row.status = "completed"
                 checkpoint(session, row, "completed", result=result, receipt=receipt)
+                # Signed cover links expire; keep a copy while they still work.
+                from .video_benchmark_covers import prefetch
+
+                prefetch(service.settings, row.id, result.get("items") or [])
                 return
             elif row.kind != "extract":
                 checkpoint(session, row, "submitting")
@@ -474,12 +478,15 @@ def tasks(
         # Worker transcription waits in the editing queue behind renders and
         # heartbeats while running; it gets a longer grace and stays resumable.
         asr = row.stage in {"asr_queued", "asr_running"}
-        if row.status == "running" and (datetime.now(UTC) - stamp).total_seconds() > (
-            900 if asr else 180
+        auto = row.kind == "auto_writing"  # heartbeats every 20s while alive
+        limit = 900 if asr else 120 if auto else 180
+        if (
+            row.status == "running"
+            and (datetime.now(UTC) - stamp).total_seconds() > limit
         ):
             row.status = (
                 "awaiting_resume"
-                if row.kind == "extract" and (row.provider_task_id or asr)
+                if auto or (row.kind == "extract" and (row.provider_task_id or asr))
                 else "unknown"
             )
     session.commit()
@@ -520,6 +527,8 @@ def resume(
     )
     if not row:
         raise ApiError(404, "VIDEO_ASSISTANCE_NOT_FOUND", "未找到文案任务。")
+    if row.kind == "auto_writing":
+        raise ApiError(409, "VIDEO_AUTO_RESUME_ELSEWHERE", "请在爆款文案页点「继续」。")
     if row.status not in {"queued", "awaiting_resume"}:
         raise ApiError(
             409, "VIDEO_ASSISTANCE_NOT_RESUMABLE", "请保留原任务核对，不要重复提交。"

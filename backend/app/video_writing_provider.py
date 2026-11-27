@@ -46,6 +46,18 @@ def sanitize_analysis(analysis: WritingAnalysis, reference: WritingReference) ->
     an invented quote in an optional table row is removed, not paid for twice.
     """
     text = {s.id: s.text for s in reference.sentences}
+    # A claim quoted from the source but filed under the wrong sentence is
+    # re-filed; a quote the source does not contain cannot be copied: dropped.
+    claims = []
+    for claim in analysis.source_claims:
+        if claim.sentence_id in text and claim.quote in text[claim.sentence_id]:
+            claims.append(claim)
+            continue
+        home = next((sid for sid, line in text.items() if claim.quote in line), None)
+        if home:
+            claim.sentence_id = home
+            claims.append(claim)
+    analysis.source_claims = claims
 
     def cites(sentence_id: str, quote: str) -> bool:
         return sentence_id in text and quote.strip() in text[sentence_id]
@@ -359,6 +371,18 @@ def validate_draft(
             )
     if len(text) > 3000:
         raise ValueError("Draft exceeds the existing editor limit; no truncation")
+    # A declared fact spoken verbatim in a line belongs to that line, whatever
+    # the model listed; numbers are still checked against the mapped facts.
+    for owner in draft.sentences:
+        for item in known.values():
+            pieces = [
+                p.strip(EDGE)
+                for p in re.split(r"[，,；;。！？!?、\n]", item.value or "")
+            ]
+            if item.id not in owner.fact_ids and any(
+                len(p) >= 2 and p in owner.text for p in pieces
+            ):
+                owner.fact_ids.append(item.id)
     for index, sentence in enumerate(draft.sentences):
         if not set(sentence.fact_ids).issubset(known):
             raise DraftIssue(
@@ -639,6 +663,13 @@ def plan_writing(
             draft_mode=mode,
             rules=[*RULES, *DRAFT_RULES[mode]],
         )
+        if inputs.get("variant"):
+            payload["rules"] = [
+                *payload["rules"],
+                f"这是第{inputs['variant'] + 1}版：换一种和常见写法不同的开头钩子"
+                "（如反问、结果前置、身份代入、数字清单中的另一种），"
+                "正文表达也换个说法，事实与段落结构规则不变。",
+            ]
         if mode == "structure":
             # 明确给出必须遵守的段落顺序，避免模型自行调换
             # （校验要求按顺序覆盖每个段落）。

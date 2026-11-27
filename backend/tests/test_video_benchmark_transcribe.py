@@ -76,6 +76,7 @@ def xhs(tmp_path, monkeypatch):
             "collect_count": 5,
             "is_video": True,
             "video_url": MEDIA.replace("https://", "http://"),
+            "image_url": "https://sns-note-i4.xhscdn.com/cover?imageView2/2/format/heif",
             "duration_sec": 30,
         }
         return httpx.Response(200, json={"results": [row]})
@@ -88,6 +89,10 @@ def xhs(tmp_path, monkeypatch):
     monkeypatch.setattr(
         worker, "dispatch", lambda task_id: dispatched.append(task_id) or True
     )
+    # Covers are pre-fetched after a search; tests never reach the real CDN.
+    from app import video_benchmark_covers
+
+    monkeypatch.setattr(video_benchmark_covers, "prefetch", lambda *args: None)
     with TestClient(app) as client:
         workspace_id = client.get("/api/v1/workspaces").json()[0]["id"]
         root = f"/api/v1/video-studio/workspaces/{workspace_id}"

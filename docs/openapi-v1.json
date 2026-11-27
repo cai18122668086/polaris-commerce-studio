@@ -1429,6 +1429,76 @@
         "title": "AudienceInsight",
         "type": "object"
       },
+      "AutoWritingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "facts_text": {
+            "maxLength": 3000,
+            "minLength": 4,
+            "title": "Facts Text",
+            "type": "string"
+          },
+          "forbidden_terms": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Forbidden Terms",
+            "type": "array"
+          },
+          "platform": {
+            "default": "douyin",
+            "enum": [
+              "douyin",
+              "xiaohongshu"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "restricted_claims": {
+            "items": {
+              "enum": [
+                "price",
+                "net_quantity",
+                "health_effect"
+              ],
+              "type": "string"
+            },
+            "title": "Restricted Claims",
+            "type": "array"
+          }
+        },
+        "required": [
+          "request_id",
+          "project_id",
+          "expected_revision",
+          "query",
+          "facts_text"
+        ],
+        "title": "AutoWritingRequest",
+        "type": "object"
+      },
       "AvatarResponse": {
         "additionalProperties": false,
         "properties": {
@@ -15561,6 +15631,13 @@
               }
             ],
             "title": "Target Duration Seconds"
+          },
+          "variant": {
+            "default": 0,
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Variant",
+            "type": "integer"
           }
         },
         "required": [
@@ -22466,6 +22543,120 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/auto-writing": {
+      "post": {
+        "operationId": "start_api_v1_video_studio_workspaces__workspace_id__auto_writing_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoWritingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Start",
+        "tags": [
+          "video-auto-writing"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/auto-writing/{run_id}/resume": {
+      "post": {
+        "operationId": "resume_api_v1_video_studio_workspaces__workspace_id__auto_writing__run_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Resume",
+        "tags": [
+          "video-auto-writing"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/avatar-clones": {
       "post": {
         "operationId": "create_avatar_api_v1_video_studio_workspaces__workspace_id__avatar_clones_post",
@@ -22695,6 +22886,71 @@
           }
         ],
         "summary": "Search Config",
+        "tags": [
+          "video-assistance"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/benchmark-covers/{task_id}/{platform_id}": {
+      "get": {
+        "description": "A search result's cover from our own origin (CSP, hotlink, expiry).",
+        "operationId": "benchmark_cover_api_v1_video_studio_workspaces__workspace_id__benchmark_covers__task_id___platform_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "platform_id",
+            "required": true,
+            "schema": {
+              "title": "Platform Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Benchmark Cover",
         "tags": [
           "video-assistance"
         ]

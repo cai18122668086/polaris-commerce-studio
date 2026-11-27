@@ -1,0 +1,68 @@
+/* 全自动爆款文案：一张输入卡、一条进度、三版稿子并排，下面是拆解报告。 */
+.page { --aw-warm: #b4530a; --aw-surface: #ffffff; display: grid; gap: 18px; padding-bottom: 48px; }
+:global(html.theme-ember) .page { --aw-warm: #f07a2b; --aw-surface: #0f0e0d; }
+.form, .progress, .problem, .results > section { background: var(--aw-surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px; display: grid; gap: 18px; min-width: 0; }
+.results { display: grid; gap: 18px; }
+.field { display: grid; gap: 8px; }
+.label { font-size: 13.5px; font-weight: 600; }
+.field textarea, .forbidden { width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-size: 14px; line-height: 1.75; background: var(--aw-surface); color: var(--ink); resize: vertical; }
+.field textarea:focus, .forbidden:focus { outline: none; border-color: var(--ink); }
+.field small { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.platforms { display: flex; gap: 8px; }
+.platforms label { display: inline-flex; align-items: center; padding: 7px 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; cursor: pointer; }
+.platforms label[data-active] { border-color: var(--ink); font-weight: 600; }
+.platforms input { position: absolute; opacity: 0; pointer-events: none; }
+.limits { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; font-size: 13px; }
+.limits label { display: inline-flex; gap: 6px; align-items: center; }
+.forbidden { flex: 1 1 220px; width: auto; padding: 8px 12px; font-size: 13px; }
+.actions { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.actions small { margin-right: auto; font-size: 12px; color: var(--muted); }
+.actions button, .headActions button, .version footer button { display: inline-flex; align-items: center; gap: 6px; }
+.lead { margin: 0; font-size: 13px; line-height: 1.8; color: var(--muted); }
+.stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.stages li { display: grid; gap: 8px; padding-top: 12px; border-top: 2px solid var(--border); font-size: 12.5px; color: var(--muted); }
+.stages li[data-state="done"] { border-top-color: var(--ink); color: var(--ink); }
+.stages li[data-state="now"] { border-top-color: var(--aw-warm); color: var(--ink); }
+.stages b { font-weight: 500; }
+.stageMark { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; font-size: 11px; font-variant-numeric: tabular-nums; }
+.stages li[data-state="done"] .stageMark { border-color: var(--ink); }
+.stages li[data-state="now"] .stageMark { border-color: var(--aw-warm); color: var(--aw-warm); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.picks small { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.picks ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.picks li { display: grid; gap: 2px; font-size: 13px; line-height: 1.6; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.picks li span { color: var(--muted); font-size: 12.5px; }
+.problem b { font-size: 15px; }
+.problem p { margin: 0; font-size: 13px; line-height: 1.8; color: var(--muted); }
+.sectionHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sectionHead h3 { margin: 0; font-size: 17px; letter-spacing: -.2px; }
+.headActions { display: flex; gap: 12px; align-items: center; }
+.textButton { border: 0; background: none; padding: 0; color: var(--muted); font: inherit; font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; justify-self: start; }
+.textButton:hover { color: var(--ink); }
+.versions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: stretch; }
+.version { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.version[data-editing] { grid-column: 1 / -1; }
+.version[data-empty] { grid-template-rows: auto auto; align-content: start; }
+.version header { display: grid; gap: 3px; }
+.version header b { font-size: 14px; }
+.version header small { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.script { margin: 0; white-space: pre-line; font-size: 13.5px; line-height: 1.85; max-height: 420px; overflow: auto; padding-right: 4px; }
+.editLines { display: grid; gap: 8px; }
+.editLines textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 13.5px; line-height: 1.7; background: var(--aw-surface); color: var(--ink); resize: vertical; }
+.notes { font-size: 12px; color: var(--muted); }
+.notes summary { cursor: pointer; }
+.notes ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; line-height: 1.6; }
+.version footer { display: flex; gap: 8px; justify-content: flex-end; align-items: center; padding-top: 12px; border-top: 1px solid var(--border); }
+.iconButton { margin-right: auto; width: 32px; height: 32px; display: grid !important; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--ink); cursor: pointer; }
+.muted { margin: 0; font-size: 13px; line-height: 1.7; color: var(--muted); }
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tabs button { display: grid; gap: 2px; text-align: left; border: 0; background: none; padding: 8px 14px; font: inherit; font-size: 13px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
+.tabs button small { font-size: 11.5px; color: var(--muted); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.error { margin: 0; font-size: 12.5px; color: #b42318; }
+@media (max-width: 900px) {
+  .stages { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .form, .progress, .problem, .results > section { padding: 16px; }
+}

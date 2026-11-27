@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi.responses import FileResponse
 from pydantic import Field, StringConstraints
 from sqlalchemy import Select, select
 from sqlalchemy.exc import IntegrityError
 
+from . import video_benchmark_covers as covers
 from . import video_benchmark_platforms as platforms
 from . import video_credit_billing as video_credits
 from .auth import SessionDependency, require_workspace_write
@@ -140,6 +143,45 @@ def save_page(
         row.id,
     )
     return response(row)
+
+
+@router.get("/benchmark-covers/{task_id}/{platform_id}")
+def benchmark_cover(
+    task_id: UUID,
+    platform_id: str,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> FileResponse:
+    """A search result's cover from our own origin (CSP, hotlink, expiry)."""
+    if not re.fullmatch(r"[0-9A-Za-z]{6,32}", platform_id):
+        raise ApiError(404, "VIDEO_BENCHMARK_COVER_NOT_FOUND", "没有封面。")
+    page = session.scalar(
+        owned_searches(workspace).where(
+            VideoAssistanceRecord.id == str(task_id),
+            VideoAssistanceRecord.kind == BENCHMARK_KIND,
+        )
+    )
+    item = next(
+        (
+            row
+            for row in ((page.result or {}).get("items") or [] if page else [])
+            if row.get("platform_id") == platform_id
+        ),
+        None,
+    )
+    settings = request.app.state.settings
+    hit = covers.cached(settings, str(task_id), platform_id) if page else None
+    if hit is None and item and item.get("cover_url"):
+        hit = covers.fetch(settings, str(task_id), platform_id, item["cover_url"])
+    if hit is None:
+        raise ApiError(404, "VIDEO_BENCHMARK_COVER_NOT_FOUND", "没有封面。")
+    path, content_type = hit
+    return FileResponse(
+        path,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.get("/benchmark-config", response_model=BenchmarkSearchConfig)

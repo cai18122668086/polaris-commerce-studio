@@ -232,7 +232,7 @@ export function useViralWriting({ workspaceId, projectId, session }: { workspace
 
   const latestTask = (kind: string) => writingJobs.find(job => job.kind === kind);
   return {
-    config, error, setError, busy, running, reload,
+    workspaceId, config, error, setError, busy, running, reload,
     searchRoots, pagesOf, search, pasteLinks, nextPage,
     runJobs, runRefs, refOf, confirm, resume, extractions,
     analysisOf, analysisJobOf, analyse, analysisJobs: writingJobs.filter(job => job.kind === "ref_analysis"),

@@ -463,6 +463,8 @@ def create_task(
     parameters = body.model_dump(mode="json")
     if body.draft_mode is None:
         parameters.pop("draft_mode")
+    if not body.variant:
+        parameters.pop("variant")
     fingerprint = digest({"workflow": "writing", **parameters})
     query = select(VideoAssistanceRecord).where(
         VideoAssistanceRecord.workspace_id == workspace.workspace_id,
@@ -515,6 +517,7 @@ def create_task(
             facts_document_id=facts.id,
             facts=facts.body,
             draft_mode=body.draft_mode or "shadow",
+            variant=body.variant,
         )
     if body.kind == "ref_compare":
         benchmarks: list[dict[str, Any]] = []

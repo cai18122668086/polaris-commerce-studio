@@ -13,6 +13,8 @@ import {
 import type { useProjectSession } from "@/features/video-studio/use-project-session";
 import { BASE, asked, buildFacts, slotKey } from "@/features/video-studio/viral-facts";
 import studio from "./video-studio.module.css";
+import { BenchmarkCover, coverSrc } from "./benchmark-cover";
+import { TeardownReport } from "./teardown-report";
 import css from "./viral-writing.module.css";
 
 type ProjectSession = ReturnType<typeof useProjectSession>["session"];
@@ -42,12 +44,12 @@ function Busy({ children }: { children: ReactNode }) {
 
 /* ---------------------------------------------------------------- 1 找对标 */
 
-function CandidateCard({ item, checked, disabled, onToggle }: { item: Candidate; checked: boolean; disabled: boolean; onToggle: () => void }) {
+function CandidateCard({ item, cover, checked, disabled, onToggle }: { item: Candidate; cover?: string; checked: boolean; disabled: boolean; onToggle: () => void }) {
   const dry = (item.collect_like_ratio ?? 0) >= 0.4;
   return <li className={css.card} data-checked={checked || undefined}>
     <button type="button" className={css.cardHit} aria-pressed={checked} disabled={disabled && !checked} onClick={onToggle}>
       <span className={css.cover}>
-        {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className={css.coverEmpty}>{PLATFORM_LABEL[item.platform]}</span>}
+        <BenchmarkCover src={cover} label={PLATFORM_LABEL[item.platform]} emptyClassName={css.coverEmpty} />
         {item.duration_seconds ? <span className={css.duration}>{clock(item.duration_seconds)}</span> : null}
         <span className={css.check} aria-hidden>{checked && <Check size={14} />}</span>
       </span>
@@ -130,7 +132,7 @@ function FindStep({ flow, picks, setPicks, searchCredits, short }: { flow: Flow;
     {pages.some(page => page.status === "failed" || page.status === "unknown") && <p className={css.warn}>{pages.find(page => page.status === "unknown") ? "这次搜索的结果还没确认，不会重复扣费，稍后刷新看看。" : "这次没有搜到，换个关键词或平台试试。"}</p>}
     {items.length > 0 && <>
       <div className={css.resultHead}><b>{root?.result.mode === "links" ? "链接里的作品" : `「${root?.result.keyword}」点赞最高的作品`}</b><small>勾选 1–{MAX_PICKS} 条作为对标</small></div>
-      <ol className={css.grid}>{items.map(({ item, page }) => <CandidateCard key={item.platform_id} item={item} checked={picks.some(pick => pick.item.platform_id === item.platform_id)} disabled={picks.length >= MAX_PICKS} onToggle={() => toggle(item, page)} />)}</ol>
+      <ol className={css.grid}>{items.map(({ item, page }) => <CandidateCard key={item.platform_id} item={item} cover={coverSrc(flow.workspaceId, page, item.platform_id)} checked={picks.some(pick => pick.item.platform_id === item.platform_id)} disabled={picks.length >= MAX_PICKS} onToggle={() => toggle(item, page)} />)}</ol>
       {last?.result.has_more && <button type="button" className={studio.outlineButton} disabled={!!flow.busy || pending || short} onClick={() => void flow.nextPage(last.id)}>{billableLabel("再看一页", searchCredits)}</button>}
     </>}
     {root && !pending && pages.every(page => page.status === "completed") && !items.length && <div className={css.emptyState}><b>没有找到可用的视频</b><p>可能都是图文或超过 5 分钟的视频。换个关键词，或直接粘贴链接。</p></div>}
@@ -152,11 +154,11 @@ function ConfirmStep({ flow, picks, setPicks, onNext, writingCredits, short }: {
   const extracting = flow.runJobs.some(job => ["queued", "running"].includes(job.status));
   if (picks.length) return <div className={css.stack}>
     <p className={css.lead}>确认后会提取这 {picks.length} 条的口播原文，用来拆解和仿写。提取不扣积分。</p>
-    <ol className={css.pickList}>{picks.map(({ item }) => <li key={item.platform_id}>
-      {item.cover_url ? <img src={item.cover_url} alt="" referrerPolicy="no-referrer" /> : <span className={css.coverEmpty}>{PLATFORM_LABEL[item.platform]}</span>}
+    <ol className={css.pickList}>{picks.map(pick => { const item = pick.item; return <li key={item.platform_id}>
+      <BenchmarkCover src={coverSrc(flow.workspaceId, pick.search_task_id, item.platform_id)} label={PLATFORM_LABEL[item.platform]} emptyClassName={css.coverEmpty} />
       <div><b>{item.title || item.description}</b><small>{PLATFORM_LABEL[item.platform]} · {item.author_name || "作者未知"} · 赞 {wan(item.like_count)} · 藏 {wan(item.collect_count)}</small></div>
-      <button type="button" className={css.textButton} onClick={() => setPicks(picks.filter(pick => pick.item.platform_id !== item.platform_id))}>移除</button>
-    </li>)}</ol>
+      <button type="button" className={css.textButton} onClick={() => setPicks(picks.filter(other => other.item.platform_id !== item.platform_id))}>移除</button>
+    </li>; })}</ol>
     <div className={css.actions}><button type="button" className={studio.primaryButton} disabled={!!flow.busy} onClick={() => void flow.confirm(picks.map(pick => ({ search_task_id: pick.search_task_id, platform_id: pick.item.platform_id }))).then(() => setPicks([]))}>
       {flow.busy === "confirm" ? "提交中…" : `确认这 ${picks.length} 条对标`}<ArrowRight size={15} /></button></div>
   </div>;
@@ -187,40 +189,6 @@ function ConfirmStep({ flow, picks, setPicks, onNext, writingCredits, short }: {
 
 /* --------------------------------------------------------------- 3 拆解表 */
 
-function Teardown({ source: ref, analysis }: { source: ReferenceDoc; analysis: AnalysisDoc }) {
-  const a = analysis.body; const m = ref.body.source_metrics;
-  const text = new Map(ref.body.sentences.map(s => [s.id, s.text]));
-  const order = ref.body.sentences.map(s => s.id);
-  const total = ref.body.original_text.length || 1;
-  const span = (first: string, last: string) => order.slice(order.indexOf(first), order.indexOf(last) + 1);
-  return <div className={css.teardown}>
-    {m && <section className={css.panel}><h3>数据表现</h3>
-      <dl className={css.stats}>{[["点赞", m.like_count], ["收藏", m.collect_count], ["评论", m.comment_count], [m.platform === "bilibili" ? "播放" : "转发", m.platform === "bilibili" ? m.view_count : m.share_count]].map(([k, v]) => <div key={k as string}><dt>{k}</dt><dd>{wan(v as number | null)}</dd></div>)}</dl>
-      {(a.why_hot?.length ? a.why_hot : m.readings).map((line, i) => <p key={i} className={css.reading}>{line}</p>)}
-    </section>}
-    <section className={css.panel}><h3>选题</h3><p>{a.topic}</p>{a.title_formula && <p className={css.formula}><small>可套用的公式</small>{a.title_formula}</p>}
-      {a.audience && <p className={css.muted}>打给：{a.audience.who}{a.audience.pain_points.length ? ` · 痛点：${a.audience.pain_points.join("、")}` : ""}{a.audience.desire ? ` · 想要：${a.audience.desire}` : ""}</p>}
-    </section>
-    <section className={css.panel}><h3>开头钩子</h3>
-      <blockquote>{(a.hook?.sentence_ids || a.hook_sentence_ids).map(id => text.get(id)).join(" ")}</blockquote>
-      {a.hook && <p><span className={css.tag}>{a.hook.type}</span>{a.hook.technique}。{a.hook.why}</p>}
-    </section>
-    <section className={css.panel}><h3>结构拆解</h3>
-      <table className={css.table}><colgroup><col style={{ width: "27%" }} /><col style={{ width: "41%" }} /><col style={{ width: "18%" }} /><col style={{ width: "7%" }} /><col style={{ width: "7%" }} /></colgroup><thead><tr><th>段落作用</th><th>原句</th><th>表达手法</th><th>情绪</th><th className={css.num}>占比</th></tr></thead>
-        <tbody>{a.sections.map(section => { const ids = span(section.first_sentence_id, section.last_sentence_id); const words = ids.map(id => text.get(id) || "").join(" "); return <tr key={section.id}>
-          <td><b>{section.function}</b><small>{section.explanation}</small></td><td className={css.quote}>{words}</td><td>{section.technique || "—"}</td><td>{section.emotion || "—"}</td><td className={css.num}>{Math.round(words.length / total * 100)}%</td>
-        </tr>; })}</tbody></table>
-    </section>
-    {!!a.expressions?.length && <section className={css.panel}><h3>值得学的表达</h3>
-      <table className={css.table}><colgroup><col style={{ width: "14%" }} /><col style={{ width: "30%" }} /><col style={{ width: "26%" }} /><col style={{ width: "30%" }} /></colgroup><thead><tr><th>手法</th><th>原句</th><th>效果</th><th>你可以这样用</th></tr></thead>
-        <tbody>{a.expressions.map((e, i) => <tr key={i}><td><b>{e.name}</b></td><td className={css.quote}>{e.quote}</td><td>{e.effect}</td><td>{e.how_to_reuse}</td></tr>)}</tbody></table>
-    </section>}
-    {!!a.conversion?.length && <section className={css.panel}><h3>互动与转化</h3><ul className={css.plain}>{a.conversion.map((c, i) => <li key={i}><span className={css.tag}>{c.kind}</span>“{text.get(c.sentence_id)}” — {c.note}</li>)}</ul></section>}
-    {!!a.replace_slots?.length && <section className={css.panel}><h3>仿写时要换成你的信息</h3><ul className={css.plain}>{a.replace_slots.map(slot => <li key={slot.id}><b>{slot.label}</b> 原稿：“{slot.source_quote}”</li>)}</ul></section>}
-    {!!a.reusable_structure.length && <section className={css.panel}><h3>可复用骨架</h3><ol className={css.plain}>{a.reusable_structure.map((line, i) => <li key={i}>{line}</li>)}</ol></section>}
-  </div>;
-}
-
 function TeardownStep({ flow, main, setMain, onNext, writingCredits, short }: { flow: Flow; main: string; setMain: (id: string) => void; onNext: () => void; writingCredits: number | null | undefined; short: boolean }) {
   const refs = flow.runRefs;
   const [tab, setTab] = useState("");
@@ -234,7 +202,7 @@ function TeardownStep({ flow, main, setMain, onNext, writingCredits, short }: { 
   return <div className={css.stack}>
     {refs.length > 1 && <div className={css.tabs} role="tablist">{refs.map((ref, i) => <button key={ref.id} type="button" role="tab" aria-selected={ref.id === current.id} onClick={() => setTab(ref.id)}>
       对标 {i + 1}{ref.id === main ? " · 主对标" : ""}{!flow.analysisOf(ref) && ["queued", "running"].includes(flow.analysisJobOf(ref)?.status || "") ? " · 拆解中" : ""}</button>)}</div>}
-    {analysis ? <Teardown source={current} analysis={analysis} />
+    {analysis ? <TeardownReport reference={current} analysis={analysis} />
       : ["queued", "running"].includes(job?.status || "") ? <Busy>正在像运营专家一样逐句拆解，约 30–60 秒…</Busy>
       : <div className={css.emptyState}><b>{job?.status === "failed" ? "这次拆解没有通过检查" : "这条还没拆解"}</b><p>{job?.status === "failed" ? "模型的拆解引用了原文里没有的句子，已拦下。可以再拆一次。" : "拆解会调用文稿模型。"}</p>
           <button type="button" className={studio.primaryButton} disabled={!!flow.busy || short} onClick={() => void flow.analyse([current])}>{billableLabel(job ? "重新拆解" : "开始拆解", writingCredits)}</button></div>}

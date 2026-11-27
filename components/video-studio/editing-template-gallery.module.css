@@ -74,3 +74,60 @@
 :global(.theme-ember) .templatePreviewDialog .sampleTabs button{color:#746e67}
 :global(.theme-ember) .templatePreviewDialog .sampleTabs button[aria-pressed=true]{background:#0f0e0d;color:#dedcda;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .gallery{--edit-accent:#b23a0e;border:1px solid #e5e4e2;background:#ffffff;color:#2d2c28;border-radius:22px}
+:global(.theme-plaster) .eyebrow{color:#98958d}
+:global(.theme-plaster) .gallery .moreTemplates{border:1px solid #e2e1df;background:#ffffff;color:#615e58;border-radius:11px}
+:global(.theme-plaster) .card{border:1px solid #e4e3e1;background:#ffffff;border-radius:16px}
+:global(.theme-plaster) .card:hover{border-color:#b9b8b2;box-shadow:0 5px 16px rgb(30 27 22 / 0.051)}
+:global(.theme-plaster) .card.selected{border-color:#b23a0e;box-shadow:0 0 0 2px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .cover{background:#ececeb}
+:global(.theme-plaster) .posterSelect:focus-visible{outline:3px solid #b23a0e}
+:global(.theme-plaster) .coverText{color:#3f3e39;background:#ececea}
+:global(.theme-plaster) .selectionBadge{background:#b23a0e;color:#ffffff;box-shadow:0 2px 6px rgb(30 27 22 / 0.133);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .card .favorite{border:1px solid rgb(255 255 255 / 0.502);background:rgb(255 255 255 / 0.941)!important;color:#6e6c64!important;box-shadow:0 1px 5px rgb(30 27 22 / 0.067);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .card .favorite[aria-pressed=true]{color:#b23a0e!important}
+:global(.theme-plaster) .card .play{border:1px solid rgb(255 255 255 / 0.439);background:rgb(255 255 255 / 0.941)!important;color:#383733!important;box-shadow:0 2px 8px rgb(30 27 22 / 0.133);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .card .chooseCard{background:#ffffff!important;color:#34332f!important}
+:global(.theme-plaster) .chooseCard b{font-weight:500}
+:global(.theme-plaster) .chooseCard small{color:#8f8c83}
+:global(.theme-plaster) .chooseCard small>span{color:#a29f98}
+:global(.theme-plaster) .cardDetail{color:#8a877e}
+:global(.theme-plaster) .selected .chooseCard{background:#f4f3f2!important}
+:global(.theme-plaster) .selected .chooseCard small>span{color:#b23a0e}
+:global(.theme-plaster) .selectedSummary{border-top:1px solid #ebeae9}
+:global(.theme-plaster) .selectedSummary strong{font-weight:500}
+:global(.theme-plaster) .selectedSummary>span:last-child{color:#939188}
+:global(.theme-plaster) .selectionLabel{color:#b23a0e}
+:global(.theme-plaster) .templateLibraryDialog{--edit-accent:#b23a0e;color:#363531}
+:global(.theme-plaster) .libraryFilters{background:#ffffff;border-bottom:1px solid #eaeae8;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .templateLibraryDialog .libraryTabs button{background:#ffffff;color:#8f8c83}
+:global(.theme-plaster) .templateLibraryDialog .libraryTabs button[aria-pressed=true]{color:#2d2c29;border-bottom-color:#b23a0e;font-weight:500}
+:global(.theme-plaster) .templateLibraryDialog .libraryTabs span{color:#9c9a92}
+:global(.theme-plaster) .searchBox{color:#97948c}
+:global(.theme-plaster) .templateLibraryDialog .templateSearch{border:1px solid #e6e5e3;background:#f2f1f0;color:#3b3a36;border-radius:12px}
+:global(.theme-plaster) .templateLibraryDialog .filters button{background:#f0f0ee;color:#78756c;border-radius:999px}
+:global(.theme-plaster) .templateLibraryDialog .filters button[aria-pressed=true]{border-color:#d4d3d0;background:#f0efee;color:#b23a0e}
+:global(.theme-plaster) .resultCount{color:#95928a}
+:global(.theme-plaster) .modalFooter{background:rgb(255 255 255 / 0.961);border-top:1px solid #e9e8e7;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .modalFooter>span{color:#76746b}
+:global(.theme-plaster) .modalFooter button,:global(.theme-plaster) .templatePreviewDialog .useTemplate{background:#b23a0e;color:#ffffff}
+:global(.theme-plaster) .secondaryAction{background:#ffffff!important;color:#6c6a62!important;border:1px solid #e1e0de!important;border-radius:999px}
+:global(.theme-plaster) .noTemplates{color:#918e85}
+:global(.theme-plaster) .noTemplates button{border:1px solid #e4e3e1;background:#ffffff;color:#5e5c55;border-radius:999px}
+:global(.theme-plaster) .templatePreviewDialog{--edit-accent:#b23a0e}
+:global(.theme-plaster) .previewStage{background:#1b1a19}
+:global(.theme-plaster) .previewScreen{background:#1b1a19;border-radius:8px}
+:global(.theme-plaster) .previewNavigation{color:#9c9992}
+:global(.theme-plaster) .templatePreviewDialog .previewNavigation button{border:1px solid rgb(255 255 255 / 0.094);background:rgb(255 255 255 / 0.031);color:#e3e2e0}
+:global(.theme-plaster) .templateCategory{color:#b23a0e;background:#efefed}
+:global(.theme-plaster) .previewDetails h3{color:#363531}
+:global(.theme-plaster) .previewDetails p{color:#8f8d84}
+:global(.theme-plaster) .previewDetails .signature{color:#57554e}
+:global(.theme-plaster) .previewDetails ul{background:#f2f1f0;color:#716f67;border-radius:12px}
+:global(.theme-plaster) .previewDetails small{color:#9e9b93}
+:global(.theme-plaster) .sampleTabs{background:#eeeeec;border-radius:11px}
+:global(.theme-plaster) .templatePreviewDialog .sampleTabs button{color:#8f8d84;border-radius:999px}
+:global(.theme-plaster) .templatePreviewDialog .sampleTabs button[aria-pressed=true]{background:#ffffff;color:#3c3a36;box-shadow:0 1px 4px rgb(30 27 22 / 0.067)}
+/* plaster:end */

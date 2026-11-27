@@ -63,7 +63,10 @@
 .doc i { display: block; height: 2px; border-radius: 1px; }
 .doc i:nth-child(2) { width: 80%; } .doc i:nth-child(3) { width: 90%; } .doc i:nth-child(4) { width: 55%; }
 
-.empty { display: grid; grid-template-columns: minmax(160px, 240px) minmax(0, 1fr); gap: 22px; align-items: center; padding: 22px 24px; border-radius: 18px; }
+/* 空状态：宽处左图右文；放进窄栏（如剪辑页右侧 288px 的版本栏）时自动换成上图下文，文字不被挤成竖排 */
+.empty { display: flex; flex-wrap: wrap; gap: 22px; align-items: center; padding: 22px 24px; border-radius: 18px; }
+.empty > :first-child { flex: 1 1 160px; max-width: 240px; }
+.empty > :last-child { flex: 1 1 220px; min-width: 0; }
 .empty b { display: block; font-size: 16px; font-weight: 500; }
 .empty p { margin: 6px 0 12px; font-size: 12.5px; line-height: 1.8; }
 .empty ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
@@ -76,7 +79,7 @@
   .hero { grid-template-columns: 1fr; padding: 0 20px 22px; gap: 4px; min-height: 0; }
   .hero .scene { order: -1; height: 176px; }
   .hero h1 { font-size: 23px; }
-  .empty { grid-template-columns: 1fr; justify-items: start; }
+  .empty > :first-child { max-width: none; }
   .sceneCompact { max-width: none; height: 150px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -113,3 +116,64 @@
 :global(html.theme-ember) .empty { background: rgb(255 255 255 / 2.5%); border: 1px solid rgb(255 255 255 / 8%); color: #edeae4; }
 :global(html.theme-ember) .empty li { color: rgb(237 234 228 / 80%); }
 :global(html.theme-ember) .empty li span { border: 1px solid rgb(255 255 255 / 16%); color: rgb(237 234 228 / 70%); }
+
+/* ---- 石膏灰白配色（2026-11-27，和正式站「电商套图」开场同一做法）：浅灰渐变面板 + 白色画框，熔光只做一条光带和光标 ---- */
+:global(html.theme-plaster) .hero { background: linear-gradient(115deg, #e6e5e3, #eeeeed 60%, #edeceb); border: 1px solid rgb(30 28 24 / 8%); color: #1a1a19; }
+:global(html.theme-plaster) .eyebrow { color: #73726e; letter-spacing: .08em; }
+:global(html.theme-plaster) .hero h1 { font-weight: 300; }
+:global(html.theme-plaster) .hero h1 em { color: inherit; background: linear-gradient(transparent 88%, rgb(224 87 26 / 75%) 88%, rgb(233 180 76 / 75%) 94%, transparent 94%); }
+:global(html.theme-plaster) .hero p, :global(html.theme-plaster) .empty p { color: #5d5c59; }
+:global(html.theme-plaster) .facts div { border-right: 1px solid rgb(30 28 24 / 10%); }
+:global(html.theme-plaster) .facts dt { color: #73726e; }
+:global(html.theme-plaster) .facts dd { color: #1a1a19; }
+:global(html.theme-plaster) .glow { background: radial-gradient(circle, rgb(224 87 26 / 12%), rgb(233 180 76 / 6%) 45%, transparent 70%); }
+:global(html.theme-plaster) .orbit { border: 1px solid rgb(30 28 24 / 8%); border-top-color: rgb(224 87 26 / 35%); }
+:global(html.theme-plaster) .frame { background: #fff; border: 5px solid #fff; box-shadow: 0 5px 18px rgb(30 27 22 / 12.5%); }
+:global(html.theme-plaster) .ghostA, :global(html.theme-plaster) .ghostB { opacity: .55; }
+:global(html.theme-plaster) .sweep { background: linear-gradient(90deg, transparent 40%, rgb(233 180 76 / 18%) 50%, transparent 60%); }
+:global(html.theme-plaster) .script i { background: rgb(30 28 24 / 22%); }
+:global(html.theme-plaster) .caret { background: #e0571a; }
+:global(html.theme-plaster) .editFrame { border: 1px solid rgb(30 28 24 / 12%); background: #f5f4f1; }
+:global(html.theme-plaster) .tracks i { background: rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .tracks div:nth-child(2) i:nth-child(2) { background: rgb(224 87 26 / 55%); }
+:global(html.theme-plaster) .playhead { background: #e0571a; }
+:global(html.theme-plaster) .play { border-color: transparent transparent transparent rgb(30 28 24 / 70%); }
+:global(html.theme-plaster) .ring { border: 1px solid rgb(30 28 24 / 14%); }
+:global(html.theme-plaster) .ringOuter { border-color: rgb(224 87 26 / 30%); }
+:global(html.theme-plaster) .head, :global(html.theme-plaster) .shoulders { border: 1px solid rgb(30 28 24 / 40%); }
+:global(html.theme-plaster) .voice i { background: linear-gradient(180deg, rgb(30 28 24 / 45%), rgb(224 87 26 / 45%)); }
+:global(html.theme-plaster) .doc { background: #f5f4f1; border: 1px solid rgb(30 28 24 / 10%); }
+:global(html.theme-plaster) .doc i { background: rgb(30 28 24 / 18%); }
+:global(html.theme-plaster) .empty { background: #fff; border: 1px solid rgb(30 28 24 / 8%); color: #1a1a19; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .empty li { color: #3d3c38; }
+:global(html.theme-plaster) .empty li span { border: 1px solid rgb(30 28 24 / 16%); color: #5d5c59; }
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(html.theme-plaster) .hero{background:linear-gradient(115deg, #e1e1de, #e9e8e7 60%, #e7e7e5);border:1px solid rgb(28 28 26 / 0.08);color:#1b1a19}
+:global(html.theme-plaster) .eyebrow{color:#716e66}
+:global(html.theme-plaster) .hero h1 em{background:linear-gradient(transparent 88%, rgb(234 76 19 / 0.75) 88%, rgb(203 110 16 / 0.75) 94%, transparent 94%)}
+:global(html.theme-plaster) .hero p,:global(html.theme-plaster) .empty p{color:#5b5953}
+:global(html.theme-plaster) .facts div{border-right:1px solid rgb(28 28 26 / 0.1)}
+:global(html.theme-plaster) .facts dt{color:#716e66}
+:global(html.theme-plaster) .facts dd{color:#1b1a19}
+:global(html.theme-plaster) .glow{background:radial-gradient(circle, rgb(234 76 19 / 0.12), rgb(203 110 16 / 0.06) 45%, transparent 70%)}
+:global(html.theme-plaster) .orbit{border:1px solid rgb(28 28 26 / 0.08);border-top-color:rgb(234 76 19 / 0.35)}
+:global(html.theme-plaster) .frame{background:#ffffff;border:5px solid #ffffff;box-shadow:0 5px 18px rgb(30 27 22 / 0.125)}
+:global(html.theme-plaster) .sweep{background:linear-gradient(90deg, transparent 40%, rgb(203 110 16 / 0.18) 50%, transparent 60%)}
+:global(html.theme-plaster) .script i{background:rgb(28 28 26 / 0.22)}
+:global(html.theme-plaster) .caret{background:#ea4c13}
+:global(html.theme-plaster) .editFrame{border:1px solid rgb(28 28 26 / 0.12);background:#eeeeed}
+:global(html.theme-plaster) .tracks i{background:rgb(28 28 26 / 0.16)}
+:global(html.theme-plaster) .tracks div:nth-child(2) i:nth-child(2){background:rgb(234 76 19 / 0.55)}
+:global(html.theme-plaster) .playhead{background:#ea4c13}
+:global(html.theme-plaster) .play{border-color:transparent transparent transparent rgb(28 28 26 / 0.7)}
+:global(html.theme-plaster) .ring{border:1px solid rgb(28 28 26 / 0.14)}
+:global(html.theme-plaster) .ringOuter{border-color:rgb(234 76 19 / 0.3)}
+:global(html.theme-plaster) .head,:global(html.theme-plaster) .shoulders{border:1px solid rgb(28 28 26 / 0.4)}
+:global(html.theme-plaster) .voice i{background:linear-gradient(180deg, rgb(28 28 26 / 0.45), rgb(234 76 19 / 0.45))}
+:global(html.theme-plaster) .doc{background:#eeeeed;border:1px solid rgb(28 28 26 / 0.1)}
+:global(html.theme-plaster) .doc i{background:rgb(28 28 26 / 0.18)}
+:global(html.theme-plaster) .empty{background:#ffffff;border:1px solid rgb(28 28 26 / 0.08);color:#1b1a19;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) .empty li{color:#3c3a36}
+:global(html.theme-plaster) .empty li span{border:1px solid rgb(28 28 26 / 0.16);color:#5b5953}
+/* plaster:end */

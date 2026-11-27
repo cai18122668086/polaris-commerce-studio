@@ -39,3 +39,18 @@
 :global(.theme-ember) .noteEditor textarea{background:#0f0e0d;border:1px solid #302e2b}
 :global(.theme-ember) .error{color:#fa682a}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .library{color:#373532}
+:global(.theme-plaster) .library header p{color:#6f6c64}
+:global(.theme-plaster) .summary{background:#ebeae9;border-radius:14px}
+:global(.theme-plaster) .library .tabs button{color:#1a1a19;background:#e7e7e5}
+:global(.theme-plaster) .library .tabs button[aria-pressed=true]{color:#ffffff;background:#1a1a19}
+:global(.theme-plaster) .library .grid article{border:1px solid #e0dfdd;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .grid small{color:#7a776f}
+:global(.theme-plaster) .status{background:#ececea;color:#67655e}
+:global(.theme-plaster) .choiceBadge{background:#f0efee;color:#9a530d!important;border-radius:999px}
+:global(.theme-plaster) .detail,:global(.theme-plaster) .noteEditor,:global(.theme-plaster) .memo{background:#f2f2f1;border:1px solid #d7d6d3;border-radius:14px}
+:global(.theme-plaster) .noteEditor textarea{background:#ffffff;border:1px solid #d2d0cd;border-radius:12px}
+:global(.theme-plaster) .error{color:#b23a0e}
+/* plaster:end */

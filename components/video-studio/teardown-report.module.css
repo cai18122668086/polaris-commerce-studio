@@ -61,3 +61,13 @@
   .stats { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
   .hookNotes, .twoCol { grid-template-columns: 1fr; }
 }
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .report{--tr-warm:#c74110}
+:global(.theme-plaster) .stats dd{font-weight:500}
+:global(.theme-plaster) .block h4,:global(.theme-plaster) .compare h4{font-weight:500}
+:global(.theme-plaster) .timeline b{font-weight:500}
+:global(.theme-plaster) .dot{font-weight:500}
+:global(.theme-plaster) .flow li::before{font-weight:500}
+:global(.theme-plaster) .compare{--tr-warm:#c74110}
+/* plaster:end */

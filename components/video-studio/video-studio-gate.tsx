@@ -11,20 +11,17 @@ import styles from "./video-studio.module.css";
 import workflow from "./studio-workflow.module.css";
 
 export function VideoStudioGate({ screen }: { screen: StudioScreen }) {
-  // 熔光暗色：全站改版合入后 <html> 本就带 theme-ember；在那之前视频空间自己挂上，离开时只撤掉自己加的。
-  // data-video-studio：视频空间的样式自带暗色，全站的熔光映射层（app/ember-*.css）据此跳过本页面。
+  // 主题跟全站走：<html> 上是 theme-plaster（石膏灰白，2026-11-27 起视频空间也用）就是浅色，换回 theme-ember 就是暗色。
+  // 两套主题都没挂时（单独渲染视频空间）才补上熔光暗色，离开时只撤掉自己加的。
+  // data-video-studio：全站的主题层（app/ember-*.css、app/plaster*.css）据此跳过本页面，视频空间用自己模块里的主题块。
   useLayoutEffect(() => {
     const root = document.documentElement;
     root.setAttribute("data-video-studio", "");
-    const added = !root.classList.contains("theme-ember");
+    const added = !root.classList.contains("theme-ember") && !root.classList.contains("theme-plaster");
     if (added) root.classList.add("theme-ember");
-    // 全站是石膏灰白（theme-plaster）时，视频空间仍用自带的暗色：进入时暂时摘掉浅色主题，离开时还原。
-    const hadPlaster = root.classList.contains("theme-plaster");
-    if (hadPlaster) root.classList.remove("theme-plaster");
     return () => {
       root.removeAttribute("data-video-studio");
       if (added) root.classList.remove("theme-ember");
-      if (hadPlaster) root.classList.add("theme-plaster");
     };
   }, []);
   const grant = useVideoStudioGrantState();

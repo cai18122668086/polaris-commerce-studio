@@ -31,11 +31,20 @@
   .steps small { display: none; }
 }
 
+
+.switch { justify-self: start; border: 0; background: none; padding: 0; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.switch:hover { color: var(--ink); }
+
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .steps button[aria-current="step"]{background:#0f0e0d}
 :global(.theme-ember) .steps button[aria-current="step"] .stepIndex{color:#0f0e0d}
 :global(.theme-ember) .stage{background:#0f0e0d}
 /* ember-dark:end */
 
-.switch { justify-self: start; border: 0; background: none; padding: 0; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
-.switch:hover { color: var(--ink); }
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .steps button[aria-current="step"]{background:#ffffff}
+:global(.theme-plaster) .steps b{font-weight:500}
+:global(.theme-plaster) .steps button[aria-current="step"] .stepIndex{color:#ffffff}
+:global(.theme-plaster) .stage{background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .facts label,:global(.theme-plaster) .final label{font-weight:500}
+/* plaster:end */

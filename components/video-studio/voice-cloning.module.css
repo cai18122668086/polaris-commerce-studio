@@ -104,3 +104,41 @@
 :global(.theme-ember) .form .fileHelp,:global(.theme-ember) .uploadArea .uploadHint{color:#857e76}
 :global(.theme-ember) .consent{color:#8c867e}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .cloneDialog.cloneDialog.cloneDialog{border-color:#e3e2e0}
+:global(.theme-plaster) .form .intro{color:#868379}
+:global(.theme-plaster) .field{color:#42403b}
+:global(.theme-plaster) .field input{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .fieldHeading{color:#42403b}
+:global(.theme-plaster) .fieldHeading small{color:#959289}
+:global(.theme-plaster) .uploadArea{border:1px dashed #d1d0cc;background:#f2f2f1;border-radius:16px}
+:global(.theme-plaster) .uploadArea:hover{border-color:#99978f;background:#efeeed}
+:global(.theme-plaster) .uploadArea:focus-within{outline:3px solid #dad9d6}
+:global(.theme-plaster) .uploadIcon{color:#1a1a19;background:#e7e6e4;border-radius:16px}
+:global(.theme-plaster) .uploadArea b{color:#44423d}
+:global(.theme-plaster) .uploadArea .uploadHint{color:#99978f}
+:global(.theme-plaster) .fileSelected{background:#f2f2f1}
+:global(.theme-plaster) .recording .fileHelp{color:#9a9890}
+:global(.theme-plaster) .consent{color:#858278}
+:global(.theme-plaster) .consent input{accent-color:#1a1a19}
+:global(.theme-plaster) .footer{border-top:1px solid #e7e7e5;background:#ffffff}
+:global(.theme-plaster) .error{color:#cb4210}
+:global(.theme-plaster) .toolbar p,:global(.theme-plaster) .voice p{color:#77756c}
+:global(.theme-plaster) .voice{border:1px solid #e5e4e2;background:#ffffff}
+:global(.theme-plaster) .heading{color:#1a1a19}
+:global(.theme-plaster) .heading b{color:#2c2b28}
+:global(.theme-plaster) .progressMark{background:#ebebe9;color:#1a1a19}
+:global(.theme-plaster) .progressPanel[data-state="done"] .progressMark{background:#ececea;color:#1a1a19}
+:global(.theme-plaster) .progressPanel[data-state="stopped"] .progressMark{background:#edeceb;color:#ec5119}
+:global(.theme-plaster) .progressHeading{color:#42403b}
+:global(.theme-plaster) .progressHeading > span{color:#908d84}
+:global(.theme-plaster) .progressBar{background:#e6e6e4;accent-color:#1a1a19}
+:global(.theme-plaster) .progressBar::-webkit-progress-bar{background:#e6e6e4}
+:global(.theme-plaster) .progressBar::-webkit-progress-value{background:#1a1a19}
+:global(.theme-plaster) .progressBar::-moz-progress-bar{background:#1a1a19}
+:global(.theme-plaster) .progressBar:indeterminate{background:linear-gradient(90deg, #e6e6e4 20%, #1a1a19 45%, #e6e6e4 70%);background-size:220% 100%}
+:global(.theme-plaster) .progressPanel > p{color:#9a9890}
+:global(.theme-plaster) .form .fileHelp,:global(.theme-plaster) .uploadArea .uploadHint{color:#817e75}
+:global(.theme-plaster) .consent{color:#7a776e}
+/* plaster:end */

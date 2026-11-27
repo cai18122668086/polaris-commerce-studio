@@ -62,3 +62,30 @@
 :global(.theme-ember) .proofread textarea[readonly]{color:#8f8981;background:#151413;border-color:#23211f}
 :global(.theme-ember) .proofreadStatus{color:#8d867e}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .timingGroup{background:#f3f3f2;border:1px solid #e9e8e6;border-radius:12px}
+:global(.theme-plaster) .stageNumber{background:#e6e5e3;color:#1a1a19;border-radius:999px}
+:global(.theme-plaster) .timingGroup b{color:#44423e}
+:global(.theme-plaster) .timingGroup small{color:#87847b}
+:global(.theme-plaster) .timingGroup strong{color:#595751}
+:global(.theme-plaster) .timingGroup[data-state=active]{border-color:#cdccc8;background:#eeeeec}
+:global(.theme-plaster) .timingTrace li{border-bottom:1px solid #e9e9e7;color:#615f58}
+:global(.theme-plaster) .timingTrace time{color:#89867d}
+:global(.theme-plaster) .timingTrace em{color:#bd660f;background:#f2f1f0}
+:global(.theme-plaster) .traceDot{background:#b4b2ac}
+:global(.theme-plaster) .media{background:#eaeae8;border-radius:16px}
+:global(.theme-plaster) .timestamp{color:#88847b}
+:global(.theme-plaster) .actions{border-top:1px solid #e2e2df;background:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .handoffNote{color:#88857c}
+:global(.theme-plaster) .review{border:1px solid #e5e4e2;background:#f2f2f1;border-radius:16px}
+:global(.theme-plaster) .review > img{background:#e5e4e2;border-radius:11px}
+:global(.theme-plaster) .review span{color:#75726a}
+:global(.theme-plaster) .review small{color:#8f8c83}
+:global(.theme-plaster) .proofreadIntro{color:#7f7c73}
+:global(.theme-plaster) .proofread > label{border:1px solid #e3e2e0;background:#f2f2f1;border-radius:16px}
+:global(.theme-plaster) .proofread label > span{color:#514f49}
+:global(.theme-plaster) .proofread label small{color:#807d74;background:#e5e5e2}
+:global(.theme-plaster) .proofread textarea[readonly]{color:#77746c;background:#f2f2f1;border-color:#e3e2e0}
+:global(.theme-plaster) .proofreadStatus{color:#7a776e}
+/* plaster:end */

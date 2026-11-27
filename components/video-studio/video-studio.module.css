@@ -688,6 +688,97 @@
 }
 @media (max-width: 430px) { .returnSite { display: none !important; } }
 
+/* ---------- 石膏灰白（html.theme-plaster，2026-11-27）：视频空间与正式站统一 ----------
+   自动映射在文件末尾的 plaster 块，这里只放映射推不出来的：字体、石膏底色、半透明顶栏、侧栏、
+   墨色胶囊主按钮、白卡 + 淡投影、熔光焦点。和 app/plaster.css 同一套色板（--ps-*）。 */
+:global(html.theme-plaster) .studio { --accent: #1a1a19; --ink: #1a1a19; --muted: #5d5c59; --border: rgb(30 28 24 / 10%); --soft: #f5f4f1;
+  font-family: "Outfit", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; background: #eeedea; color: #1a1a19; -webkit-font-smoothing: antialiased; }
+:global(html.theme-plaster) .studio h1 { font-weight: 300; letter-spacing: -.01em; }
+:global(html.theme-plaster) .studio h2 { font-weight: 400; letter-spacing: -.005em; }
+:global(html.theme-plaster) .studio h3 { font-weight: 500; }
+:global(html.theme-plaster) .studio :is(b, strong) { font-weight: 500; }
+:global(html.theme-plaster) .studio button:focus-visible, :global(html.theme-plaster) .studio a:focus-visible { outline: 2px solid rgb(224 87 26 / 80%); outline-offset: 2px; }
+:global(html.theme-plaster) .studio :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea, select) { border: 1px solid rgb(30 28 24 / 14%); border-radius: 12px; background: #fff; color: #1a1a19; caret-color: #e0571a; }
+:global(html.theme-plaster) .studio :is(input, textarea, select):focus { outline: none; border-color: rgb(224 87 26 / 70%); box-shadow: 0 0 0 3px rgb(224 87 26 / 14%); }
+:global(html.theme-plaster) .studio :is(input[type="checkbox"], input[type="radio"], input[type="range"], progress) { accent-color: #e0571a; }
+:global(html.theme-plaster) .studio input::placeholder, :global(html.theme-plaster) .studio textarea::placeholder { color: #8f8d88; }
+
+/* 顶栏：半透明石膏色 + 模糊 + 发丝线（同正式站顶栏） */
+:global(html.theme-plaster) .header { background: rgb(238 237 234 / 82%); border-bottom: 1px solid rgb(30 28 24 / 8%); -webkit-backdrop-filter: blur(20px) saturate(1.2); backdrop-filter: blur(20px) saturate(1.2); }
+:global(html.theme-plaster) .brand b { font-weight: 500; }
+:global(html.theme-plaster) :is(.brand em, .brand small, .brandDivider, .previewBadge, .returnSite) { color: #73726e; }
+:global(html.theme-plaster) .returnSite:hover { color: #1a1a19 !important; }
+:global(html.theme-plaster) .studio .accountAvatar { border: 0; background: #e7e6e2; color: #1a1a19; }
+
+/* 侧栏：不画底色，露出石膏底；当前项 = 白色胶囊 + 淡投影 */
+:global(html.theme-plaster) .sidebar { background: transparent; border-right: 1px solid rgb(30 28 24 / 8%); }
+:global(html.theme-plaster) :is(.sideHome, .sidebar nav a) { color: #5d5c59; border-radius: 999px; }
+:global(html.theme-plaster) .sidebar a:hover { background: rgb(255 255 255 / 60%); color: #1a1a19; }
+:global(html.theme-plaster) .sidebar a.activeNav { background: #fff; color: #1a1a19; font-weight: 500; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .sidebar nav small { background: #e7e6e2; color: #5d5c59; border-radius: 999px; }
+:global(html.theme-plaster) .navGroup { color: #73726e; }
+:global(html.theme-plaster) .sidePromo { background: #fff; border: 0; border-radius: 16px; color: #5d5c59; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .sidePromo > b { color: #1a1a19; }
+:global(html.theme-plaster) .studio .sidePromo button { border-top-color: rgb(30 28 24 / 8%); color: #1a1a19; }
+:global(html.theme-plaster) .main { background: transparent; }
+
+/* 按钮：主按钮 = 墨色胶囊，次按钮 = 白底细边胶囊 */
+:global(html.theme-plaster) .studio :is(.primaryButton, .outlineButton) { border-radius: 999px; transition: transform .2s cubic-bezier(.22, .8, .2, 1), box-shadow .3s cubic-bezier(.22, .8, .2, 1), background .2s, border-color .2s; }
+:global(html.theme-plaster) .studio .primaryButton { background: #1a1a19; border-color: #1a1a19; color: #fff; box-shadow: 0 1px 2px rgb(30 28 24 / 12%), 0 10px 22px -12px rgb(30 28 24 / 45%); }
+:global(html.theme-plaster) .studio .primaryButton:hover:not(:disabled) { background: #000; border-color: #000; color: #fff; transform: translateY(-1px); }
+:global(html.theme-plaster) .studio .primaryButton:active:not(:disabled) { transform: translateY(0) scale(.98); }
+:global(html.theme-plaster) .studio .primaryButton:disabled { background: #e7e6e2; border-color: #e7e6e2; color: #73726e; box-shadow: none; opacity: 1; }
+:global(html.theme-plaster) .studio .outlineButton { background: #fff; border: 1px solid rgb(30 28 24 / 14%); color: #1a1a19; }
+:global(html.theme-plaster) .studio .outlineButton:hover:not(:disabled) { background: #fff; border-color: rgb(30 28 24 / 28%); }
+:global(html.theme-plaster) .studio .textButton { color: #1a1a19; }
+
+/* 卡片：白卡 + 淡投影，不靠粗描边 */
+:global(html.theme-plaster) .studio .featureCard { background: #fff; border: 0; border-radius: 18px; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .studio .featureCard:hover { box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 18px 36px -18px rgb(30 28 24 / 26%); }
+:global(html.theme-plaster) .featureCard h2 small { border-color: rgb(30 28 24 / 14%); color: #73726e; border-radius: 999px; padding: 2px 6px; }
+:global(html.theme-plaster) .featureCard > i { background: #f5f4f1; color: #73726e; }
+:global(html.theme-plaster) .studio :is(.avatarCard, .workCard, .voiceCard, .copyList article) { border: 1px solid rgb(30 28 24 / 8%); border-radius: 16px; background: #fff; }
+:global(html.theme-plaster) .studio .avatarCard:hover { border-color: rgb(30 28 24 / 22%); }
+:global(html.theme-plaster) .studio .selectedCard { border-color: #1a1a19; box-shadow: 0 0 0 1px #1a1a19; }
+:global(html.theme-plaster) :is(.avatarImage, .studio .workImage) { background: #e7e6e2; }
+:global(html.theme-plaster) .search { border-radius: 999px; border-color: rgb(30 28 24 / 14%); }
+:global(html.theme-plaster) .search:focus-within { border-color: rgb(224 87 26 / 70%); box-shadow: 0 0 0 3px rgb(224 87 26 / 14%); }
+:global(html.theme-plaster) .studio .pills button { border-radius: 999px; color: #5d5c59; }
+:global(html.theme-plaster) .studio .pills button.activePill { background: #fff; border-color: rgb(30 28 24 / 14%); color: #1a1a19; }
+:global(html.theme-plaster) .studio .tabs > button.activeTab { color: #1a1a19; font-weight: 500; }
+:global(html.theme-plaster) .activeTab::after { height: 1.5px; background: #e0571a; }
+:global(html.theme-plaster) .emptyIcon { background: #fff; color: #73726e; border-radius: 999px; }
+:global(html.theme-plaster) .empty h3 { color: #1a1a19; }
+
+/* 弹窗：白色实底 + 柔和投影，背景石膏色半透明 */
+:global(html.theme-plaster) .studio .dialog { border: 1px solid rgb(30 28 24 / 8%); border-radius: 24px; box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 30px 70px -24px rgb(30 28 24 / 30%); }
+:global(html.theme-plaster) .dialog::backdrop { background: rgb(30 28 24 / 28%); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+:global(html.theme-plaster) .dialogFooter { background: #fff; border-top-color: rgb(30 28 24 / 8%); }
+:global(html.theme-plaster) .studio .iconButton { border-radius: 999px; color: #5d5c59; }
+:global(html.theme-plaster) .studio .iconButton:hover { background: #f5f4f1; color: #1a1a19; }
+/* 石膏灰白补充：创作空间首页开场、入口卡、生成按钮、积分与任务、空画框 */
+:global(html.theme-plaster) .studio { font-family: "Outfit", "Polaris Outfit", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; }
+:global(html.theme-plaster) .studio .generateButton { background: #1a1a19; border-color: #1a1a19; color: #fff; border-radius: 999px; box-shadow: 0 1px 2px rgb(30 28 24 / 12%), 0 10px 22px -12px rgb(30 28 24 / 45%); }
+:global(html.theme-plaster) .studio .generateButton:hover:not(:disabled) { background: #000; border-color: #000; color: #fff; }
+:global(html.theme-plaster) .studioIntro { background: linear-gradient(115deg, #e6e5e3, #eeeeed 60%, #edeceb); border: 1px solid rgb(30 28 24 / 8%); border-radius: 22px; box-shadow: none; }
+:global(html.theme-plaster) .studioIntro mark { background: linear-gradient(transparent 88%, rgb(224 87 26 / 75%) 88%, rgb(233 180 76 / 75%) 94%, transparent 94%); color: inherit; font-family: "Accent Serif", "Polaris Accent Serif", "Songti SC", "STSong", "Noto Serif SC", serif; font-weight: 500; }
+:global(html.theme-plaster) :is(.studioIntro p, .introEyebrow) { color: #5d5c59; }
+:global(html.theme-plaster) .introEyebrow { letter-spacing: .08em; }
+:global(html.theme-plaster) .entryCard { background: #fff; border-color: transparent; border-radius: 18px; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .entryCard:hover { background: #fff; border-color: transparent; box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 18px 36px -18px rgb(30 28 24 / 26%); }
+:global(html.theme-plaster) .entryCard.entryPrimary { border-color: transparent; }
+:global(html.theme-plaster) .entryPrimary { box-shadow: inset 0 2px 0 #e0571a, 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) :is(.creditBalance, .studio .taskCenterButton) { border-radius: 999px; border-color: rgb(30 28 24 / 14%); background: #fff; color: #1a1a19; }
+:global(html.theme-plaster) .taskAttention { color: #b33f0c; }
+:global(html.theme-plaster) .taskPanel { background: #fff; border: 1px solid rgb(30 28 24 / 8%); border-radius: 16px; box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 30px 70px -24px rgb(30 28 24 / 30%); }
+:global(html.theme-plaster) .taskPanel li a:hover { background: #f5f4f1; }
+:global(html.theme-plaster) .studio .search :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])),
+:global(html.theme-plaster) .studio .search :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])):focus { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+@media (prefers-reduced-motion: reduce) {
+  :global(html.theme-plaster) .studio :is(.primaryButton, .outlineButton) { transition: none; }
+  :global(html.theme-plaster) .studio .primaryButton:hover:not(:disabled) { transform: none; }
+}
+
 /* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
 :global(.theme-ember) .studio{--accent:#aca7a1;--soft:#1d1b1a;--lime:#1d1b1a;--ink:#e9e8e7;--muted:#958f87;--border:#242320;background:#161514}
 :global(.theme-ember) .studio button:focus-visible,:global(.theme-ember) .studio a:focus-visible{outline:3px solid #56524d}
@@ -1026,3 +1117,406 @@
 :global(.theme-ember) .taskPanel footer a{color:#cecbc7}
 :global(.theme-ember) .creditBalance{color:#9f9a93}
 /* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .studio{--accent:#1a1a19;--soft:#eae9e8;--lime:#eae9e7;--ink:#22211f;--muted:#727068;--border:#e2e1df;background:#f1f1f0}
+:global(.theme-plaster) .studio button:focus-visible,:global(.theme-plaster) .studio a:focus-visible{outline:3px solid #1a1a19}
+:global(.theme-plaster) .studio input:focus,:global(.theme-plaster) .studio textarea:focus,:global(.theme-plaster) .studio select:focus{border-color:#1a1a19;box-shadow:0 0 0 3px #ffffff}
+:global(.theme-plaster) .studio input,:global(.theme-plaster) .studio textarea,:global(.theme-plaster) .studio select{background:#ffffff;border-radius:9px}
+:global(.theme-plaster) .studio input::placeholder,:global(.theme-plaster) .studio textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .studio h1{font-weight:500}
+:global(.theme-plaster) .studio h2{font-weight:500}
+:global(.theme-plaster) .studio h3{font-weight:500}
+:global(.theme-plaster) .header{background:#ffffff}
+:global(.theme-plaster) .brand em{color:#65635c}
+:global(.theme-plaster) .brand small{color:#65625b}
+:global(.theme-plaster) .brandDivider{color:#65625b}
+:global(.theme-plaster) .previewBadge{color:#7a776f}
+:global(.theme-plaster) .previewBadge i{background:#1a1a19}
+:global(.theme-plaster) .returnSite{color:#7a776f !important}
+:global(.theme-plaster) .studio .accountAvatar{border:1px solid #e0dfdd;background:#e6e6e4;color:#1a1a19}
+:global(.theme-plaster) .sidebar{background:#ffffff}
+:global(.theme-plaster) .sideHome,:global(.theme-plaster) .sidebar nav a{color:#6a6760}
+:global(.theme-plaster) .sidebar a:hover{background:#f1f0ef}
+:global(.theme-plaster) .sidebar a.activeNav{background:#e6e5e3;color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .sidebar nav small{background:#ededeb;color:#65625b}
+:global(.theme-plaster) .navGroup{color:#65625b}
+:global(.theme-plaster) .sidePromo{background:linear-gradient(135deg, #ecebea, #f2f2f1);border:1px solid #e5e4e2;color:#76736b;border-radius:14px}
+:global(.theme-plaster) .sidePromo > b{color:#66635c}
+:global(.theme-plaster) .sidePromo > span{color:#65625b}
+:global(.theme-plaster) .studio .sidePromo button{border-top:1px solid #e0dfdc;color:#68665e}
+:global(.theme-plaster) .studio .helpButton{color:#65625b}
+:global(.theme-plaster) .main{background:#f5f4f4}
+:global(.theme-plaster) .welcomeRow p,:global(.theme-plaster) .pageHeading p{color:#65625b}
+:global(.theme-plaster) .studio .primaryButton{background:#282724;border:1px solid #282724;color:#ffffff}
+:global(.theme-plaster) .studio .primaryButton:hover:not(:disabled){color:#2a2926}
+:global(.theme-plaster) .studio .outlineButton{background:#ffffff;border:1px solid #dbdbd8;color:#6a6860}
+:global(.theme-plaster) .studio .outlineButton:hover:not(:disabled){border-color:#1a1a19;background:#f1f1f0}
+:global(.theme-plaster) .studio .featureCard{border:1px solid #e5e4e2}
+:global(.theme-plaster) .studio .featureCard:hover{box-shadow:0 6px 20px rgb(30 27 22 / 0.043)}
+:global(.theme-plaster) .featureCard h2{font-weight:500}
+:global(.theme-plaster) .featureCard h2 small{color:#65625b;border:1px solid #d6d5d1}
+:global(.theme-plaster) .featureCard p{color:#65625b}
+:global(.theme-plaster) .featureCard div > span{color:#65625b}
+:global(.theme-plaster) .featureCard > i{background:rgb(255 255 255 / 0.376);color:#65625b;border:1px solid rgb(255 255 255 / 0.69);box-shadow:5px 7px 10px rgb(30 27 22 / 0.063);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .featureAvatar{background:linear-gradient(125deg, #e8e7e5, #f2f2f1)}
+:global(.theme-plaster) .featureVoice{background:linear-gradient(125deg, #e5e5e3, #f1f1f0)}
+:global(.theme-plaster) .featureEdit{background:linear-gradient(125deg, #ededeb, #f4f3f3)}
+:global(.theme-plaster) .featureEdit > i{color:#65625b}
+:global(.theme-plaster) .featureCreate{background:linear-gradient(125deg, #e8e7e5, #f3f2f1)}
+:global(.theme-plaster) .featureCreate > i{color:#65625b}
+:global(.theme-plaster) .sectionHeading span{color:#65625b}
+:global(.theme-plaster) .subtleLabel{border:1px solid #e4e3e1}
+:global(.theme-plaster) .studio .pills button{color:#65625b;border-radius:999px}
+:global(.theme-plaster) .studio .pills button.activePill{background:#e8e7e5;border-color:#d8d7d4;color:#1a1a19}
+:global(.theme-plaster) .search{background:#ffffff;color:#65625b;border-radius:8px}
+:global(.theme-plaster) .search:focus-within{border-color:#1a1a19}
+:global(.theme-plaster) .studio .avatarCard{border:1px solid #e4e3e1;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .studio .avatarCard:hover{border-color:#1a1a19}
+:global(.theme-plaster) .avatarImage{background:#e7e6e4}
+:global(.theme-plaster) .avatarTag{background:rgb(255 255 255 / 0.812);color:#65625b;border-radius:999px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .cardHover{background:rgb(255 255 255 / 0.941);color:#1a1a19;border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .avatarCaption > span{color:#65625b}
+:global(.theme-plaster) .avatarCaption svg{color:#65625b}
+:global(.theme-plaster) .studio .tabs > button{color:#65625b}
+:global(.theme-plaster) .studio .tabs > button.activeTab{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .activeTab::after{background:#1a1a19;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .emptyIcon{background:#ededeb;color:#65625b}
+:global(.theme-plaster) .empty h3{color:#7a776e}
+:global(.theme-plaster) .empty p{color:#65625b}
+:global(.theme-plaster) .voiceCard{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .voiceCard span{color:#65625b}
+:global(.theme-plaster) .voiceCard small{color:#65625b}
+:global(.theme-plaster) .studio .voicePlay{color:#65625b;background:#ebeae9}
+:global(.theme-plaster) .studio .selectedCard{border-color:#1a1a19;box-shadow:0 0 0 1px #1e1b16}
+:global(.theme-plaster) .inlineNote{color:#65625b}
+:global(.theme-plaster) .listHeading small{color:#65625b;background:#eae9e8}
+:global(.theme-plaster) .copyList article{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .copyList article > div{color:#65625b}
+:global(.theme-plaster) .copyList b{color:#626059}
+:global(.theme-plaster) .copyList time{color:#65625b}
+:global(.theme-plaster) .copyList p{color:#65625b}
+:global(.theme-plaster) .studio .textButton{color:#65625b}
+:global(.theme-plaster) .editingWorks > p{color:#6d6b63}
+:global(.theme-plaster) .editingWorkVideo{background:#1b1a19}
+:global(.theme-plaster) .workCard{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .studio .workImage{background:#e5e5e3}
+:global(.theme-plaster) .workImage > span{background:rgb(255 255 255 / 0.902);color:#65625b;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .workImage > i{background:rgb(255 255 255 / 0.69);color:#1a1a19;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .workCard time{color:#65625b}
+:global(.theme-plaster) .workCard p{color:#65625b}
+:global(.theme-plaster) .editorMain{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .back{color:#65625b !important}
+:global(.theme-plaster) .projectName span{color:#65625b}
+:global(.theme-plaster) .projectName input{border-color:#e5e4e2;color:#65625b;background:#f6f5f5}
+:global(.theme-plaster) .autosave{color:#65625b}
+:global(.theme-plaster) .portrait{background:#e7e7e5;border-radius:9px}
+:global(.theme-plaster) .portraitBadge{background:rgb(255 255 255 / 0.851);color:#65625b;border-radius:999px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .portraitRatio{background:rgb(255 255 255 / 0.788);color:#65625b;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .studio .selectAvatar{border:1px solid #d7d6d3;background:#f3f3f2;color:#65625b}
+:global(.theme-plaster) .selectAvatar:hover{background:#e8e7e5}
+:global(.theme-plaster) .portraitNote{color:#65625b}
+:global(.theme-plaster) .studio .voiceSelector{border:1px solid #e0dfdc;background:#f4f4f3;color:#65625b;border-radius:9px}
+:global(.theme-plaster) .voiceSelectorIcon{background:#e7e6e4;border-radius:12px}
+:global(.theme-plaster) .voiceSelector b{color:#706e66}
+:global(.theme-plaster) .voiceSelector small{color:#65625b}
+:global(.theme-plaster) .voiceParams label > span{color:#65625b}
+:global(.theme-plaster) .voiceParams label b{color:#65625b}
+:global(.theme-plaster) .voiceParams select{color:#65625b}
+:global(.theme-plaster) .voiceParams input[type=range]{accent-color:#1a1a19}
+:global(.theme-plaster) .scriptBox{border:1px solid #e1e1de}
+:global(.theme-plaster) .scriptBox:focus-within{border-color:#1a1a19}
+:global(.theme-plaster) .scriptToolbar > span{color:#65625b}
+:global(.theme-plaster) .studio .scriptToolbar button{color:#65625b}
+:global(.theme-plaster) .scriptBox textarea{color:#69665f}
+:global(.theme-plaster) .wordCount{color:#65625b}
+:global(.theme-plaster) .studio .copyActions button{border:1px solid #e0dfdd;color:#65625b;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .studio .copyActions button:hover{background:#eeeeec}
+:global(.theme-plaster) .editorFooter > label{color:#65625b}
+:global(.theme-plaster) .editorFooter select{color:#65625b}
+:global(.theme-plaster) .studio .generateButton{background:#272623;color:#ffffff;border-radius:999px}
+:global(.theme-plaster) .studio .generateButton:hover{background:#eae9e7;color:#2d2c29}
+:global(.theme-plaster) .editorAside{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .studio .rightTabs button{color:#65625b}
+:global(.theme-plaster) .studio .rightTabs .activeRightTab{color:#1a1a19}
+:global(.theme-plaster) .activeRightTab::after{background:#1a1a19;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .rightTabs button > span{color:#65625b;background:#ebebe9}
+:global(.theme-plaster) .assistantWelcome img{box-shadow:0 8px 20px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .assistantWelcome h2{color:#65625b}
+:global(.theme-plaster) .assistantWelcome p{color:#65625b}
+:global(.theme-plaster) .studio .promptSuggestions button{color:#65625b;background:#f4f4f3;border:1px solid #e6e5e3;border-radius:999px}
+:global(.theme-plaster) .assistantComposer{border:1px solid #d9d8d5;background:#ffffff;box-shadow:0 4px 15px rgb(30 27 22 / 0.031);border-radius:12px}
+:global(.theme-plaster) .assistantSelect{background:#ededeb;color:#65625b}
+:global(.theme-plaster) .assistantSelect select{color:#65625b}
+:global(.theme-plaster) .assistantComposer textarea{color:#65625b}
+:global(.theme-plaster) .assistantComposer textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .assistantComposer > div span{color:#65625b}
+:global(.theme-plaster) .studio .assistantComposer > div button{color:#ffffff;background:#1a1a19;border-radius:999px}
+:global(.theme-plaster) .assistantAnswer{border:1px solid #e4e3e1;background:#f4f4f3;border-radius:11px}
+:global(.theme-plaster) .assistantAnswer > span{color:#65625b}
+:global(.theme-plaster) .assistantAnswer p{color:#65625b}
+:global(.theme-plaster) .bigIcon{color:#65625b;background:#ecebea}
+:global(.theme-plaster) .audioDrive h2{color:#65625b}
+:global(.theme-plaster) .audioDrive p{color:#65625b}
+:global(.theme-plaster) .audioDrive > small{color:#65625b}
+:global(.theme-plaster) .uploadButton{border:1px solid #d0cfcb;color:#65625b;background:#f1f1f0}
+:global(.theme-plaster) .uploadButton:focus-within,:global(.theme-plaster) .cloneDrop:focus-within{outline:3px solid #1a1a19}
+:global(.theme-plaster) .audioFile{border:1px solid #e4e3e1}
+:global(.theme-plaster) .audioFile b{color:#65625b}
+:global(.theme-plaster) .audioFile small{color:#65625b}
+:global(.theme-plaster) .editorBrand{color:#65625b}
+:global(.theme-plaster) .brandSmall b{color:#65625b}
+:global(.theme-plaster) .brandSmall em{color:#65625b}
+:global(.theme-plaster) .studio .dialog{border:1px solid #dad9d6;background:#ffffff;box-shadow:0 30px 100px rgb(30 27 22 / 0.208);border-radius:16px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(36 35 32 / 0.4)}
+:global(.theme-plaster) .studio .iconButton{color:#65625b;border-radius:999px}
+:global(.theme-plaster) .studio .iconButton:hover{background:#ececea}
+:global(.theme-plaster) .dialogFooter{background:#f6f6f5}
+:global(.theme-plaster) .check{background:#1a1a19;color:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .rewriteContent label,:global(.theme-plaster) .cloneForm > label{color:#65625b}
+:global(.theme-plaster) .cloneForm .cloneDrop{border:1px dashed #cdcbc8;background:#f4f4f3;color:#65625b;border-radius:12px}
+:global(.theme-plaster) .cloneDrop b{color:#65625b}
+:global(.theme-plaster) .cloneDrop span{color:#65625b}
+:global(.theme-plaster) .cloneDrop small{color:#65625b}
+:global(.theme-plaster) .generationReview > img{background:#e7e7e5;border-radius:9px}
+:global(.theme-plaster) .generationReview p{color:#65625b}
+:global(.theme-plaster) .demoNotice{background:#eeeeec;color:#65625b;border-radius:9px}
+:global(.theme-plaster) .demoPreview{background:#ececea;border-radius:11px}
+:global(.theme-plaster) .demoPreview > span{background:rgb(255 255 255 / 0.855);color:#65625b;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .previewText{color:#65625b}
+:global(.theme-plaster) .helpContent p{color:#65625b}
+:global(.theme-plaster) .toast{border:1px solid #dbdad7;box-shadow:0 6px 30px rgb(30 27 22 / 0.125);background:#ffffff;color:#1a1a19;border-radius:11px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .studio .scriptToolbar > span,:global(.theme-plaster) .studio .voiceParams label > span{color:#65625b}
+:global(.theme-plaster) .studio .voiceParams select,:global(.theme-plaster) .studio .editorFooter select{color:#75736a}
+:global(.theme-plaster) .studio .copyActions button{color:#65625b}
+:global(.theme-plaster) .studio .rightTabs button{color:#65625b}
+:global(.theme-plaster) .studio .rightTabs .activeRightTab{color:#1a1a19}
+:global(.theme-plaster) .studio .scriptBox textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .studio .assistantWelcome h2{color:#65625b}
+:global(.theme-plaster) .studio .assistantWelcome p,:global(.theme-plaster) .studio .promptSuggestions button{color:#65625b}
+:global(.theme-plaster) .studio .assistantComposer textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .editorHeader > select{color:#65625b;background:#f6f5f5}
+:global(.theme-plaster) .persistenceNotice{background:#ececea;color:#1a1a19}
+:global(.theme-plaster) .persistenceNotice button{border:1px solid #d0cfcb;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .studio button.avatarImage{background:#e9e8e7}
+:global(.theme-plaster) .studio .primaryButton,:global(.theme-plaster) .studio .generateButton{box-shadow:0 3px 0 rgb(30 27 22 / 0.078);border-radius:999px;font-weight:500}
+:global(.theme-plaster) .studio .primaryButton:hover:not(:disabled),:global(.theme-plaster) .studio .generateButton:hover:not(:disabled){box-shadow:0 6px 16px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .sidebar{background:linear-gradient(180deg, #ffffff 70%, #eeedec)}
+:global(.theme-plaster) .sidebar a.activeNav{background:#e5e4e2;color:#2b2a27}
+:global(.theme-plaster) .sidebar a.activeNav svg{color:#1a1a19}
+:global(.theme-plaster) .main{background:#f5f4f4}
+:global(.theme-plaster) .studioIntro{border:1px solid #dad9d6;background:linear-gradient(rgb(255 255 255 / 0.282) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.282) 1px, transparent 1px), linear-gradient(120deg, #e3e2e0 3%, #e7e6e5 50%, #efefed 100%);background-size:32px 32px, 32px 32px, 100% 100%;border-radius:22px}
+:global(.theme-plaster) .introEyebrow{color:#67655e}
+:global(.theme-plaster) .studio .studioIntro h1{font-weight:400}
+:global(.theme-plaster) .studioIntro mark{background:linear-gradient(transparent 60%, #eae9e7 60%)}
+:global(.theme-plaster) .studioIntro p{color:#5c5a54}
+:global(.theme-plaster) .introOrbit{border:1px dashed rgb(127 124 115 / 0.349)}
+:global(.theme-plaster) .introVoice{border:1px solid rgb(255 255 255 / 0.788);box-shadow:0 15px 45px rgb(30 27 22 / 0.09);background:rgb(255 255 255 / 0.78)}
+:global(.theme-plaster) .introVoice > svg{color:#1a1a19}
+:global(.theme-plaster) .introVoice > span{color:#6f6c64}
+:global(.theme-plaster) .introVoice b small{color:#737168}
+:global(.theme-plaster) .introWave i{background:#1a1a19}
+:global(.theme-plaster) .introWave i:nth-child(3n){background:#1a1a19}
+:global(.theme-plaster) .introAvatar{background:#edeceb;box-shadow:0 8px 20px rgb(30 27 22 / 0.071);border:1px solid #d5d4d0;border-radius:12px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .introTag{color:#76736a}
+:global(.theme-plaster) .studio .featureCard:hover{box-shadow:0 10px 25px rgb(30 27 22 / 0.071)}
+:global(.theme-plaster) .featureCard p{color:#77746c}
+:global(.theme-plaster) .featureCard div > span{color:#5d5b54}
+:global(.theme-plaster) .avatarCard:hover,:global(.theme-plaster) .workCard:hover{box-shadow:0 8px 20px rgb(30 27 22 / 0.063)}
+:global(.theme-plaster) .editor{background:linear-gradient(120deg, #ecebe9, #f1f1f0 75%)}
+:global(.theme-plaster) .editorMain,:global(.theme-plaster) .editorAside{box-shadow:0 3px 12px rgb(30 27 22 / 0.031)}
+:global(.theme-plaster) .editorHeader{background:rgb(255 255 255 / 0.937)}
+:global(.theme-plaster) .projectName input{color:#494742}
+:global(.theme-plaster) .studio .voiceSelector{color:#56544e;border-color:#d6d5d1;background:linear-gradient(110deg, #f2f2f1, #f5f5f4)}
+:global(.theme-plaster) .voiceSelector b{color:#403f3a;font-weight:500}
+:global(.theme-plaster) .voiceSelector small,:global(.theme-plaster) .voiceParams label > span,:global(.theme-plaster) .voiceParams label b,:global(.theme-plaster) .voiceParams select{color:#6b6860}
+:global(.theme-plaster) .voiceParams input[type=range]{accent-color:#1a1a19}
+:global(.theme-plaster) .scriptToolbar > span{color:#706d65}
+:global(.theme-plaster) .studio .scriptToolbar button{color:#1a1a19}
+:global(.theme-plaster) .scriptBox textarea{color:#383632}
+:global(.theme-plaster) .wordCount{color:#65625b}
+:global(.theme-plaster) .studio .copyActions button{color:#6b6961}
+:global(.theme-plaster) .assistantWelcome h2{color:#4b4944;font-weight:500}
+:global(.theme-plaster) .assistantWelcome p,:global(.theme-plaster) .studio .promptSuggestions button{color:#65625b}
+:global(.theme-plaster) .assistantComposer textarea{color:#4b4944}
+:global(.theme-plaster) .assistantComposer textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .assistantComposer > div span{color:#65625b}
+:global(.theme-plaster) .studio .assistantComposer > div button{background:#272623}
+:global(.theme-plaster) .studio .rightTabs .activeRightTab{color:#383733;font-weight:500}
+:global(.theme-plaster) .activeRightTab::after{background:#c8c7c3}
+:global(.theme-plaster) .studio .dialog{box-shadow:0 32px 100px rgb(30 27 22 / 0.188)}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(30 30 27 / 0.4)}
+:global(.theme-plaster) .studio{--ink:#262522;--muted:#6b6961;background:#efefee}
+:global(.theme-plaster) .main{background:#f3f3f2}
+:global(.theme-plaster) .pageHeading p,:global(.theme-plaster) .welcomeRow p,:global(.theme-plaster) .sectionHeading span{color:#6e6b63}
+:global(.theme-plaster) .studio .textButton{color:#1a1a19}
+:global(.theme-plaster) .studio .tabs > button{color:#6a675f}
+:global(.theme-plaster) .studio .tabs > button.activeTab{color:#1a1a19}
+:global(.theme-plaster) .sidebar a.activeNav{color:#1a1a19;background:#e5e5e3;box-shadow:inset 3px 0 #1e1b16}
+:global(.theme-plaster) .avatarCaption strong{color:#2c2a27}
+:global(.theme-plaster) .avatarCaption > span{color:#6b6861}
+:global(.theme-plaster) .avatarTag{color:#4e4d47}
+:global(.theme-plaster) .copyList b{color:#33322e}
+:global(.theme-plaster) .copyList p{color:#5f5c56}
+:global(.theme-plaster) .copyList time,:global(.theme-plaster) .workCard time,:global(.theme-plaster) .workCard p{color:#6d6b63}
+:global(.theme-plaster) .empty h3{color:#42403b;font-weight:500}
+:global(.theme-plaster) .empty p{color:#727067}
+:global(.theme-plaster) .editorMain,:global(.theme-plaster) .editorAside{box-shadow:0 2px 12px rgb(30 27 22 / 0.016)}
+:global(.theme-plaster) .editorHeader .tabs{background:#edeceb;border-radius:11px}
+:global(.theme-plaster) .studio .editorHeader .tabs button{color:#6b6860;border-radius:999px}
+:global(.theme-plaster) .studio .editorHeader .tabs button.activeTab{background:#ffffff;color:#1a1a19;box-shadow:0 1px 4px rgb(30 27 22 / 0.071)}
+:global(.theme-plaster) .editorHeader > select{background:#f2f2f1}
+:global(.theme-plaster) .projectName input{color:#373632;background:#f2f2f1}
+:global(.theme-plaster) .projectName span{color:#6e6b63}
+:global(.theme-plaster) .autosave{color:#65804b}
+:global(.theme-plaster) .portrait{background:#e9e9e7}
+:global(.theme-plaster) .portraitBadge{color:#413f3b}
+:global(.theme-plaster) .studio .selectAvatar{color:#1a1a19;border-color:#c6c5c0;background:#f0efee}
+:global(.theme-plaster) .portraitNote{color:#75726a}
+:global(.theme-plaster) .studio .voiceSelector{background:#ffffff;border-color:#d2d1ce;color:#1a1a19;box-shadow:0 3px 10px rgb(30 27 22 / 0.016)}
+:global(.theme-plaster) .voiceSelector b{color:#2f2e2b;font-weight:500}
+:global(.theme-plaster) .voiceSelector small{color:#75726a}
+:global(.theme-plaster) .studio .voiceParams label > span{color:#57554f}
+:global(.theme-plaster) .voiceParams label b{color:#595751}
+:global(.theme-plaster) .studio .voiceParams select{color:#4d4b45;background:#f2f2f1}
+:global(.theme-plaster) .voiceParams input[type=range]{accent-color:#1a1a19}
+:global(.theme-plaster) .scriptBox{border-color:#d2d1ce}
+:global(.theme-plaster) .scriptToolbar{border-bottom:1px solid #e7e7e5}
+:global(.theme-plaster) .studio .scriptToolbar > span{color:#42413c;font-weight:500}
+:global(.theme-plaster) .studio .scriptToolbar button{color:#1a1a19}
+:global(.theme-plaster) .scriptBox textarea{color:#32312d}
+:global(.theme-plaster) .studio .scriptBox textarea::placeholder{color:#88857c}
+:global(.theme-plaster) .wordCount{color:#837f76}
+:global(.theme-plaster) .studio .copyActions button{color:#1a1a19;border-color:#d6d5d2;background:#f3f3f2}
+:global(.theme-plaster) .editorFooter{background:#ffffff;box-shadow:0 -4px 16px rgb(30 27 22 / 0.02)}
+:global(.theme-plaster) .studio .generateButton{font-weight:500}
+:global(.theme-plaster) .studio .editorFooter select{color:#67645d}
+:global(.theme-plaster) .studio .rightTabs button{color:#69675f;border-radius:999px}
+:global(.theme-plaster) .studio .rightTabs .activeRightTab{color:#ffffff;background:#1a1a19;box-shadow:0 3px 8px rgb(30 27 22 / 0.145);font-weight:500}
+:global(.theme-plaster) .rightTabs button > span{background:#e7e7e5;color:#1a1a19}
+:global(.theme-plaster) .generationReview p,:global(.theme-plaster) .helpContent p,:global(.theme-plaster) .previewText{color:#5a5852}
+:global(.theme-plaster) .portraitEmpty{color:#8c8980;background:#ececea}
+:global(.theme-plaster) .portraitEmpty b{color:#57554f}
+:global(.theme-plaster) .portraitEmpty span{color:#7c7970}
+@media (max-width: 600px){:global(.theme-plaster) .editorFooter{border:1px solid #d6d4d1;box-shadow:0 -5px 22px rgb(30 27 22 / 0.086)}}
+:global(.theme-plaster) .workActions{border-top:1px solid #e9e9e7}
+:global(.theme-plaster) .studio{--ink:#2c2a27;--muted:#78756d;--border:#e1e1de}
+:global(.theme-plaster) .studio .dialog{scrollbar-color:#c8c6c2 transparent}
+:global(.theme-plaster) .dialogInner > header{background:#ffffff;border-bottom:1px solid #e9e8e7;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialogInner > p{color:#77746c}
+:global(.theme-plaster) .dialogFooter{background:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialogInner > p[role=alert]{border:1px solid #d9d8d5;color:#c84110;background:#f3f3f2;border-radius:12px}
+:global(.theme-plaster) .pageHeading p,:global(.theme-plaster) .welcomeRow p{color:#7b786f}
+:global(.theme-plaster) .copyList article > div > b{color:#45433e}
+:global(.theme-plaster) .copyList article > div > time{color:#858278}
+:global(.theme-plaster) .templateReview{background:#f2f2f1;border:1px solid #e5e4e2;border-radius:16px}
+:global(.theme-plaster) .templateReview > img{background:#e5e4e2;border-radius:11px}
+:global(.theme-plaster) .templateReview span{color:#838076}
+:global(.theme-plaster) .helpSteps > div{border:1px solid #e3e3e1;background:#f2f2f1;border-radius:15px}
+:global(.theme-plaster) .helpSteps > div > span{color:#1a1a19;background:#e5e5e3;border-radius:12px}
+:global(.theme-plaster) .helpSteps b{color:#474540;font-weight:500}
+:global(.theme-plaster) .helpSteps p{color:#868279}
+:global(.theme-plaster) .helpNotes{color:#716f66}
+:global(.theme-plaster) .statusCard{background:#ffffff}
+:global(.theme-plaster) .statusCard > svg{color:#1a1a19}
+:global(.theme-plaster) .statusCard p{color:#807d74}
+:global(.theme-plaster) .connectionNotice{background:#f0efee;border-bottom:1px solid #e0dfdc;color:#1a1a19}
+:global(.theme-plaster) .editingStudio .main>.editorHeader{border:1px solid #e2e1df}
+:global(.theme-plaster) .editingStudio{background:#ffffff;color:#33322e}
+:global(.theme-plaster) .editingStudio>.persistenceBody>.header{border-bottom:1px solid #e4e3e1;background:#ffffff}
+:global(.theme-plaster) .editingTitle button{background:#ebeae9!important;color:#65635c!important;border-radius:999px}
+:global(.theme-plaster) .editingStudio .workspace{background:#ffffff}
+:global(.theme-plaster) .editingProject{color:#87847a}
+:global(.theme-plaster) .editingStudio .accountAvatar{background:#ecebea;color:#65635c}
+:global(.theme-plaster) .editingStudio .returnSite{color:#87847a}
+:global(.theme-plaster) .studio .entryCard{background:#ffffff;border-radius:16px}
+:global(.theme-plaster) .studio .entryCard:hover{border-color:#c4c3be;box-shadow:0 8px 24px rgb(30 27 22 / 0.039)}
+:global(.theme-plaster) .studio .entryCard:focus-visible{outline:2px solid #1a1a19}
+:global(.theme-plaster) .studio .entryPrimary{border-color:#acaaa3}
+:global(.theme-plaster) .entryStep{color:#7b786f}
+:global(.theme-plaster) .entryCard h2{color:#1f1e1c;font-weight:500}
+:global(.theme-plaster) .entryCard h2 small{color:#1a1a19}
+:global(.theme-plaster) .entryCard p{color:#6e6b63}
+:global(.theme-plaster) .entryGo{color:#1a1a19}
+:global(.theme-plaster) .studio .projectSteps button{color:#827f76}
+:global(.theme-plaster) .studio .projectSteps button:hover{color:#33312e}
+:global(.theme-plaster) .studio .projectSteps button:focus-visible{outline:2px solid #1a1a19}
+:global(.theme-plaster) .stepIndex{border:1px solid #cccbc7}
+:global(.theme-plaster) .projectSteps small{color:#1a1a19}
+:global(.theme-plaster) .studio .step_current button{color:#1f1e1c;border-bottom-color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .step_current .stepIndex{border-color:#1a1a19;color:#1a1a19}
+:global(.theme-plaster) .studio .step_done button{color:#55534d}
+:global(.theme-plaster) .step_done .stepIndex{border-color:#55534d;color:#55534d}
+:global(.theme-plaster) .studio .taskCenterButton{color:#43413d;border-radius:999px}
+:global(.theme-plaster) .studio .taskCenterButton:hover{border-color:#c4c3be}
+:global(.theme-plaster) .studio .taskCenterButton:focus-visible{outline:2px solid #1a1a19}
+:global(.theme-plaster) .taskCount{color:#1a1a19}
+:global(.theme-plaster) .taskPanel{background:#ffffff;box-shadow:0 18px 40px rgb(30 27 22 / 0.102);border-radius:16px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .taskPanel header span{color:#7b786f}
+:global(.theme-plaster) .taskPanel li a{color:#252522}
+:global(.theme-plaster) .taskPanel li a:hover{background:#f1f0ef}
+:global(.theme-plaster) .taskStatus{color:#7b786f}
+:global(.theme-plaster) .taskAttention{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .taskEmpty,:global(.theme-plaster) .taskPanel > p{color:#7b786f}
+:global(.theme-plaster) .taskPanel footer{color:#6e6b63}
+:global(.theme-plaster) .taskPanel footer a{color:#1a1a19}
+:global(.theme-plaster) .creditBalance{color:#6a6760}
+:global(html.theme-plaster) .studio{--accent:#1b1a19;--ink:#1b1a19;--muted:#5b5953;--border:rgb(28 28 26 / 0.1);--soft:#eeeeed;background:#e8e8e6;color:#1b1a19}
+:global(html.theme-plaster) .studio button:focus-visible,:global(html.theme-plaster) .studio a:focus-visible{outline:2px solid rgb(234 76 19 / 0.8)}
+:global(html.theme-plaster) .studio :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea, select){border:1px solid rgb(28 28 26 / 0.14);background:#ffffff;color:#1b1a19;caret-color:#ea4c13;border-radius:16px}
+:global(html.theme-plaster) .studio :is(input, textarea, select):focus{border-color:rgb(234 76 19 / 0.7);box-shadow:0 0 0 3px rgb(30 27 22 / 0.14)}
+:global(html.theme-plaster) .studio :is(input[type="checkbox"], input[type="radio"], input[type="range"], progress){accent-color:#ea4c13}
+:global(html.theme-plaster) .studio input::placeholder,:global(html.theme-plaster) .studio textarea::placeholder{color:#8c887f}
+:global(html.theme-plaster) .header{background:rgb(232 232 230 / 0.82);border-bottom:1px solid rgb(28 28 26 / 0.08)}
+:global(html.theme-plaster) :is(.brand em, .brand small, .brandDivider, .previewBadge, .returnSite){color:#716e66}
+:global(html.theme-plaster) .returnSite:hover{color:#1b1a19 !important}
+:global(html.theme-plaster) .studio .accountAvatar{background:#e2e1df;color:#1b1a19}
+:global(html.theme-plaster) .sidebar{border-right:1px solid rgb(28 28 26 / 0.08)}
+:global(html.theme-plaster) :is(.sideHome, .sidebar nav a){color:#5b5953}
+:global(html.theme-plaster) .sidebar a:hover{background:rgb(255 255 255 / 0.6);color:#1b1a19}
+:global(html.theme-plaster) .sidebar a.activeNav{background:#ffffff;color:#1b1a19;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) .sidebar nav small{background:#e2e1df;color:#5b5953}
+:global(html.theme-plaster) .navGroup{color:#716e66}
+:global(html.theme-plaster) .sidePromo{background:#ffffff;color:#5b5953;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16);border-radius:22px}
+:global(html.theme-plaster) .sidePromo > b{color:#1b1a19}
+:global(html.theme-plaster) .studio .sidePromo button{border-top-color:rgb(28 28 26 / 0.08);color:#1b1a19}
+:global(html.theme-plaster) .studio .primaryButton{background:#1b1a19;border-color:#1b1a19;color:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.12), 0 10px 22px -12px rgb(30 27 22 / 0.45)}
+:global(html.theme-plaster) .studio .primaryButton:hover:not(:disabled){background:#1b1a19;border-color:#1b1a19;color:#ffffff}
+:global(html.theme-plaster) .studio .primaryButton:disabled{background:#e2e1df;border-color:#e2e1df;color:#716e66}
+:global(html.theme-plaster) .studio .outlineButton{background:#ffffff;border:1px solid rgb(28 28 26 / 0.14);color:#1b1a19}
+:global(html.theme-plaster) .studio .outlineButton:hover:not(:disabled){background:#ffffff;border-color:rgb(28 28 26 / 0.28)}
+:global(html.theme-plaster) .studio .textButton{color:#1b1a19}
+:global(html.theme-plaster) .studio .featureCard{background:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) .studio .featureCard:hover{box-shadow:0 1px 2px rgb(30 27 22 / 0.06), 0 18px 36px -18px rgb(30 27 22 / 0.26)}
+:global(html.theme-plaster) .featureCard h2 small{border-color:rgb(28 28 26 / 0.14);color:#716e66}
+:global(html.theme-plaster) .featureCard > i{background:#eeeeed;color:#716e66}
+:global(html.theme-plaster) .studio :is(.avatarCard, .workCard, .voiceCard, .copyList article){border:1px solid rgb(28 28 26 / 0.08);background:#ffffff;border-radius:22px}
+:global(html.theme-plaster) .studio .avatarCard:hover{border-color:rgb(28 28 26 / 0.22)}
+:global(html.theme-plaster) .studio .selectedCard{border-color:#1b1a19;box-shadow:0 0 0 1px #1e1b16}
+:global(html.theme-plaster) :is(.avatarImage, .studio .workImage){background:#e2e1df}
+:global(html.theme-plaster) .search{border-color:rgb(28 28 26 / 0.14)}
+:global(html.theme-plaster) .search:focus-within{border-color:rgb(234 76 19 / 0.7);box-shadow:0 0 0 3px rgb(30 27 22 / 0.14)}
+:global(html.theme-plaster) .studio .pills button{color:#5b5953}
+:global(html.theme-plaster) .studio .pills button.activePill{background:#ffffff;border-color:rgb(28 28 26 / 0.14);color:#1b1a19}
+:global(html.theme-plaster) .studio .tabs > button.activeTab{color:#1b1a19}
+:global(html.theme-plaster) .activeTab::after{background:#ea4c13}
+:global(html.theme-plaster) .emptyIcon{background:#ffffff;color:#716e66}
+:global(html.theme-plaster) .empty h3{color:#1b1a19}
+:global(html.theme-plaster) .studio .dialog{border:1px solid rgb(28 28 26 / 0.08);box-shadow:0 1px 2px rgb(30 27 22 / 0.06), 0 30px 70px -24px rgb(30 27 22 / 0.3)}
+:global(html.theme-plaster) .dialog::backdrop{background:rgb(28 28 26 / 0.28)}
+:global(html.theme-plaster) .dialogFooter{background:#ffffff;border-top-color:rgb(28 28 26 / 0.08)}
+:global(html.theme-plaster) .studio .iconButton{color:#5b5953}
+:global(html.theme-plaster) .studio .iconButton:hover{background:#eeeeed;color:#1b1a19}
+:global(html.theme-plaster) .studio .generateButton{background:#1b1a19;border-color:#1b1a19;color:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.12), 0 10px 22px -12px rgb(30 27 22 / 0.45)}
+:global(html.theme-plaster) .studio .generateButton:hover:not(:disabled){background:#1b1a19;border-color:#1b1a19;color:#ffffff}
+:global(html.theme-plaster) .studioIntro{background:linear-gradient(115deg, #e1e1de, #e9e8e7 60%, #e7e7e5);border:1px solid rgb(28 28 26 / 0.08)}
+:global(html.theme-plaster) .studioIntro mark{background:linear-gradient(transparent 88%, rgb(234 76 19 / 0.75) 88%, rgb(203 110 16 / 0.75) 94%, transparent 94%)}
+:global(html.theme-plaster) :is(.studioIntro p, .introEyebrow){color:#5b5953}
+:global(html.theme-plaster) .entryCard{background:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) .entryCard:hover{background:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.06), 0 18px 36px -18px rgb(30 27 22 / 0.26)}
+:global(html.theme-plaster) .entryPrimary{box-shadow:inset 0 2px 0 #1e1b16, 0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) :is(.creditBalance, .studio .taskCenterButton){border-color:rgb(28 28 26 / 0.14);background:#ffffff;color:#1b1a19}
+:global(html.theme-plaster) .taskAttention{color:#b63b0f}
+:global(html.theme-plaster) .taskPanel{background:#ffffff;border:1px solid rgb(28 28 26 / 0.08);box-shadow:0 1px 2px rgb(30 27 22 / 0.06), 0 30px 70px -24px rgb(30 27 22 / 0.3);border-radius:22px}
+:global(html.theme-plaster) .taskPanel li a:hover{background:#eeeeed}
+/* plaster:end */

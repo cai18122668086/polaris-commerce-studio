@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -29,6 +30,8 @@ from .video_studio_models import VideoProjectRecord, VideoScriptVersionRecord
 from .video_studio_routes import VideoWorkspace, scope
 from .video_studio_schemas import StrictVideoModel
 from .video_writing_models import VideoScriptLibraryEntry, VideoWritingDocument
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}",
@@ -315,7 +318,20 @@ def follow_revision(
 
 
 def sync_legacy(session: Session, workspace: WorkspaceContext) -> None:
-    """Mirror old library snapshots (kind=library) that are not entries yet."""
+    """Mirror old library snapshots; never takes the library page down.
+
+    Two first reads at once both try to mirror the same snapshot: the unique
+    ``legacy_version_id`` makes one of them lose, and ``insert_once`` returns
+    the winner's row. Any other failure only skips mirroring this time.
+    """
+    try:
+        mirror_legacy(session, workspace)
+    except Exception:  # noqa: BLE001 - the list still answers without mirroring
+        session.rollback()
+        log.warning("script library: legacy mirroring skipped", exc_info=True)
+
+
+def mirror_legacy(session: Session, workspace: WorkspaceContext) -> None:
     mirrored = select(VideoScriptLibraryEntry.legacy_version_id).where(
         VideoScriptLibraryEntry.legacy_version_id.is_not(None),
         VideoScriptLibraryEntry.workspace_id == workspace.workspace_id,

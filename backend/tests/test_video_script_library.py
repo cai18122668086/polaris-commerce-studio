@@ -108,6 +108,13 @@ def test_more_than_six_hashtags_are_cut_to_six_with_a_note():
     d = publish(draft(publish_body=body))
     assert d.publish_body.count("#") == 6 and "#话题6" not in d.publish_body
     assert any("已保留前6个" in w for w in d.warnings)
+    # Repeated tags count once; after the cut there are still 3-6.
+    body = "樱花香护手霜，清爽不黏腻。\n" + " ".join(
+        ["#护手霜"] * 4 + ["#冬季", "#好物"]
+    )
+    d = publish(draft(publish_body=body))
+    assert len(set(provider.HASHTAG.findall(d.publish_body))) == 3
+    assert not any("已保留前6个" in w for w in d.warnings)
 
 
 def test_a_title_may_not_carry_hashtags():
@@ -579,3 +586,66 @@ def test_a_manual_entry_is_created_once_per_request(video):
         client.post(f"{url}/script-library", json={**body, "script": " "}).status_code
         == 422
     )
+
+
+def test_a_concurrent_first_read_returns_the_winners_row_not_an_error():
+    """The second of two first reads hits the unique legacy id and re-reads."""
+    from sqlalchemy.exc import IntegrityError
+
+    winner = SimpleNamespace(id="winner")
+
+    class RacingSession:
+        def __init__(self):
+            self.found = [None, winner]  # before insert: none; after the loss: it
+            self.rolled_back = False
+
+        def scalar(self, _query):
+            return self.found.pop(0)
+
+        def add(self, _row):
+            pass
+
+        def commit(self):
+            raise IntegrityError(
+                "INSERT", {}, Exception("uq_video_script_library_legacy")
+            )
+
+        def rollback(self):
+            self.rolled_back = True
+
+    session = RacingSession()
+    workspace = SimpleNamespace(
+        workspace_id="w", principal=SimpleNamespace(user_id="u")
+    )
+    row = library.insert_once(
+        session,  # type: ignore[arg-type]
+        workspace,  # type: ignore[arg-type]
+        SimpleNamespace(id="loser"),  # type: ignore[arg-type]
+        VideoScriptLibraryEntry.legacy_version_id == "v1",
+    )
+    assert row is winner and session.rolled_back
+
+
+def test_mirroring_failure_does_not_take_the_library_down(video, monkeypatch):
+    client, auth, ws, user, settings = video
+    url = base(ws)
+    created = client.post(
+        f"{url}/script-library",
+        json={"request_id": str(uuid4()), "script": "已经在新库里的文案。"},
+    )
+    assert created.status_code == 200
+    pid = str(uuid4())
+    body = payload("还没镜像的旧文案。", action="library")
+    assert client.put(f"{url}/projects/{pid}", json=body).status_code == 200
+
+    def broken(*_args, **_kwargs):
+        raise IntegrityError("INSERT", {}, Exception("boom"))
+
+    from sqlalchemy.exc import IntegrityError
+
+    monkeypatch.setattr(library, "insert_once", broken)
+    page = client.get(f"{url}/script-library")
+    assert page.status_code == 200
+    assert [i["script"] for i in page.json()["items"]] == ["已经在新库里的文案。"]
+    monkeypatch.undo()
+    assert client.get(f"{url}/script-library").json()["total"] == 2  # mirrored later

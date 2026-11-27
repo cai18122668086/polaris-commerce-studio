@@ -346,7 +346,8 @@ def validate_publish(
         for extra in tags[TAGS_MAX:]:
             body = re.sub(re.escape(extra) + r"(?![^\s#])", "", body)
         body = re.sub(r"[ \t]{2,}", " ", body).strip()
-        tags = tags[:TAGS_MAX]
+        # Count again what is left: the cut never leaves more than 6 or fewer than 3.
+        tags = list(dict.fromkeys(HASHTAG.findall(body)))
         draft.publish_body = body
         note = f"发布正文的话题标签超过{TAGS_MAX}个，已保留前{TAGS_MAX}个。"
         if note not in draft.warnings and len(draft.warnings) < 30:

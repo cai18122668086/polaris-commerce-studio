@@ -503,3 +503,65 @@ def test_migration_matches_the_model(tmp_path):
             c["name"] for c in inspect(connection).get_columns("video_cover_candidates")
         }
     assert columns == set(VideoCoverCandidateRecord.__table__.columns.keys())
+
+
+def test_image_client_moves_to_the_next_route_only_when_unavailable(
+    monkeypatch, tmp_path
+):
+    import base64
+
+    import httpx
+    from pydantic import SecretStr
+
+    from app import video_cover_image_client as vc
+
+    settings = external_settings(tmp_path).model_copy(
+        update={
+            "image_base_url": "https://primary.test",
+            "image_api_key": SecretStr("k1"),
+            "image_model": "m1",
+            "provider_failover_enabled": True,
+            "provider_failover_base_url": "https://backup.test",
+            "provider_failover_api_key": SecretStr("k2, k3"),
+            "provider_failover_image_model": "m2",
+        }
+    )
+    assert [r.name for r in vc.image_routes(settings)] == [
+        "primary",
+        "failover-1",
+        "failover-2",
+    ]
+    png = io.BytesIO()
+    Image.new("RGB", (12, 16), (200, 150, 120)).save(png, "PNG")
+    ok = {
+        "data": [{"b64_json": base64.b64encode(png.getvalue()).decode()}],
+        "model": "m2-real",
+    }
+    calls: list[str] = []
+
+    def fake_post(url, **kwargs):
+        calls.append(url)
+        request = httpx.Request("POST", url)
+        if url.startswith("https://primary.test") or kwargs["headers"][
+            "Authorization"
+        ].endswith("k2"):
+            return httpx.Response(status, request=request, text="bad gateway")
+        return httpx.Response(200, request=request, json=ok)
+
+    monkeypatch.setattr(vc.httpx, "post", fake_post)
+    client = vc.HttpCoverImageClient(settings)
+    status = 502
+    result = client.edit(png.getvalue(), "p", idempotency_key="x")
+    assert (
+        result.model_requested == "failover-2:m2" and result.model_reported == "m2-real"
+    )
+    assert [c.split("/v1")[0] for c in calls] == [
+        "https://primary.test",
+        "https://backup.test",
+        "https://backup.test",
+    ]
+    calls.clear()
+    status = 400  # a rejected prompt is final: never retried elsewhere
+    with pytest.raises(CoverImageError) as error:
+        client.edit(png.getvalue(), "p", idempotency_key="y")
+    assert error.value.code == "COVER_IMAGE_REJECTED" and len(calls) == 1

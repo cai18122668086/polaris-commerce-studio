@@ -305,3 +305,45 @@ def test_primary_source_falls_back_to_a_product_reference():
     aurora_detail_authored.validate_source_selection(plan, ("style_reference", "product_reference"))
     assert plan["plan"]["product_identity_physics_lock"]["primary_product_source"] == 2
     aurora_detail_authored.validate_strategy(plan, 2)
+
+
+def test_only_the_first_screen_carries_the_brand_logo():
+    from types import SimpleNamespace
+
+    request = SimpleNamespace(product_name="离线测试商品", page_count=3, sources=())
+    strategy = aurora_detail_authored.fake_strategy(request)
+    strategy["plan"]["product_identity_physics_lock"]["brand_logo"] = "Unica 手写字标（原图3）"
+    plan = aurora_detail_authored.normalize_strategy(strategy)
+    first, *rest = (screen["image_prompt"] for screen in plan["plan"]["screens"])
+    assert "Unica 手写字标（原图3）" in first
+    assert aurora_detail_authored._FIRST_SCREEN_LOGO in first
+    for prompt in rest:
+        assert "Unica" not in prompt
+        assert aurora_detail_authored._OTHER_SCREEN_LOGO in prompt
+    aurora_detail_authored.validate_strategy(plan, 3)
+    planner = aurora_detail_authored.planner_prompt(
+        SimpleNamespace(
+            intake_settings={}, page_count=3, size="1440x1920", language="zh-CN",
+            product_name="x", platform_code="jd", sources=(), product_information=(),
+        )
+    )
+    assert "品牌标识只在首屏出现" in planner
+
+
+def test_plans_frozen_before_the_logo_lock_still_verify():
+    from types import SimpleNamespace
+
+    request = SimpleNamespace(product_name="离线测试商品", page_count=3, sources=())
+    plan = aurora_detail_authored.normalize_strategy(aurora_detail_authored.fake_strategy(request))
+    for index, screen in enumerate(plan["plan"]["screens"]):
+        screen["image_prompt"] = aurora_detail_authored._compiled(plan, screen, index, legacy=True)
+        assert "其余屏不出现独立、悬浮或角标式标识" in screen["image_prompt"]
+    aurora_detail_authored.validate_strategy(plan, 3)
+    screen = plan["plan"]["screens"][1]
+    assert aurora_detail_authored.compile_prompt(
+        structured_plan=plan, screen=screen, page_number=2, page_count=3, language="zh-CN",
+        product_name="x", product_information=(), source_roles=(), size="1440x1920",
+    ) == screen["image_prompt"]
+    screen["image_prompt"] += "改"
+    with pytest.raises(Exception, match="frozen page prompt"):
+        aurora_detail_authored.validate_strategy(plan, 3)

@@ -48,7 +48,7 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
   const saved = list.filter(entry => entry.stage === "done").length;
   // B4：还没剪完的不进成片行（不能生成封面），剪完后 15 秒内自动出现；没剪成的单独列出、回剪辑页处理。
   const unfinished = list.filter(entry => entry.stage === "talking" || entry.stage === "editing");
-  const cutting = unfinished.filter(entry => entry.status !== "failed");
+  const cutting = unfinished.filter(entry => entry.status === "queued" || entry.status === "running" || (entry.stage === "talking" && entry.status === "pending"));
 
   // Edits only; untouched fields fall back to what the work item already has.
   const draftOf = (entry: WorkItem): Draft => ({
@@ -83,13 +83,11 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
   if (items.isPending) return <p className={styles.loading} role="status"><LoaderCircle className={styles.spin} size={16} />正在读取要成片的视频…</p>;
   if (items.isError) return <p role="alert" className={styles.alert}>暂时读不到这批视频。<button type="button" className={styles.linkButton} onClick={() => void items.refetch()}>重试</button></p>;
   const waitingNote = unfinished.length > 0 && <div className={styles.waiting} role="status" aria-label="还没剪完的视频">
-    {cutting.length > 0 && <p><LoaderCircle className={styles.spin} size={15} /><span>还有 {cutting.length} 条剪辑中，完成后自动出现在这里，不用刷新。</span></p>}
+    {cutting.length > 0 && <p><LoaderCircle className={styles.spin} size={15} /><span>还有 {cutting.length} 条在生成或剪辑中，完成后自动出现在这里，不用刷新。</span></p>}
     <ul>{unfinished.map(entry => <li key={entry.id}>
       <span className={styles.waitingIndex}>{String(list.indexOf(entry) + 1).padStart(2, "0")}</span>
       <span className={styles.waitingTitle}>{entry.publish_title || "未命名视频"}</span>
-      {entry.status === "failed"
-        ? <span className={styles.waitingState}>{entry.stage === "talking" ? "口播没有生成成功" : "剪辑没有成功"} · <Link href={entry.stage === "talking" ? stepHref("voice", { batch: entry.batch_id }) : editingHref(entry.batch_id)} className={styles.linkButton}>回到这一步</Link></span>
-        : <span className={styles.waitingState}>{entry.stage === "talking" ? "口播生成中" : "剪辑中"}，完成后自动出现</span>}
+      <WaitingState entry={entry} />
     </li>)}</ul>
   </div>;
 
@@ -132,6 +130,16 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
     {waitingNote}
     {saved === list.length && <div className={styles.allDone}><Check size={16} />这一批都已保存。<Link href={worksHref(batch)} className={styles.linkButton}>去我的作品看看</Link></div>}
   </section>;
+}
+
+/** B4：还没进成片的条目现在在哪、该去哪。 */
+function WaitingState({ entry }: { entry: WorkItem }) {
+  const busy = entry.status === "queued" || entry.status === "running" || (entry.stage === "talking" && entry.status === "pending");
+  const voice = <Link href={stepHref("voice", { batch: entry.batch_id })} className={styles.linkButton}>回到这一步</Link>;
+  const edit = (text: string) => <Link href={editingHref(entry.batch_id)} className={styles.linkButton}>{text}</Link>;
+  if (entry.status === "failed" || entry.status === "canceled") return <span className={styles.waitingState}>{entry.stage === "talking" ? <>口播没有生成成功 · {voice}</> : <>剪辑没有成功 · {edit("回到这一步")}</>}</span>;
+  if (busy) return <span className={styles.waitingState}>{entry.stage === "talking" ? "口播生成中" : "剪辑中"}，完成后自动出现</span>;
+  return <span className={styles.waitingState}>{entry.stage === "talking" ? "口播已好，还没剪辑" : "还没开始剪辑"} · {edit("去剪辑")}</span>;
 }
 
 function FinishRow({ index, workspaceId, entry, draft, platform, onChange, onGenerate, generating, actions, notify }: {

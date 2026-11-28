@@ -34,6 +34,8 @@ TARGETS = {
     "bihuo-19-v1",
     "bihuo-40-v1",
     "bihuo-47-v1",
+    "bihuo-15-v1",
+    "bihuo-24-v1",
 }
 
 

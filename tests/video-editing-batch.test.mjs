@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { batchFinished, batchPlan, candidateKey, durationLabel, finishAction, generationSummary, itemMinutes, itemStatus, minutesRange, templateNeeds } from "../features/video-studio/editing-batch.ts";
+import { batchFinished, batchPlan, candidateKey, durationLabel, finishAction, generationSummary, itemMinutes, itemStatus, minutesRange, shortCaptionHint, templateNeeds } from "../features/video-studio/editing-batch.ts";
 
 const talking = (id, extra = {}) => ({ key: candidateKey("talking", id), kind: "talking", refId: `gen-${id}`, itemId: id, batchId: "b1", projectId: "p", title: `稿${id}`, videoUrl: null, ready: true, ...extra });
 const library = (id, extra = {}) => ({ key: candidateKey("library", id), kind: "library", refId: id, projectId: "p", title: `库${id}`, videoUrl: null, ready: true, ...extra });
@@ -57,8 +57,21 @@ test("summary and template needs in plain words", () => {
   assert.equal(generationSummary([null], null).credits, null);
   assert.equal(durationLabel(21040), "21秒");
   assert.equal(durationLabel(95000), "1分35秒");
-  assert.match(templateNeeds({ capabilities: ["images", "music"], engine: "bihuo-full-suite" }), /支持配图.*支持 MG 动效/);
+  // C11：只有后端 MG 白名单里的模板才写「支持 MG 动效」；白名单没读到时不声称支持。
+  assert.match(templateNeeds({ id: "bihuo-36-v1", capabilities: ["images", "music"], engine: "bihuo-full-suite" }, ["bihuo-36-v1"]), /支持配图.*支持 MG 动效/);
+  assert.doesNotMatch(templateNeeds({ id: "bihuo-14-v1", capabilities: ["images"], engine: "bihuo-full-suite" }, ["bihuo-36-v1"]), /MG/);
+  assert.doesNotMatch(templateNeeds({ id: "bihuo-36-v1", capabilities: ["images"], engine: "bihuo-full-suite" }), /MG/);
   assert.match(templateNeeds({ capabilities: ["music"], material_mode: "speech" }), /不需要配图/);
+});
+
+// C3：黑底黄字适合短句；长句口播稿选它时给一句轻提示，其它模板和短句稿不提示。
+test("黑底黄字 warns lightly about long sentences only", () => {
+  const long = "家具不是天天买。我建议你先量好尺寸再去门店慢慢挑，所以挑家具这件事。";
+  assert.match(shortCaptionHint("bihuo-34-v1", [long]), /适合短句：口播稿里有 1 句超过 9 个字/);
+  assert.equal(shortCaptionHint("bihuo-34-v1", ["家具不是天天买，但你天天用。"]), null);
+  assert.equal(shortCaptionHint("bihuo-36-v1", [long]), null);
+  assert.equal(shortCaptionHint(undefined, [long]), null);
+  assert.equal(shortCaptionHint("bihuo-34-v1", []), null);
 });
 
 test("C7: the estimate follows each video's length and is said as a range", () => {

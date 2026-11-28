@@ -180,11 +180,28 @@ export function generationSummary(durations: (number | null | undefined)[], perI
 }
 
 /** 模板对素材的要求，用一句话告诉商家。 */
-export function templateNeeds(card: { capabilities?: string[] | null; material_mode?: string | null; engine?: string | null }): string {
+export function templateNeeds(
+  card: { id?: string; capabilities?: string[] | null; material_mode?: string | null; engine?: string | null },
+  /** 后端 MG 白名单（/sources 的 mg_templates）；没读到时不声称支持。 */
+  mgTemplates?: string[],
+): string {
   const caps = card.capabilities ?? [];
   const images = caps.includes("images") || card.material_mode === "images";
   const parts = ["需要人物口播视频（竖屏 9:16）"];
   parts.push(images ? "支持配图，可在第 3 步添加" : "以口播和文字呈现，不需要配图");
-  if (card.engine === "bihuo-full-suite") parts.push("支持 MG 动效");
+  if (card.engine === "bihuo-full-suite" && card.id && mgTemplates?.includes(card.id)) parts.push("支持 MG 动效");
   return parts.join(" · ");
+}
+
+/** 只适合短句的模板：一句超过这个字数就分两行，换句时两行会短暂叠在一起（模板原生转场）。 */
+export const SHORT_CAPTION_TEMPLATES: Record<string, number> = { "bihuo-34-v1": 9 };
+
+/** 选了只适合短句的模板、而口播稿里有长句时，给一句轻提示；否则 null。 */
+export function shortCaptionHint(templateId: string | null | undefined, scripts: string[]): string | null {
+  const limit = templateId ? SHORT_CAPTION_TEMPLATES[templateId] : undefined;
+  if (!limit) return null;
+  const clauses = scripts.flatMap(text => text.split(/[，。！？；、,.!?;：:\n]+/)).map(row => row.replace(/\s+/g, ""));
+  const long = clauses.filter(row => [...row].length > limit).length;
+  if (!long) return null;
+  return `这个模板适合短句：口播稿里有 ${long} 句超过 ${limit} 个字，会分两行显示，换句时两行会短暂叠在一起。介意的话可以换「居中字幕」等模板。`;
 }

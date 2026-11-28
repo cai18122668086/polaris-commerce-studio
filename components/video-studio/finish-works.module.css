@@ -236,3 +236,44 @@
 :global(html.theme-ember) .waiting { border-top-color: rgb(255 240 225 / 12%); }
 :global(html.theme-ember) .waiting li { border-bottom-color: rgb(255 240 225 / 8%); }
 :global(html.theme-ember) .waitingTitle { color: #f2ede6; }
+
+/* ---------- B1/B2/B13/C10（r2）：作品网格的删除与已发布、未完成区、导出这一批 ---------- */
+.textAction { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0; border: 0; background: none; color: var(--fw-muted); font-size: 12px; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.textAction:hover:not(:disabled) { color: var(--fw-ink); text-decoration: underline; text-underline-offset: 3px; }
+.confirm { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--fw-ink); }
+.confirmYes { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid #b23a0e; background: transparent; color: #b23a0e; font-size: 12px; }
+.confirmYes:hover:not(:disabled) { background: #b23a0e; color: #fff; }
+.tileMeta { display: flex; align-items: center; gap: 10px; min-height: 26px; margin-top: -2px; flex-wrap: wrap; }
+.tileMeta > .textAction, .tileMeta > .confirm { margin-left: auto; }
+.tilePublished { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fw-ink); }
+.tilePublished svg { color: var(--fw-accent); }
+.unfinished { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--fw-line); }
+.unfinished h2 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 6px; font-size: 16px; font-weight: 400; }
+.unfinished h2 small { font-size: 12px; color: var(--fw-faint); font-weight: 400; }
+.unfinished ul { list-style: none; margin: 0; padding: 0; }
+.unfinished li { display: grid; grid-template-columns: minmax(0, 1fr) 180px 110px auto; align-items: center; gap: 16px; min-height: 48px; padding: 6px 0; border-bottom: 1px solid var(--fw-line); font-size: 13px; }
+.unfinishedTitle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.unfinishedState { display: inline-flex; align-items: center; gap: 6px; color: var(--fw-muted); font-size: 12px; }
+.unfinishedFailed { color: #a8461b; }
+.unfinishedActions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 14px; flex-wrap: wrap; }
+.exportBar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 20px; padding: 12px 0; border-top: 1px solid var(--fw-line); border-bottom: 1px solid var(--fw-line); }
+.exportNote { display: flex; align-items: baseline; gap: 10px; flex: 1 1 260px; min-width: 0; font-size: 12px; color: var(--fw-muted); }
+.exportNote b { font-size: 13px; font-weight: 500; color: var(--fw-ink); white-space: nowrap; }
+.previewMarks { display: grid; gap: 4px; }
+.previewMarks small { font-size: 11px; color: #8a8279; }
+.publishToggle { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 0; border: 0; background: none; color: #f2ede6; font-size: 13px; }
+.publishBox { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgb(255 240 225 / 40%); color: #fff; }
+.publishToggle[aria-checked="true"] .publishBox { background: #f07a3a; border-color: #f07a3a; }
+.previewLinks { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.previewLayer .textAction { color: #b8b0a6; }
+.previewLayer .textAction:hover:not(:disabled) { color: #f2ede6; }
+.previewLayer .confirm { color: #f2ede6; }
+.previewLayer .confirmYes { border-color: #f07a3a; color: #f07a3a; }
+.previewLayer .confirmYes:hover:not(:disabled) { background: #f07a3a; color: #1a1a19; }
+@media (max-width: 720px) {
+  .profileFacts { gap: 0; }
+  .unfinished li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title time" "state state" "actions actions"; gap: 2px 10px; padding: 10px 0; }
+  .unfinishedTitle { grid-area: title; } .unfinished li > time { grid-area: time; } .unfinishedState { grid-area: state; } .unfinishedActions { grid-area: actions; justify-content: flex-start; }
+  .exportBar .secondary { flex: 1 1 auto; }
+}
+.finishHead + .waiting { border-top: 0; margin-top: 0; }

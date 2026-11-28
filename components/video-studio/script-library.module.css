@@ -77,6 +77,8 @@
 .bodyText { margin: 0; font-size: 13.5px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .scriptText { margin: 0; font-size: 13.5px; line-height: 1.85; white-space: pre-line; overflow-wrap: anywhere; overflow: auto; padding-right: 4px; }
 .placeholder { color: var(--muted); font-weight: 400; font-size: 13px; }
+.legacyNote { margin: 0; font-size: 13px; line-height: 1.7; color: var(--muted); }
+.part[data-legacy] { justify-items: start; }
 .titleInput, .field { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; background: var(--sl-surface); color: var(--ink); font: inherit; font-size: 13.5px; line-height: 1.75; padding: 9px 12px; resize: vertical; }
 .titleInput { font-size: 15px; font-weight: 600; }
 .titleInput:focus, .field:focus { outline: none; border-color: var(--ink); }

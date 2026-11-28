@@ -64,3 +64,24 @@ test("B8：文案、补充素材、形象三处价格为空统一「灰度测试
   const confirm = readFileSync("components/video-studio/generation-confirmation.tsx", "utf8");
   assert.match(confirm, /whenPriced\(cost\?\.credits, "，可能产生登记费用"\)/);
 });
+
+test("文案页旧版本：只有口播稿时显示「生成于旧版本」+ 补写按钮，新版本不受影响", () => {
+  const format = load("../features/video-studio/script-library-format.ts", require);
+  const cssProxy = new Proxy({}, { get: (_, key) => (typeof key === "string" ? key : undefined) });
+  const partsModule = load("../components/video-studio/script-library-parts.tsx", name => name === "@/features/video-studio/script-library-format" ? format : name.endsWith(".css") ? cssProxy : require(name));
+  const old = { publish_title: "", publish_body: "", script: "今天给大家推荐一款冰丝凉席。", platform: "douyin" };
+  assert.equal(format.needsFill(old), true);
+  const legacy = renderToStaticMarkup(createElement(partsModule.ScriptParts, { parts: old, onCopy: () => {}, legacy: createElement("button", null, "补写标题和正文") }));
+  assert.match(legacy, /这一版生成于旧版本，没有标题和正文/);
+  assert.match(legacy, /补写标题和正文/);
+  assert.doesNotMatch(legacy, /还没有标题|还没有发布正文/);
+  assert.match(legacy, /今天给大家推荐一款冰丝凉席/);
+  const fresh = { ...old, publish_title: "夏天必备冰丝凉席", publish_body: "睡得凉快 #好物" };
+  assert.equal(format.needsFill(fresh), false);
+  const normal = renderToStaticMarkup(createElement(partsModule.ScriptParts, { parts: fresh, onCopy: () => {} }));
+  assert.match(normal, /夏天必备冰丝凉席/);
+  assert.doesNotMatch(normal, /旧版本/);
+  const writing = readFileSync(new URL("../components/video-studio/auto-writing.tsx", import.meta.url), "utf8");
+  assert.match(writing, /library\.fill\(row\.id, platform \|\| "douyin", crypto\.randomUUID\(\)\)/);
+  assert.match(writing, /legacy=\{legacy \? <>/);
+});

@@ -25,6 +25,9 @@ export function scriptLibraryApi(workspaceId: string) {
     byDocuments: async (ids: string[]) => ids.length ? unwrapApiResponse(await api.GET(`${root}/script-library`, opts({ documents: ids.join(",") }))) as LibraryPage : { items: [], total: 0, limit: 0, offset: 0, missing_ids: [] } as LibraryPage,
     get: async (id: string) => unwrapApiResponse(await api.GET(`${root}/script-library/{entry_id}`, entry(id))) as LibraryEntry,
     update: async (row: LibraryEntry, edit: LibraryEdit) => unwrapApiResponse(await api.PUT(`${root}/script-library/{entry_id}`, { ...entry(row.id), body: { expected_revision: row.revision, publish_title: edit.publish_title.trim(), publish_body: edit.publish_body.trim(), script: edit.script.trim(), platform: row.platform } })) as LibraryEntry,
+    /** 手动存一条（旧版本补写前先入库）；同一个 request_id 重复提交只存一条。 */
+    create: async (body: { request_id: string; script: string; platform: LibraryPlatform | ""; publish_title?: string; publish_body?: string }) =>
+      unwrapApiResponse(await api.POST(`${root}/script-library`, { ...opts(), body: { publish_title: "", publish_body: "", ...body } })) as LibraryEntry,
     remove: async (id: string) => { unwrapApiResponse(await api.DELETE(`${root}/script-library/{entry_id}`, entry(id))); },
     /** 补写标题和正文：one small paid call; a failure is not charged. */
     fill: async (id: string, platform: LibraryPlatform, requestId: string) => unwrapApiResponse(await api.POST(`${root}/script-library/{entry_id}/publish-fill`, { ...entry(id), body: { request_id: requestId, platform } })) as FillStatus,

@@ -275,6 +275,7 @@ jobs:
           tests/test_video_script_library*.py
           tests/test_video_avatar_polish*.py
           tests/test_video_editing_supplement*.py
+          tests/test_video_editing_tasks.py
           tests/test_video_*_postgres.py
 
   backend-gate:

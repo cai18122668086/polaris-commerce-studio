@@ -1092,7 +1092,8 @@ def test_tagged_candidates_must_contain_a_whole_query():
 
     assert relevant(cand("woman, dj, music, headphones"), ["headphones"])
     assert not relevant(cand("animal, cat, soft, pet"), ["headphones", "ear cushion"])
-    assert relevant(cand("cream, tube, oil, hands, lotion"), ["hand cream"])
+    assert relevant(cand("hand cream, tube, skin care"), ["hand cream"])
+    assert not relevant(cand("child, hand, ice cream, cone"), ["hand cream"])
     assert not relevant(cand("ice cream, dessert, waffle"), ["hand cream"])
     assert relevant(cand(None), ["headphones"])  # untagged: provider relevance
 
@@ -1160,3 +1161,22 @@ def test_ai_image_tries_each_failover_key_in_order(video):
         ("failover.example", "k-one"),
         ("failover.example", "k-two"),
     ]
+
+
+def test_opening_sentence_never_gets_supplements():
+    from app.video_editing_supplement_plan import ScriptAnalysis, SentencePlan
+    from app.video_editing_supplement_routes import pick_paintable, pick_stock_sentences
+
+    rows = [
+        SentencePlan(
+            index=i,
+            text="可以画出来的一句口播" * 3,
+            paintable=True,
+            subject="画面",
+            queries=["q"],
+        )
+        for i in range(5)
+    ]
+    analysis = ScriptAnalysis("v", "d", "model", rows)
+    assert 0 not in [r["sentence_index"] for r in pick_paintable(analysis, 6)]
+    assert 0 not in pick_stock_sentences(analysis)

@@ -171,7 +171,8 @@ def pick_paintable(
     for row in analysis.sentences:
         if len(chosen) >= cap:
             break
-        if row.paintable and row.index > last + 1 and row.index not in exclude:
+        # Sentence 0 is the template opening title: materials never show there.
+        if row.paintable and row.index > max(last + 1, 0) and row.index not in exclude:
             chosen.append(
                 {
                     "sentence_index": row.index,
@@ -189,7 +190,9 @@ def pick_stock_sentences(
 ) -> list[int]:
     preferred = {"scene": 0, "selling": 1, "data": 2, "compare": 2, "steps": 3}
     rows = [
-        row for row in analysis.sentences if row.queries and row.index not in exclude
+        row
+        for row in analysis.sentences
+        if row.queries and row.index > 0 and row.index not in exclude
     ]
     rows.sort(key=lambda row: (preferred.get(row.type, 4), row.index))
     chosen: list[int] = []

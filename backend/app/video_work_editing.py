@@ -321,6 +321,31 @@ def _source_body(
     return {"source_id": UUID(source.id)}
 
 
+def _keeps_finished_video(
+    run: VideoWorkEditingRunRecord, item: VideoWorkItemRecord
+) -> bool:
+    """换模板重剪 of an item that already has a finished video: the work item keeps
+    that video (and its stage) until the new cut is ready, so a re-edit that
+    fails or is still running never takes a finished work away from 我的作品."""
+    return bool(
+        (run.options or {}).get("history")
+        and item.editing_task_id
+        and item.stage in {"finishing", "done"}
+    )
+
+
+def _mirror(
+    session: Session,
+    run: VideoWorkEditingRunRecord,
+    item: VideoWorkItemRecord,
+    **values: Any,
+) -> None:
+    """Mirror the run onto the work item, except while a re-edit runs on top of
+    a finished video (see ``_keeps_finished_video``)."""
+    if not _keeps_finished_video(run, item):
+        _write(session, item, **values)
+
+
 def _fail(
     session: Session,
     run: VideoWorkEditingRunRecord,
@@ -333,7 +358,7 @@ def _fail(
     )
     run.phase, run.error_code, run.error = "failed", code, message
     session.commit()
-    _write(session, item, stage="editing", status="failed", error=message)
+    _mirror(session, run, item, stage="editing", status="failed", error=message)
 
 
 def _by_request(
@@ -379,7 +404,7 @@ def _start_transcript(
         row, _ = persist_editing_task(body, settings, workspace, session)
     run.transcript_task_id, run.phase = row.id, "transcribing"
     session.commit()
-    _write(session, item, stage="editing", status="running", error=None)
+    _mirror(session, run, item, stage="editing", status="running", error=None)
 
 
 def _step(
@@ -442,7 +467,9 @@ def _step(
                 else FAILURE_COPY["EDITING_TEMPLATE_GROUPS_INSUFFICIENT"]
             )
             session.commit()
-            _write(session, item, stage="editing", status="failed", error=run.error)
+            _mirror(
+                session, run, item, stage="editing", status="failed", error=run.error
+            )
             return
         request_id = _request_id(run, "generate")
         generated = _by_request(session, EditingPlanningTaskRecord, run, request_id)
@@ -497,7 +524,7 @@ def _step(
             preview_id = linked.id
         run.render_task_id, run.phase = preview_id, "rendering"
         session.commit()
-        _write(session, item, editing_task_id=preview_id)
+        _mirror(session, run, item, editing_task_id=preview_id)
         return
     if run.phase == "rendering":
         task = session.get(EditingTaskRecord, run.render_task_id)
@@ -522,22 +549,23 @@ def _step(
         if task.status == "completed":
             run.phase, run.error, run.error_code = "done", None, None
             session.commit()
-            changes: dict[str, Any] = {}
+            changes: dict[str, Any] = {
+                "stage": "finishing",
+                "status": "pending",
+            }
             if (run.options or {}).get("history"):
-                # A re-edit finished: finishing tells the user the video changed
-                # and the cover can be made again (video_updated_at).
+                # A re-edit finished: the old cut goes to history["editing"] and
+                # finishing tells the user the video changed and the cover can
+                # be made again (video_updated_at). A finished work stays finished.
                 history = {k: list(v) for k, v in (item.history or {}).items()}
+                old = item.editing_task_id
+                if old and old != task.id:
+                    history.setdefault("editing", []).append(old)
                 history["video_updated"] = [utc_now().isoformat()]
                 changes["history"] = history
-            _write(
-                session,
-                item,
-                editing_task_id=task.id,
-                stage="finishing",
-                status="pending",
-                error=None,
-                **changes,
-            )
+                if item.stage == "done":
+                    changes = {**changes, "stage": "done", "status": "succeeded"}
+            _write(session, item, editing_task_id=task.id, error=None, **changes)
 
 
 def _active_count(session: Session, user_id: str) -> int:
@@ -1045,8 +1073,9 @@ def retry_editing(
             run.transcript_task_id = None
     run.error = run.error_code = None
     session.commit()
-    _write(
+    _mirror(
         session,
+        run,
         item,
         stage="editing",
         status="queued" if run.phase == "queued" else "running",
@@ -1145,18 +1174,15 @@ def _redo(
         run.phase, run.error, run.error_code = "queued", None, None
     session.commit()
     for run in chosen:
-        item = items[run.item_id]
-        history = {k: list(v) for k, v in (item.history or {}).items()}
-        if item.editing_task_id:
-            history.setdefault("editing", []).append(item.editing_task_id)
-        _write(
+        # An item with a finished video keeps it until the new cut is ready;
+        # an item that never finished goes back to editing like a retry.
+        _mirror(
             session,
-            item,
+            run,
+            items[run.item_id],
             stage="editing",
             status="queued",
             error=None,
-            editing_task_id=None,
-            history=history,
         )
     dispatch(session, settings, workspace, batch.id)
     return editing_view(session, batch)

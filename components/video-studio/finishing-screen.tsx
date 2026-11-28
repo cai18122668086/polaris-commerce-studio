@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api/api-error";
 import { mediaUrl } from "@/lib/api/base-url";
 import { editingHref, worksHref } from "@/features/video-studio/flow-params";
 import { BODY_LIMIT, COVER_TEXT_LIMIT, COVER_TEXT_SUGGESTED, TITLE_LIMITS, countChars, defaultCoverText, type Platform } from "@/features/video-studio/works";
+import { billableLabel, creditPhrase } from "@/features/video-studio/credit-notes";
 import { coverImageUrl, useCoverActions, useCoverCandidates, useFinishingItems, useScriptPlatforms, useWorkVideo, type CoverCandidate, type WorkItem } from "@/features/video-studio/use-finishing";
 import { GuidedEmpty } from "./page-hero";
 import styles from "./finish-works.module.css";
@@ -99,9 +100,9 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
       <div className={styles.segment} role="radiogroup" aria-label="默认发布平台">
         {(Object.keys(PLATFORM_LABEL) as Platform[]).map(key => <button key={key} type="button" role="radio" aria-checked={platform === key} onClick={() => setPlatform(key)}>{PLATFORM_LABEL[key]}</button>)}
       </div>
-      <span className={styles.toolbarNote}>每条出 2 张：1 张用视频画面（免费），1 张 AI 重绘{coverCredits != null ? `（${coverCredits} 积分，失败不扣）` : "（按实际张数计费，失败不扣）"}</span>
+      <span className={styles.toolbarNote}>每条出 2 张：1 张用视频画面（免费），1 张 AI 重绘（{creditPhrase(coverCredits, { per: "张", failureFree: true })}）</span>
       <button type="button" className={styles.primary} disabled={!pending || bulk || actions.generate.isPending} onClick={() => void generateAll()}>
-        {bulk ? <LoaderCircle className={styles.spin} size={16} /> : <Images size={16} />}一键给全部生成封面{bulkCost != null && pending ? ` · ${bulkCost} 积分` : ""}
+        {bulk ? <LoaderCircle className={styles.spin} size={16} /> : <Images size={16} />}{pending ? billableLabel("一键给全部生成封面", bulkCost) : "一键给全部生成封面"}
       </button>
     </div>
     <ol className={styles.rows}>

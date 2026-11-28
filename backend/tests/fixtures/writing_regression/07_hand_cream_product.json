@@ -1,0 +1,157 @@
+{
+  "schema": "tengli.writing-regression/1",
+  "id": "hand_cream_product",
+  "title": "护手霜单品",
+  "origin": "手写",
+  "request": {
+    "platforms": [
+      "douyin",
+      "xiaohongshu"
+    ],
+    "count": 6,
+    "duration": 30,
+    "forbidden_terms": [],
+    "restricted_claims": [
+      "health_effect"
+    ],
+    "facts": null,
+    "query": "护手霜",
+    "facts_text": "我们自己的牌子「暖手记」护手霜，50g一支。\n主打乳木果油和神经酰胺，涂完不黏手，可以直接碰手机。\n淡淡的白茶味。\n适合秋冬手干、经常洗手的人。",
+    "goal": "product",
+    "speaker": "merchant_self",
+    "legacy_query": "护手霜"
+  },
+  "expect": {
+    "fallback_allowed": false,
+    "audience": "consumer",
+    "speaker": "merchant_self",
+    "goal": "product",
+    "thin_facts": false,
+    "genres": [
+      "单品特写",
+      "选购避坑",
+      "顾客案例"
+    ],
+    "benchmark_speakers": [
+      "merchant",
+      "creator"
+    ],
+    "category_terms": [
+      "护手霜",
+      "手霜",
+      "护手",
+      "手部",
+      "乳木果"
+    ],
+    "must_not": {
+      "benchmark": [
+        {
+          "rule": "peer",
+          "desc": "面向同行的教学、运营、获客、做账号内容",
+          "terms": [
+            "怎么拍",
+            "拍视频",
+            "拍短视频",
+            "获客",
+            "引流",
+            "自媒体",
+            "IP打造",
+            "运营",
+            "线下课",
+            "老板必看",
+            "同行",
+            "招商",
+            "加盟",
+            "起号",
+            "涨粉",
+            "流量密码",
+            "做账号",
+            "选题",
+            "实体店老板",
+            "短视频运营",
+            "私域",
+            "开头思路"
+          ]
+        },
+        {
+          "rule": "game",
+          "desc": "游戏或虚拟内容",
+          "terms": [
+            "洛克王国",
+            "迷你世界",
+            "光遇",
+            "我的世界",
+            "原神",
+            "王者荣耀",
+            "蛋仔",
+            "动森",
+            "摩尔庄园",
+            "游戏"
+          ]
+        },
+        {
+          "rule": "multi_brand_review",
+          "desc": "第三方多品牌横评、品牌盘点（不是一家店/一个产品在介绍自己）",
+          "terms": [
+            "大品牌",
+            "品牌盘点",
+            "几个品牌",
+            "十大",
+            "横评",
+            "品牌推荐",
+            "哪个牌子"
+          ]
+        }
+      ],
+      "draft": [
+        {
+          "rule": "peer_teaching",
+          "desc": "消费者受众却在教人拍视频、做账号、获客",
+          "terms": [
+            "怎么拍",
+            "拍短视频",
+            "获客",
+            "引流",
+            "做账号",
+            "起号",
+            "涨粉",
+            "流量",
+            "评论区打出",
+            "开头思路",
+            "同行",
+            "实体店老板"
+          ]
+        },
+        {
+          "rule": "health_claim",
+          "desc": "疗效、医学功效（用户勾了不写功效）",
+          "terms": [
+            "修复",
+            "治疗",
+            "皲裂好了",
+            "湿疹",
+            "医用",
+            "根治"
+          ]
+        },
+        {
+          "rule": "invented_detail",
+          "desc": "事实里没有的具体经历、服务细节、他人评价",
+          "terms": [
+            "回购",
+            "好评",
+            "卖爆",
+            "销量",
+            "明星同款",
+            "持续24小时"
+          ]
+        }
+      ]
+    },
+    "cta": "下单 / 点链接",
+    "allowed_numbers": [
+      "50g"
+    ]
+  },
+  "notes": "旧流程的主样本（dev 7 次），用来确认新流程在单品种草上不回退；不能写疗效。"
+}

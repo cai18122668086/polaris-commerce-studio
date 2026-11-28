@@ -1,0 +1,152 @@
+{
+  "schema": "tengli.writing-regression/1",
+  "id": "hotpot_visitor",
+  "title": "社区火锅店（请达人探店口吻）",
+  "origin": "手写",
+  "request": {
+    "platforms": [
+      "douyin"
+    ],
+    "count": 3,
+    "duration": 45,
+    "forbidden_terms": [],
+    "restricted_claims": [],
+    "facts": null,
+    "query": "社区火锅",
+    "facts_text": "成都玉林路社区里的「老灶房火锅」，牛油锅底自己炒。\n鲜毛肚、黄喉每天早上进货。\n人均70左右，晚上10点后有夜宵套餐。\n这次想请美食博主来拍一条探店。",
+    "goal": "promo",
+    "speaker": "visitor",
+    "legacy_query": "社区火锅"
+  },
+  "expect": {
+    "fallback_allowed": false,
+    "audience": "consumer",
+    "speaker": "visitor",
+    "goal": "promo",
+    "thin_facts": false,
+    "genres": [
+      "探店体验",
+      "活动促销",
+      "门店介绍"
+    ],
+    "benchmark_speakers": [
+      "creator",
+      "merchant"
+    ],
+    "category_terms": [
+      "火锅",
+      "毛肚",
+      "锅底",
+      "牛油",
+      "串串",
+      "夜宵"
+    ],
+    "must_not": {
+      "benchmark": [
+        {
+          "rule": "peer",
+          "desc": "面向同行的教学、运营、获客、做账号内容",
+          "terms": [
+            "怎么拍",
+            "拍视频",
+            "拍短视频",
+            "获客",
+            "引流",
+            "自媒体",
+            "IP打造",
+            "运营",
+            "线下课",
+            "老板必看",
+            "同行",
+            "招商",
+            "加盟",
+            "起号",
+            "涨粉",
+            "流量密码",
+            "做账号",
+            "选题",
+            "实体店老板",
+            "短视频运营",
+            "私域",
+            "开头思路"
+          ]
+        },
+        {
+          "rule": "game",
+          "desc": "游戏或虚拟内容",
+          "terms": [
+            "洛克王国",
+            "迷你世界",
+            "光遇",
+            "我的世界",
+            "原神",
+            "王者荣耀",
+            "蛋仔",
+            "动森",
+            "摩尔庄园",
+            "游戏"
+          ]
+        },
+        {
+          "rule": "franchise",
+          "desc": "火锅加盟、开店经验",
+          "terms": [
+            "加盟",
+            "开火锅店",
+            "开店",
+            "选址",
+            "赚钱"
+          ]
+        }
+      ],
+      "draft": [
+        {
+          "rule": "peer_teaching",
+          "desc": "消费者受众却在教人拍视频、做账号、获客",
+          "terms": [
+            "怎么拍",
+            "拍短视频",
+            "获客",
+            "引流",
+            "做账号",
+            "起号",
+            "涨粉",
+            "流量",
+            "评论区打出",
+            "开头思路",
+            "同行",
+            "实体店老板"
+          ]
+        },
+        {
+          "rule": "merchant_voice_in_visitor",
+          "desc": "探店口吻却写成老板自述",
+          "terms": [
+            "我们店",
+            "本店",
+            "我家店",
+            "我开的"
+          ]
+        },
+        {
+          "rule": "invented_detail",
+          "desc": "事实里没有的具体经历、服务细节、他人评价",
+          "terms": [
+            "排队两小时",
+            "老板送",
+            "免费续",
+            "必点榜",
+            "第一名",
+            "全成都最"
+          ]
+        }
+      ]
+    },
+    "cta": "来店吃 / 夜宵套餐",
+    "allowed_numbers": [
+      "70",
+      "10点"
+    ]
+  },
+  "notes": "唯一一个 speaker=visitor 的场景：访客口吻在这里是对的，反过来「我们店」这类店主口吻要拦。goal=promo 但事实里没有具体活动价，只能说「夜宵套餐」，不能编折扣。"
+}

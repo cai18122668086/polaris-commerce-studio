@@ -1,0 +1,117 @@
+{
+  "schema": "tengli.writing-regression/1",
+  "id": "furniture_peer_share",
+  "title": "家具店老板做同行分享（反例：受众是同行）",
+  "origin": "手写",
+  "request": {
+    "platforms": [
+      "douyin"
+    ],
+    "count": 3,
+    "duration": 60,
+    "forbidden_terms": [],
+    "restricted_claims": [],
+    "facts": null,
+    "query": "家具店",
+    "facts_text": "我在佛山开家具店12年，现在三家门店。\n去年开始拍短视频，到店客户里大概三成是刷到视频来的。\n想跟同行分享门店拍视频的经验。",
+    "goal": "peer_share",
+    "speaker": "merchant_self",
+    "legacy_query": "家具店"
+  },
+  "expect": {
+    "fallback_allowed": false,
+    "audience": "peer",
+    "speaker": "merchant_self",
+    "goal": "peer_share",
+    "thin_facts": false,
+    "genres": [
+      "同行经验",
+      "老板故事",
+      "问答"
+    ],
+    "benchmark_speakers": [
+      "merchant",
+      "creator"
+    ],
+    "category_terms": [
+      "家具",
+      "门店",
+      "实体店",
+      "短视频",
+      "拍视频",
+      "获客"
+    ],
+    "must_not": {
+      "benchmark": [
+        {
+          "rule": "game",
+          "desc": "游戏或虚拟内容",
+          "terms": [
+            "洛克王国",
+            "迷你世界",
+            "光遇",
+            "我的世界",
+            "原神",
+            "王者荣耀",
+            "蛋仔",
+            "动森",
+            "摩尔庄园",
+            "游戏"
+          ]
+        },
+        {
+          "rule": "consumer_only",
+          "desc": "只面向消费者的产品展示（受众不对）",
+          "terms": [
+            "怎么选",
+            "怎么挑",
+            "避坑",
+            "实拍",
+            "展厅"
+          ]
+        }
+      ],
+      "draft": [
+        {
+          "rule": "visitor_narration",
+          "desc": "店主自述却写成访客口吻",
+          "terms": [
+            "朋友推荐",
+            "朋友都在提",
+            "趁周末去",
+            "去看了看",
+            "去逛了",
+            "逛到一家",
+            "路过",
+            "店员跟我说",
+            "店员还介绍",
+            "销售先招呼",
+            "被种草",
+            "打卡了",
+            "我去了一家"
+          ]
+        },
+        {
+          "rule": "invented_detail",
+          "desc": "事实里没有的具体经历、服务细节、他人评价",
+          "terms": [
+            "百万粉丝",
+            "月入",
+            "翻倍",
+            "爆单",
+            "我的学员",
+            "报名"
+          ]
+        }
+      ]
+    },
+    "expect_peer_benchmarks_min": 2,
+    "cta": "关注 / 评论交流（不能卖课）",
+    "allowed_numbers": [
+      "12年",
+      "三家",
+      "三成"
+    ]
+  },
+  "notes": "反例：验证 goal=peer_share 时同行信号词不被预筛剔除、能选到同行教学类对标（今晚「李大成IP打造」那类在这里是合格的）；同时不能编课程和学员。"
+}

@@ -34,8 +34,11 @@ MIGRATION = (
 
 def _database_url(tmp_path):
     """SQLite by default; a fresh schema on PostgreSQL when
-    POLARIS_TEST_DATABASE_URL points at a local test/CI database (CI PG job)."""
-    raw = os.environ.get("POLARIS_TEST_DATABASE_URL")
+    POLARIS_TEST_ROUTE_DATABASE_URL (or POLARIS_TEST_DATABASE_URL) points at a
+    local test/CI database (CI video-v3-postgres job)."""
+    raw = os.environ.get("POLARIS_TEST_ROUTE_DATABASE_URL") or os.environ.get(
+        "POLARIS_TEST_DATABASE_URL"
+    )
     if not raw:
         yield None
         return

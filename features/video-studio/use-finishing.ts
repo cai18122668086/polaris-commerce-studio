@@ -1,10 +1,10 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
-import type { Platform, WorkItemLike } from "./works";
+import type { Platform, WorkItemLike, WorkSummary } from "./works";
 
 export type CoverCandidate = components["schemas"]["CoverCandidateResponse"];
 export type WorkItem = components["schemas"]["WorkItemResponse"] & WorkItemLike;
@@ -38,7 +38,7 @@ export function useFinishingItems(workspaceId: string, scope: { batch?: string |
       })) as WorkItem[];
     },
     // 还有在口播/剪辑中的（不含已失败）就每 15 秒刷新，剪完的自动出现在成片页。
-    refetchInterval: query => (query.state.data ?? []).some(item => (item.stage === "talking" || item.stage === "editing") && item.status !== "failed") ? 15000 : false,
+    refetchInterval: query => (query.state.data ?? []).some(item => (item.stage === "talking" || item.stage === "editing") && ["pending", "queued", "running"].includes(item.status)) ? 15000 : false,
   });
 }
 
@@ -59,15 +59,86 @@ export function useScriptPlatforms(workspaceId: string, documentIds: string[]) {
   });
 }
 
-export function useAllWorkItems(workspaceId: string) {
+export const WORK_PAGE = 50;
+
+/** B2：我的作品——作品条目按游标翻页（after=上一页最后一条 id，不足一页即到底），不再固定只取 200 条。 */
+export function useWorkItemPages(workspaceId: string, active: boolean) {
+  return useInfiniteQuery({
+    queryKey: finishingKeys.items(workspaceId, "pages"),
+    initialPageParam: undefined as string | undefined,
+    staleTime: 5000,
+    queryFn: async ({ pageParam, signal }) => unwrapApiResponse(await apiClient.GET(`${root}/work-items`, {
+      params: { path: { workspace_id: workspaceId }, query: { limit: WORK_PAGE, ...(pageParam ? { after: pageParam } : {}) } }, signal: timeout(signal),
+    })) as WorkItem[],
+    getNextPageParam: page => page.length < WORK_PAGE ? undefined : page.at(-1)?.id,
+    refetchInterval: active ? 20000 : false,
+  });
+}
+
+/** B1：顶部计数（不含已删除），与 group 同一口径。 */
+export function useWorkSummary(workspaceId: string) {
   return useQuery({
-    queryKey: finishingKeys.items(workspaceId, "all"),
+    queryKey: finishingKeys.items(workspaceId, "summary"),
+    staleTime: 5000,
+    queryFn: async ({ signal }) => unwrapApiResponse(await apiClient.GET(`${root}/work-items/summary`, {
+      params: { path: { workspace_id: workspaceId } }, signal: timeout(signal),
+    })) as WorkSummary,
+    refetchInterval: query => (query.state.data?.active ?? 0) > 0 ? 20000 : false,
+  });
+}
+
+/** 一批的全部条目（按批内顺序），给「导出这一批」用。 */
+export function useBatchItems(workspaceId: string, batchId: string | null) {
+  return useQuery({
+    queryKey: finishingKeys.items(workspaceId, `export:${batchId}`),
+    enabled: Boolean(batchId),
     staleTime: 5000,
     queryFn: async ({ signal }) => unwrapApiResponse(await apiClient.GET(`${root}/work-items`, {
-      params: { path: { workspace_id: workspaceId }, query: { limit: 200 } }, signal: timeout(signal),
+      params: { path: { workspace_id: workspaceId }, query: { batch_id: batchId!, limit: 50 } }, signal: timeout(signal),
     })) as WorkItem[],
-    refetchInterval: query => (query.state.data ?? []).some(item => (item.stage === "talking" || item.stage === "editing") && item.status !== "failed") ? 20000 : false,
   });
+}
+
+/** 删除（软删除，文件保留）、重试、已发布标记。成功后刷新作品列表与计数。 */
+export function useWorkItemActions(workspaceId: string) {
+  const client = useQueryClient();
+  const settle = () => client.invalidateQueries({ queryKey: ["video-studio", "work-items", workspaceId] });
+  const remove = useMutation({
+    mutationFn: async (itemId: string) => unwrapApiResponse(await apiClient.DELETE(`${root}/work-items/{item_id}`, {
+      params: { path: { workspace_id: workspaceId, item_id: itemId } }, signal: timeout(),
+    })) as WorkItem,
+    // 网络慢时请求可能已到服务端但响应超时：无论成败都重新读一次，界面以服务端为准。
+    onSettled: settle,
+  });
+  const retry = useMutation({
+    mutationFn: async (input: { itemId: string; stage: "talking" | "editing" }) => {
+      const path = { workspace_id: workspaceId, item_id: input.itemId };
+      if (input.stage === "talking") return unwrapApiResponse(await apiClient.POST(`${root}/work-items/{item_id}/talking-retry`, { params: { path }, signal: timeout() }));
+      return unwrapApiResponse(await apiClient.POST(`${root}/work-items/{item_id}/editing-retry`, { params: { path }, signal: timeout() }));
+    },
+    onSettled: settle,
+  });
+  const publish = useMutation({
+    mutationFn: async (input: { itemId: string; version: number; published: boolean }) => unwrapApiResponse(await apiClient.PATCH(`${root}/work-items/{item_id}`, {
+      params: { path: { workspace_id: workspaceId, item_id: input.itemId } }, body: { expected_version: input.version, published: input.published }, signal: timeout(),
+    })) as WorkItem,
+    onSettled: settle,
+  });
+  return { remove, retry, publish };
+}
+
+/** 作品条目能播的视频地址（剪辑成片优先，其次口播结果）；给批量下载用。 */
+export async function resolveWorkVideo(workspaceId: string, item: Pick<WorkItemLike, "editing_task_id" | "generation_task_id" | "source_video_ref">): Promise<string | null> {
+  const editing = item.editing_task_id ?? null;
+  const talking = item.generation_task_id ?? (item.source_video_ref?.kind === "talking" ? item.source_video_ref.id : null);
+  if (editing) {
+    const task = unwrapApiResponse(await apiClient.GET(`${root}/editing-tasks/{task_id}`, {
+      params: { path: { workspace_id: workspaceId, task_id: editing } }, signal: timeout(),
+    })) as { artifacts?: { role: string; url: string }[] };
+    const final = task.artifacts?.find(artifact => artifact.role === "final");
+    if (final) return final.url;
+  }
+  return talking ? `/api/v1/video-studio/workspaces/${workspaceId}/generation-tasks/${talking}/video` : null;
 }
 
 /** 一条作品的封面候选，新的在前；有生成中的就每 3 秒刷新。 */

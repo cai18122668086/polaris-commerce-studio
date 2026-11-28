@@ -44,7 +44,7 @@ export function VoiceBrowser({ voices, selectedId, playingId, onSelect, onPrevie
   </div>;
 }
 
-export function VoicePicker({ voices, selectedId, playingId, onSelect, onPreview, onApply, onClose, onClone, cloneLabel = "克隆我的声音" }: Omit<VoiceBrowserProps, "inDialog"> & { onApply: () => void; onClose: () => void; onClone: () => void; cloneLabel?: string }) {
+export function VoicePicker({ voices, selectedId, playingId, onSelect, onPreview, onApply, onClose, onClone, cloneLabel = "克隆我的声音", cloneDisabledHint }: Omit<VoiceBrowserProps, "inDialog"> & { onApply: () => void; onClose: () => void; onClone: () => void; cloneLabel?: string; /** 声音克隆没开通时的说明：按钮置灰，点了不发请求。 */ cloneDisabledHint?: string }) {
   const [tab, setTab] = useState(voices.find(voice => voice.id === selectedId)?.source === "own" ? "own" : "public");
   const selected = voices.find(voice => voice.id === selectedId);
   const visible = voices.filter(voice => tab === "own" ? voice.source === "own" : voice.source !== "own");
@@ -52,7 +52,7 @@ export function VoicePicker({ voices, selectedId, playingId, onSelect, onPreview
   const changeTab = (value: string) => { const playing = voices.find(voice => voice.id === playingId); if (playing) onPreview(playing); setTab(value); };
   return <Dialog title="选择声音" className={styles.voiceDialog} onClose={onClose}>
     <PickerTabs label="声音来源" value={tab} onChange={changeTab} items={[{ id: "own", label: "我的声音", icon: <UserRound size={15} /> }, { id: "public", label: "系统声音", icon: <Library size={15} /> }]} />
-    {visible.length ? <VoiceBrowser voices={visible} selectedId={selectedId} playingId={playingId} onSelect={onSelect} onPreview={onPreview} inDialog /> : <Empty icon={<Mic size={29} />} title="暂无专属声音" description="上传本人的清晰录音，创建专属声音。" action={<button type="button" className={styles.outlineButton} onClick={onClone}>{cloneLabel}</button>} />}
+    {visible.length ? <VoiceBrowser voices={visible} selectedId={selectedId} playingId={playingId} onSelect={onSelect} onPreview={onPreview} inDialog /> : <Empty icon={<Mic size={29} />} title="暂无专属声音" description={cloneDisabledHint ?? "上传本人的清晰录音，创建专属声音。"} action={<button type="button" className={styles.outlineButton} aria-disabled={!!cloneDisabledHint} disabled={!!cloneDisabledHint} title={cloneDisabledHint} onClick={() => { if (!cloneDisabledHint) onClone(); }}>{cloneLabel}</button>} />}
     <PickerFooter selected={selectedInTab ? selected.name : undefined} hint={selectedInTab ? selected.language || selected.tag : undefined} disabled={!selected || selected.available === false || !selectedInTab} applyLabel="应用声音" onApply={onApply} onClose={onClose} />
   </Dialog>;
 }

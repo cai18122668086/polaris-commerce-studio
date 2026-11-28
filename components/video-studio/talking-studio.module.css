@@ -189,3 +189,17 @@
   .resultsActions > button { flex: 1; }
   .ctaNote { text-align: left; }
 }
+
+/* A4：带新文案进来时，上一批只占顶部一行 */
+.page .previousLine { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 12px 18px; border: 1px solid var(--t-line); border-radius: 12px; background: var(--t-card); color: var(--t-text); font-size: 13px; }
+.page .previousLine span { min-width: 0; }
+
+/* B15：未开通的克隆按钮 */
+.page .quietButton[data-unavailable] { color: var(--t-muted); opacity: .55; cursor: not-allowed; }
+.page .quietButton[data-unavailable]:hover { background: transparent; color: var(--t-muted); }
+
+/* C10：固定形象轮流分配 */
+.page .rotationLine { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 12px; color: var(--t-text); font-size: 13px; }
+.libraryRow.rotationRow { grid-template-columns: 16px 16px 36px minmax(0, 1fr); align-items: center; }
+.libraryRow.rotationRow input, .libraryRow.rotationRow .libraryOrder { margin-top: 0; }
+.rotationCover { width: 36px; height: 48px; flex: none; border-radius: 6px; object-fit: cover; background: var(--t-soft); }

@@ -386,8 +386,9 @@ def create_persona(
         name=name,
         avatar_id=body.avatar_id,
         voice_id=body.voice_id,
-        avatar_name=avatar["name"],
-        voice_name=voice.get("name") or "声音",
+        avatar_name=avatar["name"][:120],
+        # 快照列是 String(120)；上游/映射后的名字超长时截断，PostgreSQL 不会直接报错
+        voice_name=(voice.get("name") or "声音")[:120],
         voice_settings=settings,
     )
     session.add(row)
@@ -420,10 +421,13 @@ def update_persona(
         row.name = name
     if body.avatar_id is not None and body.avatar_id != row.avatar_id:
         avatar = resolve_avatar(session, workspace, body.avatar_id)
-        row.avatar_id, row.avatar_name = body.avatar_id, avatar["name"]
+        row.avatar_id, row.avatar_name = body.avatar_id, avatar["name"][:120]
     if body.voice_id is not None and body.voice_id != row.voice_id:
         voice = resolve_voice(request, session, workspace, body.voice_id)
-        row.voice_id, row.voice_name = body.voice_id, voice.get("name") or "声音"
+        row.voice_id, row.voice_name = (
+            body.voice_id,
+            (voice.get("name") or "声音")[:120],
+        )
         row.voice_settings = {}
     if body.emotion is not None or body.language is not None:
         merged = {**(row.voice_settings or {})}

@@ -17,6 +17,7 @@ from app.video_voice_catalog import (
     CATALOG,
     VOICES,
     official_voices,
+    preview_path,
     referenced_voice_ids,
     select_tao_voice,
     voice_key,
@@ -279,3 +280,42 @@ def test_referenced_voice_ids_on_postgres(postgres_factory):
             voice_key("cartoon_pig"),
         }
         assert voice_key("cartoon_pig") in VOICES
+
+
+def test_voices_list_stays_small_even_with_every_preview_cached(video_gen):
+    """正式站曾因列表 44 万字节在慢网下超时（首页 0 个音色）；目标 ≤60KB。"""
+
+    client, _, _, root, _, _ = video_gen
+    settings = client.app.state.settings
+    for key in VOICES:
+        path = preview_path(settings, key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+    response = client.get(root + "/voices")
+    official = [v for v in response.json() if v["id"] in VOICES]
+    assert len(official) == 204 and all(v["preview"] for v in official)
+    assert not any("emotions" in v or "languages" in v for v in official)
+    assert len(response.content) <= 60_000, len(response.content)
+    options = client.get(root + "/voice-options").json()
+    assert options["emotions"][0] == "自然" and options["languages"]["auto"]
+
+
+def test_overlong_upstream_voice_name_is_cut_to_the_snapshot_column(video_gen):
+    """voice_name 是 String(120)：上游音色名超长时截断，PostgreSQL 上不报错。"""
+
+    client, _, provider, root, _, _ = video_gen
+    long_name = "超长的上游声音名称" * 30
+    provider.voices = lambda: [{"id": 7, "name": long_name}]
+    created = client.post(
+        root + "/personas",
+        json={
+            "request_id": str(uuid4()),
+            "name": "长名字",
+            "avatar_id": "qy-model-11",
+            "voice_id": "qy-voice-7",
+        },
+    )
+    assert created.status_code == 200, created.text
+    with client.app.state.session_factory() as session:
+        row = session.get(VideoPersonaRecord, created.json()["id"])
+        assert len(row.voice_name) == 120 and long_name.startswith(row.voice_name)

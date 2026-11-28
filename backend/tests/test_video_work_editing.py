@@ -548,12 +548,13 @@ def test_redo_one_item_with_another_template_keeps_the_old_cut(
         old["final_url"].rsplit("/", 1)[1]
     )
     item = response.json()["batch"]["items"][0]
-    assert item["stage"] == "editing" and item["status"] in {"queued", "running"}
-    assert item["editing_task_id"] is None
-    assert item["history"]["editing"] == [old["render_task_id"]]
-    assert item["video_updated_at"] is None
+    # The work keeps its finished video (and stage) until the new cut is ready.
+    assert item["stage"] == "finishing" and item["status"] == "pending"
+    assert item["editing_task_id"] == old["render_task_id"]
+    assert "editing" not in item["history"] and item["video_updated_at"] is None
     view = drive_to_render(client, ws, batch, factory, settings, semantic)
     assert view["editing"][0]["render_task_id"] != old["render_task_id"]
+    assert view["batch"]["items"][0]["editing_task_id"] == old["render_task_id"]
     finish_renders(factory)
     poll(client, ws, batch)
     add_finals(factory)
@@ -565,6 +566,7 @@ def test_redo_one_item_with_another_template_keeps_the_old_cut(
         item["stage"] == "finishing"
         and item["editing_task_id"] == row["render_task_id"]
     )
+    assert item["history"]["editing"] == [old["render_task_id"]]
     # Finishing reads these two to say 「视频已更新，可重新生成封面」.
     assert item["editing_attempt"] == 2 and item["video_updated_at"]
     assert generates(factory) == paid + 1  # one new paid planning, no more
@@ -669,3 +671,49 @@ def test_estimate_follows_the_source_length(monkeypatch):
     short, long = editing.item_minutes(13_000), editing.item_minutes(180_000)
     assert round(short, 1) == 4.5 and round(long, 1) == 36.5
     assert long > 7 * short / 1.0 - 1
+
+
+def test_a_failed_redo_keeps_the_finished_work_and_its_video(
+    video, tmp_path, monkeypatch
+):
+    """重剪失败（或还在剪）时，已完成的作品不能从「我的作品」里丢掉。"""
+    client, ws, settings, factory, semantic, batch = finished_batch(
+        video, tmp_path, monkeypatch
+    )
+    old = poll(client, ws, batch)["editing"][0]
+    item_id = old["item_id"]
+    with factory() as session:
+        item = session.get(VideoWorkItemRecord, item_id)
+        item.stage, item.status = "done", "succeeded"  # covered and finished
+        session.commit()
+    redo(client, ws, f"/work-items/{item_id}/editing-redo")
+    poll(client, ws, batch)
+    run_planning(factory, settings, semantic, "prepare")
+    poll(client, ws, batch)
+    with factory() as session:
+        run = session.get(VideoWorkEditingRunRecord, item_id)
+        generated = session.get(EditingPlanningTaskRecord, run.generate_task_id)
+        generated.status, generated.error_code = (
+            "failed",
+            "EDITING_PLAN_CONTRACT_INVALID",
+        )
+        session.commit()
+    view = poll(client, ws, batch)
+    row, item = view["editing"][0], view["batch"]["items"][0]
+    assert row["phase"] == "failed" and row["can_retry"] and row["attempt"] == 2
+    assert (item["stage"], item["status"], item["error"]) == ("done", "succeeded", None)
+    assert item["editing_task_id"] == old["render_task_id"]
+    # Retrying the re-edit still leaves the finished work alone.
+    client.post(base(ws) + f"/work-items/{item_id}/editing-retry")
+    item = poll(client, ws, batch)["batch"]["items"][0]
+    assert (item["stage"], item["editing_task_id"]) == ("done", old["render_task_id"])
+    # When the new cut is ready the work switches to it and stays finished.
+    drive_to_render(client, ws, batch, factory, settings, semantic)
+    finish_renders(factory)
+    view = poll(client, ws, batch)
+    row, item = view["editing"][0], view["batch"]["items"][0]
+    assert row["phase"] == "done"
+    assert (item["stage"], item["status"]) == ("done", "succeeded")
+    assert item["editing_task_id"] == row["render_task_id"] != old["render_task_id"]
+    assert item["history"]["editing"] == [old["render_task_id"]]
+    assert item["editing_attempt"] == 2 and item["video_updated_at"]

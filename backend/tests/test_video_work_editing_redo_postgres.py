@@ -30,6 +30,7 @@ from tests.test_video_work_editing import (  # noqa: F401  (collected again on P
     finished_batch,
     poll,
     test_batch_queues_beyond_two_and_finishes_every_item,
+    test_a_failed_redo_keeps_the_finished_work_and_its_video,
     test_batch_redo_takes_every_finished_item_and_checks_credits_once,
     test_redo_is_refused_whole_when_credits_cannot_cover_it,
     test_redo_needs_an_edited_item_of_the_owner,

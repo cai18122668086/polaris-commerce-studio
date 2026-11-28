@@ -83,6 +83,31 @@ def _route_database_url(tmp_path) -> Iterator[str]:
         admin.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _route_engines_on_postgres(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With POLARIS_TEST_ROUTE_DATABASE_URL set, every app engine a test builds
+    from a SQLite URL (e.g. the external-auth ``video`` fixture's own
+    Settings) uses this test's PostgreSQL schema instead."""
+
+    if not os.environ.get(ROUTE_POSTGRES_ENV):
+        return
+    from app import database
+    from app import main as app_main
+
+    scoped: str = request.getfixturevalue("_route_database_url")
+    real = database.build_database
+
+    def build(database_url: str, **options: object):  # type: ignore[no-untyped-def]
+        if database_url.startswith("sqlite"):
+            database_url = scoped
+        return real(database_url, **options)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(database, "build_database", build)
+    monkeypatch.setattr(app_main, "build_database", build)
+
+
 @pytest.fixture
 def settings(tmp_path, _route_database_url) -> Settings:
     return Settings(

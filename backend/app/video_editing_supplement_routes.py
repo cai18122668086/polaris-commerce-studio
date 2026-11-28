@@ -18,6 +18,7 @@ import shutil
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
+from datetime import UTC
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
@@ -28,9 +29,11 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, require_workspace_write
 from .config import Settings
 from .errors import ApiError
+from .models import utc_now
 from .video_editing_material_routes import response as material_response
 from .video_editing_material_routes import scope as material_scope
 from .video_editing_materials import material_file
@@ -520,6 +523,34 @@ def _new_request(
     return row
 
 
+def expire_stale_images(
+    session: Session, rows: list[EditingImageRequestRecord]
+) -> None:
+    """C5: an AI image whose background run died (API restart) fails after
+    15 minutes and its hold is released, even when nothing was held (price
+    unset) and the billing sweep never looks at it."""
+    from .video_editing_supplement_images import STALE_AFTER
+
+    now = utc_now()
+    expired = []
+    for row in rows:
+        updated = row.updated_at
+        if updated is not None and updated.tzinfo is None:
+            updated = updated.replace(tzinfo=UTC)
+        if (
+            row.status in {"queued", "running"}
+            and updated is not None
+            and now - updated > STALE_AFTER
+        ):
+            row.status, row.error_code = "failed", "AI_IMAGE_TIMEOUT"
+            expired.append(row)
+    if expired:
+        session.commit()
+        for row in expired:
+            video_credits.reconcile_owner(session, "video_editing_image", row.id)
+        session.commit()
+
+
 @router.post("/ai-images", status_code=201)
 async def ai_images(
     request: Request,
@@ -552,6 +583,20 @@ async def ai_images(
         raise ApiError(
             409, "EDITING_MATERIAL_REQUEST_REUSED", "素材请求编号已用于其他输入。"
         )
+    expire_stale_images(
+        session,
+        list(
+            session.scalars(
+                select(EditingImageRequestRecord).where(
+                    EditingImageRequestRecord.project_id == project,
+                    EditingImageRequestRecord.owner_user_id
+                    == workspace.principal.user_id,
+                    EditingImageRequestRecord.work_item_ref == body.work_item_ref,
+                    EditingImageRequestRecord.status.in_(("queued", "running")),
+                )
+            ).all()
+        ),
+    )
     active = session.scalars(
         select(EditingImageRequestRecord.sentence_index).where(
             EditingImageRequestRecord.project_id == project,
@@ -595,6 +640,7 @@ def ai_image_status(
             EditingImageRequestRecord.id.in_(ids),
         )
     ).all()
+    expire_stale_images(session, list(rows))
     materials = {
         row.id: material_response(row)
         for row in session.scalars(

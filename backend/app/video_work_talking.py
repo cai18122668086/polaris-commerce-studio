@@ -17,7 +17,7 @@ from typing import Any, cast
 from uuid import UUID, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
-from sqlalchemy import func, or_, select, text, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -33,10 +33,13 @@ from .domain import MembershipRole, MembershipStatus
 from .errors import ApiError
 from .models import WorkspaceCreditAccountRecord, WorkspaceMemberRecord, utc_now
 from .services import credit_enforcement_enabled
+from .video_dispatch_lock import DispatchLock
 from .video_generation import (
     ACTIVE_VIDEO_STATUSES,
     GenerationRequest,
     create_generation,
+    job_response,
+    own_job,
     process_generation,
     providers,
 )
@@ -74,6 +77,10 @@ ERROR_COPY = {
     "VIDEO_VOICE_INVALID": "所选音色暂不可用，换一个音色再试。",
     "VIDEO_TTS_NOT_CONFIGURED": "所选音色暂不可用，换一个音色再试。",
     "VIDEO_AUDIO_NOT_FOUND": "音频读取失败，请重新上传。",
+    "VIDEO_PROVIDER_OUTCOME_EXPIRED": (
+        "这条的提交结果超过 24 小时仍无法确认，已按失败处理，冻结的积分已退回；"
+        "如需核对请联系客服。"
+    ),
 }
 DEFAULT_ERROR = "这条没有生成成功，未扣积分，可以单独重试。"
 ProviderFactory = Callable[[], VideoProviders]
@@ -261,7 +268,7 @@ def dispatch(
     provider: ProviderFactory,
 ) -> list[str]:
     """Start waiting items while the user has free slots; returns new task ids."""
-    lock = _DispatchLock(session, workspace.principal.user_id)
+    lock = DispatchLock(session, "talking", workspace.principal.user_id)
     if not lock.acquire():
         return []  # Another request is dispatching this user's items right now.
     try:
@@ -324,39 +331,6 @@ def dispatch(
         return started
     finally:
         lock.release()
-
-
-class _DispatchLock:
-    """Per-user session lock on its own connection (create_generation commits)."""
-
-    def __init__(self, session: Session, user_id: str) -> None:
-        self.bind = session.get_bind()
-        self.key = f"polaris:video-talking-dispatch:{user_id}"
-        self.connection: Any = None
-
-    def acquire(self) -> bool:
-        if self.bind.dialect.name != "postgresql":
-            return True
-        self.connection = self.bind.connect()  # type: ignore[union-attr]
-        got = self.connection.execute(
-            text("SELECT pg_try_advisory_lock(hashtext(:key))"), {"key": self.key}
-        ).scalar()
-        if not got:
-            self.connection.close()
-            self.connection = None
-        return bool(got)
-
-    def release(self) -> None:
-        if self.connection is None:
-            return
-        try:
-            self.connection.execute(
-                text("SELECT pg_advisory_unlock(hashtext(:key))"), {"key": self.key}
-            )
-            self.connection.commit()
-        finally:
-            self.connection.close()
-            self.connection = None
 
 
 def _own_batch(
@@ -625,14 +599,18 @@ def sweep_once(
        The run lease guarantees a task is never processed twice.
     Returns the task ids it started.
     """
+    expire_unconfirmed(factory)
     with factory() as session:
+        # C8: most recently updated first (GROUP BY, not DISTINCT: PostgreSQL
+        # requires ORDER BY expressions of a DISTINCT query in its select list).
         batch_ids = session.scalars(
             select(VideoWorkItemRecord.batch_id)
             .where(
                 VideoWorkItemRecord.stage == "talking",
                 VideoWorkItemRecord.status.in_(["queued", "running"]),
             )
-            .distinct()
+            .group_by(VideoWorkItemRecord.batch_id)
+            .order_by(func.max(VideoWorkItemRecord.updated_at).desc())
             .limit(50)
         ).all()
     started: list[str] = []
@@ -643,17 +621,15 @@ def sweep_once(
             logger.exception("talking sweep deferred batch %s", batch_id)
     cutoff = utc_now() - timedelta(seconds=ORPHAN_AFTER_SECONDS)
     with factory() as session:
+        # B7: every generation task (avatar motions, single talking videos),
+        # not only batch items; the run lease still starts each one once.
         orphans = session.scalars(
             select(VideoGenerationRecord.id)
-            .join(
-                VideoWorkItemRecord,
-                VideoWorkItemRecord.generation_task_id == VideoGenerationRecord.id,
-            )
             .where(
-                VideoWorkItemRecord.stage == "talking",
                 VideoGenerationRecord.status == "queued",
                 VideoGenerationRecord.created_at <= cutoff,
             )
+            .order_by(VideoGenerationRecord.created_at, VideoGenerationRecord.id)
             .limit(20)
         ).all()
     leased: list[tuple[str, VideoRunLease]] = []
@@ -680,10 +656,62 @@ def sweep_once(
 
 
 STALE_RUNNING_SECONDS = 180
+# C8: 结果待确认 (unknown) longer than this is settled as failed and its hold
+# released, so it neither spins forever nor stays in every sweep.
+UNCONFIRMED_EXPIRE_SECONDS = 24 * 3600
+UNCONFIRMED_EXPIRED = "VIDEO_PROVIDER_OUTCOME_EXPIRED"
 CHECK_NOTICE = (
     "这条的提交结果还在确认：不会重新生成，也不会重复扣积分。"
     "系统会继续核对，长时间没有结果请联系客服。"
 )
+
+
+def expire_unconfirmed(factory: sessionmaker[Session]) -> list[str]:
+    """Fail generation tasks whose outcome stayed unknown for 24 hours.
+
+    Any task (batch or not). The hold is released through the normal
+    reconciliation; batch items are synced so the page shows the reason.
+    """
+    cutoff = utc_now() - timedelta(seconds=UNCONFIRMED_EXPIRE_SECONDS)
+    with factory() as session:
+        ids = session.scalars(
+            select(VideoGenerationRecord.id)
+            .where(
+                VideoGenerationRecord.status == "unknown",
+                VideoGenerationRecord.updated_at <= cutoff,
+            )
+            .order_by(VideoGenerationRecord.updated_at, VideoGenerationRecord.id)
+            .limit(50)
+        ).all()
+        expired: list[str] = []
+        for job_id in ids:
+            changed = session.execute(
+                update(VideoGenerationRecord)
+                .where(
+                    VideoGenerationRecord.id == job_id,
+                    VideoGenerationRecord.status == "unknown",
+                )
+                .values(status="failed", error_code=UNCONFIRMED_EXPIRED)
+                .execution_options(synchronize_session=False)
+            )
+            if cast(CursorResult, changed).rowcount == 1:
+                expired.append(job_id)
+        session.commit()
+        if not expired:
+            return []
+        for job_id in expired:
+            video_credits.reconcile_owner(session, "video_generation", job_id)
+        session.commit()
+        sync_items(
+            session,
+            session.scalars(
+                select(VideoWorkItemRecord).where(
+                    VideoWorkItemRecord.generation_task_id.in_(expired)
+                )
+            ).all(),
+        )
+    logger.warning("video tasks unconfirmed for 24h marked failed: %s", expired)
+    return expired
 
 
 def _take_over(
@@ -755,50 +783,46 @@ def _take_over(
 def recover_stale_running(
     factory: sessionmaker[Session], settings: Settings
 ) -> list[tuple[str, VideoRunLease]]:
-    """Batch tasks still ``running`` 3+ minutes after their last heartbeat, and
-    ``awaiting_resume`` ones whose retry time has come.
+    """Generation tasks still ``running`` 3+ minutes after their last
+    heartbeat, and ``awaiting_resume`` ones whose retry time has come.
 
     The general recovery scanner is off in production, so a deploy restart
-    would otherwise leave these items spinning forever.
+    would otherwise leave these spinning forever. Since B7 this covers every
+    generation task (avatar motions, single talking videos), not only batch
+    items: the rules stay the same (query only, never re-submit; see
+    ``_take_over``), oldest first so a long backlog is not starved.
     """
     cutoff = utc_now() - timedelta(seconds=STALE_RUNNING_SECONDS)
     with factory() as session:
-        ids = session.scalars(
-            select(VideoGenerationRecord.id)
-            .join(
-                VideoWorkItemRecord,
-                VideoWorkItemRecord.generation_task_id == VideoGenerationRecord.id,
-            )
-            .where(
-                VideoWorkItemRecord.stage == "talking",
-                VideoGenerationRecord.status == "running",
-                VideoGenerationRecord.updated_at <= cutoff,
-            )
-            .limit(20)
-        ).all()
-        ids = list(ids)
+        ids = list(
+            session.scalars(
+                select(VideoGenerationRecord.id)
+                .where(
+                    VideoGenerationRecord.status == "running",
+                    VideoGenerationRecord.updated_at <= cutoff,
+                )
+                .order_by(VideoGenerationRecord.updated_at, VideoGenerationRecord.id)
+                .limit(20)
+            ).all()
+        )
     # Long provider waits park as awaiting_resume with a durable backoff; the
     # general scanner (off in production) would query again when it is due.
     now = utc_now()
     with factory() as session:
         ids += session.scalars(
             select(VideoGenerationRecord.id)
-            .join(
-                VideoWorkItemRecord,
-                VideoWorkItemRecord.generation_task_id == VideoGenerationRecord.id,
-            )
             .outerjoin(
                 VideoGenerationRunRecord,
                 VideoGenerationRunRecord.job_id == VideoGenerationRecord.id,
             )
             .where(
-                VideoWorkItemRecord.stage == "talking",
                 VideoGenerationRecord.status == "awaiting_resume",
                 or_(
                     VideoGenerationRunRecord.retry_at.is_(None),
                     VideoGenerationRunRecord.retry_at <= now,
                 ),
             )
+            .order_by(VideoGenerationRecord.updated_at, VideoGenerationRecord.id)
             .limit(20)
         ).all()
     taken: list[tuple[str, VideoRunLease]] = []
@@ -861,6 +885,46 @@ def check_talking(
     view = talking_view(session, batch)
     view.notice = notice
     return view
+
+
+@router.post("/generation-tasks/{job_id}/check")
+def check_generation(
+    job_id: UUID,
+    request: Request,
+    background: BackgroundTasks,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> dict[str, Any]:
+    """查询结果 for any generation task (e.g. an avatar motion in the library).
+
+    Same rules as ``talking-check``: a task whose run was lost continues and
+    only queries the provider; an unknown outcome without a provider id stays
+    结果待确认 with ``notice``. Never re-submits, never charges again.
+    """
+    require_workspace_write(workspace)
+    job = own_job(session, workspace, job_id)
+    notice = None
+    if job.status in {"unknown", "running", "awaiting_resume"}:
+        settings = request.app.state.settings
+        session.commit()
+        taken = _take_over(
+            request.app.state.session_factory, settings, job.id, stale_only=True
+        )
+        if taken:
+            taken_id, lease = taken
+            background.add_task(
+                process_generation,
+                request.app.state.session_factory,
+                settings,
+                taken_id,
+                providers(request),
+                lease=lease,
+            )
+        session.expire_all()
+        job = own_job(session, workspace, job_id)
+        if job.status == "unknown":
+            notice = CHECK_NOTICE
+    return {**job_response(job), "notice": notice}
 
 
 class TalkingSweeper:

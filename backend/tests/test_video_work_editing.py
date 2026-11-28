@@ -375,7 +375,15 @@ def test_a_talking_result_is_never_edited_as_a_copy(video, tmp_path, monkeypatch
         session.commit()
         session.refresh(item)
         session.expunge(item)
-    copy = client.post(
+    owners = client.get(
+        base(ws) + "/editing-source-owners", params={"generation_ids": job_id}
+    ).json()
+    assert owners == [
+        {"generation_task_id": job_id, "batch_id": talking["id"], "item_id": item.id}
+    ]
+    # B9: refused when the copy batch is created (not only at submit), so no
+    # empty direct-editing batch is left behind.
+    refused = client.post(
         base(ws) + "/work-batches",
         json={
             "request_id": str(uuid4()),
@@ -387,14 +395,7 @@ def test_a_talking_result_is_never_edited_as_a_copy(video, tmp_path, monkeypatch
                 }
             ],
         },
-    ).json()
-    owners = client.get(
-        base(ws) + "/editing-source-owners", params={"generation_ids": job_id}
-    ).json()
-    assert owners == [
-        {"generation_task_id": job_id, "batch_id": talking["id"], "item_id": item.id}
-    ]
-    refused = submit(client, ws, copy)
+    )
     assert refused.status_code == 409
     error = refused.json()["error"]
     assert error["code"] == "VIDEO_WORK_SOURCE_HAS_ITEM"

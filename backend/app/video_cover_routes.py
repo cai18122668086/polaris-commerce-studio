@@ -52,7 +52,12 @@ from .video_generation_models import VideoGenerationRecord
 from .video_studio_routes import VideoWorkspace
 from .video_studio_schemas import StrictVideoModel
 from .video_work_models import VideoWorkItemRecord
-from .video_work_routes import WorkItemPatch, WorkItemResponse, patch_item
+from .video_work_routes import (
+    ACTIVE_STATUSES,
+    WorkItemResponse,
+    WorkItemUpdate,
+    update_item,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -918,6 +923,7 @@ def finish_item(
 
     require_workspace_write(workspace)
     item = _own_item(session, workspace, item_id)
+    require_playable(session, item)
     cover = _own_candidate(session, workspace, body.cover_candidate_id)
     if cover.status != "ready":
         raise ApiError(409, "COVER_NOT_READY", "这张封面还没有生成好。")
@@ -930,7 +936,7 @@ def finish_item(
     )
     if not matches:
         raise ApiError(422, "COVER_ITEM_MISMATCH", "这张封面不是这条视频的。")
-    patch = WorkItemPatch(
+    patch = WorkItemUpdate(
         expected_version=body.expected_version,
         publish_title=body.publish_title.strip(),
         publish_body=body.publish_body,
@@ -938,7 +944,33 @@ def finish_item(
         stage="done",
         status="succeeded",
     )
-    return patch_item(item_id, patch, workspace, session)
+    return update_item(item_id, patch, workspace, session)
+
+
+def require_playable(session: Session, item: VideoWorkItemRecord) -> None:
+    """Only an item with a finished video can be marked 已完成 (B9).
+
+    Edited (finishing/done, even while a redo with another template runs: the
+    current cut stays playable until the new one replaces it), or a talking
+    video that already succeeded. An item still generating or in its first
+    edit is refused, so a stale tab cannot finish it and have the editing
+    result move it back afterwards.
+    """
+    if item.stage in {"finishing", "done"}:
+        return
+    if item.status in ACTIVE_STATUSES:
+        raise ApiError(
+            409, "VIDEO_WORK_ITEM_BUSY", "这条还在生成或剪辑中，完成后再成片。"
+        )
+    talking = (
+        session.get(VideoGenerationRecord, item.generation_task_id)
+        if item.generation_task_id
+        else None
+    )
+    if talking is None or talking.status != "completed":
+        raise ApiError(
+            409, "VIDEO_WORK_ITEM_NOT_READY", "这条还没有可播放的视频，不能成片。"
+        )
 
 
 def recover_interrupted(

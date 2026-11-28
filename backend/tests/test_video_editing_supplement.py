@@ -517,14 +517,16 @@ def test_mg_params_must_be_verbatim_and_bounded():
     ok = validate_params(
         "data_callout", {"value": "72", "unit": "小时", "label": "不紧绷"}, source
     )
-    assert ok == {"value": "72", "unit": "小时", "label": "不紧绷"}
+    # 卡片只放关键词：说明类字段被去掉（会和字幕重复）
+    assert ok == {"value": "72", "unit": "小时"}
     assert (
         validate_params("data_callout", {"value": "96", "unit": "小时"}, source) is None
     )
-    assert (
-        validate_params("data_callout", {"value": "72", "label": "超级保湿"}, source)
-        is None
-    )
+    assert validate_params("feature_card", {"title": "超级保湿"}, source) is None
+    assert validate_params(
+        "feature_card", {"title": "持久保湿", "desc": "不紧绷"}, source
+    ) == {"title": "持久保湿"}
+    assert validate_params("quote_card", {"text": "持久保湿"}, source) is None
     assert (
         validate_params("data_callout", {"value": "72", "extra": "x"}, source) is None
     )
@@ -1180,3 +1182,17 @@ def test_opening_sentence_never_gets_supplements():
     analysis = ScriptAnalysis("v", "d", "model", rows)
     assert 0 not in [r["sentence_index"] for r in pick_paintable(analysis, 6)]
     assert 0 not in pick_stock_sentences(analysis)
+
+
+def test_mg_only_on_presenter_templates(tmp_path):
+    from app.mg.catalog import MG_TEMPLATES, prompt_catalog, template_supported
+    from app.mg.overlay import apply_supplement_mg
+
+    assert len(MG_TEMPLATES) >= 3 and "quote_card" not in prompt_catalog()
+    assert template_supported("bihuo-36-v1") and not template_supported("bihuo-04-v1")
+    receipt = apply_supplement_mg(
+        {"template_id": "bihuo-04-v1", "supplement_mg": {"cues": [{"component": "x"}]}},
+        tmp_path,
+        tmp_path / "final.mp4",
+    )
+    assert receipt["status"] == "template_not_supported"

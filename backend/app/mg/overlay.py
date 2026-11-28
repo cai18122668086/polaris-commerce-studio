@@ -334,6 +334,15 @@ def apply_supplement_mg(
     request = payload.get("supplement_mg")
     if not request:
         return None
+    from .catalog import template_supported
+
+    if not template_supported(payload.get("template_id")):
+        return {
+            "version": VERSION,
+            "catalog": CATALOG_VERSION,
+            "status": "template_not_supported",
+            "template_id": payload.get("template_id"),
+        }
     started = time.monotonic()
     ffmpeg = ffmpeg or request.get("ffmpeg") or "ffmpeg"
     ffprobe = ffprobe or request.get("ffprobe") or "ffprobe"

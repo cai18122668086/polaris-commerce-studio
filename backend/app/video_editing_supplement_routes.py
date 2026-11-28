@@ -209,7 +209,7 @@ def pick_stock_sentences(
 
 @router.get("/sources")
 async def sources(request: Request, workspace: VideoWorkspace) -> dict[str, Any]:
-    from .mg.catalog import COMPONENTS, STYLES
+    from .mg.catalog import COMPONENTS, MG_TEMPLATES, MG_UNSUPPORTED_REASON, STYLES
     from .video_editing_stock_sources import probe_fallbacks
     from .video_editing_supplement_images import available as ai_available
 
@@ -251,6 +251,8 @@ async def sources(request: Request, workspace: VideoWorkspace) -> dict[str, Any]
             },
         ],
         "stock_providers": stock,
+        "mg_templates": sorted(MG_TEMPLATES),
+        "mg_unsupported_reason": MG_UNSUPPORTED_REASON,
         "mg_styles": [
             {"key": key, "label": value["label"]} for key, value in STYLES.items()
         ],

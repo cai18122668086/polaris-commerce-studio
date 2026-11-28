@@ -7,6 +7,7 @@ import { mediaUrl } from "@/lib/api/base-url";
 import {
   aiCost,
   licenceLine,
+  mgSupported,
   setMgStyle,
   setMode,
   setPending,
@@ -78,7 +79,7 @@ export function SupplementMaterialsPanel({ workspaceId, value, onChange, workIte
   }, [workspaceId]);
   const active = workItems.find(item => item.id === activeId) ?? workItems[0];
   const blockers = useMemo(() => Object.fromEntries(
-    SOURCE_ORDER.map(key => [key, sources ? sourceBlocker(key, workItems, sources.sources) : null]),
+    SOURCE_ORDER.map(key => [key, sources ? sourceBlocker(key, workItems, sources.sources, sources.mg_templates) : null]),
   ) as Record<SupplementSourceKey, string | null>, [sources, workItems]);
   const state = (key: SupplementSourceKey) => sources?.sources.find(row => row.key === key);
   const pendingBy = useRef<Record<string, number>>({});
@@ -618,7 +619,7 @@ const PREVIEWS = [
 
 function MgSection({ value, update, sources, items }: { value: SupplementMaterialsValue; update: SectionProps["update"]; sources?: SourcesResponse; items: SupplementWorkItem[] }) {
   const style = value.sources.mg?.style ?? "paper";
-  const unsupported = items.filter(item => item.supports_mg === false).length;
+  const unsupported = items.filter(item => !mgSupported(item, sources?.mg_templates)).length;
   return (
     <section className={styles.section} aria-label="MG 动效">
       <div className={styles.sectionHead}>
@@ -626,7 +627,7 @@ function MgSection({ value, update, sources, items }: { value: SupplementMateria
         <span className={styles.note}>没有素材的段落用动效补；全屏动效每段不超过 2.5 秒</span>
       </div>
       {items.length > 1 && <p className={styles.note}>MG 动效按整批设置：本批全部 {items.length} 条视频都会使用，风格相同。</p>}
-      {unsupported > 0 && <p className={styles.note}>{unsupported} 条视频用的模板不支持 MG 动效，这几条不会加。</p>}
+      {unsupported > 0 && <p className={styles.note}>{unsupported} 条视频的模板画面已有信息卡，暂不支持 MG，这几条不会加。</p>}
       <div className={styles.segment} role="radiogroup" aria-label="动效风格">
         {(sources?.mg_styles.map(row => row.key) ?? (["paper", "ink", "ember"] as SupplementStyle[])).map(key => (
           <button key={key} type="button" role="radio" aria-checked={style === key} onClick={() => update(current => setMgStyle(current, key))}>

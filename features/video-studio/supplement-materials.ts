@@ -61,6 +61,8 @@ export interface SourcesResponse {
   sources: SourceState[];
   stock_providers: { provider: string; label: string; available: boolean; reason: string | null }[];
   mg_styles: { key: SupplementStyle; label: string }[];
+  mg_templates?: string[];
+  mg_unsupported_reason?: string;
   mg_components: { key: string; label: string; use: string }[];
 }
 
@@ -139,11 +141,19 @@ export function splitSentences(text: string): string[] {
   return rows.slice(0, 40);
 }
 
-export function sourceBlocker(key: SupplementSourceKey, items: SupplementWorkItem[], states?: SourceState[]): string | null {
+export const MG_UNSUPPORTED = "此模板画面已有信息卡，暂不支持 MG";
+
+/** MG 只在后端白名单模板上开放（人物铺满画面、背景层没有信息卡）。 */
+export function mgSupported(item: SupplementWorkItem, mgTemplates?: string[]): boolean {
+  if (item.supports_mg === false) return false;
+  return !mgTemplates || !item.template_id || mgTemplates.includes(item.template_id);
+}
+
+export function sourceBlocker(key: SupplementSourceKey, items: SupplementWorkItem[], states?: SourceState[], mgTemplates?: string[]): string | null {
   const state = states?.find(row => row.key === key);
   if (states && (!state || !state.available)) return state?.reason || "暂未开通";
   if (key === "mg") {
-    if (items.length && items.every(item => item.supports_mg === false)) return "当前模板不支持 MG 动效，换成「成套模板」后可用";
+    if (items.length && items.every(item => !mgSupported(item, mgTemplates))) return MG_UNSUPPORTED;
     return null;
   }
   if (items.length && items.every(item => item.supports_images === false)) return "当前模板没有配图位置，换一个支持配图的模板后可用";

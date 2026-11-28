@@ -323,6 +323,52 @@ def detect_face(
         return False
 
 
+# 和最大的那张脸相比，高度不到这个比例的（远处路人、海报上的小脸）不算第二张脸。
+SECOND_FACE_RATIO = 0.4
+
+
+def count_faces(image: Image.Image) -> int | None:
+    """照片里够大的人脸数；检测模型不可用时返回 None（不拦截）。"""
+
+    try:
+        from .bihuo_suite.subject import FaceDetector, model_available
+    except Exception:  # pragma: no cover - 依赖缺失
+        return None
+    if not model_available():
+        return None
+    try:
+        import numpy as np
+
+        # 与剪辑共用的 FaceDetector 只返回最大的一张脸；这里直接读它的全部检测结果，
+        # 不改 bihuo_suite（模板 bundle 身份的一部分）。
+        scale = 4 if min(image.size) >= 720 else 2
+        detector = FaceDetector(size=image.size, scale=scale)
+        small = image.convert("RGB").resize(detector.small)
+        bgr = np.ascontiguousarray(np.asarray(small, dtype=np.uint8)[..., ::-1])
+        _, faces = detector.detector.detect(bgr)
+    except Exception:  # pragma: no cover - 检测失败不阻断，只记录
+        logger.warning("avatar_polish_face_count_failed", exc_info=True)
+        return None
+    if faces is None or not len(faces):
+        return 0
+    heights = [float(row[3]) for row in faces]
+    tallest = max(heights)
+    return sum(1 for height in heights if height >= tallest * SECOND_FACE_RATIO)
+
+
+def reject_multiple_faces(reference: Path) -> None:
+    """多人照片在下单前拒绝：不建候选、不冻结积分、不调用生图。"""
+
+    with Image.open(reference) as image:
+        found = count_faces(image)
+    if found is not None and found > 1:
+        raise ApiError(
+            422,
+            "VIDEO_AVATAR_MULTIPLE_FACES",
+            "照片里有多张人脸，请上传单人照片。",
+        )
+
+
 def spec_check(image: Image.Image) -> tuple[bool, dict[str, Any]]:
     """数字人可用的规格：竖版、清晰尺寸、单张正脸大小与位置合适。"""
 
@@ -601,6 +647,7 @@ async def create_polish(
             return reconcile(old)
         reference = directory / "reference.png"
         await run_in_threadpool(normalize_source, source, reference)
+        await run_in_threadpool(reject_multiple_faces, reference)
         now = utc_now()
         rows = [
             VideoAvatarPolishRecord(

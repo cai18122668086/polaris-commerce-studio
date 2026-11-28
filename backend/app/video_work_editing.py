@@ -19,6 +19,7 @@ editing and planning tasks to the worker (the durable outbox), as before.
 from __future__ import annotations
 
 import logging
+import math
 from threading import Event, Thread
 from typing import Any, Literal
 from uuid import UUID, uuid5
@@ -32,7 +33,7 @@ from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
-from .models import WorkspaceCreditAccountRecord
+from .models import WorkspaceCreditAccountRecord, utc_now
 from .services import credit_enforcement_enabled
 from .video_editing_contracts import (
     EditingOptions,
@@ -78,7 +79,19 @@ FRESH_PLAN_CODES = frozenset(
 )
 # One item through recognition, planning, render and export on the shared
 # worker, measured on dev (8 cores, worker concurrency 1): about 6 minutes.
+# Used only when the source video's length is not known yet.
 MINUTES_PER_ITEM = 6
+# C7: an item's own time grows with its video. Fitted on the 31 finished dev
+# renders of 11-23..11-28 (recognition + check + planning + render attempts,
+# 10-78 s sources): minutes = 2 + 11.5 x source minutes, median deviation 16%.
+BASE_MINUTES, MINUTES_PER_SOURCE_MINUTE = 2.0, 11.5
+# What is left of an item's time once a step is behind it.
+REMAINING_SHARE = {
+    "transcribing": 1.0,
+    "preparing": 0.9,
+    "planning": 0.9,
+    "rendering": 0.8,
+}
 # What a task already on the shared worker still costs: a render about 5
 # minutes, a recognition or planning step about 1.
 RENDER_MINUTES, STEP_MINUTES = 5, 1
@@ -130,11 +143,42 @@ class EditingBatchSubmit(StrictVideoModel):
     items: dict[str, EditingItemChoice] = Field(default_factory=dict)
 
 
+class EditingRedo(StrictVideoModel):
+    """换模板重剪: edit finished (or failed) items again with another template.
+
+    Its own endpoint, never the submit one: submit skips items that already have
+    a run, which is what keeps a repeat click from paying twice. ``request_id``
+    makes a repeated redo a no-op; an item already being re-edited is left alone.
+    """
+
+    request_id: UUID
+    template_id: str = Field(min_length=1, max_length=64)
+    music: MusicChoice = "template"
+    # Batch redo only: these items (default: every finished or failed item).
+    item_ids: list[str] | None = Field(default=None, max_length=20)
+
+
+class EditingHistoryView(StrictVideoModel):
+    """An earlier cut of the item, kept when it was re-edited with another template."""
+
+    attempt: int
+    template_id: str
+    archived_at: str
+    final_url: str | None = None
+    poster_url: str | None = None
+    duration_ms: int | None = None
+
+
 class EditingItemView(StrictVideoModel):
     item_id: str
     position: int
     phase: str | None = None
     template_id: str | None = None
+    attempt: int | None = None
+    # Earlier cuts (换模板重剪), oldest first.
+    history: list[EditingHistoryView] = Field(default_factory=list)
+    # The source video's length (when known), the basis of the estimate.
+    source_duration_ms: int | None = None
     queue_position: int | None = None
     # Tasks of every user ahead on the single shared editing worker.
     queue_ahead: int | None = None
@@ -209,6 +253,48 @@ def source_ready(item: VideoWorkItemRecord) -> bool:
     return True
 
 
+def item_minutes(duration_ms: int | None) -> float:
+    """C7: one item's own minutes on the shared worker, from its video length."""
+    if not duration_ms or duration_ms <= 0:
+        return float(MINUTES_PER_ITEM)
+    return BASE_MINUTES + MINUTES_PER_SOURCE_MINUTE * duration_ms / 60000
+
+
+def _source_duration_ms(
+    session: Session,
+    item: VideoWorkItemRecord,
+    run: VideoWorkEditingRunRecord | None,
+) -> int | None:
+    """The source video's length: the recognition's, else the talking result's
+    or the upload's own probe. ``None`` when nothing says yet."""
+    if run is not None and run.transcript_task_id:
+        recognized = session.scalar(
+            select(EditingArtifactRecord.duration_ms).where(
+                EditingArtifactRecord.task_id == run.transcript_task_id,
+                EditingArtifactRecord.role == "transcript",
+            )
+        )
+        if recognized:
+            return int(recognized)
+    ref = item.source_video_ref or {}
+    ident = str(ref.get("id") or "")
+    if not ident:
+        return None
+    if ref.get("kind") in {"talking", "library"}:
+        job = session.get(VideoGenerationRecord, ident)
+        if job is not None:
+            seconds = (job.details or {}).get("audio_duration_seconds")
+            return int(float(seconds) * 1000) if seconds else None
+    source = session.get(EditingSourceRecord, ident)
+    if source is None:
+        return None
+    details = source.details or {}
+    value = (details.get("probe") or {}).get("duration_ms") or details.get(
+        "duration_ms"
+    )
+    return int(value) if isinstance(value, int | float) and value > 0 else None
+
+
 def _source_body(
     session: Session, workspace: WorkspaceContext, item: VideoWorkItemRecord
 ) -> dict[str, UUID]:
@@ -273,7 +359,17 @@ def _start_transcript(
     item: VideoWorkItemRecord,
 ) -> None:
     request_id = _request_id(run, "transcript")
-    row = _by_request(session, EditingTaskRecord, run, request_id)
+    kept = (
+        session.get(EditingTaskRecord, run.transcript_task_id)
+        if run.transcript_task_id
+        else None
+    )
+    # A re-edit (换模板重剪) keeps the finished recognition of the same video.
+    row = (
+        kept
+        if kept is not None and kept.status == "completed"
+        else _by_request(session, EditingTaskRecord, run, request_id)
+    )
     if row is None:
         body = EditingTaskCreate(
             request_id=request_id,
@@ -426,6 +522,13 @@ def _step(
         if task.status == "completed":
             run.phase, run.error, run.error_code = "done", None, None
             session.commit()
+            changes: dict[str, Any] = {}
+            if (run.options or {}).get("history"):
+                # A re-edit finished: finishing tells the user the video changed
+                # and the cover can be made again (video_updated_at).
+                history = {k: list(v) for k, v in (item.history or {}).items()}
+                history["video_updated"] = [utc_now().isoformat()]
+                changes["history"] = history
             _write(
                 session,
                 item,
@@ -433,6 +536,7 @@ def _step(
                 stage="finishing",
                 status="pending",
                 error=None,
+                **changes,
             )
 
 
@@ -569,6 +673,33 @@ def _global_ahead(session: Session, run: VideoWorkEditingRunRecord) -> tuple[int
     return tasks + earlier, minutes + earlier * MINUTES_PER_ITEM
 
 
+def _history_views(
+    session: Session, base: str, run: VideoWorkEditingRunRecord
+) -> list[EditingHistoryView]:
+    views = []
+    for entry in (run.options or {}).get("history") or []:
+        view = EditingHistoryView(
+            attempt=int(entry.get("attempt") or 1),
+            template_id=str(entry.get("template_id") or ""),
+            archived_at=str(entry.get("archived_at") or ""),
+        )
+        task_id = entry.get("render_task_id")
+        if task_id and entry.get("phase") == "done":
+            for artifact in session.scalars(
+                select(EditingArtifactRecord).where(
+                    EditingArtifactRecord.task_id == task_id,
+                    EditingArtifactRecord.role.in_(("final", "poster")),
+                )
+            ):
+                url = f"{base}{task_id}/artifacts/{artifact.id}"
+                if artifact.role == "final":
+                    view.final_url, view.duration_ms = url, artifact.duration_ms
+                else:
+                    view.poster_url = url
+        views.append(view)
+    return views
+
+
 def editing_view(session: Session, batch: VideoWorkBatchRecord) -> EditingBatchResponse:
     items = batch_items(session, batch.id)
     runs = {
@@ -590,24 +721,30 @@ def editing_view(session: Session, batch: VideoWorkBatchRecord) -> EditingBatchR
             views.append(view)
             continue
         view.phase, view.template_id = run.phase, run.template_id
+        view.attempt = run.attempt
         view.error, view.can_retry = run.error, run.phase == "failed"
         view.render_task_id = run.render_task_id
+        view.history = _history_views(session, base, run)
+        duration = _source_duration_ms(session, item, run)
+        view.source_duration_ms = duration
+        own = item_minutes(duration)
         if run.phase == "queued":
             position += 1
             view.queue_position = position
             ahead, minutes = _global_ahead(session, run)
             view.queue_ahead = ahead
-            view.estimate_minutes = minutes + MINUTES_PER_ITEM
+            view.estimate_minutes = math.ceil(minutes + own)
         elif run.phase in ACTIVE_PHASES:
+            left = own * REMAINING_SHARE.get(run.phase, 1.0)
             current = session.get(
                 EditingTaskRecord, run.render_task_id or run.transcript_task_id or ""
             )
             if current is not None and current.status == "queued":
                 ahead, minutes = worker_queue(session, before=current.created_at)
                 view.queue_ahead = ahead
-                view.estimate_minutes = minutes + MINUTES_PER_ITEM
+                view.estimate_minutes = math.ceil(minutes + left)
             else:
-                view.estimate_minutes = MINUTES_PER_ITEM
+                view.estimate_minutes = max(1, math.ceil(left))
         task_id = run.render_task_id or run.transcript_task_id
         task = session.get(EditingTaskRecord, task_id) if task_id else None
         if task is not None:
@@ -734,6 +871,8 @@ def submit_editing(
             continue
         if item.id in existing:
             continue  # Already submitted (a repeat click or a second tab).
+        if item.deleted_at is not None:
+            continue  # Removed from 我的作品: never edited again.
         if not source_ready(item):
             skipped += 1
             continue
@@ -834,6 +973,9 @@ class EditingQueueView(StrictVideoModel):
     tasks_ahead: int
     minutes_ahead: int
     minutes_per_item: int = MINUTES_PER_ITEM
+    # C7: own minutes of one item = base + per_source_minute x its video minutes.
+    minutes_base: float = BASE_MINUTES
+    minutes_per_source_minute: float = MINUTES_PER_SOURCE_MINUTE
 
 
 @router.get("/editing-queue", response_model=EditingQueueView)
@@ -912,6 +1054,147 @@ def retry_editing(
     )
     dispatch(session, settings, workspace, item.batch_id)
     return editing_view(session, _own_batch(session, workspace, item.batch_id))
+
+
+REDO_PHASES = ("done", "failed")
+
+
+def _locked_runs(
+    session: Session, batch_id: str, item_ids: list[str] | None
+) -> list[VideoWorkEditingRunRecord]:
+    """The batch's runs, row-locked until commit (PostgreSQL), in a fixed order
+    so two redo requests never deadlock and the second sees the first's result."""
+    query = (
+        select(VideoWorkEditingRunRecord)
+        .where(VideoWorkEditingRunRecord.batch_id == batch_id)
+        .order_by(VideoWorkEditingRunRecord.item_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if item_ids is not None:
+        query = query.where(VideoWorkEditingRunRecord.item_id.in_(item_ids))
+    return list(session.scalars(query))
+
+
+def _redo(
+    session: Session,
+    settings: Settings,
+    workspace: WorkspaceContext,
+    batch: VideoWorkBatchRecord,
+    item_ids: list[str] | None,
+    body: EditingRedo,
+) -> EditingBatchResponse:
+    """Archive each chosen finished/failed run and queue it again with the new
+    template. The finished recognition is reused; planning and render are new
+    (planning is paid again when prices are on). Idempotent per request id."""
+    require_active_planning_template(body.template_id, settings)
+    items = {item.id: item for item in batch_items(session, batch.id)}
+    if item_ids is not None and not set(item_ids) <= set(items):
+        raise ApiError(404, "VIDEO_WORK_ITEM_NOT_FOUND", "批次里没有这条作品。")
+
+    def redoable(
+        runs: list[VideoWorkEditingRunRecord],
+    ) -> list[VideoWorkEditingRunRecord]:
+        # A repeat of this request, or an item already being re-edited: untouched.
+        return [
+            run
+            for run in runs
+            if run.request_id != str(body.request_id) and run.phase in REDO_PHASES
+        ]
+
+    # The credit check commits, so it runs before the rows are locked; the
+    # locked re-read can only find fewer items (another request took them).
+    wanted = redoable(_locked_runs(session, batch.id, item_ids))
+    session.rollback()
+    if wanted:
+        check_batch_credits(session, settings, workspace.workspace_id, len(wanted))
+    chosen = (
+        redoable(_locked_runs(session, batch.id, [run.item_id for run in wanted]))
+        if wanted
+        else []
+    )
+    if not chosen:
+        session.rollback()  # Release the row locks.
+        return editing_view(session, batch)
+    now = utc_now().isoformat()
+    for run in chosen:
+        options = dict(run.options or {})
+        options["history"] = [
+            *(options.get("history") or []),
+            {
+                "attempt": run.attempt,
+                "template_id": run.template_id,
+                "phase": run.phase,
+                "render_task_id": run.render_task_id,
+                "archived_at": now,
+            },
+        ]
+        options["music"] = body.music
+        transcript = (
+            session.get(EditingTaskRecord, run.transcript_task_id)
+            if run.transcript_task_id
+            else None
+        )
+        if transcript is None or transcript.status != "completed":
+            run.transcript_task_id = None
+        run.options = options
+        run.request_id = str(body.request_id)
+        run.template_id = body.template_id
+        run.attempt += 1
+        run.prepare_task_id = run.generate_task_id = run.render_task_id = None
+        run.phase, run.error, run.error_code = "queued", None, None
+    session.commit()
+    for run in chosen:
+        item = items[run.item_id]
+        history = {k: list(v) for k, v in (item.history or {}).items()}
+        if item.editing_task_id:
+            history.setdefault("editing", []).append(item.editing_task_id)
+        _write(
+            session,
+            item,
+            stage="editing",
+            status="queued",
+            error=None,
+            editing_task_id=None,
+            history=history,
+        )
+    dispatch(session, settings, workspace, batch.id)
+    return editing_view(session, batch)
+
+
+@router.post("/work-items/{item_id}/editing-redo", response_model=EditingBatchResponse)
+def redo_item_editing(
+    item_id: str,
+    body: EditingRedo,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> EditingBatchResponse:
+    """换模板重剪 one item (the page asks for confirmation first)."""
+    require_workspace_write(workspace)
+    item = _own_item(session, workspace, item_id)
+    batch = _own_batch(session, workspace, item.batch_id)
+    if session.get(VideoWorkEditingRunRecord, item.id) is None:
+        raise ApiError(409, "EDITING_NOT_STARTED", "这条还没有剪过，请先开始剪辑。")
+    return _redo(session, request.app.state.settings, workspace, batch, [item.id], body)
+
+
+@router.post(
+    "/work-batches/{batch_id}/editing-redo", response_model=EditingBatchResponse
+)
+def redo_batch_editing(
+    batch_id: str,
+    body: EditingRedo,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> EditingBatchResponse:
+    """换模板重剪 the whole batch: every finished or failed item (or the chosen)."""
+    require_workspace_write(workspace)
+    batch = _own_batch(session, workspace, batch_id)
+    return _redo(
+        session, request.app.state.settings, workspace, batch, body.item_ids, body
+    )
 
 
 @router.get("/editing-sources", response_model=list[EditingSourceView])

@@ -55,7 +55,12 @@ export function StudioEditingScreen({ workspaceId, persisted, jobs, attempt, upd
       })().catch(caught => { uploadProject.current = undefined; throw caught; });
       return uploadProject.current;
     };
-    return <><PageHero eyebrow="智能剪辑" title="一批口播，剪成" accent="一批成片" description="选好视频和模板，可选补充素材；每条自动识别口播、编排字幕花字和动效，剪完直接导出高清，再去成片。" facts={[{ label: "可用口播", value: jobs.filter(job => job.kind === "lipsync" && job.status === "completed").length }]} motif="edit" />
+    // C9：有批次（?batch=，含已有结果）时头图收成一行，首屏留给步骤和结果；只有空状态才出完整头图。
+    // 头图不再放「可用口播」：它只数口播结果、不含上传视频，会和下面的结果对不上。
+    const hero = flow.batch
+      ? <PageHero compact eyebrow="智能剪辑" title="智能剪辑" description="每条自动识别口播、编排字幕花字和动效，剪完直接导出高清，再去成片。" motif="edit" />
+      : <PageHero eyebrow="智能剪辑" title="一批口播，剪成" accent="一批成片" description="选好视频和模板，可选补充素材；每条自动识别口播、编排字幕花字和动效，剪完直接导出高清，再去成片。" motif="edit" />;
+    return <>{hero}
       <EditingBatchFlow key={`${workspaceId}:${flow.batch ?? ""}`} workspaceId={workspaceId} batchId={flow.batch ?? null} jobs={jobs} uploadProjectId={projectId} ensureUploadProject={ensureUploadProject} cost={cost} /></>;
   }
   return <><PageHero eyebrow="精修这一条" title="单条精修：" accent="字幕、画面逐段调整" description="校对字幕、调整本版画面或重新编排；确认高清后，这条作品会更新为最新版本。" facts={[{ label: "剪辑项目", value: persisted.projects.length }]} motif="edit" />

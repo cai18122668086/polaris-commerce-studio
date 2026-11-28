@@ -233,16 +233,61 @@ jobs:
           POLARIS_CROSSBORDER_DETAIL_PROVIDER_ENABLED: "false"
         run: docker compose -f deploy/compose.production.yml config --quiet
 
+  video-v3-postgres:
+    name: Video v3 routes on PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: polaris_ci
+          POSTGRES_USER: polaris
+          POSTGRES_PASSWORD: polaris_ci_only
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U polaris -d polaris_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e "./backend[dev]"
+      - name: Rerun the v3 route tests on PostgreSQL (one schema per test)
+        # SQLite accepted the GROUP BY that failed in production; these files
+        # run on SQLite in the shards and again here on PostgreSQL.
+        env:
+          POLARIS_TEST_ROUTE_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
+          POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
+        working-directory: backend
+        run: >-
+          python -m pytest -vv -rs --tb=short
+          tests/test_route_database_postgres.py
+          tests/test_video_work_*.py
+          tests/test_video_cover_*.py
+          tests/test_video_covers.py
+          tests/test_video_persona*.py
+          tests/test_video_script_library*.py
+          tests/test_video_avatar_polish*.py
+          tests/test_video_editing_supplement*.py
+          tests/test_video_*_postgres.py
+
   backend-gate:
     name: Backend quality
     runs-on: ubuntu-latest
-    needs: backend
+    needs: [backend, video-v3-postgres]
     if: ${{ always() }}
     steps:
       - name: Require every backend shard
         env:
           BACKEND_RESULT: ${{ needs.backend.result }}
-        run: test "$BACKEND_RESULT" = success
+          VIDEO_V3_POSTGRES_RESULT: ${{ needs.video-v3-postgres.result }}
+        run: test "$BACKEND_RESULT" = success && test "$VIDEO_V3_POSTGRES_RESULT" = success
 
   contract:
     name: API contract

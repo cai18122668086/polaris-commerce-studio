@@ -5,8 +5,9 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, Images, LoaderCircle, RefreshCw, Type } from "lucide-react";
 import { ApiError } from "@/lib/api/api-error";
 import { mediaUrl } from "@/lib/api/base-url";
-import { editingHref, worksHref } from "@/features/video-studio/flow-params";
+import { editingHref, stepHref, worksHref } from "@/features/video-studio/flow-params";
 import { BODY_LIMIT, COVER_TEXT_LIMIT, COVER_TEXT_SUGGESTED, TITLE_LIMITS, countChars, defaultCoverText, type Platform } from "@/features/video-studio/works";
+import { billableLabel, creditPhrase } from "@/features/video-studio/credit-notes";
 import { coverImageUrl, useCoverActions, useCoverCandidates, useFinishingItems, useScriptPlatforms, useWorkVideo, type CoverCandidate, type WorkItem } from "@/features/video-studio/use-finishing";
 import { GuidedEmpty } from "./page-hero";
 import styles from "./finish-works.module.css";
@@ -45,6 +46,9 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
   const platformOf = (entry: WorkItem): Platform => drafts[entry.id]?.platform ?? platforms.data?.[entry.script_document_id ?? ""] ?? platform;
   const ready = list.filter(entry => entry.stage === "finishing" || entry.stage === "done");
   const saved = list.filter(entry => entry.stage === "done").length;
+  // B4：还没剪完的不进成片行（不能生成封面），剪完后 15 秒内自动出现；没剪成的单独列出、回剪辑页处理。
+  const unfinished = list.filter(entry => entry.stage === "talking" || entry.stage === "editing");
+  const cutting = unfinished.filter(entry => entry.status !== "failed");
 
   // Edits only; untouched fields fall back to what the work item already has.
   const draftOf = (entry: WorkItem): Draft => ({
@@ -78,6 +82,21 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
 
   if (items.isPending) return <p className={styles.loading} role="status"><LoaderCircle className={styles.spin} size={16} />正在读取要成片的视频…</p>;
   if (items.isError) return <p role="alert" className={styles.alert}>暂时读不到这批视频。<button type="button" className={styles.linkButton} onClick={() => void items.refetch()}>重试</button></p>;
+  const waitingNote = unfinished.length > 0 && <div className={styles.waiting} role="status" aria-label="还没剪完的视频">
+    {cutting.length > 0 && <p><LoaderCircle className={styles.spin} size={15} /><span>还有 {cutting.length} 条剪辑中，完成后自动出现在这里，不用刷新。</span></p>}
+    <ul>{unfinished.map(entry => <li key={entry.id}>
+      <span className={styles.waitingIndex}>{String(list.indexOf(entry) + 1).padStart(2, "0")}</span>
+      <span className={styles.waitingTitle}>{entry.publish_title || "未命名视频"}</span>
+      {entry.status === "failed"
+        ? <span className={styles.waitingState}>{entry.stage === "talking" ? "口播没有生成成功" : "剪辑没有成功"} · <Link href={entry.stage === "talking" ? stepHref("voice", { batch: entry.batch_id }) : editingHref(entry.batch_id)} className={styles.linkButton}>回到这一步</Link></span>
+        : <span className={styles.waitingState}>{entry.stage === "talking" ? "口播生成中" : "剪辑中"}，完成后自动出现</span>}
+    </li>)}</ul>
+  </div>;
+
+  if (list.length && !ready.length) return <section className={styles.finish} aria-label="成片">
+    <header className={styles.finishHead}><div><h1>成片</h1><p>这一批还没有剪完的视频。第一条剪完就会出现在这里，可以先去忙别的。</p></div></header>
+    {waitingNote}
+  </section>;
   if (!list.length) return <GuidedEmpty title="还没有待成片的视频" description="剪辑完成的视频会来到这里：配封面、定标题和正文，保存后出现在「我的作品」。" steps={["在「智能剪辑」剪好一批视频", "回到这里一键生成封面", "挑封面、改标题，保存到我的作品"]} action={<Link className={styles.primary} href={editingHref(batch)}>去智能剪辑</Link>} motif="works" />;
 
   const pending = ready.filter(entry => entry.stage !== "done").length;
@@ -91,6 +110,7 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
       </div>
       <dl className={styles.facts}>
         <div><dt>本批</dt><dd>{list.length} 条</dd></div>
+        {unfinished.length > 0 && <div><dt>可成片</dt><dd>{ready.length} 条</dd></div>}
         <div><dt>已保存</dt><dd>{saved} 条</dd></div>
       </dl>
     </header>
@@ -99,16 +119,17 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
       <div className={styles.segment} role="radiogroup" aria-label="默认发布平台">
         {(Object.keys(PLATFORM_LABEL) as Platform[]).map(key => <button key={key} type="button" role="radio" aria-checked={platform === key} onClick={() => setPlatform(key)}>{PLATFORM_LABEL[key]}</button>)}
       </div>
-      <span className={styles.toolbarNote}>每条出 2 张：1 张用视频画面（免费），1 张 AI 重绘{coverCredits != null ? `（${coverCredits} 积分，失败不扣）` : "（按实际张数计费，失败不扣）"}</span>
+      <span className={styles.toolbarNote}>每条出 2 张：1 张用视频画面（免费），1 张 AI 重绘（{creditPhrase(coverCredits, { per: "张", failureFree: true })}）</span>
       <button type="button" className={styles.primary} disabled={!pending || bulk || actions.generate.isPending} onClick={() => void generateAll()}>
-        {bulk ? <LoaderCircle className={styles.spin} size={16} /> : <Images size={16} />}一键给全部生成封面{bulkCost != null && pending ? ` · ${bulkCost} 积分` : ""}
+        {bulk ? <LoaderCircle className={styles.spin} size={16} /> : <Images size={16} />}{pending ? billableLabel("一键给全部生成封面", bulkCost) : "一键给全部生成封面"}
       </button>
     </div>
     <ol className={styles.rows}>
-      {list.map((entry, index) => <FinishRow key={entry.id} index={index} workspaceId={workspaceId} entry={entry} draft={draftOf(entry)} platform={platformOf(entry)}
+      {ready.map(entry => <FinishRow key={entry.id} index={list.indexOf(entry)} workspaceId={workspaceId} entry={entry} draft={draftOf(entry)} platform={platformOf(entry)}
         onChange={patch => update(entry.id, patch)} onGenerate={round => void generateFor(entry, round)} generating={actions.generate.isPending && actions.generate.variables?.work_item_id === entry.id}
         actions={actions} notify={notify} />)}
     </ol>
+    {waitingNote}
     {saved === list.length && <div className={styles.allDone}><Check size={16} />这一批都已保存。<Link href={worksHref(batch)} className={styles.linkButton}>去我的作品看看</Link></div>}
   </section>;
 }
@@ -139,6 +160,9 @@ function FinishRow({ index, workspaceId, entry, draft, platform, onChange, onGen
   const chosenId = draft.coverId ?? round.find(cover => cover.status === "ready")?.id ?? null;
   const selected = all.find(cover => cover.id === chosenId && cover.status === "ready") ?? null;
   const busy = round.some(cover => cover.status === "queued" || cover.status === "running");
+  // B5（L3 重剪）：条目的视频比最新一轮封面新，提示可以重新生成封面。
+  const videoUpdatedAt = (entry as { video_updated_at?: string | null }).video_updated_at ?? null;
+  const videoChanged = Boolean(videoUpdatedAt && round.length && round.every(cover => Date.parse(cover.created_at) < Date.parse(videoUpdatedAt)));
   const notReady = entry.stage === "talking" || entry.stage === "editing";
   const limit = TITLE_LIMITS[platform];
   const titleCount = countChars(draft.title);
@@ -188,6 +212,7 @@ function FinishRow({ index, workspaceId, entry, draft, platform, onChange, onGen
           : <button type="button" className={styles.secondary} disabled={notReady || busy || generating} onClick={() => onGenerate(rounds)}><RefreshCw size={15} />换一批</button>}
         <button type="button" className={styles.ghost} disabled={!round.some(cover => cover.status === "ready") || !draft.coverText.trim() || actions.retext.isPending} onClick={() => void retext()}><Type size={15} />只改封面上的字（免费）</button>
       </div>
+      {videoChanged && <p className={styles.note} role="status">视频已更新，可以点「换一批」重新生成封面。</p>}
       {round.map(cover => cover.message && <p key={cover.id} className={styles.note}>{cover.message}</p>)}
     </div>
     <div className={styles.rowText}>

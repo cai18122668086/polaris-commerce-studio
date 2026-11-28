@@ -37,7 +37,8 @@ export function useFinishingItems(workspaceId: string, scope: { batch?: string |
         signal: timeout(signal),
       })) as WorkItem[];
     },
-    refetchInterval: query => (query.state.data ?? []).some(item => item.stage !== "done" && item.stage !== "finishing") ? 15000 : false,
+    // 还有在口播/剪辑中的（不含已失败）就每 15 秒刷新，剪完的自动出现在成片页。
+    refetchInterval: query => (query.state.data ?? []).some(item => (item.stage === "talking" || item.stage === "editing") && item.status !== "failed") ? 15000 : false,
   });
 }
 

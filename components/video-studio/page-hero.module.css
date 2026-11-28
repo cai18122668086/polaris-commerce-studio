@@ -177,3 +177,23 @@
 :global(html.theme-plaster) .empty li{color:#3c3a36}
 :global(html.theme-plaster) .empty li span{border:1px solid rgb(28 28 26 / 0.16);color:#5b5953}
 /* plaster:end */
+
+/* ---------- C9（r2）：工作页首屏——有批次/结果时头图收成一行（≤72px），细线收尾，不放插画 ---------- */
+.heroCompact { display: flex; align-items: flex-end; gap: 24px; padding: 4px 0 14px; margin-bottom: 16px; border-bottom: 1px solid rgb(30 28 24 / 10%); }
+.compactCopy { flex: 1 1 auto; min-width: 0; display: grid; gap: 4px; }
+.heroCompact h1 { margin: 0; font-size: 22px; line-height: 1.3; font-weight: 400; letter-spacing: -.01em; color: #1a1a19; }
+.heroCompact h1 em { font-style: normal; margin-left: .15em; }
+.compactCopy p { margin: 0; font-size: 13px; line-height: 1.6; color: #5d5c59; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.compactFacts { display: flex; gap: 22px; margin: 0; flex: none; }
+.compactFacts dt { font-size: 12px; color: #73726e; }
+.compactFacts dd { margin: 2px 0 0; font-size: 15px; font-variant-numeric: tabular-nums; color: #1a1a19; }
+.compactActions { display: flex; gap: 8px; flex: none; }
+@media (max-width: 720px) {
+  .heroCompact { flex-wrap: wrap; align-items: flex-start; gap: 10px 16px; padding-bottom: 12px; margin-bottom: 12px; }
+  .heroCompact h1 { font-size: 19px; }
+  .compactCopy { flex-basis: 100%; }
+  .compactCopy p { white-space: normal; }
+}
+:global(html.theme-ember) .heroCompact { border-bottom-color: rgb(255 240 225 / 12%); }
+:global(html.theme-ember) .heroCompact h1, :global(html.theme-ember) .compactFacts dd { color: #f2ede6; }
+:global(html.theme-ember) .compactCopy p, :global(html.theme-ember) .compactFacts dt { color: #b8b0a6; }

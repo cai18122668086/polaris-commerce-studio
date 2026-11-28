@@ -207,7 +207,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const nextAction = editingPlanningAction(prepared, submitted || undefined);
   const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || nextAction === "wait" || nextAction === "blocked";
   const primaryLabel = planningButtonLabel({ credits, busy, checking: waiting, arranging: submissionPending, uncertain: submissionUncertain, emptyResponse, render: submitted?.status === "completed" ? rendered?.status : undefined, arranged: submitted?.status === "completed", recover: nextAction === "recover", failed: submissionFailed, blocked: nextAction === "blocked", unavailable: Boolean(prepared && !prepared.execution_available), ready: Boolean(prepared) });
-  const primaryHint = emptyResponse ? errors.EDITING_PLAN_EMPTY_RESPONSE : submissionUncertain ? CONFIRMING_HINT : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
+  const primaryHint = emptyResponse ? errors.EDITING_PLAN_EMPTY_RESPONSE : submissionUncertain ? CONFIRMING_HINT : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : `下一步会调用模型，${creditPhrase(credits)}` : "先检查口播和素材，这一步不计模型费用";
   const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : rendering ? "rendering" : nextAction === "recover" ? "recover" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
   const previewTaskId = submitted?.status === "completed" ? submitted.preview_task_id ?? undefined : undefined;
   useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase, previewTaskId }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase, previewTaskId]);
@@ -458,7 +458,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       {job.request_bytes !== null && <p>{job.catalog_group_count} 组原库 · 请求 {job.request_bytes.toLocaleString()} 字节 · 输入版本 {job.request_sha256?.slice(0, 12)}</p>}
       </details>
       {job.status === "prepared" && <>
-        <p className={styles.note}>此步骤尚未计模型费用。生成预览时会调用模型，费用按实际用量计算。</p>
+        <p className={styles.note}>{isPriced(credits) ? `此步骤尚未计模型费用。生成预览时会调用模型，${creditPhrase(credits)}。` : `生成预览时会调用模型，${FREE_TRIAL_TEXT}。`}</p>
         {job.artifacts.filter(a => a.role === "request").map(a => <a key={a.id} href={mediaUrl(a.url)} download>下载已准备请求</a>)}
         {!retiredTemplate(job) && <>
           {job.auto_preview_available && <label>

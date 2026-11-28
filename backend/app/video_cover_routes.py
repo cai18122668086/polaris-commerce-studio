@@ -15,9 +15,11 @@ and final title/body onto the work item (contract C2) and marks it done.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import logging
+import os
 import shutil
 import threading
 import time
@@ -681,6 +683,11 @@ def list_candidates(
     query = select(VideoCoverCandidateRecord).where(
         VideoCoverCandidateRecord.workspace_id == workspace.workspace_id,
         VideoCoverCandidateRecord.owner_user_id == workspace.principal.user_id,
+        # 清理任务删掉文件的旧候选（B14）不再出现在列表里
+        or_(
+            VideoCoverCandidateRecord.error_code.is_(None),
+            VideoCoverCandidateRecord.error_code != "COVER_EXPIRED",
+        ),
     )
     filters = []
     if work_item_id:
@@ -882,7 +889,11 @@ def work_poster(
         / "posters"
         / f"{kind}-{task_id}-{key}.jpg"
     )
-    if not target.is_file():
+    if target.is_file():
+        # 记下最近访问时间，海报缓存按它淘汰（B14）
+        with contextlib.suppress(OSError):
+            os.utime(target)
+    else:
         try:
             compose.make_poster(video, target)
         except compose.CoverComposeError:

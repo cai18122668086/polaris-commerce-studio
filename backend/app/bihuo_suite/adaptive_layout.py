@@ -275,7 +275,9 @@ def _business_segments(text: str, ranges: list, start: int, end: int) -> list:
     return [(s, mark) for s, mark in segments if s]
 
 
-def _business_lines(F: Any, cfg: dict, text: str, ranges: list, cuts: list, floor: int):
+def _business_lines(
+    F: Any, cfg: dict, text: str, ranges: list, cuts: list, floor: int
+) -> list[tuple[list, int]]:
     """bihuo-47's own line loop: size carries over between lines, -2 px steps."""
     size = 84
     start = 0
@@ -964,7 +966,8 @@ def caption_backing(
 
 
 def _shown(alpha: Image.Image) -> float:
-    return alpha.getextrema()[1] / 255
+    peak = alpha.getextrema()[1]  # single-band (L) image: (min, max) of ints
+    return float(peak if isinstance(peak, (int, float)) else peak[1]) / 255
 
 
 def qingbai_backed_captions(native: Any, original: Callable, c: dict, n: int) -> tuple:

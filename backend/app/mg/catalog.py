@@ -12,7 +12,24 @@ from typing import Any
 
 from .text import is_quote, plain
 
-CATALOG_VERSION = "mg-catalog/1"
+CATALOG_VERSION = "mg-catalog/2"
+
+# 只在「人物铺满画面、背景层没有模板信息卡」的成套模板上开放 MG（总控 11-28 验收）：
+# 其它模板把卡片画在背景层，图层时间线看不到，MG 会压到信息卡上。
+MG_TEMPLATES = frozenset(
+    {
+        "bihuo-08-v1",
+        "bihuo-13-v1",
+        "bihuo-15-v1",
+        "bihuo-32-v1",
+        "bihuo-36-v1",
+        "bihuo-47-v1",
+    }
+)
+MG_UNSUPPORTED_REASON = "此模板画面已有信息卡，暂不支持 MG"
+# 卡片只放短标题/关键词：整句说明会和同一时刻的字幕重复。
+DROPPED_FIELDS = frozenset({"desc", "label", "note"})
+PROMPT_EXCLUDED = frozenset({"quote_card"})  # 金句卡就是整句，必然和字幕重复
 FULLSCREEN_MAX_MS = 2500
 MIN_MS, MAX_MS = 1600, 5000
 
@@ -60,13 +77,13 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "data_callout": {
         "label": "数据强调",
         "use": "句子里有数字/倍数/时长/百分比",
-        "fields": {"value": "数字原文≤8", "unit": "单位≤4", "label": "说明≤12"},
+        "fields": {"value": "数字原文≤8", "unit": "单位≤4"},
         "size": (840, 400),
     },
     "feature_card": {
         "label": "卖点卡",
         "use": "一个具体卖点",
-        "fields": {"title": "卖点≤10", "desc": "补充≤18，可空"},
+        "fields": {"title": "卖点关键词≤8，不要整句"},
         "size": (840, 300),
     },
     "checklist": {
@@ -101,7 +118,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "price_tag": {
         "label": "价格签",
         "use": "价格、优惠",
-        "fields": {"price": "价格数字≤8", "note": "说明≤10，可空"},
+        "fields": {"price": "价格数字≤8"},
         "size": (640, 300),
     },
     "title_reveal": {
@@ -116,7 +133,7 @@ LIMITS = {
     "value": 8,
     "unit": 4,
     "label": 12,
-    "title": 10,
+    "title": 8,
     "desc": 18,
     "left_label": 6,
     "left": 10,
@@ -150,7 +167,12 @@ def prompt_catalog() -> dict[str, Any]:
     return {
         name: {"use": spec["use"], "fields": spec["fields"]}
         for name, spec in COMPONENTS.items()
+        if name not in PROMPT_EXCLUDED
     }
+
+
+def template_supported(template_id: str | None) -> bool:
+    return template_id in MG_TEMPLATES
 
 
 def _text(value: Any) -> str:
@@ -165,6 +187,9 @@ def validate_params(
     """Normalised params, or None when anything is invented/too long/missing."""
     if component not in COMPONENTS or not isinstance(params, dict):
         return None
+    if component in PROMPT_EXCLUDED:
+        return None
+    params = {k: v for k, v in params.items() if k not in DROPPED_FIELDS}
     allowed = set(COMPONENTS[component]["fields"])
     if set(params) - allowed:
         return None
@@ -194,7 +219,19 @@ def validate_params(
         number = out.get("value") or out.get("price") or ""
         if not _NUMERIC.match(number):
             return None
+    if not COMPONENTS[component].get("fullscreen") and any(
+        _whole_clause(str(value), source)
+        for key, value in out.items()
+        if key not in ("value", "unit", "price")
+    ):
+        return None
     return out
+
+
+def _whole_clause(text: str, source: str) -> bool:
+    """A card repeating a whole spoken clause duplicates the caption below it."""
+    clauses = {plain(c) for c in re.split(r"[，。！？!?；;,.\s]+", source) if c}
+    return plain(text) in clauses
 
 
 def cue_window(

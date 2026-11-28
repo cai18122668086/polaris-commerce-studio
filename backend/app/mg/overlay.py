@@ -287,9 +287,15 @@ def composite(
             f"[{index}:v]format=rgba{resize},"
             f"setpts=PTS-STARTPTS+({offset})/TB[m{index}]"
         )
+        # Time window on frame boundaries. Do not use the frame counter ``n``:
+        # in a chain of overlays a later overlay's ``n`` is not the main
+        # picture's frame number and the card silently never shows
+        # (dev trial on bihuo-36, 11-28).
+        start = (cue["first_frame"] - 0.5) * rate.denominator / rate.numerator
+        end = (cue["last_frame"] + 0.5) * rate.denominator / rate.numerator
         graph.append(
             f"[{label}][m{index}]overlay=x={cue['x']}:y={cue['y']}:eof_action=pass:"
-            f"enable='between(n,{cue['first_frame']},{cue['last_frame']})'[v{index}]"
+            f"enable='between(t,{max(0.0, start):.6f},{end:.6f})'[v{index}]"
         )
         label = f"v{index}"
     command += [
@@ -334,6 +340,15 @@ def apply_supplement_mg(
     request = payload.get("supplement_mg")
     if not request:
         return None
+    from .catalog import template_supported
+
+    if not template_supported(payload.get("template_id")):
+        return {
+            "version": VERSION,
+            "catalog": CATALOG_VERSION,
+            "status": "template_not_supported",
+            "template_id": payload.get("template_id"),
+        }
     started = time.monotonic()
     ffmpeg = ffmpeg or request.get("ffmpeg") or "ffmpeg"
     ffprobe = ffprobe or request.get("ffprobe") or "ffprobe"

@@ -517,14 +517,16 @@ def test_mg_params_must_be_verbatim_and_bounded():
     ok = validate_params(
         "data_callout", {"value": "72", "unit": "小时", "label": "不紧绷"}, source
     )
-    assert ok == {"value": "72", "unit": "小时", "label": "不紧绷"}
+    # 卡片只放关键词：说明类字段被去掉（会和字幕重复）
+    assert ok == {"value": "72", "unit": "小时"}
     assert (
         validate_params("data_callout", {"value": "96", "unit": "小时"}, source) is None
     )
-    assert (
-        validate_params("data_callout", {"value": "72", "label": "超级保湿"}, source)
-        is None
-    )
+    assert validate_params("feature_card", {"title": "超级保湿"}, source) is None
+    assert validate_params(
+        "feature_card", {"title": "持久保湿", "desc": "不紧绷"}, source
+    ) == {"title": "持久保湿"}
+    assert validate_params("quote_card", {"text": "持久保湿"}, source) is None
     assert (
         validate_params("data_callout", {"value": "72", "extra": "x"}, source) is None
     )
@@ -1180,3 +1182,67 @@ def test_opening_sentence_never_gets_supplements():
     analysis = ScriptAnalysis("v", "d", "model", rows)
     assert 0 not in [r["sentence_index"] for r in pick_paintable(analysis, 6)]
     assert 0 not in pick_stock_sentences(analysis)
+
+
+def test_mg_only_on_presenter_templates(tmp_path):
+    from app.mg.catalog import MG_TEMPLATES, prompt_catalog, template_supported
+    from app.mg.overlay import apply_supplement_mg
+
+    assert len(MG_TEMPLATES) >= 3 and "quote_card" not in prompt_catalog()
+    assert template_supported("bihuo-36-v1") and not template_supported("bihuo-04-v1")
+    receipt = apply_supplement_mg(
+        {"template_id": "bihuo-04-v1", "supplement_mg": {"cues": [{"component": "x"}]}},
+        tmp_path,
+        tmp_path / "final.mp4",
+    )
+    assert receipt["status"] == "template_not_supported"
+
+
+def test_overlay_chain_enables_by_time_not_frame_counter(tmp_path, monkeypatch):
+    from fractions import Fraction
+
+    from app.mg import overlay
+
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["graph"] = cmd[cmd.index("-filter_complex") + 1]
+
+    monkeypatch.setattr(overlay.subprocess, "run", fake_run)
+    cues = [
+        {
+            "frames_dir": "a",
+            "first_frame": 0,
+            "last_frame": 32,
+            "x": 0,
+            "y": 0,
+            "scale": 1.0,
+        },
+        {
+            "frames_dir": "b",
+            "first_frame": 251,
+            "last_frame": 290,
+            "x": 162,
+            "y": 1220,
+            "scale": 0.9,
+        },
+    ]
+    overlay.composite(
+        "ffmpeg", tmp_path / "in.mp4", cues, Fraction(25, 1), tmp_path / "o.mp4"
+    )
+    graph = seen["graph"]
+    assert "between(n," not in graph
+    assert "between(t,0.000000,1.300000)" in graph
+    assert "between(t,10.020000,11.620000)" in graph
+
+
+def test_mg_card_text_must_not_repeat_a_whole_caption_clause():
+    source = "再看详情规格和使用场景，有没有讲完整，"
+    assert validate_params("feature_card", {"title": "有没有讲完整"}, source) is None
+    assert validate_params("feature_card", {"title": "详情规格"}, source) == {
+        "title": "详情规格"
+    }
+    # Full-screen title covers the captions: allowed to be a whole clause.
+    assert validate_params("title_reveal", {"text": "新品上架前"}, "新品上架前，") == {
+        "text": "新品上架前"
+    }

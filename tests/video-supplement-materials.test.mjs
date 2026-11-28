@@ -73,7 +73,10 @@ test("unavailable sources and unsupported templates are explained, not hidden", 
   assert.equal(m.sourceBlocker("stock", items, states), "暂未开通");
   assert.equal(m.sourceBlocker("mine", items, states), null);
   const apple = items.map(item => ({ ...item, supports_mg: false, supports_images: false }));
-  assert.match(m.sourceBlocker("mg", apple, states), /不支持 MG/);
+  assert.match(m.sourceBlocker("mg", apple, states), /暂不支持 MG/);
+  const cards = items.map(item => ({ ...item, template_id: "bihuo-04-v1" }));
+  assert.equal(m.sourceBlocker("mg", cards, states, ["bihuo-36-v1"]), "此模板画面已有信息卡，暂不支持 MG");
+  assert.equal(m.sourceBlocker("mg", [{ ...cards[0], template_id: "bihuo-36-v1" }], states, ["bihuo-36-v1"]), null);
   assert.match(m.sourceBlocker("mine", apple, states), /没有配图位置/);
   const noScript = items.map(item => ({ ...item, script_text: " " }));
   assert.match(m.sourceBlocker("ai_image", noScript, states), /需要口播稿/);

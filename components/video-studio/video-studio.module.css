@@ -1539,3 +1539,31 @@
 :global(html.theme-plaster) .editingStudio .returnSite{color:#716e66}
 :global(html.theme-plaster) .editingStudio .main > .editorHeader{background:#ffffff;border-color:rgb(28 28 26 / 0.08);border-radius:19px}
 /* plaster:end */
+
+/* ---------- B11（r2）：导航序号与步骤条同一套 ① ② ③ ④，细线圆、无底色 ---------- */
+.navIndex { display: inline-grid; place-items: center; width: 18px; height: 18px; flex-shrink: 0; border: 1px solid rgb(30 28 24 / 22%); border-radius: 50%; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; color: inherit; }
+.sidebar a.activeNav .navIndex { border-color: currentColor; }
+@media (max-width: 700px) { .navIndex { width: 15px; height: 15px; font-size: 10px; } }
+:global(html.theme-ember) .navIndex { border-color: rgb(237 234 228 / 28%); }
+
+/* ---------- B12（r2）：首页「进行中的批次」——一批一行，细线表格式，不用卡片和胶囊 ---------- */
+.activeBatches { margin: 0 0 22px; }
+.activeBatches h2 { margin: 0 0 8px; font-size: 14px; font-weight: 500; color: #1a1a19; }
+.activeBatches ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid rgb(30 28 24 / 10%); }
+.activeBatches li { display: grid; grid-template-columns: 120px 56px minmax(0, 1fr) auto; align-items: center; gap: 16px; min-height: 52px; padding: 8px 0; border-bottom: 1px solid rgb(30 28 24 / 8%); font-size: 13px; }
+.batchDate { color: #5d5c59; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.batchCount { color: #73726e; font-variant-numeric: tabular-nums; }
+.batchWhere { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.batchWhere b { font-weight: 500; color: #1a1a19; white-space: nowrap; }
+.batchWhere small { font-size: 12px; color: #73726e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.studio .batchGo { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid rgb(30 28 24 / 14%); border-radius: 999px; background: #fff; color: #1a1a19; font-size: 13px; white-space: nowrap; transition: border-color .2s; }
+.studio .batchGo:hover { border-color: rgb(30 28 24 / 30%); }
+@media (max-width: 700px) {
+  .activeBatches li { grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "date count go" "where where where"; gap: 4px 10px; padding: 10px 0; }
+  .batchDate { grid-area: date; font-size: 12px; } .batchCount { grid-area: count; font-size: 12px; }
+  .batchWhere { grid-area: where; flex-wrap: wrap; gap: 2px 8px; } .batchWhere small { white-space: normal; }
+  .studio .batchGo { grid-area: go; justify-self: end; padding: 5px 12px; font-size: 12px; }
+}
+:global(html.theme-ember) .activeBatches h2, :global(html.theme-ember) .batchWhere b { color: #f2ede6; }
+:global(html.theme-ember) .activeBatches ul, :global(html.theme-ember) .activeBatches li { border-color: rgb(255 240 225 / 10%); }
+:global(html.theme-ember) .studio .batchGo { background: transparent; color: #f2ede6; border-color: rgb(255 240 225 / 20%); }

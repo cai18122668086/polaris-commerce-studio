@@ -77,7 +77,9 @@ def test_scenario_shape(scenario: dict) -> None:
 
 def test_consumer_scenarios_ban_peer_content_and_peer_one_does_not() -> None:
     for scenario in scenarios():
-        benchmark_rules = {r["rule"] for r in scenario["expect"]["must_not"]["benchmark"]}
+        benchmark_rules = {
+            r["rule"] for r in scenario["expect"]["must_not"]["benchmark"]
+        }
         if scenario["expect"]["audience"] == "consumer":
             assert "peer" in benchmark_rules, scenario["id"]
         else:

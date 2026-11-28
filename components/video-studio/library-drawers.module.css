@@ -182,3 +182,4 @@
 :global(.theme-ember) .status { background: rgb(18 17 16 / 88%); color: #d8d4ce; }
 .checkRow { display: grid; gap: 8px; justify-items: start; margin-top: 4px; }
 .checkNotice { font-size: 12px; line-height: 1.6; color: #6e617a; }
+.unavailableAction { opacity: .55; cursor: not-allowed; }

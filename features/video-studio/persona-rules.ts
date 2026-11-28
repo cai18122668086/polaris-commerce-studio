@@ -77,3 +77,10 @@ export function ownAvatarStatus(avatar: { ready: boolean }, job?: { status: stri
 export function canCheckAvatarJob(job: { status: string; kind?: string } | undefined): boolean {
   return !!job && job.status === "unknown";
 }
+
+/** 声音库里的「克隆新声音」入口（与口播页 B15 同一处理）：没开通时置灰、说明原因，点了不打开表单。 */
+export function cloneEntry(config?: { available?: boolean } | null): { available: boolean; label: string; hint: string } {
+  return config?.available === true
+    ? { available: true, label: "克隆新声音", hint: "" }
+    : { available: false, label: "克隆新声音（暂未开通）", hint: "声音克隆暂未开通，可以先用系统声音" };
+}

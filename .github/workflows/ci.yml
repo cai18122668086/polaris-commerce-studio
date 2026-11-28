@@ -149,6 +149,11 @@ jobs:
         env:
           POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
         run: python -m pytest backend/tests/test_replica_heartbeat_postgres.py -vv
+      - name: Test editing queue estimate on PostgreSQL
+        if: matrix.shard == 0
+        env:
+          POLARIS_TEST_DATABASE_URL: postgresql+psycopg://polaris:polaris_ci_only@localhost:${{ job.services.postgres.ports[5432] }}/polaris_ci
+        run: python -m pytest backend/tests/test_video_work_editing_postgres.py -vv
       - name: Test credit payments and migrations under PostgreSQL row locks
         if: matrix.shard == 0
         env:

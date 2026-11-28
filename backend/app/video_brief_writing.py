@@ -236,6 +236,12 @@ def fact_pieces(value: str) -> list[str]:
 def repetition(text: str, facts: WritingFacts) -> tuple[str, int]:
     """The selling point said most often in the script, and how often."""
     best = ("", 0)
+    # The shop's own name often contains the category (「恒志欧式家具店」):
+    # saying the name is not repeating the selling point.
+    for fact in declared_facts(facts):
+        if fact.category == "identity":
+            for piece in sorted(fact_pieces(fact.value or ""), key=len, reverse=True):
+                text = text.replace(piece, "·")
     for fact in declared_facts(facts):
         if fact.category == "identity":
             continue  # the shop's own name may be said a few times
@@ -305,6 +311,24 @@ def check_brief(
             hit.group(0),
             "稿子里不能留【】、XX这类空位，没有的信息就不写",
         )
+    if (brief.get("speaker") or "merchant_self") == "merchant_self":
+        for pattern in VISITOR:
+            hit = pattern.search(text)
+            if hit:
+                raise BriefIssue(
+                    "visitor_voice",
+                    hit.group(0),
+                    f"「{hit.group(0)}」是顾客到店的口吻，这条是老板/店员自己说，改成店主对顾客说话",
+                )
+    if (brief.get("audience") or "consumer") == "consumer":
+        for pattern in PEER:
+            hit = pattern.search(everything)
+            if hit:
+                raise BriefIssue(
+                    "peer_talk",
+                    hit.group(0),
+                    f"「{hit.group(0)}」是对同行商家说的话，这条是说给顾客听的，删掉并改成对顾客说",
+                )
     for term in facts.forbidden_terms:
         if term and term in everything:
             raise BriefIssue("forbidden", term, f"出现了用户禁用词「{term}」，删掉")
@@ -345,24 +369,6 @@ def check_brief(
                 term,
                 f"出现了别人视频里的「{term}」（别家品牌、店名或作者），删掉",
             )
-    if (brief.get("speaker") or "merchant_self") == "merchant_self":
-        for pattern in VISITOR:
-            hit = pattern.search(text)
-            if hit:
-                raise BriefIssue(
-                    "visitor_voice",
-                    hit.group(0),
-                    f"「{hit.group(0)}」是顾客到店的口吻，这条是老板/店员自己说，改成店主对顾客说话",
-                )
-    if (brief.get("audience") or "consumer") == "consumer":
-        for pattern in PEER:
-            hit = pattern.search(everything)
-            if hit:
-                raise BriefIssue(
-                    "peer_talk",
-                    hit.group(0),
-                    f"「{hit.group(0)}」是对同行商家说的话，这条是说给顾客听的，删掉并改成对顾客说",
-                )
     if strict:
         band = basis.get("words")
         chars = spoken_chars(text)
@@ -866,11 +872,11 @@ def grams(text: str, n: int = 2) -> set[str]:
 
 
 def overlap(a: str, b: str) -> float:
-    """标题 / 开头的字符二元组重合度（Jaccard），评测脚本用同一口径。"""
+    """标题 / 开头的重合度：共有的字符二元组占较短一方的比例（评测脚本用同一口径）。"""
     x, y = grams(a), grams(b)
     if not x or not y:
         return 0.0
-    return len(x & y) / len(x | y)
+    return len(x & y) / min(len(x), len(y))
 
 
 DUPLICATE_TITLE = 0.5

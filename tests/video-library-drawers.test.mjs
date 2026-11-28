@@ -16,12 +16,14 @@ function load(file, resolver) {
   return mod.exports;
 }
 const rules = load("../features/video-studio/persona-rules.ts", require);
+const creditNotes = load("../features/video-studio/credit-notes.ts", require);
 const creditCalls = [];
 const stubs = {
   "@/features/video-studio/persona-rules": rules,
   "@/features/video-studio/credits": {
     useVideoCredits: () => ({ note: actions => { creditCalls.push(actions); return { text: "预计 30 积分", credits: 30, insufficient: false }; } }),
     billableLabel: (action, credits) => (typeof credits === "number" ? `${action} · ${credits} 积分` : `${action}（计费）`),
+    creditPhrase: (...args) => creditNotes.creditPhrase(...args),
   },
   "@/lib/api/base-url": { mediaUrl: url => url },
   "@/lib/api/api-error": { ApiError: class ApiError extends Error {} },
@@ -38,8 +40,10 @@ function resolver(name) {
   if (name.endsWith(".css")) return css;
   if (name === "./side-drawer") return sideDrawer;
   if (name === "./persona-create-drawer") return personaDrawer;
+  if (name === "./avatar-check-button") return checkButton;
   return require(name);
 }
+const checkButton = load("../components/video-studio/avatar-check-button.tsx", resolver);
 const sideDrawer = load("../components/video-studio/side-drawer.tsx", resolver);
 const personaDrawer = load("../components/video-studio/persona-create-drawer.tsx", resolver);
 const { VoiceCloneDrawer } = load("../components/video-studio/voice-clone-drawer.tsx", resolver);

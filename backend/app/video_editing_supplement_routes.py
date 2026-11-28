@@ -239,7 +239,7 @@ async def sources(request: Request, workspace: VideoWorkspace) -> dict[str, Any]
                 "key": "ai_image",
                 "available": ai_available(settings),
                 "reason": None if ai_available(settings) else "暂未开通",
-                "price": f"{credits} 积分/张" if credits else "按实际张数计费",
+                "price": f"{credits} 积分/张" if credits else "灰度测试期间不扣积分",
                 "credits_per_image": credits,
                 "max_images": settings.video_supplement_ai_image_max_per_video,
             },

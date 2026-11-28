@@ -1,6 +1,8 @@
 // 补充素材面板（契约 C5，W4）：值结构、纯函数、接口类型。
 // 默认 mode=none：什么都不加；用户不操作就不传任何素材。
 
+import { FREE_TRIAL_TEXT, isPriced } from "@/features/video-studio/credit-notes";
+
 export type SupplementSourceKey = "mine" | "stock" | "ai_image" | "mg";
 export type SupplementStyle = "paper" | "ink" | "ember";
 export type MaterialSourceKey = Exclude<SupplementSourceKey, "mg">;
@@ -250,7 +252,7 @@ export function supplementForWorkItem(value: SupplementMaterialsValue, workItemI
 
 export function aiCost(count: number, creditsPerImage: number | null | undefined): string {
   if (!count) return "不生成";
-  if (!creditsPerImage) return `${count} 张，按实际张数计费`;
+  if (!isPriced(creditsPerImage)) return `${count} 张，${FREE_TRIAL_TEXT}`;
   return `${count} 张 × ${creditsPerImage} 积分 = ${count * creditsPerImage} 积分`;
 }
 

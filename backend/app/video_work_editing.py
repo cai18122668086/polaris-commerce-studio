@@ -501,19 +501,35 @@ def worker_queue(session: Session, before: Any = None) -> tuple[int, int]:
     Counts every user's queued/running renders, recognitions and plannings
     (created before ``before`` when given), so an estimate never pretends the
     worker is free when other people's videos are ahead.
+
+    The estimate is advisory: any failure is logged and reported as an empty
+    queue, inside a savepoint so the caller's transaction stays usable and the
+    batch view / submit response never fails because of it.
     """
+    try:
+        with session.begin_nested():
+            return _worker_queue(session, before)
+    except Exception:
+        logger.exception("editing worker queue estimate failed")
+        return 0, 0
+
+
+def _worker_queue(session: Session, before: Any) -> tuple[int, int]:
     renders = steps = 0
+    # One labelled expression for SELECT and GROUP BY: PostgreSQL treats two
+    # separately bound ``options -> 'mode'`` subscripts as different expressions.
+    mode = EditingTaskRecord.options["mode"].as_string().label("mode")
     rows = session.execute(
-        select(EditingTaskRecord.options["mode"].as_string(), func.count())
+        select(mode, func.count())
         .where(
             EditingTaskRecord.status.in_(("queued", "running")),
             *((EditingTaskRecord.created_at < before,) if before is not None else ()),
         )
-        .group_by(EditingTaskRecord.options["mode"].as_string())
+        .group_by(mode)
     ).all()
-    for mode, count in rows:
+    for value, count in rows:
         number = count if isinstance(count, int) else 0
-        if mode == "transcript":
+        if value == "transcript":
             steps += number
         else:
             renders += number

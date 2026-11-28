@@ -429,3 +429,29 @@ def test_a_broken_plan_is_retried_afresh_not_revalidated(video, tmp_path, monkey
     with factory() as session:
         run = session.get(VideoWorkEditingRunRecord, item_id)
         assert run.attempt == 2 and run.generate_task_id not in (None, first_generate)
+
+
+def test_a_failing_queue_estimate_never_breaks_submit_or_the_batch_view(
+    video, tmp_path, monkeypatch
+):
+    client, ws, settings, factory, semantic, batch = prepare_world(
+        video, tmp_path, monkeypatch
+    )
+
+    def broken(session, before):
+        session.execute(select(func.count()).select_from(EditingTaskRecord))
+        raise RuntimeError("queue estimate exploded")
+
+    monkeypatch.setattr(editing, "_worker_queue", broken)
+    response = submit(client, ws, batch)
+    assert response.status_code == 200, response.text
+    view = response.json()
+    assert phases(view) == ["transcribing", "transcribing", "queued"]
+    third = view["editing"][2]
+    assert third["queue_position"] == 1
+    assert third["estimate_minutes"] >= editing.MINUTES_PER_ITEM
+    # Polling advances the pipeline; the view itself must still answer 200.
+    assert phases(poll(client, ws, batch))[2] == "queued"
+    queue = client.get(base(ws) + "/editing-queue")
+    assert queue.status_code == 200, queue.text
+    assert queue.json()["tasks_ahead"] == 0 and queue.json()["minutes_ahead"] == 0

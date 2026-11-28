@@ -75,6 +75,8 @@ export type EditingItemState = {
   position: number;
   phase?: string | null;
   queue_position?: number | null;
+  /** 全站共用的剪辑服务里排在前面的任务数（所有用户） */
+  queue_ahead?: number | null;
   estimate_minutes?: number | null;
   error?: string | null;
   can_retry?: boolean;
@@ -96,11 +98,14 @@ export function itemStatus(state: EditingItemState): { label: string; detail: st
       ? { label: "口播未完成", detail: "口播生成完后才能剪", done: 0, tone: "wait" }
       : { label: "未加入", detail: "这条没有加入本次剪辑", done: 0, tone: "wait" };
   }
+  const ahead = typeof state.queue_ahead === "number" ? state.queue_ahead : null;
+  const queueLine = (minutes?: number | null) => ahead !== null
+    ? `剪辑服务全站共用、按顺序处理：前面还有 ${ahead} 个任务${minutes ? `，预计 ${minutes} 分钟内完成` : ""}`
+    : minutes ? `剪辑服务全站按顺序处理，预计 ${minutes} 分钟内完成` : "前面的视频完成后自动开始";
   if (phase === "queued") {
-    const minutes = state.estimate_minutes;
     return {
       label: state.queue_position ? `排队中 · 第 ${state.queue_position} 位` : "排队中",
-      detail: minutes ? `剪辑服务全站按顺序处理，预计 ${minutes} 分钟内完成` : "前面的视频完成后自动开始",
+      detail: queueLine(state.estimate_minutes),
       done: 0,
       tone: "wait",
     };
@@ -108,7 +113,10 @@ export function itemStatus(state: EditingItemState): { label: string; detail: st
   if (phase === "done") return { label: "已完成", detail: "可以播放、下载，或去成片", done: 4, tone: "ok" };
   if (phase === "failed") return { label: "未完成", detail: state.error || "这条没有剪成功，可以单独重试", done: 0, tone: "bad" };
   const index = STEPS.findIndex(step => step.phase === phase);
-  return { label: `${STEPS[index]?.label ?? "处理中"}中`, detail: index === 2 ? "按口播内容安排字幕、花字和动效" : index === 3 ? "渲染完成后自动导出高清" : "", done: Math.max(0, index), tone: "work" };
+  const name = STEPS[index]?.label ?? "处理中";
+  // The step's task is waiting on the shared worker behind other people's videos.
+  if (ahead !== null) return { label: `等待${name}`, detail: queueLine(state.estimate_minutes), done: Math.max(0, index), tone: "work" };
+  return { label: `${name}中`, detail: index === 2 ? "按口播内容安排字幕、花字和动效" : index === 3 ? "渲染完成后自动导出高清" : "", done: Math.max(0, index), tone: "work" };
 }
 
 export const PROGRESS_LABELS = STEPS.map(step => step.label);
@@ -123,11 +131,16 @@ export function batchFinished(states: EditingItemState[]): { finished: boolean; 
 }
 
 /** ④ 生成前的汇总：条数、积分（编排 + 出片，每条）、耗时（全站单通道串行，每条约 6 分钟）。 */
-export function generationSummary(count: number, perItemCredits: number | null | undefined, minutesPerItem = 6): { credits: string; time: string } {
+export function generationSummary(count: number, perItemCredits: number | null | undefined, minutesPerItem = 6, queue?: { tasks_ahead: number; minutes_ahead: number } | null): { credits: string; time: string } {
   const credits = typeof perItemCredits === "number" ? `预计 ${(perItemCredits * count).toLocaleString("zh-CN")} 积分（每条 ${perItemCredits}）` : "按实际用量计费";
-  const total = count * minutesPerItem;
-  const time = count <= 1 ? `约 ${minutesPerItem} 分钟` : `约 ${total} 分钟（逐条处理，每条约 ${minutesPerItem} 分钟，可以关掉页面，完成后在作品里查看）`;
-  return { credits, time };
+  const own = count * minutesPerItem;
+  const waiting = queue && queue.tasks_ahead > 0 ? queue.minutes_ahead : 0;
+  const total = own + waiting;
+  const pace = count <= 1 ? "" : `逐条处理，每条约 ${minutesPerItem} 分钟`;
+  const line = waiting
+    ? `约 ${total} 分钟（剪辑服务全站共用，前面还有 ${queue?.tasks_ahead} 个任务${pace ? `；${pace}` : ""}）`
+    : count <= 1 ? `约 ${minutesPerItem} 分钟` : `约 ${total} 分钟（${pace}）`;
+  return { credits, time: `${line}，可以关掉页面，完成后在作品里查看` };
 }
 
 /** 模板对素材的要求，用一句话告诉商家。 */

@@ -46,6 +46,10 @@ test("go to finishing only when nothing is still running and something finished"
 test("summary and template needs in plain words", () => {
   assert.equal(generationSummary(3, 20).credits, "预计 60 积分（每条 20）");
   assert.match(generationSummary(3, 20).time, /约 18 分钟（逐条处理/);
+  // Other people's videos ahead on the shared worker are part of the honest estimate.
+  assert.match(generationSummary(2, 20, 6, { tasks_ahead: 3, minutes_ahead: 11 }).time, /约 23 分钟（剪辑服务全站共用，前面还有 3 个任务/);
+  assert.match(itemStatus({ item_id: "a", position: 0, phase: "queued", queue_position: 1, queue_ahead: 4, estimate_minutes: 26 }).detail, /前面还有 4 个任务，预计 26 分钟内完成/);
+  assert.equal(itemStatus({ item_id: "a", position: 0, phase: "rendering", queue_ahead: 2, estimate_minutes: 16 }).label, "等待生成视频");
   assert.equal(generationSummary(1, null).credits, "按实际用量计费");
   assert.equal(durationLabel(21040), "21秒");
   assert.equal(durationLabel(95000), "1分35秒");

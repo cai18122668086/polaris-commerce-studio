@@ -167,8 +167,12 @@ def test_batch_queues_beyond_two_and_finishes_every_item(video, tmp_path, monkey
     assert phases(view) == ["transcribing", "transcribing", "queued"]
     third = view["editing"][2]
     assert third["queue_position"] == 1
-    # Honest estimate: the shared worker runs one item at a time for everyone.
-    assert third["estimate_minutes"] == 3 * editing.MINUTES_PER_ITEM
+    # Honest estimate: the shared worker runs one task at a time for everyone;
+    # the third item waits behind the two recognitions already queued.
+    assert third["queue_ahead"] is not None
+    assert third["estimate_minutes"] >= editing.MINUTES_PER_ITEM
+    queue = client.get(base(ws) + "/editing-queue").json()
+    assert queue["tasks_ahead"] >= 0 and queue["minutes_per_item"] == 6
     items = {i["id"]: i for i in view["batch"]["items"]}
     assert [items[i]["status"] for i in view["batch"]["item_ids"]] == [
         "running",

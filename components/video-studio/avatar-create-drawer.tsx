@@ -102,6 +102,7 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
       {onReady && <button type="button" className={base.primaryButton} onClick={() => { onReady(created(job, "ready")); onClose(); }}>使用这个形象</button>}
     </>}
     {phase === "failed" && <button type="button" className={base.primaryButton} onClick={reset}>重新上传</button>}
+    {phase === "expired" && <button type="button" className={base.primaryButton} onClick={reset}>重新定制</button>}
     {["uploading", "generating", "registering", "unknown"].includes(phase) && <button type="button" className={base.outlineButton} disabled={busy} onClick={onClose}>{busy ? "上传中…" : "先关闭，稍后查看"}</button>}
   </> : <>
     <span className={`${styles.footerNote} ${cost.insufficient ? styles.short : ""}`}>{cost.text}</span>

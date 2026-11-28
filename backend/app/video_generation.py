@@ -58,6 +58,8 @@ from .video_studio_schemas import StrictVideoModel
 from .video_template_media import prepare_forward, video_info
 from .video_tts import synthesize
 from .video_voice_catalog import (
+    EMOTIONS,
+    LANGUAGES,
     VOICES,
     official_voices,
     preview_path,
@@ -826,10 +828,29 @@ def voices(
         + official_voices(request.app.state.settings, root, used)
         + cloned_voice_catalog(request.app.state.settings, session, workspace)
     )
-    return [
-        {key: value for key, value in voice.items() if key != "provider"}
-        for voice in result
-    ]
+    return [compact_voice(voice) for voice in result]
+
+
+# 系统声音列表里不再逐条带的字段：情绪/语言选项三百多次重复，曾让列表涨到 44 万字节，
+# 慢网下超过前端超时（正式站首页显示 0 个音色）。这些选项改由 /voice-options 一次给出。
+_SHARED_VOICE_FIELDS = {"provider", "emotions", "languages", "tag", "preview_url"}
+
+
+def compact_voice(voice: dict[str, Any]) -> dict[str, Any]:
+    """系统声音（tao）去掉共享字段，试听只给 ``preview``（前端按 id 拼地址）。"""
+
+    if voice.get("provider") != "tao":
+        return {key: value for key, value in voice.items() if key != "provider"}
+    item = {k: v for k, v in voice.items() if k not in _SHARED_VOICE_FIELDS}
+    item["preview"] = voice.get("preview_url") is not None
+    return item
+
+
+@router.get("/voice-options")
+def voice_options(workspace: VideoWorkspace) -> dict[str, Any]:
+    """系统声音共用的情绪与语言选项（原先逐条附在 /voices 里）。"""
+
+    return {"emotions": EMOTIONS, "languages": LANGUAGES}
 
 
 @router.get("/voices/{voice_id}/preview")

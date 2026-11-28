@@ -114,3 +114,24 @@ test("C8 停止核对：形象任务显示失败说明、已退回积分，给�
   const studio = readFileSync(new URL("../components/video-studio/video-studio.tsx", import.meta.url), "utf8");
   assert.match(studio, /notify\(AVATAR_PHASE_COPY\.expired\.detail\); setLibraryDrawer\("avatar"\);/);
 });
+
+test("声音列表瘦身：按 id 还原试听地址、tag 缺省用语言；列表 30 秒超时并自动重试一次", async () => {
+  const lib = load("../features/video-studio/library.ts", name => ({
+    react: { useCallback: f => f, useEffect: () => {}, useRef: v => ({ current: v }), useState: v => [v, () => {}] },
+    "@/lib/api/client": { apiClient: {} }, "@/lib/api/request": { unwrapApiResponse: r => r.data },
+    "@/lib/api/upload": {}, "@/lib/auth/timeout": {},
+  })[name] ?? {});
+  const [sys, own] = lib.expandVoices([
+    { id: "mm-voice-abc", name: "沉稳男声 · 商务讲解", gender: "男", description: "x", language: "中文 (普通话)", available: true, preview: true },
+    { id: "cv-voice-1", name: "我的声音", gender: "女", tag: "我的声音", description: "", preview_url: null },
+  ], "ws_1");
+  assert.equal(sys.preview_url, "/api/v1/video-studio/workspaces/ws_1/voices/mm-voice-abc/preview");
+  assert.equal(sys.tag, "中文 (普通话)");
+  assert.equal("preview" in sys, false);
+  assert.equal(own.preview_url, null);
+  assert.equal(own.tag, "我的声音");
+  assert.equal(lib.LIST_TIMEOUT_MS, 30000);
+  let calls = 0;
+  assert.equal(await lib.withRetry(async () => { calls += 1; if (calls === 1) throw new Error("timeout"); return "ok"; }), "ok");
+  assert.equal(calls, 2);
+});

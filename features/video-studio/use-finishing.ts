@@ -42,6 +42,22 @@ export function useFinishingItems(workspaceId: string, scope: { batch?: string |
 }
 
 /** 我的作品：所有作品条目（进行中 + 已完成）。 */
+/** 每条作品的发布平台：取自文案库条目（C1 platform），没有的不在结果里。 */
+export function useScriptPlatforms(workspaceId: string, documentIds: string[]) {
+  const ids = [...new Set(documentIds.filter(Boolean))].sort();
+  return useQuery({
+    queryKey: ["video-studio", "script-platforms", workspaceId, ids.join(",")],
+    enabled: ids.length > 0,
+    staleTime: 60000,
+    queryFn: async ({ signal }) => {
+      const page = unwrapApiResponse(await apiClient.GET(`${root}/script-library`, {
+        params: { path: { workspace_id: workspaceId }, query: { ids: ids.join(","), limit: 100 } }, signal: timeout(signal),
+      })) as { items: { id: string; platform: string }[] };
+      return Object.fromEntries(page.items.filter(item => item.platform === "douyin" || item.platform === "xiaohongshu").map(item => [item.id, item.platform as Platform]));
+    },
+  });
+}
+
 export function useAllWorkItems(workspaceId: string) {
   return useQuery({
     queryKey: finishingKeys.items(workspaceId, "all"),

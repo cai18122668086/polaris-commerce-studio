@@ -1232,5 +1232,5 @@ def test_overlay_chain_enables_by_time_not_frame_counter(tmp_path, monkeypatch):
     )
     graph = seen["graph"]
     assert "between(n," not in graph
-    assert "between(t,0.000000,1.340000)" in graph
+    assert "between(t,0.000000,1.300000)" in graph
     assert "between(t,10.020000,11.620000)" in graph

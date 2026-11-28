@@ -33240,6 +33240,56 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/voice-options": {
+      "get": {
+        "description": "系统声音共用的情绪与语言选项（原先逐条附在 /voices 里）。",
+        "operationId": "voice_options_api_v1_video_studio_workspaces__workspace_id__voice_options_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Voice Options Api V1 Video Studio Workspaces  Workspace Id  Voice Options Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Voice Options",
+        "tags": [
+          "video-generation"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/voices": {
       "get": {
         "operationId": "voices_api_v1_video_studio_workspaces__workspace_id__voices_get",

@@ -13,6 +13,26 @@ export type StageTiming = { stage: string; started_at: string; finished_at: stri
 export type GenerationJob = { id: string; request_id?: string; kind: "lipsync" | "h3_template"; avatar_id: string; project_id: string | null; confirmed_version_id?: string | null; status: string; stage: string; can_resume?: boolean; error_code?: string | null; lipsync_routing?: { long_wait?: boolean; switch_reason?: string; selected_provider?: string }; created_at: string; video_url?: string | null; audio_url?: string | null; snapshot?: VideoContent | null; handoff_url?: string | null; stage_history?: StageTiming[]; tts?: { voice_name?: string }; audio_duration_seconds?: number | null };
 const root = "/api/v1/video-studio/workspaces/{workspace_id}" as const;
 
+/** 形象、声音列表的超时（慢网下声音列表曾超过 12 秒）。 */
+export const LIST_TIMEOUT_MS = 30_000;
+
+/** 失败自动再试一次（只用于只读列表）。 */
+export async function withRetry<T>(load: () => Promise<T>): Promise<T> {
+  try { return await load(); } catch { return load(); }
+}
+
+/** /voices 的线上格式：系统声音不再逐条带 tag / preview_url / 情绪语言选项（见 /voice-options）。 */
+export type WireVoice = Omit<VideoVoice, "tag" | "preview_url"> & { tag?: string; preview_url?: string | null; preview?: boolean };
+
+/** 还原成页面用的 VideoVoice：系统声音的试听地址按 id 拼出，tag 缺省用语言。 */
+export function expandVoices(rows: WireVoice[], workspaceId: string): VideoVoice[] {
+  return rows.map(({ preview, ...row }) => ({
+    ...row,
+    tag: row.tag ?? row.language ?? "",
+    preview_url: row.preview_url !== undefined ? row.preview_url : preview ? `/api/v1/video-studio/workspaces/${encodeURIComponent(workspaceId)}/voices/${encodeURIComponent(row.id)}/preview` : null,
+  }));
+}
+
 export function useVideoLibrary(workspaceId: string) {
   const [avatars, setAvatars] = useState<VideoAvatar[]>([]);
   const [voices, setVoices] = useState<VideoVoice[]>([]);
@@ -22,19 +42,21 @@ export function useVideoLibrary(workspaceId: string) {
   const resumeRequests = useRef(new Set<string>());
   const [resumingIds, setResumingIds] = useState<string[]>([]);
   const options = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(12000), cache: "no-store" as const }), [workspaceId]);
+  const listOptions = useCallback(() => ({ params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(LIST_TIMEOUT_MS), cache: "no-store" as const }), [workspaceId]);
   const reload = useCallback(async () => {
     try {
+      // 形象和声音列表在慢网下可能要十几秒：30 秒超时，失败自动再试一次。
       const [a, v, j] = await Promise.allSettled([
-        apiClient.GET(`${root}/avatars`, options()).then(unwrapApiResponse), apiClient.GET(`${root}/voices`, options()).then(unwrapApiResponse), apiClient.GET(`${root}/generation-tasks`, options()).then(unwrapApiResponse),
+        withRetry(() => apiClient.GET(`${root}/avatars`, listOptions()).then(unwrapApiResponse)), withRetry(() => apiClient.GET(`${root}/voices`, listOptions()).then(unwrapApiResponse)), apiClient.GET(`${root}/generation-tasks`, options()).then(unwrapApiResponse),
       ]);
       if (a.status === "fulfilled") setAvatars(a.value as VideoAvatar[]);
-      if (v.status === "fulfilled") setVoices(v.value as VideoVoice[]);
+      if (v.status === "fulfilled") setVoices(expandVoices(v.value as WireVoice[], workspaceId));
       if (j.status === "fulfilled") setJobs(j.value as GenerationJob[]);
       const unavailable = [a.status === "rejected" && "数字人形象", v.status === "rejected" && "音色", j.status === "rejected" && "生成记录"].filter(Boolean);
       setError(unavailable.length ? `${unavailable.join("、")}暂时无法读取，可重试。已读取的口播与上传剪辑仍可使用。` : "");
     } catch { setError("数字人库暂时无法读取，请重试。"); }
     finally { setLoading(false); }
-  }, [options]);
+  }, [options, listOptions, workspaceId]);
   useEffect(() => { let active = true; void Promise.resolve().then(() => { if (active) void reload(); }); return () => { active = false; }; }, [reload]);
   useEffect(() => {
     if (!jobs.some(j => ["queued", "running", "awaiting_resume"].includes(j.status))) return;

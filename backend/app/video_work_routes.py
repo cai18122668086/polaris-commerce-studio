@@ -548,7 +548,7 @@ def item_list_query(
     status: list[str] | None = None,
     group: list[Group] | None = None,
     after: str | None = None,
-) -> Select[tuple[VideoWorkItemRecord]]:
+) -> Select[Any]:
     """Newest first; inside one batch by position. ``after`` = the last item id
     of the previous page (keyset paging: rows sharing a batch timestamp are
     ordered by ``batch_id, position``, so no row is skipped or repeated)."""

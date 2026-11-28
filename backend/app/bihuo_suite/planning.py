@@ -408,7 +408,12 @@ def repair_provider_shapes(
     if isinstance(opening, dict) and any(
         isinstance(opening.get(k), str) for k in ("title", "subtitle")
     ):
-        intro = index.get(opening.get("intro_last_token_id"), len(starts) - 1)
+        intro_id = opening.get("intro_last_token_id")
+        intro = (
+            index.get(intro_id, len(starts) - 1)
+            if isinstance(intro_id, str)
+            else len(starts) - 1
+        )
         limit = starts[intro] + len(transcript.tokens[intro].text)
         head = text[:limit]
         clean = re.compile(r"[\W_]+")

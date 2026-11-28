@@ -170,7 +170,7 @@ def test_batch_queues_beyond_two_and_finishes_every_item(video, tmp_path, monkey
     # Honest estimate: the shared worker runs one task at a time for everyone;
     # the third item waits behind the two recognitions already queued.
     assert third["queue_ahead"] is not None
-    assert third["estimate_minutes"] >= editing.MINUTES_PER_ITEM
+    assert third["estimate_minutes"] >= editing.BASE_MINUTES
     queue = client.get(base(ws) + "/editing-queue").json()
     assert queue["tasks_ahead"] >= 0 and queue["minutes_per_item"] == 6
     items = {i["id"]: i for i in view["batch"]["items"]}
@@ -450,9 +450,223 @@ def test_a_failing_queue_estimate_never_breaks_submit_or_the_batch_view(
     assert phases(view) == ["transcribing", "transcribing", "queued"]
     third = view["editing"][2]
     assert third["queue_position"] == 1
-    assert third["estimate_minutes"] >= editing.MINUTES_PER_ITEM
+    assert third["estimate_minutes"] >= editing.BASE_MINUTES
     # Polling advances the pipeline; the view itself must still answer 200.
     assert phases(poll(client, ws, batch))[2] == "queued"
     queue = client.get(base(ws) + "/editing-queue")
     assert queue.status_code == 200, queue.text
     assert queue.json()["tasks_ahead"] == 0 and queue.json()["minutes_ahead"] == 0
+
+
+# --------------------------------------------------------------- B5 换模板重剪
+
+OTHER_TEMPLATE = "roll-compare-v2"
+
+
+def add_finals(factory):
+    """The export wrote its final video (the fake export only flips the status)."""
+    with factory() as session:
+        for run in session.scalars(
+            select(VideoWorkEditingRunRecord).where(
+                VideoWorkEditingRunRecord.phase == "done"
+            )
+        ):
+            if not session.scalar(
+                select(EditingArtifactRecord).where(
+                    EditingArtifactRecord.task_id == run.render_task_id,
+                    EditingArtifactRecord.role == "final",
+                )
+            ):
+                session.add(
+                    EditingArtifactRecord(
+                        id=str(uuid4()),
+                        task_id=run.render_task_id,
+                        role="final",
+                        path="final.mp4",
+                        mime="video/mp4",
+                        sha256="f" * 64,
+                        bytes=1,
+                        duration_ms=21000,
+                    )
+                )
+        session.commit()
+
+
+def finished_batch(video, tmp_path, monkeypatch, count=1):
+    world = prepare_world(video, tmp_path, monkeypatch, count=count)
+    client, ws, settings, factory, semantic, batch = world
+    submit(client, ws, batch)
+    for _ in range(count):
+        drive_to_render(client, ws, batch, factory, settings, semantic)
+        finish_renders(factory)
+        poll(client, ws, batch)
+    assert phases(poll(client, ws, batch)) == ["done"] * count
+    add_finals(factory)
+    return world
+
+
+def redo(client, ws, path, request_id=None, template=OTHER_TEMPLATE, **extra):
+    return client.post(
+        base(ws) + path,
+        json={
+            "request_id": request_id or str(uuid4()),
+            "template_id": template,
+            **extra,
+        },
+    )
+
+
+def transcripts_made(calls):
+    return sum(1 for body in calls if body.options.mode == "transcript")
+
+
+def test_redo_one_item_with_another_template_keeps_the_old_cut(
+    video, tmp_path, monkeypatch
+):
+    client, ws, settings, factory, semantic, batch = finished_batch(
+        video, tmp_path, monkeypatch
+    )
+    old = poll(client, ws, batch)["editing"][0]
+    item_id = old["item_id"]
+    recognized = editing.persist_editing_task
+    calls = []
+    monkeypatch.setattr(
+        editing,
+        "persist_editing_task",
+        lambda body, *a, **k: (calls.append(body), recognized(body, *a, **k))[1],
+    )
+    paid = generates(factory)
+    response = redo(client, ws, f"/work-items/{item_id}/editing-redo")
+    assert response.status_code == 200, response.text
+    row = response.json()["editing"][0]
+    # Back in the pipeline with the new template; the recognition is reused.
+    assert row["attempt"] == 2 and row["template_id"] == OTHER_TEMPLATE
+    assert row["phase"] == "transcribing" and row["final_url"] is None
+    assert transcripts_made(calls) == 0
+    [kept] = row["history"]
+    assert kept["attempt"] == 1 and kept["template_id"] == TEMPLATE
+    assert kept["final_url"] and kept["final_url"].endswith(
+        old["final_url"].rsplit("/", 1)[1]
+    )
+    item = response.json()["batch"]["items"][0]
+    assert item["stage"] == "editing" and item["status"] in {"queued", "running"}
+    assert item["editing_task_id"] is None
+    assert item["history"]["editing"] == [old["render_task_id"]]
+    assert item["video_updated_at"] is None
+    view = drive_to_render(client, ws, batch, factory, settings, semantic)
+    assert view["editing"][0]["render_task_id"] != old["render_task_id"]
+    finish_renders(factory)
+    poll(client, ws, batch)
+    add_finals(factory)
+    view = poll(client, ws, batch)
+    row, item = view["editing"][0], view["batch"]["items"][0]
+    assert row["phase"] == "done" and row["final_url"] != old["final_url"]
+    assert len(row["history"]) == 1
+    assert (
+        item["stage"] == "finishing"
+        and item["editing_task_id"] == row["render_task_id"]
+    )
+    # Finishing reads these two to say 「视频已更新，可重新生成封面」.
+    assert item["editing_attempt"] == 2 and item["video_updated_at"]
+    assert generates(factory) == paid + 1  # one new paid planning, no more
+    assert transcripts_made(calls) == 0
+
+
+def test_repeated_redo_clicks_build_one_round_and_pay_once(
+    video, tmp_path, monkeypatch
+):
+    client, ws, settings, factory, semantic, batch = finished_batch(
+        video, tmp_path, monkeypatch
+    )
+    item_id = poll(client, ws, batch)["editing"][0]["item_id"]
+    checks = []
+    real_check = editing.check_batch_credits
+    monkeypatch.setattr(
+        editing,
+        "check_batch_credits",
+        lambda s, st, w, count: (checks.append(count), real_check(s, st, w, count))[1],
+    )
+    request_id = str(uuid4())
+    path = f"/work-items/{item_id}/editing-redo"
+    first = redo(client, ws, path, request_id).json()["editing"][0]
+    again = redo(client, ws, path, request_id).json()["editing"][0]
+    other_tab = redo(client, ws, path).json()["editing"][0]  # still re-editing
+    batch_too = redo(client, ws, f"/work-batches/{batch['id']}/editing-redo").json()
+    assert first["attempt"] == again["attempt"] == other_tab["attempt"] == 2
+    assert batch_too["editing"][0]["attempt"] == 2
+    assert len(other_tab["history"]) == 1 and checks == [1]
+    paid = generates(factory)
+    drive_to_render(client, ws, batch, factory, settings, semantic)
+    for _ in range(3):
+        redo(client, ws, path, request_id)
+        poll(client, ws, batch)
+    assert generates(factory) == paid + 1
+    with factory() as session:
+        run = session.get(VideoWorkEditingRunRecord, item_id)
+        assert run.attempt == 2 and len(run.options["history"]) == 1
+    # Done again: the same request id still does nothing; a new click redoes.
+    finish_renders(factory)
+    poll(client, ws, batch)
+    assert redo(client, ws, path, request_id).json()["editing"][0]["attempt"] == 2
+    assert (
+        redo(client, ws, path, template=TEMPLATE).json()["editing"][0]["attempt"] == 3
+    )
+
+
+def test_batch_redo_takes_every_finished_item_and_checks_credits_once(
+    video, tmp_path, monkeypatch
+):
+    client, ws, settings, factory, semantic, batch = finished_batch(
+        video, tmp_path, monkeypatch, count=2
+    )
+    checks = []
+    monkeypatch.setattr(
+        editing, "check_batch_credits", lambda s, st, w, count: checks.append(count)
+    )
+    view = redo(client, ws, f"/work-batches/{batch['id']}/editing-redo").json()
+    assert [row["attempt"] for row in view["editing"]] == [2, 2]
+    assert {row["template_id"] for row in view["editing"]} == {OTHER_TEMPLATE}
+    assert checks == [2]
+    view = drive_to_render(client, ws, batch, factory, settings, semantic)
+    finish_renders(factory)
+    assert phases(poll(client, ws, batch)) == ["done", "done"]
+
+
+def test_redo_is_refused_whole_when_credits_cannot_cover_it(
+    video, tmp_path, monkeypatch
+):
+    client, ws, settings, factory, semantic, batch = finished_batch(
+        video, tmp_path, monkeypatch, count=2
+    )
+
+    def short(session, settings_, workspace_id, count):
+        raise ApiError(402, "BUDGET_LIMIT_EXCEEDED", f"{count} 条剪辑需要积分")
+
+    monkeypatch.setattr(editing, "check_batch_credits", short)
+    refused = redo(client, ws, f"/work-batches/{batch['id']}/editing-redo")
+    assert refused.status_code == 402
+    assert [row["attempt"] for row in poll(client, ws, batch)["editing"]] == [1, 1]
+    assert phases(poll(client, ws, batch)) == ["done", "done"]
+
+
+def test_redo_needs_an_edited_item_of_the_owner(video, tmp_path, monkeypatch):
+    client, ws, settings, factory, semantic, batch = prepare_world(
+        video, tmp_path, monkeypatch, count=1
+    )
+    item_id = batch["item_ids"][0]
+    never = redo(client, ws, f"/work-items/{item_id}/editing-redo")
+    assert never.status_code == 409
+    assert never.json()["error"]["code"] == "EDITING_NOT_STARTED"
+    missing = redo(client, ws, f"/work-items/{uuid4()}/editing-redo")
+    assert missing.status_code == 404
+    unknown = redo(
+        client, ws, f"/work-batches/{batch['id']}/editing-redo", item_ids=["nope"]
+    )
+    assert unknown.status_code == 404
+
+
+def test_estimate_follows_the_source_length(monkeypatch):
+    assert editing.item_minutes(None) == editing.MINUTES_PER_ITEM
+    short, long = editing.item_minutes(13_000), editing.item_minutes(180_000)
+    assert round(short, 1) == 4.5 and round(long, 1) == 36.5
+    assert long > 7 * short / 1.0 - 1

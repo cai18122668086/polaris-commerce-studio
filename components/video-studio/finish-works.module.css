@@ -198,3 +198,41 @@
   .previewNav { top: auto; bottom: 16px; transform: none; width: 40px; height: 40px; }
   .previewClose { top: 12px; right: 12px; }
 }
+
+
+/* ---------- B3（r2）：手机预览——视频 9:16 居上，叠字收成画面下方一行，点开展开；390 下切换按钮在手机两侧 ---------- */
+.phoneScreen { display: flex; flex-direction: column; }
+.phoneStage { position: relative; flex: none; width: 100%; aspect-ratio: 9 / 16; background: #000; }
+.phoneStage .phoneVideo { object-fit: contain; }
+.phoneScreen > .phoneOverlay { position: relative; inset: auto; flex: 1 1 auto; min-height: 0; padding: 10px 12px 14px 16px; background: #0b0a09; display: flex; align-items: flex-start; gap: 10px; pointer-events: auto; }
+.phoneOverlayOpen { position: absolute !important; left: 0; right: 0; bottom: 0; max-height: 62%; padding-top: 14px !important; background: rgb(11 10 9 / 92%) !important; border-top: 1px solid rgb(255 255 255 / 8%); overflow: auto; z-index: 2; }
+.phoneCaption { flex: 1 1 auto; min-width: 0; display: grid; gap: 3px; padding: 0; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; }
+.phoneCaption .phoneAccount { font-size: 12px; }
+.phoneCaption b { display: block; font-size: 12px; font-weight: 400; line-height: 1.45; color: rgb(255 255 255 / 88%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phoneOverlayOpen .phoneCaption b { white-space: normal; }
+.phoneBody { display: block; margin-top: 4px; font-size: 12px; line-height: 1.6; color: rgb(255 255 255 / 70%); white-space: pre-wrap; word-break: break-word; }
+.phoneScreen > .phoneOverlay .phoneControls { position: static; display: flex; gap: 6px; flex: none; }
+.phoneScreen > .phoneOverlay .phoneControls button { width: 30px; height: 30px; background: rgb(255 255 255 / 10%); }
+.keysTouch { display: none; }
+@media (hover: none) and (pointer: coarse) { .keysDesk { display: none; } .keysTouch { display: inline; } }
+@media (max-width: 720px) {
+  .keysDesk { display: none; } .keysTouch { display: inline; }
+  /* 小箭头跟着手机走（不再固定在屏幕底部压住正文），竖直居中在手机两侧的空白里。 */
+  .previewNav { position: absolute; top: calc(12px + min(300px, 78vw) * 19.5 / 9 / 2); bottom: auto; transform: translateY(-50%); width: 32px; height: 32px; background: rgb(255 255 255 / 8%); }
+  .previewPrev { left: 4px; }
+  .previewNext { right: 4px; }
+  .previewNav svg { width: 18px; height: 18px; }
+}
+
+/* ---------- B4（r2）：成片页里还没剪完的条目，一行一条，细线分隔 ---------- */
+.waiting { margin-top: 20px; padding: 16px 0 0; border-top: 1px solid rgb(30 28 24 / 10%); display: grid; gap: 10px; }
+.waiting > p { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #5d5c59; margin: 0; }
+.waiting ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.waiting li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: baseline; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgb(30 28 24 / 6%); font-size: 13px; }
+.waitingIndex { font-variant-numeric: tabular-nums; color: #8f8d88; font-size: 12px; }
+.waitingTitle { color: #1a1a19; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.waitingState { color: #73726e; font-size: 12px; white-space: nowrap; }
+@media (max-width: 720px) { .waiting li { grid-template-columns: 24px minmax(0, 1fr); } .waitingState { grid-column: 2; white-space: normal; } }
+:global(html.theme-ember) .waiting { border-top-color: rgb(255 240 225 / 12%); }
+:global(html.theme-ember) .waiting li { border-bottom-color: rgb(255 240 225 / 8%); }
+:global(html.theme-ember) .waitingTitle { color: #f2ede6; }

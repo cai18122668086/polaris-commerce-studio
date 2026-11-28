@@ -35,7 +35,7 @@ import styles from "./editing-workspace.module.css";
 import flow from "./editing-flow.module.css";
 import { EditingTemplateGallery, type TemplateCard } from "./editing-template-gallery";
 import { mediaUrl } from "@/lib/api/base-url";
-import { billableLabel } from "@/features/video-studio/credit-notes";
+import { FREE_TRIAL_TEXT, billableLabel, isPriced } from "@/features/video-studio/credit-notes";
 import { TopUpLink } from "./studio-content";
 
 type EditingTask = components["schemas"]["EditingTaskResponse"];
@@ -619,7 +619,7 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
       </article></details>;
     })}</div>{historyTasks.length > 3 && <button type="button" onClick={() => setShowTaskHistory(value => !value)}>{showTaskHistory ? "收起历史版本" : `查看全部 ${historyTasks.length} 个版本`}</button>}</section>
     {replanOpen && <Dialog title="用同样设置重新编排" onClose={() => setReplanOpen(false)}>
-      <p>会用同一条口播、同一个模板和素材重新编排一次，{cost && typeof cost.credits === "number" ? `再扣 ${cost.credits.toLocaleString("zh-CN")} 积分` : "按实际用量再次计费"}。当前这一版会保留，可以对比后再决定用哪一版。</p>
+      <p>会用同一条口播、同一个模板和素材重新编排一次，{cost && isPriced(cost.credits) ? `再扣 ${cost.credits.toLocaleString("zh-CN")} 积分` : FREE_TRIAL_TEXT}。当前这一版会保留，可以对比后再决定用哪一版。</p>
       <footer className={flow.modalFooter}><button type="button" onClick={() => setReplanOpen(false)}>取消</button><button type="button" disabled={busy} onClick={() => { setReplanOpen(false); primaryAction.current?.replan(); }}>确认重新编排</button></footer>
     </Dialog>}
     <div className={flow.actionBar}>{nativeOpened ? <><button type="button" onClick={() => document.getElementById("editing-native-plans")?.scrollIntoView({ block: "start" })}>返回调整面板</button><small>调整完成后，在面板中生成新版预览，原视频保留</small></> : <><button type="button" disabled={busy || (!planResult && (!!cost?.insufficient || (!saved && !onSaveProject) || (recognizing && continueAfterRecognition) || (!!canSubmit && !!template && transcriptReady && (primaryState?.disabled ?? true))))} onClick={begin}>{actionLabel}</button><small className={flow.feeHint} role="status">{planResult === "awaiting_review" ? "确认后生成高清版，不会重新剪辑，也不再扣费" : planResult === "completed" ? "高清成片已生成，可下载，也会出现在我的作品里" : recognizing ? continueAfterRecognition ? "识别完成后自动继续编排，请保持页面打开；若中途离开，回来后点一次即可接着做，不会重新识别。" : "口播仍在识别，点击后识别完成会自动继续编排。" : transcriptReady && primaryState ? primaryState.hint : "识别 → 编排 → 渲染 → 全片预览，确认后下载高清"}{!planResult && cost && <> · {cost.text}</>}{!planResult && cost?.insufficient && <> · <TopUpLink /></>}</small></>}</div>

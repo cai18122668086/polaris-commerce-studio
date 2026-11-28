@@ -234,6 +234,11 @@ class WorkItemResponse(StrictVideoModel):
     history: dict[str, list[str]]
     deleted_at: datetime | None = None
     published_at: datetime | None = None
+    # B5 换模板重剪: 1 + earlier cuts of this item (0 before any cut), and when a
+    # re-edited video last finished (ISO), so finishing can say the cover may be
+    # made again. Both derived from ``history``.
+    editing_attempt: int = 0
+    video_updated_at: str | None = None
 
 
 class WorkBatchResponse(StrictVideoModel):
@@ -284,6 +289,12 @@ def item_response(row: VideoWorkItemRecord) -> WorkItemResponse:
         history=row.history or {},
         deleted_at=row.deleted_at,
         published_at=row.published_at,
+        editing_attempt=(
+            len((row.history or {}).get("editing") or []) + 1
+            if row.editing_task_id or (row.history or {}).get("editing")
+            else 0
+        ),
+        video_updated_at=((row.history or {}).get("video_updated") or [None])[-1],
     )
 
 

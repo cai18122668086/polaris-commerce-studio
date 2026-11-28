@@ -20,6 +20,7 @@ import hashlib
 import json
 import re
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -117,6 +118,25 @@ class _Health:
 
 
 _health = _Health()
+
+
+def atomic_write(path: Path, data: bytes | str) -> None:
+    """Write via a temp file unique to this call, then rename into place.
+
+    Search and import run in parallel threads (and requests), and two of them
+    often cache the same candidate at once: a shared temp name let one rename
+    the other's file away (FileNotFoundError -> 500). The last writer wins; the
+    content is identical either way.
+    """
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        if isinstance(data, str):
+            tmp.write_text(data, "utf-8")
+        else:
+            tmp.write_bytes(data)
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def read_key(path: Path | None) -> str | None:
@@ -482,9 +502,10 @@ def _store(settings: Settings, name: str, rows: list[Candidate]) -> None:
     folder = _cache_dir(settings)
     try:
         folder.mkdir(parents=True, exist_ok=True)
-        tmp = folder / f".{name}.tmp"
-        tmp.write_text(json.dumps([row.to_json() for row in rows], ensure_ascii=False))
-        tmp.replace(folder / f"{name}.json")
+        atomic_write(
+            folder / f"{name}.json",
+            json.dumps([row.to_json() for row in rows], ensure_ascii=False),
+        )
     except OSError:
         pass
 

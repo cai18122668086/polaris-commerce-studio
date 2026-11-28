@@ -32,7 +32,8 @@ function useWorkspaceName(workspaceId: string) {
   });
 }
 
-const errorText = (error: unknown, fallback: string) => error instanceof ApiError && error.message ? error.message : fallback;
+const errorText = (error: unknown, fallback: string) => error instanceof ApiError && error.message ? error.message
+  : error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError") ? "网络较慢，暂时没收到结果，已重新读取作品状态。" : fallback;
 
 export function WorksHome({ userId, workspaceId, jobs, initialBatch, notify }: {
   userId: string;
@@ -116,7 +117,7 @@ export function WorksHome({ userId, workspaceId, jobs, initialBatch, notify }: {
         <p>剪好、配好封面的视频都在这里，点开看手机上的效果，复制文案直接去发布。</p>
       </div>
       <dl className={styles.profileFacts} aria-label="作品计数">
-        <div><dd>{counts.works}</dd><dt>作品</dt></div>
+        <div><dd>{counts.works}{edits.hasNextPage ? "+" : ""}</dd><dt>作品</dt></div>
         <div><dd>{counts.finishing}</dd><dt>待成片</dt></div>
         <div><dd>{counts.running}</dd><dt>生成中</dt></div>
         <div><dd>{counts.unfinished}</dd><dt>未完成</dt></div>

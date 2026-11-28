@@ -146,3 +146,130 @@ test("slow provider and unknown outcome both offer 查询结果 with a no-double
   assert.deepEqual([slow.state, slow.label, slow.note, slow.canCheck], ["checking", "供应商排队较久", "系统会自动继续查询，不会重复扣费", true]);
   assert.deepEqual([unknown.state, unknown.label, unknown.canCheck], ["checking", "结果待确认", true]);
 });
+
+// ---- A4：带新文案进来时不被上一批盖住 ----
+
+const submittedDraft = () => ({ ...t.assign(threeScripts(), "1", () => t.withPersona(persona)), submittedBatchId: "batch-old" });
+const fromLibrary = keys => keys.map(key => script(`n${key}`, `新选的第 ${key} 条。`));
+
+test("A4: ?scripts= with a batch still generating opens the new batch's setup, not the old batch", () => {
+  const plan = t.planEntry({ stored: submittedDraft(), hasScripts: true, batchParam: null, latestOpen: "batch-old" });
+  assert.equal(plan.show, null, "the old batch must not cover the page");
+  assert.equal(plan.previous, "batch-old", "the old batch is offered in the top line");
+  const draft = t.addScripts(plan.draft, fromLibrary(["1", "2", "3"]));
+  assert.deepEqual(draft.scripts.map(s => s.documentId), ["doc-n1", "doc-n2", "doc-n3"], "only the three new scripts, old submitted ones are not mixed in");
+  assert.equal(draft.step, 1);
+  assert.equal(draft.submittedBatchId, undefined);
+  // The presenter chosen for the previous batch is kept as a starting point.
+  assert.equal(draft.shared.personaId, "p1");
+});
+
+test("A4: an unsubmitted draft is kept and new scripts are added to it", () => {
+  const stored = t.addScripts(t.emptyDraft(), [script("x", "还没生成的稿。")]);
+  const plan = t.planEntry({ stored, hasScripts: true, latestOpen: "batch-old" });
+  const draft = t.addScripts(plan.draft, fromLibrary(["1"]));
+  assert.deepEqual(draft.scripts.map(s => s.documentId), ["doc-x", "doc-n1"]);
+  assert.equal(plan.previous, "batch-old");
+});
+
+test("A4: without ?scripts= the open batch is still found again (other browser / refresh)", () => {
+  const plan = t.planEntry({ stored: submittedDraft(), hasScripts: false, latestOpen: "batch-old" });
+  assert.equal(plan.show, "batch-old");
+  assert.equal(plan.previous, null);
+  assert.equal(plan.draft.scripts.length, 3, "the shown batch's draft stays until 再做一批");
+  const nothing = t.planEntry({ stored: submittedDraft(), hasScripts: false, latestOpen: null });
+  assert.equal(nothing.show, null);
+  assert.equal(nothing.draft.scripts.length, 0, "a submitted draft is not offered again as a new batch");
+});
+
+test("A4: 查看 the old batch (?batch=&scripts=) then 再做一批 keeps the newly chosen scripts", () => {
+  const fresh = t.addScripts(t.freshDraft(), fromLibrary(["1", "2", "3"]));
+  const plan = t.planEntry({ stored: fresh, hasScripts: true, batchParam: "batch-old", latestOpen: null });
+  assert.equal(plan.show, "batch-old");
+  const again = t.draftAfterBatch(t.addScripts(plan.draft, fromLibrary(["1", "2", "3"])));
+  assert.deepEqual(again.scripts.map(s => s.documentId), ["doc-n1", "doc-n2", "doc-n3"]);
+  // After generating, 再做一批 starts over.
+  const done = t.draftAfterBatch({ ...again, submittedBatchId: "batch-new" });
+  assert.equal(done.scripts.length, 0);
+});
+
+test("A4: submittedBatchId survives the session draft round trip and editing clears it", () => {
+  const decoded = t.decodeDraft(t.encodeDraft(submittedDraft()));
+  assert.equal(decoded.submittedBatchId, "batch-old");
+  assert.equal(t.removeScript(decoded, "1").submittedBatchId, undefined);
+});
+
+test("A4: the top line reports x/y of the previous batch", () => {
+  const view = { batch: { id: "b", created_at: "", item_ids: [], status_counts: {}, items: [
+    { id: "1", position: 0, status: "succeeded", error: null, publish_title: "", script_text: "a", avatar_id: null, voice_id: null, persona_id: null, generation_task_id: "g1", drive_mode: "text", stage: "talking", version: 2 },
+    { id: "2", position: 1, status: "running", error: null, publish_title: "", script_text: "b", avatar_id: null, voice_id: null, persona_id: null, generation_task_id: "g2", drive_mode: "text", stage: "talking", version: 2 },
+    { id: "3", position: 2, status: "queued", error: null, publish_title: "", script_text: "c", avatar_id: null, voice_id: null, persona_id: null, generation_task_id: null, drive_mode: "text", stage: "talking", version: 1 },
+  ] }, talking: [], parallel_limit: 4 };
+  assert.equal(t.previousBatchLine(view), "上一批还在生成（已完成 1/3）");
+});
+
+// ---- C10：固定形象轮流分配 ----
+
+const personas = [
+  { id: "pa", name: "店长小林", avatar_id: "a1", voice_id: "v1" },
+  { id: "pb", name: "阿杰", avatar_id: "a2", voice_id: "v2" },
+  { id: "pc", name: "小美", avatar_id: "p-avatar", voice_id: "p-voice" },
+];
+const twelve = () => t.addScripts(t.emptyDraft(), Array.from({ length: 12 }, (_, i) => script(String(i + 1), `第 ${i + 1} 条口播。`)));
+
+test("C10: 12 scripts across 3 fixed personas are split 4/4/4 in turn, with each persona's voice", () => {
+  const draft = t.rotate(twelve(), personas);
+  assert.equal(draft.mode, "each");
+  assert.deepEqual(t.rotationCounts(draft).map(row => [row.personaId, row.count]), [["pa", 4], ["pb", 4], ["pc", 4]]);
+  const items = t.batchItems(draft);
+  assert.deepEqual(items.slice(0, 4).map(i => i.persona_id), ["pa", "pb", "pc", "pa"]);
+  assert.deepEqual(items.slice(0, 3).map(i => [i.avatar_id, i.voice_id]), [["a1", "v1"], ["a2", "v2"], ["p-avatar", "p-voice"]]);
+  assert.deepEqual(t.problems(draft, catalog), []);
+});
+
+test("C10: rotation follows added/removed scripts and ends when one row is changed by hand", () => {
+  let draft = t.rotate(twelve(), personas);
+  draft = t.addScripts(draft, [script("13", "第十三条。")]);
+  assert.deepEqual(t.rotationCounts(draft).map(row => row.count), [5, 4, 4]);
+  draft = t.removeScript(draft, "13");
+  assert.deepEqual(t.rotationCounts(draft).map(row => row.count), [4, 4, 4]);
+  const decoded = t.decodeDraft(t.encodeDraft(draft));
+  assert.deepEqual(decoded.rotation.map(row => row.personaId), ["pa", "pb", "pc"]);
+  const manual = t.assign(draft, "2", current => t.withAvatar(current, "a1"));
+  assert.equal(manual.rotation, undefined);
+  assert.equal(manual.perScript["3"].personaId, "pc", "other rows keep their assignment");
+  assert.equal(t.switchMode(draft, "each").rotation, undefined, "pressing 每条单独选 leaves rotation mode");
+  assert.equal(t.switchMode(draft, "same").rotation, undefined);
+});
+
+// ---- B15 / B8 ----
+
+test("B15: clone button follows voice-clone-config.available", () => {
+  assert.deepEqual(t.cloneAction({ available: false }), { available: false, label: "克隆新声音（暂未开通）", hint: "声音克隆暂未开通，可以先用系统声音" });
+  assert.equal(t.cloneAction(undefined).available, false, "unknown config is treated as closed: no request is sent");
+  assert.deepEqual(t.cloneAction({ available: true }), { available: true, label: "克隆新声音", hint: "" });
+});
+
+test("B8: result notes do not mention charges when prices are not configured", () => {
+  const view = { batch: { id: "b", created_at: "", item_ids: [], status_counts: {}, items: [
+    { id: "1", position: 0, status: "running", error: null, publish_title: "t", script_text: "a", avatar_id: null, voice_id: null, persona_id: null, generation_task_id: "g1", drive_mode: "text", stage: "talking", version: 2 },
+  ] }, talking: [{ item_id: "1", queue_position: null, stage: null, video_url: null, can_retry: false, awaiting_check: true }], parallel_limit: 4 };
+  assert.equal(t.resultBoxes(view, s => s, false)[0].note, "不会重新生成");
+  assert.equal(t.resultBoxes(view, s => s)[0].note, "不会重新生成，也不会重复扣积分");
+});
+
+test("C8: an item whose unconfirmed result expired explains it and still offers retry / 换数字人", () => {
+  const view = { batch: { id: "b", created_at: "", item_ids: [], status_counts: {}, items: [
+    { id: "1", position: 0, status: "failed", error: "这条的提交结果超过 24 小时仍无法确认", publish_title: "t", script_text: "a", avatar_id: null, voice_id: null, persona_id: null, generation_task_id: "g1", drive_mode: "text", stage: "talking", version: 3 },
+    { id: "2", position: 1, status: "failed", error: "所选音色暂不可用，换一个音色再试。", publish_title: "u", script_text: "b", avatar_id: null, voice_id: null, persona_id: null, generation_task_id: "g2", drive_mode: "text", stage: "talking", version: 3 },
+  ] }, talking: [
+    { item_id: "1", queue_position: null, stage: null, video_url: null, can_retry: true, error_code: "VIDEO_PROVIDER_OUTCOME_EXPIRED" },
+    { item_id: "2", queue_position: null, stage: null, video_url: null, can_retry: true, error_code: "VIDEO_VOICE_INVALID" },
+  ], parallel_limit: 4 };
+  const [expired, other] = t.resultBoxes(view, s => s, false);
+  assert.equal(expired.state, "failed");
+  assert.equal(expired.error, "这条长时间没能确认结果，已停止核对，积分已退回。如果需要，可以换数字人重试或联系客服。");
+  assert.equal(expired.canRetry, true, "重试这一条 / 换数字人 stay available");
+  assert.equal(other.error, "所选音色暂不可用，换一个音色再试。");
+  assert.equal(other.label, "生成失败");
+});

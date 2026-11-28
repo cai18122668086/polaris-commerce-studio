@@ -370,6 +370,9 @@ class TalkingItemView(StrictVideoModel):
     # The provider is slow (awaiting_resume): the sweep keeps querying it on a
     # backoff; 查询结果 asks now. Never re-submitted.
     long_wait: bool = False
+    # Why a failed item failed (the lipsync task's error code), so the result
+    # box can explain special cases such as VIDEO_PROVIDER_OUTCOME_EXPIRED.
+    error_code: str | None = None
 
 
 class TalkingBatchResponse(StrictVideoModel):
@@ -397,6 +400,8 @@ def talking_view(session: Session, batch: VideoWorkBatchRecord) -> TalkingBatchR
                 view.long_wait = job.status == "awaiting_resume"
                 if job.status == "completed":
                     view.video_url = base + job.id + "/video"
+                if item.status == "failed":
+                    view.error_code = job.error_code
         views.append(view)
     return TalkingBatchResponse(batch=batch_response(batch, items), talking=views)
 

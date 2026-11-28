@@ -441,3 +441,30 @@ def test_flags_migration_is_additive_on_postgres():
     assert "ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE" in sql
     assert "ADD COLUMN published_at TIMESTAMP WITH TIME ZONE" in sql
     assert "DROP" not in sql
+
+
+# ---- C8 配合：失败原因码进口播结果视图 ----
+
+
+def test_talking_view_carries_the_failed_tasks_error_code(video):
+    client, _, ws, user, _ = video
+    from app.video_generation_models import VideoGenerationRecord
+    from app.video_work_talking import talking_view
+    from tests.test_video_work_items import generation
+
+    batch = create(client, ws, batch_body(item("过期"), item("正常")))
+    expired, fine = batch["item_ids"]
+    task = generation(client, ws, user)
+    _set(client, expired, generation_task_id=task, status="failed")
+    with client.app.state.session_factory() as session:
+        session.execute(
+            update(VideoGenerationRecord)
+            .where(VideoGenerationRecord.id == task)
+            .values(status="failed", error_code="VIDEO_PROVIDER_OUTCOME_EXPIRED")
+        )
+        session.commit()
+        view = talking_view(session, session.get(VideoWorkBatchRecord, batch["id"]))
+    by_item = {row.item_id: row for row in view.talking}
+    assert by_item[expired].error_code == "VIDEO_PROVIDER_OUTCOME_EXPIRED"
+    assert by_item[expired].can_retry is True
+    assert by_item[fine].error_code is None

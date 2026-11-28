@@ -51,6 +51,8 @@ def prepare(template: str, cfg: dict, policy: dict) -> None:
         policy["reading_cards"] = "content-led/1"
     if template == "bihuo-47-v1":
         policy["business_caption_fit"] = "balanced-overflow-cut/1"
+    if template in CAPTION_BACKING:
+        policy["caption_backing"] = "template-palette-plate/1"
 
 
 def app_geometry(material: dict, bottom: bool) -> tuple[list[int], list[int]]:
@@ -823,6 +825,89 @@ def teal_parts(
     )
 
 
+# 彩色主题字幕底衬（C1）：深青标题 24 / 薄荷双窗 13 / 蓝白光晕 15 的字幕在浅色底、
+# 商品图和同色底上看不清。宿主侧在字幕下面垫一块模板自身色系的半透明底衬（不改字形、
+# 配色、时间和动效；不引入蓝紫），bundle 文件与身份哈希不变，已有项目照常可渲染。
+CAPTION_BACKING = {
+    # template: (RGB from the template's own palette, opacity at full caption)
+    "bihuo-24-v1": ((0, 30, 36), 0.62),  # qingbai text edge colour
+    "bihuo-13-v1": ((44, 34, 25), 0.55),  # qingci glyph stroke colour
+    "bihuo-15-v1": ((22, 24, 28), 0.5),  # neutral ink under white/accent words
+}
+
+
+def caption_backing(
+    box: tuple | None, fill: tuple, opacity: float, pad: tuple = (30, 16)
+) -> Image.Image:
+    layer = Image.new("RGBA", (1080, 1920))
+    if not box or opacity <= 0:
+        return layer
+    x, y, x2, y2 = box
+    ImageDraw.Draw(layer).rounded_rectangle(
+        (
+            max(16, round(x - pad[0])),
+            max(0, round(y - pad[1])),
+            min(1064, round(x2 + pad[0])),
+            min(1920, round(y2 + pad[1])),
+        ),
+        radius=22,
+        fill=(*fill, round(255 * min(1.0, opacity))),
+    )
+    return layer
+
+
+def _shown(alpha: Image.Image) -> float:
+    return alpha.getextrema()[1] / 255
+
+
+def qingbai_backed_captions(native: Any, original: Callable, c: dict, n: int) -> tuple:
+    roles, meta = original(c, n)
+    text = Image.alpha_composite(
+        roles["caption_chinese_body"], roles["caption_chinese_emphasis"]
+    ).getchannel("A")
+    fill, strength = CAPTION_BACKING["bihuo-24-v1"]
+    under = caption_backing(text.getbbox(), fill, strength * _shown(text))
+    under.alpha_composite(roles["caption_chinese_shadow"])
+    # The native dict listed the shadow after the words, so the offset dark
+    # blur was composited over the white text (greyed, muddy captions).
+    ordered = {"caption_chinese_shadow": under}
+    ordered.update((k, v) for k, v in roles.items() if k != "caption_chinese_shadow")
+    return ordered, meta
+
+
+def qingci_backed_caption(native: Any, original: Callable, c: dict, n: int) -> tuple:
+    layer, meta = original(c, n)
+    glyphs = meta.get("glyphs") if isinstance(meta, dict) else None
+    if not glyphs:
+        return layer, meta
+    style = c.get("caption_style", {})
+    gap = style.get("line_gap", 90)
+    lines = len(meta.get("line_widths") or [0])
+    size = max(g["size"] for g in glyphs)
+    box = (
+        min(g["x"] for g in glyphs),
+        meta["baseline"] - gap * (lines - 1) - 0.92 * size,
+        max(g["x"] + g["advance"] for g in glyphs),
+        meta["baseline"] + 0.22 * size,
+    )
+    fill, strength = CAPTION_BACKING["bihuo-13-v1"]
+    out = caption_backing(box, fill, strength * _shown(layer.getchannel("A")))
+    out.alpha_composite(layer)
+    return out, meta
+
+
+def blue_backed_captions(
+    native: Any, original: Callable, cfg: dict, n: int, disabled_shadow: bool = False
+) -> tuple:
+    roles, meta = original(cfg, n, disabled_shadow)
+    text = Image.alpha_composite(roles["caption_body"], roles["caption_emphasis"])
+    alpha = text.getchannel("A")
+    fill, strength = CAPTION_BACKING["bihuo-15-v1"]
+    under = caption_backing(alpha.getbbox(), fill, strength * _shown(alpha))
+    under.alpha_composite(roles["caption_glow"])
+    return {**roles, "caption_glow": under}, meta
+
+
 @contextmanager
 def execution(module: Any, payload: dict) -> Iterator[None]:
     tid = payload["template_id"]
@@ -886,6 +971,32 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
                 native,
                 "whole_line",
                 lambda c, cue: silver_whole_line(native, original, c, cue),
+            )
+        elif tid == "bihuo-24-v1":
+            engine = module.E
+            original_qingbai = vars(engine)["captions"]
+            patch(
+                engine,
+                "captions",
+                lambda c, n: qingbai_backed_captions(engine, original_qingbai, c, n),
+            )
+        elif tid == "bihuo-13-v1":
+            engine = module.E
+            original_qingci = vars(engine)["caption"]
+            patch(
+                engine,
+                "caption",
+                lambda c, n: qingci_backed_caption(engine, original_qingci, c, n),
+            )
+        elif tid == "bihuo-15-v1":
+            engine = module.E
+            original_blue = vars(engine)["captions"]
+            patch(
+                engine,
+                "captions",
+                lambda c, n, d=False: blue_backed_captions(
+                    engine, original_blue, c, n, d
+                ),
             )
         elif tid == "bihuo-47-v1":
             original_caps = vars(module)["_caps"]

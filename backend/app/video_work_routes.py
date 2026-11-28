@@ -164,6 +164,11 @@ class WorkItemResponse(StrictVideoModel):
     status: Status
     error: str | None
     history: dict[str, list[str]]
+    # B5 换模板重剪: 1 + earlier cuts of this item (0 before any cut), and when a
+    # re-edited video last finished (ISO), so finishing can say the cover may be
+    # made again. Both derived from ``history``.
+    editing_attempt: int = 0
+    video_updated_at: str | None = None
 
 
 class WorkBatchResponse(StrictVideoModel):
@@ -212,6 +217,12 @@ def item_response(row: VideoWorkItemRecord) -> WorkItemResponse:
         status=cast(Status, row.status),
         error=row.error,
         history=row.history or {},
+        editing_attempt=(
+            len((row.history or {}).get("editing") or []) + 1
+            if row.editing_task_id or (row.history or {}).get("editing")
+            else 0
+        ),
+        video_updated_at=((row.history or {}).get("video_updated") or [None])[-1],
     )
 
 

@@ -206,7 +206,8 @@ def test_preview_is_cached_authorized_and_does_not_synthesize(video_gen):
     path.write_bytes(b"sample")
     voices = client.get(root + "/voices").json()
     official = [v for v in voices if v["id"] in VOICES]
-    assert len(official) == 327 and not official[0]["available"]
+    # 327 条目录里只展示人工核对过的 204 条（角色化、beta 重复等隐藏）
+    assert len(official) == 204 and not official[0]["available"]
     voice = next(v for v in official if v["id"] == KEY)
     assert "whisper" not in voice["emotions"]
     assert client.get(voice["preview_url"]).content == b"sample"

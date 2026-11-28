@@ -3634,8 +3634,32 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Items */
+        /**
+         * List Items
+         * @description Deleted items are never listed. Page with ``after``: pass the id of the
+         *     last item received; a page shorter than ``limit`` is the last one.
+         */
         get: operations["list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Work Item Summary
+         * @description 我的作品的计数（不含已删除），与 ``group`` 过滤同一口径。
+         */
+        get: operations["work_item_summary_api_v1_video_studio_workspaces__workspace_id__work_items_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3655,7 +3679,13 @@ export interface paths {
         get: operations["get_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Item
+         * @description Soft delete (B1): the item leaves every list; its batch, tasks and files
+         *     stay. Repeating the call answers the deleted row. Items still generating,
+         *     editing or making a cover are refused.
+         */
+        delete: operations["delete_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__delete"];
         options?: never;
         head?: never;
         /** Patch Item */
@@ -11348,6 +11378,8 @@ export interface components {
             publish_body?: string | null;
             /** Publish Title */
             publish_title?: string | null;
+            /** Published */
+            published?: boolean | null;
             /** Script Document Id */
             script_document_id?: string | null;
             /** Script Text */
@@ -11375,6 +11407,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Deleted At */
+            deleted_at?: string | null;
             /**
              * Drive Mode
              * @enum {string}
@@ -11405,6 +11439,8 @@ export interface components {
             publish_body: string;
             /** Publish Title */
             publish_title: string;
+            /** Published At */
+            published_at?: string | null;
             /** Script Document Id */
             script_document_id: string | null;
             /** Script Text */
@@ -11431,6 +11467,21 @@ export interface components {
             video_updated_at?: string | null;
             /** Voice Id */
             voice_id: string | null;
+        };
+        /** WorkItemSummary */
+        WorkItemSummary: {
+            /** Active */
+            active: number;
+            /** Done */
+            done: number;
+            /** Failed */
+            failed: number;
+            /** Finishing */
+            finishing: number;
+            /** Other */
+            other: number;
+            /** Total */
+            total: number;
         };
         /** WorkerAccountSessionRequest */
         WorkerAccountSessionRequest: {
@@ -19928,6 +19979,10 @@ export interface operations {
                 ids?: string | null;
                 stage?: ("talking" | "editing" | "finishing" | "done")[] | null;
                 status?: ("pending" | "queued" | "running" | "succeeded" | "failed" | "canceled")[] | null;
+                /** @description 只看这些分组；只看已完成 = group=done */
+                group?: ("active" | "failed" | "done" | "finishing" | "other")[] | null;
+                /** @description 上一页最后一条的 id（游标翻页） */
+                after?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -19959,7 +20014,70 @@ export interface operations {
             };
         };
     };
+    work_item_summary_api_v1_video_studio_workspaces__workspace_id__work_items_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__delete: {
         parameters: {
             query?: never;
             header?: never;

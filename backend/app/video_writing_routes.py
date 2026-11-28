@@ -62,6 +62,7 @@ from .video_writing_contracts import (
     WritingTaskRequest,
     WritingVersionSources,
 )
+from .video_writing_flags import brief_v2_enabled
 from .video_writing_models import VideoWritingAdoption, VideoWritingDocument
 from .video_writing_provenance import matching_writing_origin, script_digest
 from .video_writing_provider import (
@@ -624,7 +625,9 @@ def store_result(
     """Save a checked result; a draft also lands in the script library once.
 
     The manual flow's key is its task (one task = one version); the auto
-    flow passes 「run id + version」.
+    flow passes 「run id + version」. For users on the new writing flow
+    (``POLARIS_VIDEO_WRITING_BRIEF_V2``) nothing is put into the library here:
+    the user ticks the drafts to keep (``POST /script-library/batch``).
     """
     require_workspace_write(workspace)
     enabled(request)
@@ -695,7 +698,9 @@ def store_result(
         **parents,
     )
     result = document_response(row)
-    if kind == "draft":
+    if kind == "draft" and not brief_v2_enabled(
+        request.app.state.settings, workspace.principal.user_id
+    ):
         entry = library.ingest_draft(
             session,
             workspace,

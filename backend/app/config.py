@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     video_editing_planning_enabled: bool = False
     video_editing_plan_model: str = "gpt-6.1-sol"
     video_writing_workflow_enabled: bool = False
+    # 第三轮爆款文案（简报 v2）灰度：开关为真且用户在名单里（逗号分隔 user id）
+    # 才走新流程；开关关时名单无效，行为与 b2199c02 一致。
+    video_writing_brief_v2: bool = False
+    video_writing_brief_v2_users: str = ""
     video_writing_library_dir: Path = Path(".data/motion-library/3b4d100ebf6c/writing")
     # W4 补充素材（v3）。免费素材库 key 只从服务器文件读（不进仓库/日志）；
     # 文件不存在或为空时该来源自动关闭，界面显示「暂未开通」。

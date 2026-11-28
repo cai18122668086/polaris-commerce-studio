@@ -610,6 +610,51 @@ def test_restart_resumes_interrupted_covers_and_charges_once(priced, clip, monke
     )
 
 
+def test_cover_recovery_runs_only_where_video_providers_are_enabled(
+    tmp_path, monkeypatch
+):
+    """Core roles share app.main but cannot see video files: no recovery there."""
+
+    from app import video_cover_routes
+
+    calls: list[object] = []
+    monkeypatch.setattr(
+        video_cover_routes,
+        "recover_interrupted",
+        lambda factory, settings, client, started: calls.append(settings) or 0,
+    )
+    auth = FakeExternalAuthBackend(identity=verified_identity(email=EMAIL))
+    settings = external_settings(tmp_path).model_copy(
+        update={"video_media_dir": tmp_path / "video"}
+    )
+    assert settings.video_providers_enabled is False
+    started: list[object] = []
+    real_start = video_cover_routes.start_recovery
+    monkeypatch.setattr(
+        video_cover_routes,
+        "start_recovery",
+        lambda application: started.append(real_start(application)),
+    )
+
+    # Providers off (core roles): the lifespan never starts the thread, and the
+    # function refuses on its own if someone calls it anyway.
+    app = create_app(settings, auth)
+    app.state.video_cover_image_client = FakeImages()
+    with TestClient(app):
+        pass
+    assert started == [] and calls == []
+    assert real_start(app) is None and calls == []
+
+    # Providers on (video API): recovery starts once and runs.
+    on = settings.model_copy(update={"video_providers_enabled": True})
+    app = create_app(on, auth)
+    app.state.video_cover_image_client = FakeImages()
+    with TestClient(app):
+        assert len(started) == 1 and started[0] is not None
+        started[0].join(timeout=10)
+    assert calls == [app.state.settings]
+
+
 def test_grid_poster_is_cut_once_cached_and_404_without_video(env, clip, monkeypatch):
     client, ws, user, _ = env
     cuts: list[str] = []

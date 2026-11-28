@@ -100,7 +100,7 @@ export function itemStatus(state: EditingItemState): { label: string; detail: st
   }
   const ahead = typeof state.queue_ahead === "number" ? state.queue_ahead : null;
   const queueLine = (minutes?: number | null) => ahead !== null
-    ? `剪辑服务全站共用、按顺序处理：前面还有 ${ahead} 个任务${minutes ? `，预计${minutesRange(minutes)}完成` : ""}`
+    ? `${ahead > 0 ? `剪辑服务全站共用、按顺序处理：前面还有 ${ahead} 个任务` : "前面没有其他任务，马上开始"}${minutes ? `，预计${minutesRange(minutes)}完成` : ""}`
     : minutes ? `剪辑服务全站按顺序处理，预计${minutesRange(minutes)}完成` : "前面的视频完成后自动开始";
   if (phase === "queued") {
     return {

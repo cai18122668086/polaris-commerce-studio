@@ -362,6 +362,134 @@ def fit_recorded_display_spans(raw: dict, transcript: Transcript) -> dict:
     return raw
 
 
+_FUNCTION_WORDS = set(
+    "的了着过吗呢吧啊呀嘛就才都也还又而但并再更很太把被让给对在是和跟或我你他她它们这那个一"
+)
+
+
+def _token_offsets(transcript: Transcript) -> tuple[str, list[int]]:
+    starts, cursor = [], 0
+    for word in transcript.tokens:
+        starts.append(cursor)
+        cursor += len(word.text)
+    return "".join(word.text for word in transcript.tokens), starts
+
+
+def _span_at(transcript: Transcript, starts: list[int], a: int, b: int) -> dict | None:
+    """Token span covering source characters [a, b); None if it is empty."""
+    ids = [
+        word.id
+        for word, start in zip(transcript.tokens, starts, strict=True)
+        if start < b and start + len(word.text) > a
+    ]
+    return {"first_token_id": ids[0], "last_token_id": ids[-1]} if ids else None
+
+
+def repair_provider_shapes(
+    raw: dict[str, Any], transcript: Transcript
+) -> dict[str, Any]:
+    """Deterministic, free repairs of two recurring provider slips (dev 11-28).
+
+    1. ``opening.title``/``subtitle`` returned as plain text instead of token
+       spans: bind verbatim text (punctuation ignored) to its recorded tokens,
+       otherwise to the opening clause sharing the most characters with it.
+    2. No caption carries any keyword emphasis although the contract needs
+       some: mark one lexical word (2–4 characters, not a function word) per
+       caption. Speech, clocks and caption spans are untouched; the strict
+       contract still checks the result.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    text, starts = _token_offsets(transcript)
+    index = {word.id: i for i, word in enumerate(transcript.tokens)}
+    changed = deepcopy(raw)
+    notes = []
+    opening = changed.get("opening")
+    if isinstance(opening, dict) and any(
+        isinstance(opening.get(k), str) for k in ("title", "subtitle")
+    ):
+        intro = index.get(opening.get("intro_last_token_id"), len(starts) - 1)
+        limit = starts[intro] + len(transcript.tokens[intro].text)
+        head = text[:limit]
+        clean = re.compile(r"[\W_]+")
+        clauses = [m.span() for m in re.finditer(r"[^，。！？；,.!?;、\s]+", head)]
+        for key in ("title", "subtitle"):
+            value = opening.get(key)
+            if not isinstance(value, str):
+                continue
+            wanted = clean.sub("", value)
+            bound = None
+            if wanted:
+                plain = [(i, ch) for i, ch in enumerate(head) if not clean.match(ch)]
+                joined = "".join(ch for _, ch in plain)
+                at = joined.find(wanted)
+                if at >= 0:
+                    a, b = plain[at][0], plain[at + len(wanted) - 1][0] + 1
+                    bound = _span_at(transcript, starts, a, b)
+            if bound is None and clauses and wanted:
+                a, b = max(
+                    clauses, key=lambda c: len(set(head[c[0] : c[1]]) & set(wanted))
+                )
+                bound = _span_at(transcript, starts, a, b)
+            if bound is None:
+                return raw
+            opening[key] = bound
+        notes.append("开场标题按原话对齐到口播词。")
+    captions = changed.get("captions")
+    if (
+        isinstance(captions, list)
+        and captions
+        and all(isinstance(c, dict) and not c.get("emphasis") for c in captions)
+        and len(re.findall(r"\w", text)) >= 12
+    ):
+        safe, _ = text_boundaries(text)
+        cuts = sorted(safe | {0, len(text)})
+        for cue in captions:
+            if (
+                cue.get("first_token_id") not in index
+                or cue.get("last_token_id") not in index
+            ):
+                return raw
+            first, last = index[cue["first_token_id"]], index[cue["last_token_id"]]
+            a = starts[first]
+            b = starts[last] + len(transcript.tokens[last].text)
+            brk = index.get(cue.get("line_break_after_token_id") or "")
+            split = (
+                starts[brk] + len(transcript.tokens[brk].text)
+                if brk is not None
+                else None
+            )
+            edges = [x for x in cuts if a <= x <= b]
+            words = []
+            for x, y in zip(edges, edges[1:], strict=False):
+                word = text[x:y]
+                core = re.sub(r"\W+$", "", word)
+                if not 2 <= len(core) <= 4 or not re.fullmatch(r"\w+", core):
+                    continue
+                if core[0] in _FUNCTION_WORDS or core[-1] in _FUNCTION_WORDS:
+                    continue
+                if split is not None and x < split < x + len(core):
+                    continue
+                words.append((len(core), x, x + len(core)))
+            if words:
+                _, x, y = max(words, key=lambda w: (w[0], w[1]))
+                span = _span_at(transcript, starts, x, y)
+                if span:
+                    cue["emphasis"] = [span]
+        if any(c.get("emphasis") for c in captions):
+            notes.append("字幕重点词按原话补齐。")
+    if not notes:
+        return raw
+    warnings = changed.setdefault("warnings", [])
+    notice = "".join(notes)
+    if isinstance(warnings, list):
+        if len(warnings) < 12:
+            warnings.append(notice)
+        else:
+            warnings[-1] = str(warnings[-1])[: 299 - len(notice)] + "；" + notice
+    return changed
+
+
 def verify_plan(
     raw: dict[str, Any],
     transcript: Transcript,
@@ -370,7 +498,9 @@ def verify_plan(
     require_semantic_captions: bool = False,
     allow_mixed_body: bool = True,
 ) -> dict[str, Any]:
-    raw = fit_recorded_display_spans(raw, transcript)
+    raw = fit_recorded_display_spans(
+        repair_provider_shapes(raw, transcript), transcript
+    )
     original = contracts.AppleSuitePlan.model_validate(raw)
     # Validate each sequence with the unchanged strict word/schema/caption
     # checks. They may interleave with each other, never reorder internally.

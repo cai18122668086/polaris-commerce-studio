@@ -107,7 +107,8 @@ export function useWorkItemActions(workspaceId: string) {
     mutationFn: async (itemId: string) => unwrapApiResponse(await apiClient.DELETE(`${root}/work-items/{item_id}`, {
       params: { path: { workspace_id: workspaceId, item_id: itemId } }, signal: timeout(),
     })) as WorkItem,
-    onSuccess: settle,
+    // 网络慢时请求可能已到服务端但响应超时：无论成败都重新读一次，界面以服务端为准。
+    onSettled: settle,
   });
   const retry = useMutation({
     mutationFn: async (input: { itemId: string; stage: "talking" | "editing" }) => {
@@ -121,7 +122,7 @@ export function useWorkItemActions(workspaceId: string) {
     mutationFn: async (input: { itemId: string; version: number; published: boolean }) => unwrapApiResponse(await apiClient.PATCH(`${root}/work-items/{item_id}`, {
       params: { path: { workspace_id: workspaceId, item_id: input.itemId } }, body: { expected_version: input.version, published: input.published }, signal: timeout(),
     })) as WorkItem,
-    onSuccess: settle,
+    onSettled: settle,
   });
   return { remove, retry, publish };
 }

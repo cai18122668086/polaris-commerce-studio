@@ -13,8 +13,12 @@ test("人物出镜 keeps one of each look-alike pair", () => {
   assert.equal(templateEntry("bihuo-47-v1")?.[1], "星光商务");
 });
 
-test("深青标题 stays hidden until its caption contrast is fixed", () => {
-  assert.equal(isTemplateListed("bihuo-24-v1"), false);
+// 11-28 r2 C1：深青标题字幕加了模板色底衬（宿主侧），恢复显示；彩色主题四套都在库里。
+test("深青标题 is listed again with the other colour themes", () => {
+  for (const id of ["bihuo-09-v1", "bihuo-13-v1", "bihuo-15-v1", "bihuo-24-v1"]) {
+    assert.equal(isTemplateListed(id), true, id);
+    assert.equal(templateEntry(id)?.[0], "彩色主题", id);
+  }
   assert.equal(templateEntry("bihuo-24-v1")?.[1], "深青标题");
 });
 

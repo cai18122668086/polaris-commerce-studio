@@ -142,3 +142,5 @@
 :global(.theme-plaster) .form .fileHelp,:global(.theme-plaster) .uploadArea .uploadHint{color:#817e75}
 :global(.theme-plaster) .consent{color:#7a776e}
 /* plaster:end */
+
+.unavailableAction { opacity: .55; cursor: not-allowed; }

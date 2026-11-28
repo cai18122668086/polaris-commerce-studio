@@ -77,6 +77,11 @@ test("unavailable sources and unsupported templates are explained, not hidden", 
   const cards = items.map(item => ({ ...item, template_id: "bihuo-04-v1" }));
   assert.equal(m.sourceBlocker("mg", cards, states, ["bihuo-36-v1"]), "此模板画面已有信息卡，暂不支持 MG");
   assert.equal(m.sourceBlocker("mg", [{ ...cards[0], template_id: "bihuo-36-v1" }], states, ["bihuo-36-v1"]), null);
+  // C11：置灰说明列出可用模板中文名；隐藏的模板不列。
+  assert.equal(m.sourceBlocker("mg", cards, states, ["bihuo-36-v1"], ["居中字幕"]), "当前模板暂不支持动效，可用：居中字幕");
+  const names = { "bihuo-08-v1": "暗夜网格", "bihuo-36-v1": "居中字幕" };
+  assert.deepEqual(m.mgTemplateChoices(["bihuo-08-v1", "bihuo-47-v1", "bihuo-36-v1"], id => names[id]), [{ id: "bihuo-08-v1", name: "暗夜网格" }, { id: "bihuo-36-v1", name: "居中字幕" }]);
+  assert.deepEqual(m.mgTemplateChoices(undefined, () => "x"), []);
   assert.match(m.sourceBlocker("mine", apple, states), /没有配图位置/);
   const noScript = items.map(item => ({ ...item, script_text: " " }));
   assert.match(m.sourceBlocker("ai_image", noScript, states), /需要口播稿/);

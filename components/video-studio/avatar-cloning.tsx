@@ -1,7 +1,7 @@
 "use client";
 
 import { CostLine } from "./studio-content";
-import { billableLabel } from "@/features/video-studio/credit-notes";
+import { billableLabel, creditPhrase } from "@/features/video-studio/credit-notes";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, ImagePlus, LoaderCircle, Upload, Video } from "lucide-react";
 import type { GenerationJob, useVideoLibrary } from "@/features/video-studio/library";
@@ -64,7 +64,7 @@ export function AvatarCloneDialog({ library, userId, workspaceId, onClose, onCre
     <p className={cloneStyles.help}>{kind === "image" ? "JPG、PNG、WebP · 最大 10 MB · 边长至少 256 像素" : "MP4、MOV、WebM · 2～120 秒 · 最大 50 MB"}</p>
     <ol className={cloneStyles.flow} aria-label="形象创建流程">{[kind === "image" ? "上传照片" : "上传视频", kind === "image" ? "生成动作" : "检查素材", "预览确认", "加入形象库"].map((step,index) => <li key={step}><span>{index + 1}</span>{step}</li>)}</ol>
     <label className={cloneStyles.consent}><input type="checkbox" checked={consent} disabled={busy || attempted} onChange={event => setConsent(event.target.checked)} /><span>我拥有此形象的使用授权，同意处理该素材并创建专属数字人。</span></label>
-    <p className={cloneStyles.help}>{kind === "image" ? "点击生成后会上传照片并调用动作生成服务，按实际用量计费；预览满意后再登记形象。" : "先上传预览，确认加入形象库时调用登记服务并计费。"}</p>
+    <p className={cloneStyles.help}>{kind === "image" ? `点击生成后会上传照片并调用动作生成服务（${creditPhrase(motionCredits)}）；预览满意后再登记形象。` : "先上传预览，确认加入形象库时再调用登记服务。"}</p>
     {busy && <div className={cloneStyles.uploadProgress} role="status"><span><LoaderCircle size={15} />{upload?.complete ? "正在检查素材" : "正在上传素材"}<small>{percent === undefined ? "" : `${percent}%`}</small></span><progress aria-label="素材上传进度" max={100} value={upload?.complete ? undefined : percent} /></div>}
     {error && <p className={cloneStyles.error} role="alert">{error}</p>}
     <CostLine note={costFor?.(kind)} />

@@ -39,6 +39,10 @@ export type TalkingDraft = {
   step: 1 | 2 | 3 | 4;
   /** 本次生成的提交编号：同一份设置重复点生成都用它，后端据此只建一个批次。 */
   requestId?: string;
+  /** 这份草稿已经生成成了哪个批次（A4：带新文案进来时不再把它们混进去）。 */
+  submittedBatchId?: string;
+  /** C10：在这几个固定形象里轮流分配（按顺序），增删稿后自动重新分配。 */
+  rotation?: Assignment[];
 };
 
 export type Persona = { id: string; name: string; avatar_id: string; voice_id: string; available?: boolean };
@@ -103,31 +107,52 @@ export function assign(draft: TalkingDraft, key: string | "all", next: (current:
   if (draft.mode === "same" || key === "all") {
     if (draft.mode === "same") return { ...draft, shared: next(draft.shared) };
     const perScript = Object.fromEntries(draft.scripts.map(script => [script.key, next(assignmentFor(draft, script.key))]));
-    return { ...draft, perScript };
+    return { ...draft, perScript, rotation: undefined };
   }
-  return { ...draft, perScript: { ...draft.perScript, [key]: next(assignmentFor(draft, key)) } };
+  // 单独改了某一条：不再是「轮流分配」，其余条保持原样。
+  return { ...draft, perScript: { ...draft.perScript, [key]: next(assignmentFor(draft, key)) }, rotation: undefined };
+}
+
+/** C10：在选中的几个固定形象里按顺序轮流分配（12 条 3 个 = 4/4/4）。切到「每条单独选」。 */
+export function rotate(draft: TalkingDraft, personas: Persona[]): TalkingDraft {
+  const rotation = personas.map(withPersona);
+  if (!rotation.length) return draft;
+  const perScript = Object.fromEntries(draft.scripts.map((script, index) => [script.key, { ...rotation[index % rotation.length] }]));
+  return { ...draft, mode: "each", perScript, rotation };
+}
+
+/** 轮流分配的结果：每个固定形象分到几条（按选择顺序）。 */
+export function rotationCounts(draft: TalkingDraft): { personaId: string; count: number }[] {
+  if (!draft.rotation?.length) return [];
+  return draft.rotation.map(row => ({ personaId: row.personaId ?? "", count: draft.scripts.filter(script => draft.perScript[script.key]?.personaId === row.personaId).length }));
+}
+
+function reRotate(draft: TalkingDraft): TalkingDraft {
+  if (!draft.rotation?.length || draft.mode !== "each") return draft;
+  const rotation = draft.rotation;
+  return { ...draft, perScript: Object.fromEntries(draft.scripts.map((script, index) => [script.key, { ...rotation[index % rotation.length] }])) };
 }
 
 export function switchMode(draft: TalkingDraft, mode: AssignMode): TalkingDraft {
-  if (mode === draft.mode) return draft;
+  if (mode === draft.mode) return draft.rotation ? { ...draft, rotation: undefined } : draft;
   if (mode === "each") {
     const perScript = Object.fromEntries(draft.scripts.map(script => [script.key, draft.perScript[script.key]?.avatarId ? draft.perScript[script.key] : { ...draft.shared }]));
     return { ...draft, mode, perScript };
   }
-  return { ...draft, mode };
+  return { ...draft, mode, rotation: undefined };
 }
 
 export function addScripts(draft: TalkingDraft, scripts: TalkingScript[]): TalkingDraft {
   const known = new Set(draft.scripts.map(script => script.documentId ? `doc:${script.documentId}` : script.key));
   const fresh = scripts.filter(script => !known.has(script.documentId ? `doc:${script.documentId}` : script.key));
   const drive: TalkingDrive = fresh[0]?.source === "audio" ? "audio" : draft.drive;
-  return { ...draft, drive, scripts: [...draft.scripts, ...fresh].slice(0, MAX_SCRIPTS), requestId: undefined };
+  return reRotate({ ...draft, drive, scripts: [...draft.scripts, ...fresh].slice(0, MAX_SCRIPTS), requestId: undefined, submittedBatchId: undefined });
 }
 
 export function removeScript(draft: TalkingDraft, key: string): TalkingDraft {
   const perScript = { ...draft.perScript };
   delete perScript[key];
-  return { ...draft, scripts: draft.scripts.filter(script => script.key !== key), perScript, requestId: undefined };
+  return reRotate({ ...draft, scripts: draft.scripts.filter(script => script.key !== key), perScript, requestId: undefined, submittedBatchId: undefined });
 }
 
 export function switchDrive(draft: TalkingDraft, drive: TalkingDrive): TalkingDraft {
@@ -204,7 +229,13 @@ export function decodeDraft(raw: string | null): TalkingDraft | undefined {
     if (value?.version !== 1 || !Array.isArray(value.scripts) || !["text", "audio"].includes(value.drive as string) || !["same", "each"].includes(value.mode as string)) return undefined;
     const scripts = value.scripts.filter((script): script is TalkingScript => !!script && typeof script.key === "string" && typeof script.script === "string").slice(0, MAX_SCRIPTS);
     const step = [1, 2, 3, 4].includes(value.step as number) ? value.step as TalkingDraft["step"] : 1;
-    return { version: 1, drive: value.drive as TalkingDrive, mode: value.mode as AssignMode, scripts, shared: value.shared ?? {}, perScript: value.perScript ?? {}, step, requestId: typeof value.requestId === "string" ? value.requestId : undefined };
+    const rotation = Array.isArray(value.rotation) ? value.rotation.filter(row => !!row && typeof row.personaId === "string") : undefined;
+    return {
+      version: 1, drive: value.drive as TalkingDrive, mode: value.mode as AssignMode, scripts, shared: value.shared ?? {}, perScript: value.perScript ?? {}, step,
+      requestId: typeof value.requestId === "string" ? value.requestId : undefined,
+      submittedBatchId: typeof value.submittedBatchId === "string" ? value.submittedBatchId : undefined,
+      rotation: rotation?.length ? rotation : undefined,
+    };
   } catch {
     return undefined;
   }
@@ -217,20 +248,26 @@ export type WorkItemView = {
   error: string | null; publish_title: string; script_text: string; avatar_id: string | null; voice_id: string | null;
   persona_id: string | null; generation_task_id: string | null; drive_mode: string; stage: string; version: number;
 };
-export type TalkingView = { item_id: string; queue_position: number | null; stage: string | null; video_url: string | null; can_retry: boolean; awaiting_check?: boolean; long_wait?: boolean };
+export type TalkingView = { item_id: string; queue_position: number | null; stage: string | null; video_url: string | null; can_retry: boolean; awaiting_check?: boolean; long_wait?: boolean; error_code?: string | null };
+
+/** 结果待确认超过 24 小时被停止核对（后端 C8）：冻结已释放，可以重试或换数字人。 */
+export const OUTCOME_EXPIRED = "VIDEO_PROVIDER_OUTCOME_EXPIRED";
+export const OUTCOME_EXPIRED_TEXT = "这条长时间没能确认结果，已停止核对，积分已退回。如果需要，可以换数字人重试或联系客服。";
 export type TalkingBatch = { batch: { id: string; created_at: string; item_ids: string[]; items: WorkItemView[]; status_counts: Record<string, number> }; talking: TalkingView[]; parallel_limit: number; notice?: string | null };
 
 export type ResultBox = { id: string; title: string; state: "queued" | "running" | "done" | "failed" | "checking"; label: string; videoUrl: string | null; canRetry: boolean; canCheck: boolean; error: string | null; note: string | null; position: number };
 
-export function resultBoxes(view: TalkingBatch, stageLabel: (stage: string) => string): ResultBox[] {
+/** priced=false（灰度期价格为空）时不提「扣积分/扣费」。 */
+export function resultBoxes(view: TalkingBatch, stageLabel: (stage: string) => string, priced = true): ResultBox[] {
   const talking = new Map(view.talking.map(item => [item.item_id, item]));
   return view.batch.items.map(item => {
     const extra = talking.get(item.id);
     const title = item.publish_title || (item.script_text.trim().split(/[。！？!?\n]/)[0] || "口播").slice(0, 18);
     const base = { id: item.id, title, videoUrl: extra?.video_url ?? null, canRetry: !!extra?.can_retry, canCheck: !!extra?.awaiting_check || !!extra?.long_wait, error: item.error, note: null as string | null, position: item.position };
-    if (extra?.awaiting_check) return { ...base, state: "checking", label: "结果待确认", note: "不会重新生成，也不会重复扣积分" };
-    if (extra?.long_wait && item.status !== "succeeded" && item.status !== "failed") return { ...base, state: "checking", label: "供应商排队较久", note: "系统会自动继续查询，不会重复扣费" };
+    if (extra?.awaiting_check) return { ...base, state: "checking", label: "结果待确认", note: priced ? "不会重新生成，也不会重复扣积分" : "不会重新生成" };
+    if (extra?.long_wait && item.status !== "succeeded" && item.status !== "failed") return { ...base, state: "checking", label: "供应商排队较久", note: priced ? "系统会自动继续查询，不会重复扣费" : "系统会自动继续查询" };
     if (item.status === "succeeded") return { ...base, state: "done", label: "已完成" };
+    if (item.status === "failed" && extra?.error_code === OUTCOME_EXPIRED) return { ...base, state: "failed", label: "已停止核对", error: OUTCOME_EXPIRED_TEXT };
     if (item.status === "failed" || item.status === "canceled") return { ...base, state: "failed", label: "生成失败" };
     if (item.status === "running" || (item.status === "queued" && item.generation_task_id)) return { ...base, state: "running", label: extra?.stage ? stageLabel(extra.stage) : "正在生成" };
     return { ...base, state: "queued", label: extra?.queue_position ? `排队中 · 第 ${extra.queue_position} 位` : "排队中" };
@@ -249,4 +286,53 @@ export function editingCta(boxes: Pick<ResultBox, "state">[], settled: boolean) 
   if (!settled && open && done) return { label: `先剪已完成的 ${done} 条`, note: `其余 ${open} 条完成后可继续加入`, disabled: false };
   if (!done) return { label: `去剪辑这 ${boxes.length} 条`, note: open ? "完成后就能去剪辑" : "", disabled: true };
   return { label: `去剪辑这 ${done} 条`, note: "", disabled: false };
+}
+
+// ---- A4：进入口播页时先显示什么 ----
+
+/** 生成过的草稿开新一批：不带旧稿，保留「所有稿同一个」时选好的数字人和音色，省得再选一遍。 */
+export function freshDraft(previous?: TalkingDraft): TalkingDraft {
+  const base = emptyDraft();
+  if (!previous || previous.mode !== "same") return base;
+  return { ...base, shared: { ...previous.shared } };
+}
+
+export type EntryPlan = { draft: TalkingDraft; show: string | null; previous: string | null };
+
+/**
+ * 进入口播页：
+ * - 地址带 `?batch=`：显示这个批次（草稿保留，「再做一批」回到草稿）。
+ * - 带 `?scripts=`（从文案库新选的稿）：直接进入新一批的配置，不被还在生成的上一批盖住；
+ *   上一批只在顶部提示一行，可一键查看。已生成过的旧草稿不再混进来。
+ * - 都没有：找回最近一个还在生成的批次（换浏览器/刷新后能找回）。
+ */
+export function planEntry(input: { stored?: TalkingDraft; hasScripts: boolean; batchParam?: string | null; latestOpen?: string | null }): EntryPlan {
+  const { stored, hasScripts } = input;
+  const batchParam = input.batchParam ?? null;
+  const latestOpen = input.latestOpen ?? null;
+  const show = batchParam ?? (hasScripts ? null : latestOpen);
+  const previous = !batchParam && hasScripts && latestOpen ? latestOpen : null;
+  const stale = !!stored?.submittedBatchId && (hasScripts || !show);
+  return { draft: stale ? freshDraft(stored) : stored ?? emptyDraft(), show, previous };
+}
+
+/** 「再做一批」：生成过的草稿清空重来；还没生成的（例如从文案库刚带进来的稿）原样保留。 */
+export function draftAfterBatch(draft: TalkingDraft): TalkingDraft {
+  return draft.submittedBatchId ? freshDraft(draft) : draft;
+}
+
+/** 顶部一行：上一批的进度。 */
+export function previousBatchLine(view: TalkingBatch): string {
+  const done = view.batch.items.filter(item => item.status === "succeeded").length;
+  return batchSettled(view) ? `上一批已结束（完成 ${done}/${view.batch.items.length}）` : `上一批还在生成（已完成 ${done}/${view.batch.items.length}）`;
+}
+
+// ---- B15：克隆新声音按钮 ----
+
+/** 由 voice-clone-config 的 available 驱动；没开通时置灰并说明，点了也不发请求。 */
+export function cloneAction(config?: { available?: boolean } | null) {
+  const available = config?.available === true;
+  return available
+    ? { available, label: "克隆新声音", hint: "" }
+    : { available, label: "克隆新声音（暂未开通）", hint: "声音克隆暂未开通，可以先用系统声音" };
 }

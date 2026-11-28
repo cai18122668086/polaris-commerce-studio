@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowRight, Check, Copy, LoaderCircle, PencilLine, RotateCcw } from "lucide-react";
 import { AUTO_STAGES, useAutoWriting, type AutoDraft, type AutoRun, type AutoStart } from "@/features/video-studio/use-auto-writing";
 import { PLATFORM_LABEL, type AnalysisDoc, type DraftDoc, type Platform, type ReferenceDoc } from "@/features/video-studio/use-viral-writing";
-import { editChanged, editOf, fullText, toggle, type LibraryEdit, type LibraryEntry, type LibraryPlatform } from "@/features/video-studio/script-library-format";
+import { editChanged, editOf, fullText, needsFill, toggle, type FillStatus, type LibraryEdit, type LibraryEntry, type LibraryPlatform } from "@/features/video-studio/script-library-format";
 import { scriptLibraryApi } from "@/features/video-studio/use-script-library";
+import { billableLabel, FREE_TRIAL_TEXT, isPriced, useVideoCredits } from "@/features/video-studio/credits";
 import { ScriptParts } from "./script-library-parts";
 import type { ToastTone } from "./studio-toast";
 import lib from "./script-library.module.css";
@@ -21,7 +22,7 @@ const LIMITS = [["price", "不写价格"], ["net_quantity", "不写净含量"], 
 
 /* ------------------------------------------------------------------ start */
 
-function StartForm({ initial, busy, onStart, onCancel }: { initial: Partial<AutoStart>; busy: boolean; onStart: (input: AutoStart) => void; onCancel?: () => void }) {
+function StartForm({ initial, busy, onStart, onCancel, writingPriced = false }: { initial: Partial<AutoStart>; busy: boolean; onStart: (input: AutoStart) => void; onCancel?: () => void; writingPriced?: boolean }) {
   const [platform, setPlatform] = useState<Platform>(initial.platform || "douyin");
   const [query, setQuery] = useState(initial.query || "");
   const [facts, setFacts] = useState(initial.facts_text || "");
@@ -61,7 +62,7 @@ function StartForm({ initial, busy, onStart, onCancel }: { initial: Partial<Auto
     </div>
     <div className={css.actions}>
       {onCancel && <button type="button" className={studio.outlineButton} onClick={onCancel}>取消</button>}
-      <small>大约 3–5 分钟，期间可以离开这个页面。每版都有标题、发布正文和口播稿，写好自动存进文案库。会调用搜索和写稿模型（计费）。</small>
+      <small>大约 3–5 分钟，期间可以离开这个页面。每版都有标题、发布正文和口播稿，写好自动存进文案库。会调用搜索和写稿模型{writingPriced ? "，按步骤扣积分" : `（${FREE_TRIAL_TEXT}）`}。</small>
       <button type="submit" className={studio.primaryButton} disabled={busy || !query.trim() || facts.trim().length < 4}>{busy ? "提交中…" : "让 AI 写 3 版文案"}<ArrowRight size={15} /></button>
     </div>
   </form>;
@@ -95,13 +96,16 @@ function Progress({ run, picks }: { run: AutoRun; picks: { title: string; reason
 
 type Parts = { publish_title: string; publish_body: string; script: string; platform: LibraryPlatform | "" };
 
-function VersionCard({ entry, draft, reference, item, platform, selecting, checked, onToggle, onUse, onSave, copyText }: {
+function VersionCard({ entry, draft, reference, item, platform, selecting, checked, onToggle, onUse, onSave, onFill, fillCredits, copyText }: {
   entry: AutoDraft; draft: DraftDoc | undefined; reference: ReferenceDoc | undefined; item: LibraryEntry | undefined; platform: LibraryPlatform | "";
   selecting: boolean; checked: boolean; onToggle: () => void; onUse: (id: string) => void;
   onSave: (item: LibraryEntry, edit: LibraryEdit) => Promise<void>; copyText: (text: string) => void;
+  onFill: (entry: AutoDraft, item: LibraryEntry | undefined, script: string) => Promise<FillStatus | undefined>; fillCredits: number | null | undefined;
 }) {
   const [edit, setEdit] = useState<LibraryEdit | null>(null);
   const [saving, setSaving] = useState(false);
+  const [filling, setFilling] = useState(false);
+  const [fillError, setFillError] = useState("");
   if (!draft) return <div className={css.version} data-empty>
     <header><b>{entry.label}</b></header>
     <p className={css.muted}>这版没有通过事实检查，没写出来。其他几版可以直接用。</p>
@@ -115,6 +119,14 @@ function VersionCard({ entry, draft, reference, item, platform, selecting, check
   ];
   const parts: Parts = item ?? { publish_title: d.publish_title || "", publish_body: d.publish_body || "", script: draft.body.text, platform };
   const blocked = draft.body.shape_check.verdict === "FAIL" || /【[^】]*】|[XＸ]{2,}|待补|待填/.test(parts.script);
+  const legacy = needsFill(parts);
+  const fill = async () => {
+    setFilling(true); setFillError("");
+    try {
+      const status = await onFill(entry, item, parts.script).catch(() => undefined);
+      if (!status || status.status !== "completed") setFillError(status?.message || "这次没写好，没有扣积分，可以再试一次。");
+    } finally { setFilling(false); }
+  };
   const save = async () => {
     if (!item || !edit) return;
     setSaving(true);
@@ -129,8 +141,11 @@ function VersionCard({ entry, draft, reference, item, platform, selecting, check
       </div>
       <small>参考：{reference?.body.source_metrics?.title || "对标"}{item && item.revision > 1 ? " · 已修改" : ""}</small>
     </header>
-    <ScriptParts parts={parts} edit={edit} onChange={setEdit} onCopy={copyText} scriptMaxHeight={360} />
-    {!edit && !item && <p className={css.muted}>这版是改版前写的，没有存进文案库。</p>}
+    <ScriptParts parts={parts} edit={edit} onChange={setEdit} onCopy={copyText} scriptMaxHeight={360} legacy={legacy ? <>
+      <button type="button" className={studio.outlineButton} disabled={filling} onClick={() => void fill()}>{filling ? "正在补写…" : billableLabel("补写标题和正文", fillCredits)}</button>
+      {fillError && <small className={css.muted} role="alert">{fillError}</small>}
+    </> : undefined} />
+    {!edit && !item && !legacy && <p className={css.muted}>这版是改版前写的，没有存进文案库。</p>}
     {!edit && notes.length > 0 && <details className={css.notes}><summary>提示（{notes.length}）</summary><ul>{notes.map((t, i) => <li key={i}>{t}</li>)}</ul></details>}
     <footer>
       {edit ? <>
@@ -170,7 +185,34 @@ function Results({ flow, run, copyText, notify, onUseScripts, onRestart, onManua
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow.workspaceId, key]);
-  const itemOf = (d: AutoDraft) => (d.library_entry_id && items.get(d.library_entry_id)) || [...items.values()].find(item => item.writing_document_id === d.document_id);
+  // 旧版本补写时新建的文案库条目，按版本记住（它没有 writing_document_id）。
+  const [filled, setFilled] = useState<Map<string, LibraryEntry>>(new Map());
+  const fillRequests = useRef(new Map<string, string>());
+  const fillCredits = useVideoCredits(flow.workspaceId).note(["writing_publish_fill"]).credits;
+  const itemOf = (d: AutoDraft) => filled.get(d.key) || (d.library_entry_id && items.get(d.library_entry_id)) || [...items.values()].find(item => item.writing_document_id === d.document_id);
+  /** 旧版本（只有口播稿）补写标题和正文：复用文案库的 publish-fill；不在库里的先存一条再补写。 */
+  const fillLegacy = async (d: AutoDraft, item: LibraryEntry | undefined, script: string): Promise<FillStatus | undefined> => {
+    const library = scriptLibraryApi(flow.workspaceId);
+    let row = item;
+    if (!row) {
+      const requestId = fillRequests.current.get(d.key) || crypto.randomUUID();
+      fillRequests.current.set(d.key, requestId);
+      row = await library.create({ request_id: requestId, script, platform });
+      const created = row;
+      setFilled(map => new Map(map).set(d.key, created));
+    }
+    let status = await library.fill(row.id, platform || "douyin", crypto.randomUUID());
+    for (let i = 0; i < 60 && status.status === "running"; i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      status = await library.fillStatus(row.id, status.task_id);
+    }
+    const next = status.entry;
+    if (status.status === "completed" && next) {
+      setFilled(map => new Map(map).set(d.key, next));
+      notify?.("已补写标题和正文", "success");
+    }
+    return status;
+  };
   const ready = drafts.map(itemOf).filter((item): item is LibraryEntry => !!item);
   const save = async (item: LibraryEntry, edit: LibraryEdit) => {
     try {
@@ -200,7 +242,7 @@ function Results({ flow, run, copyText, notify, onUseScripts, onRestart, onManua
         const doc = flow.latest(flow.doc<DraftDoc>(entry.document_id));
         return <VersionCard key={entry.key} entry={entry} draft={doc} reference={flow.doc<ReferenceDoc>(entry.reference_id)} item={item} platform={platform}
           selecting={selecting} checked={!!item && selected.includes(item.id)} onToggle={() => item && setSelected(ids => toggle(ids, item.id))}
-          onUse={id => onUseScripts([id])} onSave={save} copyText={copyText} />;
+          onUse={id => onUseScripts([id])} onSave={save} onFill={fillLegacy} fillCredits={fillCredits} copyText={copyText} />;
       })}</div>
     </section>
     {selecting && <div className={lib.bar} role="region" aria-label="已选文案">
@@ -233,6 +275,7 @@ export function AutoWriting({ workspaceId, projectId, session, productFacts, cop
   onUseScripts: (ids: string[]) => void; onManual?: () => void;
 }) {
   const flow = useAutoWriting({ workspaceId, projectId, session });
+  const credits = useVideoCredits(workspaceId);
   const [form, setForm] = useState(false);
   const run = flow.run;
   const inputs = run?.result.request;
@@ -241,7 +284,7 @@ export function AutoWriting({ workspaceId, projectId, session, productFacts, cop
     .map(p => ({ title: candidates.get(p.platform_id)?.title || p.platform_id, reason: p.reason }));
   const showForm = form || !run;
   return <div className={css.page}>
-    {showForm ? <StartForm initial={inputs || { facts_text: productFacts }} busy={flow.busy === "start"}
+    {showForm ? <StartForm initial={inputs || { facts_text: productFacts }} busy={flow.busy === "start"} writingPriced={isPriced(credits.note(["benchmark_search", "writing_generate"]).credits)}
       onCancel={run ? () => setForm(false) : undefined}
       onStart={input => void flow.start(input).then(() => setForm(false))} />
       : flow.running ? <Progress run={run} picks={picks} />

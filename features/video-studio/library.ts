@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api/client";
-import { unwrapApiResponse } from "@/lib/api/request";
+import { unwrapApiResponse, type ApiResult } from "@/lib/api/request";
 import { withAuthTimeout } from "@/lib/auth/request-timeout";
 import type { VideoContent } from "./projects";
 import { uploadWithProgress, type UploadProgress } from "@/lib/api/upload";
@@ -74,5 +74,22 @@ export function useVideoLibrary(workspaceId: string) {
       setResumingIds([...resumeRequests.current]);
     }
   };
-  return { avatars, voices, jobs, loading, error, resumingIds, reload, submit, lookupRequest, createAvatar, uploadAudio, resume, approveTemplate, rejectTemplate };
+  /** 「结果待确认」只查询、不重新提交（B7）。返回给商家看的说明，可继续时为 null。 */
+  const checkResult = async (id: string): Promise<string | null> => {
+    if (resumeRequests.current.has(id)) return null;
+    resumeRequests.current.add(id);
+    setResumingIds([...resumeRequests.current]);
+    try {
+      // /check 由 L1 后端提供（无请求体）；生成的 OpenAPI 类型未更新前按 /resume 的形状调用。
+      const post = apiClient.POST as unknown as (path: string, init: unknown) => Promise<ApiResult<GenerationJob & { notice?: string | null }>>;
+      const result = unwrapApiResponse(await post(`${root}/generation-tasks/{job_id}/check`, { ...options(), params: { path: { workspace_id: workspaceId, job_id: id } } }));
+      const { notice, ...job } = result;
+      setJobs(current => current.map(item => item.id === id ? job : item));
+      return notice ?? null;
+    } finally {
+      resumeRequests.current.delete(id);
+      setResumingIds([...resumeRequests.current]);
+    }
+  };
+  return { avatars, voices, jobs, loading, error, resumingIds, reload, submit, lookupRequest, createAvatar, uploadAudio, resume, checkResult, approveTemplate, rejectTemplate };
 }

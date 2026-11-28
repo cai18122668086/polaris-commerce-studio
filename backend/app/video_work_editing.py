@@ -1254,7 +1254,14 @@ def sweep_once(factory: sessionmaker[Session], settings: Settings) -> int:
                 VideoWorkEditingRunRecord.owner_user_id,
             )
             .where(VideoWorkEditingRunRecord.phase.in_(("queued", *ACTIVE_PHASES)))
-            .distinct()
+            # C8: most recently updated first; GROUP BY (not DISTINCT) so
+            # PostgreSQL accepts the aggregate ORDER BY.
+            .group_by(
+                VideoWorkEditingRunRecord.batch_id,
+                VideoWorkEditingRunRecord.workspace_id,
+                VideoWorkEditingRunRecord.owner_user_id,
+            )
+            .order_by(func.max(VideoWorkEditingRunRecord.updated_at).desc())
             .limit(50)
         ).all()
     moved = 0

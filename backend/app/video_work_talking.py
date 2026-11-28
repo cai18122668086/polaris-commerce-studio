@@ -77,6 +77,10 @@ ERROR_COPY = {
     "VIDEO_VOICE_INVALID": "所选音色暂不可用，换一个音色再试。",
     "VIDEO_TTS_NOT_CONFIGURED": "所选音色暂不可用，换一个音色再试。",
     "VIDEO_AUDIO_NOT_FOUND": "音频读取失败，请重新上传。",
+    "VIDEO_PROVIDER_OUTCOME_EXPIRED": (
+        "这条的提交结果超过 24 小时仍无法确认，已按失败处理，冻结的积分已退回；"
+        "如需核对请联系客服。"
+    ),
 }
 DEFAULT_ERROR = "这条没有生成成功，未扣积分，可以单独重试。"
 ProviderFactory = Callable[[], VideoProviders]
@@ -590,14 +594,18 @@ def sweep_once(
        The run lease guarantees a task is never processed twice.
     Returns the task ids it started.
     """
+    expire_unconfirmed(factory)
     with factory() as session:
+        # C8: most recently updated first (GROUP BY, not DISTINCT: PostgreSQL
+        # requires ORDER BY expressions of a DISTINCT query in its select list).
         batch_ids = session.scalars(
             select(VideoWorkItemRecord.batch_id)
             .where(
                 VideoWorkItemRecord.stage == "talking",
                 VideoWorkItemRecord.status.in_(["queued", "running"]),
             )
-            .distinct()
+            .group_by(VideoWorkItemRecord.batch_id)
+            .order_by(func.max(VideoWorkItemRecord.updated_at).desc())
             .limit(50)
         ).all()
     started: list[str] = []
@@ -643,10 +651,62 @@ def sweep_once(
 
 
 STALE_RUNNING_SECONDS = 180
+# C8: 结果待确认 (unknown) longer than this is settled as failed and its hold
+# released, so it neither spins forever nor stays in every sweep.
+UNCONFIRMED_EXPIRE_SECONDS = 24 * 3600
+UNCONFIRMED_EXPIRED = "VIDEO_PROVIDER_OUTCOME_EXPIRED"
 CHECK_NOTICE = (
     "这条的提交结果还在确认：不会重新生成，也不会重复扣积分。"
     "系统会继续核对，长时间没有结果请联系客服。"
 )
+
+
+def expire_unconfirmed(factory: sessionmaker[Session]) -> list[str]:
+    """Fail generation tasks whose outcome stayed unknown for 24 hours.
+
+    Any task (batch or not). The hold is released through the normal
+    reconciliation; batch items are synced so the page shows the reason.
+    """
+    cutoff = utc_now() - timedelta(seconds=UNCONFIRMED_EXPIRE_SECONDS)
+    with factory() as session:
+        ids = session.scalars(
+            select(VideoGenerationRecord.id)
+            .where(
+                VideoGenerationRecord.status == "unknown",
+                VideoGenerationRecord.updated_at <= cutoff,
+            )
+            .order_by(VideoGenerationRecord.updated_at, VideoGenerationRecord.id)
+            .limit(50)
+        ).all()
+        expired: list[str] = []
+        for job_id in ids:
+            changed = session.execute(
+                update(VideoGenerationRecord)
+                .where(
+                    VideoGenerationRecord.id == job_id,
+                    VideoGenerationRecord.status == "unknown",
+                )
+                .values(status="failed", error_code=UNCONFIRMED_EXPIRED)
+                .execution_options(synchronize_session=False)
+            )
+            if cast(CursorResult, changed).rowcount == 1:
+                expired.append(job_id)
+        session.commit()
+        if not expired:
+            return []
+        for job_id in expired:
+            video_credits.reconcile_owner(session, "video_generation", job_id)
+        session.commit()
+        sync_items(
+            session,
+            session.scalars(
+                select(VideoWorkItemRecord).where(
+                    VideoWorkItemRecord.generation_task_id.in_(expired)
+                )
+            ).all(),
+        )
+    logger.warning("video tasks unconfirmed for 24h marked failed: %s", expired)
+    return expired
 
 
 def _take_over(

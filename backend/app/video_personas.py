@@ -30,6 +30,7 @@ from .video_studio_routes import VideoWorkspace
 from .video_studio_schemas import StrictVideoModel
 from .video_voice_catalog import EMOTIONS, LANGUAGES, official_voices
 from .video_voice_cloning import catalog as cloned_voice_catalog
+from .video_voice_names import quanyu_display
 
 logger = logging.getLogger(__name__)
 
@@ -134,14 +135,16 @@ def voice_views(
     settings = request.app.state.settings
     root = f"/api/v1/video-studio/workspaces/{workspace.workspace_id}"
     voices: list[dict[str, Any]] = official_voices(
-        settings, root
+        settings, root, ids
     ) + cloned_voice_catalog(settings, session, workspace)
     if any(voice_id.startswith("qy-voice-") for voice_id in ids):
         try:
             voices += [
                 {
                     "id": "qy-voice-" + str(v["id"]),
-                    "name": v.get("name") or v.get("voice_name"),
+                    "name": quanyu_display(
+                        str(v["id"]), v.get("name") or v.get("voice_name")
+                    )["name"],
                     "available": True,
                     "preview_url": None,
                 }

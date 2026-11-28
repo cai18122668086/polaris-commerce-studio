@@ -57,9 +57,16 @@ from .video_studio_routes import VideoWorkspace, append_version, scope
 from .video_studio_schemas import StrictVideoModel
 from .video_template_media import prepare_forward, video_info
 from .video_tts import synthesize
-from .video_voice_catalog import VOICES, official_voices, preview_path, select_tao_voice
+from .video_voice_catalog import (
+    VOICES,
+    official_voices,
+    preview_path,
+    referenced_voice_ids,
+    select_tao_voice,
+)
 from .video_voice_cloning import catalog as cloned_voice_catalog
 from .video_voice_cloning import select_voice as select_cloned_voice
+from .video_voice_names import quanyu_display
 from .video_writing_provenance import matching_writing_origin
 
 router = APIRouter(
@@ -801,10 +808,8 @@ def voices(
     current = [
         {
             "id": "qy-voice-" + str(v["id"]),
-            "name": v.get("name") or v.get("voice_name"),
-            "gender": "男" if "男" in (v.get("name") or "") else "女",
+            **quanyu_display(str(v["id"]), v.get("name") or v.get("voice_name")),
             "tag": "公共音色",
-            "description": "系统声音",
             "available": True,
             "emotions": ["自然"],
             "languages": {"auto": "跟随音色原始语言"},
@@ -813,9 +818,12 @@ def voices(
         for v in providers(request).voices()
     ]
     root = f"/api/v1/video-studio/workspaces/{workspace.workspace_id}"
+    used = referenced_voice_ids(
+        session, workspace.workspace_id, workspace.principal.user_id
+    )
     result = (
         current
-        + official_voices(request.app.state.settings, root)
+        + official_voices(request.app.state.settings, root, used)
         + cloned_voice_catalog(request.app.state.settings, session, workspace)
     )
     return [

@@ -14346,6 +14346,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/StructureDraftLine"
+                },
+                {
+                  "$ref": "#/components/schemas/SpokenDraftLine"
                 }
               ]
             },
@@ -15398,6 +15401,30 @@
           "id"
         ],
         "title": "SourceVideoRef",
+        "type": "object"
+      },
+      "SpokenDraftLine": {
+        "additionalProperties": false,
+        "properties": {
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 60,
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "SpokenDraftLine",
         "type": "object"
       },
       "StockImportBody": {

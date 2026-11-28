@@ -813,6 +813,34 @@ def parse_reviews(
     return verdicts
 
 
+def with_code_checks(
+    verdict: dict[str, Any],
+    lines: list[str],
+    facts: WritingFacts,
+    brief: dict[str, Any],
+) -> dict[str, Any]:
+    """The reviewer's verdict tightened by what code can count for sure.
+
+    Models under-count repetition (the 8 production drafts: 「高端设计」 said
+    7 times was reported as 2) and sometimes miss a visitor's voice; the
+    counted value and the patterns win over the model's word.
+    """
+    text = "\n".join(lines)
+    merged = {**verdict}
+    merged["repetition"] = max(
+        int(verdict.get("repetition") or 0), repetition(text, facts)[1]
+    )
+    if (brief.get("speaker") or "merchant_self") == "merchant_self" and any(
+        p.search(text) for p in VISITOR
+    ):
+        merged["speaker_ok"] = False
+    if (brief.get("audience") or "consumer") == "consumer" and any(
+        p.search(text) for p in PEER
+    ):
+        merged["audience_ok"] = False
+    return merged
+
+
 def verdict_passes(verdict: dict[str, Any]) -> bool:
     return bool(
         verdict["speaker_ok"]

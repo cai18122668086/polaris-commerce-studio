@@ -23,6 +23,7 @@ from . import video_brief_writing as bw
 from .errors import ApiError
 from .video_assistance_models import VideoAssistanceRecord
 from .video_planner_policy import json_planning_options
+from .video_writing_contracts import WritingFacts
 from .video_writing_rules import (
     RECHECK_RULES,
     REPAIR_RULES,
@@ -624,7 +625,17 @@ def review(
     except ApiError:
         answer, usage = None, None
     stats.add("review_calls", usage)
-    return bw.parse_reviews(answer, {w.version["key"]: w.lines for w in works})
+    verdicts = bw.parse_reviews(answer, {w.version["key"]: w.lines for w in works})
+    card = WritingFacts.model_validate(facts)
+    return {
+        key: bw.with_code_checks(
+            verdict,
+            next(w.lines for w in works if w.version["key"] == key),
+            card,
+            brief,
+        )
+        for key, verdict in verdicts.items()
+    }
 
 
 def recheck(

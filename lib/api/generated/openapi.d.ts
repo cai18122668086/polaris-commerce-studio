@@ -10476,7 +10476,7 @@ export interface components {
              */
             request_id: string;
             /** Sentences */
-            sentences: (components["schemas"]["DraftSentence"] | components["schemas"]["StructureDraftLine"])[];
+            sentences: (components["schemas"]["DraftSentence"] | components["schemas"]["StructureDraftLine"] | components["schemas"]["SpokenDraftLine"])[];
             /** Title */
             title: string;
         };
@@ -10825,6 +10825,13 @@ export interface components {
              * @enum {string}
              */
             kind: "talking" | "library" | "upload";
+        };
+        /** SpokenDraftLine */
+        SpokenDraftLine: {
+            /** Fact Ids */
+            fact_ids?: string[];
+            /** Text */
+            text: string;
         };
         /** StockImportBody */
         StockImportBody: {

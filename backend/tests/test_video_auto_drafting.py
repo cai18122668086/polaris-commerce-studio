@@ -21,19 +21,83 @@ pytest_plugins = ["tests.test_video_auto_writing"]
 
 FACT_CARD = {
     "facts": [
-        {"id": "f1", "category": "identity", "label": "店名", "value": "恒志欧式家具店", "status": "user_declared"},
-        {"id": "f2", "category": "identity", "label": "位置", "value": "在新恒", "status": "user_declared"},
-        {"id": "f3", "category": "product", "label": "风格", "value": "欧式家具", "status": "user_declared"},
-        {"id": "f4", "category": "product", "label": "卖点", "value": "高端设计", "status": "user_declared"},
-        {"id": "f5", "category": "product", "label": "材质", "value": "真皮家具", "status": "user_declared"},
-        {"id": "f6", "category": "product", "label": "设计", "value": "名师设计", "status": "user_declared"},
+        {
+            "id": "f1",
+            "category": "identity",
+            "label": "店名",
+            "value": "恒志欧式家具店",
+            "status": "user_declared",
+        },
+        {
+            "id": "f2",
+            "category": "identity",
+            "label": "位置",
+            "value": "在新恒",
+            "status": "user_declared",
+        },
+        {
+            "id": "f3",
+            "category": "product",
+            "label": "风格",
+            "value": "欧式家具",
+            "status": "user_declared",
+        },
+        {
+            "id": "f4",
+            "category": "product",
+            "label": "卖点",
+            "value": "高端设计",
+            "status": "user_declared",
+        },
+        {
+            "id": "f5",
+            "category": "product",
+            "label": "材质",
+            "value": "真皮家具",
+            "status": "user_declared",
+        },
+        {
+            "id": "f6",
+            "category": "product",
+            "label": "设计",
+            "value": "名师设计",
+            "status": "user_declared",
+        },
     ]
 }
 ANGLES = [
-    {"id": "a1", "name": "老板带看镇店款", "hook": "场景代入", "genre": "单品特写", "focus": ["真皮"], "platform": "douyin"},
-    {"id": "a2", "name": "真皮怎么分好坏", "hook": "痛点提问", "genre": "选购避坑", "focus": ["真皮"], "platform": "douyin"},
-    {"id": "a3", "name": "名师设计值在哪", "hook": "反常识", "genre": "单品特写", "focus": ["名师设计"], "platform": "douyin"},
-    {"id": "a4", "name": "三句话介绍我的店", "hook": "结果前置", "genre": "门店介绍", "focus": ["高端设计"], "platform": "douyin"},
+    {
+        "id": "a1",
+        "name": "老板带看镇店款",
+        "hook": "场景代入",
+        "genre": "单品特写",
+        "focus": ["真皮"],
+        "platform": "douyin",
+    },
+    {
+        "id": "a2",
+        "name": "真皮怎么分好坏",
+        "hook": "痛点提问",
+        "genre": "选购避坑",
+        "focus": ["真皮"],
+        "platform": "douyin",
+    },
+    {
+        "id": "a3",
+        "name": "名师设计值在哪",
+        "hook": "反常识",
+        "genre": "单品特写",
+        "focus": ["名师设计"],
+        "platform": "douyin",
+    },
+    {
+        "id": "a4",
+        "name": "三句话介绍我的店",
+        "hook": "结果前置",
+        "genre": "门店介绍",
+        "focus": ["高端设计"],
+        "platform": "douyin",
+    },
 ]
 BRIEF = {
     "version": 1,
@@ -61,10 +125,22 @@ BODY = [
     "周末带上家里的尺寸，来新恒的店里坐一坐、摸一摸，主页有位置。",
 ]
 OPENINGS = {
-    "老板带看镇店款": ("今天带你看店里这套沙发", "今天带你看看我店里这一套镇店的沙发，坐下去就知道。"),
-    "真皮怎么分好坏": ("真皮好坏，摸一下就知道", "真皮和仿皮到底怎么分？很多人买回家才后悔。"),
-    "名师设计值在哪": ("名师设计到底贵在哪", "名师设计到底值在哪里？不是多几个花纹那么简单。"),
-    "三句话介绍我的店": ("三句话介绍新恒这家店", "用三句话说清楚我这家店，你就知道值不值得来。"),
+    "老板带看镇店款": (
+        "今天带你看店里这套沙发",
+        "今天带你看看我店里这一套镇店的沙发，坐下去就知道。",
+    ),
+    "真皮怎么分好坏": (
+        "真皮好坏，摸一下就知道",
+        "真皮和仿皮到底怎么分？很多人买回家才后悔。",
+    ),
+    "名师设计值在哪": (
+        "名师设计到底贵在哪",
+        "名师设计到底值在哪里？不是多几个花纹那么简单。",
+    ),
+    "三句话介绍我的店": (
+        "三句话介绍新恒这家店",
+        "用三句话说清楚我这家店，你就知道值不值得来。",
+    ),
 }
 
 
@@ -72,7 +148,8 @@ def script(angle):
     title, opening = OPENINGS[angle]
     return {
         "publish_title": title,
-        "publish_body": f"{title}。想看实物的，主页有位置。 #欧式家具 #真皮沙发 #家具店",
+        "publish_body": f"{title}。想看实物的，主页有位置。"
+        " #欧式家具 #真皮沙发 #家具店",
         "script": [opening, *BODY],
         "missing": ["店开了几年"],
     }
@@ -100,18 +177,45 @@ class Model:
             content = answers[min(n, len(answers) - 1)]
         elif "check_lines" in system:
             self.calls.append(("recheck", [d["key"] for d in payload["drafts"]]))
-            content = {"reviews": [{"key": d["key"], "ok": self.recheck_ok.get(d["key"], True)} for d in payload["drafts"]]}
+            content = {
+                "reviews": [
+                    {"key": d["key"], "ok": self.recheck_ok.get(d["key"], True)}
+                    for d in payload["drafts"]
+                ]
+            }
         elif "审稿编辑" in system:
             self.calls.append(("review", [d["key"] for d in payload["drafts"]]))
             content = {
                 "reviews": [
-                    {"key": d["key"], **self.review.get(d["key"], {"speaker_ok": True, "audience_ok": True, "on_goal": True, "readable": True, "repetition": 2, "invented": [], "problems": []})}
+                    {
+                        "key": d["key"],
+                        **self.review.get(
+                            d["key"],
+                            {
+                                "speaker_ok": True,
+                                "audience_ok": True,
+                                "on_goal": True,
+                                "readable": True,
+                                "repetition": 2,
+                                "invented": [],
+                                "problems": [],
+                            },
+                        ),
+                    }
                     for d in payload["drafts"]
                 ]
             }
         elif "只改fix里点名" in system:
             self.calls.append(("repair", [f["line"] for f in payload["fix"]]))
-            content = {"fixes": [{"line": f["line"], "text": self.fixes.get(f["line"], "我们只说店里真有的东西。")} for f in payload["fix"]]}
+            content = {
+                "fixes": [
+                    {
+                        "line": f["line"],
+                        "text": self.fixes.get(f["line"], "我们只说店里真有的东西。"),
+                    }
+                    for f in payload["fix"]
+                ]
+            }
         elif "提炼出2到3个" in system:
             self.calls.append(("compare",))
             content = {"skeletons": []}
@@ -121,18 +225,65 @@ class Model:
             "id": str(uuid4()),
             "model": "fake",
             "usage": {"prompt_tokens": 1000, "completion_tokens": 300},
-            "choices": [{"message": {"content": __import__("json").dumps(content, ensure_ascii=False)}}],
+            "choices": [
+                {
+                    "message": {
+                        "content": __import__("json").dumps(content, ensure_ascii=False)
+                    }
+                }
+            ],
         }
 
 
 @pytest.fixture
-def brief_run(app_client, monkeypatch):
-    app, client, root, project = app_client
+def pg_or_sqlite_client(tmp_path):
+    """SQLite by default; a fresh PostgreSQL schema when
+    POLARIS_TEST_ROUTE_DATABASE_URL / POLARIS_TEST_DATABASE_URL is set (CI)."""
+    from fastapi.testclient import TestClient
+    from pydantic import SecretStr
+
+    from app.main import create_app
+    from tests.test_auth_external import (
+        FakeExternalAuthBackend,
+        external_settings,
+        verified_identity,
+    )
+    from tests.test_video_projects import EMAIL, payload
+    from tests.test_video_work_item_lifecycle import _database_url
+
+    for database_url in _database_url(tmp_path):
+        settings = external_settings(tmp_path).model_copy(
+            update={
+                "video_writing_workflow_enabled": True,
+                "video_script_planning_enabled": True,
+                "video_benchmark_search_enabled": True,
+                "video_extract_enabled": True,
+                "video_extract_api_key": SecretStr("local-fixture"),
+                **({"database_url": database_url} if database_url else {}),
+            }
+        )
+        auth = FakeExternalAuthBackend(identity=verified_identity(email=EMAIL))
+        app = create_app(settings, auth)
+        with TestClient(app) as client:
+            workspace_id = client.get("/api/v1/workspaces").json()[0]["id"]
+            root = f"/api/v1/video-studio/workspaces/{workspace_id}"
+            project = str(uuid4())
+            put = client.put(f"{root}/projects/{project}", json=payload())
+            assert put.status_code == 200
+            yield app, client, root, project
+        app.state.engine.dispose()
+
+
+@pytest.fixture
+def brief_run(pg_or_sqlite_client, monkeypatch):
+    app, client, root, project = pg_or_sqlite_client
     monkeypatch.setattr(video_writing_routes, "verify_writing_package", lambda _: {})
     monkeypatch.setattr(bw, "verify_writing_package", lambda _: {})
     model = Model()
     monkeypatch.setattr(
-        VideoAssistanceProvider, "request", lambda service, *a, **k: model(service, *a, **k)
+        VideoAssistanceProvider,
+        "request",
+        lambda service, *a, **k: model(service, *a, **k),
     )
     facts = client.post(
         f"{root}/writing-documents/facts",
@@ -154,7 +305,8 @@ def brief_run(app_client, monkeypatch):
             "platform": "douyin",
             "count": count,
             "query": "家具店",
-            "facts_text": "恒志欧式家具店，在新恒。欧式家具，高端设计，真皮家具，名师设计。",
+            "facts_text": "恒志欧式家具店，在新恒。"
+            "欧式家具，高端设计，真皮家具，名师设计。",
         }
         response = client.post(f"{root}/auto-writing", json=body)
         assert response.status_code == 200, response.text
@@ -194,7 +346,10 @@ def test_four_angles_four_drafts_one_review_and_nothing_in_the_library(brief_run
     with app.state.session_factory() as session:
         tasks = session.query(VideoAssistanceRecord).filter_by(kind="fact_draft").all()
         assert len(tasks) == 4
-        assert all(t.inputs["draft_mode"] == "brief" and "analysis" not in t.inputs for t in tasks)
+        assert all(
+            t.inputs["draft_mode"] == "brief" and "analysis" not in t.inputs
+            for t in tasks
+        )
         doc = session.get(VideoWritingDocument, drafts[0]["document_id"])
         assert doc.body["draft"]["schema_version"] == "tengli.brief-draft/1"
         assert doc.reference_document_id is None
@@ -203,7 +358,11 @@ def test_four_angles_four_drafts_one_review_and_nothing_in_the_library(brief_run
 def test_a_hard_rule_miss_is_corrected_once_inside_the_task(brief_run):
     app, client, root, model, go = brief_run
     visitor = script("真皮怎么分好坏")
-    visitor["script"] = [visitor["script"][0], "最近朋友都在推荐这家店，我趁周末去看了看。", *BODY[1:]]
+    visitor["script"] = [
+        visitor["script"][0],
+        "最近朋友都在推荐这家店，我趁周末去看了看。",
+        *BODY[1:],
+    ]
     model.draft["真皮怎么分好坏"] = [visitor, script("真皮怎么分好坏")]
     row = go()
     d = row.result["drafts"][1]
@@ -216,8 +375,13 @@ def test_a_hard_rule_miss_is_corrected_once_inside_the_task(brief_run):
 def test_review_names_a_line_and_only_that_line_is_rewritten(brief_run):
     app, client, root, model, go = brief_run
     model.review["v3"] = {
-        "speaker_ok": True, "audience_ok": True, "on_goal": True, "readable": True, "repetition": 2,
-        "invented": [{"line": 4, "text": BODY[3], "reason": "说了没写过的舒适度"}], "problems": [],
+        "speaker_ok": True,
+        "audience_ok": True,
+        "on_goal": True,
+        "readable": True,
+        "repetition": 2,
+        "invented": [{"line": 4, "text": BODY[3], "reason": "说了没写过的舒适度"}],
+        "problems": [],
     }
     model.fixes = {4: "我们的款都是名师设计，看着耐看。"}
     row = go()
@@ -227,18 +391,27 @@ def test_review_names_a_line_and_only_that_line_is_rewritten(brief_run):
     with app.state.session_factory() as session:
         doc = session.get(VideoWritingDocument, d["document_id"])
         lines = [s["text"] for s in doc.body["draft"]["sentences"]]
-        parent = session.get(VideoWritingDocument, doc.body["revision"]["parent_document_id"])
+        parent = session.get(
+            VideoWritingDocument, doc.body["revision"]["parent_document_id"]
+        )
         before = [s["text"] for s in parent.body["draft"]["sentences"]]
     assert lines[4] == "我们的款都是名师设计，看着耐看。"
-    assert [x for i, x in enumerate(lines) if i != 4] == [x for i, x in enumerate(before) if i != 4]
+    assert [x for i, x in enumerate(lines) if i != 4] == [
+        x for i, x in enumerate(before) if i != 4
+    ]
     assert any("没写过" in n for n in d["notes"]["removed"])
 
 
 def test_a_repair_that_still_fails_the_recheck_is_dropped_not_hidden(brief_run):
     app, client, root, model, go = brief_run
     model.review["v1"] = {
-        "speaker_ok": True, "audience_ok": True, "on_goal": True, "readable": True, "repetition": 2,
-        "invented": [{"line": 2, "text": BODY[1], "reason": "编的"}], "problems": [],
+        "speaker_ok": True,
+        "audience_ok": True,
+        "on_goal": True,
+        "readable": True,
+        "repetition": 2,
+        "invented": [{"line": 2, "text": BODY[1], "reason": "编的"}],
+        "problems": [],
     }
     model.recheck_ok["v1"] = False
     row = go()
@@ -257,7 +430,9 @@ def test_a_near_duplicate_is_rewritten_once_on_another_skeleton(brief_run):
     d = row.result["drafts"][3]
     assert d["document_id"] and d["attempts"] == 2 and d["dropped_reason"] is None
     with app.state.session_factory() as session:
-        title = session.get(VideoWritingDocument, d["document_id"]).body["draft"]["publish_title"]
+        title = session.get(VideoWritingDocument, d["document_id"]).body["draft"][
+            "publish_title"
+        ]
     assert title == "三句话介绍新恒这家店"
     assert row.result["drafting"]["rewrite_calls"] == 1
 
@@ -298,7 +473,10 @@ def test_review_call_failing_delivers_drafts_marked_unchecked(brief_run, monkeyp
 
     monkeypatch.setattr(VideoAssistanceProvider, "request", broken)
     row = go()
-    assert all(d["document_id"] and d["quality"]["checked"] is False for d in row.result["drafts"])
+    assert all(
+        d["document_id"] and d["quality"]["checked"] is False
+        for d in row.result["drafts"]
+    )
 
 
 def test_all_drafts_failing_stops_the_run_and_resume_keeps_the_brief_path(brief_run):
@@ -329,7 +507,11 @@ def test_a_brief_draft_can_be_edited_line_by_line(brief_run):
     assert ok.json()["body"]["draft"]["schema_version"] == "tengli.brief-draft/1"
     bad = client.post(
         f"{root}/writing-documents/{doc}/revise",
-        json={"request_id": str(uuid4()), "title": "改过的", "sentences": [*lines, {"text": "我们开了十年。", "fact_ids": []}]},
+        json={
+            "request_id": str(uuid4()),
+            "title": "改过的",
+            "sentences": [*lines, {"text": "我们开了十年。", "fact_ids": []}],
+        },
     )
     assert bad.status_code == 422 and "年" in bad.json()["error"]["message"]
     assert library_count(client, root) == 0
@@ -350,12 +532,17 @@ def test_without_a_brief_the_old_writer_runs_unchanged(app_client, monkeypatch):
             raise auto.Stop("X", "旧路径")
 
     with pytest.raises(auto.Stop):
-        auto.step_write(FakeRun(), {"platform": "douyin", "query": "q", "project_id": "p"}, state)
+        auto.step_write(
+            FakeRun(), {"platform": "douyin", "query": "q", "project_id": "p"}, state
+        )
     assert called == []
 
 
 def test_skeleton_payload_is_small(brief_run):
-    """写稿请求只带简报、角度、事实和骨架：远小于旧的整份拆解 + 原文（约 8000 token）。"""
+    """写稿请求只带简报、角度、事实和骨架。
+
+    远小于旧的整份拆解 + 原文（约 8000 token）。
+    """
     app, client, root, model, go = brief_run
     captured = []
     original = model.__call__
@@ -371,5 +558,143 @@ def test_skeleton_payload_is_small(brief_run):
     go(count=1)
     assert captured and len(captured[0]) < 6000
     payload = json.loads(captured[0])
-    assert set(payload) >= {"brief", "angle", "facts", "skeleton", "rules", "word_range"}
+    assert set(payload) >= {
+        "brief",
+        "angle",
+        "facts",
+        "skeleton",
+        "rules",
+        "word_range",
+    }
     assert "reference" not in payload and "analysis" not in payload
+
+
+def test_two_benchmarks_give_skeletons_by_label_and_drafts_point_at_them(
+    brief_run, monkeypatch
+):
+    """有合格对标：对比只提炼骨架（对标N → id 由后端映射），写稿带骨架不带原文。"""
+    from pathlib import Path
+
+    from app.video_writing_routes import create_document
+
+    app, client, root, model, go = brief_run
+    data = json.loads(
+        (
+            Path(__file__).parent / "fixtures/writing_fact_draft_hand_cream.json"
+        ).read_text("utf-8")
+    )
+    made = {}
+
+    def prep(run, inputs, state=None):
+        benches = []
+        with run.factory() as session:
+            for i in range(2):
+                ref = create_document(
+                    session,
+                    run.workspace,
+                    inputs["project_id"],
+                    uuid4(),
+                    "reference",
+                    {
+                        **data["reference"],
+                        "source_metrics": {
+                            "platform": "douyin",
+                            "title": f"对标视频{i + 1}",
+                            "author_name": "某某作者",
+                        },
+                    },
+                )
+                ana = create_document(
+                    session,
+                    run.workspace,
+                    inputs["project_id"],
+                    uuid4(),
+                    "analysis",
+                    data["analysis"],
+                    reference_document_id=ref.id,
+                )
+                benches.append(
+                    {"reference_id": ref.id, "analysis_id": ana.id, "role": "skeleton"}
+                )
+            facts = create_document(
+                session,
+                run.workspace,
+                inputs["project_id"],
+                uuid4(),
+                "facts",
+                FACT_CARD,
+            )
+        made["refs"] = [b["reference_id"] for b in benches]
+        run.save(
+            brief=BRIEF,
+            facts_document_id=facts.id,
+            benchmarks=[
+                *benches,
+                {
+                    "reference_id": "x",
+                    "analysis_id": "y",
+                    "rejected": "audience_mismatch",
+                },
+            ],
+        )
+
+    monkeypatch.setattr(auto, "STEPS", [("facts", prep), ("write", auto.step_write)])
+    original = model.__call__
+    seen = []
+
+    def compare(service, owner, method, path, json=None, **kw):  # noqa: A002
+        system = json["messages"][0]["content"]
+        if "提炼出2到3个" in system:
+            seen.append(json["messages"][1]["content"])
+            content = {
+                "skeletons": [
+                    {
+                        "name": "痛点开场",
+                        "hook": "痛点提问",
+                        "sections": ["痛点", "卖点", "邀约"],
+                        "refs": ["对标2"],
+                    },
+                    {
+                        "name": "编的",
+                        "hook": "反常识",
+                        "sections": ["a", "b", "c"],
+                        "refs": [made["refs"][0]],
+                    },
+                ]
+            }
+            return {
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                "choices": [
+                    {
+                        "message": {
+                            "content": __import__("json").dumps(
+                                content, ensure_ascii=False
+                            )
+                        }
+                    }
+                ],
+            }
+        if '"brief_draft"' in json["messages"][1]["content"]:
+            seen.append(json["messages"][1]["content"])
+        return original(service, owner, method, path, json=json, **kw)
+
+    monkeypatch.setattr(VideoAssistanceProvider, "request", compare)
+    row = go(count=2)
+    assert row.status == "completed", row.result.get("message")
+    skeletons = row.result["skeletons"]
+    assert [s["refs"] for s in skeletons] == [
+        [made["refs"][1]]
+    ]  # the UUID «ref» was dropped
+    assert all(d["skeleton"]["kind"] == "benchmark" for d in row.result["drafts"])
+    assert {d["skeleton"]["reference_id"] for d in row.result["drafts"]} == {
+        made["refs"][1]
+    }
+    assert row.result["drafting"]["compare_calls"] == 1
+    compare_payload, *draft_payloads = seen
+    assert data["reference"]["original_text"][:20] not in compare_payload
+    for payload in draft_payloads:
+        assert data["reference"]["original_text"][:20] not in payload
+        assert "痛点开场" in payload or "痛点" in payload
+    with app.state.session_factory() as session:
+        doc = session.get(VideoWritingDocument, row.result["drafts"][0]["document_id"])
+        assert doc.reference_document_id == made["refs"][1] and doc.analysis_document_id

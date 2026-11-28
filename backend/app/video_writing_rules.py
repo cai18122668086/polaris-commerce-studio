@@ -434,7 +434,7 @@ REVIEW_RULES = [
     "on_goal：稿子是否服务于brief.goal，结尾有没有对应的行动引导。",
     "invented：逐句找出facts里没有、却被说成这家店事实的具体内容——经历、服务细节、顾客评价、体验感受、数字、工艺、背书。"
     "通用常识、场景描写、facts里原话的口语化转述不算。每条写line（第几句，从0开始）、text（原句）、reason（一句话）。",
-    "repetition：同一个卖点全文出现的最多次数（整数）。",
+    "repetition：把每个卖点词（如facts里的卖点）在口播稿里逐个数出现次数，取最大的那个数（整数），不要估。",
     "readable：每句能不能直接念出来（没有文案腔散文句、没有括号注释、没有书面排比）。",
     "problems：其他必须改的句子（视角错位、对同行说话、空洞重复），写line和reason；没有就给空列表。",
     '输出 {"reviews":[{"key":"…","speaker_ok":true,"audience_ok":true,'

@@ -25,13 +25,55 @@ BAD = json.loads((FIXTURES / "c8dbc697_drafts.json").read_text("utf-8"))
 FACTS = WritingFacts.model_validate(
     {
         "facts": [
-            {"id": "f1", "category": "identity", "label": "店名", "value": "恒志欧式家具店", "status": "user_declared"},
-            {"id": "f2", "category": "identity", "label": "位置", "value": "在新恒", "status": "user_declared"},
-            {"id": "f3", "category": "product", "label": "风格", "value": "欧式家具", "status": "user_declared"},
-            {"id": "f4", "category": "product", "label": "卖点", "value": "高端设计", "status": "user_declared"},
-            {"id": "f5", "category": "product", "label": "材质", "value": "真皮家具", "status": "user_declared"},
-            {"id": "f6", "category": "product", "label": "设计", "value": "名师设计", "status": "user_declared"},
-            {"id": "f7", "category": "identity", "label": "年限", "value": "开了6年", "status": "user_declared"},
+            {
+                "id": "f1",
+                "category": "identity",
+                "label": "店名",
+                "value": "恒志欧式家具店",
+                "status": "user_declared",
+            },
+            {
+                "id": "f2",
+                "category": "identity",
+                "label": "位置",
+                "value": "在新恒",
+                "status": "user_declared",
+            },
+            {
+                "id": "f3",
+                "category": "product",
+                "label": "风格",
+                "value": "欧式家具",
+                "status": "user_declared",
+            },
+            {
+                "id": "f4",
+                "category": "product",
+                "label": "卖点",
+                "value": "高端设计",
+                "status": "user_declared",
+            },
+            {
+                "id": "f5",
+                "category": "product",
+                "label": "材质",
+                "value": "真皮家具",
+                "status": "user_declared",
+            },
+            {
+                "id": "f6",
+                "category": "product",
+                "label": "设计",
+                "value": "名师设计",
+                "status": "user_declared",
+            },
+            {
+                "id": "f7",
+                "category": "identity",
+                "label": "年限",
+                "value": "开了6年",
+                "status": "user_declared",
+            },
         ]
     }
 )
@@ -65,7 +107,8 @@ def draft(lines=None, title="真皮沙发别只看颜色，坐下去才知道", 
         title="老板带看镇店款",
         publish_title=title,
         publish_body=body
-        or "在新恒开欧式家具店，今天聊聊真皮家具怎么挑。想看实物的，主页有位置。 #欧式家具 #真皮沙发 #家具店",
+        or "在新恒开欧式家具店，今天聊聊真皮家具怎么挑。想看实物的，主页有位置。"
+        " #欧式家具 #真皮沙发 #家具店",
         sentences=[SpokenDraftLine(text=t) for t in (lines or GOOD)],
     )
 
@@ -81,9 +124,12 @@ def basis(**changes):
 
 
 def check(lines=None, strict=True, **changes):
-    return bw.check_brief(draft(lines, **{k: v for k, v in changes.items() if k in {"title", "body"}}),
-                          basis(**{k: v for k, v in changes.items() if k not in {"title", "body"}}),
-                          FACTS, strict=strict)
+    return bw.check_brief(
+        draft(lines, **{k: v for k, v in changes.items() if k in {"title", "body"}}),
+        basis(**{k: v for k, v in changes.items() if k not in {"title", "body"}}),
+        FACTS,
+        strict=strict,
+    )
 
 
 def issue(lines=None, **changes):
@@ -188,7 +234,11 @@ def test_every_draft_of_the_failed_production_run_is_rejected(item):
     with pytest.raises(bw.BriefIssue) as caught:
         bw.check_brief(
             d,
-            {"brief": BAD["brief"], "words": list(DURATION_WORDS[45]), "platform": item["platform"]},
+            {
+                "brief": BAD["brief"],
+                "words": list(DURATION_WORDS[45]),
+                "platform": item["platform"],
+            },
             facts,
         )
     assert caught.value.issue["kind"] in {
@@ -236,7 +286,9 @@ def test_reviews_map_lines_by_number_or_quote_and_fail_closed_on_problems():
                     "on_goal": True,
                     "readable": True,
                     "repetition": 1,
-                    "invented": [{"line": 99, "text": "进门先招呼您喝茶", "reason": "服务细节"}],
+                    "invented": [
+                        {"line": 99, "text": "进门先招呼您喝茶", "reason": "服务细节"}
+                    ],
                     "problems": [],
                 },
                 {"key": "zzz", "speaker_ok": False},
@@ -256,8 +308,14 @@ def test_reviews_map_lines_by_number_or_quote_and_fail_closed_on_problems():
 
 
 def test_titles_and_openings_that_overlap_are_duplicates():
-    a = {"publish_title": "欧式家具怎么选不踩坑？", "lines": ["今天讲讲怎么选。", "先说材质。"]}
-    b = {"publish_title": "欧式家具怎么挑不踩坑？先看这家", "lines": ["别急。", "先看一家店。"]}
+    a = {
+        "publish_title": "欧式家具怎么选不踩坑？",
+        "lines": ["今天讲讲怎么选。", "先说材质。"],
+    }
+    b = {
+        "publish_title": "欧式家具怎么挑不踩坑？先看这家",
+        "lines": ["别急。", "先看一家店。"],
+    }
     c = {"publish_title": "三句话介绍我的店", "lines": ["我是老板。", "店在新恒。"]}
     assert bw.overlap(a["publish_title"], b["publish_title"]) >= 0.5
     assert bw.too_similar(a, b) and not bw.too_similar(a, c)
@@ -268,10 +326,25 @@ def test_skeleton_refs_are_labels_mapped_back_and_unknown_labels_dropped():
     rows = bw.map_skeletons(
         {
             "skeletons": [
-                {"name": "痛点开场", "hook": "痛点提问", "sections": ["痛点", "卖点", "邀约"], "refs": ["对标1", "对标 2"]},
-                {"name": "编的", "hook": "x", "sections": ["a", "b"], "refs": ["对标7", "3d7f8c77-uuid"]},
+                {
+                    "name": "痛点开场",
+                    "hook": "痛点提问",
+                    "sections": ["痛点", "卖点", "邀约"],
+                    "refs": ["对标1", "对标 2"],
+                },
+                {
+                    "name": "编的",
+                    "hook": "x",
+                    "sections": ["a", "b"],
+                    "refs": ["对标7", "3d7f8c77-uuid"],
+                },
                 {"name": "太短", "sections": ["只有一段"], "refs": ["对标1"]},
-                {"name": "场景开场", "hook": "未知钩子", "sections": ["场景", "特写", "位置"], "refs": ["对标2"]},
+                {
+                    "name": "场景开场",
+                    "hook": "未知钩子",
+                    "sections": ["场景", "特写", "位置"],
+                    "refs": ["对标2"],
+                },
             ]
         },
         labels,
@@ -289,7 +362,9 @@ def test_generic_skeletons_cover_every_genre_and_skip_used_ones():
 
 
 def test_rules_follow_the_brief_and_the_platform():
-    rules = "\n".join(brief_draft_rules(BRIEF, {"hook": "场景代入"}, "xiaohongshu", (200, 260)))
+    rules = "\n".join(
+        brief_draft_rules(BRIEF, {"hook": "场景代入"}, "xiaohongshu", (200, 260))
+    )
     assert "访客视角" in rules and "不得教人怎么拍视频" in rules
     assert "小红书口播" in rules and "200到260字" in rules and "场景代入" in rules
     assert "逐段" not in rules and "replacements" not in rules
@@ -303,8 +378,38 @@ def test_skeleton_for_drafting_carries_no_source_wording():
             {"function": "痛点引入"},
             {"function": "卖点论证"},
         ],
-        "expressions": [{"name": "反问", "quote": "原句：源氏木语", "how_to_reuse": "开头反问"}],
+        "expressions": [
+            {"name": "反问", "quote": "原句：源氏木语", "how_to_reuse": "开头反问"}
+        ],
     }
     skeleton = bw.skeleton_from_analysis(analysis, "对标标题")
     assert skeleton["sections"] == ["痛点引入", "卖点论证"]
     assert "源氏木语" not in json.dumps(skeleton, ensure_ascii=False)
+
+
+def test_the_real_review_of_the_failed_production_run_rejects_all_eight():
+    """c8dbc697 八条：真实批量质检的回答 + 代码计数，全部不通过。
+
+    回答录自 dev planner 的 1 次真实调用。
+    """
+    recorded = json.loads(
+        (FIXTURES / "c8dbc697_review_response.json").read_text("utf-8")
+    )
+    lines = {d["key"]: d["lines"] for d in BAD["drafts"]}
+    verdicts = bw.parse_reviews(json.loads(recorded["content"]), lines)
+    assert set(verdicts) == set(lines)
+    facts = WritingFacts.model_validate(BAD["facts"])
+    final = {
+        key: bw.with_code_checks(v, lines[key], facts, BAD["brief"])
+        for key, v in verdicts.items()
+    }
+    assert not any(bw.verdict_passes(v) for v in final.values())
+    # 视角错位与面向同行的稿，模型和代码都点了名
+    assert not final["xiaohongshu-v1"]["speaker_ok"]
+    assert not final["xiaohongshu-v2"]["speaker_ok"]
+    assert (
+        not final["douyin-v3"]["audience_ok"] and not final["douyin-v5"]["audience_ok"]
+    )
+    # 「高端设计」说了 7 次，模型报 2 次：以代码计数为准
+    assert verdicts["douyin-v1"]["repetition"] == 2
+    assert final["douyin-v1"]["repetition"] >= 6

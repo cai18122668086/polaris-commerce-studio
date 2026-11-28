@@ -79,6 +79,9 @@ FRESH_PLAN_CODES = frozenset(
 # One item through recognition, planning, render and export on the shared
 # worker, measured on dev (8 cores, worker concurrency 1): about 6 minutes.
 MINUTES_PER_ITEM = 6
+# What a task already on the shared worker still costs: a render about 5
+# minutes, a recognition or planning step about 1.
+RENDER_MINUTES, STEP_MINUTES = 5, 1
 NAMESPACE = UUID("0b7c2f4e-3a59-4d8e-9c61-5e2a8f7d4b30")
 MusicChoice = Literal["template", "lower", "raise", "off"]
 
@@ -133,6 +136,8 @@ class EditingItemView(StrictVideoModel):
     phase: str | None = None
     template_id: str | None = None
     queue_position: int | None = None
+    # Tasks of every user ahead on the single shared editing worker.
+    queue_ahead: int | None = None
     estimate_minutes: int | None = None
     error: str | None = None
     can_retry: bool = False
@@ -490,22 +495,62 @@ def dispatch(
 # --------------------------------------------------------------------------- views
 
 
-def _global_ahead(session: Session, run: VideoWorkEditingRunRecord) -> int:
-    """Items of every user ahead of this one on the single shared worker."""
-    active = session.scalar(
-        select(func.count())
-        .select_from(VideoWorkEditingRunRecord)
-        .where(VideoWorkEditingRunRecord.phase.in_(ACTIVE_PHASES))
-    )
-    earlier = session.scalar(
-        select(func.count())
-        .select_from(VideoWorkEditingRunRecord)
+def worker_queue(session: Session, before: Any = None) -> tuple[int, int]:
+    """(tasks, minutes) already waiting or running on the shared worker.
+
+    Counts every user's queued/running renders, recognitions and plannings
+    (created before ``before`` when given), so an estimate never pretends the
+    worker is free when other people's videos are ahead.
+    """
+    renders = steps = 0
+    rows = session.execute(
+        select(EditingTaskRecord.options["mode"].as_string(), func.count())
         .where(
-            VideoWorkEditingRunRecord.phase == "queued",
-            VideoWorkEditingRunRecord.created_at < run.created_at,
+            EditingTaskRecord.status.in_(("queued", "running")),
+            *((EditingTaskRecord.created_at < before,) if before is not None else ()),
         )
+        .group_by(EditingTaskRecord.options["mode"].as_string())
+    ).all()
+    for mode, count in rows:
+        number = count if isinstance(count, int) else 0
+        if mode == "transcript":
+            steps += number
+        else:
+            renders += number
+    steps += int(
+        session.scalar(
+            select(func.count())
+            .select_from(EditingPlanningTaskRecord)
+            .where(
+                EditingPlanningTaskRecord.status.in_(("queued", "running")),
+                *(
+                    (EditingPlanningTaskRecord.created_at < before,)
+                    if before is not None
+                    else ()
+                ),
+            )
+        )
+        or 0
     )
-    return int(active or 0) + int(earlier or 0)
+    return renders + steps, renders * RENDER_MINUTES + steps * STEP_MINUTES
+
+
+def _global_ahead(session: Session, run: VideoWorkEditingRunRecord) -> tuple[int, int]:
+    """(tasks, minutes) ahead of a queued item: the worker queue plus items of
+    every user confirmed earlier that have not started yet."""
+    tasks, minutes = worker_queue(session)
+    earlier = int(
+        session.scalar(
+            select(func.count())
+            .select_from(VideoWorkEditingRunRecord)
+            .where(
+                VideoWorkEditingRunRecord.phase == "queued",
+                VideoWorkEditingRunRecord.created_at < run.created_at,
+            )
+        )
+        or 0
+    )
+    return tasks + earlier, minutes + earlier * MINUTES_PER_ITEM
 
 
 def editing_view(session: Session, batch: VideoWorkBatchRecord) -> EditingBatchResponse:
@@ -534,9 +579,19 @@ def editing_view(session: Session, batch: VideoWorkBatchRecord) -> EditingBatchR
         if run.phase == "queued":
             position += 1
             view.queue_position = position
-            view.estimate_minutes = (_global_ahead(session, run) + 1) * MINUTES_PER_ITEM
+            ahead, minutes = _global_ahead(session, run)
+            view.queue_ahead = ahead
+            view.estimate_minutes = minutes + MINUTES_PER_ITEM
         elif run.phase in ACTIVE_PHASES:
-            view.estimate_minutes = MINUTES_PER_ITEM
+            current = session.get(
+                EditingTaskRecord, run.render_task_id or run.transcript_task_id or ""
+            )
+            if current is not None and current.status == "queued":
+                ahead, minutes = worker_queue(session, before=current.created_at)
+                view.queue_ahead = ahead
+                view.estimate_minutes = minutes + MINUTES_PER_ITEM
+            else:
+                view.estimate_minutes = MINUTES_PER_ITEM
         task_id = run.render_task_id or run.transcript_task_id
         task = session.get(EditingTaskRecord, task_id) if task_id else None
         if task is not None:
@@ -720,6 +775,21 @@ def editing_status(
     if workspace.role.value != "viewer":
         dispatch(session, request.app.state.settings, workspace, batch.id)
     return editing_view(session, batch)
+
+
+class EditingQueueView(StrictVideoModel):
+    tasks_ahead: int
+    minutes_ahead: int
+    minutes_per_item: int = MINUTES_PER_ITEM
+
+
+@router.get("/editing-queue", response_model=EditingQueueView)
+def editing_queue(
+    workspace: VideoWorkspace, session: SessionDependency
+) -> EditingQueueView:
+    """The shared worker's current queue, for an honest estimate before submit."""
+    tasks, minutes = worker_queue(session)
+    return EditingQueueView(tasks_ahead=tasks, minutes_ahead=minutes)
 
 
 @router.post("/work-items/{item_id}/editing-retry", response_model=EditingBatchResponse)

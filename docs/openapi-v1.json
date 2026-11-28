@@ -6624,6 +6624,17 @@
             ],
             "title": "Project Id"
           },
+          "queue_ahead": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Ahead"
+          },
           "queue_position": {
             "anyOf": [
               {
@@ -8271,6 +8282,30 @@
           "task_id"
         ],
         "title": "EditingPreviewBase",
+        "type": "object"
+      },
+      "EditingQueueView": {
+        "additionalProperties": false,
+        "properties": {
+          "minutes_ahead": {
+            "title": "Minutes Ahead",
+            "type": "integer"
+          },
+          "minutes_per_item": {
+            "default": 6,
+            "title": "Minutes Per Item",
+            "type": "integer"
+          },
+          "tasks_ahead": {
+            "title": "Tasks Ahead",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tasks_ahead",
+          "minutes_ahead"
+        ],
+        "title": "EditingQueueView",
         "type": "object"
       },
       "EditingSourceFrame": {
@@ -26857,6 +26892,54 @@
         "summary": "Create Revision Preview",
         "tags": [
           "video-editing-planning"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-queue": {
+      "get": {
+        "description": "The shared worker's current queue, for an honest estimate before submit.",
+        "operationId": "editing_queue_api_v1_video_studio_workspaces__workspace_id__editing_queue_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingQueueView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Editing Queue",
+        "tags": [
+          "video-work"
         ]
       }
     },

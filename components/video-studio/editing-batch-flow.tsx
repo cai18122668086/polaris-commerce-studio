@@ -50,6 +50,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
   const [view, setView] = useState<BatchView>();
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [talkingBatches, setTalkingBatches] = useState<Batch[]>([]);
+  const [queue, setQueue] = useState<components["schemas"]["EditingQueueView"]>();
   /** 视频库里选中的口播结果所属批次（与 URL 上的批次不同时单独加载） */
   const [planBatch, setPlanBatch] = useState<Batch>();
   const [selected, setSelected] = useState<EditingCandidate[]>([]);
@@ -93,6 +94,16 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
   }, [batchId, loadBatch]);
 
   const started = !!view?.editing.some(row => row.phase);
+  // Before submitting: how busy the shared editing worker is right now (every user).
+  useEffect(() => {
+    if (started) return;
+    let live = true;
+    const read = () => void apiClient.GET(`${root}/editing-queue`, { params: { path: { workspace_id: workspaceId } }, signal: AbortSignal.timeout(10000) })
+      .then(result => { if (live) setQueue(unwrapApiResponse(result)); }).catch(() => undefined);
+    const first = window.setTimeout(read, 0);
+    const timer = window.setInterval(read, 30000);
+    return () => { live = false; window.clearTimeout(first); window.clearInterval(timer); };
+  }, [started, workspaceId]);
   const progress = batchFinished(view?.editing ?? []);
   // Poll while anything is waiting or running; the server also keeps going with the page closed.
   useEffect(() => {
@@ -154,12 +165,12 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
     setSelected(current => current.some(item => item.key === row.key) ? current.filter(item => item.key !== row.key) : [...current, row]);
   };
 
-  const uploadFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
+  // Takes a plain array: the input's FileList is live and is emptied when the input is reset.
+  const uploadFiles = async (list: File[]) => {
+    if (!list.length) return;
     setError("");
     let projectId = uploadProjectId;
     try { projectId = await ensureUploadProject(); } catch (caught) { setError(editingMessage(caught, "项目暂未保存，请稍后再上传。")); return; }
-    const list = [...files];
     setUploads(current => [...current, ...list.map(file => ({ name: file.name, percent: 0 }))]);
     for (const file of list) {
       const update = (patch: Partial<Upload>) => setUploads(current => current.map(row => row.name === file.name && !row.key ? { ...row, ...patch } : row));
@@ -238,7 +249,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
 
   // --- ④ submit -----------------------------------------------------------------------------
   const count = plan.kind === "existing" ? plan.itemIds.length : plan.kind === "create" ? plan.items.length : 0;
-  const summary = generationSummary(count, cost?.credits);
+  const summary = generationSummary(count, cost?.credits, 6, queue);
   const missingTemplate = !template;
   const generate = async () => {
     setBusy(true); setError(""); setNotice("");
@@ -306,7 +317,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
           return <li key={row.id}><a href={editingHref(row.id)}><b>{row.items[0]?.publish_title || row.items[0]?.script_text.slice(0, 16) || "口播批次"}{row.items.length > 1 ? ` 等 ${row.items.length} 条` : ""}</b><small>{new Date(row.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · 已生成 {done}/{row.items.length}</small></a></li>;
         })}</ul> : <p className={styles.empty}>还没有口播批次。在口播页生成后点「去剪辑」，这一批会自动带过来。</p>)}
         {tab === "upload" && <label className={styles.drop}><Upload size={20} /><b>选择视频文件</b><small>可以一次选多个；建议竖屏 9:16 的口播视频，MP4 / MOV</small>
-          <input type="file" multiple accept="video/mp4,video/quicktime,video/webm" aria-label="上传视频" disabled={busy} onChange={event => { void uploadFiles(event.target.files); event.target.value = ""; }} /></label>}
+          <input type="file" multiple accept="video/mp4,video/quicktime,video/webm" aria-label="上传视频" disabled={busy} onChange={event => { const files = [...(event.target.files ?? [])]; event.target.value = ""; void uploadFiles(files); }} /></label>}
         {tab === "upload" && uploads.length > 0 && <ul className={styles.uploads}>{uploads.map((row, index) => <li key={`${row.name}-${index}`}>
           <span>{row.name}</span>{row.error ? <em>{row.error}</em> : <><progress max={100} value={row.percent} aria-label={`${row.name} 上传进度`} /><small>{row.percent >= 100 ? "已上传" : `${row.percent}%`}</small></>}
         </li>)}</ul>}

@@ -3583,6 +3583,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/editing-redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redo Batch Editing
+         * @description 换模板重剪 the whole batch: every finished or failed item (or the chosen).
+         */
+        post: operations["redo_batch_editing_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_redo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/talking": {
         parameters: {
             query?: never;
@@ -3670,6 +3690,26 @@ export interface paths {
         head?: never;
         /** Patch Item */
         patch: operations["patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/editing-redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redo Item Editing
+         * @description 换模板重剪 one item (the page asks for confirmation first).
+         */
+        post: operations["redo_item_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__editing_redo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/editing-retry": {
@@ -7577,6 +7617,24 @@ export interface components {
             /** Path */
             path: string;
         };
+        /**
+         * EditingHistoryView
+         * @description An earlier cut of the item, kept when it was re-edited with another template.
+         */
+        EditingHistoryView: {
+            /** Archived At */
+            archived_at: string;
+            /** Attempt */
+            attempt: number;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Final Url */
+            final_url?: string | null;
+            /** Poster Url */
+            poster_url?: string | null;
+            /** Template Id */
+            template_id: string;
+        };
         /** EditingImageResultImport */
         EditingImageResultImport: {
             /** Asset Id */
@@ -7619,6 +7677,8 @@ export interface components {
         };
         /** EditingItemView */
         EditingItemView: {
+            /** Attempt */
+            attempt?: number | null;
             /**
              * Can Retry
              * @default false
@@ -7632,6 +7692,8 @@ export interface components {
             estimate_minutes?: number | null;
             /** Final Url */
             final_url?: string | null;
+            /** History */
+            history?: components["schemas"]["EditingHistoryView"][];
             /** Item Id */
             item_id: string;
             /** Phase */
@@ -7648,6 +7710,8 @@ export interface components {
             queue_position?: number | null;
             /** Render Task Id */
             render_task_id?: string | null;
+            /** Source Duration Ms */
+            source_duration_ms?: number | null;
             /** Template Id */
             template_id?: string | null;
             /**
@@ -8205,12 +8269,47 @@ export interface components {
             /** Minutes Ahead */
             minutes_ahead: number;
             /**
+             * Minutes Base
+             * @default 2
+             */
+            minutes_base: number;
+            /**
              * Minutes Per Item
              * @default 6
              */
             minutes_per_item: number;
+            /**
+             * Minutes Per Source Minute
+             * @default 11.5
+             */
+            minutes_per_source_minute: number;
             /** Tasks Ahead */
             tasks_ahead: number;
+        };
+        /**
+         * EditingRedo
+         * @description 换模板重剪: edit finished (or failed) items again with another template.
+         *
+         *     Its own endpoint, never the submit one: submit skips items that already have
+         *     a run, which is what keeps a repeat click from paying twice. ``request_id``
+         *     makes a repeated redo a no-op; an item already being re-edited is left alone.
+         */
+        EditingRedo: {
+            /** Item Ids */
+            item_ids?: string[] | null;
+            /**
+             * Music
+             * @default template
+             * @enum {string}
+             */
+            music: "template" | "lower" | "raise" | "off";
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Template Id */
+            template_id: string;
         };
         /** EditingSourceFrame */
         EditingSourceFrame: {
@@ -11315,6 +11414,11 @@ export interface components {
              * @enum {string}
              */
             drive_mode: "text" | "audio" | "uploaded_video";
+            /**
+             * Editing Attempt
+             * @default 0
+             */
+            editing_attempt: number;
             /** Editing Task Id */
             editing_task_id: string | null;
             /** Error */
@@ -11359,6 +11463,8 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+            /** Video Updated At */
+            video_updated_at?: string | null;
             /** Voice Id */
             voice_id: string | null;
         };
@@ -19765,6 +19871,42 @@ export interface operations {
             };
         };
     };
+    redo_batch_editing_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_redo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingRedo"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     talking_status_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__talking_get: {
         parameters: {
             query?: never;
@@ -19990,6 +20132,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redo_item_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__editing_redo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditingRedo"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingBatchResponse"];
                 };
             };
             /** @description Validation Error */

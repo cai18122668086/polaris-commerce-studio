@@ -1,12 +1,11 @@
 .flow{--ink:#3f3d39;--muted:#8f8c85;--line:#e3e1dd;--soft:#f6f5f3;--paper:#fff;--accent:#b5121b;display:grid;gap:18px;min-width:0;color:var(--ink)}
-.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;padding:0;list-style:none;border-bottom:1px solid var(--line)}
-.steps li{min-width:0}
-.steps a{display:flex;align-items:center;gap:8px;padding:12px 4px 13px;color:var(--muted);font-size:13px;text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.steps a span{display:grid;place-items:center;flex:none;width:20px;height:20px;border:1px solid var(--line);border-radius:50%;font-size:11px;font-variant-numeric:tabular-nums}
-.steps li[data-state=current] a{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
-.steps li[data-state=current] a span{border-color:var(--ink)}
-.steps li[data-state=done] a{color:var(--ink)}
-.steps li[data-state=done] a span{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.steps{--step-ink:#1a1a19;--step-muted:#73726e;display:flex;align-items:center;gap:16px;height:32px;margin:0;padding:0;list-style:none;overflow-x:auto;scrollbar-width:none;min-width:0}
+.steps::-webkit-scrollbar{display:none}
+.steps li{flex:none}
+.steps a{display:inline-flex;align-items:center;gap:4px;color:var(--step-muted);font-size:12px;font-weight:400;text-decoration:none;white-space:nowrap}
+.steps a:focus-visible{outline:2px solid #e0571a;outline-offset:2px;border-radius:2px}
+.steps li[data-state=current] a{color:var(--step-ink);font-weight:500}
+.steps li[data-state=done] a svg{color:var(--step-muted)}
 .step{display:grid;gap:14px;min-width:0;padding:22px 24px;background:var(--paper);border:1px solid var(--line);border-radius:14px;scroll-margin-top:16px}
 .step[data-locked=true]{opacity:.55}
 .step>header{display:grid;gap:4px}
@@ -88,10 +87,21 @@
 .actions button:disabled{opacity:.5;cursor:default}
 .next{display:flex;justify-content:flex-start;padding-top:6px;border-top:1px solid var(--line)}
 .back{margin:0 0 12px;font-size:13px}
+.resultsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.resultsHead > div{min-width:0}
+.resultsHead .secondary{display:inline-flex;align-items:center;gap:6px;flex:none}
+.redo{display:grid;gap:10px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
+.redo b{font-size:14px;font-weight:600}
+.redo label{display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.redo select{max-width:360px;min-height:36px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font:inherit;font-size:13px}
+.redoActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.history{display:grid;gap:4px;margin:8px 0 0;padding:8px 0 0;list-style:none;border-top:1px solid var(--line)}
+.history li{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.history a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next{flex-wrap:wrap;align-items:center;gap:8px 14px}
 .back a{color:var(--ink,#3f3d39);text-decoration:none;border-bottom:1px solid currentColor}
 @media(max-width:620px){
   .step{padding:16px 14px;border-radius:12px}
-  .steps a{gap:5px;font-size:12px;padding:10px 2px 11px}
   .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .results{grid-template-columns:minmax(0,1fr)}
   .result{grid-template-columns:92px minmax(0,1fr)}
@@ -99,7 +109,10 @@
   .uploads li{grid-template-columns:minmax(0,1fr) 72px 40px}
   .selected ul{grid-template-columns:minmax(0,1fr)}
   .primary{width:100%}
+  .resultsHead{flex-direction:column}
+  .redo select{max-width:none}
 }
+:global(html.theme-ember) .steps{--step-ink:#edeae4;--step-muted:#9c978e}
 :global(html.theme-ember) .flow{--ink:#edeae4;--muted:#9c978e;--line:rgb(255 255 255 / 12%);--soft:rgb(255 255 255 / 5%);--paper:#151412;--accent:#f07a2b}
 :global(html.theme-ember) .tabs{background:rgb(255 255 255 / 6%)}
 :global(html.theme-ember) .tabs button{color:#9c978e}

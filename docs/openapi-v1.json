@@ -6471,6 +6471,64 @@
         "title": "EditingHighlightTarget",
         "type": "object"
       },
+      "EditingHistoryView": {
+        "additionalProperties": false,
+        "description": "An earlier cut of the item, kept when it was re-edited with another template.",
+        "properties": {
+          "archived_at": {
+            "title": "Archived At",
+            "type": "string"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "final_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Url"
+          },
+          "poster_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Url"
+          },
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt",
+          "template_id",
+          "archived_at"
+        ],
+        "title": "EditingHistoryView",
+        "type": "object"
+      },
       "EditingImageResultImport": {
         "additionalProperties": false,
         "properties": {
@@ -6591,6 +6649,17 @@
       "EditingItemView": {
         "additionalProperties": false,
         "properties": {
+          "attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
           "can_retry": {
             "default": false,
             "title": "Can Retry",
@@ -6639,6 +6708,13 @@
               }
             ],
             "title": "Final Url"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/EditingHistoryView"
+            },
+            "title": "History",
+            "type": "array"
           },
           "item_id": {
             "title": "Item Id",
@@ -6713,6 +6789,17 @@
               }
             ],
             "title": "Render Task Id"
+          },
+          "source_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Duration Ms"
           },
           "template_id": {
             "anyOf": [
@@ -8348,10 +8435,20 @@
             "title": "Minutes Ahead",
             "type": "integer"
           },
+          "minutes_base": {
+            "default": 2.0,
+            "title": "Minutes Base",
+            "type": "number"
+          },
           "minutes_per_item": {
             "default": 6,
             "title": "Minutes Per Item",
             "type": "integer"
+          },
+          "minutes_per_source_minute": {
+            "default": 11.5,
+            "title": "Minutes Per Source Minute",
+            "type": "number"
           },
           "tasks_ahead": {
             "title": "Tasks Ahead",
@@ -8363,6 +8460,55 @@
           "minutes_ahead"
         ],
         "title": "EditingQueueView",
+        "type": "object"
+      },
+      "EditingRedo": {
+        "additionalProperties": false,
+        "description": "换模板重剪: edit finished (or failed) items again with another template.\n\nIts own endpoint, never the submit one: submit skips items that already have\na run, which is what keeps a repeat click from paying twice. ``request_id``\nmakes a repeated redo a no-op; an item already being re-edited is left alone.",
+        "properties": {
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids"
+          },
+          "music": {
+            "default": "template",
+            "enum": [
+              "template",
+              "lower",
+              "raise",
+              "off"
+            ],
+            "title": "Music",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "template_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "template_id"
+        ],
+        "title": "EditingRedo",
         "type": "object"
       },
       "EditingSourceFrame": {
@@ -17019,6 +17165,11 @@
             "title": "Drive Mode",
             "type": "string"
           },
+          "editing_attempt": {
+            "default": 0,
+            "title": "Editing Attempt",
+            "type": "integer"
+          },
           "editing_task_id": {
             "anyOf": [
               {
@@ -17156,6 +17307,17 @@
           "version": {
             "title": "Version",
             "type": "integer"
+          },
+          "video_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Updated At"
           },
           "voice_id": {
             "anyOf": [
@@ -33500,6 +33662,73 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/editing-redo": {
+      "post": {
+        "description": "换模板重剪 the whole batch: every finished or failed item (or the chosen).",
+        "operationId": "redo_batch_editing_api_v1_video_studio_workspaces__workspace_id__work_batches__batch_id__editing_redo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingRedo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Redo Batch Editing",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/work-batches/{batch_id}/talking": {
       "get": {
         "description": "Polling view; also starts queued items whose turn has come.",
@@ -34039,6 +34268,73 @@
           }
         ],
         "summary": "Patch Item",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/editing-redo": {
+      "post": {
+        "description": "换模板重剪 one item (the page asks for confirmation first).",
+        "operationId": "redo_item_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__editing_redo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditingRedo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditingBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Redo Item Editing",
         "tags": [
           "video-work"
         ]

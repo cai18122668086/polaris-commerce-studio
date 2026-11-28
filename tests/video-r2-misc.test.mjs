@@ -85,3 +85,18 @@ test("文案页旧版本：只有口播稿时显示「生成于旧版本」+ 补
   assert.match(writing, /library\.fill\(row\.id, platform \|\| "douyin", crypto\.randomUUID\(\)\)/);
   assert.match(writing, /legacy=\{legacy \? <>/);
 });
+
+test("声音库克隆入口：未开通时置灰、写明暂未开通、点了不打开表单", () => {
+  assert.deepEqual(rules.cloneEntry({ available: true }), { available: true, label: "克隆新声音", hint: "" });
+  for (const config of [undefined, null, { available: false }]) {
+    const entry = rules.cloneEntry(config);
+    assert.equal(entry.available, false);
+    assert.equal(entry.label, "克隆新声音（暂未开通）");
+    assert.match(entry.hint, /可以先用系统声音/);
+  }
+  const studio = readFileSync(new URL("../components/video-studio/video-studio.tsx", import.meta.url), "utf8");
+  assert.match(studio, /const entry = cloneEntry\(clones\.config\);[^]*?onClick=\{\(\) => \{ if \(entry\.available\) setLibraryDrawer\("voice"\); \}\}/);
+  const mine = readFileSync(new URL("../components/video-studio/voice-cloning.tsx", import.meta.url), "utf8");
+  assert.match(mine, /onClick=\{\(\) => \{ if \(entry\.available\) onClone\(\); \}\}/);
+  assert.match(mine, /克隆我的声音（暂未开通）/);
+});

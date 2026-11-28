@@ -51,6 +51,7 @@ test("summary and template needs in plain words", () => {
   assert.match(generationSummary([null, null], 20, { tasks_ahead: 3, minutes_ahead: 11 }).time, /约 18–30 分钟（剪辑服务全站共用，前面还有 3 个任务/);
   assert.match(itemStatus({ item_id: "a", position: 0, phase: "queued", queue_position: 1, queue_ahead: 4, estimate_minutes: 26 }).detail, /前面还有 4 个任务，预计约 20–34 分钟完成/);
   assert.equal(itemStatus({ item_id: "a", position: 0, phase: "rendering", queue_ahead: 2, estimate_minutes: 16 }).label, "等待生成视频");
+  assert.match(itemStatus({ item_id: "a", position: 0, phase: "transcribing", queue_ahead: 0, estimate_minutes: 6 }).detail, /^前面没有其他任务，马上开始，预计约 4–8 分钟完成$/);
   assert.match(itemStatus({ item_id: "a", position: 0, phase: "rendering", estimate_minutes: 4 }).detail, /自动导出高清，还需约 3–6 分钟/);
   // No configured price: the page shows the shared gray-test line (credit-notes).
   assert.equal(generationSummary([null], null).credits, null);

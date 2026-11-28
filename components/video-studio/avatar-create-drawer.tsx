@@ -8,6 +8,7 @@ import type { UploadProgress } from "@/lib/api/upload";
 import { billableLabel, useVideoCredits } from "@/features/video-studio/credits";
 import type { GenerationJob, useVideoLibrary } from "@/features/video-studio/library";
 import { AVATAR_PHASE_COPY, avatarPhase, type AvatarPhase } from "@/features/video-studio/persona-rules";
+import { AvatarCheckButton } from "./avatar-check-button";
 import { POLISH_DESCRIPTION_MAX, POLISH_PRESETS, polishDescriptionError, useAvatarPolish } from "@/features/video-studio/avatar-polish";
 import { SideDrawer } from "./side-drawer";
 import base from "./video-studio.module.css";
@@ -113,6 +114,7 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
       <h3>{["uploading", "generating", "registering"].includes(phase) ? <LoaderCircle size={16} className={styles.spin} /> : phase === "ready" ? <Check size={16} /> : null}{AVATAR_PHASE_COPY[phase].title}</h3>
       {["uploading", "generating", "registering"].includes(phase) && <div className={styles.progressBar} role="progressbar" aria-label="定制进度" aria-valuetext={phase === "uploading" && percent !== undefined ? `${percent}%` : AVATAR_PHASE_COPY[phase].title}><i style={phase === "uploading" && percent !== undefined ? { width: `${percent}%`, animation: "none" } : undefined} /></div>}
       <p>{AVATAR_PHASE_COPY[phase].detail}</p>
+      {phase === "pending_check" && job && <div className={styles.checkRow}><AvatarCheckButton jobId={job.id} check={library.checkResult} checking={library.resumingIds.includes(job.id)} className={base.outlineButton} noticeClassName={styles.checkNotice} /></div>}
       {phase === "review" && job?.video_url && <video controls playsInline preload="metadata" src={mediaUrl(job.video_url)} aria-label="形象动作预览" />}
       {phase === "ready" && avatar?.cover_url && <div className={styles.summary}><img src={mediaUrl(avatar.cover_url)} alt={avatar.name} /><div><b>{avatar.name}</b><span>已加入「我的形象」</span></div></div>}
     </section> : <>

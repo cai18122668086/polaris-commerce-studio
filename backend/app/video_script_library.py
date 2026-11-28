@@ -103,6 +103,10 @@ class LibraryWrite(StrictVideoModel):
 
 class LibraryCreate(LibraryWrite):
     request_id: UUID
+    # 「存入文案库」：一版写好的稿子（旧版本没自动入库）。同一份文稿只存一条，
+    # 重复点击或刷新后再点都返回同一条。
+    writing_document_id: UUID | None = None
+    source: Literal["manual", "auto_writing"] = "manual"
 
 
 class LibraryUpdate(LibraryWrite):
@@ -486,28 +490,49 @@ def create_entry(
     body: LibraryCreate, workspace: VideoWorkspace, session: SessionDependency
 ) -> LibraryEntry:
     require_workspace_write(workspace)
+    document = None
+    if body.writing_document_id is not None:
+        document = session.get(VideoWritingDocument, str(body.writing_document_id))
+        if (
+            document is None
+            or document.workspace_id != workspace.workspace_id
+            or document.owner_user_id != workspace.principal.user_id
+            or document.kind != "draft"
+        ):
+            raise ApiError(
+                404, "VIDEO_WRITING_DOCUMENT_NOT_FOUND", "未找到这份文稿资料。"
+            )
     row = VideoScriptLibraryEntry(
         id=str(uuid4()),
         workspace_id=workspace.workspace_id,
         owner_user_id=workspace.principal.user_id,
-        source="manual",
+        source=body.source if document is not None else "manual",
         platform=body.platform,
         publish_title=body.publish_title.strip(),
         publish_body=body.publish_body.strip(),
         script=body.script,
-        benchmark_refs=[],
-        dedupe_key=f"request:{body.request_id}",
+        benchmark_refs=benchmark_refs(
+            session, document.reference_document_id if document else None
+        ),
+        dedupe_key=(
+            f"document:{document.id}"
+            if document is not None
+            else f"request:{body.request_id}"
+        ),
+        project_id=document.project_id if document else None,
+        writing_document_id=document.id if document else None,
         revision=1,
         history=[],
     )
-    return entry_response(
-        insert_once(
-            session,
-            workspace,
-            row,
-            VideoScriptLibraryEntry.dedupe_key == row.dedupe_key,
-        )
-    )
+    lookups = [VideoScriptLibraryEntry.dedupe_key == row.dedupe_key]
+    if document is not None:
+        lookups.insert(0, VideoScriptLibraryEntry.writing_document_id == document.id)
+    saved = insert_once(session, workspace, row, *lookups)
+    if saved.deleted_at is not None:  # removed earlier, stored again on purpose
+        saved.deleted_at = None
+        saved.updated_at = utc_now()
+        session.commit()
+    return entry_response(saved)
 
 
 @router.put("/script-library/{entry_id}", response_model=LibraryEntry)

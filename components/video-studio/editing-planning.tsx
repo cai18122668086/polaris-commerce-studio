@@ -1,6 +1,6 @@
 "use client";
 
-import { billableLabel } from "@/features/video-studio/credit-notes";
+import { FREE_TRIAL_TEXT, billableLabel, creditPhrase, isPriced } from "@/features/video-studio/credit-notes";
 import { CONFIRMING_HINT, planningButtonLabel } from "@/features/video-studio/editing-primary";
 import { planningJobProgress } from "@/features/video-studio/editing-progress";
 import { EditingProgressSteps } from "./editing-progress";

@@ -35,7 +35,7 @@ import styles from "./editing-workspace.module.css";
 import flow from "./editing-flow.module.css";
 import { EditingTemplateGallery, type TemplateCard } from "./editing-template-gallery";
 import { mediaUrl } from "@/lib/api/base-url";
-import { billableLabel } from "@/features/video-studio/credit-notes";
+import { FREE_TRIAL_TEXT, billableLabel, isPriced } from "@/features/video-studio/credit-notes";
 import { TopUpLink } from "./studio-content";
 
 type EditingTask = components["schemas"]["EditingTaskResponse"];

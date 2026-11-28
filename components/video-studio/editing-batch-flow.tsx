@@ -12,13 +12,14 @@ import type { components } from "@/lib/api/generated/openapi";
 import type { GenerationJob } from "@/features/video-studio/library";
 import { FREE_TRIAL_TEXT, isPriced, whenPriced, type CostNote } from "@/features/video-studio/credit-notes";
 import { editingHref, finishHref } from "@/features/video-studio/flow-params";
-import { editingMessage } from "@/features/video-studio/editing-presentation";
+import { editingMessage, isTemplateListed } from "@/features/video-studio/editing-presentation";
 import { templateAppearance } from "@/features/video-studio/template-appearance";
 import {
-  PROGRESS_LABELS, SOURCE_LABEL, batchFinished, batchPlan, candidateKey, durationLabel, finishAction, generationSummary, itemStatus, templateNeeds,
+  PROGRESS_LABELS, SOURCE_LABEL, batchFinished, batchPlan, candidateKey, durationLabel, finishAction, generationSummary, itemStatus, shortCaptionHint, templateNeeds,
   type EditingCandidate,
 } from "@/features/video-studio/editing-batch";
 import { DEFAULT_SUPPLEMENT, supplementForWorkItem, supplementSummary, type SupplementMaterialsValue, type SupplementWorkItem } from "@/features/video-studio/supplement-materials";
+import { fetchSources } from "@/features/video-studio/supplement-materials-api";
 import { SupplementMaterialsPanel } from "./supplement-materials-panel";
 import { EditingTemplateGallery, type TemplateCard } from "./editing-template-gallery";
 import styles from "./editing-batch-flow.module.css";
@@ -59,6 +60,13 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
   const [template, setTemplate] = useState<TemplateCard>();
   const [perItem, setPerItem] = useState(false);
   const [itemTemplates, setItemTemplates] = useState<Record<string, string>>({});
+  /** 后端 MG 白名单，用于第 2 步「支持 MG 动效」的说明。 */
+  const [mgTemplates, setMgTemplates] = useState<string[]>();
+  useEffect(() => {
+    let live = true;
+    fetchSources(workspaceId).then(data => { if (live) setMgTemplates(data.mg_templates ?? []); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [workspaceId]);
   const [supplement, setSupplement] = useState<SupplementMaterialsValue>(DEFAULT_SUPPLEMENT);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -264,6 +272,23 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
     };
   }), [itemsBatch, chosenIds, templateOf, batchCandidates, selected, uploadProjectId]);
 
+  // C11：补充素材里点「换到支持动效的模板」，整批改用该模板（清掉逐条单独选的模板）。
+  const switchTemplate = useCallback((id: string) => {
+    const card = templates.find(row => row.id === id);
+    if (!card) return;
+    setTemplate(card);
+    setItemTemplates({});
+    setPerItem(false);
+  }, [templates]);
+  // C3：只适合短句的模板（黑底黄字）遇到长句口播稿时给轻提示。
+  const shortHint = useMemo(() => {
+    const scripts = [...(itemsBatch ?? batch)?.items ?? []]
+      .filter(item => selected.some(row => row.itemId === item.id))
+      .map(item => item.script_text || "");
+    const ids = perItem ? [...new Set([template?.id, ...Object.values(itemTemplates)])] : [template?.id];
+    return ids.map(id => shortCaptionHint(id, scripts)).find(Boolean) ?? null;
+  }, [itemsBatch, batch, selected, perItem, template, itemTemplates]);
+
   // --- ④ submit -----------------------------------------------------------------------------
   const count = plan.kind === "existing" ? plan.itemIds.length : plan.kind === "create" ? plan.items.length : 0;
   const summary = generationSummary(selected.filter(row => row.ready).slice(0, count).map(row => row.durationMs), cost?.credits, queue);
@@ -302,7 +327,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
   const openRedo = (target: { itemId: string } | { batch: true }, current?: string | null) => {
     setRedoTarget(target);
     // Default to a different template than the one used: the point is to change it.
-    setRedoTemplate(templates.find(card => card.id !== current && !card.id.startsWith("chenxi"))?.id ?? "");
+    setRedoTemplate(templates.find(card => card.id !== current && isTemplateListed(card.id))?.id ?? "");
   };
   const redo = async () => {
     if (!redoTarget || !redoTemplate || !batch) return;
@@ -378,18 +403,19 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
       <section id="editing-step-2" className={styles.step} data-locked={!selected.length}>
         <header><h2>选模板</h2><p>默认所有视频用同一个模板，也可以每条单独选。</p></header>
         <div className={styles.gallery}><EditingTemplateGallery workspaceId={workspaceId} projectId="" selected={template?.id || ""} onSelect={setTemplate} onRestore={setTemplate} sampleRevision="" /></div>
-        {template && <p className={styles.needs}>{templateNeeds(template)}</p>}
+        {template && <p className={styles.needs}>{templateNeeds(template, mgTemplates)}</p>}
+        {shortHint && <p className={styles.needs} role="note">{shortHint}</p>}
         {selected.length > 1 && <label className={styles.switch}><input type="checkbox" checked={perItem} onChange={event => setPerItem(event.target.checked)} />每条单独选模板</label>}
         {perItem && <ul className={styles.perItem}>{selected.map((row, index) => {
           return <li key={row.key}><span>{row.title || `视频 ${index + 1}`}</span><select aria-label={`${row.title} 的模板`} value={itemTemplates[row.key] ?? template?.id ?? ""} onChange={event => setItemTemplates(current => ({ ...current, [row.key]: event.target.value }))}>
-            {templates.filter(card => !card.id.startsWith("chenxi")).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
+            {templates.filter(card => isTemplateListed(card.id)).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
           </select></li>;
         })}</ul>}
       </section>
 
       <section id="editing-step-3" className={styles.step} data-locked={!template}>
         <header><h2>补充素材 <small>可选</small></h2><p>默认不加素材，直接按口播剪。需要配图或动效时再打开。</p></header>
-        {workItems.length ? <SupplementMaterialsPanel workspaceId={workspaceId} value={supplement} onChange={setSupplement} workItems={workItems} />
+        {workItems.length ? <SupplementMaterialsPanel workspaceId={workspaceId} value={supplement} onChange={setSupplement} workItems={workItems} onSwitchTemplate={switchTemplate} />
           : <p className={styles.empty}>{selected.length ? "进入下一步时会为每条视频准备素材位置；也可以不加素材直接生成。" : "先选视频和模板。"}</p>}
         {!workItems.length && plan.kind === "create" && template && <button type="button" className={styles.secondary} disabled={busy} onClick={() => { setBusy(true); void ensureBatch().catch(caught => setError(editingMessage(caught, "暂时无法准备素材位置，请重试。"))).finally(() => setBusy(false)); }}>为每条视频添加素材</button>}
       </section>
@@ -422,7 +448,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
       {redoTarget && <div className={styles.redo} role="dialog" aria-label="换模板重剪">
         <b>{"batch" in redoTarget ? `整批换模板重剪（${redoCount} 条）` : "这一条换模板重剪"}</b>
         <label><span>新模板</span><select aria-label="重剪用的模板" value={redoTemplate} onChange={event => setRedoTemplate(event.target.value)}>
-          {templates.filter(card => !card.id.startsWith("chenxi")).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
+          {templates.filter(card => isTemplateListed(card.id)).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
         </select></label>
         <p className={styles.fine}>会用同一条口播按新模板重新编排、生成一次（口播识别结果直接复用）。{isPriced(cost?.credits) ? `每条 ${cost?.credits} 积分，共 ${(cost?.credits ?? 0) * redoCount} 积分。` : `${FREE_TRIAL_TEXT}。`}旧成片会保留在「上一版」里，可以随时查看、下载；剪完后成片页会提示重新生成封面。</p>
         <div className={styles.redoActions}><button type="button" className={styles.primary} disabled={busy || !redoTemplate} onClick={() => void redo()}>{busy ? "正在提交…" : `确认重剪${redoCount > 1 ? ` ${redoCount} 条` : ""}`}</button><button type="button" className={styles.secondary} disabled={busy} onClick={() => setRedoTarget(null)}>取消</button></div>

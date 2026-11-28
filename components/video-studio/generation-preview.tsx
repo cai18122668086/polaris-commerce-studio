@@ -1,7 +1,7 @@
 "use client";
 
 import { CostLine } from "./studio-content";
-import { billableLabel } from "@/features/video-studio/credit-notes";
+import { billableLabel, isPriced, FREE_TRIAL_TEXT } from "@/features/video-studio/credit-notes";
 import { ArrowDownToLine, ArrowRight, AudioLines, Check, Clock3, PackageOpen } from "lucide-react";
 import type { GenerationJob } from "@/features/video-studio/library";
 import { Dialog } from "./studio-primitives";
@@ -21,7 +21,7 @@ export function GenerationPreview({ job, resuming, submitting, onClose, onResume
     <p className={styles.timestamp}><Clock3 size={12} />{new Date(job.created_at).toLocaleString("zh-CN", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false})} 创建</p>
     <GenerationDetails job={job} onCopy={onCopy} />
     {job.handoff_url && <p className={styles.handoffNote}>剪辑材料含文案、配音与原片 · 字幕待对齐</p>}
-    {job.status === "awaiting_review" && <Notice>预览人物与动作，确认满意后登记形象。登记按实际服务计费。</Notice>}
+    {job.status === "awaiting_review" && <Notice>预览人物与动作，确认满意后登记形象。{isPriced(approveCost?.credits) ? `登记 ${approveCost.credits} 积分。` : `${FREE_TRIAL_TEXT}。`}</Notice>}
     {job.status === "completed" && job.kind === "h3_template" && <Notice>形象已就绪，下一步填写口播文案、选择声音。</Notice>}
     {job.status === "completed" && job.kind === "lipsync" && <Notice>口播已生成，下一步选择模板并添加配图，保留这条视频的原声。</Notice>}
     <footer className={styles.actions}>

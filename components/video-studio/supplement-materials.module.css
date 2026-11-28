@@ -62,6 +62,9 @@
 .primary{padding:10px 18px;border:0;border-radius:9px;background:#b5121b;color:#fff;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .primary:disabled{opacity:.5;cursor:default}
 .note{margin:0;font-size:11px;color:#8f8c85;line-height:1.7}
+.switchRow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0;font-size:12px;color:#6f6c66}
+.switchRow button{padding:4px 10px;border:1px solid #d9d6d0;border-radius:6px;background:#fff;color:#3f3d39;font:inherit;font-size:12px;cursor:pointer}
+.switchRow button:hover{border-color:#b5121b;color:#b5121b}
 .empty{margin:0;font-size:12px;color:#95928b}
 .error{margin:0;font-size:12px;color:#b5121b;line-height:1.7}
 .sentences{display:grid;gap:14px;margin:0;padding:0;list-style:none}
@@ -149,6 +152,8 @@
 :global(.theme-ember) .textButton:disabled{color:#615d56}
 :global(.theme-ember) .primary{background:#fa682a;color:#0f0e0d;border-radius:999px}
 :global(.theme-ember) .note{color:#7a746c}
+:global(.theme-ember) .switchRow{color:#8f8a82}
+:global(.theme-ember) .switchRow button{background:transparent;border-color:#3a3631;color:#dcdbd9}
 :global(.theme-ember) .empty{color:#736e66}
 :global(.theme-ember) .error{color:#fa682a}
 :global(.theme-ember) .sentence{color:#dcdbd9}

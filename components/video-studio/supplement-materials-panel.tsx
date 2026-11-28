@@ -4,10 +4,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { Check, FileVideo, ImageIcon, RefreshCw, Trash2, Upload } from "lucide-react";
 import { mediaUrl } from "@/lib/api/base-url";
+import { creditPhrase, whenPriced } from "@/features/video-studio/credit-notes";
 import {
   aiCost,
   licenceLine,
   mgSupported,
+  mgTemplateChoices,
   setMgStyle,
   setMode,
   setPending,
@@ -44,6 +46,7 @@ import {
   stockThumbUrl,
   uploadMaterial,
 } from "@/features/video-studio/supplement-materials-api";
+import { isTemplateListed, templateDisplayName } from "@/features/video-studio/editing-presentation";
 import styles from "./supplement-materials.module.css";
 
 type Upload = { id: string; name: string; percent: number; error?: string };
@@ -52,6 +55,8 @@ type Props = {
   value: SupplementMaterialsValue;
   onChange: (value: SupplementMaterialsValue) => void;
   workItems: SupplementWorkItem[];
+  /** 「换到支持动效的模板」：把本批模板换成这个 id（由剪辑页决定怎么换）。 */
+  onSwitchTemplate?: (templateId: string) => void;
 };
 
 const MEDIA = /\.(jpe?g|png|webp|mp4|mov|webm)$/i;
@@ -60,7 +65,7 @@ const message = (error: unknown, fallback: string) => {
   return text && /[一-鿿]/.test(text) ? text : fallback;
 };
 
-export function SupplementMaterialsPanel({ workspaceId, value, onChange, workItems }: Props) {
+export function SupplementMaterialsPanel({ workspaceId, value, onChange, workItems, onSwitchTemplate }: Props) {
   const [sources, setSources] = useState<SourcesResponse>();
   const [sourcesError, setSourcesError] = useState("");
   const [activeId, setActiveId] = useState(workItems[0]?.id ?? "");
@@ -78,9 +83,14 @@ export function SupplementMaterialsPanel({ workspaceId, value, onChange, workIte
     return () => { live = false; };
   }, [workspaceId]);
   const active = workItems.find(item => item.id === activeId) ?? workItems[0];
+  const mgChoices = useMemo(
+    () => mgTemplateChoices(sources?.mg_templates, id => (isTemplateListed(id) ? templateDisplayName(id) : undefined)),
+    [sources],
+  );
   const blockers = useMemo(() => Object.fromEntries(
-    SOURCE_ORDER.map(key => [key, sources ? sourceBlocker(key, workItems, sources.sources, sources.mg_templates) : null]),
-  ) as Record<SupplementSourceKey, string | null>, [sources, workItems]);
+    SOURCE_ORDER.map(key => [key, sources ? sourceBlocker(key, workItems, sources.sources, sources.mg_templates, mgChoices.map(row => row.name)) : null]),
+  ) as Record<SupplementSourceKey, string | null>, [sources, workItems, mgChoices]);
+  const mgBlockedByTemplate = Boolean(sources && workItems.length && workItems.every(item => !mgSupported(item, sources.mg_templates)));
   const state = (key: SupplementSourceKey) => sources?.sources.find(row => row.key === key);
   const pendingBy = useRef<Record<string, number>>({});
   const report = useCallback((key: string, count: number) => {
@@ -120,7 +130,7 @@ export function SupplementMaterialsPanel({ workspaceId, value, onChange, workIte
               const info = state(key);
               const checked = enabled(key);
               const price = key === "ai_image"
-                ? (info?.credits_per_image ? `${info.credits_per_image} 积分/张，每条最多 ${info.max_images ?? 6} 张` : "按实际张数计费")
+                ? `${creditPhrase(info?.credits_per_image, { per: "张" })}，每条最多 ${info?.max_images ?? 6} 张`
                 : "免费";
               return (
                 <label key={key} className={styles.card} data-checked={checked} data-disabled={Boolean(blocked)}>
@@ -140,6 +150,14 @@ export function SupplementMaterialsPanel({ workspaceId, value, onChange, workIte
               );
             })}
           </div>
+          {mgBlockedByTemplate && onSwitchTemplate && mgChoices.length > 0 && (
+            <div className={styles.switchRow}>
+              <span>想加动效，换到支持动效的模板：</span>
+              {mgChoices.map(row => (
+                <button key={row.id} type="button" onClick={() => onSwitchTemplate(row.id)}>{row.name}</button>
+              ))}
+            </div>
+          )}
 
           {workItems.length > 1 && (value.sources.mine?.enabled || value.sources.stock?.enabled || value.sources.ai_image?.enabled) && (
             <nav className={styles.items} aria-label="按视频查看素材">
@@ -161,7 +179,7 @@ export function SupplementMaterialsPanel({ workspaceId, value, onChange, workIte
           {active && enabled("ai_image") && (
             <AiSection key={`ai-${active.id}`} workspaceId={workspaceId} item={active} value={value} update={update} report={report} />
           )}
-          {enabled("mg") && <MgSection value={value} update={update} sources={sources} items={workItems} />}
+          {enabled("mg") && <MgSection value={value} update={update} sources={sources} items={workItems} choices={mgChoices.map(row => row.name)} />}
         </>
       )}
     </section>
@@ -550,7 +568,7 @@ function AiSection({ workspaceId, item, value, update, report }: SectionProps) {
     <section className={styles.section} aria-label="AI 生成素材">
       <div className={styles.sectionHead}>
         <h4>AI 生成素材</h4>
-        <span className={styles.note}>{credits ? `${credits} 积分/张 · 失败不扣` : "按实际张数计费"}</span>
+        <span className={styles.note}>{creditPhrase(credits, { per: "张", failureFree: true })}</span>
       </div>
       {error && <p className={styles.error}>{error}</p>}
       {!item.script_text.trim() && <p className={styles.empty}>这条视频没有口播稿，暂时无法按句配图。</p>}
@@ -567,7 +585,7 @@ function AiSection({ workspaceId, item, value, update, report }: SectionProps) {
             ))}
           </ol>
           <div className={styles.confirmBar}>
-            <span>将生成 {aiCost(plan.length, credits)}，按实际生成成功的张数扣，失败不扣。</span>
+            <span>将生成 {aiCost(plan.length, credits)}{whenPriced(credits, "，按实际生成成功的张数扣，失败不扣")}。</span>
             <button type="button" className={styles.primary} disabled={confirming} onClick={() => void generate()}>
               {confirming ? "正在提交…" : `确认生成${credits ? `（${plan.length * credits} 积分）` : ""}`}
             </button>
@@ -617,7 +635,7 @@ const PREVIEWS = [
   { key: "quote_card", label: "金句", body: <><strong>“</strong><small>好皮肤是养出来的</small></> },
 ];
 
-function MgSection({ value, update, sources, items }: { value: SupplementMaterialsValue; update: SectionProps["update"]; sources?: SourcesResponse; items: SupplementWorkItem[] }) {
+function MgSection({ value, update, sources, items, choices }: { value: SupplementMaterialsValue; update: SectionProps["update"]; sources?: SourcesResponse; items: SupplementWorkItem[]; choices: string[] }) {
   const style = value.sources.mg?.style ?? "paper";
   const unsupported = items.filter(item => !mgSupported(item, sources?.mg_templates)).length;
   return (
@@ -627,7 +645,7 @@ function MgSection({ value, update, sources, items }: { value: SupplementMateria
         <span className={styles.note}>没有素材的段落用动效补；全屏动效每段不超过 2.5 秒</span>
       </div>
       {items.length > 1 && <p className={styles.note}>MG 动效按整批设置：本批全部 {items.length} 条视频都会使用，风格相同。</p>}
-      {unsupported > 0 && <p className={styles.note}>{unsupported} 条视频的模板画面已有信息卡，暂不支持 MG，这几条不会加。</p>}
+      {unsupported > 0 && <p className={styles.note}>{unsupported} 条视频的模板画面已有信息卡，暂不支持 MG，这几条不会加。{choices.length > 0 && `支持动效的模板：${choices.join("、")}。`}</p>}
       <div className={styles.segment} role="radiogroup" aria-label="动效风格">
         {(sources?.mg_styles.map(row => row.key) ?? (["paper", "ink", "ember"] as SupplementStyle[])).map(key => (
           <button key={key} type="button" role="radio" aria-checked={style === key} onClick={() => update(current => setMgStyle(current, key))}>

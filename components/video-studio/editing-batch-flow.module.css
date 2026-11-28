@@ -87,7 +87,7 @@
 .actions button:disabled{opacity:.5;cursor:default}
 .next{display:flex;justify-content:flex-start;padding-top:6px;border-top:1px solid var(--line)}
 .back{margin:0 0 12px;font-size:13px}
-.resultsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.step>header.resultsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .resultsHead > div{min-width:0}
 .resultsHead .secondary{display:inline-flex;align-items:center;gap:6px;flex:none}
 .redo{display:grid;gap:10px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
@@ -109,7 +109,7 @@
   .uploads li{grid-template-columns:minmax(0,1fr) 72px 40px}
   .selected ul{grid-template-columns:minmax(0,1fr)}
   .primary{width:100%}
-  .resultsHead{flex-direction:column}
+  .step>header.resultsHead{flex-direction:column}
   .redo select{max-width:none}
 }
 :global(html.theme-ember) .steps{--step-ink:#edeae4;--step-muted:#9c978e}

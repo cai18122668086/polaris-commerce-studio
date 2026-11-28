@@ -22,7 +22,21 @@ export type WorkItemLike = {
   generation_task_id?: string | null; editing_task_id?: string | null; cover_asset_id?: string | null;
   source_video_ref?: { kind: string; id: string } | null;
   stage: WorkStage; status: WorkStatus; error?: string | null;
+  /** B1 软删除：有值即已从「我的作品」移除（文件保留）。 */
+  deleted_at?: string | null;
+  /** C10 已发布标记（商家自己标，不接平台）。 */
+  published_at?: string | null;
 };
+
+/** 与后端 group_of 同一口径（/work-items?group= 与 /work-items/summary）：每条恰好属于一组。 */
+export type WorkGroup = "active" | "failed" | "done" | "finishing" | "other";
+export function itemGroup(item: Pick<WorkItemLike, "stage" | "status">): WorkGroup {
+  if (item.status === "queued" || item.status === "running") return "active";
+  if (item.status === "failed" || item.status === "canceled") return "failed";
+  if (item.stage === "done") return "done";
+  if (item.stage === "finishing") return "finishing";
+  return "other";
+}
 export type EditingWorkLike = { task_id: string; project_id: string; project_title: string; created_at: string; final: { url: string; duration_ms?: number | null } };
 export type TalkJobLike = { id: string; kind: string; status: string; created_at: string; video_url?: string | null; snapshot?: { draft?: { name?: string; text?: string } } | null };
 
@@ -50,6 +64,11 @@ export type WorkCard = {
   hasVideo: boolean;
   /** Where the server cuts a grid thumbnail from, when there is no cover. */
   poster: { kind: "editing" | "generation"; id: string } | null;
+  /** 作品条目的分组（旧的剪辑/口播卡片按完成与否折算成 done / active）。 */
+  group: WorkGroup;
+  stage: WorkStage | null;
+  version: number | null;
+  publishedAt: string | null;
 };
 
 /** Server-cut 3:4 thumbnail for a work without a cover (cached, lazy-loaded). */
@@ -123,6 +142,7 @@ export function itemCard(item: WorkItemLike): WorkCard {
     hasVideo: item.stage !== "talking" || item.status === "succeeded",
     poster: item.editing_task_id ? { kind: "editing", id: item.editing_task_id }
       : item.generation_task_id && (item.stage !== "talking" || item.status === "succeeded") ? { kind: "generation", id: item.generation_task_id } : null,
+    group: itemGroup(item), stage: item.stage, version: item.version ?? null, publishedAt: item.published_at ?? null,
   };
 }
 
@@ -134,6 +154,7 @@ export function editCard(work: EditingWorkLike): WorkCard {
     title: title || "未命名作品", titleIsFallback: true, body: "", script: "",
     coverId: null, videoUrl: work.final.url, createdAt: work.created_at, progress: null, finished: true, hasVideo: true,
     poster: { kind: "editing", id: work.task_id },
+    group: "done", stage: null, version: null, publishedAt: null,
   };
 }
 
@@ -151,17 +172,26 @@ export function talkCard(job: TalkJobLike): WorkCard | null {
     progress: job.status === "completed" ? null : { label: "口播生成中", tone: "running" }, finished: job.status === "completed",
     hasVideo: job.status === "completed",
     poster: job.status === "completed" ? { kind: "generation", id: job.id } : null,
+    group: job.status === "completed" ? "done" : "active", stage: null, version: null, publishedAt: null,
   };
 }
 
-/** 合成网格：作品条目优先；已被作品条目引用的旧剪辑/口播不再单独出现。新的在前。 */
-export function mergeWorkCards(items: WorkItemLike[], edits: EditingWorkLike[], jobs: TalkJobLike[]): WorkCard[] {
+/**
+ * 合成网格：作品条目优先；已被作品条目引用的旧剪辑/口播不再单独出现。新的在前。
+ * B2：作品条目分页加载时（itemsComplete=false），比已加载的最早一条作品条目还早的旧剪辑/口播先不出——
+ * 它们可能属于还没翻到的作品条目，避免以「没封面、没标题」的旧卡片重复出现；翻到底后再全部放出。
+ * B1：已删除（deleted_at）的条目不出现，它引用的剪辑/口播也不会以旧卡片冒出来。
+ */
+export function mergeWorkCards(items: WorkItemLike[], edits: EditingWorkLike[], jobs: TalkJobLike[], options: { itemsComplete?: boolean } = {}): WorkCard[] {
   const editIds = new Set(items.map(item => item.editing_task_id).filter(Boolean));
   const talkIds = new Set(items.flatMap(item => [item.generation_task_id, item.source_video_ref?.kind === "talking" ? item.source_video_ref.id : null]).filter(Boolean));
+  const live = items.filter(item => !item.deleted_at);
+  const oldest = options.itemsComplete === false && live.length ? Math.min(...live.map(item => Date.parse(item.created_at))) : -Infinity;
+  const loaded = (createdAt: string) => Date.parse(createdAt) >= oldest;
   const cards = [
-    ...items.map(itemCard),
-    ...edits.filter(work => !editIds.has(work.task_id)).map(editCard),
-    ...jobs.filter(job => !talkIds.has(job.id)).map(talkCard).filter((card): card is WorkCard => card !== null),
+    ...live.map(itemCard),
+    ...edits.filter(work => !editIds.has(work.task_id) && loaded(work.created_at)).map(editCard),
+    ...jobs.filter(job => !talkIds.has(job.id) && loaded(job.created_at)).map(talkCard).filter((card): card is WorkCard => card !== null),
   ];
   return cards.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.position - b.position || a.key.localeCompare(b.key));
 }
@@ -203,4 +233,46 @@ export function neighbour(cards: WorkCard[], key: string, step: 1 | -1): WorkCar
   const index = cards.findIndex(card => card.key === key);
   if (index < 0) return null;
   return cards[index + step] ?? null;
+}
+
+/**
+ * B1：主页网格只放有可播放视频的（已完成 + 待成片 + 旧的已完成成片）；
+ * 生成中、失败、口播完成待剪辑的放到网格下方「未完成」区。
+ */
+export function splitWorkCards(cards: WorkCard[]): { grid: WorkCard[]; running: WorkCard[]; unfinished: WorkCard[] } {
+  return {
+    grid: cards.filter(card => card.group === "done" || card.group === "finishing"),
+    running: cards.filter(card => card.group === "active"),
+    unfinished: cards.filter(card => card.group === "failed" || card.group === "other"),
+  };
+}
+
+export type WorkSummary = { total: number; active: number; failed: number; done: number; finishing: number; other: number };
+
+/** 顶部计数「作品 / 待成片 / 生成中 / 未完成」：作品条目用服务端计数，旧的已完成成片按已加载的加上。 */
+export function workCounts(summary: WorkSummary | undefined, cards: WorkCard[]): { works: number; finishing: number; running: number; unfinished: number } {
+  const legacy = cards.filter(card => card.source !== "item");
+  const legacyDone = legacy.filter(card => card.group === "done").length;
+  const legacyRunning = legacy.filter(card => card.group === "active").length;
+  if (!summary) {
+    const split = splitWorkCards(cards);
+    return { works: split.grid.filter(card => card.group === "done").length, finishing: split.grid.filter(card => card.group === "finishing").length, running: split.running.length, unfinished: split.unfinished.length };
+  }
+  return { works: summary.done + legacyDone, finishing: summary.finishing, running: summary.active + legacyRunning, unfinished: summary.failed + summary.other };
+}
+
+/** 未完成区每条的说明与可做的事。 */
+export function unfinishedState(card: Pick<WorkCard, "group" | "stage">): { label: string; retry: "talking" | "editing" | null; step: "voice" | "editing" | "finish"; deletable: boolean } {
+  const stage = card.stage ?? "talking";
+  const step = stage === "talking" ? "voice" : stage === "editing" ? "editing" : "finish";
+  if (card.group === "active") return { label: stage === "talking" ? "口播生成中" : stage === "editing" ? "剪辑中" : "处理中", retry: null, step, deletable: false };
+  if (card.group === "failed") return { label: stage === "talking" ? "口播没有生成成功" : stage === "editing" ? "剪辑没有成功" : "没有完成", retry: stage === "talking" ? "talking" : stage === "editing" ? "editing" : null, step, deletable: true };
+  return { label: stage === "talking" ? "口播已完成，还没剪辑" : stage === "editing" ? "还没开始剪辑" : "待处理", retry: null, step: stage === "talking" ? "editing" : step, deletable: true };
+}
+
+export type PublishFilter = "all" | "published" | "unpublished";
+/** C10：按已发布标记筛选（只对网格里的作品生效）。 */
+export function filterPublished(cards: WorkCard[], filter: PublishFilter): WorkCard[] {
+  if (filter === "all") return cards;
+  return cards.filter(card => filter === "published" ? Boolean(card.publishedAt) : !card.publishedAt);
 }

@@ -1,17 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState, type TouchEvent } from "react";
-import { ChevronLeft, ChevronRight, Copy, Download, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Download, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { mediaUrl } from "@/lib/api/base-url";
 import { finishHref } from "@/features/video-studio/flow-params";
 import { neighbour, posterPath, shortDate, splitTopics, type WorkCard } from "@/features/video-studio/works";
 import { coverImageUrl, useWorkVideo } from "@/features/video-studio/use-finishing";
+import { ConfirmDelete } from "./confirm-delete";
 import styles from "./finish-works.module.css";
 
 type Notify = (text: string, tone?: "success" | "error" | "info") => void;
 
 /** 点开作品：居中手机外框里自动播放，旁边是完整标题、正文与口播稿；←/→ 切换，Esc 关闭。 */
-export function PhonePreview({ workspaceId, cards, current, accountName, onMove, onClose, notify }: {
+export function PhonePreview({ workspaceId, cards, current, accountName, onMove, onClose, notify, onDelete, onTogglePublished, publishing = false }: {
   workspaceId: string;
   accountName: string;
   cards: WorkCard[];
@@ -19,6 +20,11 @@ export function PhonePreview({ workspaceId, cards, current, accountName, onMove,
   onMove: (key: string) => void;
   onClose: () => void;
   notify: Notify;
+  /** B1：从作品里移除（页内二次确认）。旧的剪辑成片没有作品条目，不给删。 */
+  onDelete?: () => Promise<void>;
+  /** C10：已发布标记。 */
+  onTogglePublished?: () => void;
+  publishing?: boolean;
 }) {
   const video = useWorkVideo(workspaceId, current.videoUrl || !current.hasVideo ? null : { editing_task_id: current.editingTaskId, generation_task_id: current.generationTaskId });
   const src = current.videoUrl ?? video.data ?? null;
@@ -133,7 +139,17 @@ export function PhonePreview({ workspaceId, cards, current, accountName, onMove,
           <button type="button" className={styles.ghost} onClick={() => void copy(current.title, "标题")}><Copy size={15} />复制标题</button>
           <button type="button" className={styles.ghost} onClick={() => void copy(current.body, "正文")}><Copy size={15} />复制正文</button>
         </div>
-        {current.itemId && <a className={styles.linkButton} href={finishHref({ item: current.itemId })}>重新编辑封面和文案</a>}
+        {onTogglePublished && <div className={styles.previewMarks}>
+          <button type="button" className={styles.publishToggle} role="switch" aria-checked={Boolean(current.publishedAt)} disabled={publishing} onClick={onTogglePublished}>
+            <span className={styles.publishBox} aria-hidden="true">{current.publishedAt && <Check size={12} strokeWidth={2.6} />}</span>
+            {current.publishedAt ? `已发布 · ${shortDate(current.publishedAt)}` : "标记为已发布"}
+          </button>
+          <small>只是自己的记号，方便筛出还没发的</small>
+        </div>}
+        <div className={styles.previewLinks}>
+          {current.itemId && <a className={styles.linkButton} href={finishHref({ item: current.itemId })}>重新编辑封面和文案</a>}
+          {onDelete && <ConfirmDelete onConfirm={onDelete} label="删除这条作品" />}
+        </div>
         <p className={styles.keys}><span className={styles.keysDesk}>← → 切换作品 · Esc 关闭</span><span className={styles.keysTouch}>在视频上左右滑动切换作品</span></p>
       </aside>
     </div>

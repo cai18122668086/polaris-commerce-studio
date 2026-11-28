@@ -26,7 +26,7 @@ import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal, Protocol
 from uuid import UUID, uuid4
@@ -407,7 +407,32 @@ ERROR_MESSAGES = {
     "AVATAR_POLISH_TIMEOUT": "AI 润色超时了，不扣费，可以重新生成。",
     "AVATAR_POLISH_UNAVAILABLE": "AI 润色服务暂时连不上，不扣费，请稍后再试。",
     "AVATAR_POLISH_NOT_CONFIGURED": "AI 润色暂不可用，可以直接用原图创建形象。",
+    "AVATAR_POLISH_INTERRUPTED": "这张润色中途中断了，不扣费，可以重新生成。",
 }
+# A request's background run that died with the API process (restart) must not
+# leave a spinner or a credit hold forever (C5, as video_cover_routes does).
+STALE_SECONDS = 30 * 60
+
+
+def _expire_stale(session: Session, rows: list[VideoAvatarPolishRecord]) -> None:
+    now = utc_now()
+    expired = []
+    for row in rows:
+        updated = row.updated_at
+        if updated is not None and updated.tzinfo is None:
+            updated = updated.replace(tzinfo=UTC)
+        if (
+            row.status in {"queued", "running"}
+            and updated is not None
+            and (now - updated).total_seconds() > STALE_SECONDS
+        ):
+            row.status, row.error_code = "failed", "AVATAR_POLISH_INTERRUPTED"
+            expired.append(row)
+    if expired:
+        session.commit()
+        for row in expired:
+            video_credits.reconcile_owner(session, OWNER, row.id)
+        session.commit()
 
 
 # ---------------------------------------------------------------- 存储与响应
@@ -711,6 +736,7 @@ def list_polishes(
         )
         .order_by(VideoAvatarPolishRecord.slot)
     ).all()
+    _expire_stale(session, list(rows))
     return [response(session, row) for row in rows]
 
 

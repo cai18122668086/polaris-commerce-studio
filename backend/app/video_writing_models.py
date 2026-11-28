@@ -103,6 +103,7 @@ class VideoScriptLibraryEntry(TimestampMixin, Base):
             "owner_user_id",
             "created_at",
         ),
+        Index("ix_video_script_library_run", "workspace_id", "owner_user_id", "run_id"),
     )
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
@@ -124,3 +125,6 @@ class VideoScriptLibraryEntry(TimestampMixin, Base):
     revision: Mapped[int] = mapped_column(Integer, default=1)
     history: Mapped[list] = mapped_column(json_type(), default=list)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 第三轮：来自哪次爆款文案 run、哪个角度（展示与按批次分组用，可空）。
+    run_id: Mapped[str | None] = mapped_column(String(40))
+    angle: Mapped[dict | None] = mapped_column(json_type())

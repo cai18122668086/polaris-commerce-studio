@@ -1,4 +1,6 @@
-from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -21,6 +23,7 @@ class VideoAssistanceRecord(TimestampMixin, Base):
             "project_id",
             "created_at",
         ),
+        Index("ix_video_assistance_kind_status", "kind", "status"),
     )
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(
@@ -42,3 +45,6 @@ class VideoAssistanceRecord(TimestampMixin, Base):
     result: Mapped[dict] = mapped_column(json_type(), default=dict)
     receipt: Mapped[dict] = mapped_column(json_type(), default=dict)
     error_code: Mapped[str | None] = mapped_column(String(80))
+    # 第三轮 F 线：爆款文案 run 的执行租约（其他 kind 为空）。
+    lease_owner: Mapped[str | None] = mapped_column(String(80))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

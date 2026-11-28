@@ -3340,6 +3340,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Store Batch
+         * @description 「存入文案库」：勾选的几份文稿一次存入；同一文稿永远只有一条.
+         */
+        post: operations["store_batch_api_v1_video_studio_workspaces__workspace_id__script_library_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/batch-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Batch
+         * @description 文案库多选删除：只删自己的，一次请求；别人的、没有的、已删的忽略.
+         */
+        post: operations["delete_batch_api_v1_video_studio_workspaces__workspace_id__script_library_batch_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/script-library/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description 按生成批次分组：每次爆款文案一组（新的在前），没有批次的在「更早的」.
+         */
+        get: operations["list_runs_api_v1_video_studio_workspaces__workspace_id__script_library_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/script-library/{entry_id}": {
         parameters: {
             query?: never;
@@ -5875,6 +5935,36 @@ export interface components {
             source: "quanyu_public" | "self_owned";
             /** Tag */
             tag: string;
+        };
+        /** BatchDelete */
+        BatchDelete: {
+            /** Ids */
+            ids: string[];
+        };
+        /** BatchDeleted */
+        BatchDeleted: {
+            /** Deleted */
+            deleted: number;
+            /** Ids */
+            ids: string[];
+            /** Missing Ids */
+            missing_ids: string[];
+        };
+        /** BatchStore */
+        BatchStore: {
+            /** Document Ids */
+            document_ids: string[];
+            /** Run Id */
+            run_id?: string | null;
+        };
+        /** BatchStored */
+        BatchStored: {
+            /** Created */
+            created: number;
+            /** Items */
+            items: components["schemas"]["LibraryEntry"][];
+            /** Restored */
+            restored: number;
         };
         /** BenchmarkExtractionPick */
         BenchmarkExtractionPick: {
@@ -9407,6 +9497,13 @@ export interface components {
          * @enum {string}
          */
         JobType: "local_edit" | "product_image" | "reference_remix" | "model_pose_transfer" | "creative_image" | "detail_pack" | "domestic_detail_review" | "amazon_visual_suite" | "domestic_main_image";
+        /** LibraryAngle */
+        LibraryAngle: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** LibraryChoice */
         LibraryChoice: {
             /**
@@ -9491,6 +9588,7 @@ export interface components {
         };
         /** LibraryEntry */
         LibraryEntry: {
+            angle?: components["schemas"]["LibraryAngle"] | null;
             /** Benchmark Refs */
             benchmark_refs: {
                 [key: string]: unknown;
@@ -9514,6 +9612,8 @@ export interface components {
             publish_title: string;
             /** Revision */
             revision: number;
+            /** Run Id */
+            run_id?: string | null;
             /** Script */
             script: string;
             /** Script Chars */
@@ -9530,6 +9630,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Used For Talking
+             * @default false
+             */
+            used_for_talking: boolean;
             /** Writing Document Id */
             writing_document_id: string | null;
         };
@@ -10532,6 +10637,24 @@ export interface components {
             validity_days: number;
             /** Welcome Claimed */
             welcome_claimed: boolean;
+        };
+        /** RunGroup */
+        RunGroup: {
+            /** Count */
+            count: number;
+            /** Created At */
+            created_at: string | null;
+            /** Label */
+            label: string;
+            /** Platforms */
+            platforms: string[];
+            /** Run Id */
+            run_id: string | null;
+        };
+        /** RunGroups */
+        RunGroups: {
+            /** Groups */
+            groups: components["schemas"]["RunGroup"][];
         };
         /** RuntimeCapabilities */
         RuntimeCapabilities: {
@@ -19218,6 +19341,8 @@ export interface operations {
                 documents?: string;
                 q?: string;
                 platform?: "" | "douyin" | "xiaohongshu";
+                run_id?: string;
+                source?: "" | "auto_writing" | "manual" | "imported";
                 limit?: number;
                 offset?: number;
             };
@@ -19271,6 +19396,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_batch_api_v1_video_studio_workspaces__workspace_id__script_library_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchStore"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchStored"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_batch_api_v1_video_studio_workspaces__workspace_id__script_library_batch_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchDelete"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchDeleted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_video_studio_workspaces__workspace_id__script_library_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunGroups"];
                 };
             };
             /** @description Validation Error */

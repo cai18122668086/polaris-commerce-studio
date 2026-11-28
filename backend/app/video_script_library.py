@@ -6,6 +6,10 @@
 * 老的文案库（``video_script_versions`` 里 kind=library 的快照）在主人第一次
   打开文案库时镜像进来（``legacy_version_id``），没有标题和正文也能正常显示。
 * 列表一次可取多条、可按 id 批量取（给口播页 ``?scripts=id1,id2``）。
+* 第三轮（开关 ``POLARIS_VIDEO_WRITING_BRIEF_V2`` 打开的用户）：写完不再自动入库，
+  结果页勾选后 ``POST /script-library/batch`` 一次存入多份文稿（幂等，同一文稿
+  只一条）；文案库可 ``batch-delete`` 一次删多条，可按生成批次（``run_id``）和
+  来源筛选，``GET /script-library/runs`` 给分组视图。
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from pydantic import Field, StringConstraints
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -32,6 +36,7 @@ from .video_studio_access import require_video_studio_access
 from .video_studio_models import VideoProjectRecord, VideoScriptVersionRecord
 from .video_studio_routes import VideoWorkspace, scope
 from .video_studio_schemas import StrictVideoModel, VideoProjectContent
+from .video_work_models import VideoWorkItemRecord
 from .video_writing_models import VideoScriptLibraryEntry, VideoWritingDocument
 
 log = logging.getLogger(__name__)
@@ -45,6 +50,11 @@ router = APIRouter(
 Source = Literal["auto_writing", "manual", "imported"]
 Platform = Literal["douyin", "xiaohongshu"]
 MAX_IDS = 50
+# 一次批量存入 / 删除最多多少条（结果页最多 10 条，文案库一页最多 100 条）。
+MAX_BATCH = 100
+AUTO_KIND = "auto_writing"
+ID_PATTERN = r"[0-9A-Za-z-]{1,40}"
+OLDER_LABEL = "更早的"
 HISTORY_KEPT = 20
 DEFAULT_NAME = "未命名视频"
 # Same estimate as the result cards: about 4.8 spoken characters a second.
@@ -61,6 +71,11 @@ def first_sentence(text: str, limit: int = 24) -> str:
         if piece:
             return piece if len(piece) <= limit else piece[:limit] + "…"
     return ""
+
+
+class LibraryAngle(StrictVideoModel):
+    id: str
+    name: str
 
 
 class LibraryEntry(StrictVideoModel):
@@ -81,6 +96,10 @@ class LibraryEntry(StrictVideoModel):
     display_title: str
     script_chars: int
     script_seconds: int
+    # 第三轮：来自哪次爆款文案（旧条目为空）、哪个角度、是否已用于口播。
+    run_id: str | None = None
+    angle: LibraryAngle | None = None
+    used_for_talking: bool = False
 
 
 class LibraryPage(StrictVideoModel):
@@ -117,8 +136,54 @@ def aware(value: datetime) -> datetime:
     return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
 
 
-def entry_response(row: VideoScriptLibraryEntry) -> LibraryEntry:
+def clean_angle(value: Any) -> dict[str, str] | None:
+    """Only ``{id, name}`` of a draft's angle is kept, and only a real one."""
+    if not isinstance(value, dict):
+        return None
+    name = str(value.get("name") or "").strip()
+    if not name:
+        return None
+    return {"id": str(value.get("id") or "")[:40], "name": name[:40]}
+
+
+def run_of_key(dedupe_key: str | None) -> str | None:
+    """``auto:<run>:<version>`` → the run id (the old auto-ingest key)."""
+    parts = (dedupe_key or "").split(":")
+    if len(parts) == 3 and parts[0] == "auto" and re.fullmatch(ID_PATTERN, parts[1]):
+        return parts[1]
+    return None
+
+
+def talking_used(
+    session: Session, workspace: WorkspaceContext, entry_ids: list[str]
+) -> set[str]:
+    """Entries a (not deleted) talking work item of this user points at."""
+    if not entry_ids:
+        return set()
+    rows = session.scalars(
+        select(VideoWorkItemRecord.script_document_id)
+        .where(
+            VideoWorkItemRecord.workspace_id == workspace.workspace_id,
+            VideoWorkItemRecord.owner_user_id == workspace.principal.user_id,
+            VideoWorkItemRecord.script_document_id.in_(entry_ids),
+            VideoWorkItemRecord.deleted_at.is_(None),
+        )
+        .distinct()
+    ).all()
+    return {r for r in rows if r}
+
+
+def responses(
+    session: Session, workspace: WorkspaceContext, rows: Any
+) -> list[LibraryEntry]:
+    rows = list(rows)
+    used = talking_used(session, workspace, [row.id for row in rows])
+    return [entry_response(row, row.id in used) for row in rows]
+
+
+def entry_response(row: VideoScriptLibraryEntry, used: bool = False) -> LibraryEntry:
     chars = spoken_chars(row.script)
+    angle = clean_angle(row.angle)
     return LibraryEntry(
         id=row.id,
         created_at=aware(row.created_at),
@@ -137,6 +202,9 @@ def entry_response(row: VideoScriptLibraryEntry) -> LibraryEntry:
         or "未命名文案",
         script_chars=chars,
         script_seconds=max(1, round(chars / CHARS_PER_SECOND)) if chars else 0,
+        run_id=row.run_id,
+        angle=LibraryAngle(**angle) if angle else None,
+        used_for_talking=used,
     )
 
 
@@ -220,6 +288,8 @@ def ingest_draft(
     source: Source,
     dedupe_key: str,
     platform: str,
+    run_id: str | None = None,
+    angle: Any = None,
 ) -> VideoScriptLibraryEntry:
     """A saved draft document becomes one library entry, exactly once."""
     body = document.body or {}
@@ -237,6 +307,8 @@ def ingest_draft(
         dedupe_key=dedupe_key[:160],
         project_id=document.project_id,
         writing_document_id=document.id,
+        run_id=run_id or run_of_key(dedupe_key),
+        angle=clean_angle(angle),
         revision=1,
         history=[],
     )
@@ -401,7 +473,7 @@ def parse_ids(raw: str) -> list[str]:
             422, "VIDEO_SCRIPT_LIBRARY_TOO_MANY", f"一次最多取 {MAX_IDS} 条文案。"
         )
     for ident in ids:
-        if not re.fullmatch(r"[0-9A-Za-z-]{1,40}", ident):
+        if not re.fullmatch(ID_PATTERN, ident):
             raise ApiError(422, "VIDEO_SCRIPT_LIBRARY_BAD_ID", "文案编号不正确。")
     return ids
 
@@ -415,6 +487,9 @@ def list_entries(
     documents: str = Query("", max_length=2100),
     q: str = Query("", max_length=100),
     platform: Literal["", "douyin", "xiaohongshu"] = "",
+    # 按生成批次：某次 run 的 id，或 "none" = 不来自任何一次生成（「更早的」）。
+    run_id: str = Query("", max_length=40, pattern=r"^[0-9A-Za-z-]*$"),
+    source: Literal["", "auto_writing", "manual", "imported"] = "",
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> LibraryPage:
@@ -428,7 +503,7 @@ def list_entries(
                 live.where(VideoScriptLibraryEntry.id.in_(wanted))
             ).all()
         }
-        items = [entry_response(by_id[i]) for i in wanted if i in by_id]
+        items = responses(session, workspace, [by_id[i] for i in wanted if i in by_id])
         return LibraryPage(
             items=items,
             total=len(items),
@@ -442,7 +517,7 @@ def list_entries(
             live.where(VideoScriptLibraryEntry.writing_document_id.in_(docs))
         ).all()
         return LibraryPage(
-            items=[entry_response(row) for row in found],
+            items=responses(session, workspace, found),
             total=len(found),
             limit=len(docs),
             offset=0,
@@ -462,6 +537,12 @@ def list_entries(
         )
     if platform:
         live = live.where(VideoScriptLibraryEntry.platform == platform)
+    if run_id == "none":
+        live = live.where(VideoScriptLibraryEntry.run_id.is_(None))
+    elif run_id:
+        live = live.where(VideoScriptLibraryEntry.run_id == run_id)
+    if source:
+        live = live.where(VideoScriptLibraryEntry.source == source)
     total = session.scalar(select(func.count()).select_from(live.subquery())) or 0
     rows = session.scalars(
         live.order_by(
@@ -471,10 +552,301 @@ def list_entries(
         .offset(offset)
     ).all()
     return LibraryPage(
-        items=[entry_response(row) for row in rows],
+        items=responses(session, workspace, rows),
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+class RunGroup(StrictVideoModel):
+    run_id: str | None
+    created_at: datetime | None
+    label: str
+    count: int
+    platforms: list[str]
+
+
+class RunGroups(StrictVideoModel):
+    groups: list[RunGroup]
+
+
+def run_label(run: VideoAssistanceRecord | None) -> str:
+    if run is None:
+        return "爆款文案"
+    result = run.result or {}
+    brief = result.get("brief") if isinstance(result.get("brief"), dict) else {}
+    asked = result.get("request") if isinstance(result.get("request"), dict) else {}
+    for value in (
+        (brief or {}).get("category"),
+        (asked or {}).get("query"),
+        (run.inputs or {}).get("query"),
+    ):
+        lines = str(value or "").strip().splitlines()
+        label = lines[0].strip() if lines else ""
+        if label:
+            return label if len(label) <= 20 else label[:20] + "…"
+    return "爆款文案"
+
+
+@router.get("/script-library/runs", response_model=RunGroups)
+def list_runs(workspace: VideoWorkspace, session: SessionDependency) -> RunGroups:
+    """按生成批次分组：每次爆款文案一组（新的在前），没有批次的在「更早的」."""
+    sync_legacy(session, workspace)
+    counted = session.execute(
+        select(
+            VideoScriptLibraryEntry.run_id,
+            VideoScriptLibraryEntry.platform,
+            func.count(),
+            func.min(VideoScriptLibraryEntry.created_at),
+        )
+        .where(
+            VideoScriptLibraryEntry.workspace_id == workspace.workspace_id,
+            VideoScriptLibraryEntry.owner_user_id == workspace.principal.user_id,
+            VideoScriptLibraryEntry.deleted_at.is_(None),
+        )
+        .group_by(VideoScriptLibraryEntry.run_id, VideoScriptLibraryEntry.platform)
+    ).all()
+    groups: dict[str | None, dict[str, Any]] = {}
+    for run_id, platform, count, first in counted:
+        group = groups.setdefault(run_id, {"count": 0, "platforms": [], "first": None})
+        group["count"] += int(count)
+        if platform and platform not in group["platforms"]:
+            group["platforms"].append(platform)
+        if first is not None and (
+            group["first"] is None or aware(first) < group["first"]
+        ):
+            group["first"] = aware(first)
+    run_ids = [key for key in groups if key]
+    runs: dict[str, VideoAssistanceRecord] = {}
+    if run_ids:
+        runs = {
+            row.id: row
+            for row in session.scalars(
+                select(VideoAssistanceRecord).where(
+                    VideoAssistanceRecord.id.in_(run_ids),
+                    VideoAssistanceRecord.workspace_id == workspace.workspace_id,
+                    VideoAssistanceRecord.owner_user_id == workspace.principal.user_id,
+                )
+            ).all()
+        }
+    named: list[RunGroup] = []
+    for key in run_ids:
+        group, run = groups[key], runs.get(key)
+        when = aware(run.created_at) if run is not None else group["first"]
+        named.append(
+            RunGroup(
+                run_id=key,
+                created_at=when,
+                label=run_label(run),
+                count=group["count"],
+                platforms=sorted(group["platforms"]),
+            )
+        )
+    epoch = datetime.min.replace(tzinfo=UTC)
+    named.sort(key=lambda g: (g.created_at or epoch, g.run_id or ""), reverse=True)
+    if None in groups:
+        older = groups[None]
+        named.append(
+            RunGroup(
+                run_id=None,
+                created_at=None,
+                label=OLDER_LABEL,
+                count=older["count"],
+                platforms=sorted(older["platforms"]),
+            )
+        )
+    return RunGroups(groups=named)
+
+
+# ------------------------------------------------------------ batches ----
+
+
+class BatchStore(StrictVideoModel):
+    # Counted by hand (not max_length): too many is VIDEO_SCRIPT_LIBRARY_TOO_MANY.
+    document_ids: list[str] = Field(min_length=1, max_length=1000)
+    run_id: str | None = Field(default=None, max_length=40)
+
+
+class BatchStored(StrictVideoModel):
+    items: list[LibraryEntry]
+    created: int
+    restored: int
+
+
+class BatchDelete(StrictVideoModel):
+    ids: list[str] = Field(min_length=1, max_length=1000)
+
+
+class BatchDeleted(StrictVideoModel):
+    deleted: int
+    ids: list[str]
+    missing_ids: list[str]
+
+
+def batch_ids(raw: list[str]) -> list[str]:
+    ids = list(dict.fromkeys(piece.strip() for piece in raw if piece.strip()))
+    if not ids:
+        raise ApiError(422, "VIDEO_SCRIPT_LIBRARY_BAD_ID", "文案编号不正确。")
+    if len(ids) > MAX_BATCH:
+        raise ApiError(
+            422, "VIDEO_SCRIPT_LIBRARY_TOO_MANY", f"一次最多 {MAX_BATCH} 条文案。"
+        )
+    if any(not re.fullmatch(ID_PATTERN, ident) for ident in ids):
+        raise ApiError(422, "VIDEO_SCRIPT_LIBRARY_BAD_ID", "文案编号不正确。")
+    return ids
+
+
+def run_drafts(
+    session: Session,
+    workspace: WorkspaceContext,
+    documents: list[VideoWritingDocument],
+    run_id: str | None,
+) -> dict[str, tuple[str, dict[str, Any]]]:
+    """document id → (run id, that run's draft entry) for auto-writing drafts.
+
+    With ``run_id`` only that run is read; otherwise the auto-writing runs of
+    the projects the documents belong to (newest first). A draft the checks
+    dropped but the user keeps anyway is found by ``dropped_document_id``.
+    """
+    query = select(VideoAssistanceRecord).where(
+        VideoAssistanceRecord.workspace_id == workspace.workspace_id,
+        VideoAssistanceRecord.owner_user_id == workspace.principal.user_id,
+        VideoAssistanceRecord.kind == AUTO_KIND,
+    )
+    if run_id:
+        query = query.where(VideoAssistanceRecord.id == run_id)
+    else:
+        projects = sorted({doc.project_id for doc in documents})
+        query = query.where(VideoAssistanceRecord.project_id.in_(projects))
+    found: dict[str, tuple[str, dict[str, Any]]] = {}
+    runs = session.scalars(
+        query.order_by(VideoAssistanceRecord.created_at.desc()).limit(50)
+    ).all()
+    for run in runs:
+        for draft in (run.result or {}).get("drafts") or []:
+            if not isinstance(draft, dict) or not draft.get("key"):
+                continue
+            for field in ("document_id", "dropped_document_id"):
+                doc_id = draft.get(field)
+                if doc_id and str(doc_id) not in found:
+                    found[str(doc_id)] = (run.id, draft)
+    return found
+
+
+def draft_platform(session: Session, document: VideoWritingDocument) -> str:
+    if document.assistance_task_id:
+        task = session.get(VideoAssistanceRecord, document.assistance_task_id)
+        if task is not None:
+            return str((task.inputs or {}).get("publish_platform") or "")
+    return ""
+
+
+@router.post("/script-library/batch", response_model=BatchStored)
+def store_batch(
+    body: BatchStore, workspace: VideoWorkspace, session: SessionDependency
+) -> BatchStored:
+    """「存入文案库」：勾选的几份文稿一次存入；同一文稿永远只有一条."""
+    require_workspace_write(workspace)
+    ids = batch_ids(body.document_ids)
+    if body.run_id is not None and not re.fullmatch(ID_PATTERN, body.run_id):
+        raise ApiError(422, "VIDEO_SCRIPT_LIBRARY_BAD_ID", "文案编号不正确。")
+    rows = {
+        doc.id: doc
+        for doc in session.scalars(
+            select(VideoWritingDocument).where(
+                VideoWritingDocument.id.in_(ids),
+                VideoWritingDocument.workspace_id == workspace.workspace_id,
+                VideoWritingDocument.owner_user_id == workspace.principal.user_id,
+                VideoWritingDocument.kind == "draft",
+            )
+        ).all()
+    }
+    missing = [i for i in ids if i not in rows]
+    if missing:
+        raise ApiError(
+            404,
+            "VIDEO_WRITING_DOCUMENT_NOT_FOUND",
+            "有几份文稿没有找到，这次没有存入。",
+            details={"missing_ids": missing},
+        )
+    documents = [rows[i] for i in ids]
+    from_runs = run_drafts(session, workspace, documents, body.run_id)
+    created = restored = 0
+    saved: list[VideoScriptLibraryEntry] = []
+    for document in documents:
+        before = session.scalar(
+            owned_query(workspace).where(
+                VideoScriptLibraryEntry.writing_document_id == document.id
+            )
+        )
+        run_id, draft = from_runs.get(document.id, (None, {}))
+        key = f"auto:{run_id}:{draft['key']}" if run_id else f"document:{document.id}"
+        row = ingest_draft(
+            session,
+            workspace,
+            document,
+            source="auto_writing" if run_id else "manual",
+            dedupe_key=key,
+            platform=str(draft.get("platform") or draft_platform(session, document)),
+            run_id=run_id,
+            angle=draft.get("angle"),
+        )
+        changed = False
+        if before is None and row.writing_document_id == document.id:
+            created += 1
+        if row.deleted_at is not None:  # removed earlier, stored again on purpose
+            row.deleted_at = None
+            row.updated_at = utc_now()
+            restored += 1
+            changed = True
+        angle = clean_angle(draft.get("angle"))
+        if run_id and row.run_id is None:
+            row.run_id, changed = run_id, True
+        if run_id and row.angle is None and angle:
+            row.angle, changed = angle, True
+        if changed:
+            session.commit()
+        saved.append(row)
+    return BatchStored(
+        items=responses(session, workspace, saved), created=created, restored=restored
+    )
+
+
+@router.post("/script-library/batch-delete", response_model=BatchDeleted)
+def delete_batch(
+    body: BatchDelete, workspace: VideoWorkspace, session: SessionDependency
+) -> BatchDeleted:
+    """文案库多选删除：只删自己的，一次请求；别人的、没有的、已删的忽略."""
+    require_workspace_write(workspace)
+    ids = batch_ids(body.ids)
+    mine = set(
+        session.scalars(
+            select(VideoScriptLibraryEntry.id).where(
+                VideoScriptLibraryEntry.workspace_id == workspace.workspace_id,
+                VideoScriptLibraryEntry.owner_user_id == workspace.principal.user_id,
+                VideoScriptLibraryEntry.id.in_(ids),
+                VideoScriptLibraryEntry.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    if mine:
+        now = utc_now()
+        session.execute(
+            update(VideoScriptLibraryEntry)
+            .where(
+                VideoScriptLibraryEntry.workspace_id == workspace.workspace_id,
+                VideoScriptLibraryEntry.owner_user_id == workspace.principal.user_id,
+                VideoScriptLibraryEntry.id.in_(mine),
+                VideoScriptLibraryEntry.deleted_at.is_(None),
+            )
+            .values(deleted_at=now, updated_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        session.commit()
+    done = [i for i in ids if i in mine]
+    return BatchDeleted(
+        deleted=len(done), ids=done, missing_ids=[i for i in ids if i not in mine]
     )
 
 
@@ -482,7 +854,8 @@ def list_entries(
 def get_entry(
     entry_id: str, workspace: VideoWorkspace, session: SessionDependency
 ) -> LibraryEntry:
-    return entry_response(own_entry(session, workspace, entry_id))
+    row = own_entry(session, workspace, entry_id)
+    return entry_response(row, bool(talking_used(session, workspace, [row.id])))
 
 
 @router.post("/script-library", response_model=LibraryEntry)

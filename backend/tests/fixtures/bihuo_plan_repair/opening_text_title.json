@@ -1,0 +1,563 @@
+{
+ "source": "dev planning 4d23b040-6ed1-4812-8772-7761f74ad695 (2026-11-28, EDITING_PLAN_CONTRACT_INVALID)",
+ "template_id": "bihuo-36-v1",
+ "cards": [
+  {
+   "id": "material-e662e03f-0dfb-43c5-81b6-ded52e5de17f",
+   "kind": "image",
+   "scope": "generated illustration; not product or factual evidence",
+   "sha256": "b936d476ab64c9a5e6a766d7f96f57069da4ccf1fc822987ef9a92b400d033d9",
+   "semantic_use": "每天洗手十几次，护手霜一定要选清爽不黏腻的。（画面：双手在水龙头下冲洗，旁边放着一支护手霜）",
+   "viewed_identity": "双手在水龙头下冲洗，旁边放着一支"
+  },
+  {
+   "id": "source-fcf29dff-8ecd-479c-bb34-a1f2217f26ce",
+   "kind": "original_video",
+   "sha256": "464b470d87ffd729cd4a461a25ac83440aa5f9f0f32bfdaec629ba6ecc8dbd82",
+   "semantic_use": "本期原片说话人，不是商品实拍证据",
+   "viewed_identity": null
+  }
+ ],
+ "transcript": {
+  "schema_version": "tengli.transcript/1",
+  "audio_sha256": "00557c8b6a7285849c8107f7a014637572534936024b8597e64a4587a3477a16",
+  "source_sha256": "464b470d87ffd729cd4a461a25ac83440aa5f9f0f32bfdaec629ba6ecc8dbd82",
+  "duration_ms": 10400,
+  "provider": "funasr-fa-zh",
+  "model": "/asr-alignment",
+  "model_sha256": "81cc50732c3e942d4b20e17ec20325cf3c441b9b12faf8c6f951319d11addb6a",
+  "recognizer_version": "1.4.24",
+  "processing_version": "confirmed-script-force-align/1",
+  "raw_result_sha256": "8f33792e79256c691140437d310e56b52bd3830d27312d9efee0efa93528b829",
+  "warnings": [
+   "字幕正文来自该口播任务绑定的确认稿，词点由成片实际音轨强制对齐。",
+   "强制对齐不独立证明每个字均被说出，词点仍可试听核对。"
+  ],
+  "timing_adjustments": [],
+  "language": "zh",
+  "tokens": [
+   {
+    "id": "f62360ec33fdc-t000000",
+    "text": "做",
+    "start_ms": 410,
+    "end_ms": 530,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000001",
+    "text": "了",
+    "start_ms": 530,
+    "end_ms": 630,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000002",
+    "text": "六",
+    "start_ms": 630,
+    "end_ms": 810,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000003",
+    "text": "年",
+    "start_ms": 810,
+    "end_ms": 950,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000004",
+    "text": "美",
+    "start_ms": 950,
+    "end_ms": 1170,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000005",
+    "text": "甲，",
+    "start_ms": 1170,
+    "end_ms": 1410,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000006",
+    "text": "我",
+    "start_ms": 1670,
+    "end_ms": 1830,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000007",
+    "text": "发",
+    "start_ms": 1830,
+    "end_ms": 1910,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000008",
+    "text": "现",
+    "start_ms": 1910,
+    "end_ms": 2090,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000009",
+    "text": "手",
+    "start_ms": 2090,
+    "end_ms": 2250,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000010",
+    "text": "比",
+    "start_ms": 2250,
+    "end_ms": 2370,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000011",
+    "text": "脸",
+    "start_ms": 2370,
+    "end_ms": 2530,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000012",
+    "text": "老",
+    "start_ms": 2530,
+    "end_ms": 2650,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000013",
+    "text": "得",
+    "start_ms": 2650,
+    "end_ms": 2850,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000014",
+    "text": "快。",
+    "start_ms": 2850,
+    "end_ms": 3090,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000015",
+    "text": "每",
+    "start_ms": 3510,
+    "end_ms": 3590,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000016",
+    "text": "天",
+    "start_ms": 3590,
+    "end_ms": 3770,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000017",
+    "text": "洗",
+    "start_ms": 3770,
+    "end_ms": 3910,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000018",
+    "text": "手",
+    "start_ms": 3910,
+    "end_ms": 4050,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000019",
+    "text": "十",
+    "start_ms": 4050,
+    "end_ms": 4210,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000020",
+    "text": "几",
+    "start_ms": 4210,
+    "end_ms": 4450,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000021",
+    "text": "次，",
+    "start_ms": 4450,
+    "end_ms": 4690,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000022",
+    "text": "护",
+    "start_ms": 5130,
+    "end_ms": 5330,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000023",
+    "text": "手",
+    "start_ms": 5330,
+    "end_ms": 5390,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000024",
+    "text": "霜",
+    "start_ms": 5390,
+    "end_ms": 5570,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000025",
+    "text": "一",
+    "start_ms": 5570,
+    "end_ms": 5690,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000026",
+    "text": "定",
+    "start_ms": 5690,
+    "end_ms": 5850,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000027",
+    "text": "要",
+    "start_ms": 5850,
+    "end_ms": 6010,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000028",
+    "text": "选",
+    "start_ms": 6010,
+    "end_ms": 6230,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000029",
+    "text": "清",
+    "start_ms": 6230,
+    "end_ms": 6430,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000030",
+    "text": "爽",
+    "start_ms": 6430,
+    "end_ms": 6590,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000031",
+    "text": "不",
+    "start_ms": 6590,
+    "end_ms": 6770,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000032",
+    "text": "黏",
+    "start_ms": 6770,
+    "end_ms": 6830,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000033",
+    "text": "腻",
+    "start_ms": 6830,
+    "end_ms": 6990,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000034",
+    "text": "的。",
+    "start_ms": 6990,
+    "end_ms": 7150,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000035",
+    "text": "今",
+    "start_ms": 7950,
+    "end_ms": 8050,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000036",
+    "text": "天",
+    "start_ms": 8050,
+    "end_ms": 8230,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000037",
+    "text": "把",
+    "start_ms": 8230,
+    "end_ms": 8350,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000038",
+    "text": "我",
+    "start_ms": 8350,
+    "end_ms": 8450,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000039",
+    "text": "自",
+    "start_ms": 8450,
+    "end_ms": 8570,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000040",
+    "text": "己",
+    "start_ms": 8570,
+    "end_ms": 8630,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000041",
+    "text": "做",
+    "start_ms": 8630,
+    "end_ms": 8790,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000042",
+    "text": "的",
+    "start_ms": 8790,
+    "end_ms": 8890,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000043",
+    "text": "这",
+    "start_ms": 8890,
+    "end_ms": 9030,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000044",
+    "text": "支",
+    "start_ms": 9030,
+    "end_ms": 9210,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000045",
+    "text": "推",
+    "start_ms": 9210,
+    "end_ms": 9450,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000046",
+    "text": "荐",
+    "start_ms": 9470,
+    "end_ms": 9610,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000047",
+    "text": "给",
+    "start_ms": 9610,
+    "end_ms": 9770,
+    "confidence": null
+   },
+   {
+    "id": "f62360ec33fdc-t000048",
+    "text": "你。",
+    "start_ms": 9770,
+    "end_ms": 9930,
+    "confidence": null
+   }
+  ],
+  "utterances": [
+   {
+    "id": "f62360ec33fdc-u00000",
+    "text": "做了六年美甲，我发现手比脸老得快。",
+    "token_ids": [
+     "f62360ec33fdc-t000000",
+     "f62360ec33fdc-t000001",
+     "f62360ec33fdc-t000002",
+     "f62360ec33fdc-t000003",
+     "f62360ec33fdc-t000004",
+     "f62360ec33fdc-t000005",
+     "f62360ec33fdc-t000006",
+     "f62360ec33fdc-t000007",
+     "f62360ec33fdc-t000008",
+     "f62360ec33fdc-t000009",
+     "f62360ec33fdc-t000010",
+     "f62360ec33fdc-t000011",
+     "f62360ec33fdc-t000012",
+     "f62360ec33fdc-t000013",
+     "f62360ec33fdc-t000014"
+    ],
+    "start_ms": 410,
+    "end_ms": 3090
+   },
+   {
+    "id": "f62360ec33fdc-u00001",
+    "text": "每天洗手十几次，护手霜一定要选清爽不黏腻的。",
+    "token_ids": [
+     "f62360ec33fdc-t000015",
+     "f62360ec33fdc-t000016",
+     "f62360ec33fdc-t000017",
+     "f62360ec33fdc-t000018",
+     "f62360ec33fdc-t000019",
+     "f62360ec33fdc-t000020",
+     "f62360ec33fdc-t000021",
+     "f62360ec33fdc-t000022",
+     "f62360ec33fdc-t000023",
+     "f62360ec33fdc-t000024",
+     "f62360ec33fdc-t000025",
+     "f62360ec33fdc-t000026",
+     "f62360ec33fdc-t000027",
+     "f62360ec33fdc-t000028",
+     "f62360ec33fdc-t000029",
+     "f62360ec33fdc-t000030",
+     "f62360ec33fdc-t000031",
+     "f62360ec33fdc-t000032",
+     "f62360ec33fdc-t000033",
+     "f62360ec33fdc-t000034"
+    ],
+    "start_ms": 3510,
+    "end_ms": 7150
+   },
+   {
+    "id": "f62360ec33fdc-u00002",
+    "text": "今天把我自己做的这支推荐给你。",
+    "token_ids": [
+     "f62360ec33fdc-t000035",
+     "f62360ec33fdc-t000036",
+     "f62360ec33fdc-t000037",
+     "f62360ec33fdc-t000038",
+     "f62360ec33fdc-t000039",
+     "f62360ec33fdc-t000040",
+     "f62360ec33fdc-t000041",
+     "f62360ec33fdc-t000042",
+     "f62360ec33fdc-t000043",
+     "f62360ec33fdc-t000044",
+     "f62360ec33fdc-t000045",
+     "f62360ec33fdc-t000046",
+     "f62360ec33fdc-t000047",
+     "f62360ec33fdc-t000048"
+    ],
+    "start_ms": 7950,
+    "end_ms": 9930
+   }
+  ],
+  "reference_text": "做了六年美甲，我发现手比脸老得快。每天洗手十几次，护手霜一定要选清爽不黏腻的。今天把我自己做的这支推荐给你。",
+  "reference_matches": true,
+  "confirmed_alignment": {
+   "status": "aligned",
+   "policy": "confirmed-script-force-align/1",
+   "script_sha256": "af8064589c7f53e6fdd0260c0865531efd76e3dfb765402eee3779e0a8ce34f4",
+   "source_origin": {
+    "kind": "generation_task",
+    "confirmed_version_id": "efb19eb9-7caa-4900-9934-1c0c4a386afa",
+    "generation_task_id": "5e8e2872-03ae-4739-a7de-e4b91594c6a2",
+    "media_sha256": "464b470d87ffd729cd4a461a25ac83440aa5f9f0f32bfdaec629ba6ecc8dbd82",
+    "script_sha256": "af8064589c7f53e6fdd0260c0865531efd76e3dfb765402eee3779e0a8ce34f4"
+   },
+   "audio_sha256": "00557c8b6a7285849c8107f7a014637572534936024b8597e64a4587a3477a16",
+   "audio_source": "original_video_audio",
+   "timing_source": "native_forced_alignment_intervals"
+  },
+  "differences": [],
+  "timing_review": "unreviewed",
+  "parent_transcript_sha256": null,
+  "text_revision_id": null,
+  "text_status": "automatic"
+ },
+ "content": {
+  "opening": {
+   "title": "手比脸老得快",
+   "subtitle": "做六年美甲，发现手比脸老得快",
+   "intro_last_token_id": "f62360ec33fdc-t000014"
+  },
+  "body_variant": "points",
+  "materials": [],
+  "points": [
+   {
+    "first_token_id": "f62360ec33fdc-t000015",
+    "last_token_id": "f62360ec33fdc-t000018"
+   },
+   {
+    "first_token_id": "f62360ec33fdc-t000028",
+    "last_token_id": "f62360ec33fdc-t000033"
+   },
+   {
+    "first_token_id": "f62360ec33fdc-t000035",
+    "last_token_id": "f62360ec33fdc-t000040"
+   }
+  ],
+  "features": [],
+  "conclusion": null,
+  "quote_start_token_id": null,
+  "chapters": [],
+  "comparisons": [],
+  "emphasis": [],
+  "captions": [
+   {
+    "first_token_id": "f62360ec33fdc-t000000",
+    "last_token_id": "f62360ec33fdc-t000005",
+    "emphasis": [
+     {
+      "first_token_id": "f62360ec33fdc-t000002",
+      "last_token_id": "f62360ec33fdc-t000005"
+     }
+    ]
+   },
+   {
+    "first_token_id": "f62360ec33fdc-t000006",
+    "last_token_id": "f62360ec33fdc-t000014",
+    "emphasis": [
+     {
+      "first_token_id": "f62360ec33fdc-t000010",
+      "last_token_id": "f62360ec33fdc-t000014"
+     }
+    ]
+   },
+   {
+    "first_token_id": "f62360ec33fdc-t000015",
+    "last_token_id": "f62360ec33fdc-t000021",
+    "emphasis": [
+     {
+      "first_token_id": "f62360ec33fdc-t000017",
+      "last_token_id": "f62360ec33fdc-t000018"
+     }
+    ]
+   },
+   {
+    "first_token_id": "f62360ec33fdc-t000022",
+    "last_token_id": "f62360ec33fdc-t000034",
+    "emphasis": [
+     {
+      "first_token_id": "f62360ec33fdc-t000030",
+      "last_token_id": "f62360ec33fdc-t000033"
+     }
+    ]
+   },
+   {
+    "first_token_id": "f62360ec33fdc-t000035",
+    "last_token_id": "f62360ec33fdc-t000048",
+    "emphasis": [
+     {
+      "first_token_id": "f62360ec33fdc-t000046",
+      "last_token_id": "f62360ec33fdc-t000048"
+     }
+    ]
+   }
+  ],
+  "warnings": []
+ }
+}

@@ -950,16 +950,18 @@ def finish_item(
 def require_playable(session: Session, item: VideoWorkItemRecord) -> None:
     """Only an item with a finished video can be marked 已完成 (B9).
 
-    Edited (finishing/done), or a talking video that already succeeded; an
-    item still generating or editing is refused, so a stale tab cannot finish
-    it and have the editing result move it back afterwards.
+    Edited (finishing/done, even while a redo with another template runs: the
+    current cut stays playable until the new one replaces it), or a talking
+    video that already succeeded. An item still generating or in its first
+    edit is refused, so a stale tab cannot finish it and have the editing
+    result move it back afterwards.
     """
+    if item.stage in {"finishing", "done"}:
+        return
     if item.status in ACTIVE_STATUSES:
         raise ApiError(
             409, "VIDEO_WORK_ITEM_BUSY", "这条还在生成或剪辑中，完成后再成片。"
         )
-    if item.stage in {"finishing", "done"}:
-        return
     talking = (
         session.get(VideoGenerationRecord, item.generation_task_id)
         if item.generation_task_id

@@ -143,7 +143,11 @@ def test_finish_requires_a_finished_video(video):
     busy = finish(second)
     assert busy.status_code == 409
     assert busy.json()["error"]["code"] == "VIDEO_WORK_ITEM_BUSY"
-    # A finished talking video passes this check (the cover is checked next).
+    # Already cut and being re-cut with another template (L3 B5): the current
+    # cut is playable, so finishing is allowed (the cover is checked next).
+    server_set(client, ws, user, second, stage="finishing", status="running")
+    assert finish(second).json()["error"]["code"] == "COVER_NOT_FOUND"
+    # A finished talking video passes this check too.
     task = generation(client, ws, user)
     with client.app.state.session_factory() as session:
         session.get(VideoGenerationRecord, task).status = "completed"

@@ -1,7 +1,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
+import { projectApi } from "@/features/video-studio/projects";
 import type { CostNote } from "@/features/video-studio/credit-notes";
 import type { GenerationJob } from "@/features/video-studio/library";
 import type { VideoDraft } from "@/features/video-studio/projects";
@@ -41,10 +42,18 @@ export function StudioEditingScreen({ workspaceId, persisted, jobs, attempt, upd
   const refine = params.get("mode") === "refine" || fromTaskLink;
   const { session, content, projectId, status } = persisted;
   const draft = content.draft;
+  // Uploaded videos go to their own new「直接剪辑」project, never to whatever project the
+  // page happens to have open (that may be another work item's talking project).
+  const uploadProject = useRef<Promise<string> | undefined>(undefined);
   if (!refine) {
-    const ensureUploadProject = async () => {
-      if (!persisted.revision) await saveEditingProject();
-      return projectId;
+    const ensureUploadProject = () => {
+      uploadProject.current ??= (async () => {
+        const id = crypto.randomUUID();
+        const name = `直接剪辑 ${new Date().toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
+        await projectApi(workspaceId).write(id, { content: { ...content, draft: { ...content.draft, name, text: "" } }, expected_revision: 0, request_id: crypto.randomUUID(), action: "save" });
+        return id;
+      })().catch(caught => { uploadProject.current = undefined; throw caught; });
+      return uploadProject.current;
     };
     return <><PageHero eyebrow="智能剪辑" title="一批口播，剪成" accent="一批成片" description="选好视频和模板，可选补充素材；每条自动识别口播、编排字幕花字和动效，剪完直接导出高清，再去成片。" facts={[{ label: "可用口播", value: jobs.filter(job => job.kind === "lipsync" && job.status === "completed").length }]} motif="edit" />
       <EditingBatchFlow key={`${workspaceId}:${flow.batch ?? ""}`} workspaceId={workspaceId} batchId={flow.batch ?? null} jobs={jobs} uploadProjectId={projectId} ensureUploadProject={ensureUploadProject} cost={cost} /></>;

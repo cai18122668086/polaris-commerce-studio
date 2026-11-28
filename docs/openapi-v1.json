@@ -8460,6 +8460,30 @@
         "title": "EditingSourceOrigin",
         "type": "object"
       },
+      "EditingSourceOwner": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "generation_task_id": {
+            "title": "Generation Task Id",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generation_task_id",
+          "batch_id",
+          "item_id"
+        ],
+        "title": "EditingSourceOwner",
+        "type": "object"
+      },
       "EditingSourceUploadResponse": {
         "additionalProperties": false,
         "properties": {
@@ -27398,6 +27422,68 @@
           }
         ],
         "summary": "Editing Queue",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-source-owners": {
+      "get": {
+        "description": "Which talking work item a talking result belongs to (read-only).\n\nThe editing page asks before it would create a direct-editing batch, so a\ntalking result is always edited as its own item and no empty batch is left.",
+        "operationId": "editing_source_owners_api_v1_video_studio_workspaces__workspace_id__editing_source_owners_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "generation_ids",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Generation Ids",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EditingSourceOwner"
+                  },
+                  "title": "Response Editing Source Owners Api V1 Video Studio Workspaces  Workspace Id  Editing Source Owners Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Editing Source Owners",
         "tags": [
           "video-work"
         ]

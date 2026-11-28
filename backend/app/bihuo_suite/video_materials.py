@@ -152,7 +152,10 @@ def compile_request(
                 "audio": "muted",
             }
         )
-    payload = compiler(template_id, native, **kwargs)
+    from .adaptive_layout import compilation
+
+    with compilation(template_id):
+        payload = compiler(template_id, native, **kwargs)
     cfg = payload["config"]
 
     # Bind playback to the concrete native slot's first frame. Some recipes

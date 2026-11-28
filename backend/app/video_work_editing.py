@@ -751,6 +751,8 @@ def submit_editing(
             continue
         if item.id in existing:
             continue  # Already submitted (a repeat click or a second tab).
+        if item.deleted_at is not None:
+            continue  # Removed from 我的作品: never edited again.
         if not source_ready(item):
             skipped += 1
             continue

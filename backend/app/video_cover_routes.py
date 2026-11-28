@@ -19,6 +19,7 @@ import hashlib
 import io
 import logging
 import shutil
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -980,11 +981,16 @@ def recover_interrupted(
     return len(jobs)
 
 
-def start_recovery(application: Any) -> None:
-    """Called from the API lifespan: resume interrupted covers in the background."""
+def start_recovery(application: Any) -> threading.Thread | None:
+    """Called from the API lifespan: resume interrupted covers in the background.
 
-    import threading
+    Only the video API runs it. Core roles (api, detail-api, worker, ...) share
+    the same app but have video providers disabled and no access to the video
+    files, so there it would mark covers the video API is still making as failed.
+    """
 
+    if not getattr(application.state.settings, "video_providers_enabled", False):
+        return None
     started = datetime.now(UTC)
 
     def run() -> None:
@@ -1003,4 +1009,6 @@ def start_recovery(application: Any) -> None:
         except Exception:
             logger.exception("video_cover_recovery_failed")
 
-    threading.Thread(target=run, name="video-cover-recovery", daemon=True).start()
+    thread = threading.Thread(target=run, name="video-cover-recovery", daemon=True)
+    thread.start()
+    return thread

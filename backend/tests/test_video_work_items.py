@@ -27,6 +27,7 @@ MIGRATION = (
     Path(__file__).resolve().parents[1]
     / "migrations/versions/20261128_0055_video_work_items.py"
 )
+FLAGS_MIGRATION = MIGRATION.with_name("20261128_0061_video_work_item_flags.py")
 
 
 @pytest.fixture
@@ -338,8 +339,8 @@ def test_editing_upload_batch_and_field_validation(video):
         assert patch(client, ws, item_id, **fields).status_code == 422, fields
 
 
-def _migration():
-    spec = importlib.util.spec_from_file_location("work_migration", MIGRATION)
+def _migration(path=MIGRATION):
+    spec = importlib.util.spec_from_file_location(f"work_migration_{path.stem}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -362,6 +363,8 @@ def test_migration_round_trips_and_matches_models(video):
             module.upgrade()
             module.downgrade()
             module.upgrade()
+            # Later additive columns on the same table (0061: deleted_at/published_at).
+            _migration(FLAGS_MIGRATION).upgrade()
         for table in dependents:
             table.create(connection)
     batch = create(client, ws, batch_body(item("迁移后")))

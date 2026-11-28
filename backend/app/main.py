@@ -281,7 +281,10 @@ def create_app(
             editing_sweeper.start()
         from .video_cover_routes import start_recovery as start_cover_recovery
 
-        start_cover_recovery(application)
+        if app_settings.video_providers_enabled:
+            # Core roles share this app but cannot see video files: only the
+            # video API (providers enabled) may resume interrupted covers.
+            start_cover_recovery(application)
         video_recovery = None
         if (
             app_settings.video_background_recovery_enabled

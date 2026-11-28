@@ -16853,6 +16853,17 @@
             ],
             "title": "Publish Title"
           },
+          "published": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published"
+          },
           "script_document_id": {
             "anyOf": [
               {
@@ -16987,6 +16998,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
           "drive_mode": {
             "enum": [
               "text",
@@ -17065,6 +17088,18 @@
           "publish_title": {
             "title": "Publish Title",
             "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
           },
           "script_document_id": {
             "anyOf": [
@@ -17160,6 +17195,45 @@
           "history"
         ],
         "title": "WorkItemResponse",
+        "type": "object"
+      },
+      "WorkItemSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "integer"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "finishing": {
+            "title": "Finishing",
+            "type": "integer"
+          },
+          "other": {
+            "title": "Other",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "active",
+          "failed",
+          "done",
+          "finishing",
+          "other"
+        ],
+        "title": "WorkItemSummary",
         "type": "object"
       },
       "WorkerAccountSessionRequest": {
@@ -33540,6 +33614,7 @@
     },
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items": {
       "get": {
+        "description": "Deleted items are never listed. Page with ``after``: pass the id of the\nlast item received; a page shorter than ``limit`` is the last one.",
         "operationId": "list_items_api_v1_video_studio_workspaces__workspace_id__work_items_get",
         "parameters": [
           {
@@ -33639,6 +33714,53 @@
             }
           },
           {
+            "description": "只看这些分组；只看已完成 = group=done",
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "active",
+                      "failed",
+                      "done",
+                      "finishing",
+                      "other"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "只看这些分组；只看已完成 = group=done",
+              "title": "Group"
+            }
+          },
+          {
+            "description": "上一页最后一条的 id（游标翻页）",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "上一页最后一条的 id（游标翻页）",
+              "title": "After"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,
@@ -33699,7 +33821,110 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/summary": {
+      "get": {
+        "description": "我的作品的计数（不含已删除），与 ``group`` 过滤同一口径。",
+        "operationId": "work_item_summary_api_v1_video_studio_workspaces__workspace_id__work_items_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Work Item Summary",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}": {
+      "delete": {
+        "description": "Soft delete (B1): the item leaves every list; its batch, tasks and files\nstay. Repeating the call answers the deleted row. Items still generating,\nediting or making a cover are refused.",
+        "operationId": "delete_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Delete Item",
+        "tags": [
+          "video-work"
+        ]
+      },
       "get": {
         "operationId": "get_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__get",
         "parameters": [

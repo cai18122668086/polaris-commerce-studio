@@ -59,6 +59,9 @@ const hidden = new Set<string>([
   // 11-28 v3 评估：后半段字幕深色字压深青底几乎看不清。字幕色在模板不可变清单内（计入身份哈希），
   // 修法待总控定；修好前临时隐藏，已有项目仍可渲染。
   "bihuo-24-v1", // 临时：字幕对比度不足
+  // 11-28 v3：字幕只支持单行（固定位置，超过 1010px 模板断言失败、整片出不来），
+  // 本期口播稿句子偏长；宿主侧拆行（同 bihuo-36）列入后续，修好前临时隐藏，已有项目仍可渲染。
+  "bihuo-23-v1", // 临时：长句会整片失败
   // No male presenter example yet: the style needs real operation footage.
   "chenxi-broll-v1",
 ]);
